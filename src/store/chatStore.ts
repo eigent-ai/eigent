@@ -209,7 +209,7 @@ const chatStore = create<ChatStore>()(
 				model_platform: '',
 				api_url: ''
 			}
-			if (modelType === 'custom'||modelType==='local') {
+			if (modelType === 'custom' || modelType === 'local') {
 				const res = await proxyFetchGet('/api/providers', {
 					prefer: true
 				});
@@ -220,7 +220,7 @@ const chatStore = create<ChatStore>()(
 					api_key: provider.api_key,
 					model_type: provider.model_type,
 					model_platform: provider.provider_name,
-					api_url: provider.api_url
+					api_url: provider?.api_url || provider.endpoint_url
 				}
 			} else if (modelType === 'cloud') {
 				// get current model
@@ -234,7 +234,7 @@ const chatStore = create<ChatStore>()(
 					model_platform: cloud_model_type.includes('gpt') ? 'openai' : 'gemini',
 					api_url: res.api_url
 				}
-			} 
+			}
 
 			// fetch installed mcp token
 			if (!type) {
@@ -304,6 +304,7 @@ const chatStore = create<ChatStore>()(
 			}
 
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+			console.log('apiModel.api_url',apiModel)
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
 				openWhenHidden: true,
