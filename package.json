@@ -90,7 +90,7 @@
     "@types/xml2js": "^0.4.14",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
+    "electron": "^37.2.5",
     "electron-builder": "^24.13.3",
     "postcss": "^8.4.49",
     "postcss-import": "^16.1.0",
