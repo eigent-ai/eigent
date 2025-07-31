@@ -293,9 +293,9 @@ export default function SettingMCP() {
 	};
 
 	return (
-		<div className="space-y-md">
-			<div className="flex items-center justify-between">
-				<div className="text-base font-bold leading-snug text-text-body">
+		<div className="w-full h-full flex flex-col">
+			<div className="w-full h-10 flex flex-row justify-between mb-4 text-text-body text-lg font-bold leading-snug">
+				<div className="text-lg font-bold leading-snug text-text-body">
 					MCP & Tools
 				</div>
 				<div className="flex items-center gap-sm">
@@ -318,7 +318,7 @@ export default function SettingMCP() {
 				Tools
 			</div>
 			<IntegrationList items={essentialIntegrations} />
-			<div className="text-text-body font-bold text-base leading-snug">MCP</div>
+			<div className="text-text-body font-bold text-base leading-snug mt-4">MCP</div>
 			<IntegrationList items={integrations} oauth={oauth || undefined} />
 
 			<div className="pt-4">

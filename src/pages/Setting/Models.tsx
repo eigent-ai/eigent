@@ -12,6 +12,9 @@ import {
 	Info,
 	RotateCcw,
 	Loader2,
+	Cloud,
+	Server,
+	Monitor,
 } from "lucide-react";
 import { INIT_PROVODERS } from "@/lib/llm";
 import { Provider } from "@/types";
@@ -34,6 +37,8 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { RadioGroup } from "@/components/ui/radio-group";
 import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
 import {
@@ -49,6 +54,10 @@ export default function SettingModels() {
 	const { modelType, cloud_model_type, setModelType, setCloudModelType } =
 		useAuthStore();
 	const navigate = useNavigate();
+	
+	// Tab state
+	const [activeTab, setActiveTab] = useState("cloud");
+	
 	const [items, setItems] = useState<Provider[]>(
 		INIT_PROVODERS.filter((p) => p.id !== "local")
 	);
@@ -454,10 +463,29 @@ export default function SettingModels() {
 	};
 
 	return (
-		<div className="space-y-2">
-			<div className="w-[630px] pt-4 self-stretch px-6 py-4 bg-surface-secondary rounded-2xl inline-flex flex-col justify-start items-start gap-4">
-				<div className="self-stretch flex flex-col justify-start items-start gap-1">
-					<div className="self-stretch h-6 inline-flex justify-start items-center gap-2.5">
+		<div className="w-full h-full flex flex-col">
+			<div className="w-full h-10 flex flex-col mb-4 text-text-body text-lg font-bold leading-snug">Models Settings</div>
+			<RadioGroup value={activeTab} onValueChange={setActiveTab} className="w-full">
+				<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full py-2">
+					<TabsList className="grid w-full grid-cols-3">
+					<TabsTrigger value="cloud" showRadio={true} radioValue="cloud" className="flex items-center gap-2">
+						<Cloud className="w-4 h-4" />
+						Cloud Service
+					</TabsTrigger>
+					<TabsTrigger value="custom" showRadio={true} radioValue="custom" className="flex items-center gap-2">
+						<Server className="w-4 h-4" />
+						Custom Models
+					</TabsTrigger>
+					<TabsTrigger value="local" showRadio={true} radioValue="local" className="flex items-center gap-2">
+						<Monitor className="w-4 h-4" />
+						Local Model
+					</TabsTrigger>
+				</TabsList>
+
+				<TabsContent value="cloud">
+					<div className="w-full mt-4 self-stretch px-6 py-4 bg-surface-secondary rounded-2xl inline-flex flex-col justify-start items-start gap-4">
+						<div className="self-stretch flex flex-col justify-start items-start gap-1">
+							<div className="self-stretch h-6 inline-flex justify-start items-center gap-2.5">
 						<div className="flex-1 justify-center text-text-body text-base font-bold leading-snug">
 							Eigent Cloud Version
 						</div>
@@ -476,8 +504,8 @@ export default function SettingModels() {
 								}
 							}}
 						/>
-					</div>
-					<div className="self-stretch justify-center">
+							</div>
+							<div className="self-stretch justify-center mt-2">
 						<span className="text-text-body text-xs font-normal font-['Inter'] leading-tight">
 							You are currently subscribed to the{" "}
 							{subscription?.plan_key?.charAt(0).toUpperCase() +
@@ -495,9 +523,9 @@ export default function SettingModels() {
 						<span className="text-text-body text-xs font-normal font-['Inter'] leading-tight">
 							.
 						</span>
-					</div>
-				</div>
-				<div className="flex flex-row items-center justify-start gap-2 mt-2 w-full">
+							</div>
+						</div>
+						<div className="flex flex-row items-center justify-start gap-2 mt-4 w-full">
 					<Button
 						onClick={() => {
 							window.location.href = `https://www.eigent.ai/dashboard`;
@@ -521,9 +549,9 @@ export default function SettingModels() {
 							credits
 						)}
 					</div>
-				</div>
-				<div className="w-full flex items-center flex-1 justify-between pt-4 border-t border-border-secondary">
-					<div className="flex items-center flex-1 min-w-0">
+						</div>
+						<div className="w-full flex items-center flex-1 justify-between pt-4 border-t border-border-secondary">
+						<div className="flex items-center flex-1 min-w-0">
 						<span className="whitespace-nowrap overflow-hidden text-ellipsis text-xs font-medium leading-tight">
 							Select Model Type
 						</span>
@@ -565,39 +593,17 @@ export default function SettingModels() {
 						</Select>
 					</div>
 				</div>
-			</div>
-			{/* customer models */}
-			<div className="self-stretch pt-4 border-t border-border-disabled inline-flex flex-col justify-start items-start gap-4">
-				<div className="self-stretch inline-flex justify-start items-center gap-2 relative px-6">
-					<div className="justify-center text-text-body text-base font-bold leading-snug">
-						Custom Model
-					</div>
-					<div className="justify-center text-text-body text-xs font-medium leading-none">
-						Use your own API keys or set up a local model.
-					</div>
-					<div className="flex-1" />
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							setCollapsed((c) => !c);
-						}}
-					>
-						{collapsed ? (
-							<ChevronDown className="w-4 h-4" />
-						) : (
-							<ChevronUp className="w-4 h-4" />
-						)}
-					</Button>
 				</div>
+				</TabsContent>
+
+				<TabsContent value="custom">
+				<div className="w-full self-stretch inline-flex flex-col justify-start items-start gap-4 h-full pt-4">
 				{/*  model list */}
 				<div
-					className={`self-stretch inline-flex flex-col justify-start items-start gap-4 transition-all duration-300 ease-in-out overflow-hidden ${
+					className={`self-stretch inline-flex flex-col justify-start items-start gap-4 transition-all duration-300 ease-in-out overflow-y-auto max-h-[calc(100vh-200px)] w-full scrollbar pb-10 pr-2 ${
 						collapsed
 							? "max-h-0 opacity-0 pointer-events-none"
-							: "max-h-[3000px] opacity-100"
+							: "opacity-100"
 					}`}
 					style={{
 						transform: collapsed ? "translateY(-10px)" : "translateY(0)",
@@ -812,9 +818,11 @@ export default function SettingModels() {
 						);
 					})}
 				</div>
-			</div>
-			{/* Local Model */}
-			<div className="w-[630px] mt-4 px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col gap-4">
+				</div>
+				</TabsContent>
+
+				<TabsContent value="local">
+				<div className="w-full mt-4 mr-2 self-stretch px-6 py-4 bg-surface-secondary rounded-2xl inline-flex flex-col justify-between items-between gap-4">
 				<div className="flex items-center justify-between mb-2">
 					<div className="font-bold text-base">Local Model</div>
 					<Switch
@@ -910,7 +918,11 @@ export default function SettingModels() {
 						<Circle />
 					</Button>
 				</div>
-			</div>
+				</div>
+				</TabsContent>
+								</Tabs>
+				</RadioGroup>
+			
 			{/* error dialog */}
 			<Dialog
 				open={dialogVisible}

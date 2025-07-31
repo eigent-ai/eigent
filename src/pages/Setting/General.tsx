@@ -77,8 +77,9 @@ export default function SettingGeneral() {
 	}, []);
 
 	return (
-		<div className="space-y-8">
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
+		<div className="w-full h-full flex flex-col">
+			<div className="w-full h-10 flex flex-col mb-4 text-text-body text-lg font-bold leading-snug">General Settings</div>
+			<div className="mb-4 px-6 py-4 bg-surface-secondary rounded-2xl">
 				<div className="text-base font-bold leading-12 text-text-body">
 					Account
 				</div>

@@ -319,8 +319,8 @@
     --switch-disabled-fill-track-fill: var(--fill-fill-primary-disabled);
     /* Pill Component */
     --pill-bg: var(--fill-default);
-    --pill-surface: var(--fill-fill-primary);
-    --pill-border: var(--border-primary);
+    --pill-surface: var(--fill-fill-secondary);
+    --pill-border: var(--border-secondary);
 
     /* Menu Button Component */
     --menubutton-fill-default: var(--fill-fill-transparent);

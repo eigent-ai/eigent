@@ -73,9 +73,10 @@ export default function SettingPrivacy() {
     );
   };
   return (
-    <div className="space-y-8">
+    <div className="w-full h-full flex flex-col">
+      <div className="w-full h-10 flex flex-col mb-4 text-text-body text-lg font-bold leading-snug">Privacy Settings</div>
       {settings.map((item, index) => (
-        <div className="px-6 py-4 bg-surface-secondary rounded-2xl" key={item.title}>
+        <div className="mb-4 px-6 py-4 bg-surface-secondary rounded-2xl" key={item.title}>
           <div className="flex gap-md">
             <div>
               <div className="text-base font-bold leading-12 text-text-primary">

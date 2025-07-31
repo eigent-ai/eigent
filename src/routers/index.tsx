@@ -46,12 +46,7 @@ const AppRoutes = () => (
 	<Routes>
 		<Route path="/login" element={<Login />} />
 		<Route path="/signup" element={<Signup />} />
-		<Route element={<ProtectedRoute />}>
-			<Route element={<Layout />}>
-				<Route path="/" element={<Home />} />
-				<Route path="/task" element={<Task />} />
-				<Route path="/history" element={<History />} />
-				<Route path="/setting" element={<Setting />}>
+		<Route path="/setting" element={<Setting />}>
 					{/* Setting sub-routes */}
 					<Route index element={<Navigate to="general" replace />} />
 					<Route path="general" element={<SettingGeneral />} />
@@ -61,6 +56,11 @@ const AppRoutes = () => (
 					<Route path="mcp" element={<SettingMCP />} />
 					<Route path="mcp_market" element={<MCPMarket />} />
 				</Route>
+		<Route element={<ProtectedRoute />}>
+			<Route element={<Layout />}>
+				<Route path="/" element={<Home />} />
+				<Route path="/task" element={<Task />} />
+				<Route path="/history" element={<History />} />
 			</Route>
 		</Route>
 		<Route path="*" element={<NotFound />} />
