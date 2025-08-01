@@ -69,13 +69,60 @@ export function TaskCard({
 		}
 	}, [chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace]);
 
+	// Improved height calculation logic
 	useEffect(() => {
-		if (contentRef.current) {
-			setTimeout(() => {
-				setContentHeight(contentRef!.current!.scrollHeight);
-			}, 200);
+		if (!contentRef.current) return;
+
+		const updateHeight = () => {
+			if (contentRef.current) {
+				const scrollHeight = contentRef.current.scrollHeight;
+				setContentHeight(scrollHeight);
+			}
+		};
+
+		// Update height immediately
+		updateHeight();
+
+		// Use ResizeObserver to monitor content changes
+		const resizeObserver = new ResizeObserver(() => {
+			updateHeight();
+		});
+
+		resizeObserver.observe(contentRef.current);
+
+		// Update height when taskRunning changes
+		const timeoutId = setTimeout(updateHeight, 100);
+
+		return () => {
+			resizeObserver.disconnect();
+			clearTimeout(timeoutId);
+		};
+	}, [taskRunning, isExpanded]);
+
+	// Handle height updates specifically for expand/collapse state changes
+	useEffect(() => {
+		if (!contentRef.current || !isExpanded) return;
+
+		const updateHeightOnExpand = () => {
+			if (contentRef.current && isExpanded) {
+				// Small delay to ensure DOM is fully rendered
+				requestAnimationFrame(() => {
+					if (contentRef.current) {
+						setContentHeight(contentRef.current.scrollHeight);
+					}
+				});
+			}
+		};
+
+		// Update height immediately when expanded
+		updateHeightOnExpand();
+
+		// Additional delay when expanded to ensure all animations complete
+		if (isExpanded) {
+			const timeoutId = setTimeout(updateHeightOnExpand, 300);
+			return () => clearTimeout(timeoutId);
 		}
-	}, [taskRunning]);
+	}, [isExpanded]);
 
 	return (
 		<div>
