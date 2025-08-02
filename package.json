@@ -24,7 +24,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@electron/notarize": "^2.5.0",
+    "@electron/notarize": "^3.0.1",
     "@fontsource/inter": "^5.2.5",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@monaco-editor/loader": "^1.5.0",
