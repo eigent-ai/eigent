@@ -250,13 +250,12 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 		}
 	};
 	return (
-		<div className="h-full flex flex-col items-center ">
+		<div className="w-full h-full flex flex-col items-center ">
 			{/* MCP Market top panel sticky */}
 			<div
-				className="text-body flex items-center justify-between sticky top-0 z-[20]  backdrop-blur border-b py-2 mb-0 w-full max-w-4xl"
-				style={{ left: 0, right: 0 }}
+				className="w-full h-10 text-body flex flex-row items-center justify-between sticky top-0 z-[20]  backdrop-blur border-b mb-4 max-w-4xl"
 			>
-				<div className="flex items-center gap-2">
+				<div className="flex items-center">
 					<Button
 						variant="ghost"
 						size="icon"
@@ -265,18 +264,18 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 					>
 						<ChevronLeft className="w-6 h-6 bg-button-transparent-fill-default/0 rounded-md" />
 					</Button>
-					<span className="text-base font-bold leading-12 text-text-primary">
+					<span className="text-lg font-bold leading-snug text-text-primary">
 						MCP Market
 					</span>
 				</div>
-				<div className="flex items-center gap-2 bg-white-100%">
+				<div className="flex items-center">
 					<Select
 						value={categoryId ? String(categoryId) : ""}
 						onValueChange={(val) =>
 							setCategoryId(val ? Number(val) : undefined)
 						}
 					>
-						<SelectTrigger className="min-w-[107px] h-6">
+						<SelectTrigger className="min-w-32 h-6">
 							<SelectValue placeholder="All" />
 						</SelectTrigger>
 						<SelectContent className="bg-white-100% px-2 py-1 rounded overflow-hidden">
@@ -319,7 +318,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 				</div>
 			</div>
 			{/* search mcp input sticky */}
-			<div className="sticky top-[48px] z-[19] w-full max-w-4xl bg-white/80 backdrop-blur border-b py-2 mb-2">
+			<div className="sticky top-[48px] z-[19] w-full max-w-4xl bg-white/80 backdrop-blur border-b mb-2">
 				<div className="flex items-center gap-2 px-2">
 					<SearchInput
 						value={keyword}

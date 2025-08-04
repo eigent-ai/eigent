@@ -298,7 +298,7 @@ export default function SettingMCP() {
 				<div className="text-lg font-bold leading-snug text-text-body">
 					MCP & Tools
 				</div>
-				<div className="flex items-center gap-sm">
+				<div className="flex items-start gap-sm">
 					<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
 						<Plus />
 						<span>Add MCP Server</span>
