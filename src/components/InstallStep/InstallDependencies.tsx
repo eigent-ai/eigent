@@ -30,6 +30,40 @@ export const InstallDependencies: React.FC<{
 	>("idle");
 	const [showInstallScreen, setShowInstallScreen] = useState(true);
 	const [progress, setProgress] = useState(20);
+	
+	// Backup check mechanism: periodically check installation status
+	useEffect(() => {
+		let intervalId: NodeJS.Timeout;
+		
+		// If installing, check status every 5 seconds
+		if (isInstalling) {
+			intervalId = setInterval(async () => {
+				try {
+					// Check if tool installation is complete
+					const result = await window.ipcRenderer.invoke("check-tool-installed");
+					if (result.success && result.isInstalled) {
+						console.log("Backup check: Tool installation detected!");
+						setIsInstalling(false);
+						setStatus("success");
+						setProgress(100);
+						setTimeout(() => {
+							setInitState("done");
+						}, 1000);
+						clearInterval(intervalId);
+					}
+				} catch (error) {
+					console.log("Backup check error:", error);
+				}
+			}, 5000); // Check every 5 seconds
+		}
+		
+		return () => {
+			if (intervalId) {
+				clearInterval(intervalId);
+			}
+		};
+	}, [isInstalling, setInitState]);
+	
 	useEffect(() => {
 		// listen to install start event
 		window.electronAPI.onInstallDependenciesStart(() => {
