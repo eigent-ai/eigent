@@ -228,6 +228,10 @@ export async function installDependencies() {
             log.info('Script completed successfully')
             console.log('end install dependencies')
             spawn(uv_path, ['run', 'task', 'babel'], { cwd: backendPath })
+            // Send installation success notification to frontend
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+            }
             resolve(true)
             return
         }
@@ -242,6 +246,10 @@ export async function installDependencies() {
             log.info('Mirror script completed successfully')
             console.log('end install dependencies (mirror)')
             spawn(uv_path, ['run', 'task', 'babel'], { cwd: backendPath })
+            // Send mirror installation success notification to frontend
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+            }
             resolve(true)
         } else {
             log.error('Both default and mirror install failed')
