@@ -7,7 +7,8 @@ from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
 # Rewrite HumanToolkit because the system's user interaction was using console, but in electron we cannot use console. Changed to use SSE response to let frontend show dialog for user interaction
-
+import traceroot
+logger = traceroot.get_logger('camel')
 
 class HumanToolkit(BaseToolkit, AbstractToolkit):
     r"""A class representing a toolkit for human interaction.
@@ -59,6 +60,7 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         logger.info(f"User reply: {reply}")
         return reply
 
+    @traceroot.trace()
     @listen_toolkit()
     def send_message_to_user(
         self,
