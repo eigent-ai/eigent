@@ -38,6 +38,7 @@ yarn.lock
 .env.production
 
 .cursor
+.traceroot-config.yaml
 
 # Public directory (large media files)
 public/
