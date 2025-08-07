@@ -64,7 +64,7 @@ from app.service.task import (
 from app.service.task import set_process_task
 
 import traceroot
-logger = traceroot.get_logger('camel')
+logger = traceroot.get_logger('eigent')
 
 class ListenChatAgent(ChatAgent):
     def __init__(
