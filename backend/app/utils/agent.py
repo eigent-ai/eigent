@@ -63,6 +63,8 @@ from app.service.task import (
 )
 from app.service.task import set_process_task
 
+import traceroot
+logger = traceroot.get_logger('camel')
 
 class ListenChatAgent(ChatAgent):
     def __init__(
@@ -474,7 +476,7 @@ def agent_model(
         toolkits_to_register_agent=toolkits_to_register_agent,
     )
 
-
+@traceroot.trace()
 def question_confirm_agent(options: Chat):
     return agent_model(
         "question_confirm_agent",
@@ -482,7 +484,7 @@ def question_confirm_agent(options: Chat):
         options,
     )
 
-
+@traceroot.trace()
 def task_summary_agent(options: Chat):
     return agent_model(
         "task_summary_agent",
@@ -490,7 +492,7 @@ def task_summary_agent(options: Chat):
         options,
     )
 
-
+@traceroot.trace()
 async def developer_agent(options: Chat):
     working_directory = options.file_save_path()
     message_integration = ToolkitMessageIntegration(
@@ -659,7 +661,7 @@ these tips to maximize your effectiveness:
         ],
     )
 
-
+@traceroot.trace()
 def search_agent(options: Chat):
     working_directory = options.file_save_path()
     message_integration = ToolkitMessageIntegration(
@@ -819,7 +821,7 @@ Your capabilities include:
         ],
     )
 
-
+@traceroot.trace()
 async def document_agent(options: Chat):
     working_directory = options.file_save_path()
     message_integration = ToolkitMessageIntegration(
@@ -1018,7 +1020,7 @@ supported formats including advanced spreadsheet functionality.
         ],
     )
 
-
+@traceroot.trace()
 def multi_modal_agent(options: Chat):
     working_directory = options.file_save_path()
     message_integration = ToolkitMessageIntegration(
@@ -1182,7 +1184,7 @@ multi-modal content across audio and visual domains.
         ],
     )
 
-
+@traceroot.trace()
 async def social_medium_agent(options: Chat):
     """
     Agent to handling tasks related to social media:
@@ -1299,7 +1301,7 @@ operations.
         ],
     )
 
-
+@traceroot.trace()
 async def mcp_agent(options: Chat):
     tools = [
         # *HumanToolkit.get_can_use_tools(options.task_id, Agents.mcp_agent),

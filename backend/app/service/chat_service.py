@@ -41,6 +41,10 @@ from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
 
+import traceroot
+
+logger = traceroot.get_logger('camel')
+
 
 @sync_step
 async def step_solve(options: Chat, request: Request):
@@ -318,7 +322,7 @@ Do not include any other text or formatting.
     logger.info(f"summary_task: {res.msgs[0].content}")
     return res.msgs[0].content
 
-
+@traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
     working_directory = options.file_save_path()
     [coordinator_agent, task_agent] = [
@@ -442,7 +446,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     # )
     return workforce, mcp
 
-
+@traceroot.trace()
 def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     r"""Format a comprehensive agent description including name, tools, and
     description.
@@ -470,7 +474,7 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
 
     return " ".join(description_parts)
 
-
+@traceroot.trace()
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     working_directory = options.file_save_path()
     tool_names = []
