@@ -43,7 +43,7 @@ from camel.models import ModelProcessingError
 
 import traceroot
 
-logger = traceroot.get_logger('camel')
+logger = traceroot.get_logger('eigent')
 
 
 @sync_step
