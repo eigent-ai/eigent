@@ -1,5 +1,6 @@
 import asyncio
 from typing import Generator, List
+import traceroot
 from camel.agents import ChatAgent
 from camel.societies.workforce.workforce import (
     Workforce as BaseWorkforce,
@@ -43,6 +44,9 @@ logger.add(
     filter=lambda record: record["message"].startswith("[WF]"),
 )
 
+# Initialize traceroot logger
+traceroot_logger = traceroot.get_logger()
+
 
 class Workforce(BaseWorkforce):
     def __init__(
@@ -69,11 +73,14 @@ class Workforce(BaseWorkforce):
             use_structured_output_handler=use_structured_output_handler,
         )
 
+    @traceroot.trace()
     def eigent_make_sub_tasks(self, task: Task):
         """split process_task method to eigent_make_sub_tasks and eigent_start method"""
+        traceroot_logger.info(f"Making subtasks for task {task.id}: {task.content[:100]}...")
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
+            traceroot_logger.warning(f"Task {task.id} validation failed")
             task.result = "Task failed: Invalid or empty content provided"
             logger.warning(
                 f"Task {task.id} rejected: Invalid or empty content. Content preview: '{task.content[:50]}...'"
@@ -101,9 +108,11 @@ class Workforce(BaseWorkforce):
 
         return subtasks
 
+    @traceroot.trace()
     async def eigent_start(self, subtasks: list[Task]):
         """start the workforce"""
         logger.debug(f"start the workforce {subtasks=}")
+        traceroot_logger.info(f"Starting workforce with {len(subtasks)} subtasks")
         self._pending_tasks.extendleft(reversed(subtasks))
         self.set_channel(TaskChannel())
         # Save initial snapshot
@@ -113,20 +122,24 @@ class Workforce(BaseWorkforce):
             await self.start()
         except Exception as e:
             logger.error(f"Error in workforce execution: {e}")
+            traceroot_logger.error(f"Workforce execution failed: {str(e)}")
             self._state = WorkforceState.STOPPED
             raise
         finally:
             if self._state != WorkforceState.STOPPED:
                 self._state = WorkforceState.IDLE
 
+    @traceroot.trace()
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification to the frontend, and send "start execution" notification when the task actually begins execution
+        traceroot_logger.info(f"Finding assignees for {len(tasks)} tasks")
         assigned = await super()._find_assignee(tasks)
 
         task_lock = get_task_lock(self.api_task_id)
         for item in assigned.assignments:
             # DEBUG ▶ Task has been assigned to which worker and its dependencies
             logger.debug(f"[WF] ASSIGN {item.task_id} -> {item.assignee_id} deps={item.dependencies}")
+            traceroot_logger.info(f"Assigned task {item.task_id} to worker {item.assignee_id}")
             # The main task itself does not need notification
             if self._task and item.task_id == self._task.id:
                 continue
@@ -151,9 +164,11 @@ class Workforce(BaseWorkforce):
             task_lock.add_background_task(task)
         return assigned
 
+    @traceroot.trace()
     async def _post_task(self, task: Task, assignee_id: str) -> None:
         # DEBUG ▶ Dependencies are met, the task really starts to execute
         logger.debug(f"[WF] POST  {task.id} -> {assignee_id}")
+        traceroot_logger.info(f"Posting task {task.id} to assignee {assignee_id}")
         """Override the _post_task method to notify the frontend when the task really starts to execute"""
         # When the dependency check is passed and the task is about to be published to the execution queue, send a notification to the frontend
         task_lock = get_task_lock(self.api_task_id)
@@ -207,9 +222,11 @@ class Workforce(BaseWorkforce):
             )
         return self
 
+    @traceroot.trace()
     async def _handle_completed_task(self, task: Task) -> None:
         # DEBUG ▶ Task completed
         logger.debug(f"[WF] DONE  {task.id}")
+        traceroot_logger.info(f"Task {task.id} completed successfully with result: {str(task.result)[:100]}...")
         task_lock = get_task_lock(self.api_task_id)
 
         await task_lock.put_queue(
@@ -226,9 +243,11 @@ class Workforce(BaseWorkforce):
 
         return await super()._handle_completed_task(task)
 
+    @traceroot.trace()
     async def _handle_failed_task(self, task: Task) -> bool:
         # DEBUG ▶ Task failed
         logger.debug(f"[WF] FAIL  {task.id} retry={task.failure_count}")
+        traceroot_logger.warning(f"Task {task.id} failed, failure count: {task.failure_count}")
 
         result = await super()._handle_failed_task(task)
 
@@ -237,6 +256,8 @@ class Workforce(BaseWorkforce):
             for entry in reversed(self.metrics_logger.log_entries):
                 if entry.get("event_type") == "task_failed" and entry.get("task_id") == task.id:
                     error_message = entry.get("error_message")
+                    if error_message:
+                        traceroot_logger.error(f"Task {task.id} error: {error_message}")
                     break
 
         task_lock = get_task_lock(self.api_task_id)
