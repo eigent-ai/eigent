@@ -19,10 +19,14 @@ from app.service.task import (
     get_task_lock,
 )
 
+import traceroot
+
+logger = traceroot.get_logger()
+
 
 router = APIRouter(tags=["chat"])
 
-
+@traceroot.trace()
 @router.post("/chat", name="start chat")
 def post(data: Chat, request: Request):
     load_dotenv(dotenv_path=data.env_path)

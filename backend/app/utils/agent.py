@@ -5,6 +5,7 @@ from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
+import traceroot
 from camel.agents import ChatAgent
 from camel.agents.chat_agent import StreamingChatAgentResponse, AsyncStreamingChatAgentResponse
 from camel.agents._types import ToolCallRequest
@@ -62,6 +63,9 @@ from app.service.task import (
     get_task_lock,
 )
 from app.service.task import set_process_task
+
+
+logger = traceroot.get_logger()
 
 
 class ListenChatAgent(ChatAgent):
@@ -124,12 +128,16 @@ class ListenChatAgent(ChatAgent):
 
     process_task_id: str = ""
 
+    @traceroot.trace()
     def step(
         self,
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | StreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
+        message_content = input_message.content if isinstance(input_message, BaseMessage) else input_message
+        logger.info(f"Agent {self.agent_name} stepping with message: {message_content[:100]}...")
+        
         asyncio.create_task(
             task_lock.put_queue(
                 ActionActivateAgentData(
@@ -137,7 +145,7 @@ class ListenChatAgent(ChatAgent):
                         "agent_name": self.agent_name,
                         "process_task_id": self.process_task_id,
                         "agent_id": self.agent_id,
-                        "message": input_message.content if isinstance(input_message, BaseMessage) else input_message,
+                        "message": message_content,
                     },
                 )
             )
@@ -152,20 +160,24 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
+                logger.warning(f"Agent {self.agent_name} budget exceeded")
                 asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
+                logger.error(f"Agent {self.agent_name} model processing error: {message}")
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
             logger.exception(e)
+            logger.error(f"Agent {self.agent_name} unexpected error in step: {str(e)}")
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
         if res is not None:
             message = res.msg.content if res.msg else ""
             total_tokens = res.info["usage"]["total_tokens"]
+            logger.info(f"Agent {self.agent_name} completed step successfully, tokens used: {total_tokens}")
 
         assert message is not None
 
@@ -188,12 +200,16 @@ class ListenChatAgent(ChatAgent):
         assert res is not None
         return res
 
+    @traceroot.trace()
     async def astep(
         self,
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
+        message_content = input_message.content if isinstance(input_message, BaseMessage) else input_message
+        logger.info(f"Agent {self.agent_name} async stepping with message: {message_content[:100]}...")
+        
         await task_lock.put_queue(
             ActionActivateAgentData(
                 action=Action.activate_agent,
@@ -201,7 +217,7 @@ class ListenChatAgent(ChatAgent):
                     "agent_name": self.agent_name,
                     "process_task_id": self.process_task_id,
                     "agent_id": self.agent_id,
-                    "message": input_message.content if isinstance(input_message, BaseMessage) else input_message,
+                    "message": message_content,
                 },
             )
         )
@@ -219,20 +235,24 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
+                logger.warning(f"Agent {self.agent_name} budget exceeded in async step")
                 asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
+                logger.error(f"Agent {self.agent_name} model processing error in async step: {message}")
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
             logger.exception(e)
+            logger.error(f"Agent {self.agent_name} unexpected error in async step: {str(e)}")
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
         if res is not None:
             message = res.msg.content if res.msg else ""
             total_tokens = res.info["usage"]["total_tokens"]
+            logger.info(f"Agent {self.agent_name} completed async step successfully, tokens used: {total_tokens}")
 
         assert message is not None
 
@@ -255,8 +275,10 @@ class ListenChatAgent(ChatAgent):
         assert res is not None
         return res
 
+    @traceroot.trace()
     def _execute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
+        logger.info(f"Agent {self.agent_name} executing tool: {func_name}")
         tool: FunctionTool = self._internal_tools[func_name]
         # Route async functions to async execution even if they have __wrapped__
         if asyncio.iscoroutinefunction(tool.func):
@@ -319,8 +341,10 @@ class ListenChatAgent(ChatAgent):
 
         return self._record_tool_calling(func_name, args, result, tool_call_id, mask_output=mask_flag)
 
+    @traceroot.trace()
     async def _aexecute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
+        logger.info(f"Agent {self.agent_name} async executing tool: {func_name}")
         tool: FunctionTool = self._internal_tools[func_name]
         if hasattr(tool.func, "__wrapped__"):
             with set_process_task(self.process_task_id):
@@ -372,6 +396,7 @@ class ListenChatAgent(ChatAgent):
                 error_msg = f"Error executing async tool '{func_name}': {e!s}"
                 result = {"error": error_msg}
                 logger.warning(error_msg)
+                logger.error(f"Agent {self.agent_name} failed to execute async tool {func_name}: {str(e)}")
                 traceback.print_exc()
 
             await task_lock.put_queue(
@@ -430,6 +455,7 @@ class ListenChatAgent(ChatAgent):
         return new_agent
 
 
+@traceroot.trace()
 def agent_model(
     agent_name: str,
     system_message: str | BaseMessage,
@@ -441,6 +467,8 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.task_id)
     agent_id = str(uuid.uuid4())
+    logger.info(f"Creating agent '{agent_name}' with ID: {agent_id} for task: {options.task_id}")
+    
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(data={"agent_name": agent_name, "agent_id": agent_id, "tools": tool_names or []})

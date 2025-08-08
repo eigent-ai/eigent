@@ -3,6 +3,7 @@ import datetime
 from pathlib import Path
 import platform
 from typing import Literal
+import traceroot
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -41,8 +42,12 @@ from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
 
+# Initialize traceroot logger
+logger_traceroot = traceroot.get_logger()
+
 
 @sync_step
+@traceroot.trace()
 async def step_solve(options: Chat, request: Request):
     # if True:
     #     import faulthandler
@@ -51,6 +56,7 @@ async def step_solve(options: Chat, request: Request):
     #     for second in [5, 10, 20, 30, 60, 120, 240]:
     #         faulthandler.dump_traceback_later(second)
     task_lock = create_task_lock(options.task_id)
+    logger_traceroot.info(f"Starting task solving for task ID: {options.task_id}, question: {options.question[:100]}...")
 
     start_event_loop = True
     question_agent = question_confirm_agent(options)
@@ -60,12 +66,14 @@ async def step_solve(options: Chat, request: Request):
         if await request.is_disconnected():
             if workforce is not None:
                 workforce.stop()
+            logger_traceroot.warning(f"Request disconnected for task {options.task_id}")
             break
         try:
             item = await task_lock.get_queue()
             # logger.info(f"item: {dump_class(item)}")
         except Exception as e:
             logger.error(f"Error getting item from queue: {e}")
+            logger_traceroot.error(f"Failed to get item from queue for task {options.task_id}: {str(e)}")
             break
 
         try:
@@ -89,8 +97,10 @@ async def step_solve(options: Chat, request: Request):
                     yield confirm
                 else:
                     yield sse_json("confirmed", "")
+                    logger_traceroot.info(f"Constructing workforce for task {options.task_id}")
                     (workforce, mcp) = await construct_workforce(options)
                     for new_agent in options.new_agents:
+                        logger_traceroot.info(f"Adding new agent: {new_agent.name}")
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
                         )
@@ -101,7 +111,9 @@ async def step_solve(options: Chat, request: Request):
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
+                    logger_traceroot.info(f"Creating subtasks for task {options.task_id}")
                     sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
+                    logger_traceroot.info(f"Created {len(sub_tasks)} subtasks")
                     summary_task_content = await summary_task(summary_task_agent, camel_task)
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
@@ -279,7 +291,9 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
+@traceroot.trace()
 async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal[True]:
+    logger_traceroot.info(f"Confirming question: {prompt[:100]}...")
     prompt = f"""
 > **Your Role:** You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action.
 >
@@ -303,7 +317,9 @@ async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal
         return True
 
 
+@traceroot.trace()
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
+    logger_traceroot.info(f"Summarizing task {task.id}")
     prompt = f"""The user's task is:
 ---
 {task.to_string()}
@@ -321,8 +337,10 @@ Do not include any other text or formatting.
     return res.msgs[0].content
 
 
+@traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
     working_directory = options.file_save_path()
+    logger_traceroot.info(f"Constructing workforce with working directory: {working_directory}")
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -445,6 +463,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     return workforce, mcp
 
 
+@traceroot.trace()
 def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     r"""Format a comprehensive agent description including name, tools, and
     description.
@@ -473,8 +492,10 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
+@traceroot.trace()
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     working_directory = options.file_save_path()
+    logger_traceroot.info(f"Creating new agent model: {data.name} with tools: {data.tools}")
     tool_names = []
     tools = [*await get_toolkits(data.tools, data.name, options.task_id)]
     for item in data.tools:
