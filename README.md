@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/eigent-ai-eigent-badge.png)](https://mseep.ai/app/eigent-ai-eigent)
+
 <div align="center"><a name="readme-top"></a>
 
 [![][image-head]][eigent-site]
