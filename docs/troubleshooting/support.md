@@ -86,7 +86,7 @@ If your balance becomes negative, it will be displayed as **0**. This means your
 - You can cancel any subscription or Add-On Pack purchase within 7 days for a full refund.
     - Plan resets to Free and billing cycle resets to registration date.
     - Credits balance re‑computed according to Free‑tier rules.
-- How do I cancel my subscription? Please contact **infot@eigent.ai.**
+- How do I cancel my subscription? Please contact **info@eigent.ai.**
 - You can download invoices from the payment confirmation email sent to your registered email address.
 
 
