@@ -1391,4 +1391,8 @@ async def get_mcp_tools(mcp_server: McpServers):
     if len(mcp_server["mcpServers"]) == 0:
         return []
     mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
+    try:
+        await mcp_toolkit.connect()
+    except Exception as e:
+        logger.warning(f"Failed to connect MCP toolkit: {e!r}")
     return mcp_toolkit.get_tools()
