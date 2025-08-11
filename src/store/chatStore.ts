@@ -184,8 +184,7 @@ const chatStore = create<ChatStore>()(
 			}
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
 			const api = type == 'share' ? `${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` : type == 'replay' ? `${base_Url}/api/chat/steps/playback/${taskId}?delay_time=${delayTime}` : `${baseURL}/chat`
-			const isInChina = await getIsInChina(systemLanguage)
-			console.log("isInChina", isInChina);
+
 			const { tasks } = get()
 			let historyId: string | null = null;
 			let snapshots: any = [];
@@ -1561,39 +1560,6 @@ const chatStore = create<ChatStore>()(
 	})
 );
 
-// const filterMessage = (message: string, method_name: string = '') => {
-// 	if (!message!.includes("=======================") && !message?.includes("Original Query") && !message?.startsWith('You need to process one given task') && method_name !== 'browser_take_screenshot' && message !== '{}' && !message?.startsWith('{"query"') && !message?.startsWith('{"entity"') && message !== '' && !message?.startsWith("{'warning':") && !message?.startsWith("{'results':") && !message?.startsWith(`{"index"`) && !message?.startsWith('- Ran Playwright code')) {
-// 		if (message?.includes(`{"content"`)) {
-// 			message = JSON.parse(message)?.content || ''
-// 		}
-// 		if (message?.startsWith('{"element"')) {
-// 			message = JSON.parse(message)?.element || ''
-// 		}
-// 		if (message?.startsWith('{"url"')) {
-// 			message = 'Open URL: ' + JSON.parse(message)?.url || ''
-// 		}
-// 		if (message?.startsWith('{"filename"')) {
-// 			message = JSON.parse(message)?.filename || ''
-// 		}
-// 		if (method_name === 'browser_click' && message?.startsWith('{"element"')) {
-// 			message = 'Click Element: ' + JSON.parse(message)?.element || ''
-// 		}
-// 		if (message?.startsWith('{"query"')) {
-// 			message = 'Search: ' + JSON.parse(message)?.query || ''
-// 		}
-// 		if (message?.startsWith('{"result"')) {
-// 			message = JSON.parse(message)?.result || ''
-// 		}
-
-// 		// && !message?.startsWith("{'error':")
-// 		if (message?.startsWith("{'error':")) {
-// 			message = JSON.parse(message.replace(/'error'/g, '"error"'))?.error || ''
-// 		}
-// 		console.log(message)
-// 		return message
-// 	}
-// 	return ''
-// }
 const filterMessage = (message: AgentMessage) => {
 	if (message.data.toolkit_name?.includes('Search ')) {
 		message.data.toolkit_name='Search Toolkit'
@@ -1610,45 +1576,8 @@ const filterMessage = (message: AgentMessage) => {
 	}
 	return message
 }
-let isInChinaCache: boolean | null = null;
 
 
-const getIsInChina = async (systemLanguage: string): Promise<boolean> => {
-	if (isInChinaCache !== null) {
-		return isInChinaCache;
-	}
-	const fetchWithTimeout = (url: string, timeout = 3000): Promise<Response> => {
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(() => {
-				reject(new Error('Timeout'));
-			}, timeout);
-
-			fetch(url)
-				.then((response) => {
-					clearTimeout(timer);
-					resolve(response);
-				})
-				.catch((err) => {
-					clearTimeout(timer);
-					reject(err);
-				});
-		});
-	};
-
-	try {
-		const response = await fetchWithTimeout('https://ipinfo.io/json', 3000);
-		if (!response.ok) throw new Error('Network response was not ok');
-
-		const info = await response.json();
-		console.log('country', info?.country)
-		isInChinaCache = info?.country === 'CN';
-		return isInChinaCache;
-	} catch (error) {
-		console.warn('IP Timeout', error);
-		isInChinaCache = systemLanguage === 'zh-cn';
-		return isInChinaCache;
-	}
-};
 
 export const useChatStore = chatStore;
 
