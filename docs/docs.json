@@ -1,0 +1,92 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Eigent Documentation",
+  "theme": "aspen",
+  "defaultPage": "/get_started/welcome",
+  "logo": {
+    "light": "images/logo-light.png",
+    "dark": "images/logo-dark.png",
+    "href": "https://www.eigent.ai"
+  },
+  "favicon": "images/favicon.png",
+  "colors": {
+    "primary": "#1d1d1d",
+    "light": "#F5F4F0",
+    "dark": "#363AF5"
+  },
+  "background": {
+    "color": {
+      "light": "#F5F4F0",
+      "dark": "#1d1d1d"
+    }
+  },
+  "styling": {
+    "logo": {
+      "width": "auto",
+      "height": "100%"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "icon": "github",
+        "label": "GitHub",
+        "href": "https://github.com/eigent-ai/eigent"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://www.eigent.ai/download"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "/get_started/welcome",
+              "/get_started/installation", 
+              "/get_started/quick_start"
+            ]
+          },
+          {
+            "group": "Core",
+            "pages": [
+              "/core/concepts",
+              "/core/workforce",
+              "/core/models",
+              "/core/tools"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "/troubleshooting/support",
+              "/troubleshooting/bug"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Download Here",
+          "href": "https://www.eigent.ai",
+          "icon": "gift"
+        }
+      ]
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/eigent-ai/eigent",
+      "twitter": "https://x.com/Eigent-AI",
+      "linkedin": "https://www.linkedin.com/company/eigent-ai/"
+    }
+  }
+}

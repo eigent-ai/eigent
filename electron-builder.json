@@ -1,0 +1,78 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "productName": "Eigent",
+  "appId": "com.eigent.app",
+  "asar": true,
+  "directories": {
+    "output": "release"
+  },
+  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images"],
+  "extraResources": [
+    {
+      "from": "backend",
+      "to": "backend",
+      "filter": ["**/*", "!.venv/**/*"]
+    }
+  ],
+  "protocols": [
+    {
+      "name": "Eigent OAuth",
+      "schemes": ["eigent"]
+    }
+  ],
+  "icon": "build/icon.ico",
+  "afterSign": "./config/notarize.cjs",
+  "mac": {
+    "icon": "build/icon.icns",
+    "artifactName": "${productName}_${os}_${arch}.${ext}",
+    "target": ["dmg", "zip"],
+    "entitlements": "entitlements.mac.plist",
+    "entitlementsInherit": "entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "notarize": false,
+    "extendInfo": {
+      "CFBundleURLTypes": [
+        {
+          "CFBundleURLName": "com.eigent.app",
+          "CFBundleURLSchemes": ["eigent"]
+        }
+      ]
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "channel": "latest",
+        "url": "http://dev.eigent.ai/public/mac_${arch}"
+      }
+    ]
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}_${os}_${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "generic",
+        "channel": "latest",
+        "url": "http://dev.eigent.ai/public/win"
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
+    "include": "build/installer.nsh"
+  }
+}

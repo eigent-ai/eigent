@@ -1,0 +1,36 @@
+# Chinese (Simplified, China) translations for PROJECT.
+# Copyright (C) 2025 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2025-07-16 23:07+0800\n"
+"PO-Revision-Date: 2025-07-16 23:07+0800\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh_Hans_CN\n"
+"Language-Team: zh_Hans_CN <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: app/controller/chat_controller.py:38
+msgid "Task was done"
+msgstr ""
+
+#: app/controller/chat_controller.py:47
+msgid "Please wait task done"
+msgstr ""
+
+#: app/service/task.py:269 app/service/task.py:288
+msgid "Task not found"
+msgstr ""
+
+#: app/service/task.py:275
+msgid "Task already exists"
+msgstr ""
+

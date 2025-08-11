@@ -1,0 +1,78 @@
+{
+  "name": "@stackframe/stack-shared",
+  "version": "2.8.12",
+  "files": [
+    "README.md",
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": {
+        "default": "./dist/index.js"
+      },
+      "default": "./dist/esm/index.js"
+    },
+    "./dist/*": {
+      "types": "./dist/*.d.ts",
+      "require": {
+        "default": "./dist/*.js"
+      },
+      "default": "./dist/esm/*.js"
+    }
+  },
+  "peerDependencies": {
+    "@types/react": ">=18.2 || >=19.0.0-rc.0",
+    "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
+    "react": ">=18.2 || >=19.0.0-rc.0",
+    "react-dom": ">=18.2 || >=19.0.0-rc.0",
+    "yup": "^1.4.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@types/react": {
+      "optional": true
+    },
+    "@types/react-dom": {
+      "optional": true
+    },
+    "yup": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "^11.0.0",
+    "async-mutex": "^0.5.0",
+    "bcryptjs": "^3.0.2",
+    "crc": "^4.3.2",
+    "elliptic": "^6.5.7",
+    "ip-regex": "^5.0.0",
+    "jose": "^5.2.2",
+    "oauth4webapi": "^2.10.3",
+    "semver": "^7.6.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@sentry/nextjs": "^8.40.0",
+    "@simplewebauthn/types": "^11.0.0",
+    "@types/bcryptjs": "^3.0.0",
+    "@types/elliptic": "^6.4.18",
+    "@types/semver": "^7.5.8",
+    "@types/uuid": "^9.0.8",
+    "react": "^18.2",
+    "react-dom": "^18.2",
+    "rimraf": "^5.0.5"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsup-node",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist && rimraf node_modules",
+    "dev": "tsup-node --watch",
+    "lint": "eslint --ext .tsx,.ts ."
+  }
+}

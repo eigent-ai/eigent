@@ -1,0 +1,46 @@
+# Eigent Open Source License
+
+Eigent is licensed under a modified version of the Apache License 2.0, with the following additional conditions:
+
+1. Eigent may be utilized commercially, including as a backend service for other applications or as an application development platform for enterprises. However, if any of the following conditions apply, you must obtain a valid commercial license from Eigent.AI :
+
+a. Commercial Self-Hosted Deployment: You may not use this software or any of its components in a production environment for commercial purposes without an active, valid commercial license from Eigent AI.
+Definitions:
+		- Software: Eigent source code, binaries, and related components provided under this license.
+		- Production Environment: Any environment not solely used for development, testing, or personal non-commercial evaluation purposes.
+		- Commercial Purposes: Activities intended or directed towards commercial advantage or monetary compensation, including, without limitation, supporting internal business operations or providing services to third parties.
+
+b. Multi-tenant SaaS service: Unless explicitly authorized by Eigent.AI in writing, you may not use the Eigent source code to operate a multi-tenant Software-as-a-Service platform or any online service similar to Eigent’s official cloud service.
+    - Tenant Definition: Within the context of Eigent, one tenant corresponds to one workspace. The workspace provides a separated area for each tenant's data and configurations.
+
+c. Branding and Attribution: You must not remove, hide, or alter the Eigent name, logos, or copyright notices displayed in the Eigent user interface (including desktop applications and web consoles).This restriction is inapplicable to uses of Eigent that do not involve its frontend.
+    - Frontend Definition: For the purposes of this license, the "frontend" of Eigent includes all components located in the `electron/` directory when running Eigent from the raw source code, or the "electron" image when running Eigent with Docker.
+
+Please contact us at info@eigent.ai for licensing inquiries.
+
+2. As a contributor, you should agree that:
+
+a. Eigent AI can adjust the open-source agreement to be more restrictive or permissive as deemed necessary.
+
+b. Your contributed code may be used by Eigent.AI for commercial purposes, including but not limited to cloud-hosted and self-hosted services operated by Eigent AI.
+
+Apart from the specific conditions mentioned above, all other rights and restrictions follow the Apache License 2.0. Detailed information about the Apache License 2.0 can be found at http://www.apache.org/licenses/LICENSE-2.0.
+
+The interactive design of this product, as well as Eigent’s names and logos, are protected by intellectual property laws.
+
+© 2023-2025 Eigent AI LTD
+
+
+----------
+
+Licensed under the Apache License, Version 2.0 (the "License"); 
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, 
+software distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

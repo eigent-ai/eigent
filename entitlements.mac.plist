@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- allow network connection -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- allow network server -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- allow file system access -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    
+    <!-- allow access to Downloads directory -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+
+		<key>com.apple.security.files.documents.read-write</key>
+		<true/>
+    
+    <!-- allow access to user directory -->
+    <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+    
+    <!-- allow running sub-processes -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    
+    <!-- allow running unsigned executable files -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    
+    <!-- allow dynamic library loading -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    
+    <!-- disable library validation -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    
+</dict>
+</plist> 

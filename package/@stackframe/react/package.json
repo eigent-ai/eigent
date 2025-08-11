@@ -1,0 +1,92 @@
+{
+  "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
+  "name": "@stackframe/react",
+  "version": "2.8.12",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "homepage": "https://stack-auth.com",
+  "files": [
+    "README.md",
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@hookform/resolvers": "^3.3.4",
+    "@simplewebauthn/browser": "^11.0.0",
+    "@tanstack/react-table": "^8.20.5",
+    "browser-image-compression": "^2.0.2",
+    "color": "^4.2.3",
+    "cookie": "^0.6.0",
+    "jose": "^5.2.2",
+    "js-cookie": "^3.0.5",
+    "lucide-react": "^0.378.0",
+    "oauth4webapi": "^2.10.3",
+    "@oslojs/otp": "^1.1.0",
+    "qrcode": "^1.5.4",
+    "react-avatar-editor": "^13.0.2",
+    "react-hook-form": "^7.51.4",
+    "rimraf": "^5.0.5",
+    "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.7.2",
+    "yup": "^1.4.0",
+    "@stackframe/stack-ui": "2.8.12",
+    "@stackframe/stack-shared": "2.8.12"
+  },
+  "peerDependencies": {
+    "@types/react": ">=18.2 || >=19.0.0-rc.0",
+    "react": ">=18.2 || >=19.0.0-rc.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@quetzallabs/i18n": "^0.1.19",
+    "@types/color": "^3.0.6",
+    "@types/cookie": "^0.6.0",
+    "@types/js-cookie": "^3.0.6",
+    "@types/qrcode": "^1.5.5",
+    "@types/react-avatar-editor": "^13.0.3",
+    "autoprefixer": "^10.4.17",
+    "chokidar-cli": "^3.0.0",
+    "esbuild": "^0.20.2",
+    "i18next": "^23.14.0",
+    "i18next-parser": "^9.0.2",
+    "postcss": "^8.4.38",
+    "postcss-nested": "^6.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "rimraf": "^5.0.5",
+    "tailwindcss": "^3.4.4",
+    "tsup": "^8.0.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist && rimraf node_modules",
+    "lint": "eslint --ext .tsx,.ts .",
+    "build": "rimraf dist && pnpm run css && tsup-node",
+    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsup-node --watch\" \"pnpm run codegen:watch\"",
+    "codegen": "pnpm run css",
+    "codegen:watch": "pnpm run css:watch",
+    "css": "pnpm run css-tw && pnpm run css-sc",
+    "css:watch": "concurrently -n \"tw,sc\" -k \"pnpm run css-tw:watch\" \"pnpm run css-sc:watch\"",
+    "css-tw:watch": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch",
+    "css-tw": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css",
+    "css-sc": "tsx ./scripts/process-css.ts ./src/generated/tailwind.css ./src/generated/global-css.ts",
+    "css-sc:watch": "chokidar --silent './src/generated/tailwind.css' -c 'pnpm run css-sc' --throttle 2000"
+  }
+}

@@ -1,0 +1,1 @@
+{"version":3,"sources":["../../src/utils/passkey.tsx"],"sourcesContent":["export type { AuthenticationResponseJSON, RegistrationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON } from \"@simplewebauthn/types\";\n"],"mappings":";;;;;;;;;;;;;;;;AAAA;AAAA;","names":[]}

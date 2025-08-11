@@ -1,0 +1,55 @@
+name: 🐛 Bug Report
+description: File an issue about a bug.
+title: "[BUG] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do your best to make the issue as easy to act on as possible, and only submit here if there is clearly a problem.
+
+  - type: input
+    id: version
+    attributes:
+      label: What version of eigent are you using?
+      placeholder: E.g., 0.0.41
+    validations:
+      required: true
+
+  - type: textarea
+    id: system-info
+    attributes:
+      label: System information
+      description: |
+        Describe the characteristic of your environment:
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: >-
+        Provide a short description, state the expected behavior and what actually happens. Include
+        relevant information like what version of eigent you are using, what system you are on,
+        and any useful commands / output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: log
+      description: >-
+        Please upload the log
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: >-
+        Add any other context about the problem here. Screenshots may also be helpful.
+
+        If you know or suspect the reason for this bug, paste the code lines and suggest modifications.

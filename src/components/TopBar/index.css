@@ -1,0 +1,29 @@
+#titlebar {
+  -webkit-app-region: drag;
+}
+#window-controls {
+  -webkit-app-region: no-drag;
+}
+
+.window-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.control-btn {
+  width: 35px;
+  cursor: pointer;
+  text-align: center;
+  line-height: 20px;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.control-btn:hover{
+  background-color: #f0f0f0;
+}	
+
+.mac .titlebar {
+  padding-left: 80px;
+}
