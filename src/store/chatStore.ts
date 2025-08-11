@@ -1,11 +1,10 @@
 import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { create } from 'zustand';
-import { generateUniqueId } from "@/lib";
+import { generateUniqueId, uploadLog } from "@/lib";
 import { FileText } from 'lucide-react';
 import { getAuthStore, useWorkerList } from './authStore';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
-import { OAuth } from '@/lib/oauth';
 import { showStorageToast } from '@/components/Toast/storageToast';
 
 
@@ -264,7 +263,7 @@ const chatStore = create<ChatStore>()(
 			} catch (error) {
 				console.log('get-env-path error', error)
 			}
-			
+
 			// create history
 			if (!type) {
 				const authStore = getAuthStore();
@@ -765,7 +764,7 @@ const chatStore = create<ChatStore>()(
 						addFileList(taskId, agentMessages.data.process_task_id as string, fileInfo);
 
 						// Async file upload
-						if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY!=='true') {
+						if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
 							(async () => {
 								try {
 									// Read file content using Electron API
@@ -804,13 +803,14 @@ const chatStore = create<ChatStore>()(
 						console.log('error', agentMessages.data)
 						showCreditsToast()
 						setStatus(taskId, 'pause');
+						uploadLog(taskId, type)
 						return
 					}
 
 					if (agentMessages.step === "error") {
 						console.error('Model error:', agentMessages.data)
 						const errorMessage = agentMessages.data.message || 'An error occurred while processing your request';
-						
+
 						// Create a new task to avoid "Task already exists" error
 						// and completely reset the interface
 						const newTaskId = create();
@@ -824,7 +824,7 @@ const chatStore = create<ChatStore>()(
 							role: "agent",
 							content: `❌ **Error**: ${errorMessage}`,
 						});
-						
+						uploadLog(taskId, type)
 						return
 					}
 
@@ -845,6 +845,8 @@ const chatStore = create<ChatStore>()(
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 						}
+						uploadLog(taskId, type)
+
 
 						let taskRunning = [...tasks[taskId].taskRunning];
 						let taskAssigning = [...tasks[taskId].taskAssigning];
@@ -1562,12 +1564,12 @@ const chatStore = create<ChatStore>()(
 
 const filterMessage = (message: AgentMessage) => {
 	if (message.data.toolkit_name?.includes('Search ')) {
-		message.data.toolkit_name='Search Toolkit'
+		message.data.toolkit_name = 'Search Toolkit'
 	}
 	if (message.data.method_name?.includes('search')) {
-		message.data.method_name='search'
+		message.data.method_name = 'search'
 	}
-	
+
 	if (message.data.toolkit_name === 'Note Taking Toolkit') {
 		message.data.message = message.data.message!.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
 	}
