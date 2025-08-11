@@ -4,7 +4,7 @@ import path from 'node:path'
 import os, { homedir } from 'node:os'
 import log from 'electron-log'
 import { update, registerUpdateIpcHandlers } from './update'
-import { checkToolInstalled, installDependencies, startBackend } from './init'
+import { checkToolInstalled, installDependencies, killProcessOnPort, startBackend } from './init'
 import { WebViewManager } from './webview'
 import { FileReader } from './fileReader'
 import { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -989,6 +989,7 @@ const checkAndStartBackend = async () => {
     });
 
     python_process?.on('exit', (code, signal) => {
+
       log.info('Python process exited', { code, signal });
     });
   } else {
@@ -997,8 +998,9 @@ const checkAndStartBackend = async () => {
 };
 
 // ==================== process cleanup ====================
-const cleanupPythonProcess = () => {
+const cleanupPythonProcess = async () => {
   try {
+
     if (python_process?.pid) {
       log.info('Cleaning up Python process', { pid: python_process.pid });
       kill(python_process.pid, 'SIGINT', (err) => {
@@ -1010,6 +1012,13 @@ const cleanupPythonProcess = () => {
       });
     } else {
       log.info('No Python process to clean up');
+    }
+    let port: number;
+    const portFile = path.join(userData, 'port.txt');
+    if (fs.existsSync(portFile)) {
+      port = parseInt(fs.readFileSync(portFile, 'utf-8'));
+      log.info(`Found port from file: ${port}`);
+      await killProcessOnPort(port);
     }
   } catch (error) {
     log.error('Error occurred while cleaning up process:', error);
