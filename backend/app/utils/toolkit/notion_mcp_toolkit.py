@@ -24,7 +24,7 @@ class NotionMCPToolkit(BaseNotionMCPToolkit, AbstractToolkit):
                 "mcpServers": {
                     "notionMCP": {
                         "command": bun(),
-                        "args": ["x", "-y", "eigent-mcp-remote@0.1.21", "https://mcp.notion.com/mcp"],
+                        "args": ["x", "-y", "eigent-mcp-remote@0.1.22", "https://mcp.notion.com/mcp"],
                         "env": {
                             "MCP_REMOTE_CONFIG_DIR": env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")),
                         },

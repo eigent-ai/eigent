@@ -12,7 +12,7 @@ from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
-    create_task_lock,
+    TaskLock,
     delete_task_lock,
 )
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
@@ -47,14 +47,13 @@ logger = traceroot.get_logger()
 
 
 @sync_step
-async def step_solve(options: Chat, request: Request):
+async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # if True:
     #     import faulthandler
 
     #     faulthandler.enable()
     #     for second in [5, 10, 20, 30, 60, 120, 240]:
     #         faulthandler.dump_traceback_later(second)
-    task_lock = create_task_lock(options.task_id)
 
     start_event_loop = True
     question_agent = question_confirm_agent(options)
@@ -67,7 +66,7 @@ async def step_solve(options: Chat, request: Request):
             break
         try:
             item = await task_lock.get_queue()
-            logger.info(f"item: {dump_class(item)}")
+            # logger.info(f"item: {dump_class(item)}")
         except Exception as e:
             logger.error(f"Error getting item from queue: {e}")
             break
@@ -105,7 +104,7 @@ async def step_solve(options: Chat, request: Request):
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    sub_tasks = workforce.eigent_make_sub_tasks(camel_task)
+                    sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
                     summary_task_content = await summary_task(summary_task_agent, camel_task)
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
@@ -170,7 +169,9 @@ async def step_solve(options: Chat, request: Request):
             elif item.action == Action.new_agent:
                 if workforce is not None:
                     workforce.pause()
-                    workforce.add_single_agent_worker(format_agent_description(item), await new_agent_model(item, options))
+                    workforce.add_single_agent_worker(
+                        format_agent_description(item), await new_agent_model(item, options)
+                    )
                     workforce.resume()
             elif item.action == Action.end:
                 assert camel_task is not None
@@ -206,13 +207,13 @@ async def step_solve(options: Chat, request: Request):
         except ModelProcessingError as e:
             if "Budget has been exceeded" in str(e):
                 # workforce decompose task don't use ListenAgent, this need return sse
-                if 'workforce' in locals() and workforce is not None:
+                if "workforce" in locals() and workforce is not None:
                     workforce.pause()
                 yield sse_json(Action.budget_not_enough, {"message": "budget not enouth"})
             else:
                 logger.error(f"Error processing action {item.action}: {e}")
                 yield sse_json("error", {"message": str(e)})
-                if 'workforce' in locals() and workforce is not None and workforce._running:
+                if "workforce" in locals() and workforce is not None and workforce._running:
                     workforce.stop()
         except Exception as e:
             logger.error(f"Error processing action {item.action}: {e}")
@@ -394,7 +395,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     except (ValueError, AttributeError):
         # If conversion fails, default to non-OpenAI behavior
         model_platform_enum = None
-    
+
     workforce = Workforce(
         options.task_id,
         "A workforce",

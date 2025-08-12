@@ -324,14 +324,15 @@ function registerIpcHandlers() {
       const { spawn } = await import('child_process');
 
       // Add --host parameter
-      const commandWithHost = `${command} --debug --host "dev.eigent.ai/api/oauth/notion/callback?code=1"`;
+      const commandWithHost = `${command} --debug --host dev.eigent.ai/api/oauth/notion/callback?code=1`;
       // const commandWithHost = `${command}`;
 
       log.info(' start execute command:', commandWithHost);
 
       // Parse command and arguments
       const [cmd, ...args] = commandWithHost.split(' ');
-
+      log.info('start execute command:', commandWithHost.split(' '));
+      console.log(cmd, args)
       return new Promise((resolve) => {
         const child = spawn(cmd, args, {
           cwd: process.cwd(),
@@ -378,7 +379,7 @@ function registerIpcHandlers() {
         // Listen process exit
         child.on('close', (code) => {
           log.info(` command execute complete, exit code: ${code}`);
-          resolve({ success: code === 0, stdout, stderr });
+          resolve({ success: code === null, stdout, stderr });
         });
 
         // Listen process error
@@ -648,15 +649,10 @@ function registerIpcHandlers() {
       const {MCP_REMOTE_CONFIG_DIR,tempEmail} = getEmailFolderPath(email);
       log.info('Getting MCP config path for email:', email);
       log.info('MCP config path:', MCP_REMOTE_CONFIG_DIR);
-      // Check if the mcp-remote-0.1.18 directory exists
-      const mcpRemoteDir = path.join(MCP_REMOTE_CONFIG_DIR, 'mcp-remote-0.1.18');
-      const isMcpRemoteDirExists = fs.existsSync(mcpRemoteDir);
-
       return {
-        success: isMcpRemoteDirExists,
+        success: MCP_REMOTE_CONFIG_DIR,
         path: MCP_REMOTE_CONFIG_DIR,
         tempEmail: tempEmail,
-        baseDir: MCP_REMOTE_CONFIG_DIR
       };
     } catch (error: any) {
       log.error('Failed to get MCP config path:', error);

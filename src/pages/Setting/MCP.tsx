@@ -19,6 +19,7 @@ import IntegrationList from "./components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { mcpMap, OAuth } from "@/lib/oauth";
+import { toast } from "sonner";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
@@ -115,10 +116,13 @@ export default function SettingMCP() {
 
 							const command =
 								platform === "win32"
-									? `${homeDir}\\.eigent\\bin\\bun.exe x -y eigent-mcp-remote https://mcp.notion.com/mcp`
-									: `${homeDir}/.eigent/bin/bun x -y eigent-mcp-remote https://mcp.notion.com/mcp`;
+									? `${homeDir}\\.eigent\\bin\\bun.exe x -y eigent-mcp-remote@0.1.22 https://mcp.notion.com/mcp`
+									: `${homeDir}/.eigent/bin/bun x -y eigent-mcp-remote@0.1.22 https://mcp.notion.com/mcp`;
 
-							await window.electronAPI.executeCommand(command,email);
+							let res=await window.electronAPI.executeCommand(command,email);
+							if(!res.success){
+								toast.error('Install MCP failed, please try again',{closeButton:true});
+							}
 						};
 					} else {
 						onInstall = () =>

@@ -79,5 +79,20 @@ export function getEmailFolderPath(email: string) {
   if (!fs.existsSync(MCP_REMOTE_CONFIG_DIR)) {
     fs.mkdirSync(MCP_REMOTE_CONFIG_DIR, { recursive: true });
   }
-  return { MCP_REMOTE_CONFIG_DIR, MCP_CONFIG_DIR, tempEmail };
+  const mcpRemoteDir = path.join(MCP_REMOTE_CONFIG_DIR, 'mcp-remote-0.1.22');
+  let hasToken = false;
+  try {
+    const tokenFile = fs.readdirSync(mcpRemoteDir).find((file) => file.includes('token'));
+    if (tokenFile) {
+      console.log("tokenFile", tokenFile);
+      hasToken = true;
+    }else{
+      hasToken = false;
+    }
+  } catch (error) {
+    console.log("error", error);
+    hasToken = false;
+  }
+
+  return { MCP_REMOTE_CONFIG_DIR, MCP_CONFIG_DIR, tempEmail, hasToken };
 }

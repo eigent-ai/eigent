@@ -13,6 +13,7 @@ import { capitalizeFirstLetter } from "@/lib";
 import { MCPEnvDialog } from "@/pages/Setting/components/MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
+import { toast } from "sonner";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -125,24 +126,19 @@ export default function IntegrationList({
 				return;
 			}
 			const provider = data.provider.toLowerCase();
-			if (provider === "notion" && !oauth) {
-				// oauth not ready, cache event, wait for oauth to have value
-				pendingOauthEventRef.current = data;
-				console.warn("oauth is empty, cache oauth event", data);
-				return;
-			}
 			isLockedRef.current = true;
 			if (provider === "notion") {
-				if (callBackUrl) {
-					console.log("callBackUrl", callBackUrl);
-					fetch(`${callBackUrl}/oauth/callback?code=${data.code}`, {
-						method: "GET",
-					}).then((res) => {
-						console.log("res", res);
-					});
-				}
-				const {MCP_REMOTE_CONFIG_DIR} = await window.electronAPI.getEmailFolderPath(email);
+
+				const {MCP_REMOTE_CONFIG_DIR,hasToken} = await window.electronAPI.getEmailFolderPath(email);
 				console.log("MCP_REMOTE_CONFIG_DIR", MCP_REMOTE_CONFIG_DIR);
+				if(!hasToken){
+					toast.error("Notion authorization failed, please try again", {
+						closeButton: true,
+					});
+					console.log("activeMcp", activeMcp);
+					handleUninstall(activeMcp);
+					return;
+				} 
 				try {
 					const tokenResult ={MCP_REMOTE_CONFIG_DIR} 
 					const currentItem = items.find(
@@ -442,6 +438,7 @@ export default function IntegrationList({
 									"LinkedIn",
 									"Reddit",
 									"Github",
+									"Notion",
 								].includes(item.name)}
 								variant={isInstalled ? "secondary" : "primary"}
 								size="sm"
@@ -458,6 +455,7 @@ export default function IntegrationList({
 									"LinkedIn",
 									"Reddit",
 									"Github",
+									"Notion",
 								].includes(item.name)
 									? "Coming Soon"
 									: isInstalled

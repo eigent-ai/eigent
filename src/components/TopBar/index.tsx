@@ -169,7 +169,7 @@ function HeaderWin() {
 						className="mr-2 no-drag leading-tight"
 					>
 						<FileDown className="w-4 h-4" />
-						Export Log
+						Report a bug
 					</Button>
 					<Button
 						onClick={() => {
