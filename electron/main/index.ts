@@ -289,6 +289,12 @@ const handleDependencyInstallation = async () => {
     }
 
     log.info(' install dependencies complete');
+
+    //Trigger onInstallDependenciesComplete
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('install-dependencies-complete', { success: true });
+    }
+
     return { success: true };
   } catch (error: any) {
     log.error(' install dependencies error:', error);
