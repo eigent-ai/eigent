@@ -239,39 +239,9 @@ const chatStore = create<ChatStore>()(
 				}
 			}
 
-			// fetch installed mcp token
-			if (!type) {
-				const oauth = new OAuth();
-				try {
-					await oauth.refreshToken("notion", email || "");
-				} catch (err) {
-					console.error("fetch notion token error", err);
-				}
-			}
 
 
-			// create history
-			if (!type) {
-				const authStore = getAuthStore();
 
-				const obj = {
-					"task_id": taskId,
-					"user_id": authStore.user_id,
-					"question": tasks[taskId]?.messages[0]?.content ?? '',
-					"language": systemLanguage,
-					"model_platform": "openai",
-					"model_type": "gpt-4o",
-					"api_url": modelType === 'cloud' ? "cloud" : apiModel.api_url,
-					"max_retries": 3,
-					"file_save_path": "string",
-					"installed_mcp": "string",
-					"status": 1,
-					"tokens": 0
-				}
-				await proxyFetchPost(`/api/chat/history`, obj).then(res => {
-					historyId = res.id;
-				})
-			}
 
 			let mcpLocal = {}
 			if (window.ipcRenderer) {
@@ -295,16 +265,29 @@ const chatStore = create<ChatStore>()(
 			} catch (error) {
 				console.log('get-env-path error', error)
 			}
-			let mcpConfigPath = undefined
-			if (email) {
-				// Get MCP config path
-				const result = await window.electronAPI.getMcpConfigPath(email);
-				const hasEnv = await window.ipcRenderer.invoke('get-env-has-key', email, 'MCP_REMOTE_CONFIG_DIR');
-				if (hasEnv&&result.success) {
-					mcpConfigPath = result.path
-				}
-			}
+			
+			// create history
+			if (!type) {
+				const authStore = getAuthStore();
 
+				const obj = {
+					"task_id": taskId,
+					"user_id": authStore.user_id,
+					"question": tasks[taskId]?.messages[0]?.content ?? '',
+					"language": systemLanguage,
+					"model_platform": apiModel.model_platform,
+					"model_type": apiModel.model_type,
+					"api_url": modelType === 'cloud' ? "cloud" : apiModel.api_url,
+					"max_retries": 3,
+					"file_save_path": "string",
+					"installed_mcp": "string",
+					"status": 1,
+					"tokens": 0
+				}
+				await proxyFetchPost(`/api/chat/history`, obj).then(res => {
+					historyId = res.id;
+				})
+			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
@@ -328,8 +311,7 @@ const chatStore = create<ChatStore>()(
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
-					env_path: envPath,
-					MCP_REMOTE_CONFIG_DIR: mcpConfigPath
+					env_path: envPath
 				}) : undefined,
 
 				async onmessage(event: any) {
@@ -405,7 +387,7 @@ const chatStore = create<ChatStore>()(
 								let activeWebviewIds: any = [];
 								if (agent_name == 'search_agent') {
 									snapshots.forEach((item: any) => {
-										const imgurl = item.image_path.includes('/public') ? item.image_path : (import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL) + item.image_path
+										const imgurl = !item.image_path.includes('/public') ? item.image_path : (import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL) + item.image_path
 										activeWebviewIds.push({
 											id: item.id,
 											img: imgurl,
@@ -1614,8 +1596,12 @@ const chatStore = create<ChatStore>()(
 // }
 const filterMessage = (message: AgentMessage) => {
 	if (message.data.toolkit_name?.includes('Search ')) {
-		message.data.toolkit_name='Search '
+		message.data.toolkit_name='Search Toolkit'
 	}
+	if (message.data.method_name?.includes('search')) {
+		message.data.method_name='search'
+	}
+	
 	if (message.data.toolkit_name === 'Note Taking Toolkit') {
 		message.data.message = message.data.message!.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
 	}

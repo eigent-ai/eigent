@@ -210,7 +210,7 @@ export const InstallDependencies: React.FC<{
 							className="mr-2 no-drag leading-tight"
 						>
 							<FileDown className="w-4 h-4" />
-							Export Log
+							Report a bug
 						</Button>
 						<Button size="sm" onClick={handleInstall}>
 							Retry

@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 // type definition
 type InitState = 'permissions' | 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
-type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gpt-4.1-mini' | 'gpt-4.1';
+type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-opus-4-1-20250805' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini' | 'gpt-5-nano';
 
 // auth info interface
 interface AuthInfo {

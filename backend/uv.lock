@@ -249,6 +249,7 @@ dependencies = [
     { name = "httpx", extra = ["socks"] },
     { name = "inflection" },
     { name = "loguru" },
+    { name = "openai" },
     { name = "pydantic-i18n" },
     { name = "pydash" },
     { name = "python-dotenv" },
@@ -264,12 +265,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.75a0" },
+    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.75a2" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "inflection", specifier = ">=0.5.1" },
     { name = "loguru", specifier = ">=0.7.3" },
+    { name = "openai", specifier = ">=1.99.3,<2" },
     { name = "pydantic-i18n", specifier = ">=0.4.5" },
     { name = "pydash", specifier = ">=8.0.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
@@ -323,7 +325,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.75a0"
+version = "0.2.75a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -337,9 +339,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/21/eb0a0227e7d35d3582269299d56223b3ff2da94160b449f04506b39a561b/camel_ai-0.2.75a0.tar.gz", hash = "sha256:290b7a1e8f46b3151ec36067e480f4ada65fcc8b319f645e60f1bf920bb41a5e", size = 893928, upload-time = "2025-08-06T14:05:55.719Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/cf/0fbec7b2b29f9cd26f826fd39c04919b0cc4e85aa25494450073d8f5077f/camel_ai-0.2.75a2.tar.gz", hash = "sha256:30e09726b83a4d6dab58b91e74861813a921b6d63ed9711fb62716f04fbb090f", size = 893153, upload-time = "2025-08-08T00:46:24.22Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/50/b772c165d952079319e45193243882e557763137d57db8e81c988b0651b2/camel_ai-0.2.75a0-py3-none-any.whl", hash = "sha256:011f056af8bae751ac397736767bbb9eac2cce8047cbeb9b39b77444c1589463", size = 1321727, upload-time = "2025-08-06T14:05:53.238Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/86/158ab4487c4e092eb2404a687baf5df097148fe07bf77a47f3e43b17fbea/camel_ai-0.2.75a2-py3-none-any.whl", hash = "sha256:8605c4c4a00afb6fa0ea1050dbccf28d77e7daee9cb72b9d963ecf1549c1f0bf", size = 1319681, upload-time = "2025-08-08T00:46:22.174Z" },
 ]
 
 [package.optional-dependencies]
@@ -1550,7 +1552,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "1.88.0"
+version = "1.99.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1562,9 +1564,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/ea/bbeef604d1fe0f7e9111745bb8a81362973a95713b28855beb9a9832ab12/openai-1.88.0.tar.gz", hash = "sha256:122d35e42998255cf1fc84560f6ee49a844e65c054cd05d3e42fda506b832bb1", size = 470963, upload-time = "2025-06-17T05:04:45.856Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/d3/c372420c8ca1c60e785fd8c19e536cea8f16b0cfdcdad6458e1d8884f2ea/openai-1.99.3.tar.gz", hash = "sha256:1a0e2910e4545d828c14218f2ac3276827c94a043f5353e43b9413b38b497897", size = 504932, upload-time = "2025-08-07T20:35:15.893Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/03/ef68d77a38dd383cbed7fc898857d394d5a8b0520a35f054e7fe05dc3ac1/openai-1.88.0-py3-none-any.whl", hash = "sha256:7edd7826b3b83f5846562a6f310f040c79576278bf8e3687b30ba05bb5dff978", size = 734293, upload-time = "2025-06-17T05:04:43.858Z" },
+    { url = "https://files.pythonhosted.org/packages/92/bc/e52f49940b4e320629da7db09c90a2407a48c612cff397b4b41b7e58cdf9/openai-1.99.3-py3-none-any.whl", hash = "sha256:c786a03f6cddadb5ee42c6d749aa4f6134fe14fdd7d69a667e5e7ce7fd29a719", size = 785776, upload-time = "2025-08-07T20:35:13.653Z" },
 ]
 
 [[package]]
