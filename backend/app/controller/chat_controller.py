@@ -25,7 +25,7 @@ router = APIRouter(tags=["chat"])
 
 
 @router.post("/chat", name="start chat")
-def post(data: Chat, request: Request):
+async def post(data: Chat, request: Request):
     task_lock = create_task_lock(data.task_id)
     load_dotenv(dotenv_path=data.env_path)
 
