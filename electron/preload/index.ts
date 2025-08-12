@@ -44,7 +44,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getShowWebview: () => ipcRenderer.invoke('get-show-webview'),
   webviewDestroy: (webviewId: string) => ipcRenderer.invoke('webview-destroy', webviewId),
   exportLog: () => ipcRenderer.invoke('export-log'),
-  uploadLog: (email: string, taskId: string, baseUrl: string, token: string) => ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp
   mcpInstall: (name: string, mcp: any) => ipcRenderer.invoke('mcp-install', name, mcp),
   mcpRemove: (name: string) => ipcRenderer.invoke('mcp-remove', name),
