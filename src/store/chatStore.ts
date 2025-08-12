@@ -286,6 +286,15 @@ const chatStore = create<ChatStore>()(
 					historyId = res.id;
 				})
 			}
+			let mcpConfigPath = undefined
+			if (email) {
+				// Get MCP config path
+				const result = await window.electronAPI.getMcpConfigPath(email);
+				const hasEnv = await window.ipcRenderer.invoke('get-env-has-key', email, 'MCP_REMOTE_CONFIG_DIR');
+				if (hasEnv&&result.success) {
+					mcpConfigPath = result.path
+				}
+			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
@@ -309,7 +318,8 @@ const chatStore = create<ChatStore>()(
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
-					env_path: envPath
+					env_path: envPath,
+					MCP_REMOTE_CONFIG_DIR: mcpConfigPath
 				}) : undefined,
 
 				async onmessage(event: any) {
