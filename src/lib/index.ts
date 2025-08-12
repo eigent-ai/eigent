@@ -1,5 +1,3 @@
-import { getAuthStore } from "@/store/authStore"
-
 export function getProxyBaseURL() {
 	const isDev = import.meta.env.DEV
 
@@ -58,22 +56,4 @@ export function hasStackKeys() {
 	return import.meta.env.VITE_STACK_PROJECT_ID &&
 		import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY &&
 		import.meta.env.VITE_STACK_SECRET_SERVER_KEY;
-}
-
-export async function uploadLog(taskId: string, type?: string | undefined) {
-	if (import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && !type) {
-		try {
-			const { email, token } = getAuthStore()
-			const baseUrl = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
-			
-			await window.electronAPI.uploadLog(
-				email,
-				taskId,
-				baseUrl,
-				token
-			);
-		} catch (error) {
-			console.error('Failed to upload log:', error);
-		}
-	}
 }
