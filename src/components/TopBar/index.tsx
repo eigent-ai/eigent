@@ -1,5 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Settings, Minus, Square, X, FileDown, Menu, Plus } from "lucide-react";
+import {
+	Settings,
+	Minus,
+	Square,
+	X,
+	FileDown,
+	Menu,
+	Plus,
+	Import,
+} from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
@@ -7,6 +16,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
 import chevron_left from "@/assets/chevron_left.svg";
+import { getAuthStore } from "@/store/authStore";
 function HeaderWin() {
 	const titlebarRef = useRef<HTMLDivElement>(null);
 	const controlsRef = useRef<HTMLDivElement>(null);
@@ -16,6 +26,7 @@ function HeaderWin() {
 	const chatStore = useChatStore();
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
+	const { token } = getAuthStore();
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
@@ -140,20 +151,20 @@ function HeaderWin() {
 						<>
 							{activeTaskTitle === "New Project" ? (
 								<Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="font-bold text-base no-drag"
-                                    onClick={createNewProject}
-                                >
-                                    {activeTaskTitle}
-                                </Button>
+									variant="ghost"
+									size="sm"
+									className="font-bold text-base no-drag"
+									onClick={createNewProject}
+								>
+									{activeTaskTitle}
+								</Button>
 							) : (
-								<div className="font-bold leading-10 text-base ">{activeTaskTitle}</div>
+								<div className="font-bold leading-10 text-base ">
+									{activeTaskTitle}
+								</div>
 							)}
 						</>
 					)}
-
-					
 				</div>
 				<div id="maximize-window" className="flex-1 h-10"></div>
 				{/* right */}

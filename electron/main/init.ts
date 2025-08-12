@@ -423,7 +423,7 @@ function checkPortAvailable(port: number): Promise<boolean> {
     });
 }
 
-async function killProcessOnPort(port: number): Promise<boolean> {
+export async function killProcessOnPort(port: number): Promise<boolean> {
     try {
         const platform = process.platform;
         let command: string;
