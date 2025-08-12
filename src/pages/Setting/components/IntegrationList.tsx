@@ -419,7 +419,7 @@ export default function IntegrationList({
 								"LinkedIn",
 								"Reddit",
 								"Github",
-								"Notion",
+								// "Notion",
 							].includes(item.name)}
 							variant={isInstalled ? "secondary" : "primary"}
 							size="sm"
@@ -433,7 +433,7 @@ export default function IntegrationList({
 								"LinkedIn",
 								"Reddit",
 								"Github",
-								"Notion",
+								// "Notion",
 							].includes(item.name)
 								? "Coming Soon"
 								: isInstalled
