@@ -336,7 +336,7 @@ export default function Workflow({
 					>
 						<SquareStack />
 					</Button> */}
-					<div className=" p-1 rounded-md bg-menutabs-bg-default border border-solid border-menutabs-border-active flex items-center justify-cneter gap-1">
+					<div className=" p-1 rounded-lg bg-menutabs-bg-default border border-solid border-menutabs-border-active flex items-center justify-cneter gap-1">
 						<Button
 							variant="ghost"
 							size="icon"
@@ -368,7 +368,7 @@ export default function Workflow({
 					</div>
 					{chatStore.tasks[chatStore.activeTaskId as string]?.status ===
 						"finished" && (
-						<div className="flex items-center justify-center p-1 rounded-sm border border-solid border-menutabs-border-active bg-menutabs-bg-default">
+						<div className="flex items-center justify-center p-1 rounded-lg border border-solid border-menutabs-border-active bg-menutabs-bg-default">
 							<Button
 								variant="ghost"
 								size="sm"
