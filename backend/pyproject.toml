@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.10.16"
 dependencies = [
-    "camel-ai[eigent]>=0.2.75a2",
+    "camel-ai[eigent] @ git+https://github.com/camel-ai/camel.git@fix/browser_cdp",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",
@@ -17,6 +17,7 @@ dependencies = [
     "inflection>=0.5.1",
     "aiofiles>=24.1.0",
     "openai>=1.99.3,<2",
+    "multidict<6.5.0",
 ]
 
 

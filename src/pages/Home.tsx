@@ -25,29 +25,43 @@ export default function Home() {
 			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
 				[]),
 		];
+		console.log('[Screenshot] useEffect triggered, taskAssigning:', taskAssigning);
 		let webviews: { id: string; agent_id: string; index: number }[] = [];
 		taskAssigning.map((item) => {
 			if (item.type === "search_agent") {
+				console.log('[Screenshot] Found search_agent:', item.agent_id, 'activeWebviewIds:', item.activeWebviewIds);
 				item.activeWebviewIds?.map((webview, index) => {
 					webviews.push({ ...webview, agent_id: item.agent_id, index });
 				});
 			}
 		});
 
-		if (taskAssigning.length === 0 || webviews.length === 0) return;
+		if (taskAssigning.length === 0 || webviews.length === 0) {
+			console.log('[Screenshot] No taskAssigning or webviews, skipping. taskAssigning:', taskAssigning.length, 'webviews:', webviews.length);
+			return;
+		}
+		console.log('[Screenshot] webviews structure:', webviews);
 
 		// capture webview
 		const captureWebview = async () => {
+			console.log('[Screenshot] Starting capture, task status:', chatStore.tasks[chatStore.activeTaskId as string]?.status);
 			if (
 				chatStore.tasks[chatStore.activeTaskId as string].status === "finished"
 			) {
+				console.log('[Screenshot] Task is finished, skipping capture');
 				return;
 			}
+			console.log('[Screenshot] Capturing webviews:', webviews.length, 'webviews');
 			webviews.map((webview) => {
+				console.log('[Screenshot] Capturing webview:', webview.id, 'agent:', webview.agent_id);
 				window.ipcRenderer
 					.invoke("capture-webview", webview.id)
 					.then((base64: string) => {
-						if (chatStore.tasks[chatStore.activeTaskId as string].type) return;
+						console.log('[Screenshot] Capture result for webview', webview.id, 'length:', base64?.length || 0);
+						if (chatStore.tasks[chatStore.activeTaskId as string].type) {
+							console.log('[Screenshot] Task has type, skipping');
+							return;
+						}
 						let taskAssigning = [
 							...chatStore.tasks[chatStore.activeTaskId as string]
 								.taskAssigning,
@@ -60,6 +74,7 @@ export default function Home() {
 							searchAgentIndex !== -1 &&
 							base64 !== "data:image/jpeg;base64,"
 						) {
+							console.log('[Screenshot] Valid screenshot, updating agent:', webview.agent_id, 'index:', webview.index);
 							taskAssigning[searchAgentIndex].activeWebviewIds![
 								webview.index
 							].img = base64;
@@ -67,6 +82,7 @@ export default function Home() {
 								chatStore.activeTaskId as string,
 								taskAssigning
 							);
+							console.log('[Screenshot] After setTaskAssigning, taskAssigning:', taskAssigning[searchAgentIndex]);
 							const { processTaskId, url } =
 								taskAssigning[searchAgentIndex].activeWebviewIds![
 									webview.index
@@ -77,7 +93,9 @@ export default function Home() {
 								browser_url: url,
 								image_base64: base64,
 							});
-						
+							console.log('[Screenshot] Successfully stored screenshot for URL:', url);
+						} else {
+							console.log('[Screenshot] Invalid screenshot or agent not found. searchAgentIndex:', searchAgentIndex, 'base64 empty:', base64 === "data:image/jpeg;base64,");
 						}
 						// let list: any = [];
 						// taskAssigning.forEach((item: any) => {
@@ -103,8 +121,12 @@ export default function Home() {
 		let intervalTimer: NodeJS.Timeout | null = null;
 
 		const initialTimer = setTimeout(() => {
+			console.log('[Screenshot] Starting initial capture');
 			captureWebview();
-			intervalTimer = setInterval(captureWebview, 2000);
+			intervalTimer = setInterval(() => {
+				console.log('[Screenshot] Interval capture triggered');
+				captureWebview();
+			}, 2000);
 		}, 2000);
 
 		// cleanup function
