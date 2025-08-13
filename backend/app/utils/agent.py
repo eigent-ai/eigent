@@ -681,8 +681,8 @@ def search_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
-            "browser_scroll",
-            "browser_get_som_screenshot",
+            # "browser_scroll",
+            # "browser_get_som_screenshot",
         ],
     )
 
@@ -817,6 +817,7 @@ Your capabilities include:
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
         ],
+        toolkits_to_register_agent=[web_toolkit_custom],
     )
 
 

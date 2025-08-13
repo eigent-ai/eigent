@@ -356,7 +356,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             screenshot_timeout: int | None = None,
             page_stability_timeout: int | None = None,
             dom_content_loaded_timeout: int | None = None,
-            viewport_limit: bool = True,
+            viewport_limit: bool = False,
             connect_over_cdp: bool = True,
             cdp_url: str | None = "http://localhost:9222",
     ) -> None:
@@ -521,8 +521,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
     async def browser_get_som_screenshot(self, read_image: bool = False,
                                          instruction: str | None = None) -> str:
-        return await super().browser_get_som_screenshot(read_image,
-                                                        instruction)
+        return await super().browser_get_som_screenshot(read_image, instruction)
 
     @listen_toolkit(BaseHybridBrowserToolkit.browser_click)
     async def browser_click(self, *, ref: str) -> Dict[str, Any]:

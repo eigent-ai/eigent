@@ -286,7 +286,7 @@ wheels = [
 [[package]]
 name = "camel-ai"
 version = "0.2.75a2"
-source = { git = "https://github.com/camel-ai/camel.git?rev=fix%2Fbrowser_cdp#d78be913f78ffdd4d028eb9bdf0445af77ef70cd" }
+source = { git = "https://github.com/camel-ai/camel.git?rev=fix%2Fbrowser_cdp#e9cad60d8e6015c033baf7006db5fbe762f357d2" }
 dependencies = [
     { name = "colorama" },
     { name = "docstring-parser" },
