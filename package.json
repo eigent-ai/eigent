@@ -1,6 +1,6 @@
 {
   "name": "eigent",
-  "version": "0.0.46",
+  "version": "0.0.48",
   "main": "dist-electron/main/index.js",
   "description": "Eigent",
   "author": "Eigent.AI",
@@ -49,6 +49,7 @@
     "@xterm/xterm": "^5.5.0",
     "@xyflow/react": "^12.6.4",
     "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1",
     "axios": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -82,6 +83,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
+    "@types/archiver": "^6.0.3",
     "@types/lodash-es": "^4.17.12",
     "@types/papaparse": "^5.3.16",
     "@types/react": "^18.3.12",
