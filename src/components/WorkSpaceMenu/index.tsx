@@ -76,6 +76,7 @@ export function WorkSpaceMenu() {
 
 	useEffect(() => {
 		window.electronAPI.onWebviewNavigated((id: string, url: string) => {
+			console.log('[WorkSpaceMenu] webview-navigated event:', id, url);
 			let webViewUrls = [
 				...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls,
 			];
@@ -95,6 +96,7 @@ export function WorkSpaceMenu() {
 						item.tasks.find((task) => task.id === hasUrl?.processTaskId)
 					);
 					if (activeAgentIndex !== -1) {
+						console.log('[WorkSpaceMenu] Adding webview to agent:', taskAssigning[activeAgentIndex].agent_id, 'webview id:', id);
 						taskAssigning[activeAgentIndex].activeWebviewIds?.push({
 							id,
 							url,
@@ -105,6 +107,7 @@ export function WorkSpaceMenu() {
 							chatStore.activeTaskId as string,
 							taskAssigning
 						);
+						console.log('[WorkSpaceMenu] After adding, activeWebviewIds:', taskAssigning[activeAgentIndex].activeWebviewIds);
 					}
 					const urlIndex = webViewUrls.findIndex((item) => item.url === url);
 					if (urlIndex !== -1) {

@@ -74,12 +74,14 @@ export default function Home() {
 	useEffect(() => {
 		const taskAssigning =
 			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
+		console.log('[SearchAgentWrokSpace] taskAssigning:', taskAssigning);
 		if (taskAssigning) {
 			const activeAgent = taskAssigning.find(
 				(item) =>
 					item.agent_id ===
 					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace
 			);
+			console.log('[SearchAgentWrokSpace] Found activeAgent:', activeAgent?.agent_id, 'activeWebviewIds:', activeAgent?.activeWebviewIds);
 			setActiveAgent(() => {
 				if (activeAgent) {
 					return activeAgent;
@@ -237,6 +239,7 @@ export default function Home() {
 
 				{activeAgent?.activeWebviewIds?.length === 1 ? (
 					<div className="flex-1 min-h-0">
+						{console.log('[Screenshot Display] Single webview mode, img exists:', !!activeAgent?.activeWebviewIds[0]?.img, 'img length:', activeAgent?.activeWebviewIds[0]?.img?.length || 0)}
 						{activeAgent?.activeWebviewIds[0]?.img && (
 							<div
 								onClick={() =>
@@ -250,6 +253,8 @@ export default function Home() {
 									src={activeAgent?.activeWebviewIds[0]?.img}
 									alt=""
 									className="w-full h-full object-contain rounded-b-2xl"
+									onError={(e) => console.error('[Screenshot Display] Image load error:', e)}
+									onLoad={() => console.log('[Screenshot Display] Image loaded successfully')}
 								/>
 								<div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
 									<Button
@@ -273,6 +278,7 @@ export default function Home() {
 							isSingleMode ? "px-0" : "px-2 pb-2"
 						}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
 					>
+						{console.log('[Screenshot Display] Multiple webview mode, total webviews:', activeAgent?.activeWebviewIds?.length, 'with images:', activeAgent?.activeWebviewIds?.filter((item) => item?.img).length)}
 						{activeAgent?.activeWebviewIds
 							?.filter((item) => item?.img)
 							.map((item, index) => {
@@ -291,6 +297,8 @@ export default function Home() {
 												src={item.img}
 												alt=""
 												className="w-full h-full object-contain rounded-2xl"
+												onError={(e) => console.error('[Screenshot Display] Multi-view image load error:', e, 'index:', index)}
+												onLoad={() => console.log('[Screenshot Display] Multi-view image loaded, index:', index)}
 											/>
 										)}
 										<div

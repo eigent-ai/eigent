@@ -28,12 +28,23 @@ export class WebViewManager {
   // IPC handlers should be registered once in the main process
 
   public async captureWebview(webviewId: string) {
+    console.log('[Electron] Capturing webview:', webviewId);
     const webContents = this.webViews.get(webviewId);
-    if (!webContents) return null;
+    if (!webContents) {
+      console.error('[Electron] Webview not found:', webviewId);
+      return null;
+    }
 
-    const image = await webContents.view.webContents.capturePage();
-    const jpegBuffer = image.toJPEG(10);
-    return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
+    try {
+      const image = await webContents.view.webContents.capturePage();
+      const jpegBuffer = image.toJPEG(10);
+      const base64 = 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
+      console.log('[Electron] Capture successful for webview:', webviewId, 'size:', base64.length);
+      return base64;
+    } catch (error) {
+      console.error('[Electron] Capture failed for webview:', webviewId, error);
+      return null;
+    }
   }
 
   public setSize(size: Size) {
