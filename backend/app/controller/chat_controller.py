@@ -16,6 +16,7 @@ from app.service.task import (
     ActionInstallMcpData,
     ActionStopData,
     ActionSupplementData,
+    create_task_lock,
     get_task_lock,
 )
 
@@ -24,7 +25,8 @@ router = APIRouter(tags=["chat"])
 
 
 @router.post("/chat", name="start chat")
-def post(data: Chat, request: Request):
+async def post(data: Chat, request: Request):
+    task_lock = create_task_lock(data.task_id)
     load_dotenv(dotenv_path=data.env_path)
 
     # logger.debug(f"start chat: {data.model_dump_json()}")
@@ -43,7 +45,7 @@ def post(data: Chat, request: Request):
 
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
-    return StreamingResponse(step_solve(data, request), media_type="text/event-stream")
+    return StreamingResponse(step_solve(data, request, task_lock), media_type="text/event-stream")
 
 
 @router.post("/chat/{id}", name="improve chat")

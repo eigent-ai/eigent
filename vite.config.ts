@@ -86,4 +86,14 @@ export default defineConfig(({ command, mode }) => {
   }
 })
 
+process.on('SIGINT', () => {
+  try {
+    const backend = path.join(__dirname, 'backend')
+    const pid = readFileSync(backend + '/runtime/run.pid', 'utf-8')
+    process.kill(parseInt(pid), 'SIGINT')
+  } catch (e) {
+    console.log('no pid file')
+    console.log(e)
+  }
+})
 

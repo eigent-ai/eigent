@@ -444,31 +444,68 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('upload-log', async (event, email: string, taskId: string, baseUrl: string, token: string) => {
-    const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
-    const logFolderName = `task_${taskId}`;
-    const logFolderPath = path.join(MCP_REMOTE_CONFIG_DIR, logFolderName);
-    //  check log folder exists
-    if (!fs.existsSync(logFolderPath)) {
-      return { success: false, error: 'log folder not found' };
-    }
-    const zipPath = path.join(MCP_REMOTE_CONFIG_DIR, `${logFolderName}.zip`);
-    await zipFolder(logFolderPath, zipPath)
+    let zipPath: string | null = null;
 
-    const formData = new FormData();
-    formData.append('file', fs.createReadStream(zipPath));
-    formData.append('task_id', taskId);
-
-    const response = await axios.post(baseUrl + '/api/chat/logs', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        'Authorization': `Bearer ${token}`
+    try {
+      // Validate required parameters
+      if (!email || !taskId || !baseUrl || !token) {
+        return { success: false, error: 'Missing required parameters' };
       }
-    });
 
-    if (response.status === 200) {
-      return { success: true, data: response.data };
-    } else {
-      return { success: false, error: response.data };
+      // Sanitize taskId to prevent path traversal attacks
+      const sanitizedTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, '');
+      if (!sanitizedTaskId) {
+        return { success: false, error: 'Invalid task ID' };
+      }
+
+      const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
+      const logFolderName = `task_${sanitizedTaskId}`;
+      const logFolderPath = path.join(MCP_REMOTE_CONFIG_DIR, logFolderName);
+      
+      // Check if log folder exists
+      if (!fs.existsSync(logFolderPath)) {
+        return { success: false, error: 'Log folder not found' };
+      }
+
+      zipPath = path.join(MCP_REMOTE_CONFIG_DIR, `${logFolderName}.zip`);
+      await zipFolder(logFolderPath, zipPath);
+
+      // Create form data with file stream
+      const formData = new FormData();
+      const fileStream = fs.createReadStream(zipPath);
+      formData.append('file', fileStream);
+      formData.append('task_id', sanitizedTaskId);
+
+      // Upload with timeout
+      const response = await axios.post(baseUrl + '/api/chat/logs', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 60000, // 60 second timeout
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+      });
+
+      fileStream.destroy();
+
+      if (response.status === 200) {
+        return { success: true, data: response.data };
+      } else {
+        return { success: false, error: response.data };
+      }
+    } catch (error: any) {
+      log.error('Failed to upload log:', error);
+      return { success: false, error: error.message || 'Upload failed' };
+    } finally {
+      // Clean up zip file
+      if (zipPath && fs.existsSync(zipPath)) {
+        try {
+          fs.unlinkSync(zipPath);
+        } catch (cleanupError) {
+          log.error('Failed to clean up zip file:', cleanupError);
+        }
+      }
     }
   });
 
@@ -1000,26 +1037,39 @@ const checkAndStartBackend = async () => {
 // ==================== process cleanup ====================
 const cleanupPythonProcess = async () => {
   try {
-
+    // First attempt: Try to kill using PID
     if (python_process?.pid) {
-      log.info('Cleaning up Python process', { pid: python_process.pid });
-      kill(python_process.pid, 'SIGINT', (err) => {
-        if (err) {
-          log.error('Failed to clean up process tree:', err);
-        } else {
-          log.info('Successfully cleaned up Python process tree');
-        }
+      const pid = python_process.pid;
+      log.info('Cleaning up Python process', { pid });
+      
+      await new Promise<void>((resolve) => {
+        kill(pid, 'SIGINT', (err) => {
+          if (err) {
+            log.error('Failed to clean up process tree:', err);
+          } else {
+            log.info('Successfully cleaned up Python process tree');
+          }
+          resolve();
+        });
       });
-    } else {
-      log.info('No Python process to clean up');
     }
-    let port: number;
+
+    // Second attempt: Use port-based cleanup as fallback
     const portFile = path.join(userData, 'port.txt');
     if (fs.existsSync(portFile)) {
-      port = parseInt(fs.readFileSync(portFile, 'utf-8'));
-      log.info(`Found port from file: ${port}`);
-      await killProcessOnPort(port);
+      try {
+        const port = parseInt(fs.readFileSync(portFile, 'utf-8').trim(), 10);
+        if (!isNaN(port) && port > 0 && port < 65536) {
+          log.info(`Attempting to kill process on port: ${port}`);
+          await killProcessOnPort(port);
+        }
+        fs.unlinkSync(portFile);
+      } catch (error) {
+        log.error('Error handling port file:', error);
+      }
     }
+    
+    python_process = null;
   } catch (error) {
     log.error('Error occurred while cleaning up process:', error);
   }
