@@ -17,6 +17,8 @@ dependencies = [
     "inflection>=0.5.1",
     "aiofiles>=24.1.0",
     "openai>=1.99.3,<2",
+    "google-auth-httplib2==0.2.0",
+    "google-auth-oauthlib==1.2.1",
 ]
 
 
