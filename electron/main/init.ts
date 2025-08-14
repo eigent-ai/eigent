@@ -438,8 +438,8 @@ export async function killProcessOnPort(port: number): Promise<boolean> {
 
             // get pid from last field
             const pid = lines[0].trim().split(/\s+/).pop();
-            if (!pid) {
-                console.log(`no pid listen on port ${port}`);
+            if (!pid || isNaN(Number(pid))) {
+                console.log(`Invalid PID extracted for port ${port}: ${pid}`);
                 return false;
             }
 
