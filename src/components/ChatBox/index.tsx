@@ -239,11 +239,11 @@ export default function ChatBox(): JSX.Element {
 			{(chatStore.activeTaskId &&
 				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
 			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
-				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-[12px] border border-zinc-200 p-2 pr-0  border-solid  relative overflow-hidden">
-					<div className="absolute inset-0 blur-bg bg-bg-surface-primary pointer-events-none rounded-xl"></div>
+				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled p-2 pr-0  border-solid relative overflow-hidden">
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div
 						ref={scrollContainerRef}
-						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-6"
+						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-2"
 					>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId].messages.map(
@@ -481,7 +481,7 @@ export default function ChatBox(): JSX.Element {
 				</div>
 			) : (
 				<div 
-					className="w-full h-[calc(100vh-54px)] flex items-center  rounded-[12px] border border-zinc-200 p-2 pr-0  border-solid  relative overflow-hidden"
+					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
 					onClick={() => {
 						if (!privacy) {
 							setPrivacyDialogOpen(true);
@@ -489,7 +489,7 @@ export default function ChatBox(): JSX.Element {
 					}}
 					style={{ cursor: !privacy ? 'pointer' : 'default' }}
 				>
-					<div className="absolute inset-0 blur-bg bg-bg-surface-primary pointer-events-none rounded-xl"></div>
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">

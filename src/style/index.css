@@ -77,6 +77,36 @@ body {
     2px 2px 100px rgba(29, 29, 29, 0.1) inset;
 }
 
+/* Perfect Shadow */
+.perfect-shadow {
+  box-shadow: 0 8px 20px -2px rgba(29, 33, 41, 0.10), 0 32px 48px -12px rgba(29, 33, 41, 0.12), 0 96px 120px -12px rgba(65, 74, 92, 0.06), 0 108px 72px -16px rgba(65, 74, 92, 0.08), 0 32px 64px -8px rgba(113, 153, 189, 0.12), 0 8px 10px 0 rgba(113, 153, 189, 0.12);
+}
+
+/* Custom ResizableHandle Styles */
+.custom-resizable-handle {
+  width: 4px;
+  height: 100%;
+  background: transparent;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.custom-resizable-handle:hover {
+  background: var(--border-primary);
+  width: 4px;
+  border-radius: 20px;
+  height: 100%;
+  transform: none;
+}
+
+.custom-resizable-handle div {
+  display: none !important;
+}
+
+.custom-resizable-handle svg {
+  display: none !important;
+}
+
 .radix-alert-dialog {
   position: fixed;
   top: 0px;

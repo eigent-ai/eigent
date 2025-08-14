@@ -1,11 +1,10 @@
 import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { create } from 'zustand';
-import { generateUniqueId } from "@/lib";
+import { generateUniqueId, uploadLog } from "@/lib";
 import { FileText } from 'lucide-react';
 import { getAuthStore, useWorkerList } from './authStore';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
-import { OAuth } from '@/lib/oauth';
 import { showStorageToast } from '@/components/Toast/storageToast';
 
 
@@ -184,8 +183,7 @@ const chatStore = create<ChatStore>()(
 			}
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
 			const api = type == 'share' ? `${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` : type == 'replay' ? `${base_Url}/api/chat/steps/playback/${taskId}?delay_time=${delayTime}` : `${baseURL}/chat`
-			const isInChina = await getIsInChina(systemLanguage)
-			console.log("isInChina", isInChina);
+
 			const { tasks } = get()
 			let historyId: string | null = null;
 			let snapshots: any = [];
@@ -265,7 +263,7 @@ const chatStore = create<ChatStore>()(
 			} catch (error) {
 				console.log('get-env-path error', error)
 			}
-			
+
 			// create history
 			if (!type) {
 				const authStore = getAuthStore();
@@ -766,7 +764,7 @@ const chatStore = create<ChatStore>()(
 						addFileList(taskId, agentMessages.data.process_task_id as string, fileInfo);
 
 						// Async file upload
-						if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY!=='true') {
+						if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
 							(async () => {
 								try {
 									// Read file content using Electron API
@@ -805,13 +803,14 @@ const chatStore = create<ChatStore>()(
 						console.log('error', agentMessages.data)
 						showCreditsToast()
 						setStatus(taskId, 'pause');
+						uploadLog(taskId, type)
 						return
 					}
 
 					if (agentMessages.step === "error") {
 						console.error('Model error:', agentMessages.data)
 						const errorMessage = agentMessages.data.message || 'An error occurred while processing your request';
-						
+
 						// Create a new task to avoid "Task already exists" error
 						// and completely reset the interface
 						const newTaskId = create();
@@ -825,7 +824,7 @@ const chatStore = create<ChatStore>()(
 							role: "agent",
 							content: `❌ **Error**: ${errorMessage}`,
 						});
-						
+						uploadLog(taskId, type)
 						return
 					}
 
@@ -846,6 +845,8 @@ const chatStore = create<ChatStore>()(
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 						}
+						uploadLog(taskId, type)
+
 
 						let taskRunning = [...tasks[taskId].taskRunning];
 						let taskAssigning = [...tasks[taskId].taskAssigning];
@@ -1561,47 +1562,14 @@ const chatStore = create<ChatStore>()(
 	})
 );
 
-// const filterMessage = (message: string, method_name: string = '') => {
-// 	if (!message!.includes("=======================") && !message?.includes("Original Query") && !message?.startsWith('You need to process one given task') && method_name !== 'browser_take_screenshot' && message !== '{}' && !message?.startsWith('{"query"') && !message?.startsWith('{"entity"') && message !== '' && !message?.startsWith("{'warning':") && !message?.startsWith("{'results':") && !message?.startsWith(`{"index"`) && !message?.startsWith('- Ran Playwright code')) {
-// 		if (message?.includes(`{"content"`)) {
-// 			message = JSON.parse(message)?.content || ''
-// 		}
-// 		if (message?.startsWith('{"element"')) {
-// 			message = JSON.parse(message)?.element || ''
-// 		}
-// 		if (message?.startsWith('{"url"')) {
-// 			message = 'Open URL: ' + JSON.parse(message)?.url || ''
-// 		}
-// 		if (message?.startsWith('{"filename"')) {
-// 			message = JSON.parse(message)?.filename || ''
-// 		}
-// 		if (method_name === 'browser_click' && message?.startsWith('{"element"')) {
-// 			message = 'Click Element: ' + JSON.parse(message)?.element || ''
-// 		}
-// 		if (message?.startsWith('{"query"')) {
-// 			message = 'Search: ' + JSON.parse(message)?.query || ''
-// 		}
-// 		if (message?.startsWith('{"result"')) {
-// 			message = JSON.parse(message)?.result || ''
-// 		}
-
-// 		// && !message?.startsWith("{'error':")
-// 		if (message?.startsWith("{'error':")) {
-// 			message = JSON.parse(message.replace(/'error'/g, '"error"'))?.error || ''
-// 		}
-// 		console.log(message)
-// 		return message
-// 	}
-// 	return ''
-// }
 const filterMessage = (message: AgentMessage) => {
 	if (message.data.toolkit_name?.includes('Search ')) {
-		message.data.toolkit_name='Search Toolkit'
+		message.data.toolkit_name = 'Search Toolkit'
 	}
 	if (message.data.method_name?.includes('search')) {
-		message.data.method_name='search'
+		message.data.method_name = 'search'
 	}
-	
+
 	if (message.data.toolkit_name === 'Note Taking Toolkit') {
 		message.data.message = message.data.message!.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
 	}
@@ -1610,45 +1578,8 @@ const filterMessage = (message: AgentMessage) => {
 	}
 	return message
 }
-let isInChinaCache: boolean | null = null;
 
 
-const getIsInChina = async (systemLanguage: string): Promise<boolean> => {
-	if (isInChinaCache !== null) {
-		return isInChinaCache;
-	}
-	const fetchWithTimeout = (url: string, timeout = 3000): Promise<Response> => {
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(() => {
-				reject(new Error('Timeout'));
-			}, timeout);
-
-			fetch(url)
-				.then((response) => {
-					clearTimeout(timer);
-					resolve(response);
-				})
-				.catch((err) => {
-					clearTimeout(timer);
-					reject(err);
-				});
-		});
-	};
-
-	try {
-		const response = await fetchWithTimeout('https://ipinfo.io/json', 3000);
-		if (!response.ok) throw new Error('Network response was not ok');
-
-		const info = await response.json();
-		console.log('country', info?.country)
-		isInChinaCache = info?.country === 'CN';
-		return isInChinaCache;
-	} catch (error) {
-		console.warn('IP Timeout', error);
-		isInChinaCache = systemLanguage === 'zh-cn';
-		return isInChinaCache;
-	}
-};
 
 export const useChatStore = chatStore;
 

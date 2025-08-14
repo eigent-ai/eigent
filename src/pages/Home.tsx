@@ -11,6 +11,11 @@ import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
 import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
 import { proxyFetchPost } from "@/api/http";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable"
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
@@ -153,13 +158,15 @@ export default function Home() {
 			<ReactFlowProvider>
 				<div className="h-full flex flex-col">
 					<div className="flex-1 flex items-center justify-center gap-2 relative">
+						<ResizablePanelGroup direction="horizontal">
+						<ResizablePanel className="min-w-[316px]">
 						{/* left transparent area */}
 						<div
 							style={{
 								position: "absolute",
-								left: 0,
+								left: -8,
 								top: 0,
-								width: "5px",
+								width: "12px",
 								height: "100%",
 								background: "transparent",
 								zIndex: 20,
@@ -173,12 +180,15 @@ export default function Home() {
 							className={`${
 								chatStore.tasks[chatStore.activeTaskId as string]
 									?.activeWorkSpace
-									? "min-w-[316px] w-[316px]"
-									: "min-w-[469px] w-[469px]"
+									? "min-w-[316px] w-full"
+									: "min-w-[469px] w-full"
 							} h-full flex flex-col items-center justify-center transition-all duration-300`}
 						>
 							<ChatBox />
 						</div>
+						</ResizablePanel>
+							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
+						<ResizablePanel>
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							?.activeWorkSpace && (
 							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300">
@@ -266,6 +276,8 @@ export default function Home() {
 								<BottomBar />
 							</div>
 						)}
+						</ResizablePanel>
+						</ResizablePanelGroup>
 					</div>
 				</div>
 			</ReactFlowProvider>
