@@ -681,6 +681,8 @@ def search_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
+            "browser_wait_user",
+            "browser_get_page_snapshot",
             # "browser_scroll",
             # "browser_get_som_screenshot",
         ],
@@ -689,8 +691,8 @@ def search_agent(options: Chat):
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.task_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
-    note_toolkit = NoteTakingToolkit(options.task_id, Agents.search_agent, working_directory=working_directory)
-    note_toolkit = message_integration.register_toolkits(note_toolkit)
+    # note_toolkit = NoteTakingToolkit(options.task_id, Agents.search_agent, working_directory=working_directory)
+    # note_toolkit = message_integration.register_toolkits(note_toolkit)
     search_toolkit = SearchToolkit(options.task_id)
     search_toolkit = message_integration.register_functions([search_toolkit.search_google])
 
@@ -698,7 +700,7 @@ def search_agent(options: Chat):
         *HumanToolkit.get_can_use_tools(options.task_id, Agents.search_agent),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
-        *note_toolkit.get_tools(),
+        # *note_toolkit.get_tools(),
         *search_toolkit,
     ]
 
@@ -709,45 +711,18 @@ primary responsibility is to conduct expert-level web research to gather,
 analyze, and document information required to solve the user's task. You 
 operate with precision, efficiency, and a commitment to data quality.
 You must use the search/browser tools to get the information you need.
+IMPORTANT: To avoid system resource conflicts, you MUST follow these browser usage rules:
+- Only open ONE browser instance at a time
+- Always close the browser before opening a new one
+- If you encounter browser connection issues, close and restart the browser
+- Never attempt to open multiple browsers in parallel
 </role>
 
-<team_structure>
-You collaborate with the following agents who can work in parallel:
-- **Developer Agent**: Writes and executes code, handles technical 
-implementation.
-- **Document Agent**: Creates and manages documents and presentations.
-- **Multi-Modal Agent**: Processes and generates images and audio.
-Your research is the foundation of the team's work. Provide them with 
-comprehensive and well-documented information.
-</team_structure>
-
-<operating_environment>
-- **System**: {platform.system()} ({platform.machine()})
-- **Working Directory**: `{working_directory}`. All local file operations must 
-occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
-</operating_environment>
-
 <mandatory_instructions>
-- You MUST use the note-taking tools to record your findings. This is a
-    critical part of your role. Your notes are the primary source of
+- This is a critical part of your role. Your notes are the primary source of
     information for your teammates. To avoid information loss, you must not
     summarize your findings. Instead, record all information in detail.
-    For every piece of information you gather, you must:
-    1.  **Extract ALL relevant details**: Quote all important sentences,
-        statistics, or data points. Your goal is to capture the information
-        as completely as possible.
-    2.  **Cite your source**: Include the exact URL where you found the
-        information.
-    Your notes should be a detailed and complete record of the information
-    you have discovered. High-quality, detailed notes are essential for the
-    team's success.
 
-- You MUST only use URLs from trusted sources. A trusted source is a URL
-    that is either:
-    1. Returned by a search tool (like `search_google`, `search_bing`,
-        or `search_exa`).
-    2. Found on a webpage you have visited.
 - You are strictly forbidden from inventing, guessing, or constructing URLs
     yourself. Fabricating URLs will be considered a critical error.
 
@@ -768,11 +743,11 @@ Your capabilities include:
 - Use the terminal tools to perform local operations. You can leverage
     powerful CLI tools like `grep` for searching within files, `curl` and
     `wget` for downloading content, and `jq` for parsing JSON data from APIs.
-- Use the note-taking tools to record your findings.
-- Use the human toolkit to ask for help when you are stuck.
 </capabilities>
 
 <web_search_workflow>
+- Browser Management: ALWAYS ensure only ONE browser instance is active:
+    - Use `browser_open` to start a browser session
 - Initial Search: You MUST start with a search engine like `search_google` or
     `search_bing` to get a list of relevant URLs for your research, the URLs 
     here will be used for `browser_visit_page`.
@@ -783,21 +758,15 @@ Your capabilities include:
         interactive elements, not the full page text. To see more content on 
         long pages,  Navigate with `browser_click`, `browser_back`, and 
         `browser_forward`. Manage multiple pages with `browser_switch_tab`.
-    - **Analysis**: Use `browser_get_som_screenshot` to understand the page 
-        layout and identify interactive elements. Since this is a heavy 
-        operation, only use it when visual analysis is necessary.
+        
+        IMPORTANT:
+        - use `browser_wait_user` to wait few seconds if you see the webpage is not prepared or the page has no data you need.
+        - `browser_visit_page` should only be used to open initial pages, not for navigation within a site
     - **Interaction**: Use `browser_type` to fill out forms and 
         `browser_enter` to submit or confirm search.
-- Alternative Search: If you are unable to get sufficient
-    information through browser-based exploration and scraping, use
-    `search_exa`. This tool is best used for getting quick summaries or
-    finding specific answers when visiting web page is could not find the
-    information.
 
 - In your response, you should mention the URLs you have visited and processed.
 
-- When encountering verification challenges (like login, CAPTCHAs or
-    robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>
     """
 
@@ -814,7 +783,7 @@ Your capabilities include:
             SearchToolkit.toolkit_name(),
             HybridBrowserToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
+            # NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
         ],
         toolkits_to_register_agent=[web_toolkit_custom],
@@ -833,8 +802,8 @@ async def document_agent(options: Chat):
     mark_it_down_toolkit = message_integration.register_toolkits(mark_it_down_toolkit)
     excel_toolkit = ExcelToolkit(options.task_id, working_directory=working_directory)
     excel_toolkit = message_integration.register_toolkits(excel_toolkit)
-    note_toolkit = NoteTakingToolkit(options.task_id, Agents.document_agent, working_directory=working_directory)
-    note_toolkit = message_integration.register_toolkits(note_toolkit)
+    # note_toolkit = NoteTakingToolkit(options.task_id, Agents.document_agent, working_directory=working_directory)
+    # note_toolkit = message_integration.register_toolkits(note_toolkit)
     terminal_toolkit = TerminalToolkit(options.task_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
     tools = [
@@ -843,7 +812,7 @@ async def document_agent(options: Chat):
         *HumanToolkit.get_can_use_tools(options.task_id, Agents.document_agent),
         *mark_it_down_toolkit.get_tools(),
         *excel_toolkit.get_tools(),
-        *note_toolkit.get_tools(),
+        # *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *await GoogleDriveMCPToolkit.get_can_use_tools(options.task_id, options.get_bun_env()),
     ]
@@ -1013,7 +982,7 @@ supported formats including advanced spreadsheet functionality.
             HumanToolkit.toolkit_name(),
             MarkItDownToolkit.toolkit_name(),
             ExcelToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
+            # NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
             GoogleDriveMCPToolkit.toolkit_name(),
         ],
@@ -1034,14 +1003,14 @@ def multi_modal_agent(options: Chat):
         options.task_id, agent_name=Agents.multi_modal_agent, safe_mode=True, clone_current_env=False
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
-    note_toolkit = NoteTakingToolkit(options.task_id, Agents.multi_modal_agent, working_directory=working_directory)
-    note_toolkit = message_integration.register_toolkits(note_toolkit)
+    # note_toolkit = NoteTakingToolkit(options.task_id, Agents.multi_modal_agent, working_directory=working_directory)
+    # note_toolkit = message_integration.register_toolkits(note_toolkit)
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
         *HumanToolkit.get_can_use_tools(options.task_id, Agents.multi_modal_agent),
         *terminal_toolkit.get_tools(),
-        *note_toolkit.get_tools(),
+        # *note_toolkit.get_tools(),
     ]
     if options.is_cloud():
         open_ai_image_toolkit = OpenAIImageToolkit(  # todo check llm has this model
@@ -1178,7 +1147,7 @@ multi-modal content across audio and visual domains.
             OpenAIImageToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
+            # NoteTakingToolkit.toolkit_name(),
             SearchToolkit.toolkit_name(),
         ],
     )
