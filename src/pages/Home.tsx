@@ -159,7 +159,7 @@ export default function Home() {
 				<div className="h-full flex flex-col">
 					<div className="flex-1 flex items-center justify-center gap-2 relative">
 						<ResizablePanelGroup direction="horizontal">
-						<ResizablePanel className="min-w-[316px]">
+						<ResizablePanel defaultSize={30} minSize={20}>
 						{/* left transparent area */}
 						<div
 							style={{
@@ -177,12 +177,7 @@ export default function Home() {
 							}}
 						/>
 						<div
-							className={`${
-								chatStore.tasks[chatStore.activeTaskId as string]
-									?.activeWorkSpace
-									? "min-w-[316px] w-full"
-									: "min-w-[469px] w-full"
-							} h-full flex flex-col items-center justify-center transition-all duration-300`}
+							className="w-full h-full flex flex-col items-center justify-center transition-all duration-300"
 						>
 							<ChatBox />
 						</div>
