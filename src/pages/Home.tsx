@@ -39,7 +39,23 @@ export default function Home() {
 			}
 		});
 
-		if (taskAssigning.length === 0 || webviews.length === 0) return;
+		if (taskAssigning.length === 0) {
+			return;
+		}
+		
+		// If no webviews but search_agent exists, check activeWebviewIds
+		if (webviews.length === 0) {
+			const searchAgent = taskAssigning.find(agent => agent.type === 'search_agent');
+			if (searchAgent && searchAgent.activeWebviewIds && searchAgent.activeWebviewIds.length > 0) {
+				searchAgent.activeWebviewIds.forEach((webview, index) => {
+					webviews.push({ ...webview, agent_id: searchAgent.agent_id, index });
+				});
+			}
+		}
+		
+		if (webviews.length === 0) {
+			return;
+		}
 
 		// capture webview
 		const captureWebview = async () => {

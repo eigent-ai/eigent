@@ -94,7 +94,23 @@ export function WorkSpaceMenu() {
 					const activeAgentIndex = taskAssigning.findIndex((item) =>
 						item.tasks.find((task) => task.id === hasUrl?.processTaskId)
 					);
-					if (activeAgentIndex !== -1) {
+					
+					// If no matching task found, try to find search_agent
+					if (activeAgentIndex === -1) {
+						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
+						if (searchAgentIndex !== -1) {
+							taskAssigning[searchAgentIndex].activeWebviewIds?.push({
+								id,
+								url,
+								img: "",
+								processTaskId: hasUrl?.processTaskId || "",
+							});
+							chatStore.setTaskAssigning(
+								chatStore.activeTaskId as string,
+								taskAssigning
+							);
+						}
+					} else {
 						taskAssigning[activeAgentIndex].activeWebviewIds?.push({
 							id,
 							url,
@@ -113,6 +129,21 @@ export function WorkSpaceMenu() {
 					chatStore.setWebViewUrls(chatStore.activeTaskId as string, [
 						...webViewUrls,
 					]);
+				} else {
+					// If no URL match found, also try to add to search_agent
+					const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
+					if (searchAgentIndex !== -1 && webViewUrls.length > 0) {
+						taskAssigning[searchAgentIndex].activeWebviewIds?.push({
+							id,
+							url,
+							img: "",
+							processTaskId: webViewUrls[0]?.processTaskId || "",
+						});
+						chatStore.setTaskAssigning(
+							chatStore.activeTaskId as string,
+							taskAssigning
+						);
+					}
 				}
 			}
 
