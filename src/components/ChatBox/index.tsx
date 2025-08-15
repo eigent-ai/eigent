@@ -30,6 +30,18 @@ export default function ChatBox(): JSX.Element {
 	const [hasSearchKey, setHasSearchKey] = useState<any>(false);
 	const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
 	const { modelType } = useAuthStore();
+	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
+
+	useEffect(() => {
+		if (
+			import.meta.env.VITE_USE_LOCAL_PROXY === "true" &&
+			modelType === "cloud"
+		) {
+			setUseCloudModelInDev(true);
+		} else {
+			setUseCloudModelInDev(false);
+		}
+	}, [modelType]);
 	useEffect(() => {
 		proxyFetchGet("/api/user/privacy")
 			.then((res) => {
@@ -120,24 +132,24 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
-									if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
-						// If the task has not started yet (pending status), start it normally
-						if (chatStore.tasks[_taskId as string].status === "pending") {
-							chatStore.setIsPending(_taskId, true);
-							chatStore.startTask(_taskId);
-							// keep hasWaitComfirm as true so that follow-up improves work as usual
-						} else {
-							// Task already started and is waiting for user confirmation – use improve API
-							fetchPost(`/chat/${_taskId}`, {
-								question: tempMessageContent,
-							});
-							chatStore.setIsPending(_taskId, true);
-						}
-					} else {
+				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
+					// If the task has not started yet (pending status), start it normally
+					if (chatStore.tasks[_taskId as string].status === "pending") {
 						chatStore.setIsPending(_taskId, true);
 						chatStore.startTask(_taskId);
-						chatStore.setHasWaitComfirm(_taskId as string, true);
+						// keep hasWaitComfirm as true so that follow-up improves work as usual
+					} else {
+						// Task already started and is waiting for user confirmation – use improve API
+						fetchPost(`/chat/${_taskId}`, {
+							question: tempMessageContent,
+						});
+						chatStore.setIsPending(_taskId, true);
 					}
+				} else {
+					chatStore.setIsPending(_taskId, true);
+					chatStore.startTask(_taskId);
+					chatStore.setHasWaitComfirm(_taskId as string, true);
+				}
 			}
 		} catch (error) {
 			console.error("error:", error);
@@ -232,18 +244,18 @@ export default function ChatBox(): JSX.Element {
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<PrivacyDialog 
-				open={privacyDialogOpen} 
-				onOpenChange={setPrivacyDialogOpen} 
+			<PrivacyDialog
+				open={privacyDialogOpen}
+				onOpenChange={setPrivacyDialogOpen}
 			/>
 			{(chatStore.activeTaskId &&
 				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
 			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
-				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-[12px] border border-zinc-200 p-2 pr-0  border-solid  relative overflow-hidden">
-					<div className="absolute inset-0 blur-bg bg-bg-surface-primary pointer-events-none rounded-xl"></div>
+				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled p-2 pr-0  border-solid relative overflow-hidden">
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div
 						ref={scrollContainerRef}
-						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-6"
+						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-2"
 					>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId].messages.map(
@@ -476,20 +488,21 @@ export default function ChatBox(): JSX.Element {
 							textareaRef={textareaRef}
 							loading={loading}
 							onStartTask={() => handleConfirmTask()}
+							useCloudModelInDev={useCloudModelInDev}
 						/>
 					)}
 				</div>
 			) : (
-				<div 
-					className="w-full h-[calc(100vh-54px)] flex items-center  rounded-[12px] border border-zinc-200 p-2 pr-0  border-solid  relative overflow-hidden"
+				<div
+					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
 					onClick={() => {
 						if (!privacy) {
 							setPrivacyDialogOpen(true);
 						}
 					}}
-					style={{ cursor: !privacy ? 'pointer' : 'default' }}
+					style={{ cursor: !privacy ? "pointer" : "default" }}
 				>
-					<div className="absolute inset-0 blur-bg bg-bg-surface-primary pointer-events-none rounded-xl"></div>
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">
@@ -513,9 +526,10 @@ export default function ChatBox(): JSX.Element {
 								onSend={handleSend}
 								textareaRef={textareaRef}
 								loading={loading}
+								useCloudModelInDev={useCloudModelInDev}
 							/>
 						)}
-						<div className="h-[210px] flex justify-center items-start gap-2 mt-3">
+						<div className="h-[210px] flex justify-center items-start gap-2 mt-3 pr-2">
 							{!privacy ? (
 								<div className="flex items-center gap-2">
 									<div
@@ -531,6 +545,21 @@ export default function ChatBox(): JSX.Element {
 										/>
 										<span className="text-text-information text-sm font-medium leading-[22px]">
 											Complete system setup to start use Eigent
+										</span>
+									</div>
+								</div>
+							) : useCloudModelInDev ? (
+								<div className="flex items-center gap-2">
+									<div
+										onClick={() => {
+											navigate("/setting/models");
+										}}
+										className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
+									>
+										<span className="text-text-information text-sm font-medium leading-[22px]">
+											You're in Self-hosted mode. Cloud models can't be used
+											here — set up your own local cloud model to keep things
+											running.
 										</span>
 									</div>
 								</div>
@@ -553,7 +582,7 @@ export default function ChatBox(): JSX.Element {
 									</div>
 								)
 							)}
-							{privacy && (hasSearchKey || modelType === "cloud") && (
+							{!useCloudModelInDev && privacy && (hasSearchKey || modelType === "cloud") && (
 								<div className="mr-2 flex flex-col items-center gap-2">
 									{[
 										{
