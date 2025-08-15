@@ -95,7 +95,6 @@ export function WorkSpaceMenu() {
 						item.tasks.find((task) => task.id === hasUrl?.processTaskId)
 					);
 					
-					// If no matching task found, try to find search_agent
 					if (activeAgentIndex === -1) {
 						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
 						if (searchAgentIndex !== -1) {

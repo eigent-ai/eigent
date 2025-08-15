@@ -43,7 +43,6 @@ export default function Home() {
 			return;
 		}
 		
-		// If no webviews but search_agent exists, check activeWebviewIds
 		if (webviews.length === 0) {
 			const searchAgent = taskAssigning.find(agent => agent.type === 'search_agent');
 			if (searchAgent && searchAgent.activeWebviewIds && searchAgent.activeWebviewIds.length > 0) {
