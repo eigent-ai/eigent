@@ -262,7 +262,12 @@ export default function SettingMCP() {
 					setInstalling(false);
 					return;
 				}
-				await proxyFetchPost("/api/mcp/import/local", data);
+
+				const res=await proxyFetchPost("/api/mcp/import/local", data);
+				if(res.detail){
+					toast.error(res.detail[0].msg,{closeButton:true});
+					return;
+				}
 				if (window.ipcRenderer) {
 					const mcpServers = data["mcpServers"];
 					Object.entries(mcpServers).forEach(async ([key, value]) => {
