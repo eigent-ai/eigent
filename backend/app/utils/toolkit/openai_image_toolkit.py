@@ -35,14 +35,13 @@ class OpenAIImageToolkit(BaseOpenAIImageToolkit, AbstractToolkit):
         | Literal["standard"]
         | Literal["hd"] = "standard",
         response_format: None | Literal["url"] | Literal["b64_json"] = "b64_json",
-        n: int | None = 1,
         background: None | Literal["transparent"] | Literal["opaque"] | Literal["auto"] = "auto",
         style: None | Literal["vivid"] | Literal["natural"] = None,
         working_directory: str | None = None,
     ):
         self.api_task_id = api_task_id
         super().__init__(
-            model, timeout, api_key, url, size, quality, response_format, n, background, style, working_directory
+            model, timeout, api_key, url, size, quality, response_format, background, style, working_directory
         )
 
     @listen_toolkit(BaseOpenAIImageToolkit.generate_image)
