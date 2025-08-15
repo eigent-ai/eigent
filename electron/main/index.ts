@@ -305,7 +305,7 @@ const handleDependencyInstallation = async () => {
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
-    log.info('start task-----------------------------------------------------------------')
+    log.info('Starting new task')
     return browser_port
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
