@@ -305,11 +305,8 @@ export function AddWorker({
 							Edit
 						</Button>
 					) : (
-						<Button onClick={() => setDialogOpen(true)} variant="ghost">
+						<Button onClick={() => setDialogOpen(true)} variant="ghost" size="md">
 							<Plus className="w-6 h-6 text-icon-primary" />
-							<span className="text-text-body text-[13px] leading-13 font-bold">
-								New Worker
-							</span>
 						</Button>
 					)}
 				</DialogTrigger>
