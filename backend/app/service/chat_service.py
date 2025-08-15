@@ -239,6 +239,7 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
         return []
     return (
         chain(sub_tasks)
+        .filter(lambda x: x.content != "")
         .map(
             lambda x: {
                 "id": x.id,
