@@ -15,7 +15,8 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@/components/ui/resizable"
+} from "@/components/ui/resizable";
+import { WorkSpaceMenu } from "@/components/WorkSpaceMenu";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
@@ -195,14 +196,15 @@ export default function Home() {
 										chatStore.tasks[chatStore.activeTaskId as string]
 											.activeWorkSpace
 								)?.type === "search_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+									<div className="w-full h-[calc(100vh-104px)] flex-1 flex flex-col gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-300">
+										<WorkSpaceMenu />
 										<SearchAgentWrokSpace />
 									</div>
 								)}
 								{chatStore.tasks[chatStore.activeTaskId as string]
 									?.activeWorkSpace === "workflow" && (
 									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
+										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid relative">
 											{/*filter blur */}
 											<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
 											<div className="w-full h-full relative z-10">
@@ -224,15 +226,17 @@ export default function Home() {
 										chatStore.tasks[chatStore.activeTaskId as string]
 											.activeWorkSpace
 								)?.type === "developer_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+									<div className="w-full h-[calc(100vh-104px)] flex-1 flex flex-col gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-300">
+										<WorkSpaceMenu />
 										<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
 										{/* <Terminal content={[]} /> */}
 									</div>
 								)}
 								{chatStore.tasks[chatStore.activeTaskId as string]
 									.activeWorkSpace === "documentWorkSpace" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+									<div className="w-full h-full flex-1 flex flex-col gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-300">
+										<WorkSpaceMenu />
+										<div className="w-full h-full flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
 											{/*filter blur */}
 											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
 											<div className="w-full h-full relative z-10">
@@ -251,6 +255,7 @@ export default function Home() {
 								)?.type === "document_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+										<WorkSpaceMenu />
 											{/*filter blur */}
 											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
 											<div className="w-full h-full relative z-10">
@@ -268,7 +273,6 @@ export default function Home() {
 										</div>
 									</div>
 								)}
-								<BottomBar />
 							</div>
 						)}
 						</ResizablePanel>

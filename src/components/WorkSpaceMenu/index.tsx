@@ -263,9 +263,10 @@ export function WorkSpaceMenu() {
 	};
 
 	return (
-		<div className="h-full">
-			<div className="h-full flex items-center flex-start">
-				<div className="flex items-center flex-start gap-1 mr-3">
+		<div className="w-full h-10 flex items-center justify-between px-2">
+			<div className="w-full h-full flex items-center justify-start flex-start">
+				<div className="flex items-center flex-start gap-2">
+					<div className="h-full w-fit text-text-body font-bold text-lg leading-relaxed">Your AI Workforce</div>
 					{chatStore.activeTaskId && (
 						<ToggleGroup
 							type="single"
@@ -275,28 +276,10 @@ export function WorkSpaceMenu() {
 									.activeWorkSpace as string
 							}
 							onValueChange={onValueChange}
-							className="flex items-center gap-2"
+							className="flex items-center"
 						>
 							<ToggleGroupItem value="workflow" className="!w-10 !h-10 p-2">
 								<LayoutGrid className="!h-6 !w-6" />
-							</ToggleGroupItem>
-							<ToggleGroupItem
-								value="documentWorkSpace"
-								className="!w-10 !h-10 p-2 relative"
-							>
-								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
-									0 && (
-									<Badge
-										className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
-										variant="destructive"
-									>
-										{
-											chatStore.tasks[chatStore.activeTaskId as string]
-												.nuwFileNum
-										}
-									</Badge>
-								)}
-								<Inbox className="!h-6 !w-6" />
 							</ToggleGroupItem>
 						</ToggleGroup>
 					)}
@@ -309,7 +292,7 @@ export function WorkSpaceMenu() {
 							animate={{ opacity: 1, x: 0 }}
 							exit={{ opacity: 0, x: -30 }}
 							transition={{ duration: 0.3, ease: "easeInOut" }}
-							className={`px-3 border-[0px] border-solid border-l border-white-100%`}
+							
 						>
 							<ToggleGroup
 								type="single"
@@ -318,7 +301,7 @@ export function WorkSpaceMenu() {
 										.activeWorkSpace as string
 								}
 								onValueChange={onValueChange}
-								className="flex items-center gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"
+								className="flex items-center pl-2 gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"
 							>
 								<AnimatePresence mode="popLayout">
 									{agentList.map((agent) => (
@@ -364,9 +347,38 @@ export function WorkSpaceMenu() {
 						</motion.div>
 					)}
 				</AnimatePresence>
-				<div className="h-full w-[1px] bg-white-100% mr-3"></div>
 				<AddWorker />
 			</div>
+			{chatStore.activeTaskId && (
+				<ToggleGroup
+					type="single"
+					value={
+						chatStore.tasks[chatStore.activeTaskId as string]
+							.activeWorkSpace as string
+					}
+					onValueChange={onValueChange}
+					className="!w-10 !h-10 p-2 relative"
+				>
+					<ToggleGroupItem
+						value="documentWorkSpace"
+						className="!w-10 !h-10 p-2 relative"
+					>
+						{chatStore.tasks[chatStore.activeTaskId as string]?.nuwFileNum >
+							0 && (
+							<Badge
+								className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
+								variant="destructive"
+							>
+								{
+									chatStore.tasks[chatStore.activeTaskId as string]
+										?.nuwFileNum
+								}
+							</Badge>
+						)}
+						<Inbox className="!h-6 !w-6" />
+					</ToggleGroupItem>
+				</ToggleGroup>
+			)}
 		</div>
 	);
 }

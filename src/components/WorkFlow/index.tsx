@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { useChatStore } from "@/store/chatStore";
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
+import { WorkSpaceMenu } from "../WorkSpaceMenu";
 
 interface NodeData {
 	agent: Agent;
@@ -39,6 +40,7 @@ export default function Workflow({
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
 	const [nodes, setNodes, onNodesChange] = useNodesState<CustomNode>([]);
+	const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 	const workerList = useWorkerList();
 	const baseWorker: Agent[] = [
 		{
@@ -269,7 +271,7 @@ export default function Workflow({
 		}
 	}, [taskAssigning, isEditMode, workerList]);
 
-	const { setViewport, getViewport } = useReactFlow();
+	const { setViewport, getViewport, getNode } = useReactFlow();
 	useEffect(() => {
 		const container: HTMLElement | null =
 			document.querySelector(".react-flow__pane");
@@ -297,10 +299,9 @@ export default function Workflow({
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<div className="flex items-center justify-between w-full ">
-				<div className="text-text-body font-bold text-lg leading-relaxed">
-					Your AI Workforce
-				</div>
+			<div className="w-full flex items-center justify-between">
+
+				<WorkSpaceMenu />
 				<div className="flex items-center justify-center gap-sm ">
 					{/* <Button
 						variant="outline"
@@ -335,7 +336,7 @@ export default function Workflow({
 						}}
 					>
 						<SquareStack />
-					</Button> */}
+					</Button>
 					<div className=" p-1 rounded-lg bg-menutabs-bg-default border border-solid border-menutabs-border-active flex items-center justify-cneter gap-1">
 						<Button
 							variant="ghost"
@@ -365,7 +366,7 @@ export default function Workflow({
 						>
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>
-					</div>
+					</div> */}
 					{chatStore.tasks[chatStore.activeTaskId as string]?.status ===
 						"finished" && (
 						<div className="flex items-center justify-center p-1 rounded-lg border border-solid border-menutabs-border-active bg-menutabs-bg-default">
@@ -383,7 +384,7 @@ export default function Workflow({
 					)}
 				</div>
 			</div>
-			<div className="h-full w-full">
+			<div className="h-full w-full relative">
 				<ReactFlow
 					nodes={nodes}
 					edges={[]}
@@ -405,6 +406,132 @@ export default function Workflow({
 				>
 					{/* <CustomControls /> */}
 				</ReactFlow>
+				
+				{/* Bottom Navigation Dots */}
+				<div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 z-10">
+					<div className="flex items-center gap-8 px-4 py-2 rounded-full">
+						{nodes.map((node, index) => {
+							const isSelected = selectedNodeId === node.id;
+							return (
+								<button
+									key={node.id}
+									onClick={() => {
+										// Set the selected node
+										setSelectedNodeId(node.id);
+										
+										// Get the node from ReactFlow
+										const flowNode = getNode(node.id);
+										if (flowNode) {
+											// Get current viewport
+											const currentViewport = getViewport();
+											
+											// Calculate the 1/3 point position
+											const container = document.querySelector('.react-flow__viewport');
+											if (container) {
+												const rect = container.getBoundingClientRect();
+												
+												// Position the node at 1/3 from the left side
+												const oneThirdX = rect.width / 3; // 1/3 point horizontally
+												const topPadding = 16; // Padding from the top edge
+												
+												// Calculate the node's center position
+												const nodeCenterX = flowNode.position.x + (flowNode.data.isExpanded ? 280 : 140) / 2;
+												
+												// Calculate new viewport position to place node at 1/3 point
+												const newX = oneThirdX - nodeCenterX * currentViewport.zoom;
+												const newY = topPadding - flowNode.position.y * currentViewport.zoom;
+												
+												setViewport(
+													{ x: newX, y: newY, zoom: currentViewport.zoom },
+													{ duration: 500 }
+												);
+											}
+										}
+									}}
+									className={`${
+										isSelected 
+											? 'h-2 rounded-md bg-fill-fill-primary' 
+											: 'w-2 h-2 rounded-full bg-fill-fill-primary'
+									} hover:bg-fill-fill-primary-hover hover:scale-120 cursor-pointer transition-all duration-200 active:scale-120`}
+									style={isSelected ? { width: '24px' } : {}}
+									title={`Navigate to ${node.data.agent.name}`}
+								/>
+							);
+						})}
+					</div>
+				</div>
+				
+				{/* Navigation Buttons */}
+				<div className="absolute bottom-0 right-2 z-10">
+					<div className="flex items-center gap-2 rounded-full">
+						<button
+							onClick={() => {
+								const currentIndex = nodes.findIndex(node => node.id === selectedNodeId);
+								if (currentIndex > 0) {
+									const prevNode = nodes[currentIndex - 1];
+									setSelectedNodeId(prevNode.id);
+									
+									// Navigate to previous node
+									const flowNode = getNode(prevNode.id);
+									if (flowNode) {
+										const currentViewport = getViewport();
+										const container = document.querySelector('.react-flow__viewport');
+										if (container) {
+											const rect = container.getBoundingClientRect();
+											const oneThirdX = rect.width / 3;
+											const topPadding = 16;
+											const nodeCenterX = flowNode.position.x + (flowNode.data.isExpanded ? 280 : 140) / 2;
+											const newX = oneThirdX - nodeCenterX * currentViewport.zoom;
+											const newY = topPadding - flowNode.position.y * currentViewport.zoom;
+											
+											setViewport(
+												{ x: newX, y: newY, zoom: currentViewport.zoom },
+												{ duration: 500 }
+											);
+										}
+									}
+								}
+							}}
+							className="w-8 h-8 flex items-center justify-center rounded-full cursor-pointer transition-all duration-200"
+							title="Previous node"
+						>
+							<ChevronLeft className="w-4 h-4 text-icon-primary" />
+						</button>
+						<button
+							onClick={() => {
+								const currentIndex = nodes.findIndex(node => node.id === selectedNodeId);
+								if (currentIndex < nodes.length - 1) {
+									const nextNode = nodes[currentIndex + 1];
+									setSelectedNodeId(nextNode.id);
+									
+									// Navigate to next node
+									const flowNode = getNode(nextNode.id);
+									if (flowNode) {
+										const currentViewport = getViewport();
+										const container = document.querySelector('.react-flow__viewport');
+										if (container) {
+											const rect = container.getBoundingClientRect();
+											const oneThirdX = rect.width / 3;
+											const topPadding = 16;
+											const nodeCenterX = flowNode.position.x + (flowNode.data.isExpanded ? 280 : 140) / 2;
+											const newX = oneThirdX - nodeCenterX * currentViewport.zoom;
+											const newY = topPadding - flowNode.position.y * currentViewport.zoom;
+											
+											setViewport(
+												{ x: newX, y: newY, zoom: currentViewport.zoom },
+												{ duration: 500 }
+											);
+										}
+									}
+								}
+							}}
+							className="w-8 h-8 flex items-center justify-center rounded-full cursor-pointer transition-all duration-200"
+							title="Next node"
+						>
+							<ChevronRight className="w-4 h-4 text-icon-primary" />
+						</button>
+					</div>
+				</div>
 			</div>
 		</div>
 	);
