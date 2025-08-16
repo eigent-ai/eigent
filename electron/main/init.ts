@@ -68,6 +68,36 @@ export async function installCommandTool() {
                 }
             }
         }
+
+        // Install nodejs-bin for browser toolkit
+        if (isAllInstalled && (await isBinaryExists('uv'))) {
+            console.log('Checking nodejs-bin installation')
+            const uv_path = await getBinaryPath('uv')
+            const { stdout: toolList } = await execAsync(`${uv_path} tool list`)
+            
+            if (!toolList.includes('nodejs-bin')) {
+                console.log('Installing nodejs-bin...')
+                const mainWindow = getMainWindow();
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: 'Installing nodejs-bin...\n' });
+                }
+                
+                try {
+                    await execAsync(`${uv_path} tool install nodejs-bin`)
+                    console.log('nodejs-bin installed successfully')
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: 'nodejs-bin installed successfully\n' });
+                    }
+                } catch (error) {
+                    console.error('Failed to install nodejs-bin:', error)
+                    // Don't fail the entire installation if nodejs-bin fails
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('install-dependencies-log', { type: 'stderr', data: `Warning: Failed to install nodejs-bin: ${error}\n` });
+                    }
+                }
+            }
+        }
+
         resolve(isAllInstalled)
     })
 
