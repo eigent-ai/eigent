@@ -14,7 +14,7 @@ from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
 )
 from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import \
     WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper
-from app.component.command import bun, uv
+from app.component.command import bun, uv, get_node_executable, ensure_node_wrapper
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
@@ -90,7 +90,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         if not os.path.exists(node_modules_path):
             logger.warning("Node modules not found. Running npm install...")
             install_result = subprocess.run(
-                [uv(), "run", "npm", "install"],
+                [bun(), "install"],
                 cwd=self.ts_dir,
                 capture_output=True,
                 text=True,
@@ -105,7 +105,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
         # Ensure the TypeScript code is built
         build_result = subprocess.run(
-            [uv(), "run", "npm", "run", "build"],
+            [bun(), "run", "build"],
             cwd=self.ts_dir,
             capture_output=True,
             text=True,
@@ -121,9 +121,44 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     f"TypeScript build warnings: {build_result.stderr}")
             logger.info("TypeScript build completed successfully")
 
-        # Start the WebSocket server
+        # Start the WebSocket server with robust node detection
+        # First, try to ensure node wrapper exists for uv
+        ensure_node_wrapper()
+        
+        # Try different methods to run node
+        node_cmd = None
+        
+        # Method 1: Try uv run node (preferred if it works)
+        try:
+            test_result = subprocess.run(
+                [uv(), "run", "node", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=self.ts_dir
+            )
+            if test_result.returncode == 0:
+                node_cmd = [uv(), "run", "node", "websocket-server.js"]
+                logger.debug(f"Using uv to run node: {test_result.stdout.strip()}")
+        except Exception as e:
+            logger.debug(f"uv run node test failed: {e}")
+        
+        # Method 2: Use system node directly
+        if not node_cmd:
+            try:
+                node_exe = get_node_executable()
+                node_cmd = [node_exe, "websocket-server.js"]
+                logger.debug(f"Using system node directly: {node_exe}")
+            except Exception as e:
+                logger.error(f"Failed to find node executable: {e}")
+                raise RuntimeError(
+                    "Node.js is required but not found. "
+                    "Please install Node.js from https://nodejs.org/ "
+                    "or via Homebrew: 'brew install node'"
+                )
+        
         self.process = subprocess.Popen(
-            [uv(), "run", "node", "websocket-server.js"],  # bun not support playwright, use uv nodejs-bin
+            node_cmd,
             cwd=self.ts_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
