@@ -22,7 +22,7 @@ export default function Home() {
 	const chatStore = useChatStore();
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
-	window.ipcRenderer.on("webview-show", (_event, id: string) => {
+	window.ipcRenderer?.on("webview-show", (_event, id: string) => {
 		setActiveWebviewId(id);
 	});
 	useEffect(() => {
