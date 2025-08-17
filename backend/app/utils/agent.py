@@ -18,7 +18,7 @@ from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types.agents import ToolCallingRecord
 from app.component.environment import env
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from app.utils.toolkit.hybrid_browser_python_toolkit import HybridBrowserPythonToolkit
+from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.utils.toolkit.excel_toolkit import ExcelToolkit
 from app.utils.toolkit.file_write_toolkit import FileWriteToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
@@ -699,7 +699,7 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.task_id, Agents.search_agent).send_message_to_user
     )
 
-    web_toolkit_custom = HybridBrowserPythonToolkit(
+    web_toolkit_custom = HybridBrowserToolkit(
         options.task_id,
         headless=False,
         browser_log_to_file=True,
@@ -845,7 +845,7 @@ Your capabilities include:
         prune_tool_calls_from_memory=True,
         tool_names=[
             SearchToolkit.toolkit_name(),
-            HybridBrowserPythonToolkit.toolkit_name(),
+            HybridBrowserToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),

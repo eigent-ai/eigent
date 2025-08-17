@@ -36,6 +36,7 @@ export const BottomInput = ({
 	privacy,
 	isTakeControl,
 	setIsTakeControl,
+	useCloudModelInDev
 }: {
 	message: string;
 	onMessageChange: (v: string) => void;
@@ -49,11 +50,12 @@ export const BottomInput = ({
 	privacy?: boolean;
 	isTakeControl?: boolean;
 	setIsTakeControl?: (v: boolean) => void;
+	useCloudModelInDev: boolean;
 }) => {
 	const chatStore = useChatStore();
-
 	const [isConfirm, setIsConfirm] = useState(true);
 	const [hasSubTask, setHasSubTask] = useState(false);
+
 
 	useEffect(() => {
 		const message = chatStore.tasks[
@@ -111,9 +113,7 @@ export const BottomInput = ({
 		try {
 			const result = await window.electronAPI.selectFile({
 				title: "Select File",
-				filters: [
-					{ name: "All Files", extensions: ["*"] },
-				],
+				filters: [{ name: "All Files", extensions: ["*"] }],
 			});
 
 			if (result.success && result.files && result.files.length > 0) {
@@ -310,7 +310,7 @@ export const BottomInput = ({
 			) : (
 				<div className="mr-2 relative z-10  h-auto min-h-[82px] rounded-2xl bg-input-bg-default !px-2 !pb-2 gap-0 space-x-1 shadow-none border-solid border border-zinc-300">
 					<Textarea
-						disabled={!privacy || isPending}
+						disabled={!privacy || isPending || useCloudModelInDev}
 						ref={textareaRef}
 						value={message}
 						onChange={(e) => onMessageChange(e.target.value)}
@@ -384,7 +384,7 @@ export const BottomInput = ({
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-1">
 							<Button
-								disabled={!privacy || isPending}
+								disabled={!privacy || isPending || useCloudModelInDev}
 								onClick={handleFileSelect}
 								variant="ghost"
 								size="icon"
@@ -398,6 +398,7 @@ export const BottomInput = ({
 							</Button>
 						</div>
 						<Button
+							disabled={!privacy || isPending || useCloudModelInDev}
 							onClick={() => {
 								if (isPending) {
 									if (isTakeControl) {
