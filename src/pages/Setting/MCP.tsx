@@ -259,13 +259,14 @@ export default function SettingMCP() {
 				try {
 					data = JSON.parse(localJson);
 				} catch (e) {
-					alert("Invalid JSON");
+					toast.error("Invalid JSON", { closeButton: true });
 					setInstalling(false);
 					return;
 				}
 				let res = await proxyFetchPost("/api/mcp/import/local", data);
 				if (res.detail) {
-					alert("Invalid JSON");
+					toast.error("Invalid JSON", { closeButton: true });
+					setInstalling(false);
 					return;
 				}
 				if (window.ipcRenderer) {

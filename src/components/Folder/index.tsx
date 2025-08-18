@@ -279,6 +279,12 @@ export default function Folder({ data }: { data?: Agent }) {
 	]);
 
 	const hasFetchedRemote = useRef(false);
+	
+	// Reset hasFetchedRemote when activeTaskId changes
+	useEffect(() => {
+		hasFetchedRemote.current = false;
+	}, [chatStore.activeTaskId]);
+	
 	useEffect(() => {
 		const setFileList = async () => {
 			let res = null;
@@ -337,7 +343,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			});
 		};
 		setFileList();
-	}, [ chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
 	const handleBack = () => {
 		chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
 	};
