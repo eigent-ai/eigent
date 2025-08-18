@@ -18,6 +18,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     "openai>=1.99.3,<2",
     "traceroot>=0.0.4a9",
+    "nodejs-wheel>=22.18.0",
 ]
 
 
