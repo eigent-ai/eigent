@@ -763,38 +763,38 @@ const chatStore = create<ChatStore>()(
 						};
 						addFileList(taskId, agentMessages.data.process_task_id as string, fileInfo);
 
-						// Async file upload
-						if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-							(async () => {
-								try {
-									// Read file content using Electron API
-									const result = await window.ipcRenderer.invoke('read-file', file_path);
-									if (result.success && result.data) {
-										// Create FormData for file upload
-										const formData = new FormData();
-										const blob = new Blob([result.data], { type: 'application/octet-stream' });
-										formData.append('file', blob, fileName);
-										formData.append('task_id', taskId);
+						// // Async file upload
+						// if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
+						// 	(async () => {
+						// 		try {
+						// 			// Read file content using Electron API
+						// 			const result = await window.ipcRenderer.invoke('read-file', file_path);
+						// 			if (result.success && result.data) {
+						// 				// Create FormData for file upload
+						// 				const formData = new FormData();
+						// 				const blob = new Blob([result.data], { type: 'application/octet-stream' });
+						// 				formData.append('file', blob, fileName);
+						// 				formData.append('task_id', taskId);
 
-										// Upload file
-										await uploadFile('/api/chat/files/upload', formData);
-										console.log('File uploaded successfully:', fileName);
-									} else {
-										console.error('Failed to read file:', result.error);
-									}
-								} catch (error) {
-									console.error('File upload failed:', error);
-								}
-							})();
-						}
+						// 				// Upload file
+						// 				await uploadFile('/api/chat/files/upload', formData);
+						// 				console.log('File uploaded successfully:', fileName);
+						// 			} else {
+						// 				console.error('Failed to read file:', result.error);
+						// 			}
+						// 		} catch (error) {
+						// 			console.error('File upload failed:', error);
+						// 		}
+						// 	})();
+						// }
 
-						if (!type) {
-							// add remote file count
-							proxyFetchPost(`/api/user/stat`, {
-								"action": "file_generate_count",
-								"value": 1
-							})
-						}
+						// if (!type) {
+						// 	// add remote file count
+						// 	proxyFetchPost(`/api/user/stat`, {
+						// 		"action": "file_generate_count",
+						// 		"value": 1
+						// 	})
+						// }
 
 						return;
 					}
@@ -835,6 +835,49 @@ const chatStore = create<ChatStore>()(
 						Promise.all(tasks[taskId].snapshotsTemp.map((snapshot) =>
 							proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
 						));
+
+						// Async file upload
+						let res = await window.ipcRenderer.invoke(
+							"get-file-list",
+							email,
+							taskId as string
+						);
+						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
+
+							res.forEach((file: any) => {
+								console.log("file@@@@@@", file);
+								(async () => {
+									try {
+										// Read file content using Electron API
+										const result = await window.ipcRenderer.invoke('read-file', file.path);
+										if (result.success && result.data) {
+											// Create FormData for file upload
+											const formData = new FormData();
+											const blob = new Blob([result.data], { type: 'application/octet-stream' });
+											formData.append('file', blob, file.name);
+											formData.append('task_id', taskId);
+
+											// Upload file
+											await uploadFile('/api/chat/files/upload', formData);
+											console.log('File uploaded successfully:', file.name);
+										} else {
+											console.error('Failed to read file:', result.error);
+										}
+									} catch (error) {
+										console.error('File upload failed:', error);
+									}
+								})();
+							});
+							// add remote file count
+							proxyFetchPost(`/api/user/stat`, {
+								"action": "file_generate_count",
+								"value": res.length
+							})
+						}
+
+
+
+
 
 						if (!type && historyId) {
 							const obj = {
