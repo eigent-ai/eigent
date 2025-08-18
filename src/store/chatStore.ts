@@ -809,10 +809,9 @@ const chatStore = create<ChatStore>()(
 							taskId as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
-
-							res.forEach((file: any) => {
-								console.log("file@@@@@@", file);
-								(async () => {
+							// Upload files sequentially to avoid overwhelming the server
+							const uploadResults = await Promise.allSettled(
+								res.map(async (file: any) => {
 									try {
 										// Read file content using Electron API
 										const result = await window.ipcRenderer.invoke('read-file', file.path);
@@ -826,19 +825,38 @@ const chatStore = create<ChatStore>()(
 											// Upload file
 											await uploadFile('/api/chat/files/upload', formData);
 											console.log('File uploaded successfully:', file.name);
+											return { success: true, fileName: file.name };
 										} else {
 											console.error('Failed to read file:', result.error);
+											return { success: false, fileName: file.name, error: result.error };
 										}
 									} catch (error) {
 										console.error('File upload failed:', error);
+										return { success: false, fileName: file.name, error };
 									}
-								})();
-							});
-							// add remote file count
-							proxyFetchPost(`/api/user/stat`, {
-								"action": "file_generate_count",
-								"value": res.length
-							})
+								})
+							);
+
+							// Count successful uploads
+							const successCount = uploadResults.filter(
+								result => result.status === 'fulfilled' && result.value.success
+							).length;
+
+							// Log failures
+							const failures = uploadResults.filter(
+								result => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)
+							);
+							if (failures.length > 0) {
+								console.error('Failed to upload files:', failures);
+							}
+
+							// add remote file count for successful uploads only
+							if (successCount > 0) {
+								proxyFetchPost(`/api/user/stat`, {
+									"action": "file_generate_count",
+									"value": successCount
+								})
+							}
 						}
 
 
