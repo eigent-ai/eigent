@@ -153,13 +153,13 @@ function HeaderWin() {
 								<Button
 									variant="ghost"
 									size="sm"
-									className="font-bold text-base no-drag"
+									className="font-bold text-base no-drag max-w-56 truncate"
 									onClick={createNewProject}
 								>
 									{activeTaskTitle}
 								</Button>
 							) : (
-								<div className="font-bold leading-10 text-base ">
+								<div className="font-bold leading-10 text-base min-w-10 max-w-56 truncate">
 									{activeTaskTitle}
 								</div>
 							)}
