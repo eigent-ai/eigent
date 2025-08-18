@@ -15,6 +15,7 @@ from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
 from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import \
     WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper
 from app.component.command import bun, uv
+from app.component.nodejs_wrapper import get_node_command, run_node_with_nodejs_wheel
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
@@ -121,14 +122,30 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     f"TypeScript build warnings: {build_result.stderr}")
             logger.info("TypeScript build completed successfully")
 
-        # Start the WebSocket server
-        self.process = subprocess.Popen(
-            [uv(), "run", "node", "websocket-server.js"],  # bun not support playwright, use uv nodejs-bin
-            cwd=self.ts_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        # Start the WebSocket server using nodejs-wheel
+        try:
+            # First try nodejs-wheel
+            node_cmd = get_node_command()
+            node_cmd.append("websocket-server.js")
+            logger.info(f"Starting WebSocket server with command: {node_cmd}")
+            
+            self.process = subprocess.Popen(
+                node_cmd,
+                cwd=self.ts_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to use nodejs-wheel: {e}, falling back to uv")
+            # Fallback to uv run node
+            self.process = subprocess.Popen(
+                [uv(), "run", "node", "websocket-server.js"],
+                cwd=self.ts_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
 
         # Wait for server to output the port
         server_ready = False
