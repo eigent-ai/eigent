@@ -762,40 +762,6 @@ const chatStore = create<ChatStore>()(
 							icon: FileText,
 						};
 						addFileList(taskId, agentMessages.data.process_task_id as string, fileInfo);
-
-						// Async file upload
-						if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-							(async () => {
-								try {
-									// Read file content using Electron API
-									const result = await window.ipcRenderer.invoke('read-file', file_path);
-									if (result.success && result.data) {
-										// Create FormData for file upload
-										const formData = new FormData();
-										const blob = new Blob([result.data], { type: 'application/octet-stream' });
-										formData.append('file', blob, fileName);
-										formData.append('task_id', taskId);
-
-										// Upload file
-										await uploadFile('/api/chat/files/upload', formData);
-										console.log('File uploaded successfully:', fileName);
-									} else {
-										console.error('Failed to read file:', result.error);
-									}
-								} catch (error) {
-									console.error('File upload failed:', error);
-								}
-							})();
-						}
-
-						if (!type) {
-							// add remote file count
-							proxyFetchPost(`/api/user/stat`, {
-								"action": "file_generate_count",
-								"value": 1
-							})
-						}
-
 						return;
 					}
 
@@ -835,6 +801,67 @@ const chatStore = create<ChatStore>()(
 						Promise.all(tasks[taskId].snapshotsTemp.map((snapshot) =>
 							proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
 						));
+
+						// Async file upload
+						let res = await window.ipcRenderer.invoke(
+							"get-file-list",
+							email,
+							taskId as string
+						);
+						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
+							// Upload files sequentially to avoid overwhelming the server
+							const uploadResults = await Promise.allSettled(
+								res.map(async (file: any) => {
+									try {
+										// Read file content using Electron API
+										const result = await window.ipcRenderer.invoke('read-file', file.path);
+										if (result.success && result.data) {
+											// Create FormData for file upload
+											const formData = new FormData();
+											const blob = new Blob([result.data], { type: 'application/octet-stream' });
+											formData.append('file', blob, file.name);
+											formData.append('task_id', taskId);
+
+											// Upload file
+											await uploadFile('/api/chat/files/upload', formData);
+											console.log('File uploaded successfully:', file.name);
+											return { success: true, fileName: file.name };
+										} else {
+											console.error('Failed to read file:', result.error);
+											return { success: false, fileName: file.name, error: result.error };
+										}
+									} catch (error) {
+										console.error('File upload failed:', error);
+										return { success: false, fileName: file.name, error };
+									}
+								})
+							);
+
+							// Count successful uploads
+							const successCount = uploadResults.filter(
+								result => result.status === 'fulfilled' && result.value.success
+							).length;
+
+							// Log failures
+							const failures = uploadResults.filter(
+								result => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)
+							);
+							if (failures.length > 0) {
+								console.error('Failed to upload files:', failures);
+							}
+
+							// add remote file count for successful uploads only
+							if (successCount > 0) {
+								proxyFetchPost(`/api/user/stat`, {
+									"action": "file_generate_count",
+									"value": successCount
+								})
+							}
+						}
+
+
+
+
 
 						if (!type && historyId) {
 							const obj = {
