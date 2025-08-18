@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 from loguru import logger
-import traceroot
+from app.utils import traceroot_wrapper as traceroot
 from app.component import code
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat

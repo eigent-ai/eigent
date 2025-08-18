@@ -5,7 +5,7 @@ import asyncio
 import atexit
 from app import api
 from loguru import logger
-import traceroot
+from app.utils import traceroot_wrapper as traceroot
 from app.component.environment import auto_include_routers, env
 
 # Create traceroot logger for main application
