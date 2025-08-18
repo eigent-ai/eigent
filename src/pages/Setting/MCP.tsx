@@ -23,7 +23,7 @@ import { toast } from "sonner";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
-	const { checkAgentTool,email } = useAuthStore();
+	const { checkAgentTool, email } = useAuthStore();
 	const [items, setItems] = useState<MCPUserItem[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -110,7 +110,6 @@ export default function SettingMCP() {
 					const mcp = mcpMap[key as keyof typeof mcpMap];
 					if (mcp) {
 						onInstall = async () => {
-
 							const platform = await window.electronAPI.getPlatform();
 							const homeDir = await window.electronAPI.getHomeDir();
 
@@ -119,9 +118,11 @@ export default function SettingMCP() {
 									? `${homeDir}\\.eigent\\bin\\bun.exe x -y eigent-mcp-remote@0.1.22 https://mcp.notion.com/mcp`
 									: `${homeDir}/.eigent/bin/bun x -y eigent-mcp-remote@0.1.22 https://mcp.notion.com/mcp`;
 
-							let res=await window.electronAPI.executeCommand(command,email);
-							if(!res.success){
-								toast.error('Install MCP failed, please try again',{closeButton:true});
+							let res = await window.electronAPI.executeCommand(command, email);
+							if (!res.success) {
+								toast.error("Install MCP failed, please try again", {
+									closeButton: true,
+								});
 							}
 						};
 					} else {
@@ -262,7 +263,11 @@ export default function SettingMCP() {
 					setInstalling(false);
 					return;
 				}
-				await proxyFetchPost("/api/mcp/import/local", data);
+				let res = await proxyFetchPost("/api/mcp/import/local", data);
+				if (res.detail) {
+					alert("Invalid JSON");
+					return;
+				}
 				if (window.ipcRenderer) {
 					const mcpServers = data["mcpServers"];
 					Object.entries(mcpServers).forEach(async ([key, value]) => {
