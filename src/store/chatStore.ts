@@ -762,40 +762,6 @@ const chatStore = create<ChatStore>()(
 							icon: FileText,
 						};
 						addFileList(taskId, agentMessages.data.process_task_id as string, fileInfo);
-
-						// // Async file upload
-						// if (!type && file_path && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-						// 	(async () => {
-						// 		try {
-						// 			// Read file content using Electron API
-						// 			const result = await window.ipcRenderer.invoke('read-file', file_path);
-						// 			if (result.success && result.data) {
-						// 				// Create FormData for file upload
-						// 				const formData = new FormData();
-						// 				const blob = new Blob([result.data], { type: 'application/octet-stream' });
-						// 				formData.append('file', blob, fileName);
-						// 				formData.append('task_id', taskId);
-
-						// 				// Upload file
-						// 				await uploadFile('/api/chat/files/upload', formData);
-						// 				console.log('File uploaded successfully:', fileName);
-						// 			} else {
-						// 				console.error('Failed to read file:', result.error);
-						// 			}
-						// 		} catch (error) {
-						// 			console.error('File upload failed:', error);
-						// 		}
-						// 	})();
-						// }
-
-						// if (!type) {
-						// 	// add remote file count
-						// 	proxyFetchPost(`/api/user/stat`, {
-						// 		"action": "file_generate_count",
-						// 		"value": 1
-						// 	})
-						// }
-
 						return;
 					}
 
