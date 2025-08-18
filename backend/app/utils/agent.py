@@ -5,7 +5,7 @@ from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
-import traceroot
+from app.utils import traceroot_wrapper as traceroot
 from camel.agents import ChatAgent
 from camel.agents.chat_agent import StreamingChatAgentResponse, AsyncStreamingChatAgentResponse
 from camel.agents._types import ToolCallRequest
