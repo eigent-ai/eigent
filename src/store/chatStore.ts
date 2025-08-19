@@ -38,6 +38,7 @@ interface Task {
 	snapshots: any[];
 	snapshotsTemp: any[];
 	isTakeControl: boolean;
+	isTaskEdit: boolean;
 }
 
 interface ChatStore {
@@ -91,6 +92,7 @@ interface ChatStore {
 	setSnapshots: (taskId: string, snapshots: any[]) => void,
 	setIsTakeControl: (taskId: string, isTakeControl: boolean) => void,
 	setSnapshotsTemp: (taskId: string, snapshot: any) => void,
+	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
 }
 
 
@@ -137,7 +139,8 @@ const chatStore = create<ChatStore>()(
 						selectedFile: null,
 						snapshots: [],
 						snapshotsTemp: [],
-						isTakeControl: false
+						isTakeControl: false,
+						isTaskEdit: false
 					},
 				}
 			}))
@@ -326,9 +329,24 @@ const chatStore = create<ChatStore>()(
 					// if (tasks[taskId].status === 'finished') return
 
 					if (agentMessages.step === "to_sub_tasks") {
+
+
 						const messages = [...tasks[taskId].messages]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
 						if (toSubTaskIndex === -1) {
+							// 30 seconds auto confirm
+							setTimeout(() => {
+								const { tasks, handleConfirmTask, setIsTaskEdit } = get();
+								const message = tasks[taskId].messages.findLast((item) => item.step === "to_sub_tasks");
+								const isConfirm = message?.isConfirm || false;
+								const isTakeControl =
+									tasks[taskId].isTakeControl;
+								if (!isConfirm && !isTakeControl && !tasks[taskId].isTaskEdit) {
+									handleConfirmTask(taskId);
+								}
+								setIsTaskEdit(taskId, false);
+							}, 30000);
+
 							const newNoticeMessage: Message = {
 								id: generateUniqueId(),
 								role: "agent",
@@ -1585,6 +1603,18 @@ const chatStore = create<ChatStore>()(
 					},
 				}
 			})
+		},
+		setIsTaskEdit(taskId: string, isTaskEdit: boolean) {
+			set((state) => ({
+				...state,
+				tasks: {
+					...state.tasks,
+					[taskId]: {
+						...state.tasks[taskId],
+						isTaskEdit
+					},
+				},
+			}))
 		},
 	})
 );
