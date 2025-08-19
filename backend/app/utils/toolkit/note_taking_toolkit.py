@@ -5,6 +5,7 @@ from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from typing import Optional
 
 
 class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
@@ -29,8 +30,8 @@ class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
         return super().append_note(note_name=note_name, content=content)
 
     @listen_toolkit(BaseNoteTakingToolkit.read_note)
-    def read_note(self) -> str:
-        return super().read_note()
+    def read_note(self, note_name: Optional[str] = "all_notes") -> str:
+        return super().read_note(note_name=note_name)
 
     @listen_toolkit(BaseNoteTakingToolkit.create_note)
     def create_note(self, note_name: str, content: str = "") -> str:
