@@ -67,7 +67,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
-          path: release/
+          path: |
+            release/*
+            !release/builder-debug.yml
+            !release/builder-effective-config.yaml
           retention-days: 5
   merge-release:
     needs: build
