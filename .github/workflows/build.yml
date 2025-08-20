@@ -25,6 +25,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, macos-13, windows-latest]
+        arch: [x64, arm64]
 
     steps:
       - name: Checkout Code
@@ -48,10 +49,8 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-    
-
       - name: Build Release Files
-        run: npm run build
+        run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
@@ -73,18 +72,11 @@ jobs:
           mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
 
           # 移动 macOS 文件
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            if [[ "${{ matrix.arch }}" == "x64" ]]; then
-              mv release/latest-mac.yml release/mac-x64/
-              mv release/*.blockmap release/mac-x64/ || true
-              mv release/*.dmg release/mac-x64/ || true
-              mv release/*.zip release/mac-x64/ || true
-            else
-              mv release/latest-mac.yml release/mac-arm64/
-              mv release/*.blockmap release/mac-arm64/ || true
-              mv release/*.dmg release/mac-arm64/ || true
-              mv release/*.zip release/mac-arm64/ || true
-            fi
+          if [[ "${{ matrix.os }}" == macos-* ]]; then
+            mv release/latest-mac.yml release/mac-${{ matrix.arch }}/
+            mv release/*.dmg release/mac-${{ matrix.arch }}/ || true
+            mv release/*.zip release/mac-${{ matrix.arch }}/ || true
+            mv release/*.blockmap release/mac-${{ matrix.arch }}/ || true
           fi
 
           # 移动 Windows 文件
