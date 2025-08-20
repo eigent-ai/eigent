@@ -20,11 +20,18 @@
       "schemes": ["eigent"]
     }
   ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "eigent-ai",
+      "repo": "eigent",
+      "releaseType": "release"
+    }
+  ],
   "icon": "build/icon.ico",
   "afterSign": "./config/notarize.cjs",
   "mac": {
     "icon": "build/icon.icns",
-    "artifactName": "${productName}_${os}_${arch}.${ext}",
     "target": ["dmg", "zip"],
     "entitlements": "entitlements.mac.plist",
     "entitlementsInherit": "entitlements.mac.plist",
@@ -38,14 +45,7 @@
           "CFBundleURLSchemes": ["eigent"]
         }
       ]
-    },
-    "publish": [
-      {
-        "provider": "generic",
-        "channel": "latest",
-        "url": "http://dev.eigent.ai/public/mac_${arch}"
-      }
-    ]
+    }
   },
   "win": {
     "icon": "build/icon.ico",
@@ -53,14 +53,6 @@
       {
         "target": "nsis",
         "arch": ["x64"]
-      }
-    ],
-    "artifactName": "${productName}_${os}_${arch}.${ext}",
-    "publish": [
-      {
-        "provider": "generic",
-        "channel": "latest",
-        "url": "http://dev.eigent.ai/public/win"
       }
     ]
   },
