@@ -105,6 +105,7 @@ jobs:
 
       # 移动文件到最终 release 目录，并去掉内部多余的 release/ 目录
       - name: Move files to clean folders
+        shell: bash
         run: |
           # mac-x64
           if [ -d "temp-mac-x64/release" ]; then
