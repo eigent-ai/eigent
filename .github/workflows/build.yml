@@ -123,6 +123,11 @@ jobs:
             mv temp-win-x64/* release/win-x64/ || true
           fi
 
+      - name: Rename duplicate files
+        run: |
+          mv release/mac-x64/latest-mac.yml release/mac-x64/latest-mac-x64.yml || true
+          mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-mac-arm64.yml || true
+          
       # 最终创建 GitHub Release
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
