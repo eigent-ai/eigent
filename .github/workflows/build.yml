@@ -63,6 +63,10 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
+          VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
+          VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -127,7 +131,7 @@ jobs:
         run: |
           mv release/mac-x64/latest-mac.yml release/mac-x64/latest-mac-x64.yml || true
           mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-mac-arm64.yml || true
-          
+
       # 最终创建 GitHub Release
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
