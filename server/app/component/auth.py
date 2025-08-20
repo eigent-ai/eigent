@@ -39,17 +39,36 @@ class Auth:
             id = payload["id"]
             if payload["exp"] < int(datetime.now().timestamp()):
                 raise TokenException(code.token_expired, _("Validate credentials expired"))
+            # Accept both old tokens (without type) and new tokens (with type)
+            # Old tokens are treated as access tokens for backward compatibility
+            token_type = payload.get("type", "access")
+            if token_type not in ["access", "refresh"]:
+                raise TokenException(code.token_invalid, _("Invalid token type"))
         except InvalidTokenError:
             raise TokenException(code.token_invalid, _("Could not validate credentials"))
         return Auth(id, payload["exp"])
 
     @classmethod
     def create_access_token(cls, user_id: int, expires_delta: timedelta | None = None):
-        to_encode: dict = {"id": user_id}
+        to_encode: dict = {"id": user_id, "type": "access"}
         if expires_delta:
             expire = datetime.now() + expires_delta
         else:
-            expire = datetime.now() + timedelta(days=30)
+            # Get expiration from environment or default to 1 hour
+            expiration_seconds = int(env("JWT_EXPIRATION", "3600"))
+            expire = datetime.now() + timedelta(seconds=expiration_seconds)
+        to_encode.update({"exp": expire})
+        encoded_jwt = jwt.encode(to_encode, Auth.SECRET_KEY, algorithm="HS256")
+        return encoded_jwt
+    
+    @classmethod
+    def create_refresh_token(cls, user_id: int, expires_delta: timedelta | None = None):
+        to_encode: dict = {"id": user_id, "type": "refresh"}
+        if expires_delta:
+            expire = datetime.now() + expires_delta
+        else:
+            # Refresh tokens last 7 days by default
+            expire = datetime.now() + timedelta(days=7)
         to_encode.update({"exp": expire})
         encoded_jwt = jwt.encode(to_encode, Auth.SECRET_KEY, algorithm="HS256")
         return encoded_jwt
