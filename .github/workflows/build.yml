@@ -24,8 +24,13 @@ jobs:
 
     strategy:
       matrix:
-        os: [macos-latest, macos-13, windows-latest]
-        arch: [x64, arm64]
+        include:
+          - os: macos-latest
+            arch: arm64
+          - os: macos-13
+            arch: x64
+          - os: windows-latest
+            arch: x64 
 
     steps:
       - name: Checkout Code
