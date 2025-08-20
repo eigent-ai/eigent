@@ -42,7 +42,11 @@ jobs:
         run: npm run build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          CSC_LINK: ${{ secrets.CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -50,14 +54,41 @@ jobs:
           path: release/
           retention-days: 5
 
+      - name: Prepare Update Files
+        run: |
+          # 创建目录
+          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
+
+          # 移动 macOS 文件
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            if [[ "${{ matrix.arch }}" == "x64" ]]; then
+              mv release/latest-mac.yml release/mac-x64/
+              mv release/*.blockmap release/mac-x64/ || true
+              mv release/*.dmg release/mac-x64/ || true
+              mv release/*.zip release/mac-x64/ || true
+            else
+              mv release/latest-mac.yml release/mac-arm64/
+              mv release/*.blockmap release/mac-arm64/ || true
+              mv release/*.dmg release/mac-arm64/ || true
+              mv release/*.zip release/mac-arm64/ || true
+            fi
+          fi
+
+          # 移动 Windows 文件
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            mv release/latest.yml release/win-x64/
+            mv release/*.blockmap release/win-x64/ || true
+            mv release/*.exe release/win-x64/ || true
+          fi
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release/*.exe
-            release/*.dmg
-            release/*.zip
+            release/mac-x64/*
+            release/mac-arm64/*
+            release/win-x64/*
           draft: false
           prerelease: false
         env:
