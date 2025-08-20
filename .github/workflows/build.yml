@@ -30,7 +30,7 @@ jobs:
           - os: macos-13
             arch: x64
           - os: windows-latest
-            arch: x64 
+            arch: x64
 
     steps:
       - name: Checkout Code
@@ -44,8 +44,8 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-              
+          python-version: "3.11"
+
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -66,32 +66,62 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release_on_${{ matrix.os }}
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: release/
           retention-days: 5
-
-      - name: Prepare Update Files
-        shell: bash
+  merge-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create directories
         run: |
-          # 创建目录
           mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
 
-          # 移动 macOS 文件
-          if [[ "${{ matrix.os }}" == macos-* ]]; then
-            mv release/latest-mac.yml release/mac-${{ matrix.arch }}/
-            mv release/*.dmg release/mac-${{ matrix.arch }}/ || true
-            mv release/*.zip release/mac-${{ matrix.arch }}/ || true
-            mv release/*.blockmap release/mac-${{ matrix.arch }}/ || true
+      # 下载所有 artifact
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-13-x64
+          path: temp-mac-x64
+
+      - name: Download mac-arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-latest-arm64
+          path: temp-mac-arm64
+
+      - name: Download win-x64
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-latest-x64
+          path: temp-win-x64
+
+      # 移动文件到最终 release 目录，并去掉内部多余的 release/ 目录
+      - name: Move files to clean folders
+        run: |
+          # mac-x64
+          if [ -d "temp-mac-x64/release" ]; then
+            mv temp-mac-x64/release/* release/mac-x64/ || true
+          else
+            mv temp-mac-x64/* release/mac-x64/ || true
           fi
 
-          # 移动 Windows 文件
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            mv release/latest.yml release/win-x64/
-            mv release/*.blockmap release/win-x64/ || true
-            mv release/*.exe release/win-x64/ || true
+          # mac-arm64
+          if [ -d "temp-mac-arm64/release" ]; then
+            mv temp-mac-arm64/release/* release/mac-arm64/ || true
+          else
+            mv temp-mac-arm64/* release/mac-arm64/ || true
           fi
 
-      - name: Create Release
+          # win-x64
+          if [ -d "temp-win-x64/release" ]; then
+            mv temp-win-x64/release/* release/win-x64/ || true
+          else
+            mv temp-win-x64/* release/win-x64/ || true
+          fi
+
+      # 最终创建 GitHub Release
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
@@ -99,7 +129,5 @@ jobs:
             release/mac-x64/*
             release/mac-arm64/*
             release/win-x64/*
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
