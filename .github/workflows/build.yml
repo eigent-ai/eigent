@@ -67,6 +67,7 @@ jobs:
           retention-days: 5
 
       - name: Prepare Update Files
+        shell: bash
         run: |
           # 创建目录
           mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
