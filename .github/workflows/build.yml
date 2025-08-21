@@ -58,8 +58,8 @@ jobs:
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ matrix.os == 'macos-latest' || matrix.os == 'macos-13' && secrets.CERT_P12 }}
-          CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' || matrix.os == 'macos-13' && secrets.CERT_PASSWORD }}
+          CSC_LINK: ${{ (matrix.os == 'macos-latest' || matrix.os == 'macos-13') && secrets.CERT_P12 || '' }}
+          CSC_KEY_PASSWORD: ${{ (matrix.os == 'macos-latest' || matrix.os == 'macos-13') && secrets.CERT_PASSWORD || '' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
