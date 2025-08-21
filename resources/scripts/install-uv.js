@@ -71,7 +71,7 @@ async function downloadUvBinary(
 	try {
 		console.log(`Downloading uv ${version} for ${platformKey}...`);
 		console.log(`URL: ${downloadUrl}`);
-
+		if (fs.existsSync(tempFilename)) fs.unlinkSync(tempFilename)
 		await downloadWithRedirects(downloadUrl, tempFilename);
 
 		console.log(`Extracting ${packageName} to ${binDir}...`);

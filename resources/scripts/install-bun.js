@@ -58,7 +58,7 @@ async function downloadBunBinary(bun_download_url,platform, arch, version = DEFA
   try {
     console.log(`Downloading bun ${version} for ${platformKey}...`)
     console.log(`URL: ${downloadUrl}`)
-
+    if (fs.existsSync(tempFilename)) fs.unlinkSync(tempFilename)
     // Use the new download function
     await downloadWithRedirects(downloadUrl, tempFilename)
 

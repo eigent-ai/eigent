@@ -213,7 +213,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.stop()
         except Exception as e:
             logger.error(f"Error processing action {item.action}: {e}")
-            raise e
+            yield sse_json("error", {"message": str(e)})
             # Continue processing other items instead of breaking
 
 
