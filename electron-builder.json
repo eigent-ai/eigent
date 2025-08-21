@@ -6,10 +6,10 @@
   "directories": {
     "output": "release"
   },
-  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__"],
+  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__","!server","!docs"],
   "extraResources": [
     {
-      "from": "backend",
+      "from": "backend",  
       "to": "backend",
       "filter": ["**/*", "!.venv/**/*"]
     }
