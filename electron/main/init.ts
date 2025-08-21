@@ -180,8 +180,8 @@ export async function installDependencies() {
         fs.writeFileSync(installingLockPath, '')
 
         const installedLockPath = path.join(backendPath, 'uv_installed.lock')
-        const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
-
+        // const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
+        const proxyArgs = ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
         const runInstall = (extraArgs: string[]) => {
             return new Promise<boolean>((resolveInner) => {
                 const node_process = spawn(uv_path, [
