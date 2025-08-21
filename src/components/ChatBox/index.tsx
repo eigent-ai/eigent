@@ -1,17 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { fetchPost } from "@/api/http";
-import { Button } from "@/components/ui/button";
 import { BottomInput } from "./BottomInput";
 import { TaskCard } from "./TaskCard";
 import { MessageCard } from "./MessageCard";
 import { TypeCardSkeleton } from "./TypeCardSkeleton";
-import {
-	Smartphone,
-	Workflow,
-	CircleDollarSign,
-	FileText,
-	TriangleAlert,
-} from "lucide-react";
+import { FileText, TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
 import { useChatStore } from "@/store/chatStore";
 import { proxyFetchGet } from "@/api/http";
@@ -31,7 +24,6 @@ export default function ChatBox(): JSX.Element {
 	const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
 	const { modelType } = useAuthStore();
 	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
-
 	useEffect(() => {
 		if (
 			import.meta.env.VITE_USE_LOCAL_PROXY === "true" &&
@@ -200,26 +192,23 @@ export default function ChatBox(): JSX.Element {
 	}, [scrollContainerRef.current?.scrollHeight]);
 
 	const [loading, setLoading] = useState(false);
-	const handleConfirmTask = async () => {
-		const taskId = chatStore.activeTaskId;
-		if (!taskId) return;
+	const handleConfirmTask = async (taskId?: string) => {
+		const _taskId = taskId || chatStore.activeTaskId;
+		if (!_taskId) return;
 		setLoading(true);
-		await chatStore.handleConfirmTask(taskId);
+		await chatStore.handleConfirmTask(_taskId);
 		setLoading(false);
 	};
 
 	const [hasSubTask, setHasSubTask] = useState(false);
 
 	useEffect(() => {
-		setHasSubTask(
-			chatStore.tasks[chatStore.activeTaskId as string]?.messages?.find(
-				(message) => {
-					return message.step === "to_sub_tasks";
-				}
-			)
-				? true
-				: false
-		);
+		const _hasSubTask = chatStore.tasks[
+			chatStore.activeTaskId as string
+		]?.messages?.find((message) => message.step === "to_sub_tasks")
+			? true
+			: false;
+		setHasSubTask(_hasSubTask);
 	}, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages]);
 
 	useEffect(() => {
@@ -437,13 +426,18 @@ export default function ChatBox(): JSX.Element {
 													chatStore.tasks[chatStore.activeTaskId].summaryTask ||
 													""
 												}
-												onAddTask={() => chatStore.addTaskInfo()}
-												onUpdateTask={(taskIndex, content) =>
-													chatStore.updateTaskInfo(taskIndex, content)
-												}
-												onDeleteTask={(taskIndex) =>
-													chatStore.deleteTaskInfo(taskIndex)
-												}
+												onAddTask={() => {
+													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.addTaskInfo();
+												}}
+												onUpdateTask={(taskIndex, content) => {
+													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.updateTaskInfo(taskIndex, content);
+												}}
+												onDeleteTask={(taskIndex) => {
+													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.deleteTaskInfo(taskIndex);
+												}}
 											/>
 										);
 									}
@@ -582,37 +576,39 @@ export default function ChatBox(): JSX.Element {
 									</div>
 								)
 							)}
-							{!useCloudModelInDev && privacy && (hasSearchKey || modelType === "cloud") && (
-								<div className="mr-2 flex flex-col items-center gap-2">
-									{[
-										{
-											label: "Palm Springs Tennis Trip Planner",
-											message:
-												"I am two tennis fans and want to go see the tennis tournament in palm springs. l live in SF - please prepare a detailed itinerary with flights, hotels, things to do for 3 days - around the time semifinal/finals are happening. We like hiking, vegan food and spas. Our budget is $5K. The itinerary should be a detailed timeline of time, activity, cost, other details and if applicable a link to buy tickets/make reservations etc. for the item. Some preferences 1.Spa access would be nice but not necessary 2. When you finnish this task, please generate a html report about this trip.",
-										},
-										{
-											label: "Bank Transfer CSV Analysis and Visualization",
-											message:
-												"Create a mock bank transfer CSV file include 10 columns and 10 rows. Read the generated CSV file and summarize the data, generate a chart to visualize relevant trends or insights from the data.",
-										},
-										{
-											label: "Find Duplicate Files in Downloads Folder",
-											message:
-												"Help me find duplicate files by content, size, and format in my downloads folder.",
-										},
-									].map(({ label, message }) => (
-										<div
-											key={label}
-											className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
-											onClick={() => {
-												setMessage(message);
-											}}
-										>
-											<span>{label}</span>
-										</div>
-									))}
-								</div>
-							)}
+							{!useCloudModelInDev &&
+								privacy &&
+								(hasSearchKey || modelType === "cloud") && (
+									<div className="mr-2 flex flex-col items-center gap-2">
+										{[
+											{
+												label: "Palm Springs Tennis Trip Planner",
+												message:
+													"I am two tennis fans and want to go see the tennis tournament in palm springs. l live in SF - please prepare a detailed itinerary with flights, hotels, things to do for 3 days - around the time semifinal/finals are happening. We like hiking, vegan food and spas. Our budget is $5K. The itinerary should be a detailed timeline of time, activity, cost, other details and if applicable a link to buy tickets/make reservations etc. for the item. Some preferences 1.Spa access would be nice but not necessary 2. When you finnish this task, please generate a html report about this trip.",
+											},
+											{
+												label: "Bank Transfer CSV Analysis and Visualization",
+												message:
+													"Create a mock bank transfer CSV file include 10 columns and 10 rows. Read the generated CSV file and summarize the data, generate a chart to visualize relevant trends or insights from the data.",
+											},
+											{
+												label: "Find Duplicate Files in Downloads Folder",
+												message:
+													"Help me find duplicate files by content, size, and format in my downloads folder.",
+											},
+										].map(({ label, message }) => (
+											<div
+												key={label}
+												className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
+												onClick={() => {
+													setMessage(message);
+												}}
+											>
+												<span>{label}</span>
+											</div>
+										))}
+									</div>
+								)}
 						</div>
 					</div>
 				</div>

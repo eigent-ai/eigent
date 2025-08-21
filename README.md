@@ -118,6 +118,9 @@ npm install
 npm run dev
 ```
 
+#### 3. Local Development (Use the version that is completely separated from the cloud service)
+[server/README_EN.md](./server/README_EN.md)
+
 ### 🏢 Enterprise
 
 For organizations requiring maximum security, customization, and control:
