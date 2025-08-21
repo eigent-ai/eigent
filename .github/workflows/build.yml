@@ -54,12 +54,14 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Build Release Files
+      # Step for macOS builds with signing
+      - name: Build Release Files (macOS with signing)
+        if: runner.os == 'macOS'
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ (matrix.os == 'macos-latest' || matrix.os == 'macos-13') && secrets.CERT_P12 || '' }}
-          CSC_KEY_PASSWORD: ${{ (matrix.os == 'macos-latest' || matrix.os == 'macos-13') && secrets.CERT_PASSWORD || '' }}
+          CSC_LINK: ${{ secrets.CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.CERT_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -67,6 +69,19 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+
+      # Step for Windows builds without signing
+      - name: Build Release Files (Windows without signing)
+        if: runner.os == 'Windows'
+        run: npm run build -- --arch ${{ matrix.arch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signing variables (CSC_LINK, CSC_KEY_PASSWORD) are omitted for Windows
+          VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
+          VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
+          VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
