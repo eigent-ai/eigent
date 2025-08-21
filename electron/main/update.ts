@@ -42,7 +42,7 @@ export function update(win: Electron.BrowserWindow) {
     owner: 'eigent-ai',
     repo: 'eigent',
     releaseType: 'release',
-    channel: process.arch === 'arm64' ? 'latest-mac-arm64.yml' : 'latest-mac-x64.yml'
+    channel: process.platform === 'darwin' ? (process.arch === 'arm64' ? 'latest-mac-arm64' : 'latest-mac-x64') : 'latest'
   }
 
   autoUpdater.setFeedURL(feed)
