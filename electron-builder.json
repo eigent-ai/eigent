@@ -49,6 +49,7 @@
   },
   "win": {
     "icon": "build/icon.ico",
+    "artifactName": "${productName}.Setup.${version}.${ext}",
     "target": [
       {
         "target": "nsis",
@@ -64,7 +65,7 @@
     "deleteAppDataOnUninstall": false,
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
-    "installerHeaderIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico", 
     "include": "build/installer.nsh"
   }
 }
