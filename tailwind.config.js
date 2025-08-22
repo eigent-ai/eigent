@@ -534,6 +534,12 @@ module.exports = {
 				"bg-dark-default": "var(--bg-dark-default)",
 				"bg-page-default": "var(--bg-page-default)",
 			},
+			screens: {
+				// width < 1200
+				"max-lg": { max: "1199px" },
+				// height < 800
+				short: { raw: "(max-height: 800px)" },
+			},
 			boxShadow: {
 				"history-item": "0px 3px 4px -1px rgba(0, 0, 0, 0.10)",
 			},
