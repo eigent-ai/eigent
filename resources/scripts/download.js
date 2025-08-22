@@ -27,11 +27,44 @@ export async function downloadWithRedirects(url, destinationPath) {
             reject(new Error(`Download failed: ${response.statusCode} ${response.statusMessage}`))
             return
           }
+          
           const file = fs.createWriteStream(destinationPath)
+          let downloadedBytes = 0
+          const expectedBytes = parseInt(response.headers['content-length'] || '0')
+          
+          response.on('data', (chunk) => {
+            downloadedBytes += chunk.length
+          })
+          
           response.pipe(file)
+          
           file.on('finish', () => {
+            file.close(() => {
+              clearTimeout(timeout);
+              
+              // Verify the download is complete
+              if (expectedBytes > 0 && downloadedBytes !== expectedBytes) {
+                fs.unlinkSync(destinationPath)
+                reject(new Error(`Download incomplete: received ${downloadedBytes} bytes, expected ${expectedBytes}`))
+                return
+              }
+              
+              // Check if file exists and has size > 0
+              const stats = fs.statSync(destinationPath)
+              if (stats.size === 0) {
+                fs.unlinkSync(destinationPath)
+                reject(new Error('Downloaded file is empty'))
+                return
+              }
+              
+              resolve()
+            })
+          })
+          
+          file.on('error', (err) => {
             clearTimeout(timeout);
-            resolve()
+            fs.unlinkSync(destinationPath)
+            reject(err)
           })
         })
         .on('error', (err) => {
