@@ -281,9 +281,9 @@ def create_task_lock(id: str) -> TaskLock:
     task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
 
     # Start cleanup task if not running
-    global _cleanup_task
-    if _cleanup_task is None or _cleanup_task.done():
-        _cleanup_task = asyncio.create_task(_periodic_cleanup())
+    # global _cleanup_task
+    # if _cleanup_task is None or _cleanup_task.done():
+    #     _cleanup_task = asyncio.create_task(_periodic_cleanup())
 
     return task_locks[id]
 
