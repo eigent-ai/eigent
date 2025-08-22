@@ -213,7 +213,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.stop()
         except Exception as e:
             logger.error(f"Error processing action {item.action}: {e}")
-            raise e
+            yield sse_json("error", {"message": str(e)})
             # Continue processing other items instead of breaking
 
 
@@ -239,6 +239,7 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
         return []
     return (
         chain(sub_tasks)
+        .filter(lambda x: x.content != "")
         .map(
             lambda x: {
                 "id": x.id,
