@@ -58,7 +58,7 @@ async function downloadBunBinary(bun_download_url,platform, arch, version = DEFA
   try {
     console.log(`Downloading bun ${version} for ${platformKey}...`)
     console.log(`URL: ${downloadUrl}`)
-
+    if (fs.existsSync(tempFilename)) fs.unlinkSync(tempFilename)
     // Use the new download function
     await downloadWithRedirects(downloadUrl, tempFilename)
 
@@ -158,6 +158,8 @@ async function installBun() {
 
   const isInstalled = await downloadBunBinary(BUN_RELEASE_BASE_URL,platform, arch, version, isMusl, isBaseline)
   if(!isInstalled){
+    // Wait for the file lock handle to be released
+    await new Promise(r => setTimeout(r, 200))
     console.log('Downloading bun from gitcode.com')
     await downloadBunBinary('https://gitcode.com/CherryHQ/bun/releases/download',platform, arch, version, isMusl, isBaseline)
   }
