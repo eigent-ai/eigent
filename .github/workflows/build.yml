@@ -145,8 +145,8 @@ jobs:
 
       - name: Rename duplicate files
         run: |
-          mv release/mac-x64/latest-mac.yml release/mac-x64/latest-mac-x64.yml || true
-          mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-mac-arm64.yml || true
+          mv release/mac-x64/latest-mac.yml release/mac-x64/latest-x64-mac.yml || true
+          mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-arm64-mac.yml || true
 
       # 最终创建 GitHub Release
       - name: Create GitHub Release
