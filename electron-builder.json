@@ -6,7 +6,7 @@
   "directories": {
     "output": "release"
   },
-  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images"],
+  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__"],
   "extraResources": [
     {
       "from": "backend",

@@ -269,7 +269,7 @@ const handleDependencyInstallation = async () => {
 
     log.info(' install dependencies success, check tool installed status...');
     const isToolInstalled = await checkToolInstalled();
-
+    log.info('isToolInstalled && !python_process', isToolInstalled && !python_process);
     if (isToolInstalled && !python_process) {
       log.info(' tool installed, start backend service...');
       python_process = await startBackend((port) => {
@@ -304,7 +304,10 @@ const handleDependencyInstallation = async () => {
 
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
-  ipcMain.handle('get-browser-port', () => browser_port);
+  ipcMain.handle('get-browser-port', () => {
+    log.info('Starting new task')
+    return browser_port
+  });
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
   ipcMain.handle('get-system-language', getSystemLanguage);
@@ -461,7 +464,7 @@ function registerIpcHandlers() {
       const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
       const logFolderName = `task_${sanitizedTaskId}`;
       const logFolderPath = path.join(MCP_REMOTE_CONFIG_DIR, logFolderName);
-      
+
       // Check if log folder exists
       if (!fs.existsSync(logFolderPath)) {
         return { success: false, error: 'Log folder not found' };
@@ -902,6 +905,8 @@ async function createWindow() {
     title: 'Eigent',
     width: 1200,
     height: 800,
+    minWidth: 1200,
+    minHeight: 800,
     frame: false,
     transparent: true,
     vibrancy: 'sidebar',
@@ -1041,7 +1046,7 @@ const cleanupPythonProcess = async () => {
     if (python_process?.pid) {
       const pid = python_process.pid;
       log.info('Cleaning up Python process', { pid });
-      
+
       await new Promise<void>((resolve) => {
         kill(pid, 'SIGINT', (err) => {
           if (err) {
@@ -1068,7 +1073,7 @@ const cleanupPythonProcess = async () => {
         log.error('Error handling port file:', error);
       }
     }
-    
+
     python_process = null;
   } catch (error) {
     log.error('Error occurred while cleaning up process:', error);

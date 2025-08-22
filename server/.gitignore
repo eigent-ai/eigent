@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.mo
+
+# Virtual environments
+.venv
+.env
+
+runtime
+
+app/public/upload/
+
+uv.lock

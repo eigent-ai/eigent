@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	ChevronsLeft,
 	Search,
@@ -84,8 +84,10 @@ const FileTree: React.FC<FileTreeProps> = ({
 									onSelectFile(fileInfo);
 								}
 							}}
-							className={`w-full flex items-center gap-2 p-2 text-sm rounded-md bg-transparent text-primary hover:bg-white-50 transition-colors text-left ${
-								selectedFile?.path === child.path && "bg-white-50"
+							className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
+								selectedFile?.path === child.path
+									? "bg-fill-fill-transparent-active"
+									: ""
 							}`}
 						>
 							{child.isFolder && (
@@ -100,11 +102,11 @@ const FileTree: React.FC<FileTreeProps> = ({
 							{!child.isFolder && <span className="w-4" />}
 
 							{child.isFolder ? (
-								<FolderIcon className="w-5 h-5 flex-shrink-0 text-yellow-600" />
+								<FolderIcon className="w-5 h-5 mr-2flex-shrink-0 text-yellow-600" />
 							) : child.icon ? (
-								<child.icon className="w-5 h-5 flex-shrink-0" />
+								<child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
 							) : (
-								<FileText className="w-5 h-5 flex-shrink-0" />
+								<FileText className="w-5 h-5 mr-2 flex-shrink-0" />
 							)}
 
 							<span
@@ -275,6 +277,14 @@ export default function Folder({ data }: { data?: Agent }) {
 			files: [],
 		},
 	]);
+
+	const hasFetchedRemote = useRef(false);
+	
+	// Reset hasFetchedRemote when activeTaskId changes
+	useEffect(() => {
+		hasFetchedRemote.current = false;
+	}, [chatStore.activeTaskId]);
+	
 	useEffect(() => {
 		const setFileList = async () => {
 			let res = null;
@@ -284,33 +294,44 @@ export default function Folder({ data }: { data?: Agent }) {
 				chatStore.activeTaskId as string
 			);
 			let tree: any = null;
-			if ((res && res.length > 0) || import.meta.env.DEV) {
+			if (
+				(res && res.length > 0) ||
+				import.meta.env.VITE_USE_LOCAL_PROXY === "true"
+			) {
 				tree = buildFileTree(res || []);
 			} else {
-				res = await proxyFetchGet("/api/chat/files", {
-					task_id: chatStore.activeTaskId as string,
-				});
+				if (!hasFetchedRemote.current) {
+					res = await proxyFetchGet("/api/chat/files", {
+						task_id: chatStore.activeTaskId as string,
+					});
+					hasFetchedRemote.current = true;
+				}
 				console.log("res", res);
-				res = res.map((item: any) => {
-					return {
-						name: item.filename,
-						type: item.filename.split(".")[1],
-						path: item.url,
-						isRemote: true,
-					};
-				});
-				tree = buildFileTree(res || []);
+				if (res) {
+					res = res.map((item: any) => {
+						return {
+							name: item.filename,
+							type: item.filename.split(".")[1],
+							path: item.url,
+							isRemote: true,
+						};
+					});
+					tree = buildFileTree(res || []);
+				}
 			}
 			setFileTree(tree);
 			// Keep the old structure for compatibility
 			setFileGroups((prev) => {
-				const chatStoreSelectedFile = chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+				const chatStoreSelectedFile =
+					chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
 				if (chatStoreSelectedFile) {
-					console.log(res,chatStoreSelectedFile)
-					const file = res.find((item: any) => item.name === chatStoreSelectedFile.name);
+					console.log(res, chatStoreSelectedFile);
+					const file = res.find(
+						(item: any) => item.name === chatStoreSelectedFile.name
+					);
 					console.log("file", file);
-					if(file){
-						selecetdFileChange(file as FileInfo,isShowSourceCode);
+					if (file) {
+						selecetdFileChange(file as FileInfo, isShowSourceCode);
 					}
 				}
 				return [
@@ -320,15 +341,9 @@ export default function Folder({ data }: { data?: Agent }) {
 					},
 				];
 			});
-			// if (chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile) {
-			// 	selecetdFileChange(
-			// 		chatStore.tasks[chatStore.activeTaskId as string]
-			// 			.selectedFile as FileInfo
-			// 	);
-			// }
 		};
 		setFileList();
-	}, [data, chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
 	const handleBack = () => {
 		chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
 	};
@@ -423,7 +438,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									<button
 										key={file.name}
 										onClick={() => selecetdFileChange(file, isShowSourceCode)}
-										className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-zinc-100 transition-colors ${
+										className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
 											selectedFile?.name === file.name
 												? "bg-blue-50 text-blue-700"
 												: "text-zinc-600"
@@ -447,8 +462,8 @@ export default function Folder({ data }: { data?: Agent }) {
 			<div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 				{/* head */}
 				{selectedFile && (
-					<div className="p-4 border-b border-zinc-200 flex-shrink-0">
-						<div className="flex items-center justify-between gap-2">
+					<div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
+						<div className="flex h-[30px] items-center justify-between gap-2">
 							<div
 								onClick={() => {
 									// if file is remote, don't call reveal-in-folder
@@ -483,7 +498,7 @@ export default function Folder({ data }: { data?: Agent }) {
 				)}
 
 				{/* content */}
-				<div className="flex-1 overflow-y-auto min-h-0">
+				<div className="flex-1 overflow-y-auto min-h-0 scrollbar">
 					<div className="p-6 h-full">
 						{selectedFile ? (
 							!loading ? (

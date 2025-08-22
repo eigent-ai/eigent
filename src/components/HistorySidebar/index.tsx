@@ -225,7 +225,7 @@ export default function HistorySidebar() {
 						exit={{ x: "-100%" }}
 						transition={{ type: "spring", damping: 25, stiffness: 200 }}
 						onMouseLeave={close}
-						className="backdrop-blur-xl flex flex-col fixed left-2 bottom-2 pb-4 top-[40px] h-full w-[316px] bg-bg-surface-tertiary rounded-xl p-sm pl-0 z-50"
+						className="backdrop-blur-xl flex flex-col fixed left-0 bottom-2 pb-4 top-[40px] h-full w-[324px] bg-bg-surface-tertiary rounded-xl p-sm z-50 perfect-shadow"
 					>
 						<div className="flex items-center justify-between px-sm">
 							<Button
@@ -239,7 +239,7 @@ export default function HistorySidebar() {
 							>
 								<ArrowLeft size={16} />
 								<span className="text-text-primary text-sm font-bold leading-13">
-									Dashboard
+									Task Hub 
 								</span>
 							</Button>
 							<Button

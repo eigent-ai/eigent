@@ -426,25 +426,33 @@ function checkPortAvailable(port: number): Promise<boolean> {
 export async function killProcessOnPort(port: number): Promise<boolean> {
     try {
         const platform = process.platform;
-        let command: string;
 
         if (platform === 'win32') {
-            // Windows command to find and kill process
-            command = `
-                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :${port}') do (
-                    echo Killing PID: %%a
-                    taskkill /F /PID %%a
-                )
-            `;
-        } else if (platform === 'darwin') {
-            // macOS command
-            command = `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`;
-        } else {
-            // Linux command
-            command = `fuser -k ${port}/tcp 2>/dev/null || true`;
+            // 1. get pid of process listen on port
+            const { stdout: netstatOut } = await execAsync(`netstat -ano | findstr LISTENING | findstr :${port}`);
+            const lines = netstatOut.trim().split(/\r?\n/).filter(Boolean);
+            if (lines.length === 0) {
+                console.log(`no process listen on port ${port}`);
+                return true;
+            }
+
+            // get pid from last field
+            const pid = lines[0].trim().split(/\s+/).pop();
+            if (!pid || isNaN(Number(pid))) {
+                console.log(`Invalid PID extracted for port ${port}: ${pid}`);
+                return false;
+            }
+
+            console.log(`Killing PID: ${pid}`);
+            await execAsync(`taskkill /F /PID ${pid}`);
+        } 
+        else if (platform === 'darwin') {
+            await execAsync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`);
+        } 
+        else {
+            await execAsync(`fuser -k ${port}/tcp 2>/dev/null || true`);
         }
 
-        await execAsync(command);
 
         // Wait a bit for the process to be killed
         await new Promise(resolve => setTimeout(resolve, 500));

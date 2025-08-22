@@ -58,7 +58,7 @@ export function MessageCard({
 			} w-full rounded-xl border px-4 py-3 ${className || ""} group`}
 		>
 			{role === "user" && (
-				<div className="absolute bottom-[-30px] right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+				<div className="absolute bottom-[0px] right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
 					<Button onClick={handleCopy} variant="ghost" size="icon">
 						<Copy />
 					</Button>

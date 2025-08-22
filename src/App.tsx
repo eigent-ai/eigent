@@ -44,12 +44,12 @@ function App() {
 			}
 		};
 
-		window.ipcRenderer.on("auth-share-token-received", handleShareCode);
-		window.electronAPI.onUpdateNotification(handleUpdateNotification);
+		window.ipcRenderer?.on("auth-share-token-received", handleShareCode);
+		window.electronAPI?.onUpdateNotification(handleUpdateNotification);
 
 		return () => {
-			window.ipcRenderer.off("auth-share-token-received", handleShareCode);
-			window.electronAPI.removeAllListeners("update-notification");
+			window.ipcRenderer?.off("auth-share-token-received", handleShareCode);
+			window.electronAPI?.removeAllListeners("update-notification");
 		};
 	}, [navigate, setInitState]);
 

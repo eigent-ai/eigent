@@ -158,7 +158,6 @@ export const InstallDependencies: React.FC<{
 					</DialogHeader>
 					<DialogFooter>
 						<Button onClick={handleInstall}>Retry</Button>
-						<Button onClick={handleInstall}>Retry</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

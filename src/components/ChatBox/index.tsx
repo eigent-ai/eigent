@@ -1,17 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { fetchPost } from "@/api/http";
-import { Button } from "@/components/ui/button";
 import { BottomInput } from "./BottomInput";
 import { TaskCard } from "./TaskCard";
 import { MessageCard } from "./MessageCard";
 import { TypeCardSkeleton } from "./TypeCardSkeleton";
-import {
-	Smartphone,
-	Workflow,
-	CircleDollarSign,
-	FileText,
-	TriangleAlert,
-} from "lucide-react";
+import { FileText, TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
 import { useChatStore } from "@/store/chatStore";
 import { proxyFetchGet } from "@/api/http";
@@ -30,6 +23,17 @@ export default function ChatBox(): JSX.Element {
 	const [hasSearchKey, setHasSearchKey] = useState<any>(false);
 	const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
 	const { modelType } = useAuthStore();
+	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
+	useEffect(() => {
+		if (
+			import.meta.env.VITE_USE_LOCAL_PROXY === "true" &&
+			modelType === "cloud"
+		) {
+			setUseCloudModelInDev(true);
+		} else {
+			setUseCloudModelInDev(false);
+		}
+	}, [modelType]);
 	useEffect(() => {
 		proxyFetchGet("/api/user/privacy")
 			.then((res) => {
@@ -120,24 +124,24 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
-									if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
-						// If the task has not started yet (pending status), start it normally
-						if (chatStore.tasks[_taskId as string].status === "pending") {
-							chatStore.setIsPending(_taskId, true);
-							chatStore.startTask(_taskId);
-							// keep hasWaitComfirm as true so that follow-up improves work as usual
-						} else {
-							// Task already started and is waiting for user confirmation – use improve API
-							fetchPost(`/chat/${_taskId}`, {
-								question: tempMessageContent,
-							});
-							chatStore.setIsPending(_taskId, true);
-						}
-					} else {
+				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
+					// If the task has not started yet (pending status), start it normally
+					if (chatStore.tasks[_taskId as string].status === "pending") {
 						chatStore.setIsPending(_taskId, true);
 						chatStore.startTask(_taskId);
-						chatStore.setHasWaitComfirm(_taskId as string, true);
+						// keep hasWaitComfirm as true so that follow-up improves work as usual
+					} else {
+						// Task already started and is waiting for user confirmation – use improve API
+						fetchPost(`/chat/${_taskId}`, {
+							question: tempMessageContent,
+						});
+						chatStore.setIsPending(_taskId, true);
 					}
+				} else {
+					chatStore.setIsPending(_taskId, true);
+					chatStore.startTask(_taskId);
+					chatStore.setHasWaitComfirm(_taskId as string, true);
+				}
 			}
 		} catch (error) {
 			console.error("error:", error);
@@ -188,26 +192,23 @@ export default function ChatBox(): JSX.Element {
 	}, [scrollContainerRef.current?.scrollHeight]);
 
 	const [loading, setLoading] = useState(false);
-	const handleConfirmTask = async () => {
-		const taskId = chatStore.activeTaskId;
-		if (!taskId) return;
+	const handleConfirmTask = async (taskId?: string) => {
+		const _taskId = taskId || chatStore.activeTaskId;
+		if (!_taskId) return;
 		setLoading(true);
-		await chatStore.handleConfirmTask(taskId);
+		await chatStore.handleConfirmTask(_taskId);
 		setLoading(false);
 	};
 
 	const [hasSubTask, setHasSubTask] = useState(false);
 
 	useEffect(() => {
-		setHasSubTask(
-			chatStore.tasks[chatStore.activeTaskId as string]?.messages?.find(
-				(message) => {
-					return message.step === "to_sub_tasks";
-				}
-			)
-				? true
-				: false
-		);
+		const _hasSubTask = chatStore.tasks[
+			chatStore.activeTaskId as string
+		]?.messages?.find((message) => message.step === "to_sub_tasks")
+			? true
+			: false;
+		setHasSubTask(_hasSubTask);
 	}, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages]);
 
 	useEffect(() => {
@@ -232,18 +233,18 @@ export default function ChatBox(): JSX.Element {
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<PrivacyDialog 
-				open={privacyDialogOpen} 
-				onOpenChange={setPrivacyDialogOpen} 
+			<PrivacyDialog
+				open={privacyDialogOpen}
+				onOpenChange={setPrivacyDialogOpen}
 			/>
 			{(chatStore.activeTaskId &&
 				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
 			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
-				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-[12px] border border-zinc-200 p-2 pr-0  border-solid  relative overflow-hidden">
-					<div className="absolute inset-0 blur-bg bg-bg-surface-primary pointer-events-none rounded-xl"></div>
+				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled p-2 pr-0  border-solid relative overflow-hidden">
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div
 						ref={scrollContainerRef}
-						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-6"
+						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-2"
 					>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId].messages.map(
@@ -425,13 +426,18 @@ export default function ChatBox(): JSX.Element {
 													chatStore.tasks[chatStore.activeTaskId].summaryTask ||
 													""
 												}
-												onAddTask={() => chatStore.addTaskInfo()}
-												onUpdateTask={(taskIndex, content) =>
-													chatStore.updateTaskInfo(taskIndex, content)
-												}
-												onDeleteTask={(taskIndex) =>
-													chatStore.deleteTaskInfo(taskIndex)
-												}
+												onAddTask={() => {
+													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.addTaskInfo();
+												}}
+												onUpdateTask={(taskIndex, content) => {
+													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.updateTaskInfo(taskIndex, content);
+												}}
+												onDeleteTask={(taskIndex) => {
+													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.deleteTaskInfo(taskIndex);
+												}}
 											/>
 										);
 									}
@@ -476,20 +482,21 @@ export default function ChatBox(): JSX.Element {
 							textareaRef={textareaRef}
 							loading={loading}
 							onStartTask={() => handleConfirmTask()}
+							useCloudModelInDev={useCloudModelInDev}
 						/>
 					)}
 				</div>
 			) : (
-				<div 
-					className="w-full h-[calc(100vh-54px)] flex items-center  rounded-[12px] border border-zinc-200 p-2 pr-0  border-solid  relative overflow-hidden"
+				<div
+					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
 					onClick={() => {
 						if (!privacy) {
 							setPrivacyDialogOpen(true);
 						}
 					}}
-					style={{ cursor: !privacy ? 'pointer' : 'default' }}
+					style={{ cursor: !privacy ? "pointer" : "default" }}
 				>
-					<div className="absolute inset-0 blur-bg bg-bg-surface-primary pointer-events-none rounded-xl"></div>
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">
@@ -513,9 +520,10 @@ export default function ChatBox(): JSX.Element {
 								onSend={handleSend}
 								textareaRef={textareaRef}
 								loading={loading}
+								useCloudModelInDev={useCloudModelInDev}
 							/>
 						)}
-						<div className="h-[210px] flex justify-center items-start gap-2 mt-3">
+						<div className="h-[210px] flex justify-center items-start gap-2 mt-3 pr-2">
 							{!privacy ? (
 								<div className="flex items-center gap-2">
 									<div
@@ -531,6 +539,21 @@ export default function ChatBox(): JSX.Element {
 										/>
 										<span className="text-text-information text-sm font-medium leading-[22px]">
 											Complete system setup to start use Eigent
+										</span>
+									</div>
+								</div>
+							) : useCloudModelInDev ? (
+								<div className="flex items-center gap-2">
+									<div
+										onClick={() => {
+											navigate("/setting/models");
+										}}
+										className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
+									>
+										<span className="text-text-information text-sm font-medium leading-[22px]">
+											You're in Self-hosted mode. Cloud models can't be used
+											here — set up your own local cloud model to keep things
+											running.
 										</span>
 									</div>
 								</div>
@@ -553,37 +576,39 @@ export default function ChatBox(): JSX.Element {
 									</div>
 								)
 							)}
-							{privacy && (hasSearchKey || modelType === "cloud") && (
-								<div className="mr-2 flex flex-col items-center gap-2">
-									{[
-										{
-											label: "Palm Springs Tennis Trip Planner",
-											message:
-												"I am two tennis fans and want to go see the tennis tournament in palm springs. l live in SF - please prepare a detailed itinerary with flights, hotels, things to do for 3 days - around the time semifinal/finals are happening. We like hiking, vegan food and spas. Our budget is $5K. The itinerary should be a detailed timeline of time, activity, cost, other details and if applicable a link to buy tickets/make reservations etc. for the item. Some preferences 1.Spa access would be nice but not necessary 2. When you finnish this task, please generate a html report about this trip.",
-										},
-										{
-											label: "Bank Transfer CSV Analysis and Visualization",
-											message:
-												"Create a mock bank transfer CSV file include 10 columns and 10 rows. Read the generated CSV file and summarize the data, generate a chart to visualize relevant trends or insights from the data.",
-										},
-										{
-											label: "Find Duplicate Files in Downloads Folder",
-											message:
-												"Help me find duplicate files by content, size, and format in my downloads folder.",
-										},
-									].map(({ label, message }) => (
-										<div
-											key={label}
-											className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
-											onClick={() => {
-												setMessage(message);
-											}}
-										>
-											<span>{label}</span>
-										</div>
-									))}
-								</div>
-							)}
+							{!useCloudModelInDev &&
+								privacy &&
+								(hasSearchKey || modelType === "cloud") && (
+									<div className="mr-2 flex flex-col items-center gap-2">
+										{[
+											{
+												label: "Palm Springs Tennis Trip Planner",
+												message:
+													"I am two tennis fans and want to go see the tennis tournament in palm springs. l live in SF - please prepare a detailed itinerary with flights, hotels, things to do for 3 days - around the time semifinal/finals are happening. We like hiking, vegan food and spas. Our budget is $5K. The itinerary should be a detailed timeline of time, activity, cost, other details and if applicable a link to buy tickets/make reservations etc. for the item. Some preferences 1.Spa access would be nice but not necessary 2. When you finnish this task, please generate a html report about this trip.",
+											},
+											{
+												label: "Bank Transfer CSV Analysis and Visualization",
+												message:
+													"Create a mock bank transfer CSV file include 10 columns and 10 rows. Read the generated CSV file and summarize the data, generate a chart to visualize relevant trends or insights from the data.",
+											},
+											{
+												label: "Find Duplicate Files in Downloads Folder",
+												message:
+													"Help me find duplicate files by content, size, and format in my downloads folder.",
+											},
+										].map(({ label, message }) => (
+											<div
+												key={label}
+												className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
+												onClick={() => {
+													setMessage(message);
+												}}
+											>
+												<span>{label}</span>
+											</div>
+										))}
+									</div>
+								)}
 						</div>
 					</div>
 				</div>

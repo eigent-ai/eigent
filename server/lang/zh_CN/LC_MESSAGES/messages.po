@@ -1,0 +1,216 @@
+# Chinese (Simplified, China) translations for PROJECT.
+# Copyright (C) 2025 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2025-08-06 09:56+0800\n"
+"PO-Revision-Date: 2025-08-06 09:56+0800\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh_Hans_CN\n"
+"Language-Team: zh_Hans_CN <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: app/component/auth.py:41
+msgid "Validate credentials expired"
+msgstr ""
+
+#: app/component/auth.py:43
+msgid "Could not validate credentials"
+msgstr ""
+
+#: app/component/permission.py:12
+msgid "User"
+msgstr ""
+
+#: app/component/permission.py:13
+msgid "User manger"
+msgstr ""
+
+#: app/component/permission.py:17
+msgid "User Manage"
+msgstr ""
+
+#: app/component/permission.py:18
+msgid "View users"
+msgstr ""
+
+#: app/component/permission.py:22
+msgid "User Edit"
+msgstr ""
+
+#: app/component/permission.py:23
+msgid "Manage users"
+msgstr ""
+
+#: app/component/permission.py:28
+msgid "Admin"
+msgstr ""
+
+#: app/component/permission.py:29
+msgid "Admin manger"
+msgstr ""
+
+#: app/component/permission.py:33
+msgid "Admin View"
+msgstr ""
+
+#: app/component/permission.py:34
+msgid "View admins"
+msgstr ""
+
+#: app/component/permission.py:38
+msgid "Admin Edit"
+msgstr ""
+
+#: app/component/permission.py:39
+msgid "Edit admins"
+msgstr ""
+
+#: app/component/permission.py:44
+msgid "Role"
+msgstr ""
+
+#: app/component/permission.py:45
+msgid "Role manger"
+msgstr ""
+
+#: app/component/permission.py:49
+msgid "Role View"
+msgstr ""
+
+#: app/component/permission.py:50
+msgid "View roles"
+msgstr ""
+
+#: app/component/permission.py:54
+msgid "Role Edit"
+msgstr ""
+
+#: app/component/permission.py:55
+msgid "Edit roles"
+msgstr ""
+
+#: app/component/permission.py:60
+msgid "Mcp"
+msgstr ""
+
+#: app/component/permission.py:61
+msgid "Mcp manger"
+msgstr ""
+
+#: app/component/permission.py:65
+msgid "Mcp Edit"
+msgstr ""
+
+#: app/component/permission.py:66
+msgid "Edit mcp service"
+msgstr ""
+
+#: app/component/permission.py:70
+msgid "Mcp Category Edit"
+msgstr ""
+
+#: app/component/permission.py:71
+msgid "Edit mcp category"
+msgstr ""
+
+#: app/controller/chat/snapshot_controller.py:34
+#: app/controller/chat/snapshot_controller.py:68
+#: app/controller/chat/snapshot_controller.py:81
+msgid "Chat snapshot not found"
+msgstr ""
+
+#: app/controller/chat/step_controller.py:65
+#: app/controller/chat/step_controller.py:89
+#: app/controller/chat/step_controller.py:102
+msgid "Chat step not found"
+msgstr ""
+
+#: app/controller/config/config_controller.py:40
+#: app/controller/config/config_controller.py:76
+#: app/controller/config/config_controller.py:108
+msgid "Configuration not found"
+msgstr ""
+
+#: app/controller/config/config_controller.py:47
+msgid "Config Name is valid"
+msgstr ""
+
+#: app/controller/config/config_controller.py:55
+#: app/controller/config/config_controller.py:92
+msgid "Configuration already exists for this user"
+msgstr ""
+
+#: app/controller/config/config_controller.py:80
+msgid "Invalid configuration group"
+msgstr ""
+
+#: app/controller/mcp/mcp_controller.py:70
+msgid "Mcp not found"
+msgstr ""
+
+#: app/controller/mcp/mcp_controller.py:73
+#: app/controller/mcp/user_controller.py:44
+msgid "mcp is installed"
+msgstr ""
+
+#: app/controller/mcp/user_controller.py:34
+msgid "McpUser not found"
+msgstr ""
+
+#: app/controller/mcp/user_controller.py:61
+#: app/controller/mcp/user_controller.py:75
+msgid "Mcp Info not found"
+msgstr ""
+
+#: app/controller/mcp/user_controller.py:63
+msgid "current user have no permission to modify"
+msgstr ""
+
+#: app/controller/provider/provider_controller.py:41
+#: app/controller/provider/provider_controller.py:60
+#: app/controller/provider/provider_controller.py:79
+msgid "Provider not found"
+msgstr ""
+
+#: app/controller/user/login_controller.py:25
+msgid "Account or password error"
+msgstr ""
+
+#: app/controller/user/login_controller.py:47
+msgid "User not found"
+msgstr ""
+
+#: app/controller/user/login_controller.py:64
+#: app/controller/user/login_controller.py:89
+msgid "Failed to register"
+msgstr ""
+
+#: app/controller/user/login_controller.py:67
+msgid "Your account has been blocked."
+msgstr ""
+
+#: app/controller/user/login_controller.py:75
+msgid "Email already registered"
+msgstr ""
+
+#: app/controller/user/user_password_controller.py:19
+msgid "Password is incorrect"
+msgstr ""
+
+#: app/controller/user/user_password_controller.py:21
+msgid "The two passwords do not match"
+msgstr ""
+
+#: app/model/abstract/model.py:66
+msgid "There is no data that meets the conditions"
+msgstr ""
+

@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: eigent_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eigent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      #- ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - eigent_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d eigent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        database_url: postgresql://postgres:123456@postgres:5432/eigent
+    container_name: eigent_api
+    restart: unless-stopped
+    ports:
+      - "3001:5678"
+    environment:
+      - DATABASE_URL=postgresql://postgres:123456@postgres:5432/eigent
+      - ENVIRONMENT=production
+      - DEBUG=false
+    # volumes:
+    #   - ./app:/app/app
+    #   - ./alembic:/app/alembic
+    #   - ./lang:/app/lang
+    #   - ./public:/app/public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eigent_network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5678/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  eigent_network:
+    driver: bridge

@@ -83,7 +83,7 @@ class BrowserSession(BaseHybridBrowserSession):
             await self.get_new_tab()
             logger.debug(json.dumps([item.url for item in self._context.pages]))
             if not self._page:
-                raise ProgramException("Electron does't has page")
+                raise ProgramException("Maximum Window Limit Reached.")
 
         # Apply stealth modifications if enabled
         if self._stealth and self._stealth_script:

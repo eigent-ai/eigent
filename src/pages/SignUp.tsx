@@ -222,10 +222,10 @@ export default function SignUp() {
 	);
 
 	useEffect(() => {
-		window.ipcRenderer.on("auth-code-received", handleAuthCode);
+		window.ipcRenderer?.on("auth-code-received", handleAuthCode);
 
 		return () => {
-			window.ipcRenderer.off("auth-code-received", handleAuthCode);
+			window.ipcRenderer?.off("auth-code-received", handleAuthCode);
 		};
 	}, []);
 

@@ -141,7 +141,7 @@ export default function Home() {
 	const [url, setUrl] = useState("");
 
 	useEffect(() => {
-		window.ipcRenderer.on("url-updated", (_event, newUrl) => {
+		window.ipcRenderer?.on("url-updated", (_event, newUrl) => {
 			setUrl(newUrl);
 		});
 
