@@ -82,6 +82,7 @@ class Workforce(BaseWorkforce):
 
         self.reset()
         self._task = task
+        self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
         self._pending_tasks.append(task)
@@ -105,7 +106,6 @@ class Workforce(BaseWorkforce):
         """start the workforce"""
         logger.debug(f"start the workforce {subtasks=}")
         self._pending_tasks.extendleft(reversed(subtasks))
-        self.set_channel(TaskChannel())
         # Save initial snapshot
         self.save_snapshot("Initial task decomposition")
 
