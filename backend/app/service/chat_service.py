@@ -12,7 +12,7 @@ from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
-    create_task_lock,
+    TaskLock,
     delete_task_lock,
 )
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
@@ -43,14 +43,13 @@ from camel.models import ModelProcessingError
 
 
 @sync_step
-async def step_solve(options: Chat, request: Request):
+async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # if True:
     #     import faulthandler
 
     #     faulthandler.enable()
     #     for second in [5, 10, 20, 30, 60, 120, 240]:
     #         faulthandler.dump_traceback_later(second)
-    task_lock = create_task_lock(options.task_id)
 
     start_event_loop = True
     question_agent = question_confirm_agent(options)
@@ -214,7 +213,7 @@ async def step_solve(options: Chat, request: Request):
                     workforce.stop()
         except Exception as e:
             logger.error(f"Error processing action {item.action}: {e}")
-            raise e
+            yield sse_json("error", {"message": str(e)})
             # Continue processing other items instead of breaking
 
 
@@ -240,6 +239,7 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
         return []
     return (
         chain(sub_tasks)
+        .filter(lambda x: x.content != "")
         .map(
             lambda x: {
                 "id": x.id,

@@ -90,9 +90,9 @@ export function getEmailFolderPath(email: string) {
       hasToken = false;
     }
   } catch (error) {
-    console.log("error", error);
     hasToken = false;
   }
 
   return { MCP_REMOTE_CONFIG_DIR, MCP_CONFIG_DIR, tempEmail, hasToken };
 }
+

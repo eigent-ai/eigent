@@ -71,7 +71,7 @@ async function downloadUvBinary(
 	try {
 		console.log(`Downloading uv ${version} for ${platformKey}...`);
 		console.log(`URL: ${downloadUrl}`);
-
+		if (fs.existsSync(tempFilename)) fs.unlinkSync(tempFilename)
 		await downloadWithRedirects(downloadUrl, tempFilename);
 
 		console.log(`Extracting ${packageName} to ${binDir}...`);
@@ -192,6 +192,8 @@ async function installUv() {
 		isMusl
 	);
 	if (!isInstalled) {
+		// Wait for the file lock handle to be released
+		await new Promise(r => setTimeout(r, 200))
 		console.log("Downloading uv from gitcode.com");
 		isInstalled = await downloadUvBinary(
 			"https://gitcode.com/CherryHQ/uv/releases/download",

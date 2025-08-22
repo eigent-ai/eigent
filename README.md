@@ -118,6 +118,9 @@ npm install
 npm run dev
 ```
 
+#### 3. Local Development (Use the version that is completely separated from the cloud service)
+[server/README_EN.md](./server/README_EN.md)
+
 ### 🏢 Enterprise
 
 For organizations requiring maximum security, customization, and control:
@@ -354,7 +357,7 @@ For more information please contact info@eigent.ai
 
 [camel-github]: https://github.com/camel-ai/camel
 [eigent-github]: https://github.com/eigent-ai/eigent
-[contribution-link]: https:/github.com/eigent-ai/eigent/blob/master/CONTRIBUTING.md
+[contribution-link]: https://github.com/eigent-ai/eigent/blob/main/CONTRIBUTING.md
 
 [social-x-link]: https://x.com/Eigent_AI
 [social-x-shield]: https://img.shields.io/badge/-%40Eigent_AI-white?labelColor=gray&logo=x&logoColor=white&style=plastic
