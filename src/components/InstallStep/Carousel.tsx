@@ -94,14 +94,14 @@ export const CarouselStep: React.FC = () => {
 		}
 	}, [currentSlide, api]);
 	return (
-		<div className="flex flex-col gap-lg w-[1120px]">
+		<div className="flex flex-col gap-lg w-[1120px] max-lg:w-[100%]">
 			<div className="flex flex-col gap-md  ">
 				<div className="text-text-heading font-bold text-4xl leading-5xl">
 					{carouselItems[currentSlide].title}
 				</div>
 
 				<Carousel
-					className="h-[490px] bg-white-100% rounded-3xl p-0"
+					className="min-h-[400px] max-h-[490px] bg-white-100% rounded-3xl p-0 short:max-h-[300px] short:overflow-y-auto scrollbar"
 					onMouseEnter={handleMouseEnter}
 					onMouseLeave={handleMouseLeave}
 					setApi={setApi}
@@ -155,7 +155,7 @@ export const CarouselStep: React.FC = () => {
 						onClick={() => setInitState("done")}
 						variant="ghost"
 						size="sm"
-						>
+					>
 						skip
 					</Button>
 					<Button
