@@ -192,6 +192,8 @@ async function installUv() {
 		isMusl
 	);
 	if (!isInstalled) {
+		// Wait for the file lock handle to be released
+		await new Promise(r => setTimeout(r, 200))
 		console.log("Downloading uv from gitcode.com");
 		isInstalled = await downloadUvBinary(
 			"https://gitcode.com/CherryHQ/uv/releases/download",
