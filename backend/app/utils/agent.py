@@ -706,6 +706,7 @@ def search_agent(options: Chat):
         stealth=True,
         session_id=str(uuid.uuid4())[:8],
         default_start_url="about:blank",
+        cdp_url=f"http://localhost:{env('browser_port', '9222')}",
         enabled_tools=[
             "browser_click",
             "browser_type",
