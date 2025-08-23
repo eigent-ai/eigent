@@ -15,7 +15,6 @@ from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
 from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import \
     WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper
 from app.component.command import bun, uv
-from app.component.nodejs_wrapper import get_node_command, run_node_with_nodejs_wheel
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
