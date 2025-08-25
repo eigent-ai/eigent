@@ -23,7 +23,11 @@ dependencies = [
 
 
 [dependency-groups]
-dev = ["babel>=2.17.0"]
+dev = [
+    "babel>=2.17.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+]
 
 [tool.ruff]
 line-length = 120
@@ -32,3 +36,10 @@ line-length = 120
 extend-select = [
     "B006", # forbid def demo(mutation = [])
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
