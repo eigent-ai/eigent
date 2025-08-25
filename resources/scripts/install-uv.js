@@ -71,7 +71,7 @@ async function downloadUvBinary(
 	try {
 		console.log(`Downloading uv ${version} for ${platformKey}...`);
 		console.log(`URL: ${downloadUrl}`);
-
+		if (fs.existsSync(tempFilename)) fs.unlinkSync(tempFilename)
 		await downloadWithRedirects(downloadUrl, tempFilename);
 
 		console.log(`Extracting ${packageName} to ${binDir}...`);
@@ -89,23 +89,21 @@ async function downloadUvBinary(
 			// handle tar.gz file
 			await tar.x({
 				file: tempFilename,
-				cwd: tempdir,
+				cwd: binDir,
+				strip: 1,
 				z: true,
+				filter: (path) => {
+					// Only extract the uv binary
+					return path.endsWith('uv') || path.endsWith('uv.exe');
+				}
 			});
 
-			// Move files using Node.js fs
-			const sourceDir = path.join(tempdir, packageName.split(".")[0]);
-			const files = fs.readdirSync(sourceDir);
-			for (const file of files) {
-				const sourcePath = path.join(sourceDir, file);
-				const destPath = path.join(binDir, file);
-				fs.copyFileSync(sourcePath, destPath);
-				fs.unlinkSync(sourcePath);
-
-				// Set executable permissions for non-Windows platforms
-				if (platform !== "win32") {
+			// Set executable permissions for non-Windows platforms
+			if (platform !== "win32") {
+				const uvPath = path.join(binDir, "uv");
+				if (fs.existsSync(uvPath)) {
 					try {
-						fs.chmodSync(destPath, "755");
+						fs.chmodSync(uvPath, "755");
 					} catch (error) {
 						console.warn(
 							`Warning: Failed to set executable permissions: ${error.message}`
@@ -116,7 +114,6 @@ async function downloadUvBinary(
 
 			// Clean up
 			fs.unlinkSync(tempFilename);
-			fs.rmSync(sourceDir, { recursive: true });
 		}
 
 		console.log(`Successfully installed uv ${version} for ${platform}-${arch}`);
@@ -192,6 +189,8 @@ async function installUv() {
 		isMusl
 	);
 	if (!isInstalled) {
+		// Wait for the file lock handle to be released
+		await new Promise(r => setTimeout(r, 200))
 		console.log("Downloading uv from gitcode.com");
 		isInstalled = await downloadUvBinary(
 			"https://gitcode.com/CherryHQ/uv/releases/download",

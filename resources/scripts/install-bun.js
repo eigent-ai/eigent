@@ -58,40 +58,51 @@ async function downloadBunBinary(bun_download_url,platform, arch, version = DEFA
   try {
     console.log(`Downloading bun ${version} for ${platformKey}...`)
     console.log(`URL: ${downloadUrl}`)
-
+    if (fs.existsSync(tempFilename)) fs.unlinkSync(tempFilename)
     // Use the new download function
     await downloadWithRedirects(downloadUrl, tempFilename)
 
     // Extract the zip file using adm-zip
     console.log(`Extracting ${packageName} to ${binDir}...`)
     const zip = new AdmZip(tempFilename)
-    zip.extractAllTo(tempdir, true)
-
-    // Move files using Node.js fs
-    const sourceDir = path.join(tempdir, packageName.split('.')[0])
-    const files = fs.readdirSync(sourceDir)
-
-    for (const file of files) {
-      const sourcePath = path.join(sourceDir, file)
-      const destPath = path.join(binDir, file)
-
-      fs.copyFileSync(sourcePath, destPath)
-      fs.unlinkSync(sourcePath)
-
-      // Set executable permissions for non-Windows platforms
-      if (platform !== 'win32') {
-        try {
-          // 755 permission: rwxr-xr-x
-          fs.chmodSync(destPath, '755')
-        } catch (error) {
-          console.warn(`Warning: Failed to set executable permissions: ${error.message}`)
+    
+    // Get all entries and find the bun binary
+    const entries = zip.getEntries()
+    let bunFound = false
+    
+    for (const entry of entries) {
+      const entryName = entry.entryName
+      // Look for the bun binary (could be in root or in a subdirectory)
+      if (entryName === 'bun' || entryName === 'bun.exe' || 
+          entryName.endsWith('/bun') || entryName.endsWith('/bun.exe') ||
+          entryName.endsWith('\\bun') || entryName.endsWith('\\bun.exe')) {
+        
+        // Extract just the binary name
+        const fileName = path.basename(entryName)
+        const destPath = path.join(binDir, fileName)
+        
+        // Extract the specific file
+        zip.extractEntryTo(entry, binDir, false, true)
+        
+        // Set executable permissions for non-Windows platforms
+        if (platform !== 'win32' && fileName === 'bun') {
+          try {
+            fs.chmodSync(destPath, '755')
+          } catch (error) {
+            console.warn(`Warning: Failed to set executable permissions: ${error.message}`)
+          }
         }
+        
+        bunFound = true
       }
+    }
+    
+    if (!bunFound) {
+      throw new Error('bun binary not found in archive')
     }
 
     // Clean up
     fs.unlinkSync(tempFilename)
-    fs.rmSync(sourceDir, { recursive: true })
 
     console.log(`Successfully installed bun ${version} for ${platformKey}`)
     return true
@@ -158,6 +169,8 @@ async function installBun() {
 
   const isInstalled = await downloadBunBinary(BUN_RELEASE_BASE_URL,platform, arch, version, isMusl, isBaseline)
   if(!isInstalled){
+    // Wait for the file lock handle to be released
+    await new Promise(r => setTimeout(r, 200))
     console.log('Downloading bun from gitcode.com')
     await downloadBunBinary('https://gitcode.com/CherryHQ/bun/releases/download',platform, arch, version, isMusl, isBaseline)
   }

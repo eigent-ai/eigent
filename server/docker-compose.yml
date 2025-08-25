@@ -7,9 +7,9 @@ services:
     container_name: eigent_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: eigent
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: ${POSTGRES_DB:-eigent}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5432:5432"
@@ -30,13 +30,13 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        database_url: postgresql://postgres:123456@postgres:5432/eigent
+        database_url: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/eigent}
     container_name: eigent_api
     restart: unless-stopped
     ports:
       - "3001:5678"
     environment:
-      - DATABASE_URL=postgresql://postgres:123456@postgres:5432/eigent
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/eigent}
       - ENVIRONMENT=production
       - DEBUG=false
     # volumes:
