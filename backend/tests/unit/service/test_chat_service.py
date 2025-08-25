@@ -16,7 +16,8 @@ from app.service.chat_service import (
 )
 from app.model.chat import Chat, NewAgent
 from app.service.task import Action, ActionImproveData, ActionEndData, ActionInstallMcpData
-from camel.tasks import Task, TaskState
+from camel.tasks import Task
+from camel.tasks.task import TaskState
 
 
 @pytest.mark.unit

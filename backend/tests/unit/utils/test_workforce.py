@@ -3,7 +3,8 @@ import pytest
 
 from camel.societies.workforce.workforce import WorkforceState
 from camel.societies.workforce.utils import TaskAssignResult, TaskAssignment
-from camel.tasks import Task, TaskState
+from camel.tasks import Task
+from camel.tasks.task import TaskState
 from camel.agents import ChatAgent
 
 from app.utils.workforce import Workforce

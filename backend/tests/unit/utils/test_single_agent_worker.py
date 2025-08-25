@@ -3,7 +3,8 @@ import pytest
 
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
 from camel.societies.workforce.utils import TaskResult
-from camel.tasks import Task, TaskState
+from camel.tasks import Task
+from camel.tasks.task import TaskState
 
 from app.utils.single_agent_worker import SingleAgentWorker
 from app.utils.agent import ListenChatAgent
