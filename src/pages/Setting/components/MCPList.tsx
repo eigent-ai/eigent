@@ -7,10 +7,9 @@ interface MCPListProps {
   onDelete: (item: MCPUserItem) => void;
   onSwitch: (id: number, checked: boolean) => Promise<void>;
   switchLoading: Record<number, boolean>;
-  onSlackInstall?: () => void;
 }
 
-export default function MCPList({ items, onSetting, onDelete, onSwitch, switchLoading, onSlackInstall }: MCPListProps) {
+export default function MCPList({ items, onSetting, onDelete, onSwitch, switchLoading }: MCPListProps) {
   return (
     <div className='pt-4'>
       {items.map(item => (
