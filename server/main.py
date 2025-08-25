@@ -3,6 +3,17 @@ from app.component.environment import auto_include_routers, env
 from loguru import logger
 import os
 from fastapi.staticfiles import StaticFiles
+from fastapi import status
+from fastapi.responses import JSONResponse
+
+# Health check endpoint
+@api.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"status": "healthy", "service": "eigent-api"}
+    )
 
 prefix = env("url_prefix", "")
 auto_include_routers(api, prefix, "app/controller")

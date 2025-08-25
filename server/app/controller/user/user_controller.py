@@ -50,7 +50,7 @@ def get_privacy(session: Session = Depends(session), auth: Auth = Depends(auth_m
 
     if not model:
         return UserPrivacySettings.default_settings()
-    return model.pricacy_setting
+    return model.privacy_setting
 
 
 @router.put("/user/privacy", name="update user privacy")
@@ -61,13 +61,13 @@ def put_privacy(data: UserPrivacySettings, session: Session = Depends(session), 
     default_settings = UserPrivacySettings.default_settings()
 
     if model:
-        model.pricacy_setting = {**model.pricacy_setting, **data.model_dump()}
+        model.privacy_setting = {**model.privacy_setting, **data.model_dump()}
         model.save(session)
     else:
-        model = UserPrivacy(user_id=user_id, pricacy_setting={**default_settings, **data.model_dump()})
+        model = UserPrivacy(user_id=user_id, privacy_setting={**default_settings, **data.model_dump()})
         model.save(session)
 
-    return model.pricacy_setting
+    return model.privacy_setting
 
 
 @router.get("/user/current_credits", name="get user current credits")
