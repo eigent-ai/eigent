@@ -4,16 +4,7 @@ Eigent is licensed under a modified version of the Apache License 2.0, with the 
 
 1. Eigent may be utilized commercially, including as a backend service for other applications or as an application development platform for enterprises. However, if any of the following conditions apply, you must obtain a valid commercial license from Eigent.AI :
 
-a. Commercial Self-Hosted Deployment: You may not use this software or any of its components in a production environment for commercial purposes without an active, valid commercial license from Eigent AI.
-Definitions:
-		- Software: Eigent source code, binaries, and related components provided under this license.
-		- Production Environment: Any environment not solely used for development, testing, or personal non-commercial evaluation purposes.
-		- Commercial Purposes: Activities intended or directed towards commercial advantage or monetary compensation, including, without limitation, supporting internal business operations or providing services to third parties.
-
-b. Multi-tenant SaaS service: Unless explicitly authorized by Eigent.AI in writing, you may not use the Eigent source code to operate a multi-tenant Software-as-a-Service platform or any online service similar to Eigent’s official cloud service.
-    - Tenant Definition: Within the context of Eigent, one tenant corresponds to one workspace. The workspace provides a separated area for each tenant's data and configurations.
-
-c. Branding and Attribution: You must not remove, hide, or alter the Eigent name, logos, or copyright notices displayed in the Eigent user interface (including desktop applications and web consoles).This restriction is inapplicable to uses of Eigent that do not involve its frontend.
+a. Branding and Attribution: You must not remove, hide, or alter the Eigent name, logos, or copyright notices displayed in the Eigent user interface (including desktop applications and web consoles).This restriction is inapplicable to uses of Eigent that do not involve its frontend.
     - Frontend Definition: For the purposes of this license, the "frontend" of Eigent includes all components located in the `electron/` directory when running Eigent from the raw source code, or the "electron" image when running Eigent with Docker.
 
 Please contact us at info@eigent.ai for licensing inquiries.
