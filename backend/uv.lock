@@ -238,7 +238,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.75a6" },
+    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.75" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
@@ -308,7 +308,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.75a6"
+version = "0.2.75"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -322,9 +322,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b3/2e/d165c41d87099420bf68930728c8709c3a988c743360b6202e2d2c5108ec/camel_ai-0.2.75a6.tar.gz", hash = "sha256:9333e67ca9cda9c35d9c232f214de9793d3de4a131cc2dc06395eadda4950c9f", size = 898189, upload-time = "2025-08-21T15:08:39.101Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/26/920d5037b163da4852e1e141a19b62ad04ba799c4f08d5b69116048abccb/camel_ai-0.2.75.tar.gz", hash = "sha256:61cd0175fb13a3174736e866a01ff6cdf4b5c11682ed7b20bc9ac91ba30a66de", size = 898302, upload-time = "2025-08-25T15:09:06.442Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/df/bff434e6f842fb634e20e7f411793654a732d0b3ed867fa8d0a82974266e/camel_ai-0.2.75a6-py3-none-any.whl", hash = "sha256:f780a681d5f8c342c25ec1e9c947100c2d41f86f5d3b915326196698c327b752", size = 1329100, upload-time = "2025-08-21T15:08:36.478Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/68/e63a80ac59ceb766565c3a17a9bc7de2229f89cedf9fa1cb8b7ca006ac92/camel_ai-0.2.75-py3-none-any.whl", hash = "sha256:62f020318fa736812d6ba16ff0a098d90564e2ddd0d6c484b2bce17932bdacc3", size = 1329249, upload-time = "2025-08-25T15:09:03.699Z" },
 ]
 
 [package.optional-dependencies]
