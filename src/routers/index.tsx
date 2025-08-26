@@ -30,7 +30,7 @@ const ProtectedRoute = () => {
 		setLoading(false);
 		setInitialized(true);
 	}, [authStore.token]);
-	
+
 	if (loading || !initialized) {
 		return (
 			<div className="flex items-center justify-center h-screen">
