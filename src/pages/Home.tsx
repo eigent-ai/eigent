@@ -17,6 +17,7 @@ import {
 	ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
@@ -27,12 +28,10 @@ export default function Home() {
 		toast.dismiss();
 		toast(
 			<div>
-				Please toast as follow:
-				<br />
-				"A one-time manual reinstall is required to enable automatic updates.
+				A one-time manual reinstall is required to enable automatic updates.
 				<br />
 				Please uninstall your current version, then download and install the
-				latest version (0.0.53 or later) from our{" "}
+				latest version (0.0.55 or later) from our{" "}
 				<a
 					className="underline cursor-pointer"
 					onClick={() => (window.location.href = "https://www.eigent.ai/")}
@@ -41,16 +40,15 @@ export default function Home() {
 				</a>
 				. All future updates will be automatic.
 				<br />
-				Thank you for your understanding!"
+				Thank you for your understanding!
 				<br />
-				with a buttom as follow:
-				<br />
-				<a
-					className="underline cursor-pointer"
+				<Button
+					className="mt-2"
+					size="sm"
 					onClick={() => (window.location.href = "https://www.eigent.ai/")}
 				>
 					Download
-				</a>
+				</Button>
 			</div>,
 			{
 				duration: Infinity,
