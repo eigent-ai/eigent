@@ -1,3 +1,9 @@
+---
+title: Workers
+description: Understand how to create and equip a custom worker.
+icon: bot
+---
+
 Eigent is designed to be extensible. Beyond the pre-configured agents, you can significantly expand your workforce's capabilities by connecting to external tools via custom MCP Servers and creating specialized workers to use them.
 
 This guide will walk you through how to integrate a new tool and build a custom worker step-by-step.
