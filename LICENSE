@@ -1,34 +1,46 @@
 # Eigent Open Source License
 
-Eigent is licensed under a modified version of the Apache License 2.0, with the following additional conditions:
+This project employs a **User-Segmented Dual Licensing** model. 
 
-1. Eigent may be utilized commercially, including as a backend service for other applications or as an application development platform for enterprises. However, if any of the following conditions apply, you must obtain a valid commercial license from Eigent.AI :
+**Core principle – user‑segmented dual licensing**
 
-a. Commercial Self-Hosted Deployment: You may not use this software or any of its components in a production environment for commercial purposes without an active, valid commercial license from Eigent AI.
-Definitions:
-		- Software: Eigent source code, binaries, and related components provided under this license.
-		- Production Environment: Any environment not solely used for development, testing, or personal non-commercial evaluation purposes.
-		- Commercial Purposes: Activities intended or directed towards commercial advantage or monetary compensation, including, without limitation, supporting internal business operations or providing services to third parties.
+- **Individuals and teams with 10 or fewer users:** You may use the Software under the Apache License 2.0 with the additional 
+**Branding and Attribution** clause described below.
+- **Teams with more than 10 users:** You must obtain a Commercial License from Eigent AI Ltd. before using the Software.
 
-b. Multi-tenant SaaS service: Unless explicitly authorized by Eigent.AI in writing, you may not use the Eigent source code to operate a multi-tenant Software-as-a-Service platform or any online service similar to Eigent’s official cloud service.
-    - Tenant Definition: Within the context of Eigent, one tenant corresponds to one workspace. The workspace provides a separated area for each tenant's data and configurations.
+**Definitions**
 
-c. Branding and Attribution: You must not remove, hide, or alter the Eigent name, logos, or copyright notices displayed in the Eigent user interface (including desktop applications and web consoles).This restriction is inapplicable to uses of Eigent that do not involve its frontend.
+- **User count (≤10 users)** – For the purposes of this license, “10 users or fewer” means that no more than ten (10) individuals can access, use, or in any way directly or indirectly benefit from your deployment of the Software. This includes, but is not limited to, developers, testers, operations, end-users, and indirect users via integrated systems.
+- **Branding and Attribution** – You must not remove, hide, or alter the Eigent name, logos, or copyright notices displayed in the Eigent user interface (including desktop applications and web consoles).This restriction is inapplicable to uses of Eigent that do not involve its frontend.
     - Frontend Definition: For the purposes of this license, the "frontend" of Eigent includes all components located in the `electron/` directory when running Eigent from the raw source code, or the "electron" image when running Eigent with Docker.
 
-Please contact us at info@eigent.ai for licensing inquiries.
+**1. Open Source License – for individuals and teams with 10 or fewer users**
 
-2. As a contributor, you should agree that:
+- Subject to the user‑count and branding requirements above, the Software is licensed to you under the terms of the Apache License 2.0.  In short, this grants you the right to use, reproduce, prepare derivative works of, display, perform and distribute the Software.
+- A Commercial License (see below) is also required if you wish to avoid the obligations of the Apache License 2.0 or if you wish to remove or alter Eigent branding.
+- Please read and understand the full terms of the Apache License 2.0 carefully before use.
 
-a. Eigent AI can adjust the open-source agreement to be more restrictive or permissive as deemed necessary.
+**2. Commercial License – for teams with more than 10 users or branding changes**
 
-b. Your contributed code may be used by Eigent.AI for commercial purposes, including but not limited to cloud-hosted and self-hosted services operated by Eigent AI.
+- If your organization has more than ten (10) individuals who will access, use, or benefit from the Software, you must obtain and execute a Commercial License from Eigent AI Ltd.
+- Even if you qualify under the "10 or fewer users" definition above, if your intended use case **cannot comply with the terms of the Apache License 2.0,** or if you require specific commercial terms **not offered** by the Apache License 2.0, or if you wish to remove or modify Eigent’s branding, you also **must** contact us to obtain and execute a Commercial License.
+- The Commercial License will grant rights beyond those provided by the Apache License 2.0, including (but not limited to) the ability to rebrand the Software and the possibility of additional warranties, indemnities or support.
+- To enquire about a Commercial License please email **info@eigent.ai**.
 
-Apart from the specific conditions mentioned above, all other rights and restrictions follow the Apache License 2.0. Detailed information about the Apache License 2.0 can be found at http://www.apache.org/licenses/LICENSE-2.0.
+**3. Contributions**
 
-The interactive design of this product, as well as Eigent’s names and logos, are protected by intellectual property laws.
+- We welcome community contributions to Eigent.
+- By submitting a contribution to the project (for example, via a pull request), you agree that your contribution is provided under the terms of the Apache License 2.0 and may be incorporated into both open‑source and commercial versions of the Software.
+- You also agree that Eigent AI Ltd. may adjust this licensing policy in the future to be more restrictive or more permissive as needed.
 
-© 2023-2025 Eigent AI LTD
+**4. Other terms**
+
+- Apart from the specific conditions mentioned above, all other rights and restrictions follow the Apache License 2.0. Detailed information about the Apache License 2.0 can be found at http://www.apache.org/licenses/LICENSE-2.0.
+- The interactive design of the Software, as well as Eigent’s names and logos, are protected by intellectual property laws.
+- Eigent AI Ltd. reserves all rights not explicitly granted in this document.  We may update this dual‑licensing policy (including the definition and the user‑count threshold) as needed; any changes will be communicated through official project channels such as the code repository or our website.
+- For any questions about this license or to obtain a Commercial License, please contact **info@eigent.ai**.
+
+© 2023–2025 Eigent AI Ltd.
 
 
 ----------
