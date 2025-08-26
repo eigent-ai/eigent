@@ -60,7 +60,7 @@
               "/core/workforce",
               "/core/models",
               "/core/tools",
-              "workers"
+              "/core/workers"
             ]
           },
           {
