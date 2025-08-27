@@ -450,10 +450,11 @@ const chatStore = create<ChatStore>()(
 						let taskRunning = [...tasks[taskId].taskRunning]
 						let taskAssigning = [...tasks[taskId].taskAssigning]
 						const targetTaskIndex = taskRunning.findIndex((task) => task.id === task_id)
-						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id))
+						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id && (task.failure_count == 0 || !task.failure_count)))
 						if (targetTaskAssigningIndex !== -1) {
 							const taskIndex = taskAssigning[targetTaskAssigningIndex].tasks.findIndex((task: TaskInfo) => task.id === task_id)
 							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].status = state === "DONE" ? "completed" : "failed";
+							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].failure_count =failure_count||0
 
 							// destroy webview
 							tasks[taskId].taskAssigning = tasks[taskId].taskAssigning.map((item) => {
@@ -601,12 +602,21 @@ const chatStore = create<ChatStore>()(
 
 						// The following logic is for when the task actually starts executing (running)
 						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
-							const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
-							if (exist) {
-								exist.status = "running";
-							} else {
-								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "running", });
+							// const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
+							let taskTemp=null
+							if(task){
+								taskTemp=JSON.parse(JSON.stringify(task))
+								taskTemp.failure_count=0
+								taskTemp.status="running"
+								taskTemp.toolkits=[]
+								taskTemp.report=""
 							}
+							taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
+							// if (exist) {
+							// 	exist.status = "running";
+							// } else {
+							// 	taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
+							// }
 						}
 						if (taskRunningIndex === -1) {
 							taskRunning!.push(
