@@ -331,9 +331,14 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 
 - **X (Twitter)：** 关注更新、AI 见解和重要公告。[关注我们][social-x-link]  
 
-- **微信社区：** 扫描下方二维码加入我们的微信社区。
+- **微信社区：** 扫描下方二维码加入我们的微信社区群。
 
-![wechat](https://eigent-ai.github.io/.github/assets/wechat.jpg)
+<div align="center">
+  <img src="./src/assets/wechat_qr_1.jpg" width="200" style="display: inline-block; margin: 10px;">
+  <img src="./src/assets/wechat_qr_2.jpg" width="200" style="display: inline-block; margin: 10px;">
+  <img src="./src/assets/wechat_qr_3.jpg" width="200" style="display: inline-block; margin: 10px;">
+  <img src="./src/assets/wechat_qr_4.jpg" width="200" style="display: inline-block; margin: 10px;">
+</div>
 
 
 
