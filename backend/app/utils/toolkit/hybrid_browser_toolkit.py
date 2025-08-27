@@ -15,6 +15,7 @@ from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
 from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import \
     WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper
 from app.component.command import bun, uv
+from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
@@ -428,7 +429,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             dom_content_loaded_timeout=self._dom_content_loaded_timeout,
             viewport_limit=self._viewport_limit,
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
-            cdp_url=self.config_loader.get_browser_config().cdp_url,
+            cdp_url=f"http://localhost:{env('browser_port', '9222')}",
         )
 
     @classmethod

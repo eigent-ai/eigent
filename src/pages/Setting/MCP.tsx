@@ -18,12 +18,12 @@ import { useNavigate } from "react-router-dom";
 import IntegrationList from "./components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
-import { mcpMap, OAuth } from "@/lib/oauth";
+
 import { toast } from "sonner";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
-	const { checkAgentTool, email } = useAuthStore();
+	const { checkAgentTool } = useAuthStore();
 	const [items, setItems] = useState<MCPUserItem[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -54,7 +54,7 @@ export default function SettingMCP() {
 	const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>(
 		{}
 	);
-	const [oauth, setOauth] = useState<OAuth | null>(null);
+	
 
 	// add: integrations list
 	const [integrations, setIntegrations] = useState<any[]>([]);
@@ -107,28 +107,9 @@ export default function SettingMCP() {
 				const baseURL = getProxyBaseURL();
 				const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
-					const mcp = mcpMap[key as keyof typeof mcpMap];
-					if (mcp) {
-						onInstall = async () => {
-							const platform = await window.electronAPI.getPlatform();
-							const homeDir = await window.electronAPI.getHomeDir();
 
-							const command =
-								platform === "win32"
-									? `${homeDir}\\.eigent\\bin\\bun.exe x -y eigent-mcp-remote@0.1.22 https://mcp.notion.com/mcp`
-									: `${homeDir}/.eigent/bin/bun x -y eigent-mcp-remote@0.1.22 https://mcp.notion.com/mcp`;
-
-							let res = await window.electronAPI.executeCommand(command, email);
-							if (!res.success) {
-								toast.error("Install MCP failed, please try again", {
-									closeButton: true,
-								});
-							}
-						};
-					} else {
-						onInstall = () =>
-							(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
-					}
+					onInstall = () =>
+						(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
 
 					return {
 						key,
@@ -339,7 +320,7 @@ export default function SettingMCP() {
 			</div>
 			<IntegrationList items={essentialIntegrations} />
 			<div className="text-text-body font-bold text-base leading-snug">MCP</div>
-			<IntegrationList items={integrations} oauth={oauth || undefined} />
+			<IntegrationList items={integrations} />
 
 			<div className="pt-4">
 				<div className="self-stretch inline-flex justify-start items-center gap-1">

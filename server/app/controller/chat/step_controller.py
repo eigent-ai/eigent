@@ -67,8 +67,7 @@ async def get_chat_step(step_id: int, session: Session = Depends(session), auth:
 
 
 @router.post("/steps", name="create chat step")
-# TODO Limit request sources
-async def create_chat_step(step: ChatStepIn, session: Session = Depends(session)):
+async def create_chat_step(step: ChatStepIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     chat_step = ChatStep(
         task_id=step.task_id,
         step=step.step,

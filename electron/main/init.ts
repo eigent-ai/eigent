@@ -180,8 +180,8 @@ export async function installDependencies() {
         fs.writeFileSync(installingLockPath, '')
 
         const installedLockPath = path.join(backendPath, 'uv_installed.lock')
-        const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
-
+        // const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
+        const proxyArgs = ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
         const runInstall = (extraArgs: string[]) => {
             return new Promise<boolean>((resolveInner) => {
                 const node_process = spawn(uv_path, [
@@ -196,9 +196,9 @@ export async function installDependencies() {
                         UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
                     }
                 })
-                console.log('start install dependencies',extraArgs)
+                console.log('start install dependencies', extraArgs)
                 node_process.stdout.on('data', (data) => {
-                    
+
                     log.info(`Script output: ${data}`)
                     if (mainWindow && !mainWindow.isDestroyed()) {
                         mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: data.toString() });
@@ -213,7 +213,7 @@ export async function installDependencies() {
                 })
 
                 node_process.on('close', (code) => {
-                    console.log('install dependencies end',code===0)
+                    console.log('install dependencies end', code === 0)
                     resolveInner(code === 0)
                 })
             })
@@ -233,7 +233,15 @@ export async function installDependencies() {
         }
 
         // try mirror install
-        const mirrorInstallSuccess = await runInstall(proxyArgs)
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+        let mirrorInstallSuccess = false
+
+        if (timezone === 'Asia/Shanghai') {
+            mirrorInstallSuccess = await runInstall(proxyArgs)
+        } else {
+            mirrorInstallSuccess = await runInstall([])
+        }
+
 
         fs.existsSync(installingLockPath) && fs.unlinkSync(installingLockPath)
 
@@ -445,10 +453,10 @@ export async function killProcessOnPort(port: number): Promise<boolean> {
 
             console.log(`Killing PID: ${pid}`);
             await execAsync(`taskkill /F /PID ${pid}`);
-        } 
+        }
         else if (platform === 'darwin') {
             await execAsync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`);
-        } 
+        }
         else {
             await execAsync(`fuser -k ${port}/tcp 2>/dev/null || true`);
         }

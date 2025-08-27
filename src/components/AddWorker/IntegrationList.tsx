@@ -13,7 +13,6 @@ import { capitalizeFirstLetter } from "@/lib";
 import { MCPEnvDialog } from "@/pages/Setting/components/MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
-import { toast } from "sonner";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -22,10 +21,7 @@ interface IntegrationItem {
 	onInstall: () => void;
 }
 
-const EnvOauthInfoMap = {
-	SLACK_BOT_TOKEN: "access_token",
-	NOTION_TOKEN: "bot_id",
-};
+
 
 interface IntegrationListProps {
 	items: IntegrationItem[];
@@ -127,55 +123,6 @@ export default function IntegrationList({
 			}
 			const provider = data.provider.toLowerCase();
 			isLockedRef.current = true;
-			if (provider === "notion") {
-
-				const {MCP_REMOTE_CONFIG_DIR,hasToken} = await window.electronAPI.getEmailFolderPath(email);
-				console.log("MCP_REMOTE_CONFIG_DIR", MCP_REMOTE_CONFIG_DIR);
-				if(!hasToken){
-					toast.error("Notion authorization failed, please try again", {
-						closeButton: true,
-					});
-					console.log("activeMcp", activeMcp);
-					handleUninstall(activeMcp);
-					return;
-				} 
-				try {
-					const tokenResult ={MCP_REMOTE_CONFIG_DIR} 
-					const currentItem = items.find(
-						(item) => item.key.toLowerCase() === provider
-					);
-					if (
-						tokenResult.MCP_REMOTE_CONFIG_DIR &&
-						currentItem &&
-						currentItem.env_vars &&
-						currentItem.env_vars.length > 0
-					) {
-						const envVarKey =
-							currentItem.env_vars.find(
-								(k) =>
-									EnvOauthInfoMap[k as keyof typeof EnvOauthInfoMap] ===
-									"MCP_REMOTE_CONFIG_DIR"
-							) || currentItem.env_vars[0];
-						await saveEnvAndConfig(
-							provider,
-							envVarKey,
-							tokenResult.MCP_REMOTE_CONFIG_DIR
-						);
-						fetchInstalled();
-						console.log(
-							"Notion authorization successful and configuration saved!"
-						);
-					} else {
-						console.log(
-							"Notion authorization successful, but bot_id not found or env configuration not found"
-						);
-					}
-
-					return;
-				} finally {
-					isLockedRef.current = false;
-				}
-			}
 			try {
 				const tokenResult = await proxyFetchPost(
 					`/api/oauth/${provider}/token`,
@@ -210,30 +157,6 @@ export default function IntegrationList({
 							"Slack authorization successful, but access_token not found or env configuration not found"
 						);
 					}
-				} else if (provider === "notion") {
-					if (
-						tokenResult.bot_id &&
-						currentItem &&
-						currentItem.env_vars &&
-						currentItem.env_vars.length > 0
-					) {
-						const envVarKey =
-							currentItem.env_vars.find(
-								(k) =>
-									EnvOauthInfoMap[k as keyof typeof EnvOauthInfoMap] ===
-									"bot_id"
-							) || currentItem.env_vars[0];
-						await saveEnvAndConfig(provider, envVarKey, tokenResult.bot_id);
-						console.log(
-							"Notion authorization successful and configuration saved!"
-						);
-						console.log("currentItem", items, currentItem, tokenResult.bot_id);
-					} else {
-						console.log("Notion authorization successful, but bot_id not found or env configuration not found");
-						console.log("currentItem", items, currentItem, tokenResult.bot_id);
-					}
-				} else {
-					// handle other provider authorization success, can be extended
 				}
 			} catch (e: any) {
 				console.log(`${data.provider} authorization failed: ${e.message || e}`);
@@ -355,10 +278,6 @@ export default function IntegrationList({
 						item.env_vars.length > 0 &&
 						window.electronAPI?.envRemove
 					) {
-						if (item.key === "Notion") {
-							const oauth = new OAuth();
-							oauth.clearToken("notion", email as string);
-						}
 						await window.electronAPI.envRemove(email, item.env_vars[0]);
 					}
 				} catch (e) {
@@ -381,7 +300,7 @@ export default function IntegrationList({
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			{items.map((item) => {
+			{items.filter((item) => item.name !== "Notion").map((item) => {
 				const isInstalled = !!installed[item.key];
 				return (
 					<div
@@ -438,7 +357,6 @@ export default function IntegrationList({
 									"LinkedIn",
 									"Reddit",
 									"Github",
-									"Notion",
 								].includes(item.name)}
 								variant={isInstalled ? "secondary" : "primary"}
 								size="sm"
@@ -455,7 +373,6 @@ export default function IntegrationList({
 									"LinkedIn",
 									"Reddit",
 									"Github",
-									"Notion",
 								].includes(item.name)
 									? "Coming Soon"
 									: isInstalled
