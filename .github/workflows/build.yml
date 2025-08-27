@@ -41,16 +41,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install uv
-
       - name: Install Dependencies
         run: npm install
 
@@ -99,54 +89,57 @@ jobs:
         run: |
           mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
 
-      # 下载所有 artifact
-      - name: Download all build artifacts
+      # Download all artifacts with correct names
+      - name: Download mac-x64 artifact
         uses: actions/download-artifact@v4
         with:
           name: release-macos-13-x64
           path: temp-mac-x64
 
-      - name: Download mac-arm64
+      - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v4
         with:
           name: release-macos-latest-arm64
           path: temp-mac-arm64
 
-      - name: Download win-x64
+      - name: Download win-x64 artifact
         uses: actions/download-artifact@v4
         with:
           name: release-windows-latest-x64
           path: temp-win-x64
 
-      # 移动文件到最终 release 目录，并去掉内部多余的 release/ 目录
+      # Move files to final release directory, removing any nested release/ directory
       - name: Move files to clean folders
-        shell: bash
         run: |
           # mac-x64
           if [ -d "temp-mac-x64/release" ]; then
-            mv temp-mac-x64/release/* release/mac-x64/ || true
-          else
-            mv temp-mac-x64/* release/mac-x64/ || true
+            mv temp-mac-x64/release/* release/mac-x64/
+          elif [ -d "temp-mac-x64" ]; then
+            mv temp-mac-x64/* release/mac-x64/
           fi
 
           # mac-arm64
           if [ -d "temp-mac-arm64/release" ]; then
-            mv temp-mac-arm64/release/* release/mac-arm64/ || true
-          else
-            mv temp-mac-arm64/* release/mac-arm64/ || true
+            mv temp-mac-arm64/release/* release/mac-arm64/
+          elif [ -d "temp-mac-arm64" ]; then
+            mv temp-mac-arm64/* release/mac-arm64/
           fi
 
           # win-x64
           if [ -d "temp-win-x64/release" ]; then
-            mv temp-win-x64/release/* release/win-x64/ || true
-          else
-            mv temp-win-x64/* release/win-x64/ || true
+            mv temp-win-x64/release/* release/win-x64/
+          elif [ -d "temp-win-x64" ]; then
+            mv temp-win-x64/* release/win-x64/
           fi
 
       - name: Rename duplicate files
         run: |
-          mv release/mac-x64/latest-mac.yml release/mac-x64/latest-x64-mac.yml || true
-          mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-arm64-mac.yml || true
+          if [ -f "release/mac-x64/latest-mac.yml" ]; then
+            mv release/mac-x64/latest-mac.yml release/mac-x64/latest-x64-mac.yml
+          fi
+          if [ -f "release/mac-arm64/latest-mac.yml" ]; then
+            mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-arm64-mac.yml
+          fi
 
       # 最终创建 GitHub Release
       - name: Create GitHub Release
