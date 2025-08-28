@@ -312,6 +312,8 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         } else if (msg.toLowerCase().includes("warn")) {
             //Skip Warnings
             // log.warn(`BACKEND: ${msg}`);
+        } else if (msg.includes("DEBUG")) {
+            log.debug(`BACKEND: ${msg}`);
         } else {
             log.info(`BACKEND: ${msg}`); // treat uvicorn info logs as normal
         }

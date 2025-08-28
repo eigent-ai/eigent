@@ -221,7 +221,7 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.info(f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
+        traceroot_logger.debug(f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
 
         try:
             res = await super().astep(input_message, response_format)
@@ -290,7 +290,7 @@ class ListenChatAgent(ChatAgent):
                 task_lock = get_task_lock(self.api_task_id)
 
                 toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
-                traceroot_logger.info(f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}")
+                traceroot_logger.debug(f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}")
                 asyncio.create_task(
                     task_lock.put_queue(
                         ActionActivateToolkitData(
