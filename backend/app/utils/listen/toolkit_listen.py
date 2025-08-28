@@ -129,7 +129,7 @@ def listen_toolkit(
                 error = None
                 res = None
                 try:
-                    logger.debug(">>>>", func.__name__, "<<<<")
+                    logger.debug(f"Executing toolkit method: {toolkit_name}.{method_name} for agent '{toolkit.agent_name}'")
                     res = func(*args, **kwargs)
                     # Safety check: if the result is a coroutine, we need to await it
                     if asyncio.iscoroutine(res):
