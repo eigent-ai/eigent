@@ -129,7 +129,7 @@ def listen_toolkit(
                 error = None
                 res = None
                 try:
-                    print(">>>>", func.__name__, "<<<<")
+                    logger.debug(">>>>", func.__name__, "<<<<")
                     res = func(*args, **kwargs)
                     # Safety check: if the result is a coroutine, we need to await it
                     if asyncio.iscoroutine(res):
