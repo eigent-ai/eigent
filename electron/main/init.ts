@@ -302,6 +302,21 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8'
     }
+
+    //Redirect output
+    const displayFilteredLogs = (data:String) => {
+        if (!data) return;
+        const msg = data.toString().trimEnd();
+        if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
+            log.error(`BACKEND: ${msg}`);
+        } else if (msg.toLowerCase().includes("warn")) {
+            //Skip Warnings
+            // log.warn(`BACKEND: ${msg}`);
+        } else {
+            log.info(`BACKEND: ${msg}`); // treat uvicorn info logs as normal
+        }
+    }
+
     return new Promise((resolve, reject) => {
         const node_process = spawn(
             uv_path,
@@ -320,7 +335,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
 
         node_process.stdout.on('data', (data) => {
-            log.info(`fastapi output: ${data}`);
+            displayFilteredLogs(data);
             // check output content, judge if start success
             if (!started && data.toString().includes("Uvicorn running on")) {
                 started = true;
@@ -330,7 +345,8 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         });
 
         node_process.stderr.on('data', (data) => {
-            log.error(`fastapi stderr output: ${data}`);
+            displayFilteredLogs(data);
+
             if (!started && data.toString().includes("Uvicorn running on")) {
                 started = true;
                 clearTimeout(startTimeout);
