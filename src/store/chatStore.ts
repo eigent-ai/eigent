@@ -935,7 +935,6 @@ const chatStore = create<ChatStore>()(
 						}).flat()
 						let endMessage = agentMessages.data as string
 						let summary = endMessage.match(/<summary>(.*?)<\/summary>/)?.[1]
-						console.log('@@@@', endMessage.match(/<summary>(.*?)<\/summary>/))
 						let newMessage: Message | null = null
 						const agent_summary_end = tasks[taskId].messages.findLast((message: Message) => message.step === 'agent_summary_end')
 						console.log('summary', summary)

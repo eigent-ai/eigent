@@ -646,7 +646,12 @@ function registerIpcHandlers() {
 
   ipcMain.handle("reveal-in-folder", async (event, filePath: string) => {
     try {
-      shell.showItemInFolder(filePath);
+      const stats = await fs.promises.stat(filePath.replace(/\/$/, '')).catch(() => null);
+      if (stats && stats.isDirectory()) {
+        shell.openPath(filePath);
+      } else {
+        shell.showItemInFolder(filePath);
+      }
     } catch (e) {
       log.error("reveal in folder failed", e);
     }
@@ -859,6 +864,11 @@ function registerIpcHandlers() {
   ipcMain.handle('get-file-list', async (_, email: string, taskId: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     return manager.getFileList(email, taskId);
+  });
+
+  ipcMain.handle('get-log-folder', async (_, email: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getLogFolder(email);
   });
 
   // ==================== WebView handler ====================

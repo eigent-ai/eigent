@@ -21,7 +21,7 @@ export default function ChatBox(): JSX.Element {
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [privacy, setPrivacy] = useState<any>(false);
 	const [hasSearchKey, setHasSearchKey] = useState<any>(false);
-	const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
+	// const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
 	const { modelType } = useAuthStore();
 	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 	useEffect(() => {
@@ -61,22 +61,22 @@ export default function ChatBox(): JSX.Element {
 	}, []);
 
 	// Refresh privacy status when dialog closes
-	useEffect(() => {
-		if (!privacyDialogOpen) {
-			proxyFetchGet("/api/user/privacy")
-				.then((res) => {
-					let _privacy = 0;
-					Object.keys(res).forEach((key) => {
-						if (!res[key]) {
-							_privacy++;
-							return;
-						}
-					});
-					setPrivacy(_privacy === 0 ? true : false);
-				})
-				.catch((err) => console.error("Failed to fetch settings:", err));
-		}
-	}, [privacyDialogOpen]);
+	// useEffect(() => {
+	// 	if (!privacyDialogOpen) {
+	// 		proxyFetchGet("/api/user/privacy")
+	// 			.then((res) => {
+	// 				let _privacy = 0;
+	// 				Object.keys(res).forEach((key) => {
+	// 					if (!res[key]) {
+	// 						_privacy++;
+	// 						return;
+	// 					}
+	// 				});
+	// 				setPrivacy(_privacy === 0 ? true : false);
+	// 			})
+	// 			.catch((err) => console.error("Failed to fetch settings:", err));
+	// 	}
+	// }, [privacyDialogOpen]);
 	const [searchParams] = useSearchParams();
 	const share_token = searchParams.get("share_token");
 
@@ -233,10 +233,10 @@ export default function ChatBox(): JSX.Element {
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<PrivacyDialog
+			{/* <PrivacyDialog
 				open={privacyDialogOpen}
 				onOpenChange={setPrivacyDialogOpen}
-			/>
+			/> */}
 			{(chatStore.activeTaskId &&
 				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
 			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
@@ -491,7 +491,8 @@ export default function ChatBox(): JSX.Element {
 					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
 					onClick={() => {
 						if (!privacy) {
-							setPrivacyDialogOpen(true);
+							navigate("/setting/privacy");
+							// setPrivacyDialogOpen(true);
 						}
 					}}
 					style={{ cursor: !privacy ? "pointer" : "default" }}
@@ -529,7 +530,8 @@ export default function ChatBox(): JSX.Element {
 									<div
 										onClick={(e) => {
 											e.stopPropagation();
-											setPrivacyDialogOpen(true);
+											// setPrivacyDialogOpen(true);
+											navigate("/setting/privacy");
 										}}
 										className=" cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 									>

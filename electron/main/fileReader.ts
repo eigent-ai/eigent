@@ -42,18 +42,18 @@ export class FileReader {
 	private async parseXlsx(filePath: string): Promise<string> {
 		try {
 			const directory = await unzipper.Open.file(filePath);
-			
+
 			// Find the shared strings file and worksheets
 			const sharedStringsFile = directory.files.find((f: any) => f.path === 'xl/sharedStrings.xml');
 			const worksheetFiles = directory.files.filter((f: any) => f.path.match(/^xl\/worksheets\/sheet\d+\.xml$/));
-			
+
 			// Parse shared strings if exists
 			let sharedStrings: string[] = [];
 			if (sharedStringsFile) {
 				const sharedStringsBuffer = await sharedStringsFile.buffer();
 				const sharedStringsContent = sharedStringsBuffer.toString('utf-8');
 				const parsedSharedStrings = await parseStringPromise(sharedStringsContent);
-				
+
 				if (parsedSharedStrings.sst && parsedSharedStrings.sst.si) {
 					sharedStrings = parsedSharedStrings.sst.si.map((si: any) => {
 						// Handle simple text nodes
@@ -78,7 +78,7 @@ export class FileReader {
 					console.log(`Parsed ${sharedStrings.length} shared strings`);
 				}
 			}
-			
+
 			let html = `
 				<style>
 					.xlsx-container {
@@ -123,24 +123,24 @@ export class FileReader {
 				</style>
 				<div class="xlsx-container">
 			`;
-			
+
 			// Process each worksheet
 			for (let i = 0; i < worksheetFiles.length && i < 5; i++) { // Limit to first 5 sheets
 				const file = worksheetFiles[i];
 				const contentBuffer = await file.buffer();
 				const content = contentBuffer.toString('utf-8');
 				const parsed = await parseStringPromise(content);
-				
+
 				if (worksheetFiles.length > 1) {
 					html += `<h3 class="sheet-title">Sheet ${i + 1}</h3>`;
 				}
-				
+
 				// Create table
 				html += '<table class="xlsx-table">';
-				
+
 				// Get all rows
 				const rows = parsed.worksheet?.sheetData?.[0]?.row || [];
-				
+
 				// Find the maximum column to create column headers
 				let maxCol = 0;
 				for (const row of rows) {
@@ -155,7 +155,7 @@ export class FileReader {
 						}
 					}
 				}
-				
+
 				// Add column headers row (A, B, C, ...)
 				html += '<thead><tr>';
 				html += '<th style="background-color: #e9ecef; width: 50px;"></th>'; // Empty cell for row numbers
@@ -163,20 +163,20 @@ export class FileReader {
 					html += `<th>${this.numberToColumn(i + 1)}</th>`;
 				}
 				html += '</tr></thead>';
-				
+
 				// Add data rows
 				html += '<tbody>';
 				for (const row of rows) {
 					html += '<tr>';
-					
+
 					// Add row number
 					const rowNum = row.$ && row.$.r ? row.$.r : '';
 					html += `<th style="background-color: #e9ecef; text-align: center;">${rowNum}</th>`;
-					
+
 					// Create cells array with proper indexing
 					const cells = row.c || [];
 					const cellMap = new Map();
-					
+
 					// Map cells by column index
 					for (const cell of cells) {
 						if (cell.$ && cell.$.r) {
@@ -187,21 +187,21 @@ export class FileReader {
 							}
 						}
 					}
-					
+
 					// Add cells in order, including empty cells
 					for (let i = 1; i <= maxCol; i++) {
 						const cell = cellMap.get(i);
 						const cellValue = cell ? this.getCellValue(cell, sharedStrings) : '';
 						html += `<td>${cellValue}</td>`;
 					}
-					
+
 					html += '</tr>';
 				}
 				html += '</tbody>';
-				
+
 				html += '</table>';
 			}
-			
+
 			html += '</div></div>';
 			return html;
 		} catch (error) {
@@ -233,7 +233,7 @@ export class FileReader {
 			// If cell has a value
 			if (cell.v && cell.v[0] !== undefined) {
 				const value = cell.v[0];
-				
+
 				// Check cell type
 				if (cell.$ && cell.$.t === 's') {
 					// Shared string
@@ -259,17 +259,17 @@ export class FileReader {
 					return value;
 				}
 			}
-			
+
 			// Check for inline string without type attribute
 			if (cell.is && cell.is[0] && cell.is[0].t && cell.is[0].t[0]) {
 				return cell.is[0].t[0];
 			}
-			
+
 			// Check for formula cells
 			if (cell.f && cell.f[0] && cell.v && cell.v[0]) {
 				return cell.v[0];
 			}
-			
+
 			return '';
 		} catch (error) {
 			console.error('Error getting cell value:', error, 'Cell:', JSON.stringify(cell));
@@ -364,7 +364,7 @@ export class FileReader {
 		return new Promise((resolve, reject) => {
 			const urlObj = new URL(url);
 			const protocol = urlObj.protocol === 'https:' ? https : http;
-			
+
 			const request = protocol.get(url, (response) => {
 				if (response.statusCode !== 200) {
 					reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
@@ -380,7 +380,9 @@ export class FileReader {
 				});
 
 				fileStream.on('error', (err) => {
-					fs.unlink(localPath, () => {}); // delete incomplete file
+					fs.unlink(localPath, (unlinkErr) => {
+						if (unlinkErr) console.error('Failed to delete incomplete file:', unlinkErr);
+					}); // delete incomplete file
 					reject(err);
 				});
 			});
@@ -398,21 +400,21 @@ export class FileReader {
 
 	// check if it is a local file path
 	private isLocalFile(filePath: string): boolean {
-		return filePath.startsWith('localfile://') || 
-			   filePath.startsWith('file://') || 
-			   (!filePath.startsWith('http://') && !filePath.startsWith('https://') && !filePath.includes('://'));
+		return filePath.startsWith('localfile://') ||
+			filePath.startsWith('file://') ||
+			(!filePath.startsWith('http://') && !filePath.startsWith('https://') && !filePath.includes('://'));
 	}
 
 	// get temporary file path
 	private getTempFilePath(originalPath: string, type: string): string {
 		const userData = app.getPath('userData');
 		const tempDir = path.join(userData, 'temp');
-		
+
 		// ensure temporary directory exists
 		if (!fs.existsSync(tempDir)) {
 			fs.mkdirSync(tempDir, { recursive: true });
 		}
-		
+
 		const fileName = path.basename(originalPath) || `temp_${Date.now()}.${type}`;
 		return path.join(tempDir, fileName);
 	}
@@ -423,13 +425,13 @@ export class FileReader {
 				// check if it is a remote file
 				if (!this.isLocalFile(filePath)) {
 					console.log('detect remote file, start downloading:', filePath);
-					
+
 					// download file to temporary directory
 					const tempPath = this.getTempFilePath(filePath, type);
 					try {
 						await this.downloadFile(filePath, tempPath);
 						console.log('file download completed:', tempPath);
-						
+
 						// use temporary file path to continue processing
 						filePath = tempPath;
 					} catch (downloadError) {
@@ -510,12 +512,12 @@ export class FileReader {
 
 			for (const file of files) {
 				if (file.startsWith(".")) continue;
-				
+
 				const filePath = path.join(dirPath, file);
 				const stats = fs.statSync(filePath);
 				const isFolder = stats.isDirectory();
 				const relativePath = path.relative(basePath, dirPath);
-				
+
 				const fileInfo: FileInfo = {
 					path: filePath,
 					name: file,
@@ -523,15 +525,15 @@ export class FileReader {
 					isFolder: isFolder,
 					relativePath: relativePath === '' ? '' : relativePath
 				};
-				
+
 				result.push(fileInfo);
-				
+
 				if (isFolder) {
 					const subFiles = this.getFilesRecursive(filePath, basePath);
 					result.push(...subFiles);
 				}
 			}
-			
+
 			return result;
 		} catch (err) {
 			console.error("Error reading directory:", dirPath, err);
@@ -550,11 +552,29 @@ export class FileReader {
 			if (!fs.existsSync(dirPath)) {
 				return [];
 			}
-			
+
 			return this.getFilesRecursive(dirPath, dirPath);
 		} catch (err) {
 			console.error("Load file failed:", err);
 			return [];
+		}
+	}
+	public getLogFolder(email: string): string {
+
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+
+		const userHome = app.getPath('home');
+		const dirPath = path.join(userHome, "eigent", safeEmail);
+
+		try {
+			if (!fs.existsSync(dirPath)) {
+				return '';
+			}
+
+			return dirPath
+		} catch (err) {
+			console.error("Load file failed:", err);
+			return '';
 		}
 	}
 }
