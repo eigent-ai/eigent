@@ -42,3 +42,6 @@ yarn.lock
 
 # Public directory (large media files)
 public/
+
+# Testing
+coverage/

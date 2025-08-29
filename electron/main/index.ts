@@ -259,7 +259,7 @@ const checkManagerInstance = (manager: any, name: string) => {
   return manager;
 };
 
-const handleDependencyInstallation = async () => {
+export const handleDependencyInstallation = async () => {
   try {
     log.info(' start install dependencies...');
 
