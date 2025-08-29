@@ -115,7 +115,7 @@ export default function SettingPrivacy() {
 	return (
 		<div className="pr-2">
 			<h2 className="mb-2">Data Privacy</h2>
-			<p className="mt-2">
+			<p className="mt-2 text-sm">
 				Eigent is built on a local-first principle to ensure your privacy. Your
 				data remains on your device by default. Cloud features are optional and
 				only use the minimum data necessary to function. For full details, visit
@@ -129,8 +129,8 @@ export default function SettingPrivacy() {
 				</a>
 				.
 			</p>
-			<h3 className="mb-0">How we handle your data</h3>
-			<ol className="pl-5 mt-2">
+			<h3 className="mb-0 text-sm">How we handle your data</h3>
+			<ol className="pl-5 mt-2 text-sm">
 				<li>We only use the essential data needed to run your tasks:</li>
 				<ul className="pl-4 mb-2">
 					<li>
