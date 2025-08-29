@@ -380,7 +380,9 @@ export class FileReader {
 				});
 
 				fileStream.on('error', (err) => {
-					fs.unlink(localPath, () => { }); // delete incomplete file
+					fs.unlink(localPath, (unlinkErr) => {
+						if (unlinkErr) console.error('Failed to delete incomplete file:', unlinkErr);
+					}); // delete incomplete file
 					reject(err);
 				});
 			});

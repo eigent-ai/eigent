@@ -109,7 +109,9 @@ export default function SettingPrivacy() {
 	}, [email]);
 
 	const handleOpenFolder = () => {
-		window.ipcRenderer.invoke("reveal-in-folder", logFolder + "/");
+		if (logFolder) {
+			window.ipcRenderer.invoke("reveal-in-folder", logFolder + "/");
+		}
 	};
 
 	return (
@@ -172,7 +174,7 @@ export default function SettingPrivacy() {
 						<FolderSearch className="w-4 h-4 ml-2" />
 					</div>
 				</div>
-				<Button onClick={handleOpenFolder} size="sm">
+				<Button onClick={handleOpenFolder} size="sm" disabled={!logFolder}>
 					Open Folder
 				</Button>
 			</div>

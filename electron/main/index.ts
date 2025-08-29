@@ -644,7 +644,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle("reveal-in-folder", async (event, filePath: string) => {
     try {
-      if (filePath.endsWith('/')) {
+      const stats = await fs.promises.stat(filePath.replace(/\/$/, '')).catch(() => null);
+      if (stats && stats.isDirectory()) {
         shell.openPath(filePath);
       } else {
         shell.showItemInFolder(filePath);
