@@ -123,6 +123,8 @@ nativeTheme.themeSource = 'light';
 // Set log level
 log.transports.console.level = 'info';
 log.transports.file.level = 'info';
+log.transports.console.format = '[{level}]{text}';
+log.transports.file.format = '[{level}]{text}';
 
 // Disable GPU Acceleration for Windows 7
 if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
@@ -362,7 +364,7 @@ function registerIpcHandlers() {
           stderr += output;
           if (output.includes('OAuth callback server running at')) {
             const url = output.split('OAuth callback server running at')[1].trim();
-            log.info(' detect OAuth callback URL:', url);
+            log.info('detect OAuth callback URL:', url);
 
             // Notify frontend to callback URL
             if (win && !win.isDestroyed()) {
