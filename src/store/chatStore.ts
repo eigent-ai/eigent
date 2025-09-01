@@ -97,7 +97,6 @@ interface ChatStore {
 
 
 
-
 const chatStore = create<ChatStore>()(
 	(set, get) => ({
 		activeTaskId: null,
@@ -791,8 +790,8 @@ const chatStore = create<ChatStore>()(
 						return
 					}
 
-					if (agentMessages.step === "error") {
-						console.error('Model error:', agentMessages.data)
+					if (agentMessages.step === "error" || agentMessages.error) {
+						console.error('Model error:', agentMessages.data || agentMessages.error)
 						const errorMessage = agentMessages.data.message || 'An error occurred while processing your request';
 
 						// Create a new task to avoid "Task already exists" error
@@ -1062,6 +1061,10 @@ const chatStore = create<ChatStore>()(
 				// Server closes connection
 				onclose() {
 					console.log("server closed");
+					const { setUpdateCount, setStatus, setIsPending,  } = get()
+					setIsPending(taskId, false);
+					setStatus(taskId, 'finished');
+					setUpdateCount();
 				},
 			});
 

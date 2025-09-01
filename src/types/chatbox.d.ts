@@ -111,6 +111,7 @@ declare global {
 			tools?: string[];
 		};
 		status?: 'running' | 'filled' | 'completed';
+		error?: string;
 	}
 
 	type AgentNameType =
