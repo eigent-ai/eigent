@@ -327,7 +327,6 @@ const chatStore = create<ChatStore>()(
 					};
 					const { setNuwFileNum, setCotList, getTokens, setUpdateCount, addTokens, setStatus, addWebViewUrl, setIsPending, addMessages, setHasWaitComfirm, setSummaryTask, setTaskAssigning, setTaskInfo, setTaskRunning, addTerminal, addFileList, setActiveAsk, setActiveAskList, tasks, create, setActiveTaskId } = get()
 					// if (tasks[taskId].status === 'finished') return
-
 					if (agentMessages.step === "to_sub_tasks") {
 
 
@@ -496,10 +495,14 @@ const chatStore = create<ChatStore>()(
 						setTaskAssigning(taskId, taskAssigning)
 						return;
 					}
+					
 					// Activate agent
 					if (agentMessages.step === "activate_agent" || agentMessages.step === "deactivate_agent") {
 						let taskAssigning = [...tasks[taskId].taskAssigning]
 						let taskRunning = [...tasks[taskId].taskRunning]
+						if (agentMessages.data.tokens) {
+							addTokens(taskId, agentMessages.data.tokens)
+						}
 						const { state, agent_id, process_task_id } = agentMessages.data;
 						if (!state && !agent_id && !process_task_id) return
 						const agentIndex = taskAssigning.findIndex((agent) => agent.agent_id === agent_id)
@@ -548,11 +551,10 @@ const chatStore = create<ChatStore>()(
 							const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
 							if (taskIndex !== -1) {
 								taskRunning![taskIndex].agent!.status = "completed";
-								taskRunning![taskIndex]!.status = "completed";
+								taskRunning![taskIndex]!.status = "completed";~
 							}
-							if (agentMessages.data.tokens) {
-								addTokens(taskId, agentMessages.data.tokens)
-							}
+
+
 							if (!type && historyId) {
 								const obj = {
 									"project_name": tasks[taskId].summaryTask.split('|')[0],
