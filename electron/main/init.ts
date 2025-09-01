@@ -505,32 +505,31 @@ export async function killProcessOnPort(port: number): Promise<boolean> {
 }
 
 export async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<number> {
-    let port = startPort;
-    let attemptedKill = false;
+    const triedPorts = new Set<number>();
 
-    for (let i = 0; i < maxAttempts; i++) {
+    const tryPort = async (port: number): Promise<number | null> => {
+        if (triedPorts.has(port)) return null;
+        triedPorts.add(port);
+
         const available = await checkPortAvailable(port);
         if (available) {
             return port;
         }
 
-        // If port is occupied and we haven't tried killing processes yet
-        if (!attemptedKill && i >= 5) {
-            log.info(`Attempting to free ports ${startPort} to ${startPort + maxAttempts}...`);
-
-            // Try to kill processes on a range of ports
-            for (let killPort = startPort; killPort < startPort + 10; killPort++) {
-                await killProcessOnPort(killPort);
-            }
-
-            attemptedKill = true;
-
-            // Reset to start port and try again
-            port = startPort;
-            continue;
+        const killed = await killProcessOnPort(port);
+        if (killed && await checkPortAvailable(port)) {
+            return port;
         }
 
-        port++;
+        return null;
+    };
+
+    // return when found port
+    for (let offset = 0; offset < maxAttempts; offset++) {
+        const port = startPort + offset;
+        const found = await tryPort(port);
+        if (found) return found;
     }
-    throw new Error('No available port found');
+
+    throw new Error(`No available port found in range ${startPort} ~ ${startPort + maxAttempts - 1}`);
 }
