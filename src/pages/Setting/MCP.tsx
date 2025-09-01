@@ -44,7 +44,7 @@ export default function SettingMCP() {
       ]
     }
   }
-}`
+}`,
 	);
 	const [remoteName, setRemoteName] = useState("");
 	const [remoteUrl, setRemoteUrl] = useState("");
@@ -52,9 +52,8 @@ export default function SettingMCP() {
 	const [deleteTarget, setDeleteTarget] = useState<MCPUserItem | null>(null);
 	const [deleting, setDeleting] = useState(false);
 	const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>(
-		{}
+		{},
 	);
-	
 
 	// add: integrations list
 	const [integrations, setIntegrations] = useState<any[]>([]);
@@ -118,8 +117,8 @@ export default function SettingMCP() {
 						desc:
 							value.env_vars && value.env_vars.length > 0
 								? `Environmental variables required: ${value.env_vars.join(
-										", "
-								  )}`
+										", ",
+									)}`
 								: "",
 						onInstall,
 					};
@@ -128,8 +127,8 @@ export default function SettingMCP() {
 
 				setIntegrations(
 					list.filter(
-						(item) => !essentialIntegrations.find((i) => i.key === item.key)
-					)
+						(item) => !essentialIntegrations.find((i) => i.key === item.key),
+					),
 				);
 			}
 		});
@@ -223,7 +222,7 @@ export default function SettingMCP() {
 				status: checked ? 1 : 0,
 			});
 			setShowConfig((prev) =>
-				prev ? { ...prev, status: checked ? 1 : 0 } : prev
+				prev ? { ...prev, status: checked ? 1 : 0 } : prev,
 			);
 			fetchList();
 		} finally {

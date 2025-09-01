@@ -36,7 +36,7 @@ export const BottomInput = ({
 	privacy,
 	isTakeControl,
 	setIsTakeControl,
-	useCloudModelInDev
+	useCloudModelInDev,
 }: {
 	message: string;
 	onMessageChange: (v: string) => void;
@@ -56,7 +56,6 @@ export const BottomInput = ({
 	const [isConfirm, setIsConfirm] = useState(true);
 	const [hasSubTask, setHasSubTask] = useState(false);
 
-
 	useEffect(() => {
 		const message = chatStore.tasks[
 			chatStore.activeTaskId as string
@@ -72,12 +71,12 @@ export const BottomInput = ({
 
 	// get once per second
 	const [taskTime, setTaskTime] = useState(
-		chatStore.getFormattedTaskTime(chatStore.activeTaskId as string)
+		chatStore.getFormattedTaskTime(chatStore.activeTaskId as string),
 	);
 	useEffect(() => {
 		const interval = setInterval(() => {
 			setTaskTime(
-				chatStore.getFormattedTaskTime(chatStore.activeTaskId as string)
+				chatStore.getFormattedTaskTime(chatStore.activeTaskId as string),
 			);
 		}, 500);
 		return () => clearInterval(interval);
@@ -120,7 +119,7 @@ export const BottomInput = ({
 				// add new selected file to existing file list
 				const files = [
 					...chatStore.tasks[chatStore.activeTaskId as string].attaches.filter(
-						(f) => !result.files.find((r: File) => r.filePath === f.filePath)
+						(f) => !result.files.find((r: File) => r.filePath === f.filePath),
 					),
 					...result.files,
 				];
@@ -221,8 +220,8 @@ export const BottomInput = ({
 					</Button>
 				</div>
 			) : hasSubTask &&
-			  !chatStore.tasks[chatStore.activeTaskId as string].activeAsk &&
-			  !isTakeControl ? (
+				!chatStore.tasks[chatStore.activeTaskId as string].activeAsk &&
+				!isTakeControl ? (
 				<div className="mr-2 flex items-center justify-between gap-sm z-50 bg-input-bg-default p-sm rounded-2xl border border-solid border-input-border-default">
 					<Tag variant="primary">
 						# Token{" "}
@@ -247,7 +246,7 @@ export const BottomInput = ({
 									chatStore.tasks[chatStore.activeTaskId as string].status ===
 										"running"
 										? "pause"
-										: "resume"
+										: "resume",
 								);
 							}}
 							size="xs"
@@ -265,7 +264,7 @@ export const BottomInput = ({
 									className="w-4 h-4 text-button-primary-icon-default animate-spin "
 								/>
 							) : chatStore.tasks[chatStore.activeTaskId as string].status ===
-							  "pause" ? (
+								"pause" ? (
 								<CirclePlay
 									color="white"
 									className="w-4 h-4 text-button-primary-icon-default"
@@ -344,7 +343,8 @@ export const BottomInput = ({
 													className="cursor-pointer flex items-center gap-xs w-[125px] text-xs px-xs py-0.5 rounded-lg bg-tag-surface-hover"
 												>
 													{["jpg", "png", "jpeg"].includes(
-														item.filePath.split(".").at(-1)?.toLowerCase() || ""
+														item.filePath.split(".").at(-1)?.toLowerCase() ||
+															"",
 													) ? (
 														<Image className="w-4 h-4 text-icon-primary" />
 													) : (
@@ -360,11 +360,11 @@ export const BottomInput = ({
 														onClick={(e) => {
 															e.stopPropagation();
 															let files = attaches.filter(
-																(f) => f.filePath !== item.filePath
+																(f) => f.filePath !== item.filePath,
 															);
 															chatStore.setAttaches(
 																chatStore.activeTaskId as string,
-																files
+																files,
 															);
 														}}
 														size="icon"
@@ -420,8 +420,8 @@ export const BottomInput = ({
 										? "success"
 										: "cuation"
 									: message.length > 0
-									? "success"
-									: "primary"
+										? "success"
+										: "primary"
 							}
 							className={`rounded-full  transition-all w-6`}
 						>

@@ -1,19 +1,18 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
-import fs from 'fs'
-import path from 'path'
-import mammoth from 'mammoth'
-import Papa from 'papaparse'
-import * as unzipper from 'unzipper'
-import { parseStringPromise } from 'xml2js'
-import https from 'https'
-import http from 'http'
-import { URL } from 'url'
-
+import { ipcMain, BrowserWindow, app } from "electron";
+import fs from "fs";
+import path from "path";
+import mammoth from "mammoth";
+import Papa from "papaparse";
+import * as unzipper from "unzipper";
+import { parseStringPromise } from "xml2js";
+import https from "https";
+import http from "http";
+import { URL } from "url";
 
 export class FileReader {
-	private win: BrowserWindow | null = null
+	private win: BrowserWindow | null = null;
 	constructor(window: BrowserWindow) {
-		this.win = window
+		this.win = window;
 	}
 
 	// Remove automatic IPC handler registration from constructor
@@ -21,21 +20,21 @@ export class FileReader {
 
 	private async parseDocx(filePath: string): Promise<string> {
 		try {
-			const result = await mammoth.convertToHtml({ path: filePath })
-			return result.value // The generated HTML
+			const result = await mammoth.convertToHtml({ path: filePath });
+			return result.value; // The generated HTML
 		} catch (error) {
-			console.error('DOCX parsing error:', error)
-			throw error
+			console.error("DOCX parsing error:", error);
+			throw error;
 		}
 	}
 
 	private async parseDoc(filePath: string): Promise<string> {
 		try {
-			const result = await mammoth.convertToHtml({ path: filePath })
-			return result.value // The generated HTML
+			const result = await mammoth.convertToHtml({ path: filePath });
+			return result.value; // The generated HTML
 		} catch (error) {
-			console.error('DOC parsing error:', error)
-			throw error
+			console.error("DOC parsing error:", error);
+			throw error;
 		}
 	}
 
@@ -44,36 +43,43 @@ export class FileReader {
 			const directory = await unzipper.Open.file(filePath);
 
 			// Find the shared strings file and worksheets
-			const sharedStringsFile = directory.files.find((f: any) => f.path === 'xl/sharedStrings.xml');
-			const worksheetFiles = directory.files.filter((f: any) => f.path.match(/^xl\/worksheets\/sheet\d+\.xml$/));
+			const sharedStringsFile = directory.files.find(
+				(f: any) => f.path === "xl/sharedStrings.xml",
+			);
+			const worksheetFiles = directory.files.filter((f: any) =>
+				f.path.match(/^xl\/worksheets\/sheet\d+\.xml$/),
+			);
 
 			// Parse shared strings if exists
 			let sharedStrings: string[] = [];
 			if (sharedStringsFile) {
 				const sharedStringsBuffer = await sharedStringsFile.buffer();
-				const sharedStringsContent = sharedStringsBuffer.toString('utf-8');
-				const parsedSharedStrings = await parseStringPromise(sharedStringsContent);
+				const sharedStringsContent = sharedStringsBuffer.toString("utf-8");
+				const parsedSharedStrings =
+					await parseStringPromise(sharedStringsContent);
 
 				if (parsedSharedStrings.sst && parsedSharedStrings.sst.si) {
 					sharedStrings = parsedSharedStrings.sst.si.map((si: any) => {
 						// Handle simple text nodes
 						if (si.t && si.t[0]) {
-							return typeof si.t[0] === 'string' ? si.t[0] : String(si.t[0]);
+							return typeof si.t[0] === "string" ? si.t[0] : String(si.t[0]);
 						}
 						// Handle rich text nodes
 						if (si.r) {
-							return si.r.map((r: any) => {
-								if (r.t && r.t[0]) {
-									return typeof r.t[0] === 'string' ? r.t[0] : String(r.t[0]);
-								}
-								return '';
-							}).join('');
+							return si.r
+								.map((r: any) => {
+									if (r.t && r.t[0]) {
+										return typeof r.t[0] === "string" ? r.t[0] : String(r.t[0]);
+									}
+									return "";
+								})
+								.join("");
 						}
 						// Handle direct string values
-						if (typeof si === 'string') {
+						if (typeof si === "string") {
 							return si;
 						}
-						return '';
+						return "";
 					});
 					console.log(`Parsed ${sharedStrings.length} shared strings`);
 				}
@@ -125,10 +131,11 @@ export class FileReader {
 			`;
 
 			// Process each worksheet
-			for (let i = 0; i < worksheetFiles.length && i < 5; i++) { // Limit to first 5 sheets
+			for (let i = 0; i < worksheetFiles.length && i < 5; i++) {
+				// Limit to first 5 sheets
 				const file = worksheetFiles[i];
 				const contentBuffer = await file.buffer();
-				const content = contentBuffer.toString('utf-8');
+				const content = contentBuffer.toString("utf-8");
 				const parsed = await parseStringPromise(content);
 
 				if (worksheetFiles.length > 1) {
@@ -157,20 +164,20 @@ export class FileReader {
 				}
 
 				// Add column headers row (A, B, C, ...)
-				html += '<thead><tr>';
+				html += "<thead><tr>";
 				html += '<th style="background-color: #e9ecef; width: 50px;"></th>'; // Empty cell for row numbers
 				for (let i = 0; i < maxCol; i++) {
 					html += `<th>${this.numberToColumn(i + 1)}</th>`;
 				}
-				html += '</tr></thead>';
+				html += "</tr></thead>";
 
 				// Add data rows
-				html += '<tbody>';
+				html += "<tbody>";
 				for (const row of rows) {
-					html += '<tr>';
+					html += "<tr>";
 
 					// Add row number
-					const rowNum = row.$ && row.$.r ? row.$.r : '';
+					const rowNum = row.$ && row.$.r ? row.$.r : "";
 					html += `<th style="background-color: #e9ecef; text-align: center;">${rowNum}</th>`;
 
 					// Create cells array with proper indexing
@@ -191,21 +198,23 @@ export class FileReader {
 					// Add cells in order, including empty cells
 					for (let i = 1; i <= maxCol; i++) {
 						const cell = cellMap.get(i);
-						const cellValue = cell ? this.getCellValue(cell, sharedStrings) : '';
+						const cellValue = cell
+							? this.getCellValue(cell, sharedStrings)
+							: "";
 						html += `<td>${cellValue}</td>`;
 					}
 
-					html += '</tr>';
+					html += "</tr>";
 				}
-				html += '</tbody>';
+				html += "</tbody>";
 
-				html += '</table>';
+				html += "</table>";
 			}
 
-			html += '</div></div>';
+			html += "</div></div>";
 			return html;
 		} catch (error) {
-			console.error('XLSX parsing error:', error);
+			console.error("XLSX parsing error:", error);
 			throw error;
 		}
 	}
@@ -213,16 +222,16 @@ export class FileReader {
 	private columnToNumber(column: string): number {
 		let result = 0;
 		for (let i = 0; i < column.length; i++) {
-			result = result * 26 + (column.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+			result = result * 26 + (column.charCodeAt(i) - "A".charCodeAt(0) + 1);
 		}
 		return result;
 	}
 
 	private numberToColumn(num: number): string {
-		let column = '';
+		let column = "";
 		while (num > 0) {
 			num--;
-			column = String.fromCharCode((num % 26) + 'A'.charCodeAt(0)) + column;
+			column = String.fromCharCode((num % 26) + "A".charCodeAt(0)) + column;
 			num = Math.floor(num / 26);
 		}
 		return column;
@@ -235,18 +244,20 @@ export class FileReader {
 				const value = cell.v[0];
 
 				// Check cell type
-				if (cell.$ && cell.$.t === 's') {
+				if (cell.$ && cell.$.t === "s") {
 					// Shared string
 					const index = parseInt(value);
 					if (!isNaN(index) && index >= 0 && index < sharedStrings.length) {
-						return sharedStrings[index] || '';
+						return sharedStrings[index] || "";
 					}
-					console.warn(`Shared string index ${index} out of bounds (array length: ${sharedStrings.length})`);
+					console.warn(
+						`Shared string index ${index} out of bounds (array length: ${sharedStrings.length})`,
+					);
 					return value; // Return raw value as fallback
-				} else if (cell.$ && cell.$.t === 'inlineStr') {
+				} else if (cell.$ && cell.$.t === "inlineStr") {
 					// Inline string
-					return cell.is?.[0]?.t?.[0] || '';
-				} else if (cell.$ && cell.$.t === 'str') {
+					return cell.is?.[0]?.t?.[0] || "";
+				} else if (cell.$ && cell.$.t === "str") {
 					// Formula result string
 					return value;
 				} else {
@@ -270,92 +281,100 @@ export class FileReader {
 				return cell.v[0];
 			}
 
-			return '';
+			return "";
 		} catch (error) {
-			console.error('Error getting cell value:', error, 'Cell:', JSON.stringify(cell));
-			return '';
+			console.error(
+				"Error getting cell value:",
+				error,
+				"Cell:",
+				JSON.stringify(cell),
+			);
+			return "";
 		}
 	}
 
 	private async parsePptx(filePath: string): Promise<string> {
 		try {
-			const directory = await unzipper.Open.file(filePath)
-			const slideFiles = directory.files.filter((f: any) => f.path.match(/^ppt\/slides\/slide\d+\.xml$/))
+			const directory = await unzipper.Open.file(filePath);
+			const slideFiles = directory.files.filter((f: any) =>
+				f.path.match(/^ppt\/slides\/slide\d+\.xml$/),
+			);
 
-			let html = '<div style="font-family: sans-serif;">'
+			let html = '<div style="font-family: sans-serif;">';
 
 			for (let i = 0; i < slideFiles.length; i++) {
-				const file = slideFiles[i]
-				const contentBuffer = await file.buffer()
-				const content = contentBuffer.toString('utf-8')
-				const parsed = await parseStringPromise(content)
+				const file = slideFiles[i];
+				const contentBuffer = await file.buffer();
+				const content = contentBuffer.toString("utf-8");
+				const parsed = await parseStringPromise(content);
 
-				html += `<h3>Slide ${i + 1}</h3><ul>`
+				html += `<h3>Slide ${i + 1}</h3><ul>`;
 
-				const texts = parsed['p:sld']['p:cSld'][0]['p:spTree'][0]['p:sp'] || []
+				const texts = parsed["p:sld"]["p:cSld"][0]["p:spTree"][0]["p:sp"] || [];
 
 				for (const textNode of texts) {
-					const paras = textNode?.['p:txBody']?.[0]?.['a:p'] || []
+					const paras = textNode?.["p:txBody"]?.[0]?.["a:p"] || [];
 					for (const para of paras) {
-						const runs = para?.['a:r'] || []
+						const runs = para?.["a:r"] || [];
 						for (const run of runs) {
-							const text = run?.['a:t']?.[0]
+							const text = run?.["a:t"]?.[0];
 							if (text) {
-								html += `<li>${text}</li>`
+								html += `<li>${text}</li>`;
 							}
 						}
 					}
 				}
 
-				html += '</ul><hr/>'
+				html += "</ul><hr/>";
 			}
 
-			html += '</div>'
-			return html
+			html += "</div>";
+			return html;
 		} catch (error) {
-			console.error('PPTX unzip parse error:', error)
-			throw error
+			console.error("PPTX unzip parse error:", error);
+			throw error;
 		}
 	}
 
 	private async parseCsv(filePath: string): Promise<string> {
 		try {
-			const fileContent = fs.readFileSync(filePath, 'utf-8')
+			const fileContent = fs.readFileSync(filePath, "utf-8");
 			const result = Papa.parse(fileContent, {
 				header: true,
 				skipEmptyLines: true,
-				delimiter: ","
-			})
+				delimiter: ",",
+			});
 
 			// Convert to HTML table
 			if (result.data && result.data.length > 0) {
-				const headers = Object.keys(result.data[0] as string[])
-				let html = '<table style="border-collapse: collapse; width: 100%; font-family: monospace;">'
+				const headers = Object.keys(result.data[0] as string[]);
+				let html =
+					'<table style="border-collapse: collapse; width: 100%; font-family: monospace;">';
 
 				// Header row
-				html += '<thead><tr style="background-color: #f5f5f5;">'
-				headers.forEach(header => {
-					html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">${header}</th>`
-				})
-				html += '</tr></thead>'
+				html += '<thead><tr style="background-color: #f5f5f5;">';
+				headers.forEach((header) => {
+					html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">${header}</th>`;
+				});
+				html += "</tr></thead>";
 
 				// Data rows
-				html += '<tbody>'
+				html += "<tbody>";
 				result.data.forEach((row: any) => {
-					html += '<tr>'
-					headers.forEach(header => {
-						html += `<td style="border: 1px solid #ddd; padding: 8px;">${row[header] || ''}</td>`
-					})
-					html += '</tr>'
-				})
-				html += '</tbody></table>'
+					html += "<tr>";
+					headers.forEach((header) => {
+						html += `<td style="border: 1px solid #ddd; padding: 8px;">${row[header] || ""}</td>`;
+					});
+					html += "</tr>";
+				});
+				html += "</tbody></table>";
 
-				return html
+				return html;
 			}
-			return '<p>Empty CSV file</p>'
+			return "<p>Empty CSV file</p>";
 		} catch (error) {
-			console.error('CSV parsing error:', error)
-			throw error
+			console.error("CSV parsing error:", error);
+			throw error;
 		}
 	}
 
@@ -363,59 +382,67 @@ export class FileReader {
 	private async downloadFile(url: string, localPath: string): Promise<void> {
 		return new Promise((resolve, reject) => {
 			const urlObj = new URL(url);
-			const protocol = urlObj.protocol === 'https:' ? https : http;
+			const protocol = urlObj.protocol === "https:" ? https : http;
 
 			const request = protocol.get(url, (response) => {
 				if (response.statusCode !== 200) {
-					reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+					reject(
+						new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`),
+					);
 					return;
 				}
 
 				const fileStream = fs.createWriteStream(localPath);
 				response.pipe(fileStream);
 
-				fileStream.on('finish', () => {
+				fileStream.on("finish", () => {
 					fileStream.close();
 					resolve();
 				});
 
-				fileStream.on('error', (err) => {
+				fileStream.on("error", (err) => {
 					fs.unlink(localPath, (unlinkErr) => {
-						if (unlinkErr) console.error('Failed to delete incomplete file:', unlinkErr);
+						if (unlinkErr)
+							console.error("Failed to delete incomplete file:", unlinkErr);
 					}); // delete incomplete file
 					reject(err);
 				});
 			});
 
-			request.on('error', (err) => {
+			request.on("error", (err) => {
 				reject(err);
 			});
 
 			request.setTimeout(30000, () => {
 				request.destroy();
-				reject(new Error('Download timeout'));
+				reject(new Error("Download timeout"));
 			});
 		});
 	}
 
 	// check if it is a local file path
 	private isLocalFile(filePath: string): boolean {
-		return filePath.startsWith('localfile://') ||
-			filePath.startsWith('file://') ||
-			(!filePath.startsWith('http://') && !filePath.startsWith('https://') && !filePath.includes('://'));
+		return (
+			filePath.startsWith("localfile://") ||
+			filePath.startsWith("file://") ||
+			(!filePath.startsWith("http://") &&
+				!filePath.startsWith("https://") &&
+				!filePath.includes("://"))
+		);
 	}
 
 	// get temporary file path
 	private getTempFilePath(originalPath: string, type: string): string {
-		const userData = app.getPath('userData');
-		const tempDir = path.join(userData, 'temp');
+		const userData = app.getPath("userData");
+		const tempDir = path.join(userData, "temp");
 
 		// ensure temporary directory exists
 		if (!fs.existsSync(tempDir)) {
 			fs.mkdirSync(tempDir, { recursive: true });
 		}
 
-		const fileName = path.basename(originalPath) || `temp_${Date.now()}.${type}`;
+		const fileName =
+			path.basename(originalPath) || `temp_${Date.now()}.${type}`;
 		return path.join(tempDir, fileName);
 	}
 
@@ -424,85 +451,88 @@ export class FileReader {
 			try {
 				// check if it is a remote file
 				if (!this.isLocalFile(filePath)) {
-					console.log('detect remote file, start downloading:', filePath);
+					console.log("detect remote file, start downloading:", filePath);
 
 					// download file to temporary directory
 					const tempPath = this.getTempFilePath(filePath, type);
 					try {
 						await this.downloadFile(filePath, tempPath);
-						console.log('file download completed:', tempPath);
+						console.log("file download completed:", tempPath);
 
 						// use temporary file path to continue processing
 						filePath = tempPath;
 					} catch (downloadError) {
-						console.error('file download failed:', downloadError);
+						console.error("file download failed:", downloadError);
 						reject(downloadError);
 						return;
 					}
 				}
 
 				// original file processing logic
-				if (type === 'md') {
-					const content = fs.readFileSync(filePath, 'utf-8')
-					resolve(content)
-				} else if (isShowSourceCode && type === 'html') {
-					const content = fs.readFileSync(filePath, 'utf-8')
-					resolve(content)
+				if (type === "md") {
+					const content = fs.readFileSync(filePath, "utf-8");
+					resolve(content);
+				} else if (isShowSourceCode && type === "html") {
+					const content = fs.readFileSync(filePath, "utf-8");
+					resolve(content);
 				} else if (["pdf", "html"].includes(type)) {
-					resolve(filePath)
+					resolve(filePath);
 				} else if (type === "csv") {
 					try {
-						const htmlContent = await this.parseCsv(filePath)
-						resolve(htmlContent)
+						const htmlContent = await this.parseCsv(filePath);
+						resolve(htmlContent);
 					} catch (error) {
-						console.warn('CSV parsing failed, reading as text:', error)
-						const content = fs.readFileSync(filePath, 'utf-8')
-						resolve(content)
+						console.warn("CSV parsing failed, reading as text:", error);
+						const content = fs.readFileSync(filePath, "utf-8");
+						resolve(content);
 					}
 				} else if (type === "docx") {
 					try {
-						const htmlContent = await this.parseDocx(filePath)
-						resolve(htmlContent)
+						const htmlContent = await this.parseDocx(filePath);
+						resolve(htmlContent);
 					} catch (error) {
-						console.warn('DOCX parsing failed, reading as text:', error)
-						const content = fs.readFileSync(filePath, 'utf-8')
-						resolve(content)
+						console.warn("DOCX parsing failed, reading as text:", error);
+						const content = fs.readFileSync(filePath, "utf-8");
+						resolve(content);
 					}
 				} else if (type === "doc") {
 					try {
-						const htmlContent = await this.parseDoc(filePath)
-						resolve(htmlContent)
+						const htmlContent = await this.parseDoc(filePath);
+						resolve(htmlContent);
 					} catch (error) {
-						console.warn('DOC parsing failed, reading as text:', error)
-						const content = fs.readFileSync(filePath, 'utf-8')
-						resolve(content)
+						console.warn("DOC parsing failed, reading as text:", error);
+						const content = fs.readFileSync(filePath, "utf-8");
+						resolve(content);
 					}
-				} else if (type === 'pptx') {
+				} else if (type === "pptx") {
 					try {
-						const htmlContent = await this.parsePptx(filePath)
-						resolve(htmlContent)
+						const htmlContent = await this.parsePptx(filePath);
+						resolve(htmlContent);
 					} catch (error) {
-						console.warn('PPTX parsing failed, reading as binary string:', error)
-						const content = fs.readFileSync(filePath, 'base64') //  backup processing
-						resolve(`<pre>${content}</pre>`)
+						console.warn(
+							"PPTX parsing failed, reading as binary string:",
+							error,
+						);
+						const content = fs.readFileSync(filePath, "base64"); //  backup processing
+						resolve(`<pre>${content}</pre>`);
 					}
-				} else if (type === 'xlsx') {
+				} else if (type === "xlsx") {
 					try {
-						const htmlContent = await this.parseXlsx(filePath)
-						resolve(htmlContent)
+						const htmlContent = await this.parseXlsx(filePath);
+						resolve(htmlContent);
 					} catch (error) {
-						console.warn('XLSX parsing failed, reading as text:', error)
-						const content = fs.readFileSync(filePath, 'utf-8')
-						resolve(content)
+						console.warn("XLSX parsing failed, reading as text:", error);
+						const content = fs.readFileSync(filePath, "utf-8");
+						resolve(content);
 					}
 				} else {
-					const content = fs.readFileSync(filePath, 'utf-8')
-					resolve(content)
+					const content = fs.readFileSync(filePath, "utf-8");
+					resolve(content);
 				}
 			} catch (error) {
-				reject(error)
+				reject(error);
 			}
-		})
+		});
 	}
 
 	private getFilesRecursive(dirPath: string, basePath: string): FileInfo[] {
@@ -521,9 +551,11 @@ export class FileReader {
 				const fileInfo: FileInfo = {
 					path: filePath,
 					name: file,
-					type: isFolder ? 'folder' : (file.split('.').pop()?.toLowerCase() || ''),
+					type: isFolder
+						? "folder"
+						: file.split(".").pop()?.toLowerCase() || "",
 					isFolder: isFolder,
-					relativePath: relativePath === '' ? '' : relativePath
+					relativePath: relativePath === "" ? "" : relativePath,
 				};
 
 				result.push(fileInfo);
@@ -542,10 +574,12 @@ export class FileReader {
 	}
 
 	public getFileList(email: string, taskId: string): FileInfo[] {
+		const safeEmail = email
+			.split("@")[0]
+			.replace(/[\\/*?:"<>|\s]/g, "_")
+			.replace(/^\.+|\.+$/g, "");
 
-		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
-
-		const userHome = app.getPath('home');
+		const userHome = app.getPath("home");
 		const dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
 
 		try {
@@ -560,22 +594,23 @@ export class FileReader {
 		}
 	}
 	public getLogFolder(email: string): string {
+		const safeEmail = email
+			.split("@")[0]
+			.replace(/[\\/*?:"<>|\s]/g, "_")
+			.replace(/^\.+|\.+$/g, "");
 
-		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
-
-		const userHome = app.getPath('home');
+		const userHome = app.getPath("home");
 		const dirPath = path.join(userHome, "eigent", safeEmail);
 
 		try {
 			if (!fs.existsSync(dirPath)) {
-				return '';
+				return "";
 			}
 
-			return dirPath
+			return dirPath;
 		} catch (err) {
 			console.error("Load file failed:", err);
-			return '';
+			return "";
 		}
 	}
 }
-

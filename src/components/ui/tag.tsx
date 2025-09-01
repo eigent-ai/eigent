@@ -26,9 +26,8 @@ const tagVariants = cva(
 			variant: "primary",
 			size: "sm",
 		},
-	}
+	},
 );
-
 
 function Tag({
 	className,
@@ -44,10 +43,7 @@ function Tag({
 	const Comp = asChild ? Slot : "div";
 
 	return (
-		<Comp
-			className={cn(tagVariants({ variant, size, className }))}
-			{...props}
-		>
+		<Comp className={cn(tagVariants({ variant, size, className }))} {...props}>
 			{children}
 		</Comp>
 	);

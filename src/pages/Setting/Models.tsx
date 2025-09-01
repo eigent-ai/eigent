@@ -50,7 +50,7 @@ export default function SettingModels() {
 		useAuthStore();
 	const navigate = useNavigate();
 	const [items, setItems] = useState<Provider[]>(
-		INIT_PROVODERS.filter((p) => p.id !== "local")
+		INIT_PROVODERS.filter((p) => p.id !== "local"),
 	);
 	const [form, setForm] = useState(() =>
 		INIT_PROVODERS.filter((p) => p.id !== "local").map((p) => ({
@@ -63,10 +63,10 @@ export default function SettingModels() {
 				: undefined,
 			provider_id: p.provider_id ?? undefined,
 			prefer: p.prefer ?? false,
-		}))
+		})),
 	);
 	const [showApiKey, setShowApiKey] = useState(() =>
-		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => false)
+		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => false),
 	);
 	const [loading, setLoading] = useState<number | null>(null);
 	const [errors, setErrors] = useState<
@@ -75,7 +75,7 @@ export default function SettingModels() {
 		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => ({
 			apiKey: "",
 			apiHost: "",
-		}))
+		})),
 	);
 	const [collapsed, setCollapsed] = useState(false);
 
@@ -93,7 +93,7 @@ export default function SettingModels() {
 	const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state
 	const [dialogVisible, setDialogVisible] = useState<boolean>(false);
 	const [localProviderId, setLocalProviderId] = useState<number | undefined>(
-		undefined
+		undefined,
 	); // Local model provider_id
 
 	// Load provider list and populate form
@@ -107,7 +107,7 @@ export default function SettingModels() {
 					f.map((fi, idx) => {
 						const item = items[idx];
 						const found = providerList.find(
-							(p: any) => p.provider_name === item.id
+							(p: any) => p.provider_name === item.id,
 						);
 						if (found) {
 							return {
@@ -127,16 +127,16 @@ export default function SettingModels() {
 												return { ...ec, value: found.encrypted_config[ec.key] };
 											}
 											return ec;
-									  })
+										})
 									: undefined,
 							};
 						}
 						return fi;
-					})
+					}),
 				);
 				// Handle local model
 				const local = providerList.find(
-					(p: any) => p.provider_name === "Local Model"
+					(p: any) => p.provider_name === "Local Model",
 				);
 				console.log(123123, local);
 				if (local) {
@@ -286,7 +286,7 @@ export default function SettingModels() {
 				f.map((fi, i) => {
 					const item = items[i];
 					const found = providerList.find(
-						(p: any) => p.provider_name === item.id
+						(p: any) => p.provider_name === item.id,
 					);
 					if (found) {
 						return {
@@ -305,12 +305,12 @@ export default function SettingModels() {
 											return { ...ec, value: found.encrypted_config[ec.key] };
 										}
 										return ec;
-								  })
+									})
 								: undefined,
 						};
 					}
 					return fi;
-				})
+				}),
 			);
 			handleSwitch(idx, true);
 		} finally {
@@ -436,7 +436,7 @@ export default function SettingModels() {
 			const res = await proxyFetchGet("/api/providers");
 			const providerList = Array.isArray(res) ? res : res.items || [];
 			const local = providerList.find(
-				(p: any) => p.provider_name === localPlatform
+				(p: any) => p.provider_name === localPlatform,
 			);
 			if (local) {
 				handleLocalSwitch(true);
@@ -446,7 +446,7 @@ export default function SettingModels() {
 			}
 		} catch (e: any) {
 			setLocalError(
-				e.message || "Verification failed, please check Endpoint URL"
+				e.message || "Verification failed, please check Endpoint URL",
 			);
 			setLocalInputError(true);
 		} finally {
@@ -523,10 +523,10 @@ export default function SettingModels() {
 		const configs = Array.isArray(configsRes) ? configsRes : [];
 		console.log(configsRes, configs);
 		const _hasApiKey = configs.find(
-			(item) => item.config_name === "GOOGLE_API_KEY"
+			(item) => item.config_name === "GOOGLE_API_KEY",
 		);
 		const _hasApiId = configs.find(
-			(item) => item.config_name === "SEARCH_ENGINE_ID"
+			(item) => item.config_name === "SEARCH_ENGINE_ID",
 		);
 		return _hasApiKey && _hasApiId;
 	};
@@ -643,20 +643,20 @@ export default function SettingModels() {
 										{cloud_model_type === "gpt-4.1-mini"
 											? "GPT-4.1 Mini: Lower cost, faster responses, but reduced output quality."
 											: cloud_model_type === "gpt-4.1"
-											? "GPT-4.1: Higher cost, slower responses, but superior quality and reasoning."
-											: cloud_model_type === "claude-opus-4-1-20250805"
-											? "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning."
-											: cloud_model_type === "claude-sonnet-4-20250514"
-											? "Claude Sonnet 4: Higher cost, slower responses, but superior quality and reasoning."
-											: cloud_model_type === "claude-3-5-haiku-20241022"
-											? "Claude 3.5 Haiku: Higher cost, slower responses, but superior quality and reasoning."
-											: cloud_model_type === "gpt-5"
-											? "GPT-5: Higher cost, slower responses, but superior quality and reasoning."
-											: cloud_model_type === "gpt-5-mini"
-											? "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning."
-											: cloud_model_type === "gpt-5-nano"
-											? "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning."
-											: "Gemini 2.5 Pro: Higher cost, slower responses, but superior quality and reasoning."}
+												? "GPT-4.1: Higher cost, slower responses, but superior quality and reasoning."
+												: cloud_model_type === "claude-opus-4-1-20250805"
+													? "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning."
+													: cloud_model_type === "claude-sonnet-4-20250514"
+														? "Claude Sonnet 4: Higher cost, slower responses, but superior quality and reasoning."
+														: cloud_model_type === "claude-3-5-haiku-20241022"
+															? "Claude 3.5 Haiku: Higher cost, slower responses, but superior quality and reasoning."
+															: cloud_model_type === "gpt-5"
+																? "GPT-5: Higher cost, slower responses, but superior quality and reasoning."
+																: cloud_model_type === "gpt-5-mini"
+																	? "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning."
+																	: cloud_model_type === "gpt-5-nano"
+																		? "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning."
+																		: "Gemini 2.5 Pro: Higher cost, slower responses, but superior quality and reasoning."}
 									</span>
 								</TooltipContent>
 							</Tooltip>
@@ -768,13 +768,13 @@ export default function SettingModels() {
 													const v = e.target.value;
 													setForm((f) =>
 														f.map((fi, i) =>
-															i === idx ? { ...fi, apiKey: v } : fi
-														)
+															i === idx ? { ...fi, apiKey: v } : fi,
+														),
 													);
 													setErrors((errs) =>
 														errs.map((er, i) =>
-															i === idx ? { ...er, apiKey: "" } : er
-														)
+															i === idx ? { ...er, apiKey: "" } : er,
+														),
 													);
 												}}
 											/>
@@ -782,7 +782,7 @@ export default function SettingModels() {
 												className="absolute inset-y-0 right-2 flex items-center cursor-pointer text-black-100"
 												onClick={() =>
 													setShowApiKey((arr) =>
-														arr.map((v, i) => (i === idx ? !v : v))
+														arr.map((v, i) => (i === idx ? !v : v)),
 													)
 												}
 												tabIndex={-1}
@@ -813,13 +813,13 @@ export default function SettingModels() {
 												const v = e.target.value;
 												setForm((f) =>
 													f.map((fi, i) =>
-														i === idx ? { ...fi, apiHost: v } : fi
-													)
+														i === idx ? { ...fi, apiHost: v } : fi,
+													),
 												);
 												setErrors((errs) =>
 													errs.map((er, i) =>
-														i === idx ? { ...er, apiHost: "" } : er
-													)
+														i === idx ? { ...er, apiHost: "" } : er,
+													),
 												);
 											}}
 										/>
@@ -841,13 +841,13 @@ export default function SettingModels() {
 												const v = e.target.value;
 												setForm((f) =>
 													f.map((fi, i) =>
-														i === idx ? { ...fi, model_type: v } : fi
-													)
+														i === idx ? { ...fi, model_type: v } : fi,
+													),
 												);
 												setErrors((errs) =>
 													errs.map((er, i) =>
-														i === idx ? { ...er, model_type: "" } : er
-													)
+														i === idx ? { ...er, model_type: "" } : er,
+													),
 												);
 											}}
 										/>
@@ -878,11 +878,11 @@ export default function SettingModels() {
 																					(eec, i2) =>
 																						i2 === ecIdx
 																							? { ...eec, value: v }
-																							: eec
+																							: eec,
 																				),
-																		  }
-																		: fi
-																)
+																			}
+																		: fi,
+																),
 															);
 														}}
 													>
@@ -912,11 +912,11 @@ export default function SettingModels() {
 																					(eec, i2) =>
 																						i2 === ecIdx
 																							? { ...eec, value: v }
-																							: eec
+																							: eec,
 																				),
-																		  }
-																		: fi
-																)
+																			}
+																		: fi,
+																),
 															);
 														}}
 													/>

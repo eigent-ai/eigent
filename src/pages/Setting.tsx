@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import useAppVersion from "@/hooks/use-app-version";
-import vsersionLogo from "@/assets/version-logo.png"
+import vsersionLogo from "@/assets/version-logo.png";
 import {
 	X,
 	CircleCheck,
@@ -78,7 +78,6 @@ export default function Setting() {
 		navigate("/");
 	};
 
-
 	return (
 		<div className="max-w-[900px] h-full px-4 m-auto flex flex-col">
 			<div className="h-14 flex items-center justify-between pb-4 border-[0px] border-b border-solid border-b-white-80% flex-shrink-0 flex-grow-0">
@@ -86,11 +85,7 @@ export default function Setting() {
 					Settings
 				</div>
 				<div>
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={handleClose}
-					>
+					<Button variant="ghost" size="icon" onClick={handleClose}>
 						<X className="!w-6 !h-6" />
 					</Button>
 				</div>
@@ -105,10 +100,11 @@ export default function Setting() {
 									<button
 										key={menu.id}
 										onClick={() => handleTabChange(menu.id)}
-										className={`w-full flex items-center gap-2 px-2 py-2 text-left rounded-lg transition-colors text-text-body ${activeTab === menu.id
+										className={`w-full flex items-center gap-2 px-2 py-2 text-left rounded-lg transition-colors text-text-body ${
+											activeTab === menu.id
 												? "bg-white-100% "
 												: "bg-transparent hover:bg-bg-fill-transparent"
-											}`}
+										}`}
 									>
 										<Icon className="w-4 h-4 text-icon-primary" />
 										<span className="text-sm font-bold leading-13">

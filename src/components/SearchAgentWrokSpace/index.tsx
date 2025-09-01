@@ -78,7 +78,7 @@ export default function Home() {
 			const activeAgent = taskAssigning.find(
 				(item) =>
 					item.agent_id ===
-					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace
+					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace,
 			);
 			setActiveAgent(() => {
 				if (activeAgent) {
@@ -188,7 +188,7 @@ export default function Home() {
 							onClick={() => {
 								chatStore.setActiveWorkSpace(
 									chatStore.activeTaskId as string,
-									"workflow"
+									"workflow",
 								);
 							}}
 						>
@@ -205,7 +205,7 @@ export default function Home() {
 							done={
 								activeAgent?.tasks?.filter(
 									(task) =>
-										task.status === "failed" || task.status === "completed"
+										task.status === "failed" || task.status === "completed",
 								).length || 0
 							}
 							progress={
@@ -213,7 +213,7 @@ export default function Home() {
 									(task) =>
 										task.status !== "failed" &&
 										task.status !== "completed" &&
-										task.status !== "skipped"
+										task.status !== "skipped",
 								).length || 0
 							}
 							skipped={
@@ -241,7 +241,7 @@ export default function Home() {
 							<div
 								onClick={() =>
 									handleTakeControl(
-										activeAgent?.activeWebviewIds?.[0]?.id || ""
+										activeAgent?.activeWebviewIds?.[0]?.id || "",
 									)
 								}
 								className="cursor-pointer relative h-full w-full group pt-sm rounded-b-2xl"
@@ -296,7 +296,7 @@ export default function Home() {
 										<div
 											onClick={() =>
 												handleTakeControl(
-													activeAgent?.activeWebviewIds?.[0]?.id || ""
+													activeAgent?.activeWebviewIds?.[0]?.id || "",
 												)
 											}
 											className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none"
@@ -334,7 +334,7 @@ export default function Home() {
 									container.scrollTo({
 										top: Math.min(
 											container.scrollHeight - container.clientHeight,
-											container.scrollTop + scrollAmount
+											container.scrollTop + scrollAmount,
 										),
 										behavior: "smooth",
 									});

@@ -59,7 +59,7 @@ export const InstallDependencies: React.FC<{
 				});
 				console.log(`install log [${data?.type}]:`, data?.data);
 				setLogs((prev) => [...prev, newLog]);
-			}
+			},
 		);
 
 		// listen to install complete event
@@ -76,7 +76,7 @@ export const InstallDependencies: React.FC<{
 					console.error("dependencies installation failed:", data?.code);
 					console.error("dependencies installation failed:", data?.error);
 				}
-			}
+			},
 		);
 
 		// after component mounted, notify main process frontend is ready
@@ -89,7 +89,7 @@ export const InstallDependencies: React.FC<{
 			} catch (error) {
 				console.log(
 					"frontend ready notification failed, maybe manual install mode:",
-					error
+					error,
 				);
 			}
 		};

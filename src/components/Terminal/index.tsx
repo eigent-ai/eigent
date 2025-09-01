@@ -60,10 +60,10 @@ export default function TerminalComponent({
 				terminal.writeln("");
 				if (currentLineRef.current.trim()) {
 					terminal.writeln(
-						`\x1b[90m# Executed: ${currentLineRef.current}\x1b[0m`
+						`\x1b[90m# Executed: ${currentLineRef.current}\x1b[0m`,
 					);
 					terminal.writeln(
-						`\x1b[33m⚠ Interactive mode not fully implemented\x1b[0m`
+						`\x1b[33m⚠ Interactive mode not fully implemented\x1b[0m`,
 					);
 				}
 				setCurrentLine("");
@@ -102,7 +102,7 @@ export default function TerminalComponent({
 				terminal.write(key);
 			}
 		},
-		[promptText]
+		[promptText],
 	);
 
 	// initialize xterm terminal
@@ -245,7 +245,9 @@ export default function TerminalComponent({
 					.replace(/\r/g, ""); // remove carriage return
 
 				if (formattedOutput.trim()) {
-					xtermRef.current.writeln(`\x1b[36m[Eigent]\x1b[0m ${formattedOutput}`);
+					xtermRef.current.writeln(
+						`\x1b[36m[Eigent]\x1b[0m ${formattedOutput}`,
+					);
 				} else {
 					xtermRef.current.writeln("");
 				}
@@ -312,12 +314,12 @@ export default function TerminalComponent({
 
 						if (formattedOutput.trim()) {
 							xtermRef.current?.writeln(
-								`\x1b[36m[Eigent]\x1b[0m ${formattedOutput}`
+								`\x1b[36m[Eigent]\x1b[0m ${formattedOutput}`,
 							);
 						}
 					});
 					xtermRef.current.writeln(
-						"\x1b[90m--- End Previous Output ---\x1b[0m"
+						"\x1b[90m--- End Previous Output ---\x1b[0m",
 					);
 					xtermRef.current.writeln("");
 				}

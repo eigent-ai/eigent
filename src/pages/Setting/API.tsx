@@ -19,7 +19,9 @@ export default function SettingAPI() {
 		proxyFetchGet("/api/config/info").then((res) => {
 			const configs = Object.entries(res || {})
 				.map(([name, v]: [string, any]) => ({ name, env_vars: v.env_vars }))
-				.filter((item) => Array.isArray(item.env_vars) && item.env_vars.length > 0);
+				.filter(
+					(item) => Array.isArray(item.env_vars) && item.env_vars.length > 0,
+				);
 			setItems(configs);
 		});
 		proxyFetchGet("/api/configs").then((res) => {
@@ -63,9 +65,14 @@ export default function SettingAPI() {
 	return (
 		<div className="space-y-8">
 			{items.map((item) => (
-				<div key={item.name} className="px-6 py-4 bg-bg-surface-tertiary rounded-2xl">
+				<div
+					key={item.name}
+					className="px-6 py-4 bg-bg-surface-tertiary rounded-2xl"
+				>
 					<div>
-						<div className="text-base font-bold leading-12 text-text-primary">{item.name}</div>
+						<div className="text-base font-bold leading-12 text-text-primary">
+							{item.name}
+						</div>
 					</div>
 					<div className="mt-md">
 						<div>
@@ -79,7 +86,8 @@ export default function SettingAPI() {
 											value={envValues[env] || ""}
 											onChange={(e) => {
 												handleInputChange(env, e.target.value);
-												if (errors[env]) setErrors((prev) => ({ ...prev, [env]: "" }));
+												if (errors[env])
+													setErrors((prev) => ({ ...prev, [env]: "" }));
 											}}
 										/>
 										<Button
@@ -93,9 +101,13 @@ export default function SettingAPI() {
 											<Circle className="w-4 h-4 text-icon-inverse-primary" />
 										</Button>
 									</div>
-									<div className="text-xs leading-17 text-text-secondary mt-1.5">{env}</div>
+									<div className="text-xs leading-17 text-text-secondary mt-1.5">
+										{env}
+									</div>
 									{errors[env] && (
-										<span className="text-xs text-red-500 mt-1">{errors[env]}</span>
+										<span className="text-xs text-red-500 mt-1">
+											{errors[env]}
+										</span>
 									)}
 								</div>
 							))}

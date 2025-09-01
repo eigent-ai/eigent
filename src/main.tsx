@@ -25,7 +25,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 				</TooltipProvider>
 			</ThemeProvider>
 		</HashRouter>
-	</Suspense>
+	</Suspense>,
 	// </React.StrictMode>
 );
 

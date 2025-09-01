@@ -2,7 +2,7 @@ import { toast } from "sonner";
 
 export function showCreditsToast() {
 	toast.dismiss();
-	
+
 	toast(
 		<div>
 			You've reached the limit of your current plan.
@@ -24,6 +24,6 @@ export function showCreditsToast() {
 		{
 			duration: Infinity,
 			closeButton: true,
-		}
+		},
 	);
 }

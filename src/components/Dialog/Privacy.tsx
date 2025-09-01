@@ -25,7 +25,11 @@ interface PrivacyDialogProps {
 	trigger?: React.ReactNode;
 }
 
-export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProps) {
+export function PrivacyDialog({
+	open,
+	onOpenChange,
+	trigger,
+}: PrivacyDialogProps) {
 	const API_FIELDS = [
 		"take_screenshot",
 		"access_local_software",
@@ -67,7 +71,7 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 					prev.map((item, index) => ({
 						...item,
 						checked: res[API_FIELDS[index]] || false,
-					}))
+					})),
 				);
 			})
 			.catch((err) => console.error("Failed to fetch settings:", err));
@@ -93,7 +97,7 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 		requestData[API_FIELDS[index]] = !settings[index].checked;
 
 		proxyFetchPut("/api/user/privacy", requestData).catch((err) =>
-			console.error("Failed to update settings:", err)
+			console.error("Failed to update settings:", err),
 		);
 	};
 
@@ -131,13 +135,19 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 							<TooltipProvider>
 								<Tooltip>
 									<TooltipTrigger asChild>
-										<AlertCircle 
-											size={16} 
-											className="text-icon-primary cursor-pointer" 
+										<AlertCircle
+											size={16}
+											className="text-icon-primary cursor-pointer"
 										/>
 									</TooltipTrigger>
 									<TooltipContent className="max-w-[340px]">
-										<p className="text-text-body text-sm">Eigent is a desktop software, it will operate the browser, terminal tools from your computer to start the tasks. It's important to make sure all necessary privacy settings are enabled before you begin using Eigent for full functionality.</p>
+										<p className="text-text-body text-sm">
+											Eigent is a desktop software, it will operate the browser,
+											terminal tools from your computer to start the tasks. It's
+											important to make sure all necessary privacy settings are
+											enabled before you begin using Eigent for full
+											functionality.
+										</p>
 									</TooltipContent>
 								</Tooltip>
 							</TooltipProvider>
@@ -147,17 +157,12 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 
 				<div className="flex flex-col gap-md bg-popup-bg p-md">
 					{settings.map((item, index) => (
-						<div
-							key={item.title}
-							className="flex gap-md items-start mb-4"
-						>
+						<div key={item.title} className="flex gap-md items-start mb-4">
 							<div className="flex-1">
 								<div className="text-sm font-bold text-text-primary mb-1">
 									{item.title}
 								</div>
-								<div className="text-xs text-text-body">
-									{item.description}
-								</div>
+								<div className="text-xs text-text-body">{item.description}</div>
 							</div>
 							<div className="flex-shrink-0">
 								<Switch

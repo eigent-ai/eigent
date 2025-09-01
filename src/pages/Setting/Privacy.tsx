@@ -53,7 +53,7 @@ export default function SettingPrivacy() {
 							...item,
 							checked: res[API_FIELDS[index]] || false,
 						};
-					})
+					}),
 				);
 				setPrivacy(!hasFalse);
 			})
@@ -97,7 +97,7 @@ export default function SettingPrivacy() {
 		requestData[API_FIELDS[index]] = !settings[index].checked;
 
 		proxyFetchPut("/api/user/privacy", requestData).catch((err) =>
-			console.error("Failed to update settings:", err)
+			console.error("Failed to update settings:", err),
 		);
 	};
 

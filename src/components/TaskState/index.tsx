@@ -34,9 +34,7 @@ export const TaskState = ({
 				)}
 				{skipped !== 0 && (
 					<div className="flex gap-1 items-center py-0.5">
-						<LoaderCircle
-							className={`w-4 h-4 text-icon-secondary`}
-						/>
+						<LoaderCircle className={`w-4 h-4 text-icon-secondary`} />
 						<span className="text-text-label text-xs leading-tight font-normal">
 							{skipped} Unfinished
 						</span>

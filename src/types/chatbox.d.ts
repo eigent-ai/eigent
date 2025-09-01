@@ -33,9 +33,7 @@ declare global {
 		filePath: string;
 	}
 
-
-
-	type AgentStatus = "pending" | "running" | "completed" | "failed"
+	type AgentStatus = "pending" | "running" | "completed" | "failed";
 
 	interface ActiveWebView {
 		id: string;
@@ -53,7 +51,7 @@ declare global {
 		log: AgentMessage[];
 		img?: string[];
 		activeWebviewIds?: ActiveWebView[];
-		tools?:string[];
+		tools?: string[];
 		workerInfo?: {
 			name: string;
 			description: string;
@@ -76,12 +74,12 @@ declare global {
 		summaryTask?: string;
 		taskAssigning?: Agent[];
 		showType?: "tree" | "list";
-		rePort?: any
+		rePort?: any;
 		fileList?: FileInfo[];
 		task_id?: string;
 		summary?: string;
 		agent_name?: string;
-		attaches?:File[]
+		attaches?: File[];
 	}
 
 	interface AgentMessage {
@@ -106,11 +104,11 @@ declare global {
 			agent?: string;
 			file_path?: string;
 			process_task_id?: string;
-			output?: string
-			result?: string
+			output?: string;
+			result?: string;
 			tools?: string[];
 		};
-		status?: 'running' | 'filled' | 'completed';
+		status?: "running" | "filled" | "completed";
 	}
 
 	type AgentNameType =
@@ -127,8 +125,14 @@ declare global {
 		multi_modal_agent: "Multi Modal Agent";
 		social_medium_agent: "Social Media Agent";
 	}
-	type WorkspaceType = 'workflow' | 'developer_agent' | 'search_agent' | 'document_agent' | 'multi_modal_agent' | 'social_medium_agent' | null;
+	type WorkspaceType =
+		| "workflow"
+		| "developer_agent"
+		| "search_agent"
+		| "document_agent"
+		| "multi_modal_agent"
+		| "social_medium_agent"
+		| null;
 }
 
-
-export { }; 	
+export {};

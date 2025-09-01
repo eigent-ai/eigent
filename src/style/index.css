@@ -4,140 +4,142 @@
 @tailwind utilities;
 
 :root {
-  font-family: 'Inter';
-  line-height: 1.5;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color-scheme: light dark;
+	font-family: "Inter";
+	line-height: 1.5;
+	font-weight: 400;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	color-scheme: light dark;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	-webkit-text-size-adjust: 100%;
 }
 
 * {
-  font-family: 'Inter';
-  box-sizing: border-box;
+	font-family: "Inter";
+	box-sizing: border-box;
 }
 
 html,
 body {
-  margin: 0;
-  padding: 0;
-  font-family: Inter;
-  width: 100%;
-  height: 100%;
-  background-color: transparent !important;
-
+	margin: 0;
+	padding: 0;
+	font-family: Inter;
+	width: 100%;
+	height: 100%;
+	background-color: transparent !important;
 }
 
 #root,
 .App {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  border-radius: 8px;
-
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	border-radius: 8px;
 }
 
 #root {
-  box-shadow:
-    -2px -2px 100px rgba(255, 255, 255, 0.1) inset,
-    2px 2px 100px rgba(29, 29, 29, 0.1) inset;
-  background-color: var(--bg-page) !important;
-  backdrop-filter: blur(75px);
-  z-index: 0;
+	box-shadow:
+		-2px -2px 100px rgba(255, 255, 255, 0.1) inset,
+		2px 2px 100px rgba(29, 29, 29, 0.1) inset;
+	background-color: var(--bg-page) !important;
+	backdrop-filter: blur(75px);
+	z-index: 0;
 }
 
 .blur {
-  position: relative;
-  z-index: 0;
-  box-shadow:
-    -2px -2px 100px rgba(255, 255, 255, 0.1) inset,
-    2px 2px 100px rgba(29, 29, 29, 0.1) inset;
-  z-index: -1;
-  backdrop-filter: blur(75px);
-  -webkit-backdrop-filter: blur(75px);
+	position: relative;
+	z-index: 0;
+	box-shadow:
+		-2px -2px 100px rgba(255, 255, 255, 0.1) inset,
+		2px 2px 100px rgba(29, 29, 29, 0.1) inset;
+	z-index: -1;
+	backdrop-filter: blur(75px);
+	-webkit-backdrop-filter: blur(75px);
 }
 
-.blur>* {
-  position: relative;
-  z-index: 3;
+.blur > * {
+	position: relative;
+	z-index: 3;
 }
 
 .blur-bg {
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  z-index: 1;
-  box-shadow:
-    -2px -2px 100px rgba(255, 255, 255, 0.1) inset,
-    2px 2px 100px rgba(29, 29, 29, 0.1) inset;
+	backdrop-filter: blur(40px);
+	-webkit-backdrop-filter: blur(40px);
+	z-index: 1;
+	box-shadow:
+		-2px -2px 100px rgba(255, 255, 255, 0.1) inset,
+		2px 2px 100px rgba(29, 29, 29, 0.1) inset;
 }
 
 /* Perfect Shadow */
 .perfect-shadow {
-  box-shadow: 0 8px 20px -2px rgba(29, 33, 41, 0.10), 0 32px 48px -12px rgba(29, 33, 41, 0.12), 0 96px 120px -12px rgba(65, 74, 92, 0.06), 0 108px 72px -16px rgba(65, 74, 92, 0.08), 0 32px 64px -8px rgba(113, 153, 189, 0.12), 0 8px 10px 0 rgba(113, 153, 189, 0.12);
+	box-shadow:
+		0 8px 20px -2px rgba(29, 33, 41, 0.1),
+		0 32px 48px -12px rgba(29, 33, 41, 0.12),
+		0 96px 120px -12px rgba(65, 74, 92, 0.06),
+		0 108px 72px -16px rgba(65, 74, 92, 0.08),
+		0 32px 64px -8px rgba(113, 153, 189, 0.12),
+		0 8px 10px 0 rgba(113, 153, 189, 0.12);
 }
 
 /* Custom ResizableHandle Styles */
 .custom-resizable-handle {
-  width: 4px;
-  height: 100%;
-  background: transparent;
-  transition: all 0.2s ease;
-  position: relative;
+	width: 4px;
+	height: 100%;
+	background: transparent;
+	transition: all 0.2s ease;
+	position: relative;
 }
 
 .custom-resizable-handle:hover {
-  background: var(--border-primary);
-  width: 4px;
-  border-radius: 20px;
-  height: 100%;
-  transform: none;
+	background: var(--border-primary);
+	width: 4px;
+	border-radius: 20px;
+	height: 100%;
+	transform: none;
 }
 
 .custom-resizable-handle div {
-  display: none !important;
+	display: none !important;
 }
 
 .custom-resizable-handle svg {
-  display: none !important;
+	display: none !important;
 }
 
 .radix-alert-dialog {
-  position: fixed;
-  top: 0px;
-  left: 0px;
-  width: 100vw;
-  height: 100vh;
+	position: fixed;
+	top: 0px;
+	left: 0px;
+	width: 100vw;
+	height: 100vh;
 }
 
-
-
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+	font-size: 3.2em;
+	line-height: 1.1;
 }
 
 button {
-  border: none;
-  padding: 0em 0.1em;
-  font-size: 1em;
-  cursor: pointer;
+	border: none;
+	padding: 0em 0.1em;
+	font-size: 1em;
+	cursor: pointer;
 }
 
 input {
-  border-color: transparent;
+	border-color: transparent;
 }
 
 code {
-  background-color: #1a1a1a;
-  padding: 2px 4px;
-  margin: 0 4px;
-  border-radius: 4px;
+	background-color: #1a1a1a;
+	padding: 2px 4px;
+	margin: 0 4px;
+	border-radius: 4px;
 }
 
 /* .card {
@@ -145,216 +147,211 @@ code {
 } */
 
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+	max-width: 1280px;
+	margin: 0 auto;
+	padding: 2rem;
+	text-align: center;
 }
 
 .no-drag {
-  -webkit-app-region: no-drag;
+	-webkit-app-region: no-drag;
 }
 
 .drag {
-  -webkit-app-region: drag;
+	-webkit-app-region: drag;
 }
-
 
 @layer base {
-  :root {
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
-    --spacing-md: 16px;
-    --spacing-lg: 32px;
-    --spacing-xl: 64px;
-    --spacing-multi-value: 8 64;
-    --borderRadius-sm: 4px;
-    --borderRadius-lg: 8px;
-    --borderRadius-xl: 16px;
-    --borderRadius-multi-value: 4 8;
-    --fontSize-xs: 10px;
-    --fontSize-sm: 13px;
-    --fontSize-base: 15px;
-    --fontSize-md: 16px;
-    --fontSize-lg: 18px;
-    --fontSize-xl: 20px;
-    --fontSize-2xl: 24px;
-    --fontSize-3xl: 28px;
-    --fontSize-4xl: 36px;
-    --fontSize-5xl: 44px;
-    --lineHeight-0: 58px;
-    --lineHeight-1: 58px;
-    --lineHeight-2: 46px;
-    --lineHeight-3: 36px;
-    --lineHeight-4: 32px;
-    --lineHeight-5: 30px;
-    --lineHeight-6: 30px;
-    --lineHeight-7: 30px;
-    --lineHeight-8: 30px;
-    --lineHeight-9: 22px;
-    --lineHeight-10: 22px;
-    --lineHeight-11: 22px;
-    --lineHeight-12: 22px;
-    --lineHeight-13: 20px;
-    --lineHeight-14: 20px;
-    --lineHeight-15: 20px;
-    --lineHeight-16: 20px;
-    --lineHeight-17: 16px;
-    --lineHeight-18: 16px;
-    --lineHeight-19: 16px;
-    --lineHeight-20: 16px;
-    --lineHeight-21: 16px;
-    --lineHeight-22: 16px;
-    --lineHeight-23: 20px;
-    --lineHeight-24: 20px;
-    --lineHeight-25: 22px;
-    --lineHeight-26: 22px;
-    --lineHeight-27: 24px;
-    --lineHeight-28: 24px;
-    --lineHeight-29: 16px;
-    --lineHeight-30: 16px;
-    --lineHeight-tight: 16px;
-    --lineHeight-normal: 20px;
-    --lineHeight-relaxed: 22px;
-    --lineHeight-loose: 24px;
-    --lineHeight-xl: 28px;
-    --lineHeight-2xl: 30px;
-    --lineHeight-3xl: 32px;
-    --lineHeight-4xl: 36px;
-    --lineHeight-5xl: 46px;
-    --lineHeight-6xl: 58px;
-    --fontWeight-regular: 400;
-    --fontWeight-medium: 500;
-    --fontWeight-semibold: 600;
-    --fontWeight-bold: 700;
-    --fontWeight-inter-0: 700;
-    --fontWeight-inter-1: 400;
-    --fontWeight-inter-2: 500;
-    --fontWeight-menlo-3: 400;
-  }
+	:root {
+		--spacing-xs: 4px;
+		--spacing-sm: 8px;
+		--spacing-md: 16px;
+		--spacing-lg: 32px;
+		--spacing-xl: 64px;
+		--spacing-multi-value: 8 64;
+		--borderRadius-sm: 4px;
+		--borderRadius-lg: 8px;
+		--borderRadius-xl: 16px;
+		--borderRadius-multi-value: 4 8;
+		--fontSize-xs: 10px;
+		--fontSize-sm: 13px;
+		--fontSize-base: 15px;
+		--fontSize-md: 16px;
+		--fontSize-lg: 18px;
+		--fontSize-xl: 20px;
+		--fontSize-2xl: 24px;
+		--fontSize-3xl: 28px;
+		--fontSize-4xl: 36px;
+		--fontSize-5xl: 44px;
+		--lineHeight-0: 58px;
+		--lineHeight-1: 58px;
+		--lineHeight-2: 46px;
+		--lineHeight-3: 36px;
+		--lineHeight-4: 32px;
+		--lineHeight-5: 30px;
+		--lineHeight-6: 30px;
+		--lineHeight-7: 30px;
+		--lineHeight-8: 30px;
+		--lineHeight-9: 22px;
+		--lineHeight-10: 22px;
+		--lineHeight-11: 22px;
+		--lineHeight-12: 22px;
+		--lineHeight-13: 20px;
+		--lineHeight-14: 20px;
+		--lineHeight-15: 20px;
+		--lineHeight-16: 20px;
+		--lineHeight-17: 16px;
+		--lineHeight-18: 16px;
+		--lineHeight-19: 16px;
+		--lineHeight-20: 16px;
+		--lineHeight-21: 16px;
+		--lineHeight-22: 16px;
+		--lineHeight-23: 20px;
+		--lineHeight-24: 20px;
+		--lineHeight-25: 22px;
+		--lineHeight-26: 22px;
+		--lineHeight-27: 24px;
+		--lineHeight-28: 24px;
+		--lineHeight-29: 16px;
+		--lineHeight-30: 16px;
+		--lineHeight-tight: 16px;
+		--lineHeight-normal: 20px;
+		--lineHeight-relaxed: 22px;
+		--lineHeight-loose: 24px;
+		--lineHeight-xl: 28px;
+		--lineHeight-2xl: 30px;
+		--lineHeight-3xl: 32px;
+		--lineHeight-4xl: 36px;
+		--lineHeight-5xl: 46px;
+		--lineHeight-6xl: 58px;
+		--fontWeight-regular: 400;
+		--fontWeight-medium: 500;
+		--fontWeight-semibold: 600;
+		--fontWeight-bold: 700;
+		--fontWeight-inter-0: 700;
+		--fontWeight-inter-1: 400;
+		--fontWeight-inter-2: 500;
+		--fontWeight-menlo-3: 400;
+	}
 }
-
 
 /* scroll Style */
 
 .scrollbar::-webkit-scrollbar {
-  width: 6px;
+	width: 6px;
 }
 
 .scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.8);
-  border-radius: 3px;
+	background-color: rgba(156, 163, 175, 0.8);
+	border-radius: 3px;
 }
 
 .scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.8);
+	background-color: rgba(156, 163, 175, 0.8);
 }
 
 .scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+	background: transparent;
 }
 
-
 .terminal-scrollbar::-webkit-scrollbar {
-  width: 8px;
+	width: 8px;
 }
 
 .terminal-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-  margin: 2px;
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 4px;
+	margin: 2px;
 }
 
 .terminal-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
+	background: rgba(255, 255, 255, 0.2);
+	border-radius: 4px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	transition: all 0.2s ease;
 }
 
 .terminal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.2);
+	background: rgba(255, 255, 255, 0.3);
+	border-color: rgba(255, 255, 255, 0.2);
 }
 
 .terminal-scrollbar::-webkit-scrollbar-thumb:active {
-  background: rgba(255, 255, 255, 0.4);
+	background: rgba(255, 255, 255, 0.4);
 }
 
 .terminal-scrollbar::-webkit-scrollbar-corner {
-  background: rgba(255, 255, 255, 0.05);
+	background: rgba(255, 255, 255, 0.05);
 }
 
 .scrollbar-horizontal::-webkit-scrollbar {
-  height: 6px;
+	height: 6px;
 }
 
 .scrollbar-horizontal::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.8);
-  border-radius: 3px;
+	background-color: rgba(156, 163, 175, 0.8);
+	border-radius: 3px;
 }
 
 .scrollbar-horizontal::-webkit-scrollbar-track {
-  background: transparent;
+	background: transparent;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;
+	display: none;
 }
 
 .scrollbar-hide {
-  -ms-overflow-style: none;
-  /* IE & Edge */
-  scrollbar-width: none;
-  /* Firefox */
+	-ms-overflow-style: none;
+	/* IE & Edge */
+	scrollbar-width: none;
+	/* Firefox */
 }
 
-
 .xterm .xterm-viewport::-webkit-scrollbar {
-  width: 8px;
+	width: 8px;
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-  margin: 2px;
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 4px;
+	margin: 2px;
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
+	background: rgba(255, 255, 255, 0.2);
+	border-radius: 4px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	transition: all 0.2s ease;
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.2);
+	background: rgba(255, 255, 255, 0.3);
+	border-color: rgba(255, 255, 255, 0.2);
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb:active {
-  background: rgba(255, 255, 255, 0.4);
+	background: rgba(255, 255, 255, 0.4);
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-corner {
-  background: rgba(255, 255, 255, 0.05);
+	background: rgba(255, 255, 255, 0.05);
 }
 
 .alert-dialog {
-  z-index: 900;
-
+	z-index: 900;
 }
 
 .alert-dialog-wrapper {
-  width: 450px;
-  height: 220px;
-  z-index: 910;
-  top: calc(50vh - 110px);
-  left: calc(50vw - 225px);
-  background: rgba(255, 255, 255, 0.8);
+	width: 450px;
+	height: 220px;
+	z-index: 910;
+	top: calc(50vh - 110px);
+	left: calc(50vw - 225px);
+	background: rgba(255, 255, 255, 0.8);
 }
 
 .stack-login-btn,
 .stack-login-btn button {
-  width: 100%;
+	width: 100%;
 }

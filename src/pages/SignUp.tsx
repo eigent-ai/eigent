@@ -110,7 +110,7 @@ export default function SignUp() {
 				data.error.map((item: any) => {
 					errors[item.loc.at(-1) as keyof typeof errors] = item.msg.replace(
 						"Value error,",
-						""
+						"",
 					);
 				});
 				setErrors(errors);
@@ -170,13 +170,13 @@ export default function SignUp() {
 			"import.meta.env.PROD",
 			import.meta.env.PROD
 				? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`,
 		);
 		formData.append(
 			"redirect_uri",
 			import.meta.env.PROD
 				? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`,
 		);
 		formData.append("code_verifier", code_verifier || "");
 		formData.append("code", code);
@@ -184,7 +184,7 @@ export default function SignUp() {
 		formData.append("client_id", "7b927864-23c3-4bff-969f-ef90e85f1707");
 		formData.append(
 			"client_secret",
-			"pck_r0g1stv09a2fy2ecnc8tfnzt1rdp2dntemt37pjfc4am0"
+			"pck_r0g1stv09a2fy2ecnc8tfnzt1rdp2dntemt37pjfc4am0",
 		);
 
 		try {
@@ -196,7 +196,7 @@ export default function SignUp() {
 						"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
 					},
 					body: formData,
-				}
+				},
 			);
 			const data = await res.json(); // parse response data
 			return data.access_token;
@@ -218,7 +218,7 @@ export default function SignUp() {
 				lock = false;
 			}, 1500);
 		},
-		[location.pathname]
+		[location.pathname],
 	);
 
 	useEffect(() => {
@@ -239,44 +239,53 @@ export default function SignUp() {
 					<div className="w-80">
 						<div className="h-[46px] relative text-[#27272A] font-inter text-[36px] font-bold leading-[46px]">
 							Sign Up
-							<span 
+							<span
 								onClick={() => navigate("/login")}
 								className="absolute bottom-0 right-0 text-[#27272A] font-inter text-[13px] font-normal leading-5 cursor-pointer"
 							>
 								Login
 							</span>
 						</div>
-						{HAS_STACK_KEYS && <div className="w-full pt-6">
-							<Button
-								variant="primary"
-								size="lg"
-								onClick={() => handleReloadBtn("google")}
-								className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
-								disabled={isLoading}
-							>
-								<img src={google} className="w-5 h-5" />
-								<span className="ml-2">Continue with Google</span>
-							</Button>
-							<Button
-								variant="primary"
-								size="lg"
-								onClick={() => handleReloadBtn("github")}
-								className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
-								disabled={isLoading}
-							>
-								<img src={github2} className="w-5 h-5" />
-								<span className="ml-2">Continue with Github</span>
-							</Button>
-							</div>}
-						{HAS_STACK_KEYS && <div className="mt-2 w-full text-[#222] text-center font-inter text-[15px] font-medium leading-[22px] mb-6">
-							or
-						</div>}
+						{HAS_STACK_KEYS && (
+							<div className="w-full pt-6">
+								<Button
+									variant="primary"
+									size="lg"
+									onClick={() => handleReloadBtn("google")}
+									className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
+									disabled={isLoading}
+								>
+									<img src={google} className="w-5 h-5" />
+									<span className="ml-2">Continue with Google</span>
+								</Button>
+								<Button
+									variant="primary"
+									size="lg"
+									onClick={() => handleReloadBtn("github")}
+									className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
+									disabled={isLoading}
+								>
+									<img src={github2} className="w-5 h-5" />
+									<span className="ml-2">Continue with Github</span>
+								</Button>
+							</div>
+						)}
+						{HAS_STACK_KEYS && (
+							<div className="mt-2 w-full text-[#222] text-center font-inter text-[15px] font-medium leading-[22px] mb-6">
+								or
+							</div>
+						)}
 						<div className="w-full">
 							{generalError && (
-								<p className="text-red-500 text-sm mt-0.5 mb-4">{generalError}</p>
+								<p className="text-red-500 text-sm mt-0.5 mb-4">
+									{generalError}
+								</p>
 							)}
 							<div className="w-full mb-4 relative">
-								<Label htmlFor="email" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
+								<Label
+									htmlFor="email"
+									className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5"
+								>
 									Email
 								</Label>
 								<div className="relative">
@@ -296,7 +305,10 @@ export default function SignUp() {
 							</div>
 							<div className="w-full mb-4 relative">
 								<div className="flex items-center">
-									<Label htmlFor="password" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
+									<Label
+										htmlFor="password"
+										className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5"
+									>
 										Password
 									</Label>
 								</div>
@@ -329,7 +341,10 @@ export default function SignUp() {
 								)}
 							</div>
 							<div className="w-full mb-4 relative">
-								<Label htmlFor="invite_code" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
+								<Label
+									htmlFor="invite_code"
+									className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5"
+								>
 									Invitation Code (optional)
 								</Label>
 								<div className="relative">

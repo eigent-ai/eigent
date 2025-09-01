@@ -3,7 +3,7 @@ import { useAuthStore } from "@/store/authStore";
 import { ArrowRight, Square, SquareCheckBig } from "lucide-react";
 import { Button } from "../ui/button";
 import { proxyFetchGet, proxyFetchPut } from "@/api/http";
-import privacy_settings from '@/assets/privacy_settings.png'
+import privacy_settings from "@/assets/privacy_settings.png";
 
 export const Permissions: React.FC = () => {
 	const { setInitState } = useAuthStore();
@@ -38,7 +38,7 @@ export const Permissions: React.FC = () => {
 					prev.map((item, index) => ({
 						...item,
 						checked: res[API_FIELDS[index]] || false,
-					}))
+					})),
 				);
 			})
 			.catch((err) => console.error("Failed to fetch settings:", err));
@@ -63,7 +63,7 @@ export const Permissions: React.FC = () => {
 		requestData[API_FIELDS[index]] = !settings[index].checked;
 
 		proxyFetchPut("/api/user/privacy", requestData).catch((err) =>
-			console.error("Failed to update settings:", err)
+			console.error("Failed to update settings:", err),
 		);
 	};
 	return (
@@ -96,11 +96,14 @@ export const Permissions: React.FC = () => {
 					))}
 				</div>
 				<div className="flex-1 rounded-3xl relative">
-					<img className="absolute top-0 left-0 right-0 bottom-0 w-[899px] h-[533px]" src={privacy_settings} alt="" />
+					<img
+						className="absolute top-0 left-0 right-0 bottom-0 w-[899px] h-[533px]"
+						src={privacy_settings}
+						alt=""
+					/>
 				</div>
 			</div>
 			<div className="flex justify-end items-center gap-sm">
-				
 				<div className="flex  justify-center items-center gap-sm">
 					<Button
 						onClick={() => setInitState("carousel")}

@@ -1,10 +1,10 @@
 interface VersionInfo {
-  update: boolean
-  version: string
-  newVersion?: string
+	update: boolean;
+	version: string;
+	newVersion?: string;
 }
 
 interface ErrorType {
-  message: string
-  error: Error
+	message: string;
+	error: Error;
 }

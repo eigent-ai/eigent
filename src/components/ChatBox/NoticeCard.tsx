@@ -59,12 +59,12 @@ export function NoticeCard() {
 								isExpanded ? "overflow-y-auto" : "overflow-y-auto max-h-[200px]"
 							} transition-all duration-300 ease-in-out scrollbar-hide relative`}
 							style={{
-								maskImage: isExpanded 
-									? 'none' 
-									: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
-								WebkitMaskImage: isExpanded 
-									? 'none' 
-									: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)'
+								maskImage: isExpanded
+									? "none"
+									: "linear-gradient(to top, black 0%, black 40%, transparent 100%)",
+								WebkitMaskImage: isExpanded
+									? "none"
+									: "linear-gradient(to top, black 0%, black 40%, transparent 100%)",
 							}}
 						>
 							<div className="mt-sm flex flex-col px-2 gap-2">
@@ -82,7 +82,7 @@ export function NoticeCard() {
 												</div>
 											</div>
 										);
-									}
+									},
 								)}
 							</div>
 						</div>

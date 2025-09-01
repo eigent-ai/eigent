@@ -104,10 +104,7 @@ export function TaskItem({
 							variant="outline"
 							size="icon"
 						>
-							<PenLine
-								size={16}
-								className=""
-							/>
+							<PenLine size={16} className="" />
 						</Button>
 					) : (
 						<Button

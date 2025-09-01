@@ -19,7 +19,7 @@ const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
 export default function Login() {
 	const app = HAS_STACK_KEYS ? useStackApp() : null;
-	const { setAuth,setModelType } = useAuthStore();
+	const { setAuth, setModelType } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
@@ -100,7 +100,7 @@ export default function Login() {
 			}
 
 			setAuth({ email: formData.email, ...data });
-			setModelType('cloud')
+			setModelType("cloud");
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
@@ -121,7 +121,7 @@ export default function Login() {
 				return;
 			}
 			console.log("data", data);
-			setModelType('cloud')
+			setModelType("cloud");
 			setAuth({ email: formData.email, ...data });
 			navigate("/");
 		} catch (error: any) {
@@ -152,13 +152,13 @@ export default function Login() {
 			"import.meta.env.PROD",
 			import.meta.env.PROD
 				? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`,
 		);
 		formData.append(
 			"redirect_uri",
 			import.meta.env.PROD
 				? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+				: `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`,
 		);
 		formData.append("code_verifier", code_verifier || "");
 		formData.append("code", code);
@@ -166,7 +166,7 @@ export default function Login() {
 		formData.append("client_id", "aa49cdd0-318e-46bd-a540-0f1e5f2b391f");
 		formData.append(
 			"client_secret",
-			"pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8"
+			"pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8",
 		);
 
 		try {
@@ -178,7 +178,7 @@ export default function Login() {
 						"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
 					},
 					body: formData,
-				}
+				},
 			);
 			const data = await res.json(); // parse response data
 			return data.access_token;
@@ -200,7 +200,7 @@ export default function Login() {
 				lock = false;
 			}, 1500);
 		},
-		[location.pathname]
+		[location.pathname],
 	);
 
 	useEffect(() => {

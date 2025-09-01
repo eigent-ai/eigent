@@ -251,7 +251,7 @@ export default function Folder({ data }: { data?: Agent }) {
 	});
 
 	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-		new Set()
+		new Set(),
 	);
 
 	const toggleFolder = (folderPath: string) => {
@@ -279,19 +279,19 @@ export default function Folder({ data }: { data?: Agent }) {
 	]);
 
 	const hasFetchedRemote = useRef(false);
-	
+
 	// Reset hasFetchedRemote when activeTaskId changes
 	useEffect(() => {
 		hasFetchedRemote.current = false;
 	}, [chatStore.activeTaskId]);
-	
+
 	useEffect(() => {
 		const setFileList = async () => {
 			let res = null;
 			res = await window.ipcRenderer.invoke(
 				"get-file-list",
 				authStore.email,
-				chatStore.activeTaskId as string
+				chatStore.activeTaskId as string,
 			);
 			let tree: any = null;
 			if (
@@ -327,7 +327,7 @@ export default function Folder({ data }: { data?: Agent }) {
 				if (chatStoreSelectedFile) {
 					console.log(res, chatStoreSelectedFile);
 					const file = res.find(
-						(item: any) => item.name === chatStoreSelectedFile.name
+						(item: any) => item.name === chatStoreSelectedFile.name,
 					);
 					console.log("file", file);
 					if (file) {
@@ -451,7 +451,7 @@ export default function Folder({ data }: { data?: Agent }) {
 											<FileText className="w-4 h-4" />
 										)}
 									</button>
-								))
+								)),
 							)}
 						</div>
 					)}
@@ -473,7 +473,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									}
 									window.ipcRenderer.invoke(
 										"reveal-in-folder",
-										selectedFile.path
+										selectedFile.path,
 									);
 								}}
 								className="flex-1 min-w-0 overflow-hidden cursor-pointer flex items-center gap-2"
@@ -519,8 +519,8 @@ export default function Folder({ data }: { data?: Agent }) {
 										title={selectedFile.name}
 									/>
 								) : ["csv", "doc", "docx", "pptx", "xlsx"].includes(
-										selectedFile.type
-								  ) ? (
+										selectedFile.type,
+									) ? (
 									<div
 										className="w-full overflow-auto"
 										dangerouslySetInnerHTML={{
@@ -555,16 +555,16 @@ export default function Folder({ data }: { data?: Agent }) {
 										"bmp",
 										"webp",
 										"svg",
-								  ].includes(selectedFile.type.toLowerCase()) ? (
+									].includes(selectedFile.type.toLowerCase()) ? (
 									<div className="flex items-center justify-center h-full">
 										<img
 											src={
 												selectedFile.isRemote
 													? "localfile://" +
-													  encodeURIComponent(selectedFile.content as string)
+														encodeURIComponent(selectedFile.content as string)
 													: `localfile://${encodeURIComponent(
-															selectedFile.path
-													  )}`
+															selectedFile.path,
+														)}`
 											}
 											alt={selectedFile.name}
 											className="max-w-full max-h-full object-contain"

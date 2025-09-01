@@ -21,7 +21,7 @@ interface EnvValue {
 interface MCPEnvDialogProps {
 	showEnvConfig: boolean;
 	onClose: () => void;
-	onConnect: (mcp:any) => void;
+	onConnect: (mcp: any) => void;
 	activeMcp?: any;
 }
 
@@ -42,7 +42,6 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
 			Object.keys(mcp.install_command.env).forEach((key) => {
-				
 				initialValues[key] = {
 					value: "",
 					required: true,
@@ -51,11 +50,11 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
-				if(key==='EXA_API_KEY'){
-					initialValues[key].required=false;
+				if (key === "EXA_API_KEY") {
+					initialValues[key].required = false;
 				}
-				if(key==='GOOGLE_REFRESH_TOKEN'){
-					initialValues[key].required=false;
+				if (key === "GOOGLE_REFRESH_TOKEN") {
+					initialValues[key].required = false;
 				}
 			});
 			setEnvValues(initialValues);
@@ -107,7 +106,10 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 			}}
 		>
 			<form>
-				<DialogContent aria-describedby={undefined} className="sm:max-w-[425px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm">
+				<DialogContent
+					aria-describedby={undefined}
+					className="sm:max-w-[425px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm"
+				>
 					<DialogHeader className="!bg-popup-surface !rounded-t-xl p-md">
 						<DialogTitle className="m-0">
 							<div className="flex gap-xs items-center justify-start">
@@ -152,7 +154,8 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							{Object.keys(activeMcp?.install_command?.env || {}).map((key) => (
 								<div key={key}>
 									<div className="text-text-body text-sm leading-normal font-bold">
-										{key}{envValues[key]?.required&&'*'}
+										{key}
+										{envValues[key]?.required && "*"}
 									</div>
 									<div className="relative">
 										<Input
@@ -164,7 +167,9 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 										/>
 										<span
 											className="absolute inset-y-0 right-2 flex items-center cursor-pointer text-gray-500 hover:text-gray-700"
-											onClick={() => setShowKeys(prev => ({ ...prev, [key]: !prev[key] }))}
+											onClick={() =>
+												setShowKeys((prev) => ({ ...prev, [key]: !prev[key] }))
+											}
 										>
 											{showKeys[key] ? (
 												<Eye className="w-4 h-4" />
@@ -175,25 +180,46 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 									</div>
 									<div className="text-input-label-default text-xs leading-normal">
 										{envValues[key]?.tip}
-										{key === 'SEARCH_ENGINE_ID' && (
+										{key === "SEARCH_ENGINE_ID" && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
-													window.location.href = "https://developers.google.com/custom-search/v1/overview";
-												}} className="underline text-blue-500">Google Custom Search API</a>
+												Get it from:{" "}
+												<a
+													onClick={() => {
+														window.location.href =
+															"https://developers.google.com/custom-search/v1/overview";
+													}}
+													className="underline text-blue-500"
+												>
+													Google Custom Search API
+												</a>
 											</div>
 										)}
-										{key === 'GOOGLE_API_KEY' && (
+										{key === "GOOGLE_API_KEY" && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
-													window.location.href = "https://console.cloud.google.com/apis/credentials";
-												}} className="underline text-blue-500">Google Cloud Console</a>
+												Get it from:{" "}
+												<a
+													onClick={() => {
+														window.location.href =
+															"https://console.cloud.google.com/apis/credentials";
+													}}
+													className="underline text-blue-500"
+												>
+													Google Cloud Console
+												</a>
 											</div>
 										)}
-										{key === 'EXA_API_KEY' && (
+										{key === "EXA_API_KEY" && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
-													window.location.href = "https://exa.ai";
-												}} className="underline text-blue-500">Exa.ai</a> (Optional)
+												Get it from:{" "}
+												<a
+													onClick={() => {
+														window.location.href = "https://exa.ai";
+													}}
+													className="underline text-blue-500"
+												>
+													Exa.ai
+												</a>{" "}
+												(Optional)
 											</div>
 										)}
 									</div>

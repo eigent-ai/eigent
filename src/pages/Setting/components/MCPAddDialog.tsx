@@ -27,9 +27,9 @@ if (typeof globalThis !== "undefined") {
 								self.onmessage = function () {};
 								`,
 							],
-							{ type: "application/javascript" }
-						)
-					)
+							{ type: "application/javascript" },
+						),
+					),
 				);
 			}
 		},

@@ -66,7 +66,7 @@ export function WorkSpaceMenu() {
 		const taskAssigning =
 			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
 		const base = [...baseWorker, ...workerList].filter(
-			(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
+			(worker) => !taskAssigning.find((agent) => agent.type === worker.type),
 		);
 		setAgentList([...base, ...taskAssigning]);
 	}, [
@@ -83,20 +83,22 @@ export function WorkSpaceMenu() {
 				...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
 			];
 			const hasId = taskAssigning.find((item) =>
-				item.activeWebviewIds?.find((webview) => webview.id === id)
+				item.activeWebviewIds?.find((webview) => webview.id === id),
 			);
 			if (!hasId) {
 				const hasUrl = webViewUrls.find(
-					(item) => new URL(item.url).hostname === new URL(url).hostname
+					(item) => new URL(item.url).hostname === new URL(url).hostname,
 				);
 
 				if (hasUrl) {
 					const activeAgentIndex = taskAssigning.findIndex((item) =>
-						item.tasks.find((task) => task.id === hasUrl?.processTaskId)
+						item.tasks.find((task) => task.id === hasUrl?.processTaskId),
 					);
-					
+
 					if (activeAgentIndex === -1) {
-						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
+						const searchAgentIndex = taskAssigning.findIndex(
+							(item) => item.type === "search_agent",
+						);
 						if (searchAgentIndex !== -1) {
 							taskAssigning[searchAgentIndex].activeWebviewIds?.push({
 								id,
@@ -106,7 +108,7 @@ export function WorkSpaceMenu() {
 							});
 							chatStore.setTaskAssigning(
 								chatStore.activeTaskId as string,
-								taskAssigning
+								taskAssigning,
 							);
 						}
 					} else {
@@ -118,7 +120,7 @@ export function WorkSpaceMenu() {
 						});
 						chatStore.setTaskAssigning(
 							chatStore.activeTaskId as string,
-							taskAssigning
+							taskAssigning,
 						);
 					}
 					const urlIndex = webViewUrls.findIndex((item) => item.url === url);
@@ -130,7 +132,9 @@ export function WorkSpaceMenu() {
 					]);
 				} else {
 					// If no URL match found, also try to add to search_agent
-					const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
+					const searchAgentIndex = taskAssigning.findIndex(
+						(item) => item.type === "search_agent",
+					);
 					if (searchAgentIndex !== -1 && webViewUrls.length > 0) {
 						taskAssigning[searchAgentIndex].activeWebviewIds?.push({
 							id,
@@ -140,7 +144,7 @@ export function WorkSpaceMenu() {
 						});
 						chatStore.setTaskAssigning(
 							chatStore.activeTaskId as string,
-							taskAssigning
+							taskAssigning,
 						);
 					}
 				}
@@ -171,7 +175,7 @@ export function WorkSpaceMenu() {
 									.taskAssigning,
 							];
 							const searchAgentIndex = taskAssigning.findIndex(
-								(agent) => agent.agent_id === webview.agent_id
+								(agent) => agent.agent_id === webview.agent_id,
 							);
 
 							if (
@@ -185,7 +189,7 @@ export function WorkSpaceMenu() {
 
 								chatStore.setTaskAssigning(
 									chatStore.activeTaskId as string,
-									taskAssigning
+									taskAssigning,
 								);
 							}
 						})

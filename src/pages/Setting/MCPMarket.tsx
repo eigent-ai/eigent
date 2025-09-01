@@ -129,7 +129,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 					const all: MCPItem[] =
 						pageNum === 1 ? res.items : [...items, ...res.items];
 					const unique: MCPItem[] = Array.from(
-						new Map(all.map((i: MCPItem) => [i.id, i])).values()
+						new Map(all.map((i: MCPItem) => [i.id, i])).values(),
 					);
 					setItems(unique);
 					setHasMore(res.items.length === pageSize);
@@ -143,7 +143,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 				setIsLoading(false);
 			}
 		},
-		[items]
+		[items],
 	);
 
 	useEffect(() => {
@@ -167,7 +167,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 					setPage((p) => (isLoading || !hasMore ? p : p + 1));
 				}
 			},
-			{ root: null, rootMargin: "0px", threshold: 0.1 }
+			{ root: null, rootMargin: "0px", threshold: 0.1 },
 		);
 		observer.observe(node);
 		return () => {
@@ -187,7 +187,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 	const onConnect = (mcp: MCPItem) => {
 		console.log(mcp);
 		setItems((prev) =>
-			prev.map((item) => (item.id === mcp.id ? { ...item, ...mcp } : item))
+			prev.map((item) => (item.id === mcp.id ? { ...item, ...mcp } : item)),
 		);
 		installMcp(mcp.id);
 		onClose();
@@ -212,7 +212,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 				await window.ipcRenderer.invoke(
 					"mcp-install",
 					mcpItem.key,
-					mcpItem.install_command
+					mcpItem.install_command,
 				);
 			}
 		} catch (e) {
@@ -232,7 +232,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 			checkAgentTool(deleteTarget.name);
 			console.log(userInstallMcp, deleteTarget);
 			const id = userInstallMcp.find(
-				(item: any) => item.mcp_id === deleteTarget.id
+				(item: any) => item.mcp_id === deleteTarget.id,
 			)?.id;
 			console.log("deleteTarget", deleteTarget);
 			await proxyFetchDelete(`/api/mcp/users/${id}`);
@@ -241,7 +241,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 				await window.ipcRenderer.invoke("mcp-remove", deleteTarget.key);
 			}
 			setInstalledIds((prev) =>
-				prev.filter((item) => item !== deleteTarget.id)
+				prev.filter((item) => item !== deleteTarget.id),
 			);
 			setInstalled((prev) => ({ ...prev, [deleteTarget.id]: false }));
 			loadData(1, debouncedKeyword, categoryId, page * 20);
@@ -392,10 +392,10 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 									{installedIds.includes(item.id)
 										? "Uninstall"
 										: installing[item.id]
-										? "Installing..."
-										: installed[item.id]
-										? "Uninstall"
-										: "Install"}
+											? "Installing..."
+											: installed[item.id]
+												? "Uninstall"
+												: "Install"}
 								</Button>
 							</div>
 							{item.home_page &&

@@ -239,7 +239,7 @@ export default function HistorySidebar() {
 							>
 								<ArrowLeft size={16} />
 								<span className="text-text-primary text-sm font-bold leading-13">
-									Task Hub 
+									Task Hub
 								</span>
 							</Button>
 							<Button
@@ -315,7 +315,7 @@ export default function HistorySidebar() {
 																		{task.taskRunning?.filter(
 																			(taskItem) =>
 																				taskItem.status === "completed" ||
-																				taskItem.status === "failed"
+																				taskItem.status === "failed",
 																		).length || 0}
 																		/{task.taskRunning?.length || 0}
 																	</div>
@@ -329,7 +329,7 @@ export default function HistorySidebar() {
 																					onClick={() =>
 																						handleClickAgent(
 																							taskId,
-																							taskAssigning.agent_id as AgentNameType
+																							taskAssigning.agent_id as AgentNameType,
 																						)
 																					}
 																					className={`transition-all duration-300 flex justify-start items-center gap-1 px-sm py-xs bg-menutabs-bg-default hover:bg-white-100% rounded-lg border border-solid border-white-100% shadow-history-item ${
@@ -355,7 +355,7 @@ export default function HistorySidebar() {
 																						{taskAssigning.name}
 																					</div>
 																				</div>
-																			)
+																			),
 																	)}
 																</div>
 															</div>
@@ -449,7 +449,7 @@ export default function HistorySidebar() {
 														.filter((task) =>
 															task.question
 																?.toLowerCase()
-																.includes(searchValue.toLowerCase())
+																.includes(searchValue.toLowerCase()),
 														)
 														.map((task) => {
 															return (
@@ -492,98 +492,107 @@ export default function HistorySidebar() {
 											) : (
 												// List
 												<div className=" flex flex-col justify-start items-center gap-4 ">
-												{historyTasks.map((task) => {
-													return (
-														<div
-															onClick={() => {
-																handleSetActive(task.task_id, task.question);
-															}}
-															key={task.task_id}
-															className={`${
-																chatStore.activeTaskId === task.task_id
-																	? "!bg-white-100%"
-																	: ""
-															} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
-														>
-															<img className="w-8 h-8" src={folderIcon} alt="folder-icon" />
-						
-															<div className="w-full text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<span>
-																			{" "}
-																			{task?.question.split("|")[0] || "New Project"}
-																		</span>
-																	</TooltipTrigger>
-																	<TooltipContent
-																		align="start"
-																		className="w-[800px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto"
-																	>
-																		<div>
-																			{" "}
-																			{task?.question.split("|")[0] || "New Project"}
-																		</div>
-																	</TooltipContent>
-																</Tooltip>
-															</div>
-															<Tag
-																variant="primary"
-																className="text-xs leading-17 font-medium text-nowrap"
+													{historyTasks.map((task) => {
+														return (
+															<div
+																onClick={() => {
+																	handleSetActive(task.task_id, task.question);
+																}}
+																key={task.task_id}
+																className={`${
+																	chatStore.activeTaskId === task.task_id
+																		? "!bg-white-100%"
+																		: ""
+																} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
 															>
-																# Token {task.tokens || 0}
-															</Tag>
-						
-															<Popover>
-																<PopoverTrigger asChild>
-																	<Button
-																		size="icon"
-																		onClick={(e) => e.stopPropagation()}
-																		variant="ghost"
-																	>
-																		<Ellipsis size={16} className="text-text-primary" />
-																	</Button>
-																</PopoverTrigger>
-																<PopoverContent className=" w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
-																	<div className="space-y-1">
-																		<PopoverClose asChild>
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				className="w-full"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					handleShare(task.task_id);
-																				}}
-																			>
-																				<Share size={16} />
-																				Share
-																			</Button>
-																		</PopoverClose>
-						
-																		<PopoverClose asChild>
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				className="w-full"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					handleDelete(task.id);
-																				}}
-																			>
-																				<Trash2
-																					size={16}
-																					className="text-icon-primary group-hover:text-icon-cuation"
-																				/>
-																				Delete
-																			</Button>
-																		</PopoverClose>
-																	</div>
-																</PopoverContent>
-															</Popover>
-														</div>
-													);
-												})}
-											</div>
+																<img
+																	className="w-8 h-8"
+																	src={folderIcon}
+																	alt="folder-icon"
+																/>
+
+																<div className="w-full text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<span>
+																				{" "}
+																				{task?.question.split("|")[0] ||
+																					"New Project"}
+																			</span>
+																		</TooltipTrigger>
+																		<TooltipContent
+																			align="start"
+																			className="w-[800px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto"
+																		>
+																			<div>
+																				{" "}
+																				{task?.question.split("|")[0] ||
+																					"New Project"}
+																			</div>
+																		</TooltipContent>
+																	</Tooltip>
+																</div>
+																<Tag
+																	variant="primary"
+																	className="text-xs leading-17 font-medium text-nowrap"
+																>
+																	# Token {task.tokens || 0}
+																</Tag>
+
+																<Popover>
+																	<PopoverTrigger asChild>
+																		<Button
+																			size="icon"
+																			onClick={(e) => e.stopPropagation()}
+																			variant="ghost"
+																		>
+																			<Ellipsis
+																				size={16}
+																				className="text-text-primary"
+																			/>
+																		</Button>
+																	</PopoverTrigger>
+																	<PopoverContent className=" w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+																		<div className="space-y-1">
+																			<PopoverClose asChild>
+																				<Button
+																					variant="ghost"
+																					size="sm"
+																					className="w-full"
+																					onClick={(e) => {
+																						e.stopPropagation();
+																						handleShare(task.task_id);
+																					}}
+																				>
+																					<Share size={16} />
+																					Share
+																				</Button>
+																			</PopoverClose>
+
+																			<PopoverClose asChild>
+																				<Button
+																					variant="ghost"
+																					size="sm"
+																					className="w-full"
+																					onClick={(e) => {
+																						e.stopPropagation();
+																						handleDelete(task.id);
+																					}}
+																				>
+																					<Trash2
+																						size={16}
+																						className="text-icon-primary group-hover:text-icon-cuation"
+																					/>
+																					Delete
+																				</Button>
+																			</PopoverClose>
+																		</div>
+																	</PopoverContent>
+																</Popover>
+															</div>
+														);
+													})}
+												</div>
 											)}
 										</motion.div>
 									)}

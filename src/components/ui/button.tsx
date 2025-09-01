@@ -23,7 +23,7 @@ const buttonVariants = cva(
 					"bg-button-fill-cuation text-button-fill-cuation-foreground hover:bg-red-700 active:bg-red-700 focus:bg-red-700 focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer",
 				information:
 					"bg-button-fill-information text-button-fill-information-foreground hover:bg-fill-fill-information-hover active:bg-fill-fill-information-active focus:bg-fill-fill-information-hover focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer",
-				},
+			},
 			size: {
 				xs: "inline-flex justify-start items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold leading-none [&_svg]:size-10",
 				sm: "inline-flex justify-start items-center gap-1 px-2 py-1 rounded-md text-xs font-medium leading-tight [&_svg]:size-[16px]",
@@ -36,7 +36,7 @@ const buttonVariants = cva(
 			variant: "primary",
 			size: "md",
 		},
-	}
+	},
 );
 
 const Button = React.forwardRef<

@@ -88,7 +88,7 @@ export function Node({ id, data }: NodeProps) {
 						};
 					}
 					return node;
-				})
+				}),
 			);
 		}
 	}, [isExpanded, data.isEditMode, id, setNodes]);
@@ -97,7 +97,7 @@ export function Node({ id, data }: NodeProps) {
 		if (!isExpanded) {
 			setSelectedTask(
 				data.agent?.tasks.find((task) => task.status === "running") ||
-					data.agent?.tasks[0]
+					data.agent?.tasks[0],
 			);
 		}
 		setIsExpanded(!isExpanded);
@@ -113,7 +113,7 @@ export function Node({ id, data }: NodeProps) {
 						{ x: -node.position.x, y: 0, zoom: 1 },
 						{
 							duration: 500,
-						}
+						},
 					);
 				}, 100);
 			}
@@ -278,8 +278,8 @@ export function Node({ id, data }: NodeProps) {
 					data.isEditMode
 						? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[280px]"}`
 						: isExpanded
-						? "w-[560px]"
-						: "w-[280px]"
+							? "w-[560px]"
+							: "w-[280px]"
 				} ${
 					data.isEditMode ? "h-full" : "max-h-[calc(100vh-200px)]"
 				}  border-worker-border-default flex border border-solid rounded-xl overflow-hidden bg-worker-surface-primary ${
@@ -338,7 +338,8 @@ export function Node({ id, data }: NodeProps) {
 														onClick={(e) => {
 															e.stopPropagation();
 															const newWorkerList = workerList.filter(
-																(worker) => worker.type !== data.workerInfo.name
+																(worker) =>
+																	worker.type !== data.workerInfo.name,
 															);
 															setWorkerList(newWorkerList);
 														}}
@@ -375,7 +376,7 @@ export function Node({ id, data }: NodeProps) {
 						onClick={() => {
 							chatStore.setActiveWorkSpace(
 								chatStore.activeTaskId as string,
-								data.agent?.agent_id as string
+								data.agent?.agent_id as string,
 							);
 
 							window.electronAPI.hideAllWebview();
@@ -396,13 +397,13 @@ export function Node({ id, data }: NodeProps) {
 														data.img.length === 1
 															? "flex-1"
 															: data.img.length === 2
-															? "max-w-[calc(50%-8px)] h-full"
-															: "max-w-[calc(50%-8px)] h-[calc(50%-8px)]"
+																? "max-w-[calc(50%-8px)] h-full"
+																: "max-w-[calc(50%-8px)] h-[calc(50%-8px)]"
 													}  min-w-[calc(50%-8px)] rounded-sm object-cover`}
 													src={img.img}
 													alt={data.type}
 												/>
-											)
+											),
 									)}
 							</div>
 						)}
@@ -417,7 +418,7 @@ export function Node({ id, data }: NodeProps) {
 						{data.type === "developer_agent" &&
 							data?.agent?.tasks &&
 							data?.agent?.tasks?.filter(
-								(task) => task.terminal && task.terminal.length > 0
+								(task) => task.terminal && task.terminal.length > 0,
 							)?.length > 0 && (
 								<div className="w-full h-[180px] overflow-hidden relative flex items-center justify-start gap-1 flex-wrap">
 									{data.agent?.tasks
@@ -430,7 +431,7 @@ export function Node({ id, data }: NodeProps) {
 													className={`${
 														data.agent?.tasks.filter(
 															(task) =>
-																task.terminal && task.terminal.length > 0
+																task.terminal && task.terminal.length > 0,
 														).length === 1
 															? "min-w-full h-full"
 															: "min-w-[calc(50%-8px)] h-[calc(50%-8px)]"
@@ -453,7 +454,7 @@ export function Node({ id, data }: NodeProps) {
 									done={
 										data.agent?.tasks?.filter(
 											(task) =>
-												task.status === "failed" || task.status === "completed"
+												task.status === "failed" || task.status === "completed",
 										).length || 0
 									}
 									progress={
@@ -461,12 +462,12 @@ export function Node({ id, data }: NodeProps) {
 											(task) =>
 												task.status !== "failed" &&
 												task.status !== "completed" &&
-												task.status !== "skipped"
+												task.status !== "skipped",
 										).length || 0
 									}
 									skipped={
 										data.agent?.tasks?.filter(
-											(task) => task.status === "skipped"
+											(task) => task.status === "skipped",
 										).length || 0
 									}
 								/>
@@ -499,11 +500,11 @@ export function Node({ id, data }: NodeProps) {
 											if (task.agent) {
 												chatStore.setActiveWorkSpace(
 													chatStore.activeTaskId as string,
-													"workflow"
+													"workflow",
 												);
 												chatStore.setActiveAgent(
 													chatStore.activeTaskId as string,
-													task.agent?.agent_id
+													task.agent?.agent_id,
 												);
 												window.electronAPI.hideAllWebview();
 											}
@@ -513,33 +514,33 @@ export function Node({ id, data }: NodeProps) {
 											task.status === "completed"
 												? "bg-green-50"
 												: task.status === "failed"
-												? "bg-task-fill-error"
-												: task.status === "running"
-												? "bg-zinc-50"
-												: task.status === "blocked"
-												? "bg-task-fill-warning"
-												: "bg-zinc-50"
+													? "bg-task-fill-error"
+													: task.status === "running"
+														? "bg-zinc-50"
+														: task.status === "blocked"
+															? "bg-task-fill-warning"
+															: "bg-zinc-50"
 										} border border-solid border-transparent cursor-pointer ${
 											task.status === "completed"
 												? "hover:border-bg-fill-success-primary"
 												: task.status === "failed"
-												? "hover:border-task-border-focus-error"
-												: task.status === "running"
-												? "hover:border-border-primary"
-												: task.status === "blocked"
-												? "hover:border-task-border-focus-warning"
-												: "border-transparent"
+													? "hover:border-task-border-focus-error"
+													: task.status === "running"
+														? "hover:border-border-primary"
+														: task.status === "blocked"
+															? "hover:border-task-border-focus-warning"
+															: "border-transparent"
 										} ${
 											selectedTask?.id === task.id
 												? task.status === "completed"
 													? "!border-bg-fill-success-primary"
 													: task.status === "failed"
-													? "!border-text-cuation-primary"
-													: task.status === "running"
-													? "!border-border-primary"
-													: task.status === "blocked"
-													? "!border-text-warning-primary"
-													: "border-transparent"
+														? "!border-text-cuation-primary"
+														: task.status === "running"
+															? "!border-border-primary"
+															: task.status === "blocked"
+																? "!border-text-warning-primary"
+																: "border-transparent"
 												: "border-transparent"
 										}`}
 									>
@@ -584,8 +585,8 @@ export function Node({ id, data }: NodeProps) {
 													task.status === "failed"
 														? "text-text-cuation-default"
 														: task.status === "blocked"
-														? "text-text-body"
-														: "text-text-primary"
+															? "text-text-body"
+															: "text-text-primary"
 												} text-sm font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
 											>
 												{getTaskId(task.id)}

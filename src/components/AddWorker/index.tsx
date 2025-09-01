@@ -68,7 +68,7 @@ export function AddWorker({
 	const [workerName, setWorkerName] = useState("");
 	const [workerDescription, setWorkerDescription] = useState("");
 	const [selectedTools, setSelectedTools] = useState<McpItem[]>([]);
-	
+
 	// error status management
 	const [nameError, setNameError] = useState<string>("");
 
@@ -117,7 +117,7 @@ export function AddWorker({
 				await toolSelectRef.current.installMcp(
 					activeMcp.id,
 					{ ...envValues },
-					activeMcp
+					activeMcp,
 				);
 			} else {
 				await toolSelectRef.current.installMcp(activeMcp.id, { ...envValues });
@@ -171,7 +171,7 @@ export function AddWorker({
 	const handleAddWorker = async () => {
 		// clear previous errors
 		setNameError("");
-		
+
 		if (!workerName) {
 			setNameError("Worker name cannot be empty");
 			return;
@@ -383,7 +383,7 @@ export function AddWorker({
 													{envValues[key]?.tip}
 												</div>
 											</div>
-										)
+										),
 									)}
 								</div>
 							</div>

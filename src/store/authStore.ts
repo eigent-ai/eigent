@@ -1,10 +1,20 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 // type definition
-type InitState = 'permissions' | 'carousel' | 'done';
-type ModelType = 'cloud' | 'local' | 'custom';
-type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-opus-4-1-20250805' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini' | 'gpt-5-nano';
+type InitState = "permissions" | "carousel" | "done";
+type ModelType = "cloud" | "local" | "custom";
+type CloudModelType =
+	| "gemini/gemini-2.5-pro"
+	| "gemini-2.5-flash"
+	| "gpt-4.1-mini"
+	| "gpt-4.1"
+	| "claude-opus-4-1-20250805"
+	| "claude-sonnet-4-20250514"
+	| "claude-3-5-haiku-20241022"
+	| "gpt-5"
+	| "gpt-5-mini"
+	| "gpt-5-nano";
 
 // auth info interface
 interface AuthInfo {
@@ -21,7 +31,7 @@ interface AuthState {
 	username: string | null;
 	email: string | null;
 	user_id: number | null;
-	
+
 	// application settings
 	appearance: string;
 	language: string;
@@ -29,17 +39,17 @@ interface AuthState {
 	modelType: ModelType;
 	cloud_model_type: CloudModelType;
 	initState: InitState;
-	
+
 	// shared token
 	share_token?: string | null;
-	
+
 	// worker list data
 	workerListData: { [key: string]: Agent[] };
-	
+
 	// auth related methods
 	setAuth: (auth: AuthInfo) => void;
 	logout: () => void;
-	
+
 	// set related methods
 	setAppearance: (appearance: string) => void;
 	setLanguage: (language: string) => void;
@@ -47,7 +57,7 @@ interface AuthState {
 	setModelType: (modelType: ModelType) => void;
 	setCloudModelType: (cloud_model_type: CloudModelType) => void;
 	setIsFirstLaunch: (isFirstLaunch: boolean) => void;
-	
+
 	// worker related methods
 	setWorkerList: (workerList: Agent[]) => void;
 	checkAgentTool: (tool: string) => void;
@@ -62,43 +72,43 @@ const authStore = create<AuthState>()(
 			username: null,
 			email: null,
 			user_id: null,
-			appearance: 'light',
-			language: 'en',
+			appearance: "light",
+			language: "en",
 			isFirstLaunch: true,
-			modelType: 'cloud',
-			cloud_model_type: 'gpt-4.1',
-			initState: 'permissions',
+			modelType: "cloud",
+			cloud_model_type: "gpt-4.1",
+			initState: "permissions",
 			share_token: null,
 			workerListData: {},
-			
+
 			// auth related methods
 			setAuth: ({ token, username, email, user_id }) =>
 				set({ token, username, email, user_id }),
-			
-			logout: () => 
-				set({ 
-					token: null, 
-					username: null, 
-					email: null, 
-					user_id: null 
+
+			logout: () =>
+				set({
+					token: null,
+					username: null,
+					email: null,
+					user_id: null,
 				}),
-			
+
 			// set related methods
 			setAppearance: (appearance) => set({ appearance }),
-			
+
 			setLanguage: (language) => set({ language }),
-			
+
 			setInitState: (initState) => {
-				console.log('set({ initState })', initState);
+				console.log("set({ initState })", initState);
 				set({ initState });
 			},
-			
+
 			setModelType: (modelType) => set({ modelType }),
-			
+
 			setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
-			
+
 			setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
-			
+
 			// worker related methods
 			setWorkerList: (workerList) => {
 				const { email } = get();
@@ -106,41 +116,42 @@ const authStore = create<AuthState>()(
 					...state,
 					workerListData: {
 						...state.workerListData,
-						[email as string]: workerList
-					}
+						[email as string]: workerList,
+					},
 				}));
 			},
-			
+
 			checkAgentTool: (tool) => {
 				const { email } = get();
 				set((state) => {
 					const currentEmail = email as string;
 					const originalList = state.workerListData[currentEmail] ?? [];
-					
+
 					console.log("tool!!!", tool);
-					
+
 					const updatedList = originalList
 						.map((worker) => {
-							const filteredTools = worker.tools?.filter((t) => t !== tool) ?? [];
+							const filteredTools =
+								worker.tools?.filter((t) => t !== tool) ?? [];
 							console.log("filteredTools", filteredTools);
 							return { ...worker, tools: filteredTools };
 						})
 						.filter((worker) => worker.tools.length > 0);
-					
+
 					console.log("updatedList", updatedList);
-					
+
 					return {
 						...state,
 						workerListData: {
 							...state.workerListData,
-							[currentEmail]: updatedList
-						}
+							[currentEmail]: updatedList,
+						},
 					};
 				});
-			}
+			},
 		}),
 		{
-			name: 'auth-storage',
+			name: "auth-storage",
 			partialize: (state) => ({
 				token: state.token,
 				username: state.username,
@@ -154,8 +165,8 @@ const authStore = create<AuthState>()(
 				isFirstLaunch: state.isFirstLaunch,
 				workerListData: state.workerListData,
 			}),
-		}
-	)
+		},
+	),
 );
 
 // export Hook version for components

@@ -153,7 +153,7 @@ export function TaskCard({
 									done={
 										taskRunning?.filter(
 											(task) =>
-												task.status === "completed" || task.status === "failed"
+												task.status === "completed" || task.status === "failed",
 										).length || 0
 									}
 									progress={
@@ -162,7 +162,7 @@ export function TaskCard({
 												task.status !== "completed" &&
 												task.status !== "failed" &&
 												task.status !== "skipped" &&
-												task.content !== ""
+												task.content !== "",
 										).length || 0
 									}
 									skipped={
@@ -186,7 +186,7 @@ export function TaskCard({
 											{taskRunning?.filter(
 												(task) =>
 													task.status === "completed" ||
-													task.status === "failed"
+													task.status === "failed",
 											).length || 0}
 											/{taskRunning?.length || 0}
 										</div>
@@ -242,11 +242,11 @@ export function TaskCard({
 													if (task.agent) {
 														chatStore.setActiveWorkSpace(
 															chatStore.activeTaskId as string,
-															"workflow"
+															"workflow",
 														);
 														chatStore.setActiveAgent(
 															chatStore.activeTaskId as string,
-															task.agent?.agent_id
+															task.agent?.agent_id,
 														);
 														window.electronAPI.hideAllWebview();
 													}
@@ -256,22 +256,22 @@ export function TaskCard({
 													task.status === "completed"
 														? "bg-green-50"
 														: task.status === "failed"
-														? "bg-task-fill-error"
-														: task.status === "running"
-														? "bg-zinc-50"
-														: task.status === "blocked"
-														? "bg-task-fill-warning"
-														: "bg-zinc-50"
+															? "bg-task-fill-error"
+															: task.status === "running"
+																? "bg-zinc-50"
+																: task.status === "blocked"
+																	? "bg-task-fill-warning"
+																	: "bg-zinc-50"
 												} border border-solid border-transparent cursor-pointer ${
 													task.status === "completed"
 														? "hover:border-bg-fill-success-primary"
 														: task.status === "failed"
-														? "hover:border-task-border-focus-error"
-														: task.status === "running"
-														? "hover:border-border-primary"
-														: task.status === "blocked"
-														? "hover:border-task-border-focus-warning"
-														: "border-transparent"
+															? "hover:border-task-border-focus-error"
+															: task.status === "running"
+																? "hover:border-border-primary"
+																: task.status === "blocked"
+																	? "hover:border-task-border-focus-warning"
+																	: "border-transparent"
 												}
 												`}
 											>
@@ -320,8 +320,8 @@ export function TaskCard({
 															task.status === "failed"
 																? "text-text-cuation-default"
 																: task.status === "blocked"
-																? "text-text-body"
-																: "text-text-primary"
+																	? "text-text-body"
+																	: "text-text-primary"
 														} text-sm font-medium leading-13   `}
 													>
 														{task.content}

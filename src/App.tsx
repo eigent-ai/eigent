@@ -37,7 +37,7 @@ function App() {
 			if (data.type === "version-update") {
 				// handle version update logic
 				console.log(
-					`version from ${data.previousVersion} to ${data.currentVersion}`
+					`version from ${data.previousVersion} to ${data.currentVersion}`,
 				);
 				console.log(`update reason: ${data.reason}`);
 				setInitState("carousel");
@@ -72,7 +72,7 @@ function App() {
 			return (
 				<StackProvider app={stackClientApp}>
 					<StackTheme>{children}</StackTheme>
-					<Toaster style={{ zIndex: '999999 !important', position: "fixed" }} />
+					<Toaster style={{ zIndex: "999999 !important", position: "fixed" }} />
 				</StackProvider>
 			);
 		}

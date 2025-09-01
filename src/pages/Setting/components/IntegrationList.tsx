@@ -5,11 +5,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CircleAlert } from "lucide-react";
-import {
-	proxyFetchGet,
-	proxyFetchPost,
-	proxyFetchDelete,
-} from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, proxyFetchDelete } from "@/api/http";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import ellipseIcon from "@/assets/mcp/Ellipse-25.svg";
@@ -26,16 +22,13 @@ interface IntegrationItem {
 	onInstall: () => void;
 }
 
-
 interface IntegrationListProps {
 	items: IntegrationItem[];
 	installedKeys?: string[];
 	oauth?: OAuth;
 }
 
-export default function IntegrationList({
-	items,
-}: IntegrationListProps) {
+export default function IntegrationList({ items }: IntegrationListProps) {
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<any | null>(null);
 	const { email, checkAgentTool } = useAuthStore();
@@ -94,7 +87,7 @@ export default function IntegrationList({
 	const saveEnvAndConfig = async (
 		provider: string,
 		envVarKey: string,
-		value: string
+		value: string,
 	) => {
 		const configPayload = {
 			config_group: capitalizeFirstLetter(provider),
@@ -120,18 +113,18 @@ export default function IntegrationList({
 			}
 			const provider = data.provider.toLowerCase();
 			isLockedRef.current = true;
-		
+
 			try {
 				const tokenResult = await proxyFetchPost(
 					`/api/oauth/${provider}/token`,
-					{ code: data.code }
+					{ code: data.code },
 				);
 				setInstalled((prev) => ({
 					...prev,
 					[capitalizeFirstLetter(provider)]: true,
 				}));
 				const currentItem = items.find(
-					(item) => item.key.toLowerCase() === provider
+					(item) => item.key.toLowerCase() === provider,
 				);
 				console.log("provider", provider);
 				console.log("items", items);
@@ -146,15 +139,15 @@ export default function IntegrationList({
 						await saveEnvAndConfig(
 							provider,
 							envVarKey,
-							tokenResult.access_token
+							tokenResult.access_token,
 						);
 						fetchInstalled();
 						console.log(
-							"Slack authorization successful and configuration saved!"
+							"Slack authorization successful and configuration saved!",
 						);
 					} else {
 						console.log(
-							"Slack authorization successful, but access_token not found or env configuration not found"
+							"Slack authorization successful, but access_token not found or env configuration not found",
 						);
 					}
 				} else {
@@ -166,7 +159,7 @@ export default function IntegrationList({
 				isLockedRef.current = false;
 			}
 		},
-		[items, callBackUrl] // add oauth to dependencies
+		[items, callBackUrl], // add oauth to dependencies
 	);
 
 	// listen to main process oauth authorization callback, automatically mark as installed and get token
@@ -247,7 +240,7 @@ export default function IntegrationList({
 			if (installed[item.key]) return;
 			await item.onInstall();
 		},
-		[installed]
+		[installed],
 	);
 
 	const onConnect = async (mcp: any) => {
@@ -255,7 +248,7 @@ export default function IntegrationList({
 		await Promise.all(
 			Object.keys(mcp.install_command.env).map((key) => {
 				return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
-			})
+			}),
 		);
 
 		fetchInstalled();
@@ -273,7 +266,7 @@ export default function IntegrationList({
 			// find all configs that match config_group, delete one by one
 			const groupKey = item.key.toLowerCase();
 			const toDelete = configs.filter(
-				(c: any) => c.config_group && c.config_group.toLowerCase() === groupKey
+				(c: any) => c.config_group && c.config_group.toLowerCase() === groupKey,
 			);
 			console.log("toDelete", toDelete);
 			for (const config of toDelete) {
@@ -287,7 +280,6 @@ export default function IntegrationList({
 						item.env_vars.length > 0 &&
 						window.electronAPI?.envRemove
 					) {
-
 						await window.electronAPI.envRemove(email, item.env_vars[0]);
 					}
 				} catch (e) {
@@ -297,10 +289,10 @@ export default function IntegrationList({
 			}
 			// after deletion, refresh configs
 			setConfigs((prev) =>
-				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
+				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey),
 			);
 		},
-		[configs]
+		[configs],
 	);
 
 	return (
@@ -311,67 +303,69 @@ export default function IntegrationList({
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			{items.filter((item) => item.name !== "Notion").map((item) => {
-				const isInstalled = !!installed[item.key];
-				return (
-					<div
-						key={item.key}
-						className="p-4 bg-surface-secondary rounded-2xl flex items-center justify-between"
-					>
-						<div className="flex items-center gap-xs">
-							<img
-								src={ellipseIcon}
-								alt="icon"
-								className="w-3 h-3 mr-2"
-								style={{
-									filter: isInstalled
-										? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
-										: "none",
-								}}
-							/>
-							<div className="text-base leading-snug font-bold text-text-action">
-								{item.name}
-							</div>
-							<div className="flex items-center">
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<CircleAlert className="w-4 h-4 text-icon-secondary" />
-									</TooltipTrigger>
-									<TooltipContent>
-										<div>{item.desc}</div>
-									</TooltipContent>
-								</Tooltip>
-							</div>
-						</div>
-						<Button
-							disabled={[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)}
-							variant={isInstalled ? "secondary" : "primary"}
-							size="sm"
-							onClick={() =>
-								isInstalled ? handleUninstall(item) : handleInstall(item)
-							}
+			{items
+				.filter((item) => item.name !== "Notion")
+				.map((item) => {
+					const isInstalled = !!installed[item.key];
+					return (
+						<div
+							key={item.key}
+							className="p-4 bg-surface-secondary rounded-2xl flex items-center justify-between"
 						>
-							{[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)
-								? "Coming Soon"
-								: isInstalled
-								? "Uninstall"
-								: "Install"}
-						</Button>
-					</div>
-				);
-			})}
+							<div className="flex items-center gap-xs">
+								<img
+									src={ellipseIcon}
+									alt="icon"
+									className="w-3 h-3 mr-2"
+									style={{
+										filter: isInstalled
+											? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
+											: "none",
+									}}
+								/>
+								<div className="text-base leading-snug font-bold text-text-action">
+									{item.name}
+								</div>
+								<div className="flex items-center">
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<CircleAlert className="w-4 h-4 text-icon-secondary" />
+										</TooltipTrigger>
+										<TooltipContent>
+											<div>{item.desc}</div>
+										</TooltipContent>
+									</Tooltip>
+								</div>
+							</div>
+							<Button
+								disabled={[
+									"X(Twitter)",
+									"WhatsApp",
+									"LinkedIn",
+									"Reddit",
+									"Github",
+								].includes(item.name)}
+								variant={isInstalled ? "secondary" : "primary"}
+								size="sm"
+								onClick={() =>
+									isInstalled ? handleUninstall(item) : handleInstall(item)
+								}
+							>
+								{[
+									"X(Twitter)",
+									"WhatsApp",
+									"LinkedIn",
+									"Reddit",
+									"Github",
+								].includes(item.name)
+									? "Coming Soon"
+									: isInstalled
+										? "Uninstall"
+										: "Install"}
+							</Button>
+						</div>
+					);
+				})}
 		</div>
 	);
 }

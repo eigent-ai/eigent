@@ -95,14 +95,14 @@ export const SummaryMarkDown = ({
 						</blockquote>
 					),
 					strong: ({ children }) => (
-						<strong className="font-semibold text-emerald-800">{children}</strong>
+						<strong className="font-semibold text-emerald-800">
+							{children}
+						</strong>
 					),
 					em: ({ children }) => (
 						<em className="italic text-emerald-600">{children}</em>
 					),
-					hr: () => (
-						<hr className="border-emerald-200 my-4" />
-					),
+					hr: () => <hr className="border-emerald-200 my-4" />,
 				}}
 			>
 				{displayedContent}

@@ -75,8 +75,8 @@ const ToolSelect = forwardRef<
 							desc:
 								value.env_vars && value.env_vars.length > 0
 									? `Environmental variables required: ${value.env_vars.join(
-											", "
-									  )}`
+											", ",
+										)}`
 									: "",
 							onInstall,
 						};
@@ -138,7 +138,7 @@ const ToolSelect = forwardRef<
 	const saveEnvAndConfig = async (
 		provider: string,
 		envVarKey: string,
-		value: string
+		value: string,
 	) => {
 		const configPayload = {
 			config_group: capitalizeFirstLetter(provider),
@@ -154,7 +154,7 @@ const ToolSelect = forwardRef<
 	const installMcp = async (
 		id: number,
 		envValue?: { [key: string]: any },
-		activeMcp?: any
+		activeMcp?: any,
 	) => {
 		// is exa search
 		if (activeMcp && envValue) {
@@ -167,7 +167,7 @@ const ToolSelect = forwardRef<
 				await saveEnvAndConfig(
 					activeMcp.key,
 					key,
-					activeMcp.install_command.env[key]
+					activeMcp.install_command.env[key],
 				);
 			});
 			return;
@@ -198,7 +198,7 @@ const ToolSelect = forwardRef<
 				await window.ipcRenderer.invoke(
 					"mcp-install",
 					installedMcp.key,
-					installedMcp.install_command
+					installedMcp.install_command,
 				);
 			}
 			// after install successfully, automatically add to selected list
@@ -488,13 +488,13 @@ const ToolSelect = forwardRef<
 						{mcpList
 							.filter(
 								(opt) =>
-									!(initialSelectedTools || []).find((i) => i.id === opt.id)
+									!(initialSelectedTools || []).find((i) => i.id === opt.id),
 							)
 							.map(renderMcpItem)}
 						{customMcpList
 							.filter(
 								(opt) =>
-									!(initialSelectedTools || []).find((i) => i.id === opt.id)
+									!(initialSelectedTools || []).find((i) => i.id === opt.id),
 							)
 							.map(renderCustomMcpItem)}
 					</div>

@@ -21,8 +21,6 @@ interface IntegrationItem {
 	onInstall: () => void;
 }
 
-
-
 interface IntegrationListProps {
 	items: IntegrationItem[];
 	addOption: (mcp: any, isLocal: boolean) => void;
@@ -98,7 +96,7 @@ export default function IntegrationList({
 	const saveEnvAndConfig = async (
 		provider: string,
 		envVarKey: string,
-		value: string
+		value: string,
 	) => {
 		const configPayload = {
 			config_group: capitalizeFirstLetter(provider),
@@ -126,14 +124,14 @@ export default function IntegrationList({
 			try {
 				const tokenResult = await proxyFetchPost(
 					`/api/oauth/${provider}/token`,
-					{ code: data.code }
+					{ code: data.code },
 				);
 				setInstalled((prev) => ({
 					...prev,
 					[capitalizeFirstLetter(provider)]: true,
 				}));
 				const currentItem = items.find(
-					(item) => item.key.toLowerCase() === provider
+					(item) => item.key.toLowerCase() === provider,
 				);
 				if (provider === "slack") {
 					if (
@@ -146,15 +144,15 @@ export default function IntegrationList({
 						await saveEnvAndConfig(
 							provider,
 							envVarKey,
-							tokenResult.access_token
+							tokenResult.access_token,
 						);
 						await fetchInstalled();
 						console.log(
-							"Slack authorization successful and configuration saved!"
+							"Slack authorization successful and configuration saved!",
 						);
 					} else {
 						console.log(
-							"Slack authorization successful, but access_token not found or env configuration not found"
+							"Slack authorization successful, but access_token not found or env configuration not found",
 						);
 					}
 				}
@@ -164,7 +162,7 @@ export default function IntegrationList({
 				isLockedRef.current = false;
 			}
 		},
-		[items, oauth]
+		[items, oauth],
 	);
 
 	// listen to main process oauth authorization callback, automatically mark as installed and get token
@@ -182,7 +180,7 @@ export default function IntegrationList({
 	// listen to oauth callback URL notification
 	useEffect(() => {
 		const handler = (_event: any, data: { url: string; provider: string }) => {
-			console.log('OAuth callback URL:', data);
+			console.log("OAuth callback URL:", data);
 			if (data.url && data.provider) {
 				setCallBackUrl(data.url);
 			}
@@ -242,7 +240,7 @@ export default function IntegrationList({
 			if (installed[item.key]) return;
 			await item.onInstall();
 		},
-		[installed]
+		[installed],
 	);
 
 	const onConnect = (mcp: any) => {
@@ -267,7 +265,7 @@ export default function IntegrationList({
 			checkAgentTool(item.key);
 			const groupKey = item.key.toLowerCase();
 			const toDelete = configs.filter(
-				(c: any) => c.config_group && c.config_group.toLowerCase() === groupKey
+				(c: any) => c.config_group && c.config_group.toLowerCase() === groupKey,
 			);
 			for (const config of toDelete) {
 				try {
@@ -286,10 +284,10 @@ export default function IntegrationList({
 			}
 			// delete after refresh configs
 			setConfigs((prev) =>
-				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
+				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey),
 			);
 		},
-		[configs]
+		[configs],
 	);
 
 	return (
@@ -300,89 +298,91 @@ export default function IntegrationList({
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			{items.filter((item) => item.name !== "Notion").map((item) => {
-				const isInstalled = !!installed[item.key];
-				return (
-					<div
-						key={item.key}
-						className="cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between"
-						onClick={() => {
-							if (
-								![
-									"X(Twitter)",
-									"WhatsApp",
-									"LinkedIn",
-									"Reddit",
-									"Github",
-								].includes(item.name)
-							) {
-								if (item.env_vars.length === 0 || isInstalled) {
-									addOption(item, true);
-								} else {
-									handleInstall(item);
+			{items
+				.filter((item) => item.name !== "Notion")
+				.map((item) => {
+					const isInstalled = !!installed[item.key];
+					return (
+						<div
+							key={item.key}
+							className="cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between"
+							onClick={() => {
+								if (
+									![
+										"X(Twitter)",
+										"WhatsApp",
+										"LinkedIn",
+										"Reddit",
+										"Github",
+									].includes(item.name)
+								) {
+									if (item.env_vars.length === 0 || isInstalled) {
+										addOption(item, true);
+									} else {
+										handleInstall(item);
+									}
 								}
-							}
-						}}
-					>
-						<div className="flex items-center gap-xs">
-							<img
-								src={ellipseIcon}
-								alt="icon"
-								className="w-3 h-3 mr-2"
-								style={{
-									filter: isInstalled
-										? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
-										: "none",
-								}}
-							/>
-							<div className="text-base leading-snug font-bold text-text-action">
-								{item.name}
+							}}
+						>
+							<div className="flex items-center gap-xs">
+								<img
+									src={ellipseIcon}
+									alt="icon"
+									className="w-3 h-3 mr-2"
+									style={{
+										filter: isInstalled
+											? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
+											: "none",
+									}}
+								/>
+								<div className="text-base leading-snug font-bold text-text-action">
+									{item.name}
+								</div>
+								<div className="flex items-center">
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<CircleAlert className="w-4 h-4 text-icon-secondary" />
+										</TooltipTrigger>
+										<TooltipContent>
+											<p>{item.desc}</p>
+										</TooltipContent>
+									</Tooltip>
+								</div>
 							</div>
-							<div className="flex items-center">
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<CircleAlert className="w-4 h-4 text-icon-secondary" />
-									</TooltipTrigger>
-									<TooltipContent>
-										<p>{item.desc}</p>
-									</TooltipContent>
-								</Tooltip>
-							</div>
+							{item.env_vars.length !== 0 && (
+								<Button
+									disabled={[
+										"X(Twitter)",
+										"WhatsApp",
+										"LinkedIn",
+										"Reddit",
+										"Github",
+									].includes(item.name)}
+									variant={isInstalled ? "secondary" : "primary"}
+									size="sm"
+									onClick={(e) => {
+										e.stopPropagation();
+										return isInstalled
+											? handleUninstall(item)
+											: handleInstall(item);
+									}}
+								>
+									{[
+										"X(Twitter)",
+										"WhatsApp",
+										"LinkedIn",
+										"Reddit",
+										"Github",
+									].includes(item.name)
+										? "Coming Soon"
+										: isInstalled
+											? "Uninstall"
+											: "Install"}
+								</Button>
+							)}
 						</div>
-						{item.env_vars.length !== 0 && (
-							<Button
-								disabled={[
-									"X(Twitter)",
-									"WhatsApp",
-									"LinkedIn",
-									"Reddit",
-									"Github",
-								].includes(item.name)}
-								variant={isInstalled ? "secondary" : "primary"}
-								size="sm"
-								onClick={(e) => {
-									e.stopPropagation();
-									return isInstalled
-										? handleUninstall(item)
-										: handleInstall(item);
-								}}
-							>
-								{[
-									"X(Twitter)",
-									"WhatsApp",
-									"LinkedIn",
-									"Reddit",
-									"Github",
-								].includes(item.name)
-									? "Coming Soon"
-									: isInstalled
-									? "Uninstall"
-									: "Install"}
-							</Button>
-						)}
-					</div>
-				);
-			})}
+					);
+				})}
 		</div>
 	);
 }

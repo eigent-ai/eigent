@@ -76,9 +76,9 @@ export default function MCPListItem({
 										size="sm"
 										className="w-full"
 										onClick={() => {
-                      onSetting(item);
-                      setShowMenu(false);
-                    }}
+											onSetting(item);
+											setShowMenu(false);
+										}}
 									>
 										<Settings className="w-4 h-4 mr-2 text-gray-500" /> Setting
 									</Button>

@@ -115,10 +115,10 @@ export const MarkDown = memo(
 							<em className="italic text-primary">{children}</em>
 						),
 						a: ({ children, href }) => (
-							<a 
-								href={href} 
+							<a
+								href={href}
 								className=" hover:text-blue-800 underline break-all"
-								target="_blank" 
+								target="_blank"
 								rel="noopener noreferrer"
 							>
 								{children}
@@ -188,5 +188,5 @@ export const MarkDown = memo(
 				</ReactMarkdown>
 			</div>
 		);
-	}
+	},
 );

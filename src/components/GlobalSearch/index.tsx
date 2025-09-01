@@ -1,10 +1,6 @@
 import { useState } from "react";
 
-import {
-	Calculator,
-	Calendar,
-	Smile,
-} from "lucide-react";
+import { Calculator, Calendar, Smile } from "lucide-react";
 
 import {
 	CommandItem,

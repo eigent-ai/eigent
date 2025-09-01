@@ -215,7 +215,7 @@ export default function Workflow({
 				});
 			}
 		},
-		[setNodes, isEditMode]
+		[setNodes, isEditMode],
 	);
 
 	useEffect(() => {
@@ -223,7 +223,7 @@ export default function Workflow({
 		setNodes((prev: CustomNode[]) => {
 			if (!taskAssigning) return prev;
 			const base = [...baseWorker, ...workerList].filter(
-				(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
+				(worker) => !taskAssigning.find((agent) => agent.type === worker.type),
 			);
 			let targetData = [...prev];
 			taskAssigning = [...base, ...taskAssigning];
@@ -345,7 +345,7 @@ export default function Workflow({
 								const newX = Math.min(0, viewport.x + 200);
 								setViewport(
 									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
+									{ duration: 500 },
 								);
 							}}
 						>
@@ -359,7 +359,7 @@ export default function Workflow({
 								const newX = viewport.x - 200;
 								setViewport(
 									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
+									{ duration: 500 },
 								);
 							}}
 						>

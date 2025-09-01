@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 // Define state types
 interface GlobalStore {
@@ -13,17 +13,16 @@ const globalStore = create<GlobalStore>()(
 	persist(
 		(set) => ({
 			history_type: "list",
-			setHistoryType: (history_type: "table" | "list") =>
-				set({ history_type }),
+			setHistoryType: (history_type: "table" | "list") => set({ history_type }),
 			toggleHistoryType: () =>
 				set((state) => ({
 					history_type: state.history_type === "table" ? "list" : "table",
 				})),
 		}),
 		{
-			name: 'global-storage',
-		}
-	)
+			name: "global-storage",
+		},
+	),
 );
 
 // Export Hook version for components

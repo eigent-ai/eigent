@@ -27,7 +27,6 @@ const Layout = () => {
 	}, []);
 	return (
 		<div className="h-full flex flex-col">
-		
 			<TopBar />
 			<div className="flex-1 h-full p-2">
 				{initState === "done" && isFirstLaunch && !isInstalling && (

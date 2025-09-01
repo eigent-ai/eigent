@@ -51,10 +51,10 @@ export default function ChatBox(): JSX.Element {
 		proxyFetchGet("/api/configs").then((configsRes) => {
 			const configs = Array.isArray(configsRes) ? configsRes : [];
 			const _hasApiKey = configs.find(
-				(item) => item.config_name === "GOOGLE_API_KEY"
+				(item) => item.config_name === "GOOGLE_API_KEY",
 			);
 			const _hasApiId = configs.find(
-				(item) => item.config_name === "SEARCH_ENGINE_ID"
+				(item) => item.config_name === "SEARCH_ENGINE_ID",
 			);
 			if (_hasApiKey && _hasApiId) setHasSearchKey(true);
 		});
@@ -115,7 +115,7 @@ export default function ChatBox(): JSX.Element {
 					let activeAskList = chatStore.tasks[_taskId].askList;
 					console.log(
 						"activeAskList",
-						JSON.parse(JSON.stringify(activeAskList))
+						JSON.parse(JSON.stringify(activeAskList)),
 					);
 					let message = activeAskList.shift();
 					chatStore.setActiveAskList(_taskId, [...activeAskList]);
@@ -282,12 +282,12 @@ export default function ChatBox(): JSX.Element {
 																		// set selected file
 																		chatStore.setSelectedFile(
 																			chatStore.activeTaskId as string,
-																			file
+																			file,
 																		);
 																		// open DocumentWorkSpace
 																		chatStore.setActiveWorkSpace(
 																			chatStore.activeTaskId as string,
-																			"documentWorkSpace"
+																			"documentWorkSpace",
 																		);
 																	}}
 																	className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
@@ -364,11 +364,11 @@ export default function ChatBox(): JSX.Element {
 																	// set selected file
 																	chatStore.setSelectedFile(
 																		chatStore.activeTaskId as string,
-																		file
+																		file,
 																	);
 																	chatStore.setActiveWorkSpace(
 																		chatStore.activeTaskId as string,
-																		"documentWorkSpace"
+																		"documentWorkSpace",
 																	);
 																}}
 																className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
@@ -427,21 +427,30 @@ export default function ChatBox(): JSX.Element {
 													""
 												}
 												onAddTask={() => {
-													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.setIsTaskEdit(
+														chatStore.activeTaskId as string,
+														true,
+													);
 													chatStore.addTaskInfo();
 												}}
 												onUpdateTask={(taskIndex, content) => {
-													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.setIsTaskEdit(
+														chatStore.activeTaskId as string,
+														true,
+													);
 													chatStore.updateTaskInfo(taskIndex, content);
 												}}
 												onDeleteTask={(taskIndex) => {
-													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.setIsTaskEdit(
+														chatStore.activeTaskId as string,
+														true,
+													);
 													chatStore.deleteTaskInfo(taskIndex);
 												}}
 											/>
 										);
 									}
-								}
+								},
 							)}
 						{/* Skeleton  */}
 						{((!hasSubTask &&
@@ -467,7 +476,7 @@ export default function ChatBox(): JSX.Element {
 							setIsTakeControl={(isTakeControl) =>
 								chatStore.setIsTakeControl(
 									chatStore.activeTaskId as string,
-									isTakeControl
+									isTakeControl,
 								)
 							}
 							isPending={chatStore.tasks[chatStore.activeTaskId].isPending}

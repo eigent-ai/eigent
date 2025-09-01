@@ -29,7 +29,7 @@ export default function SearchInput({ value, onChange }: SearchInputProps) {
 					Search
 				</span>
 			)}
-			
+
 			{(value || isFocused) && (
 				<span className="absolute left-2 top-[calc(50%+4px)] -translate-y-1/2 text-icon-secondary">
 					<Search className="w-5 h-5" />

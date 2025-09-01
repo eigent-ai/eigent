@@ -34,11 +34,7 @@ import {
 	PopoverTrigger,
 	PopoverClose,
 } from "@/components/ui/popover";
-import {
-	fetchPut,
-	proxyFetchDelete,
-	proxyFetchGet,
-} from "@/api/http";
+import { fetchPut, proxyFetchDelete, proxyFetchGet } from "@/api/http";
 import AlertDialog from "@/components/ui/alertDialog";
 import { generateUniqueId } from "@/lib";
 import { SearchHistoryDialog } from "@/components/SearchHistoryDialog";
@@ -144,7 +140,7 @@ export default function Home() {
 		if (historyTasks.find((item) => item.id === curHistoryId)) {
 			await deleteHistoryTask();
 			setHistoryTasks((list) =>
-				list.filter((item) => item.id !== curHistoryId)
+				list.filter((item) => item.id !== curHistoryId),
 			);
 			setCurHistoryId("");
 			setDeleteModalOpen(false);
@@ -322,7 +318,7 @@ export default function Home() {
 												{task.taskRunning?.filter(
 													(taskItem) =>
 														taskItem.status === "completed" ||
-														taskItem.status === "failed"
+														taskItem.status === "failed",
 												).length || 0}
 												/{task.taskRunning?.length || 0}
 											</div>
@@ -336,7 +332,7 @@ export default function Home() {
 															onClick={() =>
 																handleClickAgent(
 																	taskId,
-																	taskAssigning.agent_id as AgentNameType
+																	taskAssigning.agent_id as AgentNameType,
 																)
 															}
 															className={`transition-all duration-300 flex justify-start items-center gap-1 px-sm py-xs bg-menutabs-bg-default rounded-lg border border-solid border-white-100% ${
@@ -362,7 +358,7 @@ export default function Home() {
 																{taskAssigning.name}
 															</div>
 														</div>
-													)
+													),
 											)}
 										</div>
 									</div>
@@ -415,7 +411,7 @@ export default function Home() {
 												onClick={() =>
 													handleClickAgent(
 														taskId,
-														taskAssigning.agent_id as AgentNameType
+														taskAssigning.agent_id as AgentNameType,
 													)
 												}
 											>
@@ -434,7 +430,7 @@ export default function Home() {
 										{task.taskRunning?.filter(
 											(taskItem) =>
 												taskItem.status === "completed" ||
-												taskItem.status === "failed"
+												taskItem.status === "failed",
 										).length || 0}
 										/{task.taskRunning?.length || 0}
 									</div>
@@ -453,7 +449,7 @@ export default function Home() {
 													chatStore.tasks[taskId].status === "running"
 														? "pause"
 														: "resume",
-													taskId
+													taskId,
 												);
 											}}
 											className={`rounded-full `}

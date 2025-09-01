@@ -3,19 +3,20 @@ const EnvOauthInfoMap = {
 };
 
 export class OAuth {
-	public client_name: string = 'Eigent';
-	public client_uri: string = 'https://eigent.ai/';
+	public client_name: string = "Eigent";
+	public client_uri: string = "https://eigent.ai/";
 	public redirect_uris: string[] = [];
 
-	public url: string = '';
-	public authServerUrl: string = '';
-	public resourcePath: string = '/.well-known/oauth-protected-resource';
-	public authorizationServerPath: string = '/.well-known/oauth-authorization-server';
+	public url: string = "";
+	public authServerUrl: string = "";
+	public resourcePath: string = "/.well-known/oauth-protected-resource";
+	public authorizationServerPath: string =
+		"/.well-known/oauth-authorization-server";
 	public resourceMetadata: any;
 	public authorizationServerMetadata: any;
 	public registerClientData: any;
-	public codeVerifier: string = '';
-	public provider: string = '';
+	public codeVerifier: string = "";
+	public provider: string = "";
 
 	constructor(mcpName?: string) {
 		if (mcpName) {
@@ -29,39 +30,51 @@ export class OAuth {
 
 		this.url = mcp.url;
 		this.provider = mcp.provider;
-		this.redirect_uris = [`https://dev.eigent.ai/api/oauth/${this.provider}/callback`];
+		this.redirect_uris = [
+			`https://dev.eigent.ai/api/oauth/${this.provider}/callback`,
+		];
 		this.authServerUrl = new URL(mcp.url).origin;
 		this.resourcePath = mcp?.resourcePath || this.resourcePath;
-		this.authorizationServerPath = mcp?.authorizationServerPath || this.authorizationServerPath;
+		this.authorizationServerPath =
+			mcp?.authorizationServerPath || this.authorizationServerPath;
 
 		this.resourceMetadata = await this.getResourceMetadata();
-		this.authorizationServerMetadata = await this.getAuthorizationServerMetadata();
+		this.authorizationServerMetadata =
+			await this.getAuthorizationServerMetadata();
 		this.registerClientData = await this.clientRegistration();
 		const oauthUrl = await this.generateAuthUrl();
 		window.location.href = oauthUrl;
 	}
 
 	async getResourceMetadata() {
-		return await fetch(this.authServerUrl + this.resourcePath).then(res => res.json());
+		return await fetch(this.authServerUrl + this.resourcePath).then((res) =>
+			res.json(),
+		);
 	}
 
 	async getAuthorizationServerMetadata() {
-		return await fetch(this.authServerUrl + this.authorizationServerPath).then(res => res.json());
+		return await fetch(this.authServerUrl + this.authorizationServerPath).then(
+			(res) => res.json(),
+		);
 	}
 
 	async clientRegistration() {
-		const { registration_endpoint, grant_types_supported, response_types_supported } = this.authorizationServerMetadata;
+		const {
+			registration_endpoint,
+			grant_types_supported,
+			response_types_supported,
+		} = this.authorizationServerMetadata;
 		return await fetch(registration_endpoint, {
-			method: 'POST',
+			method: "POST",
 			body: JSON.stringify({
 				client_name: this.client_name,
 				client_uri: this.client_uri,
 				redirect_uris: this.redirect_uris,
 				grant_types: grant_types_supported,
 				response_types: response_types_supported,
-				token_endpoint_auth_method: 'none'
+				token_endpoint_auth_method: "none",
 			}),
-		}).then(res => res.json());
+		}).then((res) => res.json());
 	}
 
 	async generateAuthUrl() {
@@ -81,7 +94,7 @@ export class OAuth {
 			client_id: this.registerClientData.client_id,
 			code: code,
 			code_verifier: this.codeVerifier,
-			redirect_uri: String(this.redirect_uris[0])
+			redirect_uri: String(this.redirect_uris[0]),
 		});
 		if (this.registerClientData.client_secret) {
 			params.set("client_secret", this.registerClientData.client_secret);
@@ -91,10 +104,10 @@ export class OAuth {
 		}
 
 		const token = await fetch(token_endpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: params.toString(),
-		}).then(res => res.json());
+		}).then((res) => res.json());
 
 		this.saveToken(this.provider, email, {
 			...token,
@@ -102,8 +115,8 @@ export class OAuth {
 			meta: {
 				authorizationServerMetadata: this.authorizationServerMetadata,
 				registerClientData: this.registerClientData,
-				resourceMetadata: this.resourceMetadata
-			}
+				resourceMetadata: this.resourceMetadata,
+			},
 		});
 		return token;
 	}
@@ -113,7 +126,8 @@ export class OAuth {
 		if (!tokenData?.refresh_token) return;
 
 		// restore metadata from tokenData.meta
-		this.authorizationServerMetadata = tokenData.meta?.authorizationServerMetadata;
+		this.authorizationServerMetadata =
+			tokenData.meta?.authorizationServerMetadata;
 		this.registerClientData = tokenData.meta?.registerClientData;
 		this.resourceMetadata = tokenData.meta?.resourceMetadata;
 
@@ -123,22 +137,25 @@ export class OAuth {
 
 		const { token_endpoint } = this.authorizationServerMetadata;
 		const params = new URLSearchParams({
-			grant_type: 'refresh_token',
+			grant_type: "refresh_token",
 			refresh_token: tokenData.refresh_token,
-			client_id: this.registerClientData.client_id
+			client_id: this.registerClientData.client_id,
 		});
 		if (this.registerClientData.client_secret) {
 			params.set("client_secret", this.registerClientData.client_secret);
 		}
 
 		const newToken = await fetch(token_endpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: params.toString(),
-		}).then(res => res.json());
+		}).then((res) => res.json());
 
 		if (window.electronAPI?.envWrite) {
-			await window.electronAPI.envWrite(email, { key: EnvOauthInfoMap[provider as keyof typeof EnvOauthInfoMap], value: newToken.access_token });
+			await window.electronAPI.envWrite(email, {
+				key: EnvOauthInfoMap[provider as keyof typeof EnvOauthInfoMap],
+				value: newToken.access_token,
+			});
 		}
 		this.saveToken(provider, email, {
 			...newToken,
@@ -146,7 +163,7 @@ export class OAuth {
 			meta: {
 				authorizationServerMetadata: this.authorizationServerMetadata,
 				registerClientData: this.registerClientData,
-			}
+			},
 		});
 		return newToken;
 	}
@@ -154,7 +171,7 @@ export class OAuth {
 	// --- local token storage for multiple accounts and providers ---
 
 	getStorageKey() {
-		return 'oauth_tokens';
+		return "oauth_tokens";
 	}
 
 	getAllTokens(): Record<string, Record<string, any>> {
@@ -169,10 +186,9 @@ export class OAuth {
 		localStorage.setItem(this.getStorageKey(), JSON.stringify(all));
 	}
 
-
 	loadToken(provider: string, email: string): any | null {
 		const all = this.getAllTokens();
-		return all?.[provider] && all?.[provider]?.[email] || null;
+		return (all?.[provider] && all?.[provider]?.[email]) || null;
 	}
 
 	clearToken(provider: string, email: string) {
@@ -188,12 +204,13 @@ export class OAuth {
 
 	// --- PKCE tools ---
 	async pkceChallenge(length: number = 43) {
-		if (length < 43 || length > 128) throw `Expected length 43~128. Got ${length}`;
+		if (length < 43 || length > 128)
+			throw `Expected length 43~128. Got ${length}`;
 		const verifier = await this.generateVerifier(length);
 		const challenge = await this.generateChallenge(verifier);
 		return {
 			code_verifier: verifier,
-			code_challenge: challenge
+			code_challenge: challenge,
 		};
 	}
 
@@ -202,7 +219,10 @@ export class OAuth {
 	}
 
 	async generateChallenge(code_verifier: string) {
-		const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code_verifier));
+		const buffer = await crypto.subtle.digest(
+			"SHA-256",
+			new TextEncoder().encode(code_verifier),
+		);
 		return btoa(String.fromCharCode(...new Uint8Array(buffer)))
 			.replace(/\//g, "_")
 			.replace(/\+/g, "-")
@@ -210,16 +230,19 @@ export class OAuth {
 	}
 
 	async random(size: number) {
-		const mask = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+		const mask =
+			"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
 		const randomUints = crypto.getRandomValues(new Uint8Array(size));
-		return Array.from(randomUints).map(i => mask[i % mask.length]).join('');
+		return Array.from(randomUints)
+			.map((i) => mask[i % mask.length])
+			.join("");
 	}
 }
 
 // supported MCPs (can be extended multiple times)
 export const mcpMap: Record<string, any> = {
-	"Notion": {
-		url: 'https://mcp.notion.com/mcp',
-		provider: "notion"
+	Notion: {
+		url: "https://mcp.notion.com/mcp",
+		provider: "notion",
 	},
 };

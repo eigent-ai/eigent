@@ -11,7 +11,7 @@ const ProgressInstall = React.forwardRef<
 		ref={ref}
 		className={cn(
 			"relative h-3 w-full overflow-hidden rounded-full bg-specialty-progress-surface",
-			className
+			className,
 		)}
 		{...props}
 	>

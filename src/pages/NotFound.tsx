@@ -1,5 +1,4 @@
 export default function NotFound() {
-	console.log(window.location.href)
+	console.log(window.location.href);
 	return <div>NotFound</div>;
 }
-

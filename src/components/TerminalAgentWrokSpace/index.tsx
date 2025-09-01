@@ -78,7 +78,7 @@ export default function TerminalAgentWrokSpace() {
 			const activeAgent = taskAssigning.find(
 				(item) =>
 					item.agent_id ===
-					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace
+					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace,
 			);
 			setActiveAgent(() => {
 				if (activeAgent) {
@@ -139,7 +139,7 @@ export default function TerminalAgentWrokSpace() {
 							onClick={() => {
 								chatStore.setActiveWorkSpace(
 									chatStore.activeTaskId as string,
-									"workflow"
+									"workflow",
 								);
 							}}
 						>
@@ -164,7 +164,7 @@ export default function TerminalAgentWrokSpace() {
 						<div className="text-[10px] leading-17 font-medium text-text-tertiary">
 							{
 								activeAgent?.tasks?.filter(
-									(task) => task.status && task.status !== "running"
+									(task) => task.status && task.status !== "running",
 								).length
 							}
 							/{activeAgent?.tasks?.length}
@@ -176,11 +176,11 @@ export default function TerminalAgentWrokSpace() {
 				</div>
 
 				{activeAgent?.tasks.filter(
-					(task) => task?.terminal && task?.terminal.length > 0
+					(task) => task?.terminal && task?.terminal.length > 0,
 				)?.length === 1 ? (
 					<div className="flex-1 min-h-0">
 						{activeAgent?.tasks.filter(
-							(task) => task?.terminal && task?.terminal.length > 0
+							(task) => task?.terminal && task?.terminal.length > 0,
 						)[0] && (
 							<div
 								// onClick={() =>
@@ -194,7 +194,7 @@ export default function TerminalAgentWrokSpace() {
 									instanceId={activeAgent?.activeWebviewIds?.[0]?.id}
 									content={
 										activeAgent?.tasks.filter(
-											(task) => task?.terminal && task?.terminal.length > 0
+											(task) => task?.terminal && task?.terminal.length > 0,
 										)[0].terminal
 									}
 								/>
@@ -211,7 +211,7 @@ export default function TerminalAgentWrokSpace() {
 					</div>
 				) : (
 					activeAgent?.tasks.filter(
-						(task) => task?.terminal && task?.terminal.length > 0
+						(task) => task?.terminal && task?.terminal.length > 0,
 					) && (
 						<div
 							ref={scrollContainerRef}
@@ -253,7 +253,7 @@ export default function TerminalAgentWrokSpace() {
 					)
 				)}
 				{activeAgent?.tasks.filter(
-					(task) => task?.terminal && task?.terminal.length > 0
+					(task) => task?.terminal && task?.terminal.length > 0,
 				).length !== 1 && (
 					<div className="flex items-center gap-1 rounded-lg p-1 absolute bottom-2 right-2 w-auto bg-menutabs-bg-default border border-solid border-border-primary z-[200]">
 						{isSingleMode && (
@@ -272,7 +272,7 @@ export default function TerminalAgentWrokSpace() {
 										container.scrollTo({
 											top: Math.min(
 												container.scrollHeight - container.clientHeight,
-												container.scrollTop + scrollAmount
+												container.scrollTop + scrollAmount,
 											),
 											behavior: "smooth",
 										});
