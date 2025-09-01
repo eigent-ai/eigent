@@ -22,6 +22,7 @@
         "preview": "vite preview",
         "pretest": "vite build --mode=test",
         "test": "vitest run",
+        "postinstall": "npx simple-git-hooks",
         "lint": "npx @biomejs/biome format --write src electron"
     },
     "dependencies": {
