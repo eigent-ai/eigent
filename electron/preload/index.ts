@@ -24,7 +24,9 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 })
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  closeWindow: () => ipcRenderer.send('window-close'),
+  closeWindow: (isForceQuit?: boolean) => ipcRenderer.send('window-close', {
+    isForceQuit: isForceQuit ?? false
+  }),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),

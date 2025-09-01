@@ -608,7 +608,12 @@ function registerIpcHandlers() {
   });
 
   // ==================== window control handler ====================
-  ipcMain.on('window-close', () => win?.close());
+  ipcMain.on('window-close', (_, data) => {
+    if(data.isForceQuit) {
+      return app?.quit()
+    }
+    return win?.close()
+  });
   ipcMain.on('window-minimize', () => win?.minimize());
   ipcMain.on('window-toggle-maximize', () => {
     if (win?.isMaximized()) {
@@ -959,6 +964,7 @@ async function createWindow() {
   setupWindowEventListeners();
   setupDevToolsShortcuts();
   setupExternalLinkHandling();
+  handleBeforeClose();
 
   // ==================== auto update ====================
   update(win);
@@ -1091,6 +1097,14 @@ const cleanupPythonProcess = async () => {
     log.error('Error occurred while cleaning up process:', error);
   }
 };
+
+// brefore close
+const handleBeforeClose = () => {
+    win?.on("close", (event) => {
+      event.preventDefault();
+      win?.webContents.send("before-close");
+    })
+}
 
 // ==================== app event handle ====================
 app.whenReady().then(() => {
