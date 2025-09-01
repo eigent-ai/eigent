@@ -540,7 +540,7 @@ export default function ChatBox(): JSX.Element {
 											className="text-icon-information"
 										/>
 										<span className="text-text-information text-sm font-medium leading-[22px]">
-											Complete system setup to start use Eigent
+											By using this product, you agree to our Terms of Service and Privacy Policy.
 										</span>
 									</div>
 								</div>

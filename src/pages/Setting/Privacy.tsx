@@ -165,7 +165,7 @@ export default function SettingPrivacy() {
 			</ol>
 
 			{/* Privacy controls */}
-			<h2 className="mb-2">Privacy controls</h2>
+			{/* <h2 className="mb-2">Privacy controls</h2>
 			<div className="flex gap-2 h-[32px]">
 				<div className="font-bold leading-4">Task Directory</div>
 				<div className="flex-1 text-sm text-text-secondary bg-white-100% text-gray-400 h-[32px] flex items-center px-2 cursor-pointer">
@@ -177,7 +177,7 @@ export default function SettingPrivacy() {
 				<Button onClick={handleOpenFolder} size="sm" disabled={!logFolder}>
 					Open Folder
 				</Button>
-			</div>
+			</div> */}
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl mt-4">
 				<div className="flex gap-md">
 					<div>
