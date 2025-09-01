@@ -12,8 +12,7 @@ import { hasStackKeys } from "./lib";
 const HAS_STACK_KEYS = hasStackKeys();
 
 function App() {
-	const navigate = 
-	useNavigate();
+	const navigate = useNavigate();
 	const { setInitState } = useAuthStore();
 	const [animationFinished, setAnimationFinished] = useState(false);
 	const { isFirstLaunch } = useAuthStore();
