@@ -180,6 +180,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			.invoke("open-file", file.type, file.path, isShowSourceCode)
 			.then((res) => {
 				setSelectedFile({ ...file, content: res });
+				chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
 				setLoading(false);
 			})
 			.catch((error) => {
@@ -279,12 +280,12 @@ export default function Folder({ data }: { data?: Agent }) {
 	]);
 
 	const hasFetchedRemote = useRef(false);
-	
+
 	// Reset hasFetchedRemote when activeTaskId changes
 	useEffect(() => {
 		hasFetchedRemote.current = false;
 	}, [chatStore.activeTaskId]);
-	
+
 	useEffect(() => {
 		const setFileList = async () => {
 			let res = null;
@@ -344,6 +345,22 @@ export default function Folder({ data }: { data?: Agent }) {
 		};
 		setFileList();
 	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+
+	useEffect(() => {
+		console.log('123123')
+		const chatStoreSelectedFile =
+			chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+		if (chatStoreSelectedFile) {
+			const file = fileGroups[0].files.find(
+				(item: any) => item.name === chatStoreSelectedFile.name
+			);
+			console.log("file", file);
+			if (file) {
+				selecetdFileChange(file as FileInfo, isShowSourceCode);
+			}
+		}
+	}, [chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path]);
+
 	const handleBack = () => {
 		chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
 	};
