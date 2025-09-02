@@ -6,10 +6,10 @@
   "directories": {
     "output": "release"
   },
-  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__"],
+  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__","!server","!docs"],
   "extraResources": [
     {
-      "from": "backend",
+      "from": "backend",  
       "to": "backend",
       "filter": ["**/*", "!.venv/**/*"]
     }
@@ -20,11 +20,18 @@
       "schemes": ["eigent"]
     }
   ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "eigent-ai",
+      "repo": "eigent",
+      "releaseType": "release"
+    }
+  ],
   "icon": "build/icon.ico",
   "afterSign": "./config/notarize.cjs",
   "mac": {
     "icon": "build/icon.icns",
-    "artifactName": "${productName}_${os}_${arch}.${ext}",
     "target": ["dmg", "zip"],
     "entitlements": "entitlements.mac.plist",
     "entitlementsInherit": "entitlements.mac.plist",
@@ -38,29 +45,16 @@
           "CFBundleURLSchemes": ["eigent"]
         }
       ]
-    },
-    "publish": [
-      {
-        "provider": "generic",
-        "channel": "latest",
-        "url": "http://dev.eigent.ai/public/mac_${arch}"
-      }
-    ]
+    }
   },
   "win": {
+    "certificateFile": null,
     "icon": "build/icon.ico",
+    "artifactName": "${productName}.Setup.${version}.${ext}",
     "target": [
       {
         "target": "nsis",
         "arch": ["x64"]
-      }
-    ],
-    "artifactName": "${productName}_${os}_${arch}.${ext}",
-    "publish": [
-      {
-        "provider": "generic",
-        "channel": "latest",
-        "url": "http://dev.eigent.ai/public/win"
       }
     ]
   },
@@ -72,7 +66,7 @@
     "deleteAppDataOnUninstall": false,
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
-    "installerHeaderIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico", 
     "include": "build/installer.nsh"
   }
 }

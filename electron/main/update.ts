@@ -11,6 +11,7 @@ const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 export function update(win: Electron.BrowserWindow) {
 
   // When set to false, the update download will be triggered through the API
+  autoUpdater.verifyUpdateCodeSignature = false;
   autoUpdater.autoDownload = false
   autoUpdater.disableWebInstaller = false
   autoUpdater.allowDowngrade = false
@@ -37,16 +38,17 @@ export function update(win: Electron.BrowserWindow) {
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify()
   }
+  const feed = {
+    provider: 'github',
+    owner: 'eigent-ai',
+    repo: 'eigent',
+    releaseType: 'release',
+    channel: process.platform === 'darwin' ? (process.arch === 'arm64' ? 'latest-arm64' : 'latest-x64') : 'latest'
+  }
 
+  autoUpdater.setFeedURL(feed)
   if (!app.isPackaged) {
-    const updateUrl = 'http://dev.eigent.ai/public/win'
-    const feed = {
-      provider: 'generic',
-      url: updateUrl
-    }
-
-    console.log('[DEV] setFeedURL:', updateUrl)
-    autoUpdater.setFeedURL(feed)
+    console.log('[DEV] setFeedURL:', feed)
     autoUpdater.checkForUpdates()
   }
 
@@ -59,7 +61,7 @@ export function update(win: Electron.BrowserWindow) {
 export function registerUpdateIpcHandlers() {
   // Checking for updates
   ipcMain.handle('check-update', async () => {
-  
+
 
     try {
       return await autoUpdater.checkForUpdatesAndNotify()
