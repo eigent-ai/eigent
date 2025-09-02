@@ -17,7 +17,7 @@ from app.model.mcp.mcp import Status
 from app.model.mcp.mcp_env import Status
 from app.model.mcp.mcp_user import McpType
 from app.model.mcp.mcp_user import Status
-from app.model.provider.provider import VaildStatus
+from app.model.provider.provider import ValidStatus
 from app.model.user.admin import Status
 from app.model.user.key import KeyStatus
 from app.model.user.role import RoleType
@@ -47,14 +47,6 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("status", ChoiceType(choices=Status, impl=sa.SmallInteger()), nullable=True),
         sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_table(
-        "admin_role",
-        sa.Column("admin_id", sa.Integer(), nullable=False),
-        sa.Column("role_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(["admin_id"], ["admin.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["role_id"], ["role.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("admin_id", "role_id"),
     )
     op.create_table(
         "category",
@@ -167,7 +159,7 @@ def upgrade() -> None:
         sa.Column("prefer", sa.Boolean(), server_default=sa.text("false"), nullable=True),
         sa.Column(
             "is_vaild",
-            ChoiceType(choices=VaildStatus, impl=sa.SmallInteger()),
+            ChoiceType(choices=ValidStatus, impl=sa.SmallInteger()),
             server_default=sa.text("1"),
             nullable=True,
         ),
@@ -185,6 +177,14 @@ def upgrade() -> None:
         sa.Column("type", ChoiceType(choices=RoleType, impl=sa.SmallInteger()), nullable=True),
         sa.Column("permissions", sa.JSON(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_table(
+        "admin_role",
+        sa.Column("admin_id", sa.Integer(), nullable=False),
+        sa.Column("role_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(["admin_id"], ["admin.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["role_id"], ["role.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("admin_id", "role_id"),
     )
     op.create_table(
         "user",
@@ -379,6 +379,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_key_user_id"), table_name="key")
     op.drop_table("key")
     op.drop_table("user")
+    op.drop_table("admin_role")
     op.drop_table("role")
     op.drop_index(op.f("ix_provider_user_id"), table_name="provider")
     op.drop_table("provider")
@@ -397,6 +398,5 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_chat_history_task_id"), table_name="chat_history")
     op.drop_table("chat_history")
     op.drop_table("category")
-    op.drop_table("admin_role")
     op.drop_table("admin")
     # ### end Alembic commands ###
