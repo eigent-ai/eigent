@@ -157,7 +157,7 @@ export default function Folder({ data }: { data?: Agent }) {
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 	const [loading, setLoading] = useState(false);
 
-	const selecetdFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
+	const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
 		if (file.type === "zip") {
 			// if file is remote, don't call reveal-in-folder
 			if (file.isRemote) {
@@ -192,7 +192,7 @@ export default function Folder({ data }: { data?: Agent }) {
 	const [isShowSourceCode, setIsShowSourceCode] = useState(false);
 	const isShowSourceCodeChange = () => {
 		// all files can reload content
-		selecetdFileChange(selectedFile!, !isShowSourceCode);
+		selectedFileChange(selectedFile!, !isShowSourceCode);
 		setIsShowSourceCode(!isShowSourceCode);
 	};
 
@@ -332,7 +332,7 @@ export default function Folder({ data }: { data?: Agent }) {
 					);
 					console.log("file", file);
 					if (file) {
-						selecetdFileChange(file as FileInfo, isShowSourceCode);
+						selectedFileChange(file as FileInfo, isShowSourceCode);
 					}
 				}
 				return [
@@ -347,19 +347,22 @@ export default function Folder({ data }: { data?: Agent }) {
 	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
 
 	useEffect(() => {
-		console.log('123123')
 		const chatStoreSelectedFile =
 			chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
-		if (chatStoreSelectedFile) {
+		if (chatStoreSelectedFile && fileGroups[0]?.files) {
 			const file = fileGroups[0].files.find(
-				(item: any) => item.name === chatStoreSelectedFile.name
+				(item: any) => item.path === chatStoreSelectedFile.path
 			);
-			console.log("file", file);
 			if (file) {
-				selecetdFileChange(file as FileInfo, isShowSourceCode);
+				selectedFileChange(file as FileInfo, isShowSourceCode);
 			}
 		}
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path]);
+	}, [
+		chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
+		fileGroups,
+		isShowSourceCode,
+		chatStore.activeTaskId
+	]);
 
 	const handleBack = () => {
 		chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
@@ -441,7 +444,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									expandedFolders={expandedFolders}
 									onToggleFolder={toggleFolder}
 									onSelectFile={(file) =>
-										selecetdFileChange(file, isShowSourceCode)
+										selectedFileChange(file, isShowSourceCode)
 									}
 									isShowSourceCode={isShowSourceCode}
 								/>
@@ -454,7 +457,7 @@ export default function Folder({ data }: { data?: Agent }) {
 								group.files.map((file) => (
 									<button
 										key={file.name}
-										onClick={() => selecetdFileChange(file, isShowSourceCode)}
+										onClick={() => selectedFileChange(file, isShowSourceCode)}
 										className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
 											selectedFile?.name === file.name
 												? "bg-blue-50 text-blue-700"
