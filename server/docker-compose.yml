@@ -30,15 +30,25 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        database_url: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/eigent}
+        database_url: ${database_url:-postgresql://postgres:changeme@eigent_postgres:5432/eigent}
     container_name: eigent_api
     restart: unless-stopped
     ports:
       - "3001:5678"
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/eigent}
+      - database_url=${database_url:-postgresql://postgres:changeme@eigent_postgres:5432/eigent}
       - ENVIRONMENT=production
-      - DEBUG=false
+      - DEBUG=${debug:-false}
+      - secret_key=${secret_key}
+      - url_prefix=${url_prefix:-/api}
+      - JWT_EXPIRATION=${JWT_EXPIRATION:-3600}
+      - CHAT_SHARE_SECRET_KEY=${CHAT_SHARE_SECRET_KEY}
+      - CHAT_SHARE_SALT=${CHAT_SHARE_SALT}
+      - STACK_AUTH_PROJECT_ID=${STACK_AUTH_PROJECT_ID}
+      - STACK_AUTH_API_KEY=${STACK_AUTH_API_KEY}
+      - STACK_AUTH_BASE_URL=${STACK_AUTH_BASE_URL}
     # volumes:
     #   - ./app:/app/app
     #   - ./alembic:/app/alembic

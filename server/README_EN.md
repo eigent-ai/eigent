@@ -16,88 +16,252 @@
 - MCP Management (import local/remote MCP servers)
   - `GET /mcps`, `POST /mcp/install`, `POST /mcp/import/{Local|Remote}`, etc.
 
-Note: All the above data is stored in the local PostgreSQL volume in Docker (see “Data Persistence” below). If you configure external models or remote MCP, requests go to the third-party services you specify.
+Note: All the above data is stored in the local PostgreSQL volume in Docker (see "Data Persistence" below). If you configure external models or remote MCP, requests go to the third-party services you specify.
 
 ---
 
-### Quick Start (Docker)
-Prerequisite: Docker Desktop installed.
+### Prerequisites
+- Docker Desktop installed and running
+- Node.js and npm installed (for frontend development)
+- At least 2GB of free disk space
 
-1) Start services
+### Quick Start (Docker)
+
+#### 1. Initial Setup
 ```bash
 cd server
-# Copy .env.example to .env(or create .env according to .env.example)
+
+# Create the required public directory
+mkdir -p app/public
+
+# Copy and configure environment variables
 cp .env.example .env
-docker compose up -d
+
+# Generate secure keys for your .env file
+echo "Generating secure keys..."
+echo "secret_key=$(openssl rand -hex 32)"
+echo "CHAT_SHARE_SECRET_KEY=$(openssl rand -hex 32)"
+echo "CHAT_SHARE_SALT=$(openssl rand -hex 16)"
 ```
 
-2) Start Frontend (Local Mode)
-- In the project root directory, create or modify `.env.development` to enable local mode and point to the local backend:
+#### 2. Configure Environment Variables
+Edit the `.env` file and replace the placeholder values with the generated keys:
+
 ```bash
-VITE_USE_LOCAL_PROXY=true
-VITE_PROXY_URL=http://localhost:3001
+# IMPORTANT: Replace these with the values generated above
+secret_key=YOUR_GENERATED_SECRET_KEY_HERE
+CHAT_SHARE_SECRET_KEY=YOUR_GENERATED_CHAT_SECRET_HERE
+CHAT_SHARE_SALT=YOUR_GENERATED_SALT_HERE
+
+# Database configuration (you can change the password)
+database_url=postgresql://postgres:your_secure_password@eigent_postgres:5432/eigent
+POSTGRES_PASSWORD=your_secure_password
 ```
-- Start the frontend application:
+
+**Security Note**: 
+- Never commit the `.env` file with real values to version control
+- Use strong, unique passwords for production environments
+- The secret keys should be different for each deployment
+
+#### 3. Start Services
 ```bash
+# Build and start all services
+docker compose up -d
+
+# Wait for services to be ready (about 30 seconds for first run)
+# Check if services are healthy
+docker ps
+
+# Verify the API is running
+curl http://localhost:3001/health
+# Should return: {"status":"healthy","service":"eigent-api"}
+```
+
+#### 4. Start Frontend (Local Mode)
+In the project root directory (not in the server folder):
+
+```bash
+# Go back to the project root
+cd ..
+
+# Create or update .env.development to enable local mode
+cat > .env.development << EOF
+VITE_BASE_URL=/api
+VITE_PROXY_URL=http://localhost:3001
+VITE_USE_LOCAL_PROXY=true
+EOF
+
+# Install dependencies and start frontend
 npm install
 npm run dev
 ```
 
-### Open API docs
-- `http://localhost:3001/docs` (Swagger UI)
+The application will be available at:
+- Frontend: http://localhost:3000
+- API: http://localhost:3001
+- API Documentation: http://localhost:3001/docs
 
-### Ports
-- API: Host `3001` → Container `5678`
-- PostgreSQL: Host `5432` → Container `5432`
+---
 
-### Data Persistence
-- DB data is stored in Docker volume `server_postgres_data` at `/var/lib/postgresql/data` inside the container
-- Database migrations run automatically on container startup (see `start.sh` → `alembic upgrade head`)
+### Troubleshooting
+
+#### Container keeps restarting
+Check the logs to identify the issue:
+```bash
+docker logs eigent_api --tail 50
+```
+
+Common issues:
+- **Missing environment variables**: Ensure all required variables in `.env` are set
+- **Database connection failed**: Check that PostgreSQL is running and passwords match
+- **Missing directories**: Ensure `app/public` directory exists
+
+#### Database migration errors
+If you see migration-related errors, you may need to reset the database:
+```bash
+# Stop services and remove volumes (WARNING: This deletes all data)
+docker compose down -v
+
+# Restart services
+docker compose up -d
+```
+
+#### Port conflicts
+If ports 3001 or 5432 are already in use, you can change them in `docker-compose.yml`:
+```yaml
+ports:
+  - "3002:5678"  # Change 3001 to 3002 for API
+  - "5433:5432"  # Change 5432 to 5433 for PostgreSQL
+```
+
+Remember to update the frontend `.env.development` accordingly.
+
+---
 
 ### Common Commands
 ```bash
-# List running containers
+# View running containers
 docker ps
 
 # Stop/Start API container (keep DB)
 docker stop eigent_api
 docker start eigent_api
 
-# Stop/Start all (API + DB)
+# Stop/Start all services
 docker compose stop
 docker compose start
 
 # View logs
-docker logs -f eigent_api | cat
-docker logs -f eigent_postgres | cat
+docker logs -f eigent_api
+docker logs -f eigent_postgres
+
+# Rebuild after code changes
+docker compose build api
+docker compose up -d
+
+# Complete reset (WARNING: Deletes all data)
+docker compose down -v
+docker compose up -d
 ```
 
 ---
 
 ### Developer Mode (Optional)
-You can run the API locally with hot-reload while keeping the database in Docker:
+For hot-reload during development:
+
 ```bash
-# Stop API in container, keep DB
+# Stop API container, keep database running
 docker stop eigent_api
 
-# Run locally (provide DB connection string)
+# Run API locally with hot-reload
 cd server
-export database_url=postgresql://postgres:123456@localhost:5432/eigent
+export database_url=postgresql://postgres:your_password@localhost:5432/eigent
+export secret_key=$(openssl rand -hex 32)
+export CHAT_SHARE_SECRET_KEY=$(openssl rand -hex 32)
+export CHAT_SHARE_SALT=$(openssl rand -hex 16)
+
+# Install dependencies and run
+pip install uv
+uv sync
 uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 ```
 
 ---
 
-### Others
-- API docs: `http://localhost:3001/docs`
-- Runtime logs: `/app/runtime/log/app.log` in the container
-- i18n (for developers)
+### Data Persistence
+- Database data: Stored in Docker volume `server_postgres_data`
+- Location: `/var/lib/postgresql/data` inside the container
+- Migrations: Run automatically on container startup via `start.sh`
+
+To backup your data:
 ```bash
-uv run pybabel extract -F babel.cfg -o messages.pot .
-uv run pybabel init -i messages.pot -d lang -l zh_CN
-uv run pybabel compile -d lang -l zh_CN
+# Backup database
+docker exec eigent_postgres pg_dump -U postgres eigent > backup.sql
+
+# Restore database
+docker exec -i eigent_postgres psql -U postgres eigent < backup.sql
 ```
 
-For a fully offline environment, only use local models and local MCP servers, and avoid configuring any external Providers or remote MCP addresses.
+---
 
+### Security Considerations
 
+1. **Environment Variables**: 
+   - Always use strong, randomly generated secrets
+   - Never use the default/example values in production
+   - Keep `.env` file secure and never commit it to version control
+
+2. **Database**:
+   - Change the default PostgreSQL password
+   - Consider using SSL for database connections in production
+   - Regularly backup your database
+
+3. **API Access**:
+   - The API is exposed on localhost only by default
+   - For production, implement proper authentication and HTTPS
+   - Consider using a reverse proxy (nginx, traefik) for production deployments
+
+4. **Offline Usage**:
+   - For fully offline environment, only use local models and local MCP servers
+   - Avoid configuring any external Providers or remote MCP addresses
+
+---
+
+### Advanced Configuration
+
+#### Custom Database Settings
+You can customize PostgreSQL settings by modifying `docker-compose.yml`:
+```yaml
+environment:
+  POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+  POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"  # More secure authentication
+```
+
+#### Performance Tuning
+For better performance with large datasets:
+```yaml
+# In docker-compose.yml under postgres service
+command: 
+  - "postgres"
+  - "-c"
+  - "shared_buffers=256MB"
+  - "-c"
+  - "max_connections=200"
+```
+
+#### Using External PostgreSQL
+If you prefer to use an external PostgreSQL instance:
+1. Update `database_url` in `.env` to point to your PostgreSQL server
+2. Comment out the `postgres` service in `docker-compose.yml`
+3. Remove the `depends_on` section from the `api` service
+
+---
+
+### API Documentation
+Full API documentation is available at `http://localhost:3001/docs` (Swagger UI) after starting the services.
+
+### Support
+For issues or questions:
+- Check the logs first: `docker logs eigent_api`
+- Review common issues in the Troubleshooting section
+- Ensure all prerequisites are met and steps are followed in order
