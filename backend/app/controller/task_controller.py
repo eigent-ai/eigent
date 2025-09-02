@@ -7,10 +7,12 @@ from app.model.chat import NewAgent, UpdateData
 from app.service.task import (
     Action,
     ActionNewAgent,
+    ActionStopData,
     ActionTakeControl,
     ActionStartData,
     ActionUpdateTaskData,
     get_task_lock,
+    task_locks,
 )
 import asyncio
 
@@ -49,4 +51,11 @@ def take_control(id: str, data: TakeControl):
 def add_agent(id: str, data: NewAgent):
     load_dotenv(dotenv_path=data.env_path)
     asyncio.run(get_task_lock(id).put_queue(ActionNewAgent(**data.model_dump())))
+    return Response(status_code=204)
+
+
+@router.delete("/task/stop-all", name="stop all tasks")
+def stop_all():
+    for task_lock in task_locks.values():
+        asyncio.run(task_lock.put_queue(ActionStopData()))
     return Response(status_code=204)

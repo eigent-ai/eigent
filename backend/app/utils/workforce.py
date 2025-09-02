@@ -143,6 +143,7 @@ class Workforce(BaseWorkforce):
                             "task_id": item.task_id,
                             "content": content,
                             "state": "waiting",  # Mark as waiting state
+                            "failure_count": 0,
                         },
                     )
                 )
@@ -166,6 +167,7 @@ class Workforce(BaseWorkforce):
                         "task_id": task.id,
                         "content": task.content,
                         "state": "running",  # running state
+                        "failure_count": task.failure_count,
                     },
                 )
             )
