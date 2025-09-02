@@ -99,7 +99,12 @@ export default function Login() {
 				return;
 			}
 
-			setAuth({ email: formData.email, ...data });
+			setAuth({ 
+				email: formData.email, 
+				token: data.access_token || data.token,
+				username: data.username || formData.email.split('@')[0],
+				user_id: data.user_id || null
+			});
 			setModelType('cloud')
 			navigate("/");
 		} catch (error: any) {
@@ -122,7 +127,12 @@ export default function Login() {
 			}
 			console.log("data", data);
 			setModelType('cloud')
-			setAuth({ email: formData.email, ...data });
+			setAuth({ 
+				email: data.email || formData.email, 
+				token: data.access_token || data.token,
+				username: data.username || (data.email || formData.email).split('@')[0],
+				user_id: data.user_id || null
+			});
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
