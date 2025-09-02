@@ -536,10 +536,10 @@ export default function ChatBox(): JSX.Element {
 										className=" cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 									>
 										<TriangleAlert
-											size={16}
+											size={20}
 											className="text-icon-information"
 										/>
-										<span className="text-text-information text-sm font-medium leading-[22px]">
+										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
 											By using this product, you agree to our Terms of Service and Privacy Policy.
 										</span>
 									</div>
