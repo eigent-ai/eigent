@@ -26,6 +26,8 @@ Prerequisite: Docker Desktop installed.
 1) Start services
 ```bash
 cd server
+# Copy .env.example to .env(or create .env according to .env.example)
+cp .env.example .env
 docker compose up -d
 ```
 
