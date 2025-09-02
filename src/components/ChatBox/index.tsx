@@ -514,13 +514,6 @@ export default function ChatBox(): JSX.Element {
 			) : (
 				<div
 					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
-					onClick={() => {
-						if (!privacy) {
-							// navigate("/setting/privacy");
-							// setPrivacyDialogOpen(true);
-						}
-					}}
-					style={{ cursor: !privacy ? "pointer" : "default" }}
 				>
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
@@ -554,9 +547,28 @@ export default function ChatBox(): JSX.Element {
 								<div className="flex items-center gap-2">
 									<div
 										onClick={(e) => {
-											e.stopPropagation();
-											// setPrivacyDialogOpen(true);
-											navigate("/setting/privacy");
+											// Check if the click target is an anchor tag
+											const target = e.target as HTMLElement;
+											if (target.tagName === 'A') {
+												// Let the anchor tag handle the click naturally
+												return;
+											}
+											
+											// Enable privacy permissions
+											const API_FIELDS = [
+												"take_screenshot",
+												"access_local_software",
+												"access_your_address",
+												"password_storage",
+											];
+											const requestData = {
+												[API_FIELDS[0]]: true,
+												[API_FIELDS[1]]: true,
+												[API_FIELDS[2]]: true,
+												[API_FIELDS[3]]: true,
+											};
+											proxyFetchPut("/api/user/privacy", requestData);
+											setPrivacy(true);
 										}}
 										className=" cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 									>
@@ -570,6 +582,7 @@ export default function ChatBox(): JSX.Element {
 												href="https://www.eigent.ai/terms-of-use"
 												target="_blank"
 												className="text-text-information underline"
+												onClick={(e) => e.stopPropagation()}
 											>
 												Terms of Use
 											</a>{" "}
@@ -578,6 +591,7 @@ export default function ChatBox(): JSX.Element {
 												href="https://www.eigent.ai/privacy-policy"
 												target="_blank"
 												className="text-text-information underline"
+												onClick={(e) => e.stopPropagation()}
 											>
 												Privacy Policy
 											</a>
