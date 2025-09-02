@@ -625,7 +625,7 @@ export default function ChatBox(): JSX.Element {
 											className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 										>
 											<span className="text-text-information text-sm font-medium leading-[22px]">
-												You're using Self-hosted mode. Enter the EXA and Google
+												You're using Self-hosted mode. Enter the Google
 												Search Keys in “MCP and Tools” to ensure Eigent works
 												properly.
 											</span>
