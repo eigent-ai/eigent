@@ -24,8 +24,11 @@
 前置要求：已安装 Docker Desktop。
 
 1) 启动服务
+- 
 ```bash
 cd server
+# 复制 .env.example 为 .env(或者按照.env.example的格式创建.env)
+cp .env.example .env
 docker compose up -d
 ```
 

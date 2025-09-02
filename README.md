@@ -338,9 +338,14 @@ For more information please contact info@eigent.ai
 
 - **X (Twitter):** Follow for updates, AI insights, and key announcements. [Follow us][social-x-link]
 
-- **WeChat Community:** Scan the QR code below to join our WeChat community.
+- **WeChat Community:** Scan the QR codes below to join our WeChat community groups.
 
-![wechat](https://eigent-ai.github.io/.github/assets/wechat.jpg)
+<div align="center">
+  <img src="./src/assets/wechat_qr_1.jpg" width="200" style="display: inline-block; margin: 10px;">
+  <img src="./src/assets/wechat_qr_2.jpg" width="200" style="display: inline-block; margin: 10px;">
+  <img src="./src/assets/wechat_qr_3.jpg" width="200" style="display: inline-block; margin: 10px;">
+  <img src="./src/assets/wechat_qr_4.jpg" width="200" style="display: inline-block; margin: 10px;">
+</div>
 
 
 
