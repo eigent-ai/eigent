@@ -50,7 +50,7 @@
   "win": {
     "certificateFile": null,
     "icon": "build/icon.ico",
-    "artifactName": "${productName}.Setup.${version}.${ext}",
+    "artifactName": "${productName}.Setup.${version}.exe",
     "target": [
       {
         "target": "nsis",
