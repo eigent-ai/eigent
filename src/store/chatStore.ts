@@ -553,7 +553,7 @@ const chatStore = create<ChatStore>()(
 							const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
 							if (taskIndex !== -1) {
 								taskRunning![taskIndex].agent!.status = "completed";
-								taskRunning![taskIndex]!.status = "completed";~
+								taskRunning![taskIndex]!.status = "completed";
 							}
 
 
