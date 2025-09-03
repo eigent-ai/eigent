@@ -63,7 +63,7 @@ async def put(id: int, data: ProviderIn, session: Session = Depends(session), au
     model.api_key = data.api_key
     model.endpoint_url = data.endpoint_url
     model.encrypted_config = data.encrypted_config
-    model.is_valid = data.is_valid
+    model.is_vaild = data.is_vaild
     model.save(session)
     session.refresh(model)
     return model
