@@ -10,7 +10,7 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 class UserPrivacy(AbstractModel, DefaultTimes, table=True):
     id: int = Field(default=None, primary_key=True)
     user_id: int = Field(unique=True, foreign_key="user.id")
-    privacy_setting: dict = Field(default="{}", sa_column=Column(JSON))
+    pricacy_setting: dict = Field(default="{}", sa_column=Column(JSON))
 
 
 class UserPrivacySettings(BaseModel):
