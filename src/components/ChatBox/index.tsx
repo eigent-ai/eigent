@@ -12,11 +12,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { NoticeCard } from "./NoticeCard";
 import { useAuthStore } from "@/store/authStore";
 import { PrivacyDialog } from "../Dialog/Privacy";
+import { useTranslation } from "react-i18next";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
 	const chatStore = useChatStore();
-
+	const {t} = useTranslation()
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [privacy, setPrivacy] = useState<any>(false);
@@ -519,10 +520,10 @@ export default function ChatBox(): JSX.Element {
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">
-								Welcome to Eigent
+								{t("welcome-to-eigent")}
 							</div>
 							<div className="text-lg leading-7 text-zinc-500 text-center mb-5">
-								How can I help you today?
+								{t("how-can-i-help-you")}
 							</div>
 						</div>
 

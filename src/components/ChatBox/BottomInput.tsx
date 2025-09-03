@@ -22,6 +22,7 @@ import { fetchDelete, proxyFetchDelete } from "@/api/http";
 import { useState, useEffect } from "react";
 import { fetchPut } from "@/api/http";
 import { Tag } from "../ui/tag";
+import { useTranslation } from "react-i18next";
 
 export const BottomInput = ({
 	message,
@@ -53,6 +54,7 @@ export const BottomInput = ({
 	useCloudModelInDev: boolean;
 }) => {
 	const chatStore = useChatStore();
+	const {t} = useTranslation();
 	const [isConfirm, setIsConfirm] = useState(true);
 	const [hasSubTask, setHasSubTask] = useState(false);
 
@@ -322,7 +324,7 @@ export const BottomInput = ({
 							fontFamily: "Inter",
 						}}
 						rows={1}
-						placeholder="What do you need to achieve today?"
+						placeholder={t("ask-placeholder")}
 						onInput={(e) => {
 							const el = e.currentTarget;
 							el.style.height = "auto";

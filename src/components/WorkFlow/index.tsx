@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { useChatStore } from "@/store/chatStore";
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
+import { useTranslation } from "react-i18next";
 
 interface NodeData {
 	agent: Agent;
@@ -35,6 +36,7 @@ export default function Workflow({
 }: {
 	taskAssigning: Agent[];
 }) {
+	const {t} = useTranslation();
 	const chatStore = useChatStore();
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -299,7 +301,7 @@ export default function Workflow({
 		<div className="w-full h-full flex flex-col items-center justify-center">
 			<div className="flex items-center justify-between w-full ">
 				<div className="text-text-body font-bold text-lg leading-relaxed">
-					Your AI Workforce
+					{t("your-ai-workforce")}
 				</div>
 				<div className="flex items-center justify-center gap-sm ">
 					{/* <Button

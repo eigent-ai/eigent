@@ -36,8 +36,10 @@ import AlertDialog from "../ui/alertDialog";
 import { proxyFetchGet, proxyFetchDelete, proxyFetchPost } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { share } from "@/lib/share";
+import { useTranslation } from "react-i18next";
 
 export default function HistorySidebar() {
+	const { t } = useTranslation();
 	const { isOpen, close } = useSidebarStore();
 	const navigate = useNavigate();
 	const chatStore = useChatStore();
@@ -239,7 +241,7 @@ export default function HistorySidebar() {
 							>
 								<ArrowLeft size={16} />
 								<span className="text-text-primary text-sm font-bold leading-13">
-									Task Hub 
+									{t("task-hub")}
 								</span>
 							</Button>
 							<Button
@@ -263,7 +265,7 @@ export default function HistorySidebar() {
 								>
 									<Plus className="w-8 h-8 text-icon-tertiary group-hover:text-icon-primary transition-all duration-300" />
 									<span className="text-text-tertiary font-bold text-[14px] leading-9 group-hover:text-text-body transition-all duration-300">
-										New Project
+										{t("new-project")}
 									</span>
 								</div>
 								{history_type === "table" ? (
@@ -297,7 +299,7 @@ export default function HistorySidebar() {
 																	/>
 																</div>
 																<div className="text-left text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis break-words line-clamp-3">
-																	{task?.messages[0]?.content || "New Project"}
+																	{task?.messages[0]?.content || t("new-project")}
 																</div>
 																<div className="w-full">
 																	<Progress
@@ -397,13 +399,13 @@ export default function HistorySidebar() {
 																<TooltipTrigger asChild>
 																	<span>
 																		{task?.messages[0]?.content ||
-																			"New Project"}
+																			t("new-project")}
 																	</span>
 																</TooltipTrigger>
 																<TooltipContent className="w-[200px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto !fixed ">
 																	<p>
 																		{task?.messages[0]?.content ||
-																			"New Project"}
+																			t("new-project")}
 																	</p>
 																</TooltipContent>
 															</Tooltip>
@@ -419,7 +421,7 @@ export default function HistorySidebar() {
 							<div className="px-sm py-4 flex flex-col gap-2">
 								<div className="flex justify-between items-center">
 									<div className="text-text-primary text-base font-bold leading-9">
-										Project Archives
+										{t("project-archives")}
 									</div>
 									<Button
 										variant="ghost"
@@ -479,11 +481,11 @@ export default function HistorySidebar() {
 
 																	<div className="text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
 																		{task?.question.split("|")[0] ||
-																			"New Project"}
+																			t("new-project")}
 																	</div>
 																	<div className="text-xs text-black leading-17  overflow-hidden text-ellipsis break-words line-clamp-2">
 																		{task?.question.split("|")[1] ||
-																			"New Project"}
+																			t("new-project")}
 																	</div>
 																</div>
 															);
@@ -512,7 +514,7 @@ export default function HistorySidebar() {
 																	<TooltipTrigger asChild>
 																		<span>
 																			{" "}
-																			{task?.question.split("|")[0] || "New Project"}
+																			{task?.question.split("|")[0] || t("new-project")}
 																		</span>
 																	</TooltipTrigger>
 																	<TooltipContent
@@ -521,7 +523,7 @@ export default function HistorySidebar() {
 																	>
 																		<div>
 																			{" "}
-																			{task?.question.split("|")[0] || "New Project"}
+																			{task?.question.split("|")[0] || t("new-project")}
 																		</div>
 																	</TooltipContent>
 																</Tooltip>
@@ -556,7 +558,7 @@ export default function HistorySidebar() {
 																				}}
 																			>
 																				<Share size={16} />
-																				Share
+																				{t("share")}
 																			</Button>
 																		</PopoverClose>
 						
@@ -574,7 +576,7 @@ export default function HistorySidebar() {
 																					size={16}
 																					className="text-icon-primary group-hover:text-icon-cuation"
 																				/>
-																				Delete
+																				{t("delete")}
 																			</Button>
 																		</PopoverClose>
 																	</div>

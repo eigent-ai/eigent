@@ -12,6 +12,7 @@ import {
 	DialogTitle,
 	DialogFooter,
 } from "@/components/ui/dialog";
+import { useTranslation } from "react-i18next";
 
 interface InstallLog {
 	type: "stdout" | "stderr";
@@ -24,6 +25,7 @@ export const InstallDependencies: React.FC<{
 	setIsInstalling: (isInstalling: boolean) => void;
 }> = ({ isInstalling, setIsInstalling }) => {
 	const { initState, setInitState } = useAuthStore();
+	const {t} = useTranslation()
 	const [logs, setLogs] = useState<InstallLog[]>([]);
 	const [status, setStatus] = useState<
 		"idle" | "installing" | "success" | "error"
@@ -209,7 +211,7 @@ export const InstallDependencies: React.FC<{
 							className="mr-2 no-drag leading-tight"
 						>
 							<FileDown className="w-4 h-4" />
-							Report a bug
+							{t("report-bug")}
 						</Button>
 						<Button size="sm" onClick={handleInstall}>
 							Retry
