@@ -9,10 +9,7 @@ wheels/
 
 # Virtual environments
 .venv
-.env
 
 runtime
 
 app/public/upload/
-
-uv.lock

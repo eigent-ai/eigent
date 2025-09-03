@@ -93,7 +93,7 @@ class ActionDeactivateAgentData(BaseModel):
 
 class ActionAssignTaskData(BaseModel):
     action: Literal[Action.assign_task] = Action.assign_task
-    data: dict[Literal["assignee_id", "task_id", "content", "state"], str]
+    data: dict[Literal["assignee_id", "task_id", "content", "state", "failure_count"], str | int]
 
 
 class ActionActivateToolkitData(BaseModel):
