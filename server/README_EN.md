@@ -34,6 +34,7 @@ docker compose up -d
 2) Start Frontend (Local Mode)
 - In the project root directory, create or modify `.env.development` to enable local mode and point to the local backend:
 ```bash
+VITE_BASE_URL=/api
 VITE_USE_LOCAL_PROXY=true
 VITE_PROXY_URL=http://localhost:3001
 ```
