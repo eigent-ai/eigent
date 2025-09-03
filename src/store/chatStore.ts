@@ -1,4 +1,4 @@
-import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile } from '@/api/http';
+import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { create } from 'zustand';
 import { generateUniqueId, uploadLog } from "@/lib";
@@ -93,6 +93,7 @@ interface ChatStore {
 	setIsTakeControl: (taskId: string, isTakeControl: boolean) => void,
 	setSnapshotsTemp: (taskId: string, snapshot: any) => void,
 	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
+	clearTasks: () => void,
 }
 
 
@@ -327,7 +328,6 @@ const chatStore = create<ChatStore>()(
 					};
 					const { setNuwFileNum, setCotList, getTokens, setUpdateCount, addTokens, setStatus, addWebViewUrl, setIsPending, addMessages, setHasWaitComfirm, setSummaryTask, setTaskAssigning, setTaskInfo, setTaskRunning, addTerminal, addFileList, setActiveAsk, setActiveAskList, tasks, create, setActiveTaskId } = get()
 					// if (tasks[taskId].status === 'finished') return
-
 					if (agentMessages.step === "to_sub_tasks") {
 
 
@@ -450,10 +450,11 @@ const chatStore = create<ChatStore>()(
 						let taskRunning = [...tasks[taskId].taskRunning]
 						let taskAssigning = [...tasks[taskId].taskAssigning]
 						const targetTaskIndex = taskRunning.findIndex((task) => task.id === task_id)
-						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id))
+						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id && (task.failure_count == 0 || !task.failure_count)))
 						if (targetTaskAssigningIndex !== -1) {
 							const taskIndex = taskAssigning[targetTaskAssigningIndex].tasks.findIndex((task: TaskInfo) => task.id === task_id)
 							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].status = state === "DONE" ? "completed" : "failed";
+							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].failure_count = failure_count || 0
 
 							// destroy webview
 							tasks[taskId].taskAssigning = tasks[taskId].taskAssigning.map((item) => {
@@ -496,10 +497,14 @@ const chatStore = create<ChatStore>()(
 						setTaskAssigning(taskId, taskAssigning)
 						return;
 					}
+					
 					// Activate agent
 					if (agentMessages.step === "activate_agent" || agentMessages.step === "deactivate_agent") {
 						let taskAssigning = [...tasks[taskId].taskAssigning]
 						let taskRunning = [...tasks[taskId].taskRunning]
+						if (agentMessages.data.tokens) {
+							addTokens(taskId, agentMessages.data.tokens)
+						}
 						const { state, agent_id, process_task_id } = agentMessages.data;
 						if (!state && !agent_id && !process_task_id) return
 						const agentIndex = taskAssigning.findIndex((agent) => agent.agent_id === agent_id)
@@ -550,9 +555,8 @@ const chatStore = create<ChatStore>()(
 								taskRunning![taskIndex].agent!.status = "completed";
 								taskRunning![taskIndex]!.status = "completed";
 							}
-							if (agentMessages.data.tokens) {
-								addTokens(taskId, agentMessages.data.tokens)
-							}
+
+
 							if (!type && historyId) {
 								const obj = {
 									"project_name": tasks[taskId].summaryTask.split('|')[0],
@@ -601,12 +605,21 @@ const chatStore = create<ChatStore>()(
 
 						// The following logic is for when the task actually starts executing (running)
 						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
-							const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
-							if (exist) {
-								exist.status = "running";
-							} else {
-								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "running", });
+							// const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
+							let taskTemp = null
+							if (task) {
+								taskTemp = JSON.parse(JSON.stringify(task))
+								taskTemp.failure_count = 0
+								taskTemp.status = "running"
+								taskTemp.toolkits = []
+								taskTemp.report = ""
 							}
+							taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
+							// if (exist) {
+							// 	exist.status = "running";
+							// } else {
+							// 	taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
+							// }
 						}
 						if (taskRunningIndex === -1) {
 							taskRunning!.push(
@@ -1611,6 +1624,20 @@ const chatStore = create<ChatStore>()(
 					[taskId]: {
 						...state.tasks[taskId],
 						isTaskEdit
+					},
+				},
+			}))
+		},
+		clearTasks: () => {
+			const { create } = get()
+			console.log('clearTasks')
+			fetchDelete('/task/stop-all')
+			const newTaskId = create()
+			set((state) => ({
+				...state,
+				tasks: {
+					[newTaskId]: {
+						...state.tasks[newTaskId],
 					},
 				},
 			}))

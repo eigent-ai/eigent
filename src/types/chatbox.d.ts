@@ -15,6 +15,7 @@ declare global {
 			message: string;
 			toolkitStatus?: AgentStatus;
 		}[];
+		failure_count?: number;
 	}
 	interface FileInfo {
 		name: string;

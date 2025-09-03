@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
+import { useChatStore } from "@/store/chatStore";
 
 import {
 	Select,
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/select";
 
 export default function SettingGeneral() {
-
 	const authStore = useAuthStore();
 	const navigate = useNavigate();
 	const [isLoading, setIsLoading] = useState(false);
@@ -33,9 +33,7 @@ export default function SettingGeneral() {
 	const fullNameRef: RefObject<HTMLInputElement> = createRef();
 	const nickNameRef: RefObject<HTMLInputElement> = createRef();
 	const workDescRef: RefObject<HTMLInputElement> = createRef();
-
-
-	
+	const chatStore = useChatStore();
 
 	const [themeList, setThemeList] = useState<any>([
 		{
@@ -100,6 +98,7 @@ export default function SettingGeneral() {
 						variant="outline"
 						size="xs"
 						onClick={() => {
+							chatStore.clearTasks();
 							authStore.logout();
 							navigate("/login");
 						}}
