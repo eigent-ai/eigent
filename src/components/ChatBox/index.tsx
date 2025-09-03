@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { fetchPost } from "@/api/http";
+import { fetchPost, proxyFetchPut } from "@/api/http";
 import { BottomInput } from "./BottomInput";
 import { TaskCard } from "./TaskCard";
 import { MessageCard } from "./MessageCard";
@@ -138,6 +138,22 @@ export default function ChatBox(): JSX.Element {
 						chatStore.setIsPending(_taskId, true);
 					}
 				} else {
+					if (!privacy) {
+						const API_FIELDS = [
+							"take_screenshot",
+							"access_local_software",
+							"access_your_address",
+							"password_storage",
+						];
+						const requestData = {
+							[API_FIELDS[0]]: true,
+							[API_FIELDS[1]]: true,
+							[API_FIELDS[2]]: true,
+							[API_FIELDS[3]]: true,
+						};
+						proxyFetchPut("/api/user/privacy", requestData);
+						setPrivacy(true);
+					}
 					chatStore.setIsPending(_taskId, true);
 					chatStore.startTask(_taskId);
 					chatStore.setHasWaitComfirm(_taskId as string, true);
@@ -428,15 +444,24 @@ export default function ChatBox(): JSX.Element {
 													""
 												}
 												onAddTask={() => {
-													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.setIsTaskEdit(
+														chatStore.activeTaskId as string,
+														true
+													);
 													chatStore.addTaskInfo();
 												}}
 												onUpdateTask={(taskIndex, content) => {
-													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.setIsTaskEdit(
+														chatStore.activeTaskId as string,
+														true
+													);
 													chatStore.updateTaskInfo(taskIndex, content);
 												}}
 												onDeleteTask={(taskIndex) => {
-													chatStore.setIsTaskEdit(chatStore.activeTaskId as string, true);
+													chatStore.setIsTaskEdit(
+														chatStore.activeTaskId as string,
+														true
+													);
 													chatStore.deleteTaskInfo(taskIndex);
 												}}
 											/>
@@ -490,13 +515,6 @@ export default function ChatBox(): JSX.Element {
 			) : (
 				<div
 					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
-					onClick={() => {
-						if (!privacy) {
-							navigate("/setting/privacy");
-							// setPrivacyDialogOpen(true);
-						}
-					}}
-					style={{ cursor: !privacy ? "pointer" : "default" }}
 				>
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
@@ -515,7 +533,7 @@ export default function ChatBox(): JSX.Element {
 								onPendingChange={(val) =>
 									chatStore.setIsPending(chatStore.activeTaskId as string, val)
 								}
-								privacy={privacy}
+								privacy={true}
 								message={message}
 								onMessageChange={setMessage}
 								onKeyDown={handleKeyDown}
@@ -530,18 +548,55 @@ export default function ChatBox(): JSX.Element {
 								<div className="flex items-center gap-2">
 									<div
 										onClick={(e) => {
-											e.stopPropagation();
-											// setPrivacyDialogOpen(true);
-											navigate("/setting/privacy");
+											// Check if the click target is an anchor tag
+											const target = e.target as HTMLElement;
+											if (target.tagName === 'A') {
+												// Let the anchor tag handle the click naturally
+												return;
+											}
+											
+											// Enable privacy permissions
+											const API_FIELDS = [
+												"take_screenshot",
+												"access_local_software",
+												"access_your_address",
+												"password_storage",
+											];
+											const requestData = {
+												[API_FIELDS[0]]: true,
+												[API_FIELDS[1]]: true,
+												[API_FIELDS[2]]: true,
+												[API_FIELDS[3]]: true,
+											};
+											proxyFetchPut("/api/user/privacy", requestData);
+											setPrivacy(true);
 										}}
 										className=" cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 									>
 										<TriangleAlert
-											size={16}
+											size={20}
 											className="text-icon-information"
 										/>
-										<span className="text-text-information text-sm font-medium leading-[22px]">
-											Complete system setup to start use Eigent
+										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
+											By messaging Eigent, you agree to our{" "}
+											<a
+												href="https://www.eigent.ai/terms-of-use"
+												target="_blank"
+												className="text-text-information underline"
+												onClick={(e) => e.stopPropagation()}
+											>
+												Terms of Use
+											</a>{" "}
+											and{" "}
+											<a
+												href="https://www.eigent.ai/privacy-policy"
+												target="_blank"
+												className="text-text-information underline"
+												onClick={(e) => e.stopPropagation()}
+											>
+												Privacy Policy
+											</a>
+											.
 										</span>
 									</div>
 								</div>
@@ -571,7 +626,7 @@ export default function ChatBox(): JSX.Element {
 											className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 										>
 											<span className="text-text-information text-sm font-medium leading-[22px]">
-												You're using Self-hosted mode. Enter the EXA and Google
+												You're using Self-hosted mode. Enter the Google
 												Search Keys in “MCP and Tools” to ensure Eigent works
 												properly.
 											</span>

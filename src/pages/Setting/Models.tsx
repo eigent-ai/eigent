@@ -220,7 +220,8 @@ export default function SettingModels() {
 			if (res.is_tool_calls && res.is_valid) {
 				console.log("success");
 				toast("validate success", {
-					description: "Verify model supports function calling to use Eigent.",
+					description:
+						"The model has been verified to support function calling, which is required to use Eigent.",
 					closeButton: true,
 				});
 			} else {
@@ -377,7 +378,7 @@ export default function SettingModels() {
 					console.log("success");
 					toast("validate success", {
 						description:
-							"Verify model supports function calling to use Eigent.",
+							"The model has been verified to support function calling, which is required to use Eigent.",
 						closeButton: true,
 					});
 				} else {
