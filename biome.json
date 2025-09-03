@@ -1,0 +1,94 @@
+{
+    "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+    "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
+    "formatter": {
+        "enabled": true,
+        "formatWithErrors": false,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineEnding": "lf",
+        "lineWidth": 120,
+        "attributePosition": "auto",
+        "bracketSameLine": false,
+        "bracketSpacing": true,
+        "expand": "auto",
+        "useEditorconfig": true
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "security": { "noDangerouslySetInnerHtml": { "level": "off" } },
+            "style": {
+                "useImportType": "off",
+                "useNumberNamespace": "off",
+                "useNodejsImportProtocol": "off",
+                "noNonNullAssertion": "off",
+                "noUnusedTemplateLiteral": "off"
+            },
+            "complexity": {
+                "noStaticOnlyClass": "off",
+                "noUselessTypeConstraint": "off",
+                "noForEach": "off",
+                "useDateNow": "off"
+            },
+            "correctness": {
+                "useExhaustiveDependencies": "off",
+                "useHookAtTopLevel": "off",
+                "noUnusedFunctionParameters": "off",
+                "noUnusedVariables": "off"
+            },
+            "suspicious": {
+                "noGlobalIsNan": "off",
+                "noGlobalIsFinite": "off",
+                "noExplicitAny": "off",
+                "noArrayIndexKey": "off",
+                "noConfusingVoidType": "off",
+                "noThenProperty": "off",
+                "noTemplateCurlyInString": "off",
+                "noAsyncPromiseExecutor": "off"
+            },
+            "performance": {
+                "noDelete": "off",
+                "noAccumulatingSpread": "off",
+                "noDynamicNamespaceImportAccess": "off"
+            },
+            "a11y": {
+                "noSvgWithoutTitle": { "level": "off" },
+                "noAriaHiddenOnFocusable": "off",
+                "noLabelWithoutControl": "off",
+                "useFocusableInteractive": "off",
+                "useKeyWithClickEvents": "off",
+                "useSemanticElements": "off",
+                "noStaticElementInteractions": "off",
+                "useAriaPropsSupportedByRole": "off",
+                "useAriaPropsForRole": "off"
+            },
+            "nursery": {
+                "useUniqueElementIds": "off"
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "jsxQuoteStyle": "double",
+            "quoteProperties": "asNeeded",
+            "trailingCommas": "es5",
+            "semicolons": "asNeeded",
+            "arrowParentheses": "asNeeded",
+            "bracketSameLine": false,
+            "quoteStyle": "single",
+            "attributePosition": "auto",
+            "bracketSpacing": true
+        },
+        "parser": {
+            "unsafeParameterDecoratorsEnabled": true
+        }
+    },
+    "css": {
+        "formatter": {
+            "quoteStyle": "single"
+        }
+    },
+    "html": { "formatter": { "selfCloseVoidElements": "always" } }
+}

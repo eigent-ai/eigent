@@ -85,6 +85,7 @@
         "zustand": "^5.0.4"
     },
     "devDependencies": {
+        "@biomejs/biome": "^2.2.2",
         "@playwright/test": "^1.48.2",
         "@types/archiver": "^6.0.3",
         "@types/lodash-es": "^4.17.12",
@@ -116,8 +117,12 @@
         "node": ">=18.0.0 <23.0.0"
     },
     "lint-staged": {
-        "./src/**/*.{ts,tsx,js,json,html,yml,css,md}": ["pnpm run lint"],
-        "./electron/**/*.{ts,tsx,js,json,html,yml,css,md}": ["pnpm run lint"]
+        "./src/**/*.{ts,tsx,js,json,html,yml,css,md}": [
+            "pnpm run lint"
+        ],
+        "./electron/**/*.{ts,tsx,js,json,html,yml,css,md}": [
+            "pnpm run lint"
+        ]
     },
     "simple-git-hooks": {
         "pre-commit": "npx lint-staged"
