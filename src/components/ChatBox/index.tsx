@@ -217,7 +217,7 @@ export default function ChatBox(): JSX.Element {
 	};
 
 	const [hasSubTask, setHasSubTask] = useState(false);
-	const messageStatus = useMemo(() => chatStore.tasks[chatStore.activeTaskId as string]?.status, [chatStore?.tasks[chatStore.activeTaskId as string]?.status]);
+	const messageStatus = useMemo(() => chatStore.tasks[chatStore.activeTaskId as string]?.status, [chatStore.tasks, chatStore.activeTaskId]);
 
 	useEffect(() => {
 		const _hasSubTask = chatStore.tasks[
