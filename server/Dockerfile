@@ -42,7 +42,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy and make the start script executable
 COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 # Reset the entrypoint, don't invoke `uv`
 ENTRYPOINT []
