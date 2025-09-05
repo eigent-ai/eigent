@@ -290,6 +290,7 @@ const chatStore = create<ChatStore>()(
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+			
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
 				openWhenHidden: true,
@@ -604,23 +605,29 @@ const chatStore = create<ChatStore>()(
 
 						// The following logic is for when the task actually starts executing (running)
 						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
-							// const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
-							let taskTemp = null
-							if (task) {
-								taskTemp = JSON.parse(JSON.stringify(task))
-								taskTemp.failure_count = 0
-								taskTemp.status = "running"
-								taskTemp.toolkits = []
-								taskTemp.report = ""
+							// Check if task already exists in the agent's task list
+							const existingTaskIndex = taskAssigning[assigneeAgentIndex].tasks.findIndex(item => item.id === task_id);
+							
+							if (existingTaskIndex !== -1&&taskAssigning[assigneeAgentIndex].tasks[existingTaskIndex].failure_count===task?.failure_count) {
+								// Task already exists, update its status
+								taskAssigning[assigneeAgentIndex].tasks[existingTaskIndex].status = "running";
+							} else {
+								// Task doesn't exist, add it
+								let taskTemp = null
+								if (task) {
+									taskTemp = JSON.parse(JSON.stringify(task))
+									taskTemp.failure_count = 0
+									taskTemp.status = "running"
+									taskTemp.toolkits = []
+									taskTemp.report = ""
+								}
+								taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
 							}
-							taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
-							// if (exist) {
-							// 	exist.status = "running";
-							// } else {
-							// 	taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
-							// }
 						}
+						
+						// Only update or add to taskRunning, never duplicate
 						if (taskRunningIndex === -1) {
+							// Task not in taskRunning, add it
 							taskRunning!.push(
 								task ?? {
 									id: task_id,
@@ -630,6 +637,7 @@ const chatStore = create<ChatStore>()(
 								}
 							);
 						} else {
+							// Task already in taskRunning, update it
 							taskRunning![taskRunningIndex] = {
 								...taskRunning![taskRunningIndex],
 								content,
