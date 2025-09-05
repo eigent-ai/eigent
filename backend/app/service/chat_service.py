@@ -295,7 +295,7 @@ async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal
 >     * **For a Simple Query:** Provide a direct and helpful response.
 >     * **For a Complex Task:** Your *only* response should be "yes". This will trigger a specialized workforce to handle the task. Do not include any other text, punctuation, or pleasantries.
         """
-    resp = await agent.step(prompt)
+    resp = agent.step(prompt)
     logger.info(f"resp: {agent.chat_history}")
     if resp.msgs[0].content.lower() != "yes":
         return sse_json("wait_confirm", {"content": resp.msgs[0].content})
@@ -316,7 +316,7 @@ Your instructions are:
 Example format: "Task Name|This is the summary of the task."
 Do not include any other text or formatting.
 """
-    res = await agent.step(prompt)
+    res = agent.step(prompt)
     logger.info(f"summary_task: {res.msgs[0].content}")
     return res.msgs[0].content
 
