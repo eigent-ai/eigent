@@ -3,7 +3,7 @@ import { Outlet } from "react-router-dom";
 import HistorySidebar from "../HistorySidebar";
 import { InstallDependencies } from "@/components/InstallStep/InstallDependencies";
 import { useAuthStore } from "@/store/authStore";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimationJson } from "@/components/AnimationJson";
 import animationData from "@/assets/animation/onboarding_success.json";
 import CloseNoticeDialog from "../Dialog/CloseNotice";
@@ -14,7 +14,23 @@ const Layout = () => {
 	const [isInstalling, setIsInstalling] = useState(false);
 	const [noticeOpen, setNoticeOpen] = useState(false);
 	const chatStore = useChatStore();
-	const messageStatus = useMemo(() => chatStore.tasks[chatStore.activeTaskId as string]?.status, [chatStore?.tasks[chatStore.activeTaskId as string]?.status]);
+
+	useEffect(() => {
+		const handleBeforeClose = () => {
+			const currentStatus = chatStore.tasks[chatStore.activeTaskId as string]?.status;
+			if(["pending", "running", "pause"].includes(currentStatus)) {
+				setNoticeOpen(true);
+			} else {
+				window.electronAPI.closeWindow(true);
+			}
+		};
+		
+		window.ipcRenderer.on("before-close", handleBeforeClose);
+		
+		return () => {
+			window.ipcRenderer.removeAllListeners("before-close");
+		};
+	}, [chatStore.tasks, chatStore.activeTaskId]);
 
 	useEffect(() => {
 		const checkToolInstalled = async () => {
@@ -30,18 +46,7 @@ const Layout = () => {
 			}
 		};
 		checkToolInstalled();
-		checkClose()
 	}, []);
-
-
-	const checkClose = useCallback(() => {
-		window.ipcRenderer.on("before-close", () => {
-			if(["pending", "running", "pause"].includes(messageStatus)) {
-				return setNoticeOpen(true)
-			}
-			return window.electronAPI.closeWindow(true)
-		})
-	}, [])
 
 	return (
 		<div className="h-full flex flex-col">
