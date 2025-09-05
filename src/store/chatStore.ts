@@ -291,6 +291,7 @@ const chatStore = create<ChatStore>()(
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+			
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
 				openWhenHidden: true,
@@ -608,7 +609,7 @@ const chatStore = create<ChatStore>()(
 							// Check if task already exists in the agent's task list
 							const existingTaskIndex = taskAssigning[assigneeAgentIndex].tasks.findIndex(item => item.id === task_id);
 							
-							if (existingTaskIndex !== -1) {
+							if (existingTaskIndex !== -1&&taskAssigning[assigneeAgentIndex].tasks[existingTaskIndex].failure_count===task?.failure_count) {
 								// Task already exists, update its status
 								taskAssigning[assigneeAgentIndex].tasks[existingTaskIndex].status = "running";
 							} else {
