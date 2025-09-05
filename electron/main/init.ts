@@ -222,7 +222,7 @@ export async function installDependencies() {
                     })
                 }catch(err) {
                     log.error('run install failed', err)    
-                    // 装失败时可能遗留 uv_installing.lock
+                    // Clean up uv_installing.lock file if installation fails
                     if (fs.existsSync(installingLockPath)) {
                         fs.unlinkSync(installingLockPath);
                     }
@@ -517,7 +517,7 @@ export async function findAvailablePort(startPort: number, maxAttempts = 50): Pr
         }
 
         const killed = await killProcessOnPort(port);
-        if (killed && await checkPortAvailable(port)) {
+        if (killed) {
             return port;
         }
 
