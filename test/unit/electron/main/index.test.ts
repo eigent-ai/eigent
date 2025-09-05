@@ -172,11 +172,6 @@ vi.mock("../../../../electron/main/copy", () => ({ copyBrowserData: vi.fn() }));
 vi.mock("../../../../electron/main/utils/log", () => ({ zipFolder: vi.fn() }));
 vi.mock("tree-kill", () => ({ default: vi.fn() }));
 
-// Mock the index file itself to test handlers that call other functions in the same file
-vi.mock("../../../../electron/main/index", () => ({
-  handleDependencyInstallation: vi.fn(),
-}));
-
 // Import the mocked functions
 import * as envUtil from "../../../../electron/main/utils/envUtil";
 import * as mcpConfig from "../../../../electron/main/utils/mcpConfig";

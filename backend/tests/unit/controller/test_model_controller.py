@@ -127,10 +127,11 @@ class TestModelController:
         mock_agent = MagicMock()
         mock_agent.step.return_value = None
         
-        # Implementation tries to access response.info leading to AttributeError when response is None
+        # When response is None, should return False
         with patch("app.controller.model_controller.create_agent", return_value=mock_agent):
-            with pytest.raises(AttributeError):
-                await validate_model(request_data)
+            result = await validate_model(request_data)
+            assert result.is_valid is False
+            assert result.is_tool_calls is False
 
 
 @pytest.mark.integration
@@ -259,9 +260,10 @@ class TestModelControllerErrorCases:
         mock_agent.step.return_value = mock_response
         
         with patch("app.controller.model_controller.create_agent", return_value=mock_agent):
-            # Should handle missing tool calls gracefully
-            with pytest.raises(IndexError):
-                await validate_model(request_data)
+            # Should handle empty tool calls gracefully
+            result = await validate_model(request_data)
+            assert result.is_valid is True  # Response exists
+            assert result.is_tool_calls is False  # No valid tool calls
 
     @pytest.mark.asyncio
     async def test_validate_model_with_missing_info_field(self):
@@ -277,6 +279,7 @@ class TestModelControllerErrorCases:
         mock_agent.step.return_value = mock_response
         
         with patch("app.controller.model_controller.create_agent", return_value=mock_agent):
-            # Should handle missing info fields gracefully
-            with pytest.raises(KeyError):
-                await validate_model(request_data)
+            # Should handle missing tool_calls key gracefully
+            result = await validate_model(request_data)
+            assert result.is_valid is True  # Response exists
+            assert result.is_tool_calls is False  # No tool_calls key
