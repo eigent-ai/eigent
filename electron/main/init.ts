@@ -36,39 +36,42 @@ export async function checkToolInstalled() {
  */
 export async function installCommandTool() {
     return new Promise(async (resolve, reject) => {
-        let isAllInstalled = true
-        console.log('Checking if command line tools are installed, installing if not')
-        if (!(await isBinaryExists('uv'))) {
-            console.log('start install uv')
-            await runInstallScript('install-uv.js')
-            const uv_installed = await isBinaryExists('uv')
-            const mainWindow = getMainWindow();
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                if (uv_installed) {
+    const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<boolean> => {
+        if (await isBinaryExists(toolName)) {
+            return true;
+        }
 
-                    mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: '' });
-                } else {
-                    isAllInstalled = false
-                    mainWindow.webContents.send('install-dependencies-complete', { success: false, code: 2, error: `Script exited with code ${2}` });
-                }
+        console.log(`start install ${toolName}`);
+        await runInstallScript(scriptName);
+        const installed = await isBinaryExists(toolName);
+
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            if (installed) {
+                mainWindow.webContents.send('install-dependencies-log', {
+                    type: 'stdout',
+                    data: `${toolName} installed successfully`,
+                });
+            } else {
+                mainWindow.webContents.send('install-dependencies-complete', {
+                    success: false,
+                    code: 2,
+                    error: `${toolName} installation failed (script exit code 2)`,
+                });
             }
         }
 
-        if (!(await isBinaryExists('bun'))) {
-            console.log('start install bun')
-            await runInstallScript('install-bun.js')
-            const bun_installed = await isBinaryExists('bun')
-            const mainWindow = getMainWindow();
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                if (bun_installed) {
-                    mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: '' });
-                } else {
-                    isAllInstalled = false
-                    mainWindow.webContents.send('install-dependencies-complete', { success: false, code: 2, error: `Script exited with code ${2}` });
-                }
-            }
+        return installed;
+        };
+
+        if (!(await ensureInstalled('uv', 'install-uv.js'))) {
+            return reject("uv install failed");
         }
-        resolve(isAllInstalled)
+        if (!(await ensureInstalled('bun', 'install-bun.js'))) {
+            return reject("bun install failed");
+        }
+
+        return resolve(true);
     })
 
 }
@@ -183,39 +186,49 @@ export async function installDependencies() {
         // const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
         const proxyArgs = ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
         const runInstall = (extraArgs: string[]) => {
-            return new Promise<boolean>((resolveInner) => {
-                const node_process = spawn(uv_path, [
-                    'sync',
-                    '--no-dev',
-                    '--cache-dir', getCachePath('uv_cache'),
-                    ...extraArgs], {
-                    cwd: backendPath,
-                    env: {
-                        ...process.env,
-                        UV_TOOL_DIR: getCachePath('uv_tool'),
-                        UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
-                    }
-                })
-                console.log('start install dependencies', extraArgs)
-                node_process.stdout.on('data', (data) => {
+            return new Promise<boolean>((resolveInner, rejectInner) => {
+                try {
+                    const node_process = spawn(uv_path, [
+                        'sync',
+                        '--no-dev',
+                        '--cache-dir', getCachePath('uv_cache'),
+                        ...extraArgs], {
+                        cwd: backendPath,
+                        env: {
+                            ...process.env,
+                            UV_TOOL_DIR: getCachePath('uv_tool'),
+                            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+                        }
+                    })
+                    console.log('start install dependencies', extraArgs)
+                    node_process.stdout.on('data', (data) => {
 
-                    log.info(`Script output: ${data}`)
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: data.toString() });
-                    }
-                })
+                        log.info(`Script output: ${data}`)
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: data.toString() });
+                        }
+                    })
 
-                node_process.stderr.on('data', (data) => {
-                    log.error(`Script error: ${data}`)
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('install-dependencies-log', { type: 'stderr', data: data.toString() });
-                    }
-                })
+                    node_process.stderr.on('data', (data) => {
+                        log.error(`Script error: ${data}`)
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('install-dependencies-log', { type: 'stderr', data: data.toString() });
+                        }
+                    })
 
-                node_process.on('close', (code) => {
-                    console.log('install dependencies end', code === 0)
-                    resolveInner(code === 0)
-                })
+                    node_process.on('close', (code) => {
+                        console.log('install dependencies end', code === 0)
+                        resolveInner(code === 0)
+                    })
+                }catch(err) {
+                    log.error('run install failed', err)    
+                    // 装失败时可能遗留 uv_installing.lock
+                    if (fs.existsSync(installingLockPath)) {
+                        fs.unlinkSync(installingLockPath);
+                    }
+                    rejectInner(err)
+                }
+                
             })
         }
 
@@ -492,32 +505,31 @@ export async function killProcessOnPort(port: number): Promise<boolean> {
 }
 
 export async function findAvailablePort(startPort: number, maxAttempts = 50): Promise<number> {
-    let port = startPort;
-    let attemptedKill = false;
+    const triedPorts = new Set<number>();
 
-    for (let i = 0; i < maxAttempts; i++) {
+    const tryPort = async (port: number): Promise<number | null> => {
+        if (triedPorts.has(port)) return null;
+        triedPorts.add(port);
+
         const available = await checkPortAvailable(port);
         if (available) {
             return port;
         }
 
-        // If port is occupied and we haven't tried killing processes yet
-        if (!attemptedKill && i >= 5) {
-            log.info(`Attempting to free ports ${startPort} to ${startPort + maxAttempts}...`);
-
-            // Try to kill processes on a range of ports
-            for (let killPort = startPort; killPort < startPort + 10; killPort++) {
-                await killProcessOnPort(killPort);
-            }
-
-            attemptedKill = true;
-
-            // Reset to start port and try again
-            port = startPort;
-            continue;
+        const killed = await killProcessOnPort(port);
+        if (killed && await checkPortAvailable(port)) {
+            return port;
         }
 
-        port++;
+        return null;
+    };
+
+    // return when found port
+    for (let offset = 0; offset < maxAttempts; offset++) {
+        const port = startPort + offset;
+        const found = await tryPort(port);
+        if (found) return found;
     }
-    throw new Error('No available port found');
+
+    throw new Error(`No available port found in range ${startPort} ~ ${startPort + maxAttempts - 1}`);
 }
