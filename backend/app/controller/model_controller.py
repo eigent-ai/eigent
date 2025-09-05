@@ -44,8 +44,16 @@ async def validate_model(request: ValidateModelRequest):
         )
     except Exception as e:
         return ValidateModelResponse(is_valid=False, is_tool_calls=False, message=str(e))
+    is_valid = bool(response)
+    is_tool_calls = False
+    
+    if response and hasattr(response, 'info') and response.info:
+        tool_calls = response.info.get("tool_calls", [])
+        if tool_calls and len(tool_calls) > 0:
+            is_tool_calls = tool_calls[0].result == "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+    
     return ValidateModelResponse(
-        is_valid=True if response else False,
-        is_tool_calls=response.info["tool_calls"][0].result == "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!",
+        is_valid=is_valid,
+        is_tool_calls=is_tool_calls,
         message="",
     )

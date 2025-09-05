@@ -21,7 +21,7 @@ interface AuthState {
 	username: string | null;
 	email: string | null;
 	user_id: number | null;
-	
+
 	// application settings
 	appearance: string;
 	language: string;
@@ -29,17 +29,17 @@ interface AuthState {
 	modelType: ModelType;
 	cloud_model_type: CloudModelType;
 	initState: InitState;
-	
+
 	// shared token
 	share_token?: string | null;
-	
+
 	// worker list data
 	workerListData: { [key: string]: Agent[] };
-	
+
 	// auth related methods
 	setAuth: (auth: AuthInfo) => void;
 	logout: () => void;
-	
+
 	// set related methods
 	setAppearance: (appearance: string) => void;
 	setLanguage: (language: string) => void;
@@ -47,7 +47,7 @@ interface AuthState {
 	setModelType: (modelType: ModelType) => void;
 	setCloudModelType: (cloud_model_type: CloudModelType) => void;
 	setIsFirstLaunch: (isFirstLaunch: boolean) => void;
-	
+
 	// worker related methods
 	setWorkerList: (workerList: Agent[]) => void;
 	checkAgentTool: (tool: string) => void;
@@ -70,35 +70,35 @@ const authStore = create<AuthState>()(
 			initState: 'permissions',
 			share_token: null,
 			workerListData: {},
-			
+
 			// auth related methods
 			setAuth: ({ token, username, email, user_id }) =>
 				set({ token, username, email, user_id }),
-			
-			logout: () => 
-				set({ 
-					token: null, 
-					username: null, 
-					email: null, 
-					user_id: null 
+
+			logout: () =>
+				set({
+					token: null,
+					username: null,
+					email: null,
+					user_id: null
 				}),
-			
+
 			// set related methods
 			setAppearance: (appearance) => set({ appearance }),
-			
+
 			setLanguage: (language) => set({ language }),
-			
+
 			setInitState: (initState) => {
 				console.log('set({ initState })', initState);
 				set({ initState });
 			},
-			
+
 			setModelType: (modelType) => set({ modelType }),
-			
+
 			setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
-			
+
 			setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
-			
+
 			// worker related methods
 			setWorkerList: (workerList) => {
 				const { email } = get();
@@ -110,15 +110,15 @@ const authStore = create<AuthState>()(
 					}
 				}));
 			},
-			
+
 			checkAgentTool: (tool) => {
 				const { email } = get();
 				set((state) => {
 					const currentEmail = email as string;
 					const originalList = state.workerListData[currentEmail] ?? [];
-					
+
 					console.log("tool!!!", tool);
-					
+
 					const updatedList = originalList
 						.map((worker) => {
 							const filteredTools = worker.tools?.filter((t) => t !== tool) ?? [];
@@ -126,9 +126,9 @@ const authStore = create<AuthState>()(
 							return { ...worker, tools: filteredTools };
 						})
 						.filter((worker) => worker.tools.length > 0);
-					
+
 					console.log("updatedList", updatedList);
-					
+
 					return {
 						...state,
 						workerListData: {
@@ -140,7 +140,10 @@ const authStore = create<AuthState>()(
 			}
 		}),
 		{
-			name: 'auth-storage',
+			name:
+				import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
+					? 'auth-storage-local'
+					: 'auth-storage',
 			partialize: (state) => ({
 				token: state.token,
 				username: state.username,

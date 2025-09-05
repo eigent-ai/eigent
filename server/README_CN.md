@@ -35,6 +35,7 @@ docker compose up -d
 2) 启动前端（本地模式）
 - 在项目根目录创建或修改 `.env.development`，开启本地模式并指向本地后端：
 ```bash
+VITE_BASE_URL=/api
 VITE_USE_LOCAL_PROXY=true
 VITE_PROXY_URL=http://localhost:3001
 ```
