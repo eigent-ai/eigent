@@ -330,13 +330,13 @@ export default function SignUp() {
 							</div>
 							<div className="w-full mb-4 relative">
 								<Label htmlFor="invite_code" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-									Invitation Code
+									Invitation Code (optional)
 								</Label>
 								<div className="relative">
 									<Input
 										id="invite_code"
 										type="text"
-										placeholder="Enter your invite code(optional)"
+										placeholder="Enter your invite code"
 										required
 										value={formData.invite_code}
 										onChange={(e) =>

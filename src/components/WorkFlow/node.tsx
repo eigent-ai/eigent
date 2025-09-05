@@ -508,7 +508,7 @@ export function Node({ id, data }: NodeProps) {
 												window.electronAPI.hideAllWebview();
 											}
 										}}
-										key={`taskList-${task.id}`}
+										key={`taskList-${task.id}-${task.failure_count}`}
 										className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
 											task.status === "completed"
 												? "bg-green-50"
@@ -619,6 +619,11 @@ export function Node({ id, data }: NodeProps) {
 																</div>
 															</div>
 														)}
+												</div>
+											)}
+											{(task.failure_count ?? 0) > 0&& (
+												<div className="text-text-cuation-default text-xs leading-17">
+													retry {task.failure_count} times
 												</div>
 											)}
 										</div>

@@ -81,7 +81,7 @@ def listen_toolkit(
                             "process_task_id": process_task.get(""),
                             "toolkit_name": toolkit_name,
                             "method_name": method_name,
-                            "message": res_msg[:500] if len(res_msg) > 500 else res_msg,
+                            "message": res_msg,
                         },
                     )
                 )
@@ -129,11 +129,12 @@ def listen_toolkit(
                 error = None
                 res = None
                 try:
-                    print(">>>>", func.__name__, "<<<<")
+                    logger.debug(f"Executing toolkit method: {toolkit_name}.{method_name} for agent '{toolkit.agent_name}'")
                     res = func(*args, **kwargs)
                     # Safety check: if the result is a coroutine, we need to await it
                     if asyncio.iscoroutine(res):
                         import warnings
+
                         warnings.warn(f"Async function {func.__name__} was incorrectly called synchronously")
                         res = asyncio.run(res)
                 except Exception as e:
@@ -161,7 +162,7 @@ def listen_toolkit(
                                 "process_task_id": process_task.get(""),
                                 "toolkit_name": toolkit_name,
                                 "method_name": method_name,
-                                "message": res_msg[:500] if len(res_msg) > 500 else res_msg,
+                                "message": res_msg,
                             },
                         )
                     )

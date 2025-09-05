@@ -123,6 +123,8 @@ nativeTheme.themeSource = 'light';
 // Set log level
 log.transports.console.level = 'info';
 log.transports.file.level = 'info';
+log.transports.console.format = '[{level}]{text}';
+log.transports.file.format = '[{level}]{text}';
 
 // Disable GPU Acceleration for Windows 7
 if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
@@ -362,7 +364,7 @@ function registerIpcHandlers() {
           stderr += output;
           if (output.includes('OAuth callback server running at')) {
             const url = output.split('OAuth callback server running at')[1].trim();
-            log.info(' detect OAuth callback URL:', url);
+            log.info('detect OAuth callback URL:', url);
 
             // Notify frontend to callback URL
             if (win && !win.isDestroyed()) {
@@ -644,7 +646,12 @@ function registerIpcHandlers() {
 
   ipcMain.handle("reveal-in-folder", async (event, filePath: string) => {
     try {
-      shell.showItemInFolder(filePath);
+      const stats = await fs.promises.stat(filePath.replace(/\/$/, '')).catch(() => null);
+      if (stats && stats.isDirectory()) {
+        shell.openPath(filePath);
+      } else {
+        shell.showItemInFolder(filePath);
+      }
     } catch (e) {
       log.error("reveal in folder failed", e);
     }
@@ -857,6 +864,11 @@ function registerIpcHandlers() {
   ipcMain.handle('get-file-list', async (_, email: string, taskId: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     return manager.getFileList(email, taskId);
+  });
+
+  ipcMain.handle('get-log-folder', async (_, email: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getLogFolder(email);
   });
 
   // ==================== WebView handler ====================

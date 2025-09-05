@@ -43,14 +43,8 @@ class LoginByPasswordIn(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "Bearer"
+    token: str
     email: EmailStr
-    # Backward compatibility
-    @property
-    def token(self) -> str:
-        return self.access_token
 
 
 class UserIn(BaseModel):

@@ -19,7 +19,7 @@ const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
 export default function Login() {
 	const app = HAS_STACK_KEYS ? useStackApp() : null;
-	const { setAuth } = useAuthStore();
+	const { setAuth,setModelType } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
@@ -100,6 +100,7 @@ export default function Login() {
 			}
 
 			setAuth({ email: formData.email, ...data });
+			setModelType('cloud')
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
@@ -120,6 +121,7 @@ export default function Login() {
 				return;
 			}
 			console.log("data", data);
+			setModelType('cloud')
 			setAuth({ email: formData.email, ...data });
 			navigate("/");
 		} catch (error: any) {

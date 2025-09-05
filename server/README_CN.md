@@ -24,14 +24,18 @@
 前置要求：已安装 Docker Desktop。
 
 1) 启动服务
+- 
 ```bash
 cd server
+# 复制 .env.example 为 .env(或者按照.env.example的格式创建.env)
+cp .env.example .env
 docker compose up -d
 ```
 
 2) 启动前端（本地模式）
 - 在项目根目录创建或修改 `.env.development`，开启本地模式并指向本地后端：
 ```bash
+VITE_BASE_URL=/api
 VITE_USE_LOCAL_PROXY=true
 VITE_PROXY_URL=http://localhost:3001
 ```

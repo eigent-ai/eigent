@@ -52,8 +52,6 @@ def upgrade() -> None:
         "admin_role",
         sa.Column("admin_id", sa.Integer(), nullable=False),
         sa.Column("role_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(["admin_id"], ["admin.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["role_id"], ["role.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("admin_id", "role_id"),
     )
     op.create_table(
@@ -285,7 +283,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("privacy_setting", sa.JSON(), nullable=True),
+        sa.Column("pricacy_setting", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["user.id"],
