@@ -1,5 +1,5 @@
 // Simple example test to verify testing setup
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 describe('Basic Testing Setup', () => {
   it('should be able to run basic tests', () => {
@@ -35,7 +35,6 @@ describe('Basic Testing Setup', () => {
 })
 
 // Mock example
-import { vi } from 'vitest'
 
 const mockMathOperations = {
   add: (a: number, b: number) => a + b,

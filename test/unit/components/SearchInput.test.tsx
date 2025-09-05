@@ -359,10 +359,9 @@ describe('SearchInput Component', () => {
       
       await user.keyboard('{Escape}')
       
-  // Escape should blur the input in typical environments; accept either focused or not
-  // (some test environments may not simulate key blur reliably)
-  const focused = document.activeElement === input
-  expect([true, false]).toContain(focused)
+      // Component doesn't implement Escape key handling, so focus remains
+      // This is expected behavior for a simple search input
+      expect(input).toHaveFocus()
     })
   })
 
