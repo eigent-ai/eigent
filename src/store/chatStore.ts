@@ -604,7 +604,7 @@ const chatStore = create<ChatStore>()(
 
 						// The following logic is for when the task actually starts executing (running)
 						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
-							// const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
+							const exist = taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id);
 							let taskTemp = null
 							if (task) {
 								taskTemp = JSON.parse(JSON.stringify(task))
@@ -613,12 +613,21 @@ const chatStore = create<ChatStore>()(
 								taskTemp.toolkits = []
 								taskTemp.report = ""
 							}
-							taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
-							// if (exist) {
-							// 	exist.status = "running";
-							// } else {
-							// 	taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
-							// }
+							if (exist) {
+								// Update existing task instead of adding duplicate
+								const existingIndex = taskAssigning[assigneeAgentIndex].tasks.findIndex(item => item.id === task_id);
+								if (existingIndex !== -1) {
+									taskAssigning[assigneeAgentIndex].tasks[existingIndex] = {
+										...exist,
+										status: "running",
+										failure_count: 0,
+										toolkits: [],
+										report: ""
+									};
+								}
+							} else {
+								taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
+							}
 						}
 						if (taskRunningIndex === -1) {
 							taskRunning!.push(
