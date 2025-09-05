@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { fetchPost, proxyFetchPut } from "@/api/http";
 import { BottomInput } from "./BottomInput";
 import { TaskCard } from "./TaskCard";
@@ -217,6 +217,7 @@ export default function ChatBox(): JSX.Element {
 	};
 
 	const [hasSubTask, setHasSubTask] = useState(false);
+	const messageStatus = useMemo(() => chatStore.tasks[chatStore.activeTaskId as string]?.status, [chatStore.tasks, chatStore.activeTaskId]);
 
 	useEffect(() => {
 		const _hasSubTask = chatStore.tasks[
@@ -473,7 +474,7 @@ export default function ChatBox(): JSX.Element {
 							!chatStore.tasks[chatStore.activeTaskId as string]
 								?.hasWaitComfirm &&
 							chatStore.tasks[chatStore.activeTaskId as string]?.messages
-								.length > 0) ||
+								.length > 0 &&  messageStatus !== "finished") ||
 							chatStore.tasks[chatStore.activeTaskId as string]
 								.isTakeControl) && (
 							<TypeCardSkeleton

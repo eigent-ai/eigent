@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
-class ValidStatus(IntEnum):
+class VaildStatus(IntEnum):
     not_valid = 1
     is_valid = 2
 
@@ -23,9 +23,9 @@ class Provider(AbstractModel, DefaultTimes, table=True):
     endpoint_url: str = ""
     encrypted_config: dict | None = Field(default=None, sa_column=Column(JSON))
     prefer: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("false")))
-    is_valid: ValidStatus = Field(
-        default=ValidStatus.not_valid,
-        sa_column=Column(ChoiceType(ValidStatus, SmallInteger()), server_default=text("1")),
+    is_vaild: VaildStatus = Field(
+        default=VaildStatus.not_valid,
+        sa_column=Column(ChoiceType(VaildStatus, SmallInteger()), server_default=text("1")),
     )
 
 
@@ -35,7 +35,7 @@ class ProviderIn(BaseModel):
     api_key: str
     endpoint_url: str
     encrypted_config: dict | None = None
-    is_valid: ValidStatus = ValidStatus.not_valid
+    is_vaild: VaildStatus = VaildStatus.not_valid
     prefer: bool = False
 
 
