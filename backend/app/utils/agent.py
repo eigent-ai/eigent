@@ -135,6 +135,8 @@ class ListenChatAgent(ChatAgent):
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | StreamingChatAgentResponse:
+        print("@@@@@@@@@@@@")
+        traceroot_logger.error(f"Agent {self.agent_name} starting step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
         task_lock = get_task_lock(self.api_task_id)
         asyncio.create_task(
             task_lock.put_queue(
@@ -151,7 +153,7 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.info(f"Agent {self.agent_name} starting step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
+
         try:
             res = super().step(input_message, response_format)
         except ModelProcessingError as e:
@@ -206,6 +208,8 @@ class ListenChatAgent(ChatAgent):
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
+        print("@@@@@@@@@@@")
+        traceroot_logger.error(f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
         await task_lock.put_queue(
             ActionActivateAgentData(
                 action=Action.activate_agent,
@@ -221,7 +225,7 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.debug(f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
+
 
         try:
             res = await super().astep(input_message, response_format)

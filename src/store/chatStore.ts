@@ -596,6 +596,18 @@ const chatStore = create<ChatStore>()(
 
 						// If the state is "waiting", only mark it in the agent's task list and do not add it to taskRunning
 						if (taskState === "waiting") {
+							// First, check if this task is already assigned to another agent
+							for (let i = 0; i < taskAssigning.length; i++) {
+								if (i !== assigneeAgentIndex) {
+									const existingTaskIndex = taskAssigning[i].tasks.findIndex(item => item.id === task_id);
+									if (existingTaskIndex !== -1) {
+										// Task is already assigned to another agent, remove it
+										taskAssigning[i].tasks.splice(existingTaskIndex, 1);
+									}
+								}
+							}
+							
+							// Now add to the current agent if not already there
 							if (!taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id)) {
 								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "waiting" });
 							}
@@ -605,7 +617,18 @@ const chatStore = create<ChatStore>()(
 
 						// The following logic is for when the task actually starts executing (running)
 						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
-							// Check if task already exists in the agent's task list
+							// First, ensure this task is removed from all other agents
+							for (let i = 0; i < taskAssigning.length; i++) {
+								if (i !== assigneeAgentIndex) {
+									const existingTaskIndex = taskAssigning[i].tasks.findIndex(item => item.id === task_id);
+									if (existingTaskIndex !== -1) {
+										// Task is assigned to another agent, remove it
+										taskAssigning[i].tasks.splice(existingTaskIndex, 1);
+									}
+								}
+							}
+							
+							// Check if task already exists in the current agent's task list
 							const existingTaskIndex = taskAssigning[assigneeAgentIndex].tasks.findIndex(item => item.id === task_id);
 							
 							if (existingTaskIndex !== -1) {
