@@ -1349,9 +1349,14 @@ async def mcp_agent(options: Chat):
     ]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
-            tools = [*tools, *await get_mcp_tools(options.installed_mcp)]
+            mcp_tools = await get_mcp_tools(options.installed_mcp)
+            traceroot_logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.task_id}")
+            if mcp_tools:
+                tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in mcp_tools]
+                traceroot_logger.debug(f"MCP tools: {tool_names}")
+            tools = [*tools, *mcp_tools]
         except Exception as e:
-            logger.debug(repr(e))
+            traceroot_logger.debug(repr(e))
 
     task_lock = get_task_lock(options.task_id)
     agent_id = str(uuid.uuid4())
@@ -1438,11 +1443,42 @@ async def get_mcp_tools(mcp_server: McpServers):
     traceroot_logger.info(f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
     if len(mcp_server["mcpServers"]) == 0:
         return []
-    mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
+    
+    mcp_toolkit = None
     try:
+        mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
         await mcp_toolkit.connect()
         traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
+        
+        tools = mcp_toolkit.get_tools()
+        if tools:
+            tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in tools]
+            traceroot_logger.debug(f"MCP tool names: {tool_names}")
+        
+        return tools
+    except asyncio.CancelledError:
+
+        traceroot_logger.info("MCP connection cancelled during get_mcp_tools")
+        return []
+    except RuntimeError as e:
+        if "cancel scope" in str(e):
+
+            traceroot_logger.warning(f"MCP connection scope error, likely due to task cancellation: {e}")
+        else:
+
+            traceroot_logger.error(f"MCP runtime error: {e}", exc_info=True)
+        return []
     except Exception as e:
-        logger.warning(f"Failed to connect MCP toolkit: {e!r}")
+
         traceroot_logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
-    return mcp_toolkit.get_tools()
+        return []
+    finally:
+        # Ensure proper cleanup without causing scope issues
+        if mcp_toolkit is not None:
+            try:
+                # Don't explicitly close here as it may cause scope issues
+                # Let the toolkit handle its own cleanup
+                pass
+            except Exception as cleanup_error:
+
+                traceroot_logger.debug(f"MCP toolkit cleanup error: {cleanup_error}")
