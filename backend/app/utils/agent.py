@@ -1465,7 +1465,7 @@ async def get_mcp_tools(mcp_server: McpServers):
             server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
 
     try:
-        mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
+        mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
         await mcp_toolkit.connect()
         
         traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
