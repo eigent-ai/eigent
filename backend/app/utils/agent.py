@@ -1455,6 +1455,15 @@ async def get_mcp_tools(mcp_server: McpServers):
     if len(mcp_server["mcpServers"]) == 0:
         return []
     
+    # Ensure unified auth directory for all mcp-remote servers to avoid re-authentication on each task
+    config_dict = {**mcp_server}
+    for server_config in config_dict["mcpServers"].values():
+        if "env" not in server_config:
+            server_config["env"] = {}
+        # Set global auth directory to persist authentication across tasks
+        if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
+            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
+
     try:
         mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
         await mcp_toolkit.connect()
