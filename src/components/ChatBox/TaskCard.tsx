@@ -22,7 +22,7 @@ import {
 	CircleSlash,
 } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
-import { TaskState } from "../TaskState";
+import { TaskState, TaskStateType } from "../TaskState";
 
 interface TaskCardProps {
 	taskInfo: any[];
@@ -34,6 +34,9 @@ interface TaskCardProps {
 	onAddTask: () => void;
 	onUpdateTask: (taskIndex: number, content: string) => void;
 	onDeleteTask: (taskIndex: number) => void;
+	selectedStates?: TaskStateType[];
+	onStateChange?: (selectedStates: TaskStateType[]) => void;
+	clickable?: boolean;
 }
 
 export function TaskCard({
@@ -45,6 +48,9 @@ export function TaskCard({
 	onAddTask,
 	onUpdateTask,
 	onDeleteTask,
+	selectedStates = [],
+	onStateChange,
+	clickable = true,
 }: TaskCardProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
@@ -141,11 +147,33 @@ export function TaskCard({
 						<div className="flex items-center gap-2 ">
 							{taskType === 1 && (
 								<TaskState
-									done={0}
-									progress={
-										taskInfo.filter((task) => task.content !== "").length || 0
+									done={
+										taskInfo.filter(
+											(task) =>
+												task.status === "completed" || task.status === "failed"
+										).length || 0
 									}
-									skipped={0}
+									progress={
+										taskInfo.filter(
+											(task) =>
+												task.status !== "completed" &&
+												task.status !== "failed" &&
+												task.status !== "skipped" &&
+												task.status !== "waiting" &&
+												task.status !== ""
+										).length || 0
+									}
+									skipped={
+										taskInfo.filter(
+											(task) =>
+												task.status === "skipped" ||
+												task.status === "waiting" ||
+												task.status === ""
+										).length || 0
+									}
+									selectedStates={selectedStates}
+									onStateChange={onStateChange}
+									clickable={clickable}
 								/>
 							)}
 							{taskType !== 1 && (
@@ -162,13 +190,19 @@ export function TaskCard({
 												task.status !== "completed" &&
 												task.status !== "failed" &&
 												task.status !== "skipped" &&
-												task.content !== ""
+												task.status !== "waiting" &&
+												task.status !== ""
 										).length || 0
 									}
 									skipped={
-										taskRunning?.filter((task) => task.status === "skipped")
-											.length || 0
+										taskRunning?.filter(
+											(task) =>
+												task.status === "skipped" || task.status === "waiting" || task.status === ""
+										).length || 0
 									}
+									selectedStates={selectedStates}
+									onStateChange={onStateChange}
+									clickable={clickable}
 								/>
 							)}
 						</div>
@@ -279,7 +313,7 @@ export function TaskCard({
 													{task.status === "running" && (
 														<LoaderCircle
 															size={16}
-															className={`text-icon-success ${
+															className={`text-icon-information ${
 																chatStore.tasks[
 																	chatStore.activeTaskId as string
 																].status === "running" && "animate-spin"
@@ -316,7 +350,7 @@ export function TaskCard({
 												</div>
 												<div className="flex-1 flex flex-col items-start justify-center">
 													<div
-														className={` w-full ${
+														className={` w-full break-words [overflow-wrap:anywhere] whitespace-pre-line ${
 															task.status === "failed"
 																? "text-text-cuation-default"
 																: task.status === "blocked"

@@ -16,6 +16,7 @@ declare global {
 			toolkitStatus?: AgentStatus;
 		}[];
 		failure_count?: number;
+		reAssignTo?:string;
 	}
 	interface FileInfo {
 		name: string;

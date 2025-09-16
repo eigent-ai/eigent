@@ -15,6 +15,7 @@ from app.service.task import (
     task_locks,
 )
 import asyncio
+from app.component.environment import set_user_env_path
 
 
 router = APIRouter(tags=["task"])
@@ -49,6 +50,8 @@ def take_control(id: str, data: TakeControl):
 
 @router.post("/task/{id}/add-agent", name="add new agent")
 def add_agent(id: str, data: NewAgent):
+    # Set user-specific environment path for this thread
+    set_user_env_path(data.env_path)
     load_dotenv(dotenv_path=data.env_path)
     asyncio.run(get_task_lock(id).put_queue(ActionNewAgent(**data.model_dump())))
     return Response(status_code=204)

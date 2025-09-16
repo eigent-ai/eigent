@@ -5,10 +5,36 @@ from fastapi import APIRouter, FastAPI
 from dotenv import load_dotenv
 import importlib
 from typing import Any, overload
+import threading
+
+# Thread-local storage for user-specific environment
+_thread_local = threading.local()
+
+# Default global environment path
+default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+load_dotenv(dotenv_path=default_env_path)
 
 
-env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
-load_dotenv(dotenv_path=env_path)
+def set_user_env_path(env_path: str | None = None):
+    """
+    Set user-specific environment path for current thread.
+    If env_path is None, uses default global environment.
+    """
+    if env_path and os.path.exists(env_path):
+        _thread_local.env_path = env_path
+        # Load user-specific environment variables
+        load_dotenv(dotenv_path=env_path, override=True)
+    else:
+        # Clear thread-local env_path to fall back to global
+        if hasattr(_thread_local, 'env_path'):
+            delattr(_thread_local, 'env_path')
+
+
+def get_current_env_path() -> str:
+    """
+    Get current environment path (either user-specific or default).
+    """
+    return getattr(_thread_local, 'env_path', default_env_path)
 
 
 @overload
@@ -24,6 +50,20 @@ def env(key: str, default: Any) -> Any: ...
 
 
 def env(key: str, default=None):
+    """
+    Get environment variable. 
+    First checks thread-local user-specific environment, 
+    then falls back to global environment.
+    """
+    # If we have a user-specific environment path, try to reload it to get latest values
+    if hasattr(_thread_local, 'env_path') and os.path.exists(_thread_local.env_path):
+        # Temporarily load user-specific env to get the latest value
+        from dotenv import dotenv_values
+        user_env_values = dotenv_values(_thread_local.env_path)
+        if key in user_env_values:
+            return user_env_values[key] or default
+    
+    # Fall back to global environment
     return os.getenv(key, default)
 
 

@@ -8,7 +8,6 @@ const Login = lazy(() => import("@/pages/Login"));
 const Signup = lazy(() => import("@/pages/SignUp"));
 const Home = lazy(() => import("@/pages/Home"));
 const History = lazy(() => import("@/pages/History"));
-const Task = lazy(() => import("@/pages/Task"));
 const Setting = lazy(() => import("@/pages/Setting"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const SettingGeneral = lazy(() => import("@/pages/Setting/General"));
@@ -49,7 +48,6 @@ const AppRoutes = () => (
 		<Route element={<ProtectedRoute />}>
 			<Route element={<Layout />}>
 				<Route path="/" element={<Home />} />
-				<Route path="/task" element={<Task />} />
 				<Route path="/history" element={<History />} />
 				<Route path="/setting" element={<Setting />}>
 					{/* Setting sub-routes */}

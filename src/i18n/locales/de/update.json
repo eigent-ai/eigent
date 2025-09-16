@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "Update-Prüfung fehlgeschlagen",
+	"new-version-available": "Neue Version verfügbar",
+	"download": "Herunterladen",
+	"update-error": "Update-Fehler",
+	"downloading-update": "Update wird heruntergeladen",
+	"complete": "Abgeschlossen",
+	"download-completed": "Download abgeschlossen",
+	"click-to-install-update": "Klicken Sie, um das Update zu installieren",
+	"install": "Installieren"
+}

@@ -63,7 +63,7 @@ const authStore = create<AuthState>()(
 			email: null,
 			user_id: null,
 			appearance: 'light',
-			language: 'en',
+			language: 'system',
 			isFirstLaunch: true,
 			modelType: 'cloud',
 			cloud_model_type: 'gpt-4.1',

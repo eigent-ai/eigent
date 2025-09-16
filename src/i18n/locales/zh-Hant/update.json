@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "更新檢查失敗",
+	"new-version-available": "新版本可用",
+	"download": "下載",
+	"update-error": "更新錯誤",
+	"downloading-update": "下載更新",
+	"complete": "完成",
+	"download-completed": "下載完成",
+	"click-to-install-update": "點擊安裝更新",
+	"install": "安裝"
+}

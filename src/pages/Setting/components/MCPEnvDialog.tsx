@@ -11,7 +11,7 @@ import { Bot, CircleAlert, Eye, EyeOff } from "lucide-react";
 import githubIcon from "@/assets/github.svg";
 import { Input } from "@/components/ui/input";
 import { useState, FC, useEffect } from "react";
-
+import { useTranslation } from "react-i18next";
 interface EnvValue {
 	value: string;
 	required: boolean;
@@ -33,7 +33,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 }) => {
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
 	const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
-
+	const { t } = useTranslation();
 	useEffect(() => {
 		initializeEnvValues(activeMcp);
 	}, [activeMcp]);
@@ -112,7 +112,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 						<DialogTitle className="m-0">
 							<div className="flex gap-xs items-center justify-start">
 								<div className="text-base font-bold leading-10 text-text-action">
-									Configure {activeMcp?.name} Toolkit
+									 {t("setting.configure {name} Toolkit", {name: activeMcp?.name})}
 								</div>
 								<CircleAlert size={16} />
 							</div>
@@ -177,21 +177,21 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 										{envValues[key]?.tip}
 										{key === 'SEARCH_ENGINE_ID' && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
+												{t("setting.get-it-from")}: <a onClick={()=>{
 													window.location.href = "https://developers.google.com/custom-search/v1/overview";
-												}} className="underline text-blue-500">Google Custom Search API</a>
+												}} className="underline text-blue-500">{t("setting.google-custom-search-api")}</a>
 											</div>
 										)}
 										{key === 'GOOGLE_API_KEY' && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
+												{t("setting.get-it-from")}: <a onClick={()=>{
 													window.location.href = "https://console.cloud.google.com/apis/credentials";
-												}} className="underline text-blue-500">Google Cloud Console</a>
+												}} className="underline text-blue-500">{t("setting.google-cloud-console")}</a>
 											</div>
 										)}
 										{key === 'EXA_API_KEY' && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
+												{t("setting.get-it-from")}: <a onClick={()=>{
 													window.location.href = "https://exa.ai";
 												}} className="underline text-blue-500">Exa.ai</a> (Optional)
 											</div>
@@ -207,14 +207,14 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							variant="outline"
 							size="md"
 						>
-							Cancel
+							{t("setting.cancel")}
 						</Button>
 						<Button
 							onClick={handleConfigureMcpEnvSetting}
 							variant="primary"
 							size="md"
 						>
-							Connect
+							{t("setting.connect")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

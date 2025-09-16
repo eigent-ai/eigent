@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "Проверка обновлений не удалась",
+	"new-version-available": "Доступна новая версия",
+	"download": "Скачать",
+	"update-error": "Ошибка обновления",
+	"downloading-update": "Загрузка обновления",
+	"complete": "Завершено",
+	"download-completed": "Загрузка завершена",
+	"click-to-install-update": "Нажмите, чтобы установить обновление",
+	"install": "Установить"
+}

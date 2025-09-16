@@ -202,6 +202,8 @@ export default function Home() {
 							{agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
 						</div>
 						<TaskState
+							all={activeAgent?.tasks?.length || 0}
+							reAssignTo={activeAgent?.tasks?.filter((task) => task.reAssignTo).length || 0}
 							done={
 								activeAgent?.tasks?.filter(
 									(task) =>
@@ -213,11 +215,12 @@ export default function Home() {
 									(task) =>
 										task.status !== "failed" &&
 										task.status !== "completed" &&
-										task.status !== "skipped"
+										task.status !== "skipped"&&
+										task.status !== "waiting"
 								).length || 0
 							}
 							skipped={
-								activeAgent?.tasks?.filter((task) => task.status === "skipped")
+								activeAgent?.tasks?.filter((task) => task.status === "skipped"||task.status==="waiting")
 									.length || 0
 							}
 						/>

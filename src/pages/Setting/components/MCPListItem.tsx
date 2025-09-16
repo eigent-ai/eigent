@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { useState } from "react";
 import type { MCPUserItem } from "./types";
+import { useTranslation } from "react-i18next";
 
 interface MCPListItemProps {
 	item: MCPUserItem;
@@ -31,7 +32,7 @@ export default function MCPListItem({
 	loading,
 }: MCPListItemProps) {
 	const [showMenu, setShowMenu] = useState(false);
-
+	const { t } = useTranslation();
 	return (
 		<div className="p-4 bg-surface-secondary rounded-2xl flex items-center justify-between gap-4 mb-4">
 			<div className="flex items-center gap-xs">
@@ -80,7 +81,7 @@ export default function MCPListItem({
                       setShowMenu(false);
                     }}
 									>
-										<Settings className="w-4 h-4 mr-2 text-gray-500" /> Setting
+										<Settings className="w-4 h-4 mr-2 text-gray-500" /> {t("setting.setting")}
 									</Button>
 								</PopoverClose>
 								<PopoverClose asChild>
@@ -93,7 +94,7 @@ export default function MCPListItem({
 											setShowMenu(false);
 										}}
 									>
-										<Trash2 className="w-4 h-4 mr-2" /> Delete
+										<Trash2 className="w-4 h-4 mr-2" /> {t("setting.delete")}
 									</Button>
 								</PopoverClose>
 							</div>

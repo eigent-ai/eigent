@@ -25,6 +25,7 @@ import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
+import { useTranslation } from "react-i18next";
 
 interface EnvValue {
 	value: string;
@@ -54,6 +55,7 @@ export function AddWorker({
 	edit?: boolean;
 	workerInfo?: Agent | null;
 }) {
+	const { t } = useTranslation();
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const chatStore = useChatStore();
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
@@ -173,12 +175,12 @@ export function AddWorker({
 		setNameError("");
 		
 		if (!workerName) {
-			setNameError("Worker name cannot be empty");
+			setNameError(t("workforce.worker-name-cannot-be-empty"));
 			return;
 		}
 
 		if (!edit && workerList.find((worker: any) => worker.name === workerName)) {
-			setNameError("Worker name already exists");
+			setNameError(t("workforce.worker-name-already-exists"));
 			return;
 		}
 		let mcpLocal: any = {};
@@ -302,13 +304,13 @@ export function AddWorker({
 							}}
 						>
 							<Edit size={16} />
-							Edit
+							{t("workforce.edit")}
 						</Button>
 					) : (
 						<Button onClick={() => setDialogOpen(true)} variant="ghost">
 							<Plus className="w-6 h-6 text-icon-primary" />
 							<span className="text-text-body text-[13px] leading-13 font-bold">
-								New Worker
+								{t("workforce.new-worker")}
 							</span>
 						</Button>
 					)}
@@ -326,8 +328,8 @@ export function AddWorker({
 								)}
 								<div className="text-base font-bold leading-10 text-text-action">
 									{showEnvConfig
-										? "Configure MCP Server"
-										: "Add Your MCP Server"}
+										? t("workforce.configure-mcp-server")
+										: t("workforce.add-your-mcp-server")}
 								</div>
 								<CircleAlert size={16} />
 							</div>
@@ -393,10 +395,10 @@ export function AddWorker({
 									variant="ghost"
 									size="sm"
 								>
-									Cancel
+									{t("workforce.cancel")}
 								</Button>
 								<Button size="sm" onClick={handleConfigureMcpEnvSetting}>
-									<span>Configure</span>
+									<span>{t("workforce.configure")}</span>
 									<ArrowRight size={16} />
 								</Button>
 							</DialogFooter>
@@ -442,7 +444,7 @@ export function AddWorker({
 								</div>
 								<div className="flex flex-col gap-sm ">
 									<div className="text-text-body text-sm leading-normal font-bold">
-										Description (Optional)
+										{t("workforce.description-optional")}
 									</div>
 									<Textarea
 										placeholder=""
@@ -454,7 +456,7 @@ export function AddWorker({
 								<div>
 									<div className="flex items-center gap-sm ">
 										<div className="text-text-body text-sm leading-normal font-bold">
-											Agent Tool
+											{t("workforce.agent-tool")}
 										</div>
 										<CircleAlert size={16} />
 									</div>
@@ -469,11 +471,11 @@ export function AddWorker({
 							<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
 								<DialogClose asChild>
 									<Button onClick={resetForm} variant="ghost" size="sm">
-										Cancel
+										{t("workforce.cancel")}
 									</Button>
 								</DialogClose>
 								<Button size="sm" onClick={handleAddWorker} type="submit">
-									<span>Save changes</span>
+									<span>{t("workforce.save-changes")}</span>
 								</Button>
 							</DialogFooter>
 						</>

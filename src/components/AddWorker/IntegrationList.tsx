@@ -13,6 +13,7 @@ import { capitalizeFirstLetter } from "@/lib";
 import { MCPEnvDialog } from "@/pages/Setting/components/MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
+import { useTranslation } from "react-i18next";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -42,6 +43,7 @@ export default function IntegrationList({
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<any | null>(null);
 	const { email, checkAgentTool } = useAuthStore();
+	const { t } = useTranslation();
 	// local installed status
 	const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
 	// configs cache
@@ -374,10 +376,10 @@ export default function IntegrationList({
 									"Reddit",
 									"Github",
 								].includes(item.name)
-									? "Coming Soon"
+									? t("setting.coming-soon")
 									: isInstalled
-									? "Uninstall"
-									: "Install"}
+									? t("setting.uninstall")
+									: t("setting.install")}
 							</Button>
 						)}
 					</div>

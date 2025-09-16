@@ -25,6 +25,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         use_shell_mode: bool = True,
         clone_current_env: bool = False,
         safe_mode: bool = True,
+        interactive: bool = False,
+        log_dir: str | None = None,
     ):
         self.api_task_id = api_task_id
         if agent_name is not None:
@@ -39,6 +41,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             use_shell_mode=use_shell_mode,
             clone_current_env=clone_current_env,
             safe_mode=safe_mode,
+            interactive=interactive,
+            log_dir=log_dir,
         )
 
     def _update_terminal_output(self, output: str):

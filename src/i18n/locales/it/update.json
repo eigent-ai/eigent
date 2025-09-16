@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "Controllo aggiornamento fallito",
+	"new-version-available": "Nuova versione disponibile",
+	"download": "Scarica",
+	"update-error": "Errore aggiornamento",
+	"downloading-update": "Download aggiornamento in corso",
+	"complete": "Completo",
+	"download-completed": "Download completato",
+	"click-to-install-update": "Clicca per installare l'aggiornamento",
+	"install": "Installa"
+}

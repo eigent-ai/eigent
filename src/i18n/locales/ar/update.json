@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "فشل التحقق من التحديث",
+	"new-version-available": "في اصدار جديد",
+	"download": "تنزيل",
+	"update-error": "خطأ في التحديث",
+	"downloading-update": "تنزيل التحديث",
+	"complete": "مكتمل",
+	"download-completed": "اكتمل التنزيل",
+	"click-to-install-update": "انقر لتثبيت التحديث",
+	"install": "تثبيت"
+}

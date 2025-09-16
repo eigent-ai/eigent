@@ -17,7 +17,9 @@ import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
 import chevron_left from "@/assets/chevron_left.svg";
 import { getAuthStore } from "@/store/authStore";
+import { useTranslation } from "react-i18next";
 function HeaderWin() {
+	const {t} = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
 	const controlsRef = useRef<HTMLDivElement>(null);
 	const [platform, setPlatform] = useState<string>("");
@@ -102,7 +104,7 @@ function HeaderWin() {
 				chatStore.activeTaskId as string
 			].summaryTask.split("|")[0];
 		}
-		return "New Project";
+		return t("chat.new-project");
 	}, [
 		chatStore.activeTaskId,
 		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
@@ -156,11 +158,11 @@ function HeaderWin() {
 									className="font-bold text-base no-drag max-w-56 truncate"
 									onClick={createNewProject}
 								>
-									{activeTaskTitle}
+									{t("chat.new-project")}
 								</Button>
 							) : (
 								<div className="font-bold leading-10 text-base min-w-10 max-w-56 truncate">
-									{activeTaskTitle}
+									{t("chat.new-project")}
 								</div>
 							)}
 						</>
@@ -180,7 +182,7 @@ function HeaderWin() {
 						className="mr-2 no-drag leading-tight"
 					>
 						<FileDown className="w-4 h-4" />
-						Report a bug
+						{t("layout.report-bug")}
 					</Button>
 					<Button
 						onClick={() => {
@@ -195,7 +197,7 @@ function HeaderWin() {
 							alt="chevron_left"
 							className="w-4 h-4 text-button-primary-icon-default"
 						/>
-						Refer Friends
+						{t("layout.refer-friends")}
 					</Button>
 					<Button
 						onClick={() => navigate("/setting")}

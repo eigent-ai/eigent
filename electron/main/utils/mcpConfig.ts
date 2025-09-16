@@ -8,6 +8,7 @@ const MCP_CONFIG_PATH = path.join(MCP_CONFIG_DIR, 'mcp.json');
 type McpServerConfig = {
   command: string;
   args: string[];
+  description?: string;
   env?: Record<string, string>;
 } | {
   url: string;
@@ -17,7 +18,7 @@ type McpServersConfig = {
   [name: string]: McpServerConfig;
 };
 
-type ConfigFile = {
+export type ConfigFile = {
   mcpServers: McpServersConfig;
 };
 
@@ -42,6 +43,28 @@ export function readMcpConfig(): ConfigFile {
     if (!parsed.mcpServers || typeof parsed.mcpServers !== 'object') {
       return getDefaultConfig();
     }
+    
+    // Normalize args field - ensure it's always an array
+    Object.keys(parsed.mcpServers).forEach(serverName => {
+      const server = parsed.mcpServers[serverName];
+      if (server.args) {
+        const args = server.args as any;
+        if (typeof args === 'string') {
+          try {
+            // Try to parse as JSON string first
+            server.args = JSON.parse(args);
+          } catch (e) {
+            // If parsing fails, split by comma as fallback
+            server.args = args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+          }
+        }
+        // Ensure it's always an array of strings
+        if (Array.isArray(server.args)) {
+          server.args = server.args.map((arg: any) => String(arg));
+        }
+      }
+    });
+    
     return parsed;
   } catch (e) {
     return getDefaultConfig();
@@ -58,7 +81,22 @@ export function writeMcpConfig(config: ConfigFile): void {
 export function addMcp(name: string, mcp: McpServerConfig): void {
   const config = readMcpConfig();
   if (!config.mcpServers[name]) {
-    config.mcpServers[name] = mcp;
+    // Ensure args is an array before adding
+    const normalizedMcp = { ...mcp };
+    if ('args' in normalizedMcp && normalizedMcp.args) {
+      const args = normalizedMcp.args as any;
+      if (typeof args === 'string') {
+        try {
+          normalizedMcp.args = JSON.parse(args);
+        } catch (e) {
+          normalizedMcp.args = args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+        }
+      }
+      if (Array.isArray(normalizedMcp.args)) {
+        normalizedMcp.args = normalizedMcp.args.map((arg: any) => String(arg));
+      }
+    }
+    config.mcpServers[name] = normalizedMcp;
     writeMcpConfig(config);
   }
 }
@@ -74,6 +112,21 @@ export function removeMcp(name: string): void {
 
 export function updateMcp(name: string, mcp: McpServerConfig): void {
   const config = readMcpConfig();
-  config.mcpServers[name] = mcp;
+  // Ensure args is an array before updating
+  const normalizedMcp = { ...mcp };
+  if ('args' in normalizedMcp && normalizedMcp.args) {
+    const args = normalizedMcp.args as any;
+    if (typeof args === 'string') {
+      try {
+        normalizedMcp.args = JSON.parse(args);
+      } catch (e) {
+        normalizedMcp.args = args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+      }
+    }
+    if (Array.isArray(normalizedMcp.args)) {
+      normalizedMcp.args = normalizedMcp.args.map((arg: any) => String(arg));
+    }
+  }
+  config.mcpServers[name] = normalizedMcp;
   writeMcpConfig(config);
 } 

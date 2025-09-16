@@ -11,6 +11,8 @@ import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
 import { useChatStore } from "@/store/chatStore";
+import { LocaleEnum, switchLanguage } from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 import {
 	Select,
@@ -23,6 +25,7 @@ import {
 } from "@/components/ui/select";
 
 export default function SettingGeneral() {
+	const { t } = useTranslation();
 	const authStore = useAuthStore();
 	const navigate = useNavigate();
 	const [isLoading, setIsLoading] = useState(false);
@@ -38,15 +41,63 @@ export default function SettingGeneral() {
 	const [themeList, setThemeList] = useState<any>([
 		{
 			img: light,
-			label: "Light",
+			label: "setting.light",
 			value: "light",
 		},
 		{
 			img: transparent,
-			label: "Transparent",
+			label: "setting.transparent",
 			value: "transparent",
 		},
 	]);
+
+	const languageList = [
+		{
+			key: LocaleEnum.English,
+			label: "English",
+		},
+		{
+			key: LocaleEnum.SimplifiedChinese,
+			label: "简体中文",
+		},
+		{
+			key: LocaleEnum.TraditionalChinese,
+			label: "繁體中文",
+		},
+		{
+			key: LocaleEnum.Japanese,
+			label: "日本語",
+		},
+		{
+			key: LocaleEnum.Arabic,
+			label: "العربية",
+		},
+		{
+			key: LocaleEnum.French,
+			label: "Français",
+		},
+		{
+			key: LocaleEnum.German,
+			label: "Deutsch",
+		},
+		{
+			key: LocaleEnum.Russian,
+			label: "Русский",
+		},
+		{
+			key: LocaleEnum.Spanish,
+			label: "Español",
+		},
+		{
+			key: LocaleEnum.Korean,
+			label: "한국어",
+		},
+		{
+			key: LocaleEnum.Italian,
+			label: "Italiano",
+		},
+	];
+
 	useEffect(() => {
 		const platform = window.electronAPI.getPlatform();
 		console.log(platform);
@@ -54,12 +105,12 @@ export default function SettingGeneral() {
 			setThemeList([
 				{
 					img: light,
-					label: "Light",
+					label: "setting.light",
 					value: "light",
 				},
 				{
 					img: transparent,
-					label: "Transparent",
+					label: "setting.transparent",
 					value: "transparent",
 				},
 			]);
@@ -67,7 +118,7 @@ export default function SettingGeneral() {
 			setThemeList([
 				{
 					img: light,
-					label: "Light",
+					label: "setting.light",
 					value: "light",
 				},
 			]);
@@ -78,10 +129,12 @@ export default function SettingGeneral() {
 		<div className="space-y-8">
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
 				<div className="text-base font-bold leading-12 text-text-body">
-					Account
+					{t("setting.account")}
 				</div>
 				<div className="text-sm leading-13 mb-4">
-					You are currently signed in with {authStore.email}
+					{t("setting.you-are-currently-signed-in-with", {
+						email: authStore.email,
+					})}
 				</div>
 				<div className="flex items-center gap-sm">
 					<Button
@@ -92,7 +145,7 @@ export default function SettingGeneral() {
 						size="xs"
 					>
 						<Settings className="w-4 h-4 text-button-primary-icon-default" />
-						Manage
+						{t("setting.manage")}
 					</Button>
 					<Button
 						variant="outline"
@@ -104,32 +157,37 @@ export default function SettingGeneral() {
 						}}
 					>
 						<LogOut className="w-4 h-4 text-button-tertiery-text-default" />
-						Log out
+						{t("setting.log-out")}
 					</Button>
 				</div>
 			</div>
-			{/* <div className="px-6 py-4 bg-surface-secondary rounded-2xl">
+			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
 				<div className="text-base font-bold leading-12 text-text-primary">
-					Language
+					{t("setting.language")}
 				</div>
 				<div className="mt-md">
-					<Select value={language} onValueChange={setLanguage}>
+					<Select value={language} onValueChange={switchLanguage}>
 						<SelectTrigger>
-							<SelectValue placeholder="Select a fruit" />
+							<SelectValue placeholder={t("setting.select-language")} />
 						</SelectTrigger>
 						<SelectContent className="bg-input-bg-default border">
 							<SelectGroup>
-								<SelectItem value="system">System Default</SelectItem>
-								<SelectItem value="zh-cn">简体中文</SelectItem>
-								<SelectItem value="en">English</SelectItem>
+								<SelectItem value="system">
+									{t("setting.system-default")}
+								</SelectItem>
+								{languageList.map((item) => (
+									<SelectItem key={item.key} value={item.key}>
+										{item.label}
+									</SelectItem>
+								))}
 							</SelectGroup>
 						</SelectContent>
 					</Select>
 				</div>
-			</div> */}
+			</div>
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
 				<div className="text-base font-bold leading-12 text-text-primary">
-					Appearance
+					{t("setting.appearance")}
 				</div>
 				<div className="flex items-center gap-md mt-md">
 					{themeList.map((item: any) => (
@@ -150,7 +208,7 @@ export default function SettingGeneral() {
 									item.value == appearance ? "underline" : ""
 								}`}
 							>
-								{item.label}
+								{t(item.label)}
 							</div>
 						</div>
 					))}

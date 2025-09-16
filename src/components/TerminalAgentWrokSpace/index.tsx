@@ -17,9 +17,11 @@ import {
 import { Button } from "../ui/button";
 import { fetchPut } from "@/api/http";
 import Terminal from "@/components/Terminal";
+import { useTranslation } from "react-i18next";
 
 export default function TerminalAgentWrokSpace() {
 	const chatStore = useChatStore();
+	const { t } = useTranslation();
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -119,7 +121,7 @@ export default function TerminalAgentWrokSpace() {
 					>
 						<ChevronLeft size={16} className="text-text-inverse-primary" />
 						<span className="text-sm text-text-inverse-primary font-bold leading-13">
-							Give back to Agent
+							{t("chat.give-back-to-agent")}
 						</span>
 					</Button>
 				</div>

@@ -14,6 +14,7 @@ import {
 	DialogDescription,
 	DialogClose,
 } from "@/components/ui/dialog";
+import { useTranslation } from "react-i18next";
 
 if (typeof globalThis !== "undefined") {
 	(globalThis as any).MonacoEnvironment = {
@@ -68,6 +69,7 @@ export default function MCPAddDialog({
 	onInstall,
 }: MCPAddDialogProps) {
 	const [jsonError, setJsonError] = useState<string | null>(null);
+	const { t } = useTranslation();
 	// when the dialog is opened, automatically format the JSON
 	React.useEffect(() => {
 		if (open && localJson) {
@@ -100,19 +102,19 @@ export default function MCPAddDialog({
 			<DialogContent className="min-w-[340px] w-[600px] max-w-[95vw] p-0">
 				<DialogHeader className=" bg-gray-100 rounded-t-xl px-6 ">
 					<DialogTitle className="font-bold text-lg text-gray-800 ">
-						Add your MCP server
+						{t("setting.add-your-mcp-server")}
 					</DialogTitle>
 				</DialogHeader>
 				<div className="px-md py-md bg-white-100% rounded-b-xl">
 					<div className="mb-4 text-sm text-gray-600 rounded-xl">
-						Add a local MCP server by providing a valid JSON configuration.{" "}
+						{t("setting.add-a-local-mcp-server-by-providing-a-valid-json-configuration")}
 						<a
 							href="https://modelcontextprotocol.io/docs/getting-started/intro"
 							target="_blank"
 							rel="noopener noreferrer"
 							className="text-blue-600 underline"
 						>
-							Learn more
+							{t("setting.learn-more")}
 						</a>
 					</div>
 					{jsonError && (
@@ -146,7 +148,7 @@ export default function MCPAddDialog({
 							variant="primary"
 							size="sm"
 						>
-							{installing ? "Installing..." : "Install"}
+							{installing ? t("setting.installing") : t("setting.install")}
 							<ArrowRight className="w-4 h-4" />
 						</Button>
 					</DialogFooter>

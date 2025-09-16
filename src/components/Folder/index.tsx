@@ -16,6 +16,7 @@ import { useChatStore } from "@/store/chatStore";
 import { MarkDown } from "@/components/ChatBox/MarkDown";
 import { useAuthStore } from "@/store/authStore";
 import { proxyFetchGet } from "@/api/http";
+import { useTranslation } from "react-i18next";
 
 // Type definitions
 interface FileTreeNode {
@@ -154,6 +155,7 @@ function downloadByBrowser(url: string) {
 export default function Folder({ data }: { data?: Agent }) {
 	const chatStore = useChatStore();
 	const authStore = useAuthStore();
+	const { t } = useTranslation();
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 	const [loading, setLoading] = useState(false);
 
@@ -331,7 +333,7 @@ export default function Folder({ data }: { data?: Agent }) {
 						(item: any) => item.name === chatStoreSelectedFile.name
 					);
 					console.log("file", file);
-					if (file) {
+					if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
 						selectedFileChange(file as FileInfo, isShowSourceCode);
 					}
 				}
@@ -353,7 +355,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			const file = fileGroups[0].files.find(
 				(item: any) => item.path === chatStoreSelectedFile.path
 			);
-			if (file) {
+			if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
 				selectedFileChange(file as FileInfo, isShowSourceCode);
 			}
 		}
@@ -361,7 +363,7 @@ export default function Folder({ data }: { data?: Agent }) {
 		chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
 		fileGroups,
 		isShowSourceCode,
-		chatStore.activeTaskId
+		chatStore.activeTaskId,
 	]);
 
 	const handleBack = () => {
@@ -394,7 +396,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									<ChevronLeft />
 								</Button>
 								<span className="text-xl font-bold text-primary whitespace-nowrap">
-									Agent Folder
+									{t("chat.agent-folder")}
 								</span>
 							</div>
 						)}
@@ -405,7 +407,7 @@ export default function Folder({ data }: { data?: Agent }) {
 							className={`${
 								isCollapsed ? "w-full" : ""
 							} flex items-center justify-center`}
-							title={isCollapsed ? "open" : "close"}
+							title={isCollapsed ? t("chat.open") : t("chat.close")}
 						>
 							<ChevronsLeft
 								className={`w-6 h-6 text-zinc-500 ${
@@ -423,7 +425,7 @@ export default function Folder({ data }: { data?: Agent }) {
 							<Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
 							<input
 								type="text"
-								placeholder="Search"
+								placeholder={t("chat.search")}
 								className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
 							/>
 						</div>
@@ -436,7 +438,7 @@ export default function Folder({ data }: { data?: Agent }) {
 						<div className="p-2">
 							<div className="mb-2">
 								<div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
-									Files
+									{t("chat.files")}
 								</div>
 								<FileTree
 									node={fileTree}
@@ -456,7 +458,7 @@ export default function Folder({ data }: { data?: Agent }) {
 							{fileGroups.map((group) =>
 								group.files.map((file) => (
 									<button
-										key={file.name}
+										key={file.path}
 										onClick={() => selectedFileChange(file, isShowSourceCode)}
 										className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
 											selectedFile?.name === file.name
@@ -564,7 +566,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									<div className="flex items-center justify-center h-full text-zinc-500">
 										<div className="text-center">
 											<FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
-											<p className="text-sm">Zip file is not supported yet.</p>
+											<p className="text-sm">{t("folder.zip-file-is-not-supported-yet")}</p>
 										</div>
 									</div>
 								) : [
@@ -599,7 +601,7 @@ export default function Folder({ data }: { data?: Agent }) {
 								<div className="flex items-center justify-center h-full">
 									<div className="text-center">
 										<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-										<p className="text-sm text-zinc-500">Loading...</p>
+										<p className="text-sm text-zinc-500">{t("chat.loading")}</p>
 									</div>
 								</div>
 							)
@@ -607,7 +609,7 @@ export default function Folder({ data }: { data?: Agent }) {
 							<div className="flex items-center justify-center h-full text-zinc-500">
 								<div className="text-center">
 									<FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
-									<p className="text-sm">Select a file to view its contents</p>
+									<p className="text-sm">{t("chat.select-a-file-to-view-its-contents")}</p>
 								</div>
 							</div>
 						)}

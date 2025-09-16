@@ -17,7 +17,7 @@ import { capitalizeFirstLetter } from "@/lib";
 import { MCPEnvDialog } from "./MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
-
+import { useTranslation } from "react-i18next";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -36,6 +36,7 @@ interface IntegrationListProps {
 export default function IntegrationList({
 	items,
 }: IntegrationListProps) {
+	const { t } = useTranslation();
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<any | null>(null);
 	const { email, checkAgentTool } = useAuthStore();
@@ -364,10 +365,10 @@ export default function IntegrationList({
 								"Reddit",
 								"Github",
 							].includes(item.name)
-								? "Coming Soon"
+								? t("setting.coming-soon")
 								: isInstalled
-								? "Uninstall"
-								: "Install"}
+								? t("setting.uninstall")
+								: t("setting.install")}
 						</Button>
 					</div>
 				);

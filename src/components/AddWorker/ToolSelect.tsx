@@ -16,7 +16,7 @@ import IntegrationList from "./IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { capitalizeFirstLetter } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
-
+import { useTranslation } from "react-i18next";
 interface McpItem {
 	id: number;
 	name: string;
@@ -40,6 +40,7 @@ const ToolSelect = forwardRef<
 	{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> },
 	ToolSelectProps
 >(({ onShowEnvConfig, onSelectedToolsChange, initialSelectedTools }, ref) => {
+	const { t } = useTranslation();
 	// state management - remove internal selected state, use parent passed initialSelectedTools
 	const [keyword, setKeyword] = useState<string>("");
 	const [mcpList, setMcpList] = useState<McpItem[]>([]);
@@ -230,6 +231,7 @@ const ToolSelect = forwardRef<
 
 	// select management
 	const addOption = (item: McpItem, isLocal?: boolean) => {
+		setKeyword("");
 		const currentSelected = initialSelectedTools || [];
 		console.log(currentSelected.find((i) => i.id === item.id));
 		if (isLocal) {
@@ -244,6 +246,7 @@ const ToolSelect = forwardRef<
 			const newSelected = [...currentSelected, { ...item, isLocal }];
 			onSelectedToolsChange?.(newSelected);
 		}
+		
 	};
 
 	const removeOption = (item: McpItem) => {
@@ -275,10 +278,10 @@ const ToolSelect = forwardRef<
 	};
 
 	const getInstallButtonText = (itemId: number) => {
-		if (installedIds.includes(itemId)) return "Installed";
-		if (installing[itemId]) return "Installing...";
-		if (installed[itemId]) return "Installed";
-		return "Install";
+		if (installedIds.includes(itemId)) return t("setting.installed");
+		if (installing[itemId]) return t("setting.installing");
+		if (installed[itemId]) return t("setting.installed");
+		return t("setting.install");
 	};
 
 	// Effects
@@ -450,7 +453,7 @@ const ToolSelect = forwardRef<
 					className="leading-17 text-xs font-bold text-button-secondary-text-default h-6 px-sm py-xs bg-button-secondary-fill-default hover:bg-button-tertiery-text-default rounded-md shadow-sm"
 					disabled={true}
 				>
-					Installed
+					{t("setting.installed")}
 				</Button>
 			</div>
 		</div>
@@ -471,7 +474,7 @@ const ToolSelect = forwardRef<
 						onChange={(e) => setKeyword(e.target.value)}
 						onFocus={() => setIsOpen(true)}
 						ref={inputRef}
-						className="bg-transparent border-none !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 w-10 !h-[20px] p-0"
+						className="bg-transparent border-none !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 w-auto !h-[20px] p-0"
 					/>
 				</div>
 			</div>

@@ -2,15 +2,16 @@ import type { ProgressInfo } from "electron-updater";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {Progress} from "@/components/ui/progress";
+import { useTranslation } from "react-i18next";
 
 const Update = () => {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
-
+  const { t } = useTranslation();
   const checkUpdate = async () => {
     const result = await window.ipcRenderer.invoke("check-update");
     if (result?.error) {
-      toast.error("update check failed", {
+      toast.error(t("update.update-check-failed"), {
         description: result.error.message,
       });
     }
@@ -20,10 +21,10 @@ const Update = () => {
     (_event: Electron.IpcRendererEvent, info: VersionInfo) => {
 
       if (info.update) {
-        toast("new version available", {
+        toast(t("update.new-version-available"), {
           description: `v${info.version} → v${info.newVersion}`,
           action: {
-            label: "download",
+            label: t("update.download"),
             onClick: () => {
               setIsDownloading(true);
               setDownloadProgress(0);
@@ -39,7 +40,7 @@ const Update = () => {
 
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
-      toast.error("update error", {
+        toast.error(t("update.update-error"), {
         description: err.message,
       });
     },
@@ -57,12 +58,12 @@ const Update = () => {
   // listen to download progress and update toast
   useEffect(() => {
     if (isDownloading) {
-      toast.custom((t) => (
+      toast.custom((toastId) => (
         <div className="bg-white-100% shadow-lg p-4 rounded-lg w-[300px]">
-          <div className="text-sm font-medium mb-2">Downloading update...</div>
+          <div className="text-sm font-medium mb-2">{t("update.downloading-update")}</div>
           <Progress value={downloadProgress} className="mb-2" />
           <div className="text-xs text-gray-500">
-            {Math.round(downloadProgress)}% complete
+            {Math.round(downloadProgress)}% {t("update.complete")}
           </div>
         </div>
       ), {
@@ -76,10 +77,10 @@ const Update = () => {
     (_event: Electron.IpcRendererEvent) => {
       toast.dismiss("download-progress");
       setIsDownloading(false);
-      toast.success("download completed", {
-        description: "click to install update",
+      toast.success(t("update.download-completed"), {
+        description: t("update.click-to-install-update"),
         action: {
-          label: "install",
+          label: t("update.install"),
           onClick: () => window.ipcRenderer.invoke("quit-and-install"),
         },
         duration: Infinity,

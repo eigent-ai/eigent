@@ -44,11 +44,13 @@ import {
 	DialogFooter,
 	DialogDescription,
 } from "@/components/ui/dialog";
+import { useTranslation } from "react-i18next";
 
 export default function SettingModels() {
 	const { modelType, cloud_model_type, setModelType, setCloudModelType } =
 		useAuthStore();
 	const navigate = useNavigate();
+	const { t } = useTranslation();
 	const [items, setItems] = useState<Provider[]>(
 		INIT_PROVODERS.filter((p) => p.id !== "local")
 	);
@@ -178,20 +180,20 @@ export default function SettingModels() {
 		const newErrors = [...errors];
 		if (items[idx].id !== "local") {
 			if (!apiKey || apiKey.trim() === "") {
-				newErrors[idx].apiKey = "API Key can not be empty!";
+				newErrors[idx].apiKey = t("setting.api-key-can-not-be-empty");
 				hasError = true;
 			} else {
 				newErrors[idx].apiKey = "";
 			}
 		}
 		if (!apiHost || apiHost.trim() === "") {
-			newErrors[idx].apiHost = "API Host can not be empty!";
+			newErrors[idx].apiHost = t("setting.api-host-can-not-be-empty");
 			hasError = true;
 		} else {
 			newErrors[idx].apiHost = "";
 		}
 		if (!model_type || model_type.trim() === "") {
-			newErrors[idx].model_type = "Model Type can not be empty!";
+			newErrors[idx].model_type = t("setting.model-type-can-not-be-empty");
 			hasError = true;
 		} else {
 			newErrors[idx].model_type = "";
@@ -219,14 +221,14 @@ export default function SettingModels() {
 			});
 			if (res.is_tool_calls && res.is_valid) {
 				console.log("success");
-				toast("validate success", {
+				toast(t("setting.validate-success"), {
 					description:
-						"The model has been verified to support function calling, which is required to use Eigent.",
+						t("setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"),
 					closeButton: true,
 				});
 			} else {
 				console.log("failed", res.message);
-				toast("validate failed", {
+				toast(t("setting.validate-failed"), {
 					description: (
 						<div
 							style={{
@@ -241,10 +243,10 @@ export default function SettingModels() {
 									variant="primary"
 									onClick={() => {
 										navigator.clipboard.writeText(res.message);
-										toast.success("Copied to clipboard");
+										toast.success(t("setting.copied-to-clipboard"));
 									}}
 								>
-									Copy
+									{t("setting.copy")}
 								</Button>
 							</div>
 						</div>
@@ -325,7 +327,7 @@ export default function SettingModels() {
 		setLocalError(null);
 		setLocalInputError(false);
 		if (!localEndpoint) {
-			setLocalError("Endpoint URL can not be empty!");
+			setLocalError(t("setting.endpoint-url-can-not-be-empty"));
 			setLocalInputError(true);
 			setLocalVerifying(false);
 			return;
@@ -376,14 +378,14 @@ export default function SettingModels() {
 				});
 				if (res.is_tool_calls && res.is_valid) {
 					console.log("success");
-					toast("validate success", {
+					toast(t("setting.validate-success"), {
 						description:
-							"The model has been verified to support function calling, which is required to use Eigent.",
+							t("setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"),
 						closeButton: true,
 					});
 				} else {
 					console.log("failed", res.message);
-					toast("validate failed", {
+					toast(t("setting.validate-failed"), {
 						description: (
 							<div
 								style={{
@@ -398,10 +400,10 @@ export default function SettingModels() {
 										variant="primary"
 										onClick={() => {
 											navigator.clipboard.writeText(res.message);
-											toast.success("Copied to clipboard");
+											toast.success(t("setting.copied-to-clipboard"));
 										}}
 									>
-										Copy
+										{t("setting.copy")}
 									</Button>
 								</div>
 							</div>
@@ -447,7 +449,7 @@ export default function SettingModels() {
 			}
 		} catch (e: any) {
 			setLocalError(
-				e.message || "Verification failed, please check Endpoint URL"
+				e.message || t("setting.verification-failed-please-check-endpoint-url")
 			);
 			setLocalInputError(true);
 		} finally {
@@ -562,7 +564,7 @@ export default function SettingModels() {
 					<div className="self-stretch flex flex-col justify-start items-start gap-1">
 						<div className="self-stretch h-6 inline-flex justify-start items-center gap-2.5">
 							<div className="flex-1 justify-center text-text-body text-base font-bold leading-snug">
-								Eigent Cloud Version
+								{t("setting.eigent-cloud-version")}
 							</div>
 							<Switch
 								checked={cloudPrefer}
@@ -582,10 +584,10 @@ export default function SettingModels() {
 						</div>
 						<div className="self-stretch justify-center">
 							<span className="text-text-body text-xs font-normal font-['Inter'] leading-tight">
-								You are currently subscribed to the{" "}
+								{t("setting.you-are-currently-subscribed-to-the")}{" "}
 								{subscription?.plan_key?.charAt(0).toUpperCase() +
 									subscription?.plan_key?.slice(1)}
-								. Discover more about our{" "}
+								. {t("setting.discover-more-about-our")}{" "}
 							</span>
 							<span
 								onClick={() => {
@@ -593,7 +595,7 @@ export default function SettingModels() {
 								}}
 								className="cursor-pointer text-text-body text-xs font-normal font-['Inter'] underline leading-tight"
 							>
-								pricing options
+								{t("setting.pricing-options")}
 							</span>
 							<span className="text-text-body text-xs font-normal font-['Inter'] leading-tight">
 								.
@@ -617,7 +619,7 @@ export default function SettingModels() {
 							<Settings />
 						</Button>
 						<div className="text-text-body text-sm font-normal font-['Inter'] leading-tight">
-							Credits:{" "}
+							{t("setting.credits")}:{" "}
 							{loadingCredits ? (
 								<Loader2 className="w-4 h-4 animate-spin" />
 							) : (
@@ -628,7 +630,7 @@ export default function SettingModels() {
 					<div className="w-full flex items-center flex-1 justify-between pt-4 border-t border-border-secondary">
 						<div className="flex items-center flex-1 min-w-0">
 							<span className="whitespace-nowrap overflow-hidden text-ellipsis text-xs font-medium leading-tight">
-								Select Model Type
+								{t("setting.select-model-type")}
 							</span>
 							<Tooltip>
 								<TooltipTrigger asChild>
@@ -642,22 +644,22 @@ export default function SettingModels() {
 								>
 									<span className="w-full flex items-center justify-center">
 										{cloud_model_type === "gpt-4.1-mini"
-											? "GPT-4.1 Mini: Lower cost, faster responses, but reduced output quality."
+											? t("setting.gpt-4.1-mini")
 											: cloud_model_type === "gpt-4.1"
-											? "GPT-4.1: Higher cost, slower responses, but superior quality and reasoning."
+											? t("setting.gpt-4.1")
 											: cloud_model_type === "claude-opus-4-1-20250805"
-											? "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning."
+											? t("setting.claude-opus-4.1")
 											: cloud_model_type === "claude-sonnet-4-20250514"
-											? "Claude Sonnet 4: Higher cost, slower responses, but superior quality and reasoning."
+											? t("setting.claude-sonnet-4")
 											: cloud_model_type === "claude-3-5-haiku-20241022"
-											? "Claude 3.5 Haiku: Higher cost, slower responses, but superior quality and reasoning."
+											? t("setting.claude-3.5-haiku")
 											: cloud_model_type === "gpt-5"
-											? "GPT-5: Higher cost, slower responses, but superior quality and reasoning."
+											? t("setting.gpt-5")
 											: cloud_model_type === "gpt-5-mini"
-											? "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning."
+											? t("setting.gpt-5-mini")
 											: cloud_model_type === "gpt-5-nano"
-											? "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning."
-											: "Gemini 2.5 Pro: Higher cost, slower responses, but superior quality and reasoning."}
+											? t("setting.gpt-5-nano")
+											: t("setting.gemini-2.5-pro")}
 									</span>
 								</TooltipContent>
 							</Tooltip>
@@ -682,9 +684,6 @@ export default function SettingModels() {
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
 									<SelectItem value="gpt-5-nano">GPT-5 nano</SelectItem>
-									<SelectItem value="claude-opus-4-1-20250805">
-										Claude Opus 4.1
-									</SelectItem>
 									<SelectItem value="claude-sonnet-4-20250514">
 										Claude Sonnet 4
 									</SelectItem>
@@ -701,10 +700,10 @@ export default function SettingModels() {
 			<div className="self-stretch pt-4 border-t border-border-disabled inline-flex flex-col justify-start items-start gap-4">
 				<div className="self-stretch inline-flex justify-start items-center gap-2 relative px-6">
 					<div className="justify-center text-text-body text-base font-bold leading-snug">
-						Custom Model
+						{t("setting.custom-model")}
 					</div>
 					<div className="justify-center text-text-body text-xs font-medium leading-none">
-						Use your own API keys or set up a local model.
+						{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
 					</div>
 					<div className="flex-1" />
 					<Button
@@ -762,7 +761,7 @@ export default function SettingModels() {
 											<Input
 												id={`apiKey-${item.id}`}
 												type={showApiKey[idx] ? "text" : "password"}
-												placeholder={`Enter your API ${item.name} Key`}
+												placeholder={` ${t("setting.enter-your-api-key")} ${item.name} ${t("setting.key")}`}
 												className="w-full pr-10"
 												value={form[idx].apiKey}
 												onChange={(e) => {
@@ -807,7 +806,7 @@ export default function SettingModels() {
 									<div>
 										<Input
 											id={`apiHost-${item.id}`}
-											placeholder={`Enter your ${item.name} URL`}
+											placeholder={`${t("setting.enter-your-api-host")} ${item.name} ${t("setting.url")}`}
 											className="w-full"
 											value={form[idx].apiHost}
 											onChange={(e) => {
@@ -835,7 +834,7 @@ export default function SettingModels() {
 									<div>
 										<Input
 											id={`modelType-${item.id}`}
-											placeholder={`Enter your ${item.name} Model Type`}
+											placeholder={`${t("setting.enter-your-model-type")} ${item.name} ${t("setting.model-type")}`}
 											className="w-full"
 											value={form[idx].model_type}
 											onChange={(e) => {
@@ -934,7 +933,7 @@ export default function SettingModels() {
 										disabled={loading === idx}
 									>
 										<span className="text-text-inverse-primary">
-											{loading === idx ? "..." : "Verify"}
+											{loading === idx ? "..." : t("setting.verify")}
 										</span>
 										<Circle className="text-text-inverse-primary"></Circle>
 									</Button>
@@ -947,7 +946,7 @@ export default function SettingModels() {
 			{/* Local Model */}
 			<div className="w-[630px] mt-4 px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col gap-4">
 				<div className="flex items-center justify-between mb-2">
-					<div className="font-bold text-base">Local Model</div>
+					<div className="font-bold text-base">{t("setting.local-model")}</div>
 					<Switch
 						checked={localPrefer}
 						disabled={!localEndpoint}
@@ -957,7 +956,7 @@ export default function SettingModels() {
 				<div className="flex flex-col gap-3">
 					<div>
 						<label className="block text-sm font-bold mb-1">
-							Model Platform
+							{t("setting.model-platform")}
 						</label>
 						<Select
 							value={localPlatform}
@@ -983,7 +982,7 @@ export default function SettingModels() {
 							className="block text-sm font-bold mb-1"
 							style={{ color: localInputError ? "#ef4444" : undefined }}
 						>
-							Model Endpoint URL
+							{t("setting.model-endpoint-url")}
 						</label>
 						<Input
 							className={`bg-white-100% w-full${
@@ -1004,10 +1003,10 @@ export default function SettingModels() {
 					</div>
 					<div className="gap-1.5">
 						<label className="block text-sm font-bold mb-1 leading-tight">
-							Model Type
+							{t("setting.model-type")}
 						</label>
 						<Input
-							placeholder="Enter your local model type"
+							placeholder={t("setting.enter-your-local-model-type")}
 							className="w-full"
 							value={localType}
 							onChange={(e) => setLocalType(e.target.value)}
@@ -1037,7 +1036,7 @@ export default function SettingModels() {
 						size="sm"
 					>
 						<span className="text-text-inverse-primary">
-							{localVerifying ? "Verifying..." : "Verify"}
+							{localVerifying ? t("setting.verifying") : t("setting.verify")}
 						</span>
 						<Circle />
 					</Button>
@@ -1050,22 +1049,20 @@ export default function SettingModels() {
 			>
 				<DialogContent className="bg-white-100%">
 					<DialogHeader>
-						<DialogTitle>You are on Selft Host Mode</DialogTitle>
+						<DialogTitle>{t("setting.you-are-on-selft-host-mode")}</DialogTitle>
 					</DialogHeader>
 					<DialogDescription className="space-y-2">
 						<p className="indent-6">
-							You're using Self-hosted mode. To get the best performance from
-							this product, please enter the Google Search Key in "MCP and
-							Tools" to ensure Eigent works properly.
+							{t("setting.you-are-using-self-hosted-mode")}
+							
 						</p>
 						<p className="indent-6">
-							The Google Search Key is essential for delivering accurate search
-							results. Exa Search Key is optional but highly recommended for
-							better performance.
+							{t("setting.the-google-search-key-is-essential-for-delivering-accurate-search-results")}
+		
 						</p>
 					</DialogDescription>
 					<DialogFooter>
-						<Button onClick={() => navigate("/setting/mcp")}>close</Button>
+						<Button onClick={() => navigate("/setting/mcp")}>{t("setting.close")}</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
