@@ -1455,43 +1455,20 @@ async def get_mcp_tools(mcp_server: McpServers):
     if len(mcp_server["mcpServers"]) == 0:
         return []
     
-    # Ensure unified auth directory for all mcp-remote servers to avoid re-authentication on each task
-    config_dict = {**mcp_server}
-    for server_config in config_dict["mcpServers"].values():
-        if "env" not in server_config:
-            server_config["env"] = {}
-        # Set global auth directory to persist authentication across tasks
-        if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
-            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
-    
-    mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=20)
-    
-    mcp_toolkit = None
     try:
         mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
         await mcp_toolkit.connect()
-        traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
         
+        traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
         tools = mcp_toolkit.get_tools()
         if tools:
             tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in tools]
             traceroot_logger.debug(f"MCP tool names: {tool_names}")
-        
         return tools
     except asyncio.CancelledError:
-
         traceroot_logger.info("MCP connection cancelled during get_mcp_tools")
         return []
-    except RuntimeError as e:
-        if "cancel scope" in str(e):
-
-            traceroot_logger.warning(f"MCP connection scope error, likely due to task cancellation: {e}")
-        else:
-
-            traceroot_logger.error(f"MCP runtime error: {e}", exc_info=True)
-        return []
     except Exception as e:
-
         traceroot_logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
         return []
     finally:
@@ -1502,5 +1479,4 @@ async def get_mcp_tools(mcp_server: McpServers):
                 # Let the toolkit handle its own cleanup
                 pass
             except Exception as cleanup_error:
-
                 traceroot_logger.debug(f"MCP toolkit cleanup error: {cleanup_error}")
