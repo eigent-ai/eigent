@@ -437,11 +437,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     #     await social_medium_agent(options),
     # )
     mcp = await mcp_agent(options)
-    workforce.add_single_agent_worker(
-        "MCP Agent: A Model Context Protocol agent that provides access "
-        "to external tools and services through MCP integrations.",
-        mcp,
-    )
+    # workforce.add_single_agent_worker(
+    #     "MCP Agent: A Model Context Protocol agent that provides access "
+    #     "to external tools and services through MCP integrations.",
+    #     mcp,
+    # )
     return workforce, mcp
 
 
