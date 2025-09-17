@@ -2,9 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Ellipsis, Settings, Trash2, CircleAlert } from "lucide-react";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
+	TooltipSimple
 } from "@/components/ui/tooltip";
 import {
 	Popover,
@@ -41,14 +39,9 @@ export default function MCPListItem({
 					{item.mcp_name}
 				</div>
 				<div className="flex items-center">
-					<Tooltip>
-						<TooltipTrigger asChild>
+					<TooltipSimple content={item.mcp_desc}>
 							<CircleAlert className="w-4 h-4 text-icon-secondary" />
-						</TooltipTrigger>
-						<TooltipContent>
-							<div>{item.mcp_desc}</div>
-						</TooltipContent>
-					</Tooltip>
+					</TooltipSimple>
 				</div>
 			</div>
 			<div className="flex items-center gap-2">

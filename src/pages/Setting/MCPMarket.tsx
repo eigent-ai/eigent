@@ -10,6 +10,7 @@ import {
 import {
 	Tooltip,
 	TooltipContent,
+	TooltipSimple,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { MCPEnvDialog } from "./components/MCPEnvDialog";
@@ -370,14 +371,9 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 									<span className="text-base leading-9 font-bold text-text-primary truncate ">
 										{item.name}
 									</span>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<CircleAlert className="w-4 h-4 text-icon-secondary" />
-										</TooltipTrigger>
-										<TooltipContent>
-											<div>{item.description}</div>
-										</TooltipContent>
-									</Tooltip>
+									<TooltipSimple content={item.description}>
+										<CircleAlert className="w-4 h-4 text-icon-secondary" />
+									</TooltipSimple>
 								</div>
 								<Button
 									variant={

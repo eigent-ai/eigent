@@ -11,7 +11,7 @@ import { proxyFetchGet, proxyFetchPost } from "@/api/http";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { TooltipSimple } from "../ui/tooltip";
 import IntegrationList from "./IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { capitalizeFirstLetter } from "@/lib";
@@ -368,19 +368,12 @@ const ToolSelect = forwardRef<
 				<div className="text-sm font-bold leading-17 text-text-action overflow-hidden text-ellipsis break-words line-clamp-1">
 					{item.name}
 				</div>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<CircleAlert
+				<TooltipSimple content={item.description}>
+					<CircleAlert
 							className="w-4 h-4 text-icon-primary cursor-pointer"
 							onClick={(e) => e.stopPropagation()}
 						/>
-					</TooltipTrigger>
-					<TooltipContent>
-						<div className="text-xs font-bold leading-17 text-text-body">
-							{item.description}
-						</div>
-					</TooltipContent>
-				</Tooltip>
+				</TooltipSimple>
 			</div>
 			<div className="flex items-center gap-1">
 				{getGithubRepoName(item.home_page) && (
@@ -434,19 +427,12 @@ const ToolSelect = forwardRef<
 				<div className="text-sm font-bold leading-17 text-text-action overflow-hidden text-ellipsis break-words line-clamp-1">
 					{item.mcp_name}
 				</div>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<CircleAlert
-							className="w-4 h-4 text-icon-primary cursor-pointer"
-							onClick={(e) => e.stopPropagation()}
-						/>
-					</TooltipTrigger>
-					<TooltipContent>
-						<div className="text-xs font-bold leading-17 text-text-body">
-							{item.mcp_desc}
-						</div>
-					</TooltipContent>
-				</Tooltip>
+				<TooltipSimple content={item.mcp_desc}>
+					<CircleAlert
+						className="w-4 h-4 text-icon-primary cursor-pointer"
+						onClick={(e) => e.stopPropagation()}
+					/>
+				</TooltipSimple>
 			</div>
 			<div className="flex items-center gap-1">
 				<Button

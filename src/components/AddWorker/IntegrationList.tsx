@@ -1,9 +1,5 @@
 import { Button } from "@/components/ui/button";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import { CircleAlert } from "lucide-react";
 import { proxyFetchGet, proxyFetchPost, proxyFetchDelete } from "@/api/http";
 
@@ -341,14 +337,9 @@ export default function IntegrationList({
 								{item.name}
 							</div>
 							<div className="flex items-center">
-								<Tooltip>
-									<TooltipTrigger asChild>
+								<TooltipSimple content={item.desc}>
 										<CircleAlert className="w-4 h-4 text-icon-secondary" />
-									</TooltipTrigger>
-									<TooltipContent>
-										<p>{item.desc}</p>
-									</TooltipContent>
-								</Tooltip>
+								</TooltipSimple>
 							</div>
 						</div>
 						{item.env_vars.length !== 0 && (

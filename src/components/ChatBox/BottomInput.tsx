@@ -402,7 +402,7 @@ export const BottomInput = ({
 								</Button>
 							</TooltipSimple>
 						</div>
-						<TooltipSimple content={message.trim().length > 0 ? "Send Message" : "Enter your message"}>
+						<TooltipSimple content={message.trim().length > 0 ? "Send Message" : "Enter message to send first"}>
 							<Button
 								disabled={!privacy || isPending || useCloudModelInDev}
 								onClick={() => {
