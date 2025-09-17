@@ -118,6 +118,8 @@
 	"search-mcp": "Search MCPs",
 	"installed": "Installed",
 	"worker-name-cannot-be-empty": "Worker name cannot be empty",
-	"worker-name-already-exists": "Worker name already exists"
+	"worker-name-already-exists": "Worker name already exists",
+	"warning-google-search-not-configured": "Warning: Google Search not configured",
+	"search-functionality-may-be-limited-without-google-api": "Search functionality may be limited without Google API key and Search Engine ID. You can configure these in MCP & Tools settings."
 	}
 

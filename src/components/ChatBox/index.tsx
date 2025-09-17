@@ -16,7 +16,6 @@ import { TaskStateType } from "../TaskState";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
-	const [selectedStates, setSelectedStates] = useState<TaskStateType[]>([]);
 	const chatStore = useChatStore();
 	const { t } = useTranslation();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -27,6 +26,7 @@ export default function ChatBox(): JSX.Element {
 	const { modelType } = useAuthStore();
 	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 	useEffect(() => {
+		// Only show warning message, don't block functionality
 		if (
 			import.meta.env.VITE_USE_LOCAL_PROXY === "true" &&
 			modelType === "cloud"
@@ -465,8 +465,6 @@ export default function ChatBox(): JSX.Element {
 													);
 													chatStore.deleteTaskInfo(taskIndex);
 												}}
-												selectedStates={selectedStates}
-												onStateChange={setSelectedStates}
 												clickable={true}
 											/>
 										);
@@ -602,39 +600,8 @@ export default function ChatBox(): JSX.Element {
 										</span>
 									</div>
 								</div>
-							) : useCloudModelInDev ? (
-								<div className="flex items-center gap-2">
-									<div
-										onClick={() => {
-											navigate("/setting/models");
-										}}
-										className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
-									>
-										<span className="text-text-information text-sm font-medium leading-[22px]">
-											{t("chat.you-are-using-self-hosted-mode")}
-										</span>
-									</div>
-								</div>
-							) : (
-								!hasSearchKey &&
-								modelType !== "cloud" && (
-									<div className="flex items-center gap-2">
-										<div
-											onClick={() => {
-												navigate("/setting/mcp");
-											}}
-											className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
-										>
-											<span className="text-text-information text-sm font-medium leading-[22px]">
-												{t("chat.you-are-using-self-hosted-mode")}
-											</span>
-										</div>
-									</div>
-								)
-							)}
-							{!useCloudModelInDev &&
-								privacy &&
-								(hasSearchKey || modelType === "cloud") && (
+							) : null}
+							{privacy && (
 									<div className="mr-2 flex flex-col items-center gap-2">
 										{[
 											{

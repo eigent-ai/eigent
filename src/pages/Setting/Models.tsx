@@ -36,14 +36,6 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
-import {
-	Dialog,
-	DialogContent,
-	DialogHeader,
-	DialogTitle,
-	DialogFooter,
-	DialogDescription,
-} from "@/components/ui/dialog";
 import { useTranslation } from "react-i18next";
 
 export default function SettingModels() {
@@ -93,7 +85,6 @@ export default function SettingModels() {
 	const [localError, setLocalError] = useState<string | null>(null);
 	const [localInputError, setLocalInputError] = useState(false);
 	const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state
-	const [dialogVisible, setDialogVisible] = useState<boolean>(false);
 	const [localProviderId, setLocalProviderId] = useState<number | undefined>(
 		undefined
 	); // Local model provider_id
@@ -479,9 +470,13 @@ export default function SettingModels() {
 			setLocalEnabled(true);
 			return;
 		}
-		if (!(await checkHasSearchKey())) {
-			setDialogVisible(true);
-			return;
+		const hasSearchKey = await checkHasSearchKey();
+		if (!hasSearchKey) {
+			// Show warning toast instead of blocking
+			toast(t("setting.warning-google-search-not-configured"), {
+				description: t("setting.search-functionality-may-be-limited-without-google-api"),
+				closeButton: true,
+			});
 		}
 		try {
 			await proxyFetchPost("/api/provider/prefer", {
@@ -502,9 +497,13 @@ export default function SettingModels() {
 			setLocalEnabled(false);
 			return;
 		}
-		if (!(await checkHasSearchKey())) {
-			setDialogVisible(true);
-			return;
+		const hasSearchKey = await checkHasSearchKey();
+		if (!hasSearchKey) {
+			// Show warning toast instead of blocking
+			toast(t("setting.warning-google-search-not-configured"), {
+				description: t("setting.search-functionality-may-be-limited-without-google-api"),
+				closeButton: true,
+			});
 		}
 		try {
 			if (localProviderId === undefined) return;
@@ -1042,30 +1041,6 @@ export default function SettingModels() {
 					</Button>
 				</div>
 			</div>
-			{/* error dialog */}
-			<Dialog
-				open={dialogVisible}
-				onOpenChange={() => navigate("/setting/mcp")}
-			>
-				<DialogContent className="bg-white-100%">
-					<DialogHeader>
-						<DialogTitle>{t("setting.you-are-on-selft-host-mode")}</DialogTitle>
-					</DialogHeader>
-					<DialogDescription className="space-y-2">
-						<p className="indent-6">
-							{t("setting.you-are-using-self-hosted-mode")}
-							
-						</p>
-						<p className="indent-6">
-							{t("setting.the-google-search-key-is-essential-for-delivering-accurate-search-results")}
-		
-						</p>
-					</DialogDescription>
-					<DialogFooter>
-						<Button onClick={() => navigate("/setting/mcp")}>{t("setting.close")}</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</div>
 	);
 }

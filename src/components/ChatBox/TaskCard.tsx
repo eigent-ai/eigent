@@ -34,8 +34,6 @@ interface TaskCardProps {
 	onAddTask: () => void;
 	onUpdateTask: (taskIndex: number, content: string) => void;
 	onDeleteTask: (taskIndex: number) => void;
-	selectedStates?: TaskStateType[];
-	onStateChange?: (selectedStates: TaskStateType[]) => void;
 	clickable?: boolean;
 }
 
@@ -48,15 +46,49 @@ export function TaskCard({
 	onAddTask,
 	onUpdateTask,
 	onDeleteTask,
-	selectedStates = [],
-	onStateChange,
 	clickable = true,
 }: TaskCardProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
-
 	const chatStore = useChatStore();
+
+	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
+	const [filterTasks, setFilterTasks] = useState<any[]>([]);
+	useEffect(() => {
+		const tasks = taskRunning || [];
+
+		if (selectedState === "all") {
+			setFilterTasks(tasks);
+		} else {
+			const newFiltered = tasks.filter((task) => {
+				switch (selectedState) {
+					case "done":
+						return task.status === "completed" && !task.reAssignTo;
+					case "ongoing":
+						return (
+							task.status !== "failed" &&
+							task.status !== "completed" &&
+							task.status !== "skipped" &&
+							task.status !== "waiting" &&
+							task.status !== "" 
+						);
+					case "pending":
+						return (
+							(task.status === "skipped" ||
+								task.status === "waiting" ||
+								task.status === "") &&
+							!task.reAssignTo
+						);
+					case "failed":
+						return task.status === "failed";
+					default:
+						return false;
+				}
+			});
+			setFilterTasks(newFiltered);
+		}
+	}, [selectedState, taskInfo]);
 
 	const isAllTaskFinished = useMemo(() => {
 		return (
@@ -147,11 +179,10 @@ export function TaskCard({
 						<div className="flex items-center gap-2 ">
 							{taskType === 1 && (
 								<TaskState
+									all={taskInfo.length || 0}
 									done={
-										taskInfo.filter(
-											(task) =>
-												task.status === "completed" || task.status === "failed"
-										).length || 0
+										taskInfo.filter((task) => task.status === "completed")
+											.length || 0
 									}
 									progress={
 										taskInfo.filter(
@@ -171,18 +202,20 @@ export function TaskCard({
 												task.status === ""
 										).length || 0
 									}
-									selectedStates={selectedStates}
-									onStateChange={onStateChange}
+									failed={
+										taskInfo.filter((task) => task.status === "failed")
+											.length || 0
+									}
+									forceVisible={true}
 									clickable={clickable}
 								/>
 							)}
 							{taskType !== 1 && (
 								<TaskState
+									all={taskRunning?.length || 0}
 									done={
-										taskRunning?.filter(
-											(task) =>
-												task.status === "completed" || task.status === "failed"
-										).length || 0
+										taskRunning?.filter((task) => task.status === "completed")
+											.length || 0
 									}
 									progress={
 										taskRunning?.filter(
@@ -197,11 +230,18 @@ export function TaskCard({
 									skipped={
 										taskRunning?.filter(
 											(task) =>
-												task.status === "skipped" || task.status === "waiting" || task.status === ""
+												task.status === "skipped" ||
+												task.status === "waiting" ||
+												task.status === ""
 										).length || 0
 									}
-									selectedStates={selectedStates}
-									onStateChange={onStateChange}
+									failed={
+										taskRunning?.filter((task) => task.status === "failed")
+											.length || 0
+									}
+									forceVisible={true}
+									selectedState={selectedState}
+									onStateChange={setSelectedState}
 									clickable={clickable}
 								/>
 							)}
@@ -269,7 +309,7 @@ export function TaskCard({
 								}}
 							>
 								<div className="mt-sm flex flex-col px-2 gap-2">
-									{taskRunning.map((task: TaskInfo) => {
+									{filterTasks.map((task: TaskInfo) => {
 										return (
 											<div
 												onClick={() => {

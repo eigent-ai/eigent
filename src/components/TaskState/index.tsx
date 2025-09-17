@@ -7,7 +7,8 @@ export type TaskStateType =
 	| "done"
 	| "reassigned"
 	| "ongoing"
-	| "pending";
+	| "pending"
+	| "failed";
 
 export interface TaskStateProps {
 	all?: number;
@@ -15,8 +16,10 @@ export interface TaskStateProps {
 	progress: number;
 	skipped: number;
 	reAssignTo?: number;
-	selectedStates?: TaskStateType[];
-	onStateChange?: (selectedStates: TaskStateType[]) => void;
+	failed?: number;
+	forceVisible?: boolean;
+	selectedState?: TaskStateType;
+	onStateChange?: (selectedState: TaskStateType) => void;
 	clickable?: boolean;
 }
 
@@ -26,7 +29,9 @@ export const TaskState = ({
 	reAssignTo,
 	progress,
 	skipped,
-	selectedStates = [],
+	failed,
+	forceVisible = false,
+	selectedState = "all",
 	onStateChange,
 	clickable = true,
 }: TaskStateProps) => {
@@ -34,37 +39,20 @@ export const TaskState = ({
 	const { t } = useTranslation();
 	const handleStateClick = (state: TaskStateType) => {
 		if (!clickable || !onStateChange) return;
-
-		let newSelectedStates: TaskStateType[];
-
-		if (state === "all") {
-			newSelectedStates = selectedStates.includes("all") ? [] : ["all"];
-		} else {
-			const otherStates = selectedStates.filter((s) => s !== "all");
-			if (otherStates.includes(state)) {
-				newSelectedStates = otherStates.filter((s) => s !== state);
-			} else {
-				newSelectedStates = [...otherStates, state];
-			}
-		}
-
-		onStateChange(newSelectedStates);
+		onStateChange(state || "all");
 	};
 
 	const isSelected = (state: TaskStateType) => {
-		return selectedStates.includes(state);
+		return selectedState === state;
 	};
 
-	const fadeWidthClass = (selected: boolean) =>
-		`inline-block overflow-hidden align-bottom transition-all duration-300 ease-in-out
-     ${selected ? "max-w-[40px] opacity-100" : "max-w-0 opacity-0"}
-     group-hover:max-w-[40px] group-hover:opacity-100`;
+	const numberClass = `rounded-lg inline-block align-bottom transition-all duration-300 ease-in-out max-w-[40px] group-hover:max-w-[40px] group-hover:opacity-100`;
 
 	return (
 		<div>
 			<div className="w-auto bg-transparent flex items-center gap-1 flex-wrap">
 				{/* All */}
-				{all && (
+				{all && (forceVisible || all > 0) ? (
 					<div
 						className={`group hover:bg-tag-surface flex gap-xs items-center py-0.5 px-2 transition-all duration-200 ${
 							isSelected("all") ? "bg-tag-surface" : "bg-transparent"
@@ -72,38 +60,38 @@ export const TaskState = ({
 						onClick={() => handleStateClick("all")}
 					>
 						<span className="text-xs font-normal text-text-body">
-							{t("chat.all")}{" "}
-							<span className={fadeWidthClass(isSelected("all"))}>{all}</span>
+							{t("chat.all")} <span className={numberClass}>{all}</span>
 						</span>
 					</div>
-				)}
+				) : null}
 
 				{/* Done */}
-				<div
-					className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 transition-all duration-200 ${
-						isSelected("done") && "bg-tag-surface"
-					} ${
-						clickable && "cursor-pointer hover:opacity-80 transition-opacity"
-					}`}
-					onClick={() => handleStateClick("done")}
-				>
-					<CircleCheckBig
-						className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-icon-success ${
-							isSelected("done") && "text-icon-success"
+				{done && (forceVisible || done > 0) ? (
+					<div
+						className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 transition-all duration-200 ${
+							isSelected("done") && "bg-tag-surface"
+						} ${
+							clickable && "cursor-pointer hover:opacity-80 transition-opacity"
 						}`}
-					/>
-					<span
-						className={`transition-all duration-200 text-xs leading-tight font-normal text-text-label group-hover:text-text-success ${
-							isSelected("done") && "text-text-success"
-						}`}
+						onClick={() => handleStateClick("done")}
 					>
-						{t("chat.done")}{" "}
-						<span className={fadeWidthClass(isSelected("done"))}>{done}</span>
-					</span>
-				</div>
+						<CircleCheckBig
+							className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-icon-success ${
+								(isSelected("done") || forceVisible) && "!text-icon-success"
+							}`}
+						/>
+						<span
+							className={`transition-all duration-200 text-xs leading-tight font-normal text-text-label group-hover:text-text-success ${
+								(isSelected("done") || forceVisible) && "!text-text-success"
+							}`}
+						>
+							{t("chat.done")} <span className={numberClass}>{done}</span>
+						</span>
+					</div>
+				) : null}
 
 				{/* Reassigned */}
-				{reAssignTo ? (
+				{reAssignTo && (forceVisible || reAssignTo > 0) ? (
 					<div
 						className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 transition-all duration-200 ${
 							isSelected("reassigned") && "bg-tag-surface"
@@ -114,76 +102,103 @@ export const TaskState = ({
 					>
 						<CircleSlash2
 							className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-icon-warning ${
-								isSelected("reassigned") && "text-icon-warning"
+								(isSelected("reassigned") || forceVisible) &&
+								"!text-icon-warning"
 							}`}
 						/>
 						<span
 							className={`transition-all duration-200 text-xs leading-tight font-normal text-text-label group-hover:text-text-warning ${
-								isSelected("reassigned") && "text-text-warning"
+								(isSelected("reassigned") || forceVisible) &&
+								"!text-text-warning"
 							}`}
 						>
 							{t("chat.reassigned")}{" "}
-							<span className={fadeWidthClass(isSelected("reassigned"))}>
-								{reAssignTo}
-							</span>
+							<span className={numberClass}>{reAssignTo}</span>
 						</span>
 					</div>
 				) : null}
 
 				{/* Ongoing */}
-				<div
-					className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 ${
-						isSelected("ongoing") && "bg-tag-surface"
-					} ${
-						clickable && "cursor-pointer hover:opacity-80 transition-opacity"
-					}`}
-					onClick={() => handleStateClick("ongoing")}
-				>
-					<LoaderCircle
-						className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-icon-information ${
-							isSelected("ongoing") && "!text-icon-information"
+				{progress && (forceVisible || progress > 0) ? (
+					<div
+						className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 ${
+							isSelected("ongoing") && "bg-tag-surface"
 						} ${
-							chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-								"running" && "animate-spin"
+							clickable && "cursor-pointer hover:opacity-80 transition-opacity"
 						}`}
-					/>
-					<span
-						className={`transition-all duration-200 text-xs leading-tight font-normal text-text-label group-hover:text-text-information ${
-							isSelected("ongoing") && "!text-text-information"
-						}`}
+						onClick={() => handleStateClick("ongoing")}
 					>
-						{t("chat.ongoing")}{" "}
-						<span className={fadeWidthClass(isSelected("ongoing"))}>
-							{progress}
+						<LoaderCircle
+							className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-icon-information ${
+								(isSelected("ongoing") || forceVisible) &&
+								"!text-icon-information"
+							} ${
+								chatStore.tasks[chatStore.activeTaskId as string]?.status ===
+									"running" && "animate-spin"
+							}`}
+						/>
+						<span
+							className={`transition-all duration-200 text-xs leading-tight font-normal text-text-label group-hover:text-text-information ${
+								(isSelected("ongoing") || forceVisible) &&
+								"!text-text-information"
+							}`}
+						>
+							{t("chat.ongoing")}{" "}
+							<span className={numberClass}>{progress}</span>
 						</span>
-					</span>
-				</div>
+					</div>
+				) : null}
 
-				{/* Pending */}
-				<div
-					className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 ${
-						isSelected("pending") ? "bg-tag-surface" : "bg-transparent"
-					} ${
-						clickable && "cursor-pointer hover:opacity-80 transition-opacity"
-					}`}
-					onClick={() => handleStateClick("pending")}
-				>
-					<LoaderCircle
-						className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-primary-foreground ${
-							isSelected("pending") && "text-primary-foreground"
+				{/* Failed */}
+				{failed && (forceVisible || failed > 0) ? (
+					<div
+						className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 transition-all duration-200 ${
+							isSelected("failed") && "bg-tag-surface"
+						} ${
+							clickable && "cursor-pointer hover:opacity-80 transition-opacity"
 						}`}
-					/>
-					<span
-						className={`text-xs leading-tight font-normal text-text-label group-hover:text-primary-foreground ${
-							isSelected("pending") && "text-primary-foreground"
-						}`}
+						onClick={() => handleStateClick("failed")}
 					>
-						{t("chat.pending")}{" "}
-						<span className={fadeWidthClass(isSelected("pending"))}>
-							{skipped}
+						<CircleSlash2
+							className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-icon-cuation ${
+								(isSelected("failed") || forceVisible) && "!text-icon-cuation"
+							}`}
+						/>
+						<span
+							className={`transition-all duration-200 text-xs leading-tight font-normal text-text-label group-hover:!text-icon-cuation ${
+								(isSelected("failed") || forceVisible) && "!text-text-cuation"
+							}`}
+						>
+							{t("chat.failed")} <span className={numberClass}>{failed}</span>
 						</span>
-					</span>
-				</div>
+					</div>
+				) : null}
+				{/* Pending */}
+				{skipped && (forceVisible || skipped > 0) ? (
+					<div
+						className={`group hover:bg-tag-surface flex gap-xs items-center px-0.5 py-0.5 ${
+							isSelected("pending") ? "bg-tag-surface" : "bg-transparent"
+						} ${
+							clickable && "cursor-pointer hover:opacity-80 transition-opacity"
+						}`}
+						onClick={() => handleStateClick("pending")}
+					>
+						<LoaderCircle
+							className={`w-[10px] h-[10px] text-icon-secondary group-hover:text-primary-foreground ${
+								(isSelected("pending") || forceVisible) &&
+								"text-primary-foreground"
+							}`}
+						/>
+						<span
+							className={`text-xs leading-tight font-normal text-text-label group-hover:text-primary-foreground ${
+								(isSelected("pending") || forceVisible) &&
+								"text-primary-foreground"
+							}`}
+						>
+							{t("chat.pending")} <span className={numberClass}>{skipped}</span>
+						</span>
+					</div>
+				) : null}
 			</div>
 		</div>
 	);

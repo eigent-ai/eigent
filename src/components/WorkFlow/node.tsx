@@ -15,7 +15,6 @@ import {
 	CircleSlash,
 	TriangleAlert,
 	Trash2,
-	Edit,
 	SquareChevronLeft,
 	CircleSlash2,
 } from "lucide-react";
@@ -59,46 +58,46 @@ interface NodeProps {
 export function Node({ id, data }: NodeProps) {
 	const [isExpanded, setIsExpanded] = useState(data.isExpanded);
 	const [selectedTask, setSelectedTask] = useState<any>(null);
-	const [selectedStates, setSelectedStates] = useState<TaskStateType[]>(['all']);
+	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
 
 	const [filterTasks, setFilterTasks] = useState<any[]>([]);
 	useEffect(() => {
 		const tasks = data.agent?.tasks || [];
 
-		if (selectedStates.includes("all") || selectedStates.length === 0) {
+		if (selectedState === "all") {
 			setFilterTasks(tasks);
 		} else {
 			const newFiltered = tasks.filter((task) => {
-				return selectedStates.some((state) => {
-					switch (state) {
-						case "done":
-							return (task.status === "completed" || task.status === "failed") && !task.reAssignTo;
-						case "reassigned":
-							return !!task.reAssignTo;
-						case "ongoing":
-							return (
-								task.status !== "failed" &&
-								task.status !== "completed" &&
-								task.status !== "skipped" &&
-								task.status !== "waiting" &&
-								task.status !== "" &&
-								!task.reAssignTo
-							);
-						case "pending":
-							return (
-								(task.status === "skipped" ||
-									task.status === "waiting" ||
-									task.status === "") &&
-								!task.reAssignTo
-							);
-						default:
-							return false;
-					}
-				});
+				switch (selectedState) {
+					case "done":
+						return task.status === "completed" && !task.reAssignTo;
+					case "reassigned":
+						return !!task.reAssignTo;
+					case "ongoing":
+						return (
+							task.status !== "failed" &&
+							task.status !== "completed" &&
+							task.status !== "skipped" &&
+							task.status !== "waiting" &&
+							task.status !== "" &&
+							!task.reAssignTo
+						);
+					case "pending":
+						return (
+							(task.status === "skipped" ||
+								task.status === "waiting" ||
+								task.status === "") &&
+							!task.reAssignTo
+						);
+					case "failed":
+						return task.status === "failed";
+					default:
+						return false;
+				}
 			});
 			setFilterTasks(newFiltered);
 		}
-	}, [selectedStates, data.agent?.tasks]);
+	}, [selectedState, data.agent?.tasks]);
 
 	const chatStore = useChatStore();
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
@@ -494,8 +493,7 @@ export function Node({ id, data }: NodeProps) {
 									all={data.agent.tasks?.length || 0}
 									done={
 										data.agent?.tasks?.filter(
-											(task) =>
-												(task.status === "failed" || task.status === "completed") && !task.reAssignTo
+											(task) => task.status === "completed" && !task.reAssignTo
 										).length || 0
 									}
 									reAssignTo={
@@ -522,8 +520,13 @@ export function Node({ id, data }: NodeProps) {
 												!task.reAssignTo
 										).length || 0
 									}
-									selectedStates={selectedStates}
-									onStateChange={setSelectedStates}
+									failed={
+										data.agent?.tasks?.filter(
+											(task) => task.status === "failed"
+										).length || 0
+									}
+									selectedState={selectedState}
+									onStateChange={setSelectedState}
 									clickable={true}
 								/>
 							</div>
@@ -691,7 +694,9 @@ export function Node({ id, data }: NodeProps) {
 													{task.toolkits &&
 														task.toolkits.length > 0 &&
 														task.toolkits
-															.filter((tool: any) => tool.toolkitName !== "notice")
+															.filter(
+																(tool: any) => tool.toolkitName !== "notice"
+															)
 															.at(-1)?.toolkitStatus === "running" && (
 															<div className="flex-1 min-w-0 flex justify-start items-center gap-sm animate-in fade-in-0 slide-in-from-right-2 duration-300">
 																{agentMap[data.type]?.icon ?? (
