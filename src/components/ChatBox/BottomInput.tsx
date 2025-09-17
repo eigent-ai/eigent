@@ -23,6 +23,8 @@ import { useState, useEffect } from "react";
 import { fetchPut } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { useTranslation } from "react-i18next";
+import { TooltipSimple } from "../ui/tooltip";
+import { toast } from "sonner";
 
 export const BottomInput = ({
 	message,
@@ -385,74 +387,82 @@ export const BottomInput = ({
 					)}
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-1">
+							<TooltipSimple content="Select File">
+								<Button
+									disabled={!privacy || isPending || useCloudModelInDev}
+									onClick={handleFileSelect}
+									variant="ghost"
+									size="icon"
+									className="rounded"
+								>
+									<Paperclip
+										size={16}
+										className="text-button-transparent-icon-disabled"
+									/>
+								</Button>
+							</TooltipSimple>
+						</div>
+						<TooltipSimple content={message.trim().length > 0 ? "Send Message" : "Enter your message"}>
 							<Button
 								disabled={!privacy || isPending || useCloudModelInDev}
-								onClick={handleFileSelect}
-								variant="ghost"
-								size="icon"
-								className="rounded"
-								title="Select File"
-							>
-								<Paperclip
-									size={16}
-									className="text-button-transparent-icon-disabled"
-								/>
-							</Button>
-						</div>
-						<Button
-							disabled={!privacy || isPending || useCloudModelInDev}
-							onClick={() => {
-								if (isPending) {
-									if (isTakeControl) {
-										handleTakeControl("resume");
-										setIsTakeControl && setIsTakeControl(false);
+								onClick={() => {
+									if (isPending) {
+										if (isTakeControl) {
+											handleTakeControl("resume");
+											setIsTakeControl && setIsTakeControl(false);
+										} else {
+											setIsTakeControl && setIsTakeControl(true);
+											handleTakeControl("pause");
+										}
+									} else if(message.trim().length > 0) {
+										onSend();
+										onPendingChange(true);
 									} else {
-										setIsTakeControl && setIsTakeControl(true);
-										handleTakeControl("pause");
+										console.log("Message is empty ", message);
+										toast.error("Message cannot be empty", {
+											closeButton: true,
+										});
 									}
-								} else {
-									onSend();
-									onPendingChange(true);
-								}
-							}}
-							size="icon"
-							variant={
-								isPending
-									? isTakeControl
+								}}
+								size="icon"
+								variant={
+									isPending
+										? isTakeControl
+											? "success"
+											: "cuation"
+										: message.trim().length > 0
 										? "success"
-										: "cuation"
-									: message.length > 0
-									? "success"
-									: "primary"
-							}
-							className={`rounded-full  transition-all w-6`}
-						>
-							{isPending ? (
-								// <CircleLoader className="w-4 h-4" />
-								<>
-									{isTakeControl ? (
-										<Play
-											color="white"
-											className="w-4 h-4 text-button-primary-icon-default"
-										/>
-									) : (
-										<img
-											src={racPause}
-											alt="racPause"
-											className="w-4 h-4 text-text-inverse-primary"
+										: "primary"
+								}
+								className={`rounded-full  transition-all w-6`}
+							>
+								{isPending ? (
+									// <CircleLoader className="w-4 h-4" />
+									<>
+										{isTakeControl ? (
+											<Play
+												color="white"
+												className="w-4 h-4 text-button-primary-icon-default"
+											/>
+										) : (
+											<img
+												src={racPause}
+												alt="racPause"
+												className="w-4 h-4 text-text-inverse-primary"
+											/>
+										)}
+									</>
+								) : (
+										<ArrowRight
+											size={16}
+											style={{
+												transform: message ? "rotate(-90deg)" : "rotate(0deg)",
+											}}
+											className="transition-all text-button-primary-icon-default"
 										/>
 									)}
-								</>
-							) : (
-								<ArrowRight
-									size={16}
-									style={{
-										transform: message ? "rotate(-90deg)" : "rotate(0deg)",
-									}}
-									className="transition-all text-button-primary-icon-default"
-								/>
-							)}
-						</Button>
+							</Button>
+						</TooltipSimple>
 					</div>
 				</div>
 			)}

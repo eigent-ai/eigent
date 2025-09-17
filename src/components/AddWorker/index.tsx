@@ -330,7 +330,9 @@ export function AddWorker({
 										? t("workforce.configure-mcp-server")
 										: t("workforce.add-your-mcp-server")}
 								</div>
+								<TooltipSimple content="Configure your MCP worker node here.">
 									<CircleAlert size={16} />
+								</TooltipSimple>
 							</div>
 						</DialogTitle>
 					</DialogHeader>
@@ -458,7 +460,9 @@ export function AddWorker({
 										<div className="text-text-body text-sm leading-normal font-bold">
 											{t("workforce.agent-tool")}
 										</div>
+										<TooltipSimple content="Select MCP tools for your worker node.">
 											<CircleAlert size={16} />
+										</TooltipSimple>
 									</div>
 								</div>
 								<ToolSelect
