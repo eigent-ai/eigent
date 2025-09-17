@@ -169,7 +169,7 @@ const EMPTY_LIST: Agent[] = [];
 
 // worker list Hook
 export const useWorkerList = (): Agent[] => {
-	const { email } = getAuthStore();
-	const workerList = getAuthStore().workerListData[email as string];
+	const { email, workerListData } = getAuthStore();
+	const workerList = workerListData[email as string];
 	return workerList ?? EMPTY_LIST;
 };
