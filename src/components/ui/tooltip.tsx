@@ -27,4 +27,36 @@ const TooltipContent = React.forwardRef<
 ))
 TooltipContent.displayName = TooltipPrimitive.Content.displayName
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+/**
+ * A simpler interface for Tooltip when you just need a trigger and content.
+ * 
+ * Usage:
+ * ```jsx
+ * <TooltipSimple content="This is a tooltip">
+ *  <button>Hover me</button>
+ * </TooltipSimple>
+ * ```
+ */
+const TooltipSimple = React.forwardRef<
+  React.ElementRef<typeof TooltipContent>,
+  React.ComponentPropsWithoutRef<typeof TooltipContent>
+>(({ children, content, className, sideOffset = 4, ...props }, ref) => {
+  return (
+    <TooltipProvider>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					{children}
+				</TooltipTrigger>
+
+        <TooltipContent ref={ref}
+          sideOffset={sideOffset}
+          className={cn(className)} 
+          {...props}>
+            {content}
+        </TooltipContent >
+			</Tooltip>
+		</TooltipProvider>
+	);
+})
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, TooltipSimple }
