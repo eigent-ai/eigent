@@ -9,8 +9,13 @@ import { spawn } from 'child_process'
 const userData = app.getPath('userData');
 const versionFile = path.join(userData, 'version.txt');
 
+export type PromiseReturnType = {
+  message: string;
+  success: boolean;
+}
+
 // Read last run version and install dependencies on update
-export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<boolean> {
+export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<PromiseReturnType> {
   const currentVersion = app.getVersion();
   return new Promise(async (resolve, reject) => {
     try {
@@ -51,22 +56,22 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<bo
 
         // Install dependencies
         const result = await installDependencies();
-        if (!result) {
+        if (!result.success) {
           log.error(' install dependencies failed');
-          resolve(false);
+          resolve({ message: "Install dependencies failed", success: false });
           return
         }
-        resolve(true);
+        resolve({ message: "Dependencies installed successfully after update", success: true });
         log.info(' install dependencies complete');
         return
       } else {
         log.info(' version not changed, skip install dependencies', { currentVersion });
-        resolve(true);
+        resolve({ message: "Version not changed, skipped installation", success: true });
         return
       }
     } catch (error) {
       log.error(' check version and install dependencies error:', error);
-      resolve(false);
+      resolve({ message: `Error checking version: ${error}`, success: false });
       return
     }
   })
@@ -75,11 +80,11 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<bo
 /**
  * Check if command line tools are installed, install if not
  */
-export async function installCommandTool() {
+export async function installCommandTool(): Promise<PromiseReturnType> {
   return new Promise(async (resolve, reject) => {
   const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<PromiseReturnType> => {
       if (await isBinaryExists(toolName)) {
-          return true;
+          return { message: `${toolName} already installed`, success: true };
       }
 
       console.log(`start install ${toolName}`);
@@ -102,17 +107,23 @@ export async function installCommandTool() {
           }
       }
 
-      return installed;
+      return { 
+        message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
+        success: installed 
+      };
       };
 
-      if (!(await ensureInstalled('uv', 'install-uv.js'))) {
-          return reject("uv install failed");
+      const uvResult = await ensureInstalled('uv', 'install-uv.js');
+      if (!uvResult.success) {
+          return reject({ message: uvResult.message, success: false });
       }
-      if (!(await ensureInstalled('bun', 'install-bun.js'))) {
-          return reject("bun install failed");
+      
+      const bunResult = await ensureInstalled('bun', 'install-bun.js');
+      if (!bunResult.success) {
+          return reject({ message: bunResult.message, success: false });
       }
 
-      return resolve(true);
+      return resolve({ message: "Command tools installed successfully", success: true });
   })
 }
 
@@ -197,18 +208,21 @@ const runInstall = (extraArgs: string[]) => {
         installLogs.onClose((code) => {
           console.log('install dependencies end', code === 0)
           InstallLogs.cleanLockPath()
-          resolveInner(code === 0)
+          resolveInner({
+            message: code === 0 ? "Installation completed successfully" : `Installation failed with code ${code}`,
+            success: code === 0
+          })
         })
     } catch (err) {
         log.error('run install failed', err)    
         // Clean up uv_installing.lock file if installation fails
         InstallLogs.cleanLockPath();
-        rejectInner(err)
+        rejectInner({ message: `Installation failed: ${err}`, success: false })
     }
   })
 }
 
-export async function installDependencies() {
+export async function installDependencies(): Promise<PromiseReturnType> {
   uv_path = await getBinaryPath('uv');
   const handleCompletion = {
     spawnBabel: (type:"mirror"|"main"="main") => {
@@ -224,13 +238,13 @@ export async function installDependencies() {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('install-dependencies-start');
     } else {
-        resolve(false)
+        resolve({ message: "Main window not available", success: false })
         return
     }
 
     const isInstalCommandTool = await installCommandTool()
-    if (!isInstalCommandTool) {
-        resolve(false)
+    if (!isInstalCommandTool.success) {
+        resolve({ message: "Command tool installation failed", success: false })
         return
     }
 
@@ -239,26 +253,26 @@ export async function installDependencies() {
 
     // try default install
     const installSuccess = await runInstall([])
-    if (installSuccess) {
+    if (installSuccess.success) {
         handleCompletion.spawnBabel()
-        resolve(true)
+        resolve({ message: "Dependencies installed successfully", success: true })
         return
     }
 
     // try mirror install
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    let mirrorInstallSuccess = false
+    let mirrorInstallSuccess: PromiseReturnType = { message: "", success: false }
     mirrorInstallSuccess = (timezone === 'Asia/Shanghai')? await runInstall(proxyArgs) :await runInstall([])
 
-    if (mirrorInstallSuccess) {
+    if (mirrorInstallSuccess.success) {
         handleCompletion.spawnBabel("mirror")
-        resolve(true)
+        resolve({ message: "Dependencies installed successfully with mirror", success: true })
     } else {
         log.error('Both default and mirror install failed')
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('install-dependencies-complete', { success: false, error: 'Both default and mirror install failed' });
         }
-        resolve(false)
+        resolve({ message: "Both default and mirror install failed", success: false })
     }
   })
 }

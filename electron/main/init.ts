@@ -6,6 +6,7 @@ import path from 'path'
 import * as net from "net";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
+import { PromiseReturnType } from "./install-deps";
 
 const execAsync = promisify(exec);
 
@@ -17,16 +18,16 @@ export function getMainWindow(): BrowserWindow | null {
 
 
 export async function checkToolInstalled() {
-    return new Promise(async (resolve, reject) => {
+    return new Promise<PromiseReturnType>(async (resolve, reject) => {
         if (!(await isBinaryExists('uv'))) {
-            resolve(false)
+            resolve({success: false, message: "uv doesn't exist"})
         }
 
         if (!(await isBinaryExists('bun'))) {
-            resolve(false)
+            resolve({success: false, message: "Bun doesn't exist"})
         }
 
-        resolve(true)
+        resolve({success: true, message: "Tools exist already"})
     })
 
 }

@@ -18,7 +18,8 @@ import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
-import { checkAndInstallDepsOnUpdate, installDependencies } from './install-deps'
+import { checkAndInstallDepsOnUpdate, installDependencies, PromiseReturnType } from './install-deps'
+import e from 'express'
 
 const userData = app.getPath('userData');
 
@@ -943,12 +944,13 @@ async function createWindow() {
   update(win);
 
   // ==================== check tool installed ====================
-  let res = await checkAndInstallDepsOnUpdate(win);
-  if (!res) {
-    log.info('checkAndInstallDepsOnUpdate,install dependencies failed');
+  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate(win);
+  if (!res.success) {
+    log.info(res.message);
     win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
     return;
-  }
+  } 
+  log.info("[DEPS INSTALL] Dependency Success: ", res.message);
   await checkAndStartBackend();
 }
 
