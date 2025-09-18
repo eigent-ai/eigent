@@ -4,7 +4,7 @@ import path from 'node:path'
 import os, { homedir } from 'node:os'
 import log from 'electron-log'
 import { update, registerUpdateIpcHandlers } from './update'
-import { checkToolInstalled, installDependencies, killProcessOnPort, startBackend } from './init'
+import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
 import { WebViewManager } from './webview'
 import { FileReader } from './fileReader'
 import { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -18,9 +18,9 @@ import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
+import { checkAndInstallDepsOnUpdate, installDependencies } from './install-deps'
 
 const userData = app.getPath('userData');
-const versionFile = path.join(userData, 'version.txt');
 
 // ==================== constants ====================
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,69 +49,6 @@ findAvailablePort(browser_port).then(port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 });
-
-// Read last run version and install dependencies on update
-async function checkAndInstallDepsOnUpdate(): Promise<boolean> {
-  const currentVersion = app.getVersion();
-  return new Promise(async (resolve, reject) => {
-    try {
-      log.info(' start check version', { currentVersion });
-
-      // Check if version file exists
-      const versionExists = fs.existsSync(versionFile);
-      let savedVersion = '';
-
-      if (versionExists) {
-        savedVersion = fs.readFileSync(versionFile, 'utf-8').trim();
-        log.info(' read saved version', { savedVersion });
-      } else {
-        log.info(' version file not exist, will create new file');
-      }
-
-      // If version file does not exist or version does not match, reinstall dependencies
-      if (!versionExists || savedVersion !== currentVersion) {
-        log.info(' version changed, prepare to reinstall uv dependencies...', {
-          currentVersion,
-          savedVersion: versionExists ? savedVersion : 'none',
-          reason: !versionExists ? 'version file not exist' : 'version not match'
-        });
-
-        // Notify frontend to update
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('update-notification', {
-            type: 'version-update',
-            currentVersion,
-            previousVersion: versionExists ? savedVersion : 'none',
-            reason: !versionExists ? 'version file not exist' : 'version not match'
-          });
-        }
-
-        // Update version file
-        fs.writeFileSync(versionFile, currentVersion);
-        log.info(' version file updated', { currentVersion });
-
-        // Install dependencies
-        const result = await installDependencies();
-        if (!result) {
-          log.error(' install dependencies failed');
-          resolve(false);
-          return
-        }
-        resolve(true);
-        log.info(' install dependencies complete');
-        return
-      } else {
-        log.info(' version not changed, skip install dependencies', { currentVersion });
-        resolve(true);
-        return
-      }
-    } catch (error) {
-      log.error(' check version and install dependencies error:', error);
-      resolve(false);
-      return
-    }
-  })
-}
 
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
@@ -1006,7 +943,7 @@ async function createWindow() {
   update(win);
 
   // ==================== check tool installed ====================
-  let res = await checkAndInstallDepsOnUpdate();
+  let res = await checkAndInstallDepsOnUpdate(win);
   if (!res) {
     log.info('checkAndInstallDepsOnUpdate,install dependencies failed');
     win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
