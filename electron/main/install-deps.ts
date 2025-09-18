@@ -17,20 +17,39 @@ export type PromiseReturnType = {
 // Read last run version and install dependencies on update
 export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<PromiseReturnType> {
   const currentVersion = app.getVersion();
-  return new Promise(async (resolve, reject) => {
-    try {
-      log.info('[DEPS INSTALL] start check version', { currentVersion });
-
+  let savedVersion = '';
+  const checkInstallOperations = {
+    getSavedVersion: ():boolean => {
       // Check if version file exists
       const versionExists = fs.existsSync(versionFile);
-      let savedVersion = '';
-
       if (versionExists) {
+        log.info('[DEPS INSTALL] start check version', { currentVersion });
         savedVersion = fs.readFileSync(versionFile, 'utf-8').trim();
         log.info('[DEPS INSTALL] read saved version', { savedVersion });
       } else {
         log.info('[DEPS INSTALL] version file not exist, will create new file');
       }
+      return versionExists;
+    },
+    handleUpdateNotification: (versionExists:boolean) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('update-notification', {
+          type: 'version-update',
+          currentVersion,
+          previousVersion: versionExists ? savedVersion : 'none',
+          reason: !versionExists ? 'version file not exist' : 'version not match'
+        });
+      }
+    },
+    createVersionFile: () => {
+      fs.writeFileSync(versionFile, currentVersion);
+      log.info('[DEPS INSTALL] version file updated', { currentVersion });
+    }
+  }
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const versionExists:boolean = checkInstallOperations.getSavedVersion();
 
       // If version file does not exist or version does not match, reinstall dependencies
       if (!versionExists || savedVersion !== currentVersion) {
@@ -41,24 +60,16 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
         });
 
         // Notify frontend to update
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('update-notification', {
-            type: 'version-update',
-            currentVersion,
-            previousVersion: versionExists ? savedVersion : 'none',
-            reason: !versionExists ? 'version file not exist' : 'version not match'
-          });
-        }
+        checkInstallOperations.handleUpdateNotification(versionExists);
 
         // Update version file
-        fs.writeFileSync(versionFile, currentVersion);
-        log.info('[DEPS INSTALL] version file updated', { currentVersion });
+        checkInstallOperations.createVersionFile();
 
         // Install dependencies
         const result = await installDependencies();
         if (!result.success) {
           log.error(' install dependencies failed');
-          resolve({ message: "Install dependencies failed", success: false });
+          resolve({ message: `Install dependencies failed, msg ${result.message}`, success: false });
           return
         }
         resolve({ message: "Dependencies installed successfully after update", success: true });
@@ -160,6 +171,7 @@ class InstallLogs {
         log.info(`[DEPS INSTALL] Script output: ${data}`)
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: data.toString() });
+            console.log("data from installer", data.toString())
         }
     })
   }
@@ -224,22 +236,30 @@ const runInstall = (extraArgs: string[]) => {
 
 export async function installDependencies(): Promise<PromiseReturnType> {
   uv_path = await getBinaryPath('uv');
-  const handleCompletion = {
-    spawnBabel: (type:"mirror"|"main"="main") => {
+  const handleInstallOperations = {
+    spawnBabel: (message:"mirror"|"main"="main") => {
       fs.writeFileSync(installedLockPath, '')
       log.info('[DEPS INSTALL] Script completed successfully')
-      console.log(`Install Dependencies completed ${type}`)
+      console.log(`Install Dependencies completed ${message}`)
       spawn(uv_path, ['run', 'task', 'babel'], { cwd: backendPath })
+    },
+    notifyInstallDependenciesPage: ():boolean => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('install-dependencies-start');
+        return true;
+      } else {
+        log.warn('[DEPS INSTALL] Main window not available, continuing installation without UI updates');
+        return false;
+      }
     }
   }
 
   return new Promise<PromiseReturnType>(async (resolve, reject) => {
     console.log('start install dependencies')
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('install-dependencies-start');
-    } else {
-        resolve({ message: "Main window not available", success: false })
-        return
+    const mainWindowAvailable = handleInstallOperations.notifyInstallDependenciesPage();
+    
+    if (!mainWindowAvailable) {
+      log.info('[DEPS INSTALL] Proceeding with installation without UI notifications');
     }
 
     const isInstalCommandTool = await installCommandTool()
@@ -254,7 +274,7 @@ export async function installDependencies(): Promise<PromiseReturnType> {
     // try default install
     const installSuccess = await runInstall([])
     if (installSuccess.success) {
-        handleCompletion.spawnBabel()
+        handleInstallOperations.spawnBabel()
         resolve({ message: "Dependencies installed successfully", success: true })
         return
     }
@@ -265,7 +285,7 @@ export async function installDependencies(): Promise<PromiseReturnType> {
     mirrorInstallSuccess = (timezone === 'Asia/Shanghai')? await runInstall(proxyArgs) :await runInstall([])
 
     if (mirrorInstallSuccess.success) {
-        handleCompletion.spawnBabel("mirror")
+        handleInstallOperations.spawnBabel("mirror")
         resolve({ message: "Dependencies installed successfully with mirror", success: true })
     } else {
         log.error('Both default and mirror install failed')
