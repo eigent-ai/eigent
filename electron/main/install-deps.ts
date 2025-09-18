@@ -19,7 +19,7 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
   const currentVersion = app.getVersion();
   return new Promise(async (resolve, reject) => {
     try {
-      log.info(' start check version', { currentVersion });
+      log.info('[DEPS INSTALL] start check version', { currentVersion });
 
       // Check if version file exists
       const versionExists = fs.existsSync(versionFile);
@@ -27,14 +27,14 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
 
       if (versionExists) {
         savedVersion = fs.readFileSync(versionFile, 'utf-8').trim();
-        log.info(' read saved version', { savedVersion });
+        log.info('[DEPS INSTALL] read saved version', { savedVersion });
       } else {
-        log.info(' version file not exist, will create new file');
+        log.info('[DEPS INSTALL] version file not exist, will create new file');
       }
 
       // If version file does not exist or version does not match, reinstall dependencies
       if (!versionExists || savedVersion !== currentVersion) {
-        log.info(' version changed, prepare to reinstall uv dependencies...', {
+        log.info('[DEPS INSTALL] version changed, prepare to reinstall uv dependencies...', {
           currentVersion,
           savedVersion: versionExists ? savedVersion : 'none',
           reason: !versionExists ? 'version file not exist' : 'version not match'
@@ -52,7 +52,7 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
 
         // Update version file
         fs.writeFileSync(versionFile, currentVersion);
-        log.info(' version file updated', { currentVersion });
+        log.info('[DEPS INSTALL] version file updated', { currentVersion });
 
         // Install dependencies
         const result = await installDependencies();
@@ -62,10 +62,10 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
           return
         }
         resolve({ message: "Dependencies installed successfully after update", success: true });
-        log.info(' install dependencies complete');
+        log.info('[DEPS INSTALL] install dependencies complete');
         return
       } else {
-        log.info(' version not changed, skip install dependencies', { currentVersion });
+        log.info('[DEPS INSTALL] version not changed, skip install dependencies', { currentVersion });
         resolve({ message: "Version not changed, skipped installation", success: true });
         return
       }
@@ -157,7 +157,7 @@ class InstallLogs {
   /**Handle stdout data */
   onStdout() { 
     this.node_process.stdout.on('data', (data:any) => {
-        log.info(`Script output: ${data}`)
+        log.info(`[DEPS INSTALL] Script output: ${data}`)
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: data.toString() });
         }
@@ -227,7 +227,7 @@ export async function installDependencies(): Promise<PromiseReturnType> {
   const handleCompletion = {
     spawnBabel: (type:"mirror"|"main"="main") => {
       fs.writeFileSync(installedLockPath, '')
-      log.info('Script completed successfully')
+      log.info('[DEPS INSTALL] Script completed successfully')
       console.log(`Install Dependencies completed ${type}`)
       spawn(uv_path, ['run', 'task', 'babel'], { cwd: backendPath })
     }

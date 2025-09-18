@@ -201,20 +201,20 @@ export const handleDependencyInstallation = async () => {
   try {
     log.info(' start install dependencies...');
 
-    const isSuccess = await installDependencies();
-    if (!isSuccess) {
-      log.error(' install dependencies failed');
+    const isSuccess:PromiseReturnType = await installDependencies();
+    if (!isSuccess.success) {
+      log.error('[DEPS INSTALL] install dependencies failed '+isSuccess.message);
       return { success: false, error: 'install dependencies failed' };
     }
 
-    log.info(' install dependencies success, check tool installed status...');
+    log.info('[DEPS INSTALL] install dependencies success, check tool installed status...');
     const isToolInstalled = await checkToolInstalled();
-    log.info('isToolInstalled && !python_process', isToolInstalled && !python_process);
-    if (isToolInstalled && !python_process) {
-      log.info(' tool installed, start backend service...');
+    log.info('[DEPS INSTALL] isToolInstalled && !python_process', isToolInstalled.success && !python_process);
+    if (isToolInstalled.success && !python_process) {
+      log.info('[DEPS INSTALL] tool installed, start backend service...');
       python_process = await startBackend((port) => {
         backendPort = port;
-        log.info(' backend service start success', { port });
+        log.info('[DEPS INSTALL] backend service start success', { port });
       });
 
       // Notify frontend to install success
@@ -223,18 +223,18 @@ export const handleDependencyInstallation = async () => {
       }
 
       python_process?.on('exit', (code, signal) => {
-        log.info(' python process exit', { code, signal });
+        log.info('[DEPS INSTALL] python process exit', { code, signal });
       });
-    } else if (!isToolInstalled) {
-      log.warn(' tool not installed, skip backend start');
+    } else if (!isToolInstalled.success) {
+      log.warn('[DEPS INSTALL] tool not installed, skip backend start'+isToolInstalled.message);
     } else {
-      log.info(' backend process already exist, skip start');
+      log.info('[DEPS INSTALL] backend process already exist, skip start');
     }
 
-    log.info(' install dependencies complete');
+    log.info('[DEPS INSTALL] install dependencies complete');
     return { success: true };
   } catch (error: any) {
-    log.error(' install dependencies error:', error);
+    log.error('[DEPS INSTALL] install dependencies error:', error);
     if (win && !win.isDestroyed()) {
       win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
     }
