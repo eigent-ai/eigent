@@ -76,8 +76,14 @@ export const InstallDependencies: React.FC<{
 					setInitState("done");
 				} else {
 					setStatus("error");
-					console.error("dependencies installation failed:", data?.code);
-					console.error("dependencies installation failed:", data?.error);
+					console.error("dependencies installation failed:", data);
+
+					const newLog: InstallLog = {
+						type: "stderr",
+						data: data?.error || "Unknown error",
+						timestamp: new Date(),
+					};
+					setLogs((prev) => [...prev, newLog]);
 				}
 			}
 		);
@@ -159,6 +165,13 @@ export const InstallDependencies: React.FC<{
 					<DialogHeader>
 						<DialogTitle>{t("layout.installation-failed")}</DialogTitle>
 					</DialogHeader>
+					<div className="text-text-label text-xs font-normal leading-tight mb-4">
+						{<div className="mb-1">
+							<span className="text-text-label/60">
+								[{logs.at(-1)?.timestamp.toLocaleTimeString()}] {logs.at(-1)?.data}
+							</span>
+						</div>}
+					</div>
 					<DialogFooter>
 						<Button onClick={handleInstall}>{t("layout.retry")}</Button>
 					</DialogFooter>

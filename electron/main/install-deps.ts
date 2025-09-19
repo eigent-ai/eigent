@@ -39,6 +39,8 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
           previousVersion: versionExists ? savedVersion : 'none',
           reason: !versionExists ? 'version file not exist' : 'version not match'
         });
+      } else {
+        log.warn('[DEPS INSTALL] Cannot send update notification - window not available');
       }
     },
     createVersionFile: () => {
@@ -93,35 +95,35 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
  */
 export async function installCommandTool(): Promise<PromiseReturnType> {
   return new Promise(async (resolve, reject) => {
-  const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<PromiseReturnType> => {
-      if (await isBinaryExists(toolName)) {
-          return { message: `${toolName} already installed`, success: true };
-      }
+      const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<PromiseReturnType> => {
+        if (await isBinaryExists(toolName)) {
+            return { message: `${toolName} already installed`, success: true };
+        }
 
-      console.log(`start install ${toolName}`);
-      await runInstallScript(scriptName);
-      const installed = await isBinaryExists(toolName);
+        console.log(`start install ${toolName}`);
+        await runInstallScript(scriptName);
+        const installed = await isBinaryExists(toolName);
 
       const mainWindow = getMainWindow();
       if (mainWindow && !mainWindow.isDestroyed()) {
-          if (installed) {
+        if (installed) {
               mainWindow.webContents.send('install-dependencies-log', {
-                  type: 'stdout',
-                  data: `${toolName} installed successfully`,
-              });
-          } else {
+                type: 'stdout',
+                data: `${toolName} installed successfully`,
+            });
+        } else {
               mainWindow.webContents.send('install-dependencies-complete', {
-                  success: false,
-                  code: 2,
-                  error: `${toolName} installation failed (script exit code 2)`,
+                success: false,
+                code: 2,
+                error: `${toolName} installation failed (script exit code 2)`,
               });
           }
-      }
+        }
 
-      return { 
-        message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
-        success: installed 
-      };
+        return { 
+          message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
+          success: installed 
+        };
       };
 
       const uvResult = await ensureInstalled('uv', 'install-uv.js');
@@ -164,25 +166,32 @@ class InstallLogs {
         }
     })
   }
+
+  /**Display filtered logs based on severity */
+  displayFilteredLogs(data:String) {
+      if (!data) return;
+      const msg = data.toString().trimEnd();
+      if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
+          log.error(`BACKEND: [DEPS INSTALL] ${msg}`);
+          safeMainWindowSend('install-dependencies-log', { type: 'stderr', data: data.toString() });
+      } else {
+          log.info(`BACKEND: [DEPS INSTALL] ${msg}`); // treat uvicorn info logs as normal
+          // Use immediate send for stdout logs (non-critical)
+          safeMainWindowSend('install-dependencies-log', { type: 'stdout', data: data.toString() });
+      }
+  }
   
   /**Handle stdout data */
   onStdout() { 
     this.node_process.stdout.on('data', (data:any) => {
-        log.info(`[DEPS INSTALL] Script output: ${data}`)
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('install-dependencies-log', { type: 'stdout', data: data.toString() });
-            console.log("data from installer", data.toString())
-        }
+        this.displayFilteredLogs(data);
     })
   }
 
   /**Handle stderr data */
   onStderr() {
     this.node_process.stderr.on('data', (data:any) => {
-        log.error(`Script error: ${data}`)
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('install-dependencies-log', { type: 'stderr', data: data.toString() });
-        }
+        this.displayFilteredLogs(data);
     })
   }
 

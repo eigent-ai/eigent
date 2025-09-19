@@ -946,7 +946,7 @@ async function createWindow() {
   // ==================== check tool installed ====================
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate(win);
   if (!res.success) {
-    log.info(res.message);
+    log.info("[DEPS INSTALL] Dependency Error: ", res.message);
     win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
     return;
   } 
