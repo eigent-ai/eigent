@@ -5,6 +5,7 @@ import { getMainWindow } from './init'
 import fs from 'node:fs'
 import { getBackendPath, getBinaryPath, getCachePath, isBinaryExists, runInstallScript } from './utils/process'
 import { spawn } from 'child_process'
+import { safeMainWindowSend } from './utils/safeWebContentsSend'
 
 const userData = app.getPath('userData');
 const versionFile = path.join(userData, 'version.txt');
@@ -104,20 +105,17 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
         await runInstallScript(scriptName);
         const installed = await isBinaryExists(toolName);
 
-      const mainWindow = getMainWindow();
-      if (mainWindow && !mainWindow.isDestroyed()) {
         if (installed) {
-              mainWindow.webContents.send('install-dependencies-log', {
-                type: 'stdout',
-                data: `${toolName} installed successfully`,
-            });
+          safeMainWindowSend('install-dependencies-log', {
+            type: 'stdout',
+            data: `${toolName} installed successfully`,
+          });
         } else {
-              mainWindow.webContents.send('install-dependencies-complete', {
-                success: false,
-                code: 2,
-                error: `${toolName} installation failed (script exit code 2)`,
-              });
-          }
+          safeMainWindowSend('install-dependencies-complete', {
+            success: false,
+            code: 2,
+            error: `${toolName} installation failed (script exit code 2)`,
+          });
         }
 
         return { 
@@ -175,8 +173,7 @@ class InstallLogs {
           log.error(`BACKEND: [DEPS INSTALL] ${msg}`);
           safeMainWindowSend('install-dependencies-log', { type: 'stderr', data: data.toString() });
       } else {
-          log.info(`BACKEND: [DEPS INSTALL] ${msg}`); // treat uvicorn info logs as normal
-          // Use immediate send for stdout logs (non-critical)
+          log.info(`BACKEND: [DEPS INSTALL] ${msg}`);
           safeMainWindowSend('install-dependencies-log', { type: 'stdout', data: data.toString() });
       }
   }
@@ -253,13 +250,11 @@ export async function installDependencies(): Promise<PromiseReturnType> {
       spawn(uv_path, ['run', 'task', 'babel'], { cwd: backendPath })
     },
     notifyInstallDependenciesPage: ():boolean => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('install-dependencies-start');
-        return true;
-      } else {
+      const success = safeMainWindowSend('install-dependencies-start');
+      if (!success) {
         log.warn('[DEPS INSTALL] Main window not available, continuing installation without UI updates');
-        return false;
       }
+      return success;
     }
   }
 
@@ -298,9 +293,10 @@ export async function installDependencies(): Promise<PromiseReturnType> {
         resolve({ message: "Dependencies installed successfully with mirror", success: true })
     } else {
         log.error('Both default and mirror install failed')
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('install-dependencies-complete', { success: false, error: 'Both default and mirror install failed' });
-        }
+        safeMainWindowSend('install-dependencies-complete', { 
+          success: false, 
+          error: 'Both default and mirror install failed' 
+        });
         resolve({ message: "Both default and mirror install failed", success: false })
     }
   })
