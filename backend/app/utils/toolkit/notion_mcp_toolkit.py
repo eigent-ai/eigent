@@ -20,27 +20,33 @@ class NotionMCPToolkit(BaseNotionMCPToolkit, AbstractToolkit):
             timeout = 120.0
         super().__init__(timeout)
         self._mcp_toolkit = MCPToolkit(
-            config_dict={
-                "mcpServers": {
-                    "notionMCP": {
-                        "command": bun(),
-                        "args": ["x", "-y", "eigent-mcp-remote@0.1.22", "https://mcp.notion.com/mcp"],
-                        "env": {
+                config_dict={
+                    "mcpServers": {
+                        "notionMCP": {
+                            "command": "npx",
+                            "args": [
+                                "-y",
+                                "mcp-remote",
+                                "https://mcp.notion.com/mcp",
+                            ],
+                            "env": {
                             "MCP_REMOTE_CONFIG_DIR": env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")),
-                        },
+                            },
+                        }
                     }
-                }
-            },
+                },
             timeout=timeout,
         )
 
     @classmethod
     async def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
         tools = []
-        if env("MCP_REMOTE_CONFIG_DIR"):
-            toolkit = cls(api_task_id)
+        toolkit = cls(api_task_id)
+        try:
             await toolkit.connect()
             for item in toolkit.get_tools():
                 setattr(item, "_toolkit_name", cls.__name__)
                 tools.append(item)
+        except Exception as e:
+            print(f"Warning: Could not connect to Notion MCP server: {e}")
         return tools

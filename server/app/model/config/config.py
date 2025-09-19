@@ -45,7 +45,7 @@ class ConfigInfo:
         },
         ConfigGroup.NOTION.value: {
             "env_vars": ["MCP_REMOTE_CONFIG_DIR"],
-            "toolkit": "notion_toolkit",
+            "toolkit": "notion_mcp_toolkit",
         },
         ConfigGroup.TWITTER.value: {
             "env_vars": [
