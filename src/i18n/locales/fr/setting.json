@@ -20,7 +20,7 @@
 	"data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",
 	"privacy-policy": "Privacy Policy",
 	"how-we-handle-your-data": "How we handle your data",
-	"how-we-handle-your-data-line-1": "We only use the essential data needed to run your tasks:",
+	"how-we-handle-your-data-line-1": "We only use the essential data needed to run your tasks",
 	"how-we-handle-your-data-line-1-line-1": "Eigent may capture screenshots to analyze UI elements, read text, and determine the next action, just as you would.",
 	"how-we-handle-your-data-line-1-line-2": "Eigent may use your mouse and keyboard to access local software and files you specify.",
 	"how-we-handle-your-data-line-1-line-3": "Only the minimum task data is sent to AI model providers or the third-party integrations you enable; we have zero data-retention",

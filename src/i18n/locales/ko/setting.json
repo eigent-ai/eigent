@@ -20,7 +20,7 @@
 	"data-privacy-description": "Eigent는 개인정보 보호를 위해 로컬 우선 원칙을 기반으로 구축되었습니다. 기본적으로 데이터는 사용자의 기기에 남아 있습니다. 클라우드 기능은 선택 사항이며 작동에 필요한 최소한의 데이터만 사용합니다. 자세한 내용은 당사의",
 	"privacy-policy": "개인정보 처리방침",
 	"how-we-handle-your-data": "데이터 처리 방식",
-	"how-we-handle-your-data-line-1": "작업 실행에 필요한 필수 데이터만 사용합니다:",
+	"how-we-handle-your-data-line-1": "작업 실행에 필요한 필수 데이터만 사용합니다",
 	"how-we-handle-your-data-line-1-line-1": "Eigent는 UI 요소를 분석하고 텍스트를 읽고 다음 작업을 결정하기 위해 스크린샷을 캡처할 수 있습니다. 사용자가 하는 방식과 같습니다.",
 	"how-we-handle-your-data-line-1-line-2": "Eigent는 사용자가 지정한 로컬 소프트웨어 및 파일에 액세스하기 위해 마우스와 키보드를 사용할 수 있습니다.",
 	"how-we-handle-your-data-line-1-line-3": "AI 모델 제공업체 또는 사용자가 활성화한 타사 통합에 전송되는 데이터는 최소한의 작업 데이터뿐이며, 데이터 보존은 전혀 없습니다.",
