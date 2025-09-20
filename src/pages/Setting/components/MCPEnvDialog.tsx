@@ -63,7 +63,7 @@ export async function exa_check(apiKey: string) {
 			body: JSON.stringify({ query }),
 		});
 		if (!res.ok) {
-			const data = await res.json()
+			const data = await res.json();
 			throw new Error(`Exa API error: ${res.status} ${data.error}`);
 		}
 
@@ -87,6 +87,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 }) => {
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
 	const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
+	const [isValidating, setIsValidating] = useState<boolean>(false);
 	const { t } = useTranslation();
 	useEffect(() => {
 		initializeEnvValues(activeMcp);
@@ -163,6 +164,9 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 	};
 
 	const handleConfigureMcpEnvSetting = async () => {
+		if (isValidating) return;
+
+		setIsValidating(true);
 		clearFieldErrors();
 
 		const env: { [key: string]: string } = {};
@@ -170,29 +174,32 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 			env[key] = envValues[key]?.value;
 		});
 
-		// 校验 Google key
+		// Validate Google API key
 		if (env["GOOGLE_API_KEY"] && env["SEARCH_ENGINE_ID"]) {
 			const result = await google_check(env["GOOGLE_API_KEY"], env["SEARCH_ENGINE_ID"]);
 			if (!result.success) {
 				setFieldError("GOOGLE_API_KEY", result.message);
 				setFieldError("SEARCH_ENGINE_ID", result.message);
+				setIsValidating(false);
 				return;
 			}
 		}
 
-		// 校验 Exa key
+		// Validate Exa API key
 		if (env["EXA_API_KEY"]) {
 			const result = await exa_check(env["EXA_API_KEY"]);
 			if (!result.success) {
 				setFieldError("EXA_API_KEY", result.message);
+				setIsValidating(false);
 				return;
 			}
 		}
 
-		// 如果都成功才保存
+		// Save only if all validations succeed
 		const mcp = { ...activeMcp, install_command: { ...activeMcp.install_command, env } };
 		setEnvValues({});
 		setShowKeys({});
+		setIsValidating(false);
 		onConnect(mcp);
 	};
 	return (
@@ -312,8 +319,9 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							onClick={handleConfigureMcpEnvSetting}
 							variant="primary"
 							size="md"
+							disabled={isValidating}
 						>
-							{t("setting.connect")}
+							{isValidating ? "Validating..." : t("setting.connect")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
