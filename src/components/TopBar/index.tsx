@@ -112,17 +112,20 @@ function HeaderWin() {
 		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
 	]);
 
-	const getReferFriendsLink = () => {
-		proxyFetchGet("/api/user/invite_code").then((res: any) => {
-			console.log(res);
+	const getReferFriendsLink = async () => {
+		try {
+			const res: any = await proxyFetchGet("/api/user/invite_code");
 			if (res?.invite_code) {
-				const inviteCode =`https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
-				navigator.clipboard.writeText(inviteCode);
-				toast.success("Invitation code copied!");
+				const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
+				await navigator.clipboard.writeText(inviteLink);
+				toast.success("Invitation link copied!");
 			} else {
 				toast.error("Failed to get invite code");
 			}
-		});
+		} catch (error) {
+			console.error("Failed to get referral link:", error);
+			toast.error("Failed to get invitation link");
+		}
 	};
 
 	return (
@@ -166,7 +169,7 @@ function HeaderWin() {
 					</Button>
 					{location.pathname !== "/history" && (
 						<>
-							{activeTaskTitle === "New Project" ? (
+							{activeTaskTitle === t("chat.new-project") ? (
 								<Button
 									variant="ghost"
 									size="sm"
@@ -177,7 +180,7 @@ function HeaderWin() {
 								</Button>
 							) : (
 								<div className="font-bold leading-10 text-base min-w-10 max-w-56 truncate">
-									{t("chat.new-project")}
+									{activeTaskTitle}
 								</div>
 							)}
 						</>
