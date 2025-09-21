@@ -18,8 +18,10 @@ import { useSidebarStore } from "@/store/sidebarStore";
 import chevron_left from "@/assets/chevron_left.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
+import {  proxyFetchGet } from "@/api/http";
+import { toast } from "sonner";
 function HeaderWin() {
-	const {t} = useTranslation();
+	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
 	const controlsRef = useRef<HTMLDivElement>(null);
 	const [platform, setPlatform] = useState<string>("");
@@ -110,6 +112,19 @@ function HeaderWin() {
 		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
 	]);
 
+	const getReferFriendsLink = () => {
+		proxyFetchGet("/api/user/invite_code").then((res: any) => {
+			console.log(res);
+			if (res?.invite_code) {
+				const inviteCode =`https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
+				navigator.clipboard.writeText(inviteCode);
+				toast.success("Invitation code copied!");
+			} else {
+				toast.error("Failed to get invite code");
+			}
+		});
+	};
+
 	return (
 		<div
 			className="flex !h-9 items-center justify-between pl-2 py-1 z-50"
@@ -185,9 +200,7 @@ function HeaderWin() {
 						{t("layout.report-bug")}
 					</Button>
 					<Button
-						onClick={() => {
-							window.location.href = "https://www.eigent.ai/dashboard";
-						}}
+						onClick={getReferFriendsLink}
 						variant="primary"
 						size="xs"
 						className="no-drag text-button-primary-text-default leading-tight"

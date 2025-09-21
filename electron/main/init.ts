@@ -36,32 +36,39 @@ export async function checkToolInstalled() {
  */
 export async function installCommandTool() {
     return new Promise(async (resolve, reject) => {
-    const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<boolean> => {
-        if (await isBinaryExists(toolName)) {
-            return true;
-        }
+        const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<boolean> => {
+            if (await isBinaryExists(toolName)) {
+                return true;
+            }
 
-        console.log(`start install ${toolName}`);
-        await runInstallScript(scriptName);
-        const installed = await isBinaryExists(toolName);
-
-        const mainWindow = getMainWindow();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            if (installed) {
-                mainWindow.webContents.send('install-dependencies-log', {
-                    type: 'stdout',
-                    data: `${toolName} installed successfully`,
-                });
-            } else {
+            console.log(`start install ${toolName}`);
+            const isSuccess = await runInstallScript(scriptName);
+            const mainWindow = getMainWindow();
+            if (mainWindow && !mainWindow.isDestroyed() && !isSuccess) {
                 mainWindow.webContents.send('install-dependencies-complete', {
                     success: false,
                     code: 2,
                     error: `${toolName} installation failed (script exit code 2)`,
                 });
             }
-        }
+            const installed = await isBinaryExists(toolName);
 
-        return installed;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (installed) {
+                    mainWindow.webContents.send('install-dependencies-log', {
+                        type: 'stdout',
+                        data: `${toolName} installed successfully`,
+                    });
+                } else {
+                    mainWindow.webContents.send('install-dependencies-complete', {
+                        success: false,
+                        code: 2,
+                        error: `${toolName} installation failed (script exit code 2)`,
+                    });
+                }
+            }
+
+            return installed;
         };
 
         if (!(await ensureInstalled('uv', 'install-uv.js'))) {
@@ -220,15 +227,15 @@ export async function installDependencies() {
                         console.log('install dependencies end', code === 0)
                         resolveInner(code === 0)
                     })
-                }catch(err) {
-                    log.error('run install failed', err)    
+                } catch (err) {
+                    log.error('run install failed', err)
                     // Clean up uv_installing.lock file if installation fails
                     if (fs.existsSync(installingLockPath)) {
                         fs.unlinkSync(installingLockPath);
                     }
                     rejectInner(err)
                 }
-                
+
             })
         }
 
@@ -317,7 +324,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     }
 
     //Redirect output
-    const displayFilteredLogs = (data:String) => {
+    const displayFilteredLogs = (data: String) => {
         if (!data) return;
         const msg = data.toString().trimEnd();
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
