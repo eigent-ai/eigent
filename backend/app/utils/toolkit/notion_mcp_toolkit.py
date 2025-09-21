@@ -1,4 +1,5 @@
 import os
+from typing import Any, ClassVar, Dict, List, Optional, Set
 from camel.toolkits import FunctionTool, NotionMCPToolkit as BaseNotionMCPToolkit
 from app.component.command import bun
 from app.component.environment import env
@@ -8,7 +9,6 @@ from camel.toolkits.mcp_toolkit import MCPToolkit
 
 
 class NotionMCPToolkit(BaseNotionMCPToolkit, AbstractToolkit):
-    agent_name: str = Agents.social_medium_agent
 
     def __init__(
         self,
@@ -44,7 +44,9 @@ class NotionMCPToolkit(BaseNotionMCPToolkit, AbstractToolkit):
         toolkit = cls(api_task_id)
         try:
             await toolkit.connect()
-            for item in toolkit.get_tools():
+            # Use subclass implementation that inlines upstream processing
+            all_tools = BaseNotionMCPToolkit.get_tools(toolkit)
+            for item in all_tools:
                 setattr(item, "_toolkit_name", cls.__name__)
                 tools.append(item)
         except Exception as e:

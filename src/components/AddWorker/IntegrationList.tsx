@@ -239,6 +239,8 @@ export default function IntegrationList({
 			}
 			if (installed[item.key]) return;
 			await item.onInstall();
+			// refresh configs after install to update installed state indicator
+			await fetchInstalled();
 		},
 		[installed]
 	);
