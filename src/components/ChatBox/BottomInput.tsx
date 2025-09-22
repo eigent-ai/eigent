@@ -188,7 +188,7 @@ export const BottomInput = ({
 			}));
 			const files = [
 				...current.filter((f: File) => !mapped.find((m) => m.filePath === f.filePath)),
-				...mapped.filter((m: File) => !current.find((f: File) => f.filePath === m.filePath)),
+				...mapped.filter((m) => !current.find((f) => f.filePath === m.filePath)),
 			];
 			chatStore.setAttaches(chatStore.activeTaskId as string, files as File[]);
 		} catch (error) {
