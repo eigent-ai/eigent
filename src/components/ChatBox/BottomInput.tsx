@@ -13,7 +13,7 @@ import {
 	Play,
 	Image,
 	FileText,
-		UploadCloud,
+	UploadCloud,
 } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 
@@ -182,15 +182,15 @@ export const BottomInput = ({
 			const dropped = Array.from(e.dataTransfer?.files || []);
 			if (dropped.length === 0) return;
 			const current = chatStore.tasks[chatStore.activeTaskId as string].attaches;
-			const mapped = dropped.map((f: any) => ({
+			const mapped = dropped.map((f: File) => ({
 				fileName: f.name,
 				filePath: f.path || f.name,
 			}));
 			const files = [
-				...current.filter((f: any) => !mapped.find((m) => m.filePath === f.filePath)),
-				...mapped.filter((m) => !current.find((f: any) => f.filePath === m.filePath)),
+				...current.filter((f: File) => !mapped.find((m) => m.filePath === f.filePath)),
+				...mapped.filter((m: File) => !current.find((f: File) => f.filePath === m.filePath)),
 			];
-			chatStore.setAttaches(chatStore.activeTaskId as string, files as any);
+			chatStore.setAttaches(chatStore.activeTaskId as string, files as File[]);
 		} catch (error) {
 			console.error("Drop File Error:", error);
 		}
