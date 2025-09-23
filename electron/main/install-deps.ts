@@ -151,6 +151,36 @@ const installedLockPath = path.join(backendPath, 'uv_installed.lock')
 // const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
 const proxyArgs = ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
 
+/**
+ * Get current installation status by checking lock files
+ * @returns Object with installation status information
+ */
+export async function getInstallationStatus(): Promise<{
+  isInstalling: boolean;
+  hasLockFile: boolean;
+  installedExists: boolean;
+}> {
+  try {
+    const installingExists = fs.existsSync(installingLockPath);
+    const installedExists = fs.existsSync(installedLockPath);
+    
+    // If installing lock exists, installation is in progress
+    // If installed lock exists, installation completed previously
+    return {
+      isInstalling: installingExists,
+      hasLockFile: installingExists || installedExists,
+      installedExists: installedExists
+    };
+  } catch (error) {
+    console.error('[getInstallationStatus] Error checking installation status:', error);
+    return {
+      isInstalling: false,
+      hasLockFile: false,
+      installedExists: false
+    };
+  }
+}
+
 class InstallLogs {
   private node_process;
 

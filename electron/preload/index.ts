@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // install dependencies related API
   checkAndInstallDepsOnUpdate: () => ipcRenderer.invoke('install-dependencies'),
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
+  getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);
   },
