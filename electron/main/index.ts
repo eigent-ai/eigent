@@ -947,7 +947,7 @@ async function createWindow() {
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate(win);
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
-    win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
+    win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
     return;
   } 
   log.info("[DEPS INSTALL] Dependency Success: ", res.message);
@@ -1008,7 +1008,7 @@ const setupExternalLinkHandling = () => {
 // ==================== check and start backend ====================
 const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
-
+  try {
   const isToolInstalled = await checkToolInstalled();
   if (isToolInstalled) {
     log.info('Tool installed, starting backend service...');
@@ -1029,6 +1029,9 @@ const checkAndStartBackend = async () => {
     });
   } else {
     log.warn('Tool not installed, cannot start backend service');
+    }
+  } catch (error) {
+    log.debug("Cannot Start Backend due to ", error)
   }
 };
 
