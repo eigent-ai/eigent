@@ -65,7 +65,6 @@ export const useInstallationSetup = () => {
       console.log('[useInstallationSetup] Install complete event received:', data);
       
       if (data.success) {
-        console.log('[useInstallationSetup] Setting success state and initState to done');
         setSuccess();
         setInitState('done');
       } else {
