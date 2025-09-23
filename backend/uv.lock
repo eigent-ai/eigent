@@ -240,7 +240,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.76a3" },
+    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.76a5" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
@@ -323,7 +323,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.76a3"
+version = "0.2.76a5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -337,9 +337,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/36/93cf95aef6aaf7beccd12d40300f6b0c3316cea2466b2232d5e2b3cadb40/camel_ai-0.2.76a3.tar.gz", hash = "sha256:65e3308afe10b6411b14a6ca3fe748e685984615af7077708955b5bbf280a382", size = 940901, upload-time = "2025-09-16T09:54:37.553Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/5e/a993fcb70dc67c43f09ad18b287d5c3991bb49583bba1c4522400f523ec8/camel_ai-0.2.76a5.tar.gz", hash = "sha256:86f267d5e5cf0ffcf3f422247684b562667994bd3e20c25abbc966fbe8f24ddf", size = 952512, upload-time = "2025-09-23T18:53:09.63Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/5c/8618574ad6628019326872a4e0cdeb2275c7f1948b4571194ba04f0e72aa/camel_ai-0.2.76a3-py3-none-any.whl", hash = "sha256:8f226e52debff92be49359f57cd15da5e913055dba453be2a237c587fb274abe", size = 1382011, upload-time = "2025-09-16T09:54:34.798Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/3e/49eaeb7dca62646057a32bce69be5f35610708caefd2b05271db023062f7/camel_ai-0.2.76a5-py3-none-any.whl", hash = "sha256:535303919e91d0f60f0252e58b18dd233b9f31b639c2394b495715159f710946", size = 1398674, upload-time = "2025-09-23T18:53:07.331Z" },
 ]
 
 [package.optional-dependencies]
@@ -594,11 +594,11 @@ wheels = [
 
 [[package]]
 name = "docstring-parser"
-version = "0.15"
+version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e8/2d/ea1dfc15b909cc660f657a3a9d698a2916b7f3b05535a2d72e8d7ea3ad5b/docstring_parser-0.15.tar.gz", hash = "sha256:48ddc093e8b1865899956fcc03b03e66bb7240c310fac5af81814580c55bf682", size = 26768, upload-time = "2022-09-05T07:36:08.139Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b2/9d/c3b43da9515bd270df0f80548d9944e389870713cc1fe2b8fb35fe2bcefd/docstring_parser-0.17.0.tar.gz", hash = "sha256:583de4a309722b3315439bb31d64ba3eebada841f2e2cee23b99df001434c912", size = 27442, upload-time = "2025-07-21T07:35:01.868Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/e3/32e272db7adcf90e93f73e9a98fd763049ed7c641fb57ab26cb8f3e7e79c/docstring_parser-0.15-py3-none-any.whl", hash = "sha256:d1679b86250d269d06a99670924d6bce45adc00b08069dae8c47d98e89b667a9", size = 36093, upload-time = "2022-09-05T07:36:05.303Z" },
+    { url = "https://files.pythonhosted.org/packages/55/e2/2537ebcff11c1ee1ff17d8d0b6f4db75873e3b0fb32c2d4a2ee31ecb310a/docstring_parser-0.17.0-py3-none-any.whl", hash = "sha256:cf2569abd23dce8099b300f9b4fa8191e9582dda731fd533daf54c4551658708", size = 36896, upload-time = "2025-07-21T07:35:00.684Z" },
 ]
 
 [[package]]
