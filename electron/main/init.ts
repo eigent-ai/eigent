@@ -155,7 +155,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     }
 
     //Redirect output
-    const displayFilteredLogs = (data:String) => {
+    const displayFilteredLogs = (data: String) => {
         if (!data) return;
         const msg = data.toString().trimEnd();
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {

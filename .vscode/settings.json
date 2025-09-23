@@ -12,5 +12,11 @@
   ],
   "cSpell.words": [
     "Eigent"
+  ],
+  "i18n-ally.localesPaths": [
+    "backend/lang",
+    "server/lang",
+    "src/i18n",
+    "src/i18n/locales"
   ]
 }
