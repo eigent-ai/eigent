@@ -18,7 +18,7 @@ import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
-import { checkAndInstallDepsOnUpdate, installDependencies, PromiseReturnType } from './install-deps'
+import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
 import e from 'express'
 
 const userData = app.getPath('userData');
@@ -195,51 +195,6 @@ const checkManagerInstance = (manager: any, name: string) => {
     throw new Error(`${name} not initialized`);
   }
   return manager;
-};
-
-export const handleDependencyInstallation = async () => {
-  try {
-    log.info(' start install dependencies...');
-
-    const isSuccess:PromiseReturnType = await installDependencies();
-    if (!isSuccess.success) {
-      log.error('[DEPS INSTALL] install dependencies failed '+isSuccess.message);
-      return { success: false, error: 'install dependencies failed' };
-    }
-
-    log.info('[DEPS INSTALL] install dependencies success, check tool installed status...');
-    const isToolInstalled = await checkToolInstalled();
-    log.info('[DEPS INSTALL] isToolInstalled && !python_process', isToolInstalled.success && !python_process);
-    if (isToolInstalled.success && !python_process) {
-      log.info('[DEPS INSTALL] tool installed, start backend service...');
-      python_process = await startBackend((port) => {
-        backendPort = port;
-        log.info('[DEPS INSTALL] backend service start success', { port });
-      });
-
-      // Notify frontend to install success
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-      }
-
-      python_process?.on('exit', (code, signal) => {
-        log.info('[DEPS INSTALL] python process exit', { code, signal });
-      });
-    } else if (!isToolInstalled.success) {
-      log.warn('[DEPS INSTALL] tool not installed, skip backend start'+isToolInstalled.message);
-    } else {
-      log.info('[DEPS INSTALL] backend process already exist, skip start');
-    }
-
-    log.info('[DEPS INSTALL] install dependencies complete');
-    return { success: true };
-  } catch (error: any) {
-    log.error('[DEPS INSTALL] install dependencies error:', error);
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
-    }
-    return { success: false, error: error.message };
-  }
 };
 
 function registerIpcHandlers() {
@@ -872,13 +827,35 @@ function registerIpcHandlers() {
   });
 
   // ==================== dependency install handler ====================
-  ipcMain.handle('install-dependencies', handleDependencyInstallation);
-  ipcMain.handle('frontend-ready', handleDependencyInstallation);
+  ipcMain.handle('install-dependencies', async () => {
+    try {
+      if(win === null) throw new Error("Window is null");
+      //Force installation even if versionFile exists
+      const isInstalled = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
+      return { success: true, isInstalled };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
 
   ipcMain.handle('check-tool-installed', async () => {
     try {
       const isInstalled = await checkToolInstalled();
       return { success: true, isInstalled };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle('get-installation-status', async () => {
+    try {
+      const { isInstalling, hasLockFile } = await getInstallationStatus();
+      return { 
+        success: true, 
+        isInstalling, 
+        hasLockFile,
+        timestamp: Date.now()
+      };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
