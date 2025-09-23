@@ -168,7 +168,7 @@ export const BottomInput = ({
 	const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (dragCounter.current > 0) dragCounter.current -= 1;
+		dragCounter.current = Math.max(0, dragCounter.current - 1);
 		if (dragCounter.current === 0) setIsDragging(false);
 	};
 
@@ -184,7 +184,7 @@ export const BottomInput = ({
 			const current = chatStore.tasks[chatStore.activeTaskId as string].attaches;
 			const mapped = dropped.map((f: File) => ({
 				fileName: f.name,
-				filePath: f.path || f.name,
+				filePath: (f as any).path || f.name,
 			}));
 			const files = [
 				...current.filter((f: File) => !mapped.find((m) => m.filePath === f.filePath)),
@@ -384,7 +384,7 @@ export const BottomInput = ({
 						<div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/70 text-blue-700 backdrop-blur-sm">
 							<UploadCloud className="w-8 h-8" />
 							<div className="text-sm font-semibold">
-								 Drop files to attach
+								Drop files to attach
 							</div>
 							
 						</div>
