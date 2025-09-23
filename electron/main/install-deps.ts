@@ -15,8 +15,13 @@ export type PromiseReturnType = {
   success: boolean;
 }
 
+interface checkInstallProps {
+  win:BrowserWindow|null; 
+  forceInstall?:boolean
+}
 // Read last run version and install dependencies on update
-export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<PromiseReturnType> {
+export const checkAndInstallDepsOnUpdate = async ({win, forceInstall=false}:checkInstallProps): 
+Promise<PromiseReturnType> => {
   const currentVersion = app.getVersion();
   let savedVersion = '';
   const checkInstallOperations = {
@@ -55,7 +60,7 @@ export async function checkAndInstallDepsOnUpdate(win:BrowserWindow): Promise<Pr
       const versionExists:boolean = checkInstallOperations.getSavedVersion();
 
       // If version file does not exist or version does not match, reinstall dependencies
-      if (!versionExists || savedVersion !== currentVersion) {
+      if (forceInstall || !versionExists || savedVersion !== currentVersion) {
         log.info('[DEPS INSTALL] version changed, prepare to reinstall uv dependencies...', {
           currentVersion,
           savedVersion: versionExists ? savedVersion : 'none',
@@ -169,6 +174,8 @@ class InstallLogs {
   displayFilteredLogs(data:String) {
       if (!data) return;
       const msg = data.toString().trimEnd();
+      //Detect if uv sync is run
+      detectInstallationLogs(msg);
       if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
           log.error(`BACKEND: [DEPS INSTALL] ${msg}`);
           safeMainWindowSend('install-dependencies-log', { type: 'stderr', data: data.toString() });
@@ -300,4 +307,86 @@ export async function installDependencies(): Promise<PromiseReturnType> {
         resolve({ message: "Both default and mirror install failed", success: false })
     }
   })
+}
+
+let dependencyInstallationDetected = false;
+let installationNotificationSent = false;
+export function detectInstallationLogs(msg:string) {
+  // Check for UV dependency installation patterns
+  const installPatterns = [
+      "Resolved", // UV resolving dependencies
+      "Downloaded", // UV downloading packages
+      "Installing", // UV installing packages
+      "Built", // UV building packages
+      "Prepared", // UV preparing virtual environment
+      "Syncing", // UV sync process
+      "Creating virtualenv", // Virtual environment creation
+      "Updating", // UV updating packages
+      "× No solution found when resolving dependencies", // Dependency resolution issues
+      "Audited" // UV auditing dependencies
+  ];
+  
+  // Detect if UV is installing dependencies
+  if (!dependencyInstallationDetected && installPatterns.some(pattern => 
+      msg.includes(pattern) && !msg.includes("Uvicorn running on")
+  )) {
+      dependencyInstallationDetected = true;
+      log.info('[BACKEND STARTUP] UV dependency installation detected during uvicorn startup');
+      
+      // Create installing lock file to maintain consistency with install-deps.ts
+      InstallLogs.setLockPath();
+      log.info('[BACKEND STARTUP] Created uv_installing.lock file');
+      
+      // Notify frontend that installation has started (only once)
+      if (!installationNotificationSent) {
+          installationNotificationSent = true;
+          const notificationSent = safeMainWindowSend('install-dependencies-start');
+          if (notificationSent) {
+              log.info('[BACKEND STARTUP] Notified frontend of dependency installation start');
+          } else {
+              log.warn('[BACKEND STARTUP] Failed to notify frontend of dependency installation start');
+          }
+      }
+  }
+  
+  // Send installation logs to frontend if installation was detected
+  if (dependencyInstallationDetected && !msg.includes("Uvicorn running on")) {
+      safeMainWindowSend('install-dependencies-log', {
+          type: msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback") ? 'stderr' : 'stdout',
+          data: msg
+      });
+  }
+  
+  // Check if installation is complete (uvicorn starts successfully)
+  if (dependencyInstallationDetected && msg.includes("Uvicorn running on")) {
+      log.info('[BACKEND STARTUP] UV dependency installation completed, uvicorn started successfully');
+      
+      // Clean up installing lock and create installed lock
+      InstallLogs.cleanLockPath();
+      fs.writeFileSync(installedLockPath, '');
+      log.info('[BACKEND STARTUP] Created uv_installed.lock file');
+      
+      safeMainWindowSend('install-dependencies-complete', {
+          success: true,
+          message: 'Dependencies installed successfully during backend startup'
+      });
+  }
+  
+  // Handle installation failures
+  if (dependencyInstallationDetected && (
+      msg.toLowerCase().includes("failed to resolve dependencies") ||
+      msg.toLowerCase().includes("installation failed") ||
+      msg.includes("× No solution found when resolving dependencies")
+  )) {
+      log.error('[BACKEND STARTUP] UV dependency installation failed');
+      
+      // Clean up installing lock file
+      InstallLogs.cleanLockPath();
+      log.info('[BACKEND STARTUP] Cleaned up uv_installing.lock file after failure');
+      
+      safeMainWindowSend('install-dependencies-complete', {
+          success: false,
+          error: 'Dependency installation failed during backend startup'
+      });
+  }
 }

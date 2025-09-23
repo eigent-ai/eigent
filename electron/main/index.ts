@@ -921,7 +921,7 @@ async function createWindow() {
   update(win);
 
   // ==================== check tool installed ====================
-  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate(win);
+  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
     win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
@@ -986,26 +986,26 @@ const setupExternalLinkHandling = () => {
 const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
   try {
-  const isToolInstalled = await checkToolInstalled();
-  if (isToolInstalled) {
-    log.info('Tool installed, starting backend service...');
-
-    // Notify frontend installation success
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-    }
-
-    python_process = await startBackend((port) => {
-      backendPort = port;
-      log.info('Backend service started successfully', { port });
-    });
-
-    python_process?.on('exit', (code, signal) => {
-
-      log.info('Python process exited', { code, signal });
-    });
-  } else {
-    log.warn('Tool not installed, cannot start backend service');
+    const isToolInstalled = await checkToolInstalled();
+    if (isToolInstalled) {
+      log.info('Tool installed, starting backend service...');
+  
+      // Notify frontend installation success
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+      }
+  
+      python_process = await startBackend((port) => {
+        backendPort = port;
+        log.info('Backend service started successfully', { port });
+      });
+  
+      python_process?.on('exit', (code, signal) => {
+  
+        log.info('Python process exited', { code, signal });
+      });
+    } else {
+      log.warn('Tool not installed, cannot start backend service');
     }
   } catch (error) {
     log.debug("Cannot Start Backend due to ", error)

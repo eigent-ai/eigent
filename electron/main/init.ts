@@ -6,7 +6,7 @@ import path from 'path'
 import * as net from "net";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
-import { PromiseReturnType } from "./install-deps";
+import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
 
 const execAsync = promisify(exec);
 
@@ -158,6 +158,9 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     const displayFilteredLogs = (data: String) => {
         if (!data) return;
         const msg = data.toString().trimEnd();
+        //Detect if uv sync is run
+        detectInstallationLogs(msg);
+
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
             log.error(`BACKEND: ${msg}`);
         } else if (msg.toLowerCase().includes("warn")) {
@@ -171,6 +174,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     }
 
     return new Promise((resolve, reject) => {
+        //Implicitly runs uv sync
         const node_process = spawn(
             uv_path,
             ["run", "uvicorn", "main:api", "--port", port.toString(), "--loop", "asyncio"],
