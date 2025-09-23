@@ -48,10 +48,13 @@ export async function installCommandTool() {
                 mainWindow.webContents.send('install-dependencies-complete', {
                     success: false,
                     code: 2,
-                    error: `${toolName} installation failed (script exit code 2)`,
+                    error: `${toolName} installation failed`,
                 });
+                return false
             }
+
             const installed = await isBinaryExists(toolName);
+
 
             if (mainWindow && !mainWindow.isDestroyed()) {
                 if (installed) {
@@ -63,7 +66,7 @@ export async function installCommandTool() {
                     mainWindow.webContents.send('install-dependencies-complete', {
                         success: false,
                         code: 2,
-                        error: `${toolName} installation failed (script exit code 2)`,
+                        error: `${toolName} installation failed`,
                     });
                 }
             }
