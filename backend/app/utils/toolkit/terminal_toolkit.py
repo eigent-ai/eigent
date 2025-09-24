@@ -16,7 +16,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self,
         api_task_id: str,
         agent_name: str | None = None,
-        timeout: float | None = 20.0,
+        timeout: float | None = None,
         working_directory: str | None = None,
         use_docker_backend: bool = False,
         docker_container_name: str | None = None,
