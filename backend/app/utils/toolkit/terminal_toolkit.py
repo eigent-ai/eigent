@@ -70,7 +70,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_exec,
-        lambda _, id, command: f"id: {id}, command: {command}",
+        lambda _, id, command, block=True: f"id: {id}, command: {command}, block: {block}",
     )
     def shell_exec(self, id: str, command: str, block: bool = True) -> str:
         return super().shell_exec(id=id, command=command, block=block)
@@ -84,7 +84,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_wait,
-        lambda _, id, seconds: f"id: {id}, wait_seconds: {seconds}",
+        lambda _, id, wait_seconds=None: f"id: {id}, wait_seconds: {wait_seconds}",
     )
     def shell_wait(self, id: str, wait_seconds: float = 5.0) -> str:
         return super().shell_wait(id=id, wait_seconds=wait_seconds)
