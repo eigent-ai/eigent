@@ -72,8 +72,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         BaseTerminalToolkit.shell_exec,
         lambda _, id, command: f"id: {id}, command: {command}",
     )
-    def shell_exec(self, id: str, command: str) -> str:
-        return super().shell_exec(id=id, command=command)
+    def shell_exec(self, id: str, command: str, block: bool = True) -> str:
+        return super().shell_exec(id=id, command=command, block=block)
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_view,
