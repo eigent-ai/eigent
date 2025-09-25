@@ -448,7 +448,10 @@ export class FileReader {
 				} else if (isShowSourceCode && type === 'html') {
 					const content = fs.readFileSync(filePath, 'utf-8')
 					resolve(content)
-				} else if (["pdf", "html"].includes(type)) {
+				}else if (type === 'html') {
+					const content = fs.readFileSync(filePath, 'utf-8')
+					resolve(content)
+				} else if (["pdf"].includes(type)) {
 					resolve(filePath)
 				} else if (type === "csv") {
 					try {
