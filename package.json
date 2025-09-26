@@ -59,6 +59,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "csv-parser": "^3.2.0",
+    "dompurify": "^3.2.7",
     "electron-log": "^5.4.0",
     "electron-updater": "^6.3.9",
     "embla-carousel-autoplay": "^8.6.0",
