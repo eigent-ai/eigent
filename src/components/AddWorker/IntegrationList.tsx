@@ -15,7 +15,7 @@ interface IntegrationItem {
 	name: string;
 	desc: string;
 	env_vars: string[];
-	onInstall: () => void;
+	onInstall: () => void | Promise<void>;
 }
 
 
@@ -239,6 +239,8 @@ export default function IntegrationList({
 			}
 			if (installed[item.key]) return;
 			await item.onInstall();
+			// refresh configs after install to update installed state indicator
+			await fetchInstalled();
 		},
 		[installed]
 	);
@@ -298,7 +300,7 @@ export default function IntegrationList({
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			{items.filter((item) => item.name !== "Notion").map((item) => {
+			{items.map((item) => {
 				const isInstalled = !!installed[item.key];
 				return (
 					<div
