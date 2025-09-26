@@ -15,8 +15,8 @@ import {
 	CircleSlash,
 	TriangleAlert,
 	Trash2,
-	Edit,
 	SquareChevronLeft,
+	CircleSlash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Folder from "../Folder";
@@ -27,7 +27,7 @@ import ShinyText from "../ui/ShinyText/ShinyText";
 import { MarkDown } from "./MarkDown";
 import { Tooltip, TooltipTrigger } from "../ui/tooltip";
 import { TooltipContent } from "@radix-ui/react-tooltip";
-import { TaskState } from "../TaskState";
+import { TaskState, TaskStateType } from "../TaskState";
 import {
 	Popover,
 	PopoverClose,
@@ -58,6 +58,46 @@ interface NodeProps {
 export function Node({ id, data }: NodeProps) {
 	const [isExpanded, setIsExpanded] = useState(data.isExpanded);
 	const [selectedTask, setSelectedTask] = useState<any>(null);
+	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
+
+	const [filterTasks, setFilterTasks] = useState<any[]>([]);
+	useEffect(() => {
+		const tasks = data.agent?.tasks || [];
+
+		if (selectedState === "all") {
+			setFilterTasks(tasks);
+		} else {
+			const newFiltered = tasks.filter((task) => {
+				switch (selectedState) {
+					case "done":
+						return task.status === "completed" && !task.reAssignTo;
+					case "reassigned":
+						return !!task.reAssignTo;
+					case "ongoing":
+						return (
+							task.status !== "failed" &&
+							task.status !== "completed" &&
+							task.status !== "skipped" &&
+							task.status !== "waiting" &&
+							task.status !== "" &&
+							!task.reAssignTo
+						);
+					case "pending":
+						return (
+							(task.status === "skipped" ||
+								task.status === "waiting" ||
+								task.status === "") &&
+							!task.reAssignTo
+						);
+					case "failed":
+						return task.status === "failed";
+					default:
+						return false;
+				}
+			});
+			setFilterTasks(newFiltered);
+		}
+	}, [selectedState, data.agent?.tasks]);
 
 	const chatStore = useChatStore();
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
@@ -72,7 +112,7 @@ export function Node({ id, data }: NodeProps) {
 	// manually control node size
 	useEffect(() => {
 		if (data.isEditMode) {
-			const targetWidth = isExpanded ? 560 : 280;
+			const targetWidth = isExpanded ? 684 : 342;
 			const targetHeight = 600;
 
 			setNodes((nodes) =>
@@ -251,15 +291,15 @@ export function Node({ id, data }: NodeProps) {
 		const list = taskId.split(".");
 		let idStr = "";
 		list.shift();
-		list.map((i: string) => {
-			idStr += Number(i) + ".";
+		list.map((i: string, index: number) => {
+			idStr += Number(i) + (index === list.length - 1 ? "" : ".");
 		});
 		return idStr;
 	};
 	return (
 		<>
 			<NodeResizer
-				minWidth={isExpanded ? 560 : 280}
+				minWidth={isExpanded ? 684 : 342}
 				minHeight={300}
 				isVisible={data.isEditMode}
 				keepAspectRatio={false}
@@ -276,10 +316,10 @@ export function Node({ id, data }: NodeProps) {
 				ref={nodeRef}
 				className={`${
 					data.isEditMode
-						? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[280px]"}`
+						? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[342px]"}`
 						: isExpanded
-						? "w-[560px]"
-						: "w-[280px]"
+						? "w-[684px]"
+						: "w-[342px]"
 				} ${
 					data.isEditMode ? "h-full" : "max-h-[calc(100vh-200px)]"
 				}  border-worker-border-default flex border border-solid rounded-xl overflow-hidden bg-worker-surface-primary ${
@@ -292,7 +332,7 @@ export function Node({ id, data }: NodeProps) {
 			>
 				<div
 					className={`py-2 px-3 pr-0 flex flex-col ${
-						data.isEditMode ? "flex-1 min-w-[280px]" : "w-[280px] "
+						data.isEditMode ? "flex-1 min-w-[342px]" : "w-[342px] "
 					}`}
 				>
 					<div className=" flex items-center justify-between gap-sm pr-3">
@@ -447,28 +487,47 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					{data.agent?.tasks && data.agent?.tasks.length > 0 && (
 						<div className="flex flex-col items-start justify-between gap-1 pt-sm border-[0px] border-t border-solid border-task-border-default pr-3">
-							<div className="font-bold leading-tight text-xs">Subtasks</div>
+							{/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
 							<div className="flex-1 flex justify-end">
 								<TaskState
+									all={data.agent.tasks?.length || 0}
 									done={
 										data.agent?.tasks?.filter(
-											(task) =>
-												task.status === "failed" || task.status === "completed"
+											(task) => task.status === "completed" && !task.reAssignTo
 										).length || 0
+									}
+									reAssignTo={
+										data.agent.tasks?.filter((task) => task.reAssignTo)
+											?.length || 0
 									}
 									progress={
 										data.agent?.tasks?.filter(
 											(task) =>
 												task.status !== "failed" &&
 												task.status !== "completed" &&
-												task.status !== "skipped"
+												task.status !== "skipped" &&
+												task.status !== "waiting" &&
+												task.status !== "" &&
+												!task.reAssignTo
 										).length || 0
 									}
 									skipped={
 										data.agent?.tasks?.filter(
-											(task) => task.status === "skipped"
+											(task) =>
+												(task.status === "skipped" ||
+													task.status === "waiting" ||
+													task.status === "") &&
+												!task.reAssignTo
 										).length || 0
 									}
+									failed={
+										data.agent?.tasks?.filter(
+											(task) => task.status === "failed"
+										).length || 0
+									}
+									selectedState={selectedState}
+									onStateChange={setSelectedState}
+									clickable={true}
 								/>
 							</div>
 						</div>
@@ -489,7 +548,7 @@ export function Node({ id, data }: NodeProps) {
 						}}
 					>
 						{data.agent?.tasks &&
-							data.agent?.tasks.map((task, index) => {
+							filterTasks.map((task, index) => {
 								return (
 									<div
 										onClick={() => {
@@ -510,7 +569,9 @@ export function Node({ id, data }: NodeProps) {
 										}}
 										key={`taskList-${task.id}-${task.failure_count}`}
 										className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
-											task.status === "completed"
+											task.reAssignTo
+												? "bg-task-fill-warning"
+												: task.status === "completed"
 												? "bg-green-50"
 												: task.status === "failed"
 												? "bg-task-fill-error"
@@ -543,53 +604,89 @@ export function Node({ id, data }: NodeProps) {
 												: "border-transparent"
 										}`}
 									>
-										<div className="pt-0.5">
-											{task.status === "running" && (
-												<LoaderCircle
-													size={16}
-													className={`text-icon-success ${
-														chatStore.tasks[chatStore.activeTaskId as string]
-															.status === "running" && "animate-spin"
-													}`}
-												/>
-											)}
-											{task.status === "skipped" && (
-												<LoaderCircle
-													size={16}
-													className={`text-icon-secondary `}
-												/>
-											)}
-											{task.status === "completed" && (
-												<CircleCheckBig
-													size={16}
-													className="text-icon-success"
-												/>
-											)}
-											{task.status === "failed" && (
-												<CircleSlash size={16} className="text-icon-cuation" />
-											)}
-											{task.status === "blocked" && (
-												<TriangleAlert
-													size={16}
-													className="text-icon-warning"
-												/>
-											)}
-											{(task.status === "" || task.status === "waiting") && (
-												<Circle size={16} className="text-slate-400" />
+										<div className="">
+											{task.reAssignTo ? (
+												//  reassign to other agent
+												<CircleSlash2 size={16} className="text-icon-warning" />
+											) : (
+												// normal task
+												<>
+													{task.status === "running" && (
+														<LoaderCircle
+															size={16}
+															className={`text-icon-information ${
+																chatStore.tasks[
+																	chatStore.activeTaskId as string
+																].status === "running" && "animate-spin"
+															}`}
+														/>
+													)}
+													{task.status === "skipped" && (
+														<LoaderCircle
+															size={16}
+															className={`text-icon-secondary `}
+														/>
+													)}
+													{task.status === "completed" && (
+														<CircleCheckBig
+															size={16}
+															className="text-icon-success"
+														/>
+													)}
+													{task.status === "failed" && (
+														<CircleSlash
+															size={16}
+															className="text-icon-cuation"
+														/>
+													)}
+													{task.status === "blocked" && (
+														<TriangleAlert
+															size={16}
+															className="text-icon-warning"
+														/>
+													)}
+													{(task.status === "" ||
+														task.status === "waiting") && (
+														<Circle size={16} className="text-slate-400" />
+													)}
+												</>
 											)}
 										</div>
 										<div className="flex-1 flex flex-col items-start justify-center">
 											<div
-												className={` w-full flex-grow-0 ${
+												className={`w-full flex-grow-0 ${
 													task.status === "failed"
 														? "text-text-cuation-default"
 														: task.status === "blocked"
 														? "text-text-body"
 														: "text-text-primary"
-												} text-sm font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
+												} text-xs font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
 											>
-												{getTaskId(task.id)}
-												{task.content}
+												<div className="flex items-center gap-sm">
+													<div className="text-text-body text-xs font-bold leading-13">
+														No. {getTaskId(task.id)}
+													</div>
+													{task.reAssignTo ? (
+														<div className="text-text-warning text-xs font-bold leading-none rounded-lg px-1 py-0.5 bg-tag-fill-document">
+															Reassigned to {task.reAssignTo}
+														</div>
+													) : (
+														(task.failure_count ?? 0) > 0 && (
+															<div
+																className={`${
+																	task.status === "failed"
+																		? "bg-red-100 text-text-cuation"
+																		: task.status === "completed"
+																		? "bg-tag-fill-developer text-text-success-default"
+																		: "bg-tag-surface-hover text-text-label"
+																}  text-xs font-bold leading-none rounded-lg px-1 py-0.5`}
+															>
+																Attempt {task.failure_count}
+															</div>
+														)
+													)}
+												</div>
+												<div>{task.content}</div>
 											</div>
 											{task?.status === "running" && (
 												<div className="flex items-center gap-2 mt-xs animate-in fade-in-0 slide-in-from-bottom-2 duration-400">
@@ -597,7 +694,9 @@ export function Node({ id, data }: NodeProps) {
 													{task.toolkits &&
 														task.toolkits.length > 0 &&
 														task.toolkits
-															.filter((tool) => tool.toolkitName !== "notice")
+															.filter(
+																(tool: any) => tool.toolkitName !== "notice"
+															)
 															.at(-1)?.toolkitStatus === "running" && (
 															<div className="flex-1 min-w-0 flex justify-start items-center gap-sm animate-in fade-in-0 slide-in-from-right-2 duration-300">
 																{agentMap[data.type]?.icon ?? (
@@ -621,11 +720,6 @@ export function Node({ id, data }: NodeProps) {
 														)}
 												</div>
 											)}
-											{(task.failure_count ?? 0) > 0&& (
-												<div className="text-text-cuation-default text-xs leading-17">
-													retry {task.failure_count} times
-												</div>
-											)}
 										</div>
 									</div>
 								);
@@ -636,7 +730,7 @@ export function Node({ id, data }: NodeProps) {
 					<div
 						key={selectedTask?.id || "empty"}
 						className={`${
-							data.isEditMode ? "flex-1" : "w-[280px]"
+							data.isEditMode ? "flex-1" : "w-[342px]"
 						}  flex flex-col gap-sm border-l  bg-worker-surface-secondary rounded-r-xl px-sm pr-0 py-3 pt-sm animate-in fade-in-0 slide-in-from-right-2 duration-300 `}
 					>
 						<div

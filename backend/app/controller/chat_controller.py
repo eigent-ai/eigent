@@ -20,6 +20,7 @@ from app.service.task import (
     create_task_lock,
     get_task_lock,
 )
+from app.component.environment import set_user_env_path
 
 
 router = APIRouter(tags=["chat"])
@@ -33,6 +34,9 @@ chat_logger = traceroot.get_logger('chat_controller')
 async def post(data: Chat, request: Request):
     chat_logger.info(f"Starting new chat session for task_id: {data.task_id}, user: {data.email}")
     task_lock = create_task_lock(data.task_id)
+    
+    # Set user-specific environment path for this thread
+    set_user_env_path(data.env_path)
     load_dotenv(dotenv_path=data.env_path)
 
     # logger.debug(f"start chat: {data.model_dump_json()}")

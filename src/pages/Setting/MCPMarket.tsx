@@ -10,6 +10,7 @@ import {
 import {
 	Tooltip,
 	TooltipContent,
+	TooltipSimple,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { MCPEnvDialog } from "./components/MCPEnvDialog";
@@ -19,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import githubIcon from "@/assets/github.svg";
 import { useAuthStore } from "@/store/authStore";
 import SearchInput from "@/components/SearchInput";
-
+import { useTranslation } from "react-i18next";
 interface MCPItem {
 	id: number;
 	name: string;
@@ -69,6 +70,7 @@ const svgIcons = import.meta.glob("@/assets/mcp/*.svg", {
 });
 
 export default function MCPMarket({ onBack }: { onBack?: () => void }) {
+	const { t } = useTranslation();
 	const { checkAgentTool } = useAuthStore();
 	const [items, setItems] = useState<MCPItem[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -266,7 +268,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 						<ChevronLeft className="w-6 h-6 bg-button-transparent-fill-default/0 rounded-md" />
 					</Button>
 					<span className="text-base font-bold leading-12 text-text-primary">
-						MCP Market
+						{t("setting.mcp-market")}
 					</span>
 				</div>
 				<div className="flex items-center gap-2 bg-white-100%">
@@ -277,14 +279,14 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 						}
 					>
 						<SelectTrigger className="min-w-[107px] h-6">
-							<SelectValue placeholder="All" />
+							<SelectValue placeholder={t("setting.all")} />
 						</SelectTrigger>
 						<SelectContent className="bg-white-100% px-2 py-1 rounded overflow-hidden">
 							<SelectItem
 								value="all"
 								className="leading-none text-xs font-bold text-button-tertiery-text-default"
 							>
-								<span>All</span>
+								<span>{t("setting.all")}</span>
 							</SelectItem>
 							{mcpCategory.map((cat) => {
 								const iconKey = categoryIconMap[cat.name];
@@ -337,11 +339,11 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 			></MCPEnvDialog>
 			<div className="space-y-md w-full max-w-4xl overflow-y-auto scrollbar">
 				{isLoading && items.length === 0 && (
-					<div className="text-center py-8 text-gray-400">Loading...</div>
+					<div className="text-center py-8 text-gray-400">{t("setting.loading")}</div>
 				)}
 				{error && <div className="text-center py-8 text-red-500">{error}</div>}
 				{!isLoading && !error && items.length === 0 && (
-					<div className="text-center py-8 text-gray-400">No MCP services</div>
+					<div className="text-center py-8 text-gray-400">{t("setting.no-mcp-services")}</div>
 				)}
 				{items.map((item) => (
 					<div
@@ -369,14 +371,9 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 									<span className="text-base leading-9 font-bold text-text-primary truncate ">
 										{item.name}
 									</span>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<CircleAlert className="w-4 h-4 text-icon-secondary" />
-										</TooltipTrigger>
-										<TooltipContent>
-											<div>{item.description}</div>
-										</TooltipContent>
-									</Tooltip>
+									<TooltipSimple content={item.description}>
+										<CircleAlert className="w-4 h-4 text-icon-secondary" />
+									</TooltipSimple>
 								</div>
 								<Button
 									variant={
@@ -390,12 +387,12 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 									}
 								>
 									{installedIds.includes(item.id)
-										? "Uninstall"
+										? t("setting.uninstall")
 										: installing[item.id]
-										? "Installing..."
+										? t("setting.installing")
 										: installed[item.id]
-										? "Uninstall"
-										: "Install"}
+										? t("setting.uninstall")
+										: t("setting.install")}
 								</Button>
 							</div>
 							{item.home_page &&
@@ -428,11 +425,11 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 				))}
 				<div ref={loader} />
 				{isLoading && items.length > 0 && (
-					<div className="text-center py-4 text-gray-400">Loading more...</div>
+					<div className="text-center py-4 text-gray-400">{t("setting.loading-more")}</div>
 				)}
 				{!hasMore && items.length > 0 && (
 					<div className="text-center py-4 text-gray-400">
-						No more MCP servers
+						{t("setting.no-more-mcp-servers")}
 					</div>
 				)}
 			</div>

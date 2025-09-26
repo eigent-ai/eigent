@@ -63,7 +63,7 @@ const authStore = create<AuthState>()(
 			email: null,
 			user_id: null,
 			appearance: 'light',
-			language: 'en',
+			language: 'system',
 			isFirstLaunch: true,
 			modelType: 'cloud',
 			cloud_model_type: 'gpt-4.1',
@@ -169,7 +169,7 @@ const EMPTY_LIST: Agent[] = [];
 
 // worker list Hook
 export const useWorkerList = (): Agent[] => {
-	const { email } = getAuthStore();
-	const workerList = getAuthStore().workerListData[email as string];
+	const { email, workerListData } = getAuthStore();
+	const workerList = workerListData[email as string];
 	return workerList ?? EMPTY_LIST;
 };

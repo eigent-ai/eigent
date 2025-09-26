@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import platform
 from threading import Event
 import traceback
@@ -20,7 +21,7 @@ from app.component.environment import env
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.utils.toolkit.excel_toolkit import ExcelToolkit
-from app.utils.toolkit.file_write_toolkit import FileWriteToolkit
+from app.utils.toolkit.file_write_toolkit import FileToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
@@ -53,7 +54,7 @@ from loguru import logger
 from app.model.chat import Chat, McpServers
 
 # Create traceroot logger for agent tracking
-traceroot_logger = traceroot.get_logger('agent')
+traceroot_logger = traceroot.get_logger("agent")
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -151,7 +152,9 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.info(f"Agent {self.agent_name} starting step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
+        traceroot_logger.info(
+            f"Agent {self.agent_name} starting step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}"
+        )
         try:
             res = super().step(input_message, response_format)
         except ModelProcessingError as e:
@@ -221,7 +224,9 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.debug(f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}")
+        traceroot_logger.debug(
+            f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}"
+        )
 
         try:
             res = await super().astep(input_message, response_format)
@@ -290,7 +295,9 @@ class ListenChatAgent(ChatAgent):
                 task_lock = get_task_lock(self.api_task_id)
 
                 toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
-                traceroot_logger.debug(f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}")
+                traceroot_logger.debug(
+                    f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
+                )
                 asyncio.create_task(
                     task_lock.put_queue(
                         ActionActivateToolkitData(
@@ -353,7 +360,9 @@ class ListenChatAgent(ChatAgent):
             task_lock = get_task_lock(self.api_task_id)
 
             toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
-            traceroot_logger.info(f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}")
+            traceroot_logger.info(
+                f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
+            )
             await task_lock.put_queue(
                 ActionActivateToolkitData(
                     data={
@@ -725,39 +734,43 @@ def search_agent(options: Chat):
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
     note_toolkit = NoteTakingToolkit(options.task_id, Agents.search_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    search_toolkit = SearchToolkit(options.task_id)
-    search_toolkit = message_integration.register_functions([search_toolkit.search_google])
+    search_tools = SearchToolkit.get_can_use_tools(options.task_id)
+    # Only register search tools if any are available
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
 
     tools = [
         *HumanToolkit.get_can_use_tools(options.task_id, Agents.search_agent),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
-        *search_toolkit,
+        *search_tools,
     ]
 
     system_message = f"""
 <role>
-You are a Senior Research Analyst, a key member of a multi-agent team. Your 
-primary responsibility is to conduct expert-level web research to gather, 
-analyze, and document information required to solve the user's task. You 
+You are a Senior Research Analyst, a key member of a multi-agent team. Your
+primary responsibility is to conduct expert-level web research to gather,
+analyze, and document information required to solve the user's task. You
 operate with precision, efficiency, and a commitment to data quality.
 You must use the search/browser tools to get the information you need.
 </role>
 
 <team_structure>
 You collaborate with the following agents who can work in parallel:
-- **Developer Agent**: Writes and executes code, handles technical 
+- **Developer Agent**: Writes and executes code, handles technical
 implementation.
 - **Document Agent**: Creates and manages documents and presentations.
 - **Multi-Modal Agent**: Processes and generates images and audio.
-Your research is the foundation of the team's work. Provide them with 
+Your research is the foundation of the team's work. Provide them with
 comprehensive and well-documented information.
 </team_structure>
 
 <operating_environment>
 - **System**: {platform.system()} ({platform.machine()})
-- **Working Directory**: `{working_directory}`. All local file operations must 
+- **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
@@ -777,13 +790,14 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     you have discovered. High-quality, detailed notes are essential for the
     team's success.
 
-- You MUST only use URLs from trusted sources. A trusted source is a URL
-    that is either:
-    1. Returned by a search tool (like `search_google`, `search_bing`,
-        or `search_exa`).
-    2. Found on a webpage you have visited.
-- You are strictly forbidden from inventing, guessing, or constructing URLs
-    yourself. Fabricating URLs will be considered a critical error.
+- **CRITICAL URL POLICY**: You are STRICTLY FORBIDDEN from inventing,
+    guessing, or constructing URLs yourself. You MUST only use URLs from
+    trusted sources:
+    1. URLs returned by search tools (like `search_google` or `search_exa`)
+    2. URLs found on webpages you have visited through browser tools
+    3. URLs provided by the user in their request
+    Fabricating or guessing URLs is considered a critical error and must
+    never be done under any circumstances.
 
 - You MUST NOT answer from your own knowledge. All information
     MUST be sourced from the web using the available tools. If you don't know
@@ -807,26 +821,38 @@ Your capabilities include:
 </capabilities>
 
 <web_search_workflow>
-- Initial Search: You MUST start with a search engine like `search_google` or
-    `search_bing` to get a list of relevant URLs for your research, the URLs 
-    here will be used for `browser_visit_page`.
-- Browser-Based Exploration: Use the rich browser related toolset to
-    investigate websites.
-    - **Navigation and Exploration**: Use `browser_visit_page` to open a URL.
-        `browser_visit_page` provides a snapshot of currently visible 
-        interactive elements, not the full page text. To see more content on 
-        long pages,  Navigate with `browser_click`, `browser_back`, and 
-        `browser_forward`. Manage multiple pages with `browser_switch_tab`.
-    - **Analysis**: Use `browser_get_som_screenshot` to understand the page 
-        layout and identify interactive elements. Since this is a heavy 
-        operation, only use it when visual analysis is necessary.
-    - **Interaction**: Use `browser_type` to fill out forms and 
-        `browser_enter` to submit or confirm search.
-- Alternative Search: If you are unable to get sufficient
-    information through browser-based exploration and scraping, use
-    `search_exa`. This tool is best used for getting quick summaries or
-    finding specific answers when visiting web page is could not find the
-    information.
+Your approach depends on available search tools:
+
+**If Google Search is Available:**
+- Initial Search: Start with `search_google` to get a list of relevant URLs
+- Browser-Based Exploration: Use the browser tools to investigate the URLs
+
+**If Google Search is NOT Available:**
+- **MUST start with direct website search**: Use `browser_visit_page` to go
+  directly to popular search engines and informational websites such as:
+  * General search: google.com, bing.com, duckduckgo.com
+  * Academic: scholar.google.com, pubmed.ncbi.nlm.nih.gov
+  * News: news.google.com, bbc.com/news, reuters.com
+  * Technical: stackoverflow.com, github.com
+  * Reference: wikipedia.org, britannica.com
+- **Manual search process**: Type your query into the search boxes on these
+  sites using `browser_type` and submit with `browser_enter`
+- **Extract URLs from results**: Only use URLs that appear in the search
+  results on these websites
+- **Alternative Search**: If available, use `search_exa` for additional
+  results
+
+**Common Browser Operations (both scenarios):**
+- **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
+    `browser_visit_page` provides a snapshot of currently visible
+    interactive elements, not the full page text. To see more content on
+    long pages, Navigate with `browser_click`, `browser_back`, and
+    `browser_forward`. Manage multiple pages with `browser_switch_tab`.
+- **Analysis**: Use `browser_get_som_screenshot` to understand the page
+    layout and identify interactive elements. Since this is a heavy
+    operation, only use it when visual analysis is necessary.
+- **Interaction**: Use `browser_type` to fill out forms and
+    `browser_enter` to submit or confirm search.
 
 - In your response, you should mention the URLs you have visited and processed.
 
@@ -861,7 +887,7 @@ async def document_agent(options: Chat):
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.task_id, Agents.task_agent).send_message_to_user
     )
-    file_write_toolkit = FileWriteToolkit(options.task_id, working_directory=working_directory)
+    file_write_toolkit = FileToolkit(options.task_id, working_directory=working_directory)
     pptx_toolkit = PPTXToolkit(options.task_id, working_directory=working_directory)
     pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
     mark_it_down_toolkit = MarkItDownToolkit(options.task_id)
@@ -1043,7 +1069,7 @@ supported formats including advanced spreadsheet functionality.
         options,
         tools,
         tool_names=[
-            FileWriteToolkit.toolkit_name(),
+            FileToolkit.toolkit_name(),
             PPTXToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             MarkItDownToolkit.toolkit_name(),
@@ -1342,7 +1368,9 @@ operations.
 
 @traceroot.trace()
 async def mcp_agent(options: Chat):
-    traceroot_logger.info(f"Creating MCP agent for task: {options.task_id} with {len(options.installed_mcp['mcpServers'])} MCP servers")
+    traceroot_logger.info(
+        f"Creating MCP agent for task: {options.task_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
+    )
     tools = [
         # *HumanToolkit.get_can_use_tools(options.task_id, Agents.mcp_agent),
         *McpSearchToolkit(options.task_id).get_tools(),
@@ -1400,7 +1428,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "audio_analysis_toolkit": AudioAnalysisToolkit,
         "openai_image_toolkit": OpenAIImageToolkit,
         "excel_toolkit": ExcelToolkit,
-        "file_write_toolkit": FileWriteToolkit,
+        "file_write_toolkit": FileToolkit,
         "github_toolkit": GithubToolkit,
         "google_calendar_toolkit": GoogleCalendarToolkit,
         "google_drive_mcp_toolkit": GoogleDriveMCPToolkit,
@@ -1438,7 +1466,17 @@ async def get_mcp_tools(mcp_server: McpServers):
     traceroot_logger.info(f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
     if len(mcp_server["mcpServers"]) == 0:
         return []
-    mcp_toolkit = MCPToolkit(config_dict={**mcp_server}, timeout=180)
+    
+    # Ensure unified auth directory for all mcp-remote servers to avoid re-authentication on each task
+    config_dict = {**mcp_server}
+    for server_config in config_dict["mcpServers"].values():
+        if "env" not in server_config:
+            server_config["env"] = {}
+        # Set global auth directory to persist authentication across tasks
+        if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
+            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
+    
+    mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=20)
     try:
         await mcp_toolkit.connect()
         traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")

@@ -312,6 +312,24 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  ipcMain.handle('restart-backend', async () => {
+    try {
+      if (backendPort) {
+        log.info('Restarting backend service...');
+        await cleanupPythonProcess();
+        await checkAndStartBackend();
+        log.info('Backend restart completed successfully');
+        return { success: true };
+      } else {
+        log.warn('No backend port found, starting fresh backend');
+        await checkAndStartBackend();
+        return { success: true };
+      }
+    } catch (error) {
+      log.error('Failed to restart backend:', error);
+      return { success: false, error: String(error) };
+    }
+  });
   ipcMain.handle('get-system-language', getSystemLanguage);
   ipcMain.handle('is-fullscreen', () => win?.isFullScreen() || false);
   ipcMain.handle('get-home-dir', () => {
@@ -516,6 +534,15 @@ function registerIpcHandlers() {
 
   // ==================== MCP manage handler ====================
   ipcMain.handle('mcp-install', async (event, name, mcp) => {
+    // Convert args from JSON string to array if needed
+    if (mcp.args && typeof mcp.args === 'string') {
+      try {
+        mcp.args = JSON.parse(mcp.args);
+      } catch (e) {
+        // If parsing fails, split by comma as fallback
+        mcp.args = mcp.args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+      }
+    }
     addMcp(name, mcp);
     return { success: true };
   });
@@ -526,6 +553,15 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('mcp-update', async (event, name, mcp) => {
+    // Convert args from JSON string to array if needed
+    if (mcp.args && typeof mcp.args === 'string') {
+      try {
+        mcp.args = JSON.parse(mcp.args);
+      } catch (e) {
+        // If parsing fails, split by comma as fallback
+        mcp.args = mcp.args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+      }
+    }
     updateMcp(name, mcp);
     return { success: true };
   });

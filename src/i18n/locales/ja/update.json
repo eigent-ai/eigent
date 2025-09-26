@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "アップデートの確認に失敗しました",
+	"new-version-available": "新しいバージョンが利用可能です",
+	"download": "ダウンロード",
+	"update-error": "アップデートエラー",
+	"downloading-update": "アップデートをダウンロード中",
+	"complete": "完了",
+	"download-completed": "ダウンロードが完了しました",
+	"click-to-install-update": "クリックしてアップデートをインストールしてください",
+	"install": "インストール"
+}

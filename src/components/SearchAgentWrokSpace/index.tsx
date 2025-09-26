@@ -202,10 +202,14 @@ export default function Home() {
 							{agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
 						</div>
 						<TaskState
+							all={activeAgent?.tasks?.length || 0}
+							reAssignTo={
+								activeAgent?.tasks?.filter((task) => task.reAssignTo).length ||
+								0
+							}
 							done={
 								activeAgent?.tasks?.filter(
-									(task) =>
-										task.status === "failed" || task.status === "completed"
+									(task) => task.status === "completed"
 								).length || 0
 							}
 							progress={
@@ -213,12 +217,19 @@ export default function Home() {
 									(task) =>
 										task.status !== "failed" &&
 										task.status !== "completed" &&
-										task.status !== "skipped"
+										task.status !== "skipped" &&
+										task.status !== "waiting"
 								).length || 0
 							}
-							skipped={
-								activeAgent?.tasks?.filter((task) => task.status === "skipped")
+							failed={
+								activeAgent?.tasks?.filter((task) => task.status === "failed")
 									.length || 0
+							}
+							skipped={
+								activeAgent?.tasks?.filter(
+									(task) =>
+										task.status === "skipped" || task.status === "waiting"
+								).length || 0
 							}
 						/>
 						{/* <div className="text-[10px] leading-17 font-medium text-text-tertiary">

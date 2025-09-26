@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "Update check failed",
+	"new-version-available": "New version available",
+	"download": "Download",
+	"update-error": "Update error",
+	"downloading-update": "Downloading update",
+	"complete": "Complete",
+	"download-completed": "Download completed",
+	"click-to-install-update": "Click to install update",
+	"install": "Install"
+}

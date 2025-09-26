@@ -94,7 +94,7 @@ Eigent comes with a set of pre-configured agents, each designed for a specific d
 
 **Equipped Toolkits:**
 
-- FileWriteToolkit
+- FileToolkit
 - PPTXToolkit
 - HumanToolkit
 - MarkItDownToolkit
@@ -137,7 +137,7 @@ This toolkit allows an agent to process audio files. It can take an audio file (
 
 This toolkit provides comprehensive functions for interacting with Excel files (`.xlsx/.xls/. csv`). Agents can create new workbooks, add or delete worksheets, read data from specific cells or ranges, write data to the spreadsheet, and convert data into Markdown formatted table.
 
-### [FileWriteToolkit](https://docs.camel-ai.org/reference/camel.toolkits.file_write_toolkit)
+### [FileToolkit](https://docs.camel-ai.org/reference/camel.toolkits.file_write_toolkit)
 
 *A toolkit for creating, writing, and modifying text in files.*
 

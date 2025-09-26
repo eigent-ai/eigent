@@ -44,8 +44,10 @@ import { generateUniqueId } from "@/lib";
 import { SearchHistoryDialog } from "@/components/SearchHistoryDialog";
 import { Tag } from "@/components/ui/tag";
 import { share } from "@/lib/share";
+import { useTranslation } from "react-i18next";
 
 export default function Home() {
+	const {t} = useTranslation()
 	const navigate = useNavigate();
 	const chatStore = useChatStore();
 	const { history_type, setHistoryType } = useGlobalStore();
@@ -247,7 +249,7 @@ export default function Home() {
 			/>
 			<div>
 				<div className="px-6 py-4 flex justify-between items-center">
-					<div className="text-2xl font-bold leading-4">Ongoing Tasks</div>
+					<div className="text-2xl font-bold leading-4">{t("task-hub.ongoing-tasks")}</div>
 
 					<div className="flex items-center gap-md">
 						<SearchHistoryDialog />
@@ -258,7 +260,7 @@ export default function Home() {
 							onClick={createChat}
 						>
 							<Plus size={16} />
-							<span>New Project</span>
+							<span>{t("task-hub.new-project")}</span>
 						</Button>
 						<Tabs
 							value={history_type}
@@ -269,11 +271,11 @@ export default function Home() {
 							<TabsList className="p-1 h-[28px] ">
 								<TabsTrigger value="table">
 									<Table size={16} />
-									<div>Table</div>
+									<div>{t("task-hub.table")}</div>
 								</TabsTrigger>
 								<TabsTrigger value="list">
 									<List size={16} />
-									<div>List</div>
+									<div>{t("task-hub.list")}</div>
 								</TabsTrigger>
 							</TabsList>
 						</Tabs>
@@ -293,7 +295,7 @@ export default function Home() {
 									}}
 									className={`${
 										chatStore.activeTaskId === taskId ? "!bg-white-100%" : ""
-									}  relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center gap-md flex-1 w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] px-6 shadow-history-item`}
+									}  relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center gap-md flex-initial w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] px-6 shadow-history-item`}
 								>
 									<div className="w-[133px] py-md h-full flex flex-col gap-1">
 										<div className="flex-1 flex justify-start items-end">
@@ -304,7 +306,7 @@ export default function Home() {
 											/>
 										</div>
 										<div className="text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-											{task.summaryTask || "New Project"}
+											{task.summaryTask || t("task-hub.new-project")}
 										</div>
 										<div className="w-full">
 											<Progress
@@ -342,21 +344,21 @@ export default function Home() {
 															className={`transition-all duration-300 flex justify-start items-center gap-1 px-sm py-xs bg-menutabs-bg-default rounded-lg border border-solid border-white-100% ${
 																agentMap[
 																	taskAssigning.type as keyof typeof agentMap
-																].borderColor
+																]?.borderColor
 															}`}
 														>
 															<Bot
 																className={`w-3 h-3 ${
 																	agentMap[
 																		taskAssigning.type as keyof typeof agentMap
-																	].textColor
+																	]?.textColor
 																}`}
 															/>
 															<div
 																className={`${
 																	agentMap[
 																		taskAssigning.type as keyof typeof agentMap
-																	].textColor
+																	]?.textColor
 																} text-xs leading-17 font-medium`}
 															>
 																{taskAssigning.name}
@@ -394,10 +396,10 @@ export default function Home() {
 									<div className=" flex-1 text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
 										<Tooltip>
 											<TooltipTrigger asChild>
-												<span> {task.summaryTask || "New Project"}</span>
+												<span> {task.summaryTask || t("task-hub.new-project")}</span>
 											</TooltipTrigger>
 											<TooltipContent>
-												<p> {task.summaryTask || "New Project"}</p>
+												<p> {task.summaryTask || t("task-hub.new-project")}</p>
 											</TooltipContent>
 										</Tooltip>
 									</div>
@@ -530,11 +532,11 @@ export default function Home() {
 								<TabsList>
 									<TabsTrigger value="table">
 										<Table size={16} />
-										<div>Table</div>
+										<div>{t("task-hub.table")}</div>
 									</TabsTrigger>
 									<TabsTrigger value="list">
 										<List size={16} />
-										<div>List</div>
+										<div>{t("task-hub.list")}</div>
 									</TabsTrigger>
 								</TabsList>
 							</Tabs>
@@ -553,7 +555,7 @@ export default function Home() {
 										chatStore.activeTaskId === task.task_id
 											? "!bg-white-100%"
 											: ""
-									} relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center flex-wrap gap-md flex-1 w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] p-6 shadow-history-item border border-solid border-border-disabled`}
+									} relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center flex-wrap gap-md flex-initial w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] p-6 shadow-history-item border border-solid border-border-disabled`}
 								>
 									<div
 										className="flex justify-between items-end gap-1 w-full"
@@ -575,7 +577,7 @@ export default function Home() {
 									</div>
 									<div className="flex-1 flex flex-col gap-1 w-full">
 										<div className="text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-											{task?.question || "New Project"}
+											{task?.question || t("task-hub.new-project")}
 										</div>
 									</div>
 								</div>
@@ -607,7 +609,7 @@ export default function Home() {
 											<TooltipTrigger asChild>
 												<span>
 													{" "}
-													{task?.question.split("|")[0] || "New Project"}
+													{task?.question.split("|")[0] || t("task-hub.new-project")}
 												</span>
 											</TooltipTrigger>
 											<TooltipContent
@@ -616,7 +618,7 @@ export default function Home() {
 											>
 												<div>
 													{" "}
-													{task?.question.split("|")[0] || "New Project"}
+													{task?.question.split("|")[0] || t("task-hub.new-project")}
 												</div>
 											</TooltipContent>
 										</Tooltip>
@@ -651,7 +653,7 @@ export default function Home() {
 														}}
 													>
 														<Share size={16} />
-														Share
+														{t("task-hub.share")}
 													</Button>
 												</PopoverClose>
 
@@ -669,7 +671,7 @@ export default function Home() {
 															size={16}
 															className="text-icon-primary group-hover:text-icon-cuation"
 														/>
-														Delete
+														{t("task-hub.delete")}
 													</Button>
 												</PopoverClose>
 											</div>

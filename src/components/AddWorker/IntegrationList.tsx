@@ -1,9 +1,5 @@
 import { Button } from "@/components/ui/button";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import { CircleAlert } from "lucide-react";
 import { proxyFetchGet, proxyFetchPost, proxyFetchDelete } from "@/api/http";
 
@@ -13,6 +9,7 @@ import { capitalizeFirstLetter } from "@/lib";
 import { MCPEnvDialog } from "@/pages/Setting/components/MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
+import { useTranslation } from "react-i18next";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -42,6 +39,7 @@ export default function IntegrationList({
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<any | null>(null);
 	const { email, checkAgentTool } = useAuthStore();
+	const { t } = useTranslation();
 	// local installed status
 	const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
 	// configs cache
@@ -339,14 +337,9 @@ export default function IntegrationList({
 								{item.name}
 							</div>
 							<div className="flex items-center">
-								<Tooltip>
-									<TooltipTrigger asChild>
+								<TooltipSimple content={item.desc}>
 										<CircleAlert className="w-4 h-4 text-icon-secondary" />
-									</TooltipTrigger>
-									<TooltipContent>
-										<p>{item.desc}</p>
-									</TooltipContent>
-								</Tooltip>
+								</TooltipSimple>
 							</div>
 						</div>
 						{item.env_vars.length !== 0 && (
@@ -374,10 +367,10 @@ export default function IntegrationList({
 									"Reddit",
 									"Github",
 								].includes(item.name)
-									? "Coming Soon"
+									? t("setting.coming-soon")
 									: isInstalled
-									? "Uninstall"
-									: "Install"}
+									? t("setting.uninstall")
+									: t("setting.install")}
 							</Button>
 						)}
 					</div>

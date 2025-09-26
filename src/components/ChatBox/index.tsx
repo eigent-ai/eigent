@@ -11,12 +11,13 @@ import { proxyFetchGet } from "@/api/http";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { NoticeCard } from "./NoticeCard";
 import { useAuthStore } from "@/store/authStore";
-import { PrivacyDialog } from "../Dialog/Privacy";
+import { useTranslation } from "react-i18next";
+import { TaskStateType } from "../TaskState";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
 	const chatStore = useChatStore();
-
+	const { t } = useTranslation();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [privacy, setPrivacy] = useState<any>(false);
@@ -25,6 +26,7 @@ export default function ChatBox(): JSX.Element {
 	const { modelType } = useAuthStore();
 	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 	useEffect(() => {
+		// Only show warning message, don't block functionality
 		if (
 			import.meta.env.VITE_USE_LOCAL_PROXY === "true" &&
 			modelType === "cloud"
@@ -332,7 +334,7 @@ export default function ChatBox(): JSX.Element {
 													id={item.id}
 													key={item.id}
 													role={item.role}
-													content="No reply received, task continue"
+													content={t("chat.no-reply-received-task-continue")}
 													onTyping={scrollToBottom}
 												/>
 											);
@@ -463,6 +465,7 @@ export default function ChatBox(): JSX.Element {
 													);
 													chatStore.deleteTaskInfo(taskIndex);
 												}}
+												clickable={true}
 											/>
 										);
 									}
@@ -512,17 +515,15 @@ export default function ChatBox(): JSX.Element {
 					)}
 				</div>
 			) : (
-				<div
-					className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden"
-				>
+				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">
-								Welcome to Eigent
+								{t("chat.welcome-to-eigent")}
 							</div>
 							<div className="text-lg leading-7 text-zinc-500 text-center mb-5">
-								How can I help you today?
+								{t("chat.how-can-i-help-you")}
 							</div>
 						</div>
 
@@ -549,11 +550,11 @@ export default function ChatBox(): JSX.Element {
 										onClick={(e) => {
 											// Check if the click target is an anchor tag
 											const target = e.target as HTMLElement;
-											if (target.tagName === 'A') {
+											if (target.tagName === "A") {
 												// Let the anchor tag handle the click naturally
 												return;
 											}
-											
+
 											// Enable privacy permissions
 											const API_FIELDS = [
 												"take_screenshot",
@@ -577,81 +578,53 @@ export default function ChatBox(): JSX.Element {
 											className="text-icon-information"
 										/>
 										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
-											By messaging Eigent, you agree to our{" "}
+											{t("chat.by-messaging-eigent")}{" "}
 											<a
 												href="https://www.eigent.ai/terms-of-use"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												Terms of Use
+												{t("chat.terms-of-use")}
 											</a>{" "}
-											and{" "}
+											{t("chat.and")}{" "}
 											<a
 												href="https://www.eigent.ai/privacy-policy"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												Privacy Policy
+												{t("chat.privacy-policy")}
 											</a>
 											.
 										</span>
 									</div>
 								</div>
-							) : useCloudModelInDev ? (
-								<div className="flex items-center gap-2">
-									<div
-										onClick={() => {
-											navigate("/setting/models");
-										}}
-										className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
-									>
-										<span className="text-text-information text-sm font-medium leading-[22px]">
-											You're in Self-hosted mode. Cloud models can't be used
-											here — set up your own local cloud model to keep things
-											running.
-										</span>
-									</div>
-								</div>
-							) : (
-								!hasSearchKey &&
-								modelType !== "cloud" && (
-									<div className="flex items-center gap-2">
-										<div
-											onClick={() => {
-												navigate("/setting/mcp");
-											}}
-											className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
-										>
-											<span className="text-text-information text-sm font-medium leading-[22px]">
-												You're using Self-hosted mode. Enter the Google
-												Search Keys in “MCP and Tools” to ensure Eigent works
-												properly.
-											</span>
-										</div>
-									</div>
-								)
-							)}
-							{!useCloudModelInDev &&
-								privacy &&
-								(hasSearchKey || modelType === "cloud") && (
+							) : null}
+							{privacy && (
 									<div className="mr-2 flex flex-col items-center gap-2">
 										{[
 											{
-												label: "Palm Springs Tennis Trip Planner",
-												message:
-													"I am two tennis fans and want to go see the tennis tournament in palm springs. l live in SF - please prepare a detailed itinerary with flights, hotels, things to do for 3 days - around the time semifinal/finals are happening. We like hiking, vegan food and spas. Our budget is $5K. The itinerary should be a detailed timeline of time, activity, cost, other details and if applicable a link to buy tickets/make reservations etc. for the item. Some preferences 1.Spa access would be nice but not necessary 2. When you finnish this task, please generate a html report about this trip.",
+												label: t("chat.palm-springs-tennis-trip-planner"),
+												message: t(
+													"chat.palm-springs-tennis-trip-planner-message"
+												),
 											},
 											{
-												label: "Bank Transfer CSV Analysis and Visualization",
-												message:
-													"Create a mock bank transfer CSV file include 10 columns and 10 rows. Read the generated CSV file and summarize the data, generate a chart to visualize relevant trends or insights from the data.",
+												label: t(
+													"chat.bank-transfer-csv-analysis-and-visualization"
+												),
+												message: t(
+													"chat.bank-transfer-csv-analysis-and-visualization-message"
+												),
 											},
 											{
-												label: "Find Duplicate Files in Downloads Folder",
-												message:
-													"Help me find duplicate files by content, size, and format in my downloads folder.",
+												label: t(
+													"chat.find-duplicate-files-in-downloads-folder"
+												),
+												message: t(
+													"chat.find-duplicate-files-in-downloads-folder-message"
+												),
 											},
 										].map(({ label, message }) => (
 											<div

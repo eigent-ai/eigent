@@ -1,0 +1,11 @@
+{
+	"update-check-failed": "업데이트 확인 실패",
+	"new-version-available": "새 버전 사용 가능",
+	"download": "다운로드",
+	"update-error": "업데이트 오류",
+	"downloading-update": "업데이트 다운로드 중",
+	"complete": "완료",
+	"download-completed": "다운로드 완료",
+	"click-to-install-update": "업데이트 설치를 클릭하세요",
+	"install": "설치"
+}

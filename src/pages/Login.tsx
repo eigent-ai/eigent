@@ -14,6 +14,7 @@ import eye from "@/assets/eye.svg";
 import eyeOff from "@/assets/eye-off.svg";
 import { proxyFetchPost } from "@/api/http";
 import { hasStackKeys } from "@/lib";
+import { useTranslation } from "react-i18next";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -23,7 +24,7 @@ export default function Login() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
-
+	const { t } = useTranslation();
 	const [formData, setFormData] = useState({
 		email: "",
 		password: "",
@@ -47,15 +48,15 @@ export default function Login() {
 		};
 
 		if (!formData.email) {
-			newErrors.email = "Please enter email address";
+			newErrors.email = t("layout.please-enter-email-address");
 		} else if (!validateEmail(formData.email)) {
-			newErrors.email = "Please enter a valid email address";
+			newErrors.email = t("layout.please-enter-a-valid-email-address");
 		}
 
 		if (!formData.password) {
-			newErrors.password = "Please enter password";
+			newErrors.password = t("layout.please-enter-password");
 		} else if (formData.password.length < 6) {
-			newErrors.password = "Password must be at least 6 characters";
+			newErrors.password = t("layout.password-must-be-at-least-8-characters");
 		}
 
 		setErrors(newErrors);
@@ -95,7 +96,7 @@ export default function Login() {
 			});
 
 			if (data.code === 10) {
-				setGeneralError(data.text || "Login failed, please try again");
+				setGeneralError(data.text || t("layout.login-failed-please-try-again"));
 				return;
 			}
 
@@ -104,7 +105,7 @@ export default function Login() {
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
-			setGeneralError("Login failed, please check your email and password");
+			setGeneralError(t("layout.login-failed-please-check-your-email-and-password"));
 		} finally {
 			setIsLoading(false);
 		}
@@ -117,7 +118,7 @@ export default function Login() {
 			});
 
 			if (data.code === 10) {
-				setGeneralError(data.text || "Login failed, please try again");
+				setGeneralError(data.text || t("layout.login-failed-please-try-again"));
 				return;
 			}
 			console.log("data", data);
@@ -126,7 +127,7 @@ export default function Login() {
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
-			setGeneralError("Login failed, please check your email and password");
+			setGeneralError(t("layout.login-failed-please-check-your-email-and-password"));
 		} finally {
 			setIsLoading(false);
 		}
@@ -220,12 +221,12 @@ export default function Login() {
 				<div className="flex-1 flex flex-col items-center justify-center">
 					<div className="w-80">
 						<div className="h-[46px] relative text-[#27272A] font-inter text-[36px]  font-bold leading-[46px]">
-							Login
+							{t("layout.login")}
 							<span
 								onClick={() => navigate("/signup")}
 								className="absolute bottom-0 right-0 text-[#27272A] font-inter text-[13px]  font-normal leading-5 cursor-pointer"
 							>
-								Sign Up
+								{t("layout.sign-up")}
 							</span>
 						</div>
 						{HAS_STACK_KEYS && (
@@ -238,7 +239,7 @@ export default function Login() {
 									disabled={isLoading}
 								>
 									<img src={google} className="w-5 h-5" />
-									<span className="ml-2">Continue with Google</span>
+									<span className="ml-2">{t("layout.continue-with-google-login")}</span>
 								</Button>
 								<Button
 									variant="primary"
@@ -248,13 +249,13 @@ export default function Login() {
 									disabled={isLoading}
 								>
 									<img src={github2} className="w-5 h-5" />
-									<span className="ml-2">Continue with Github</span>
+									<span className="ml-2">{t("layout.continue-with-github-login")}</span>
 								</Button>
 							</div>
 						)}
 						{HAS_STACK_KEYS && (
 							<div className="mt-2 w-full text-[#222] text-center font-inter text-[15px]  font-medium leading-[22px] mb-6">
-								or
+								{t("layout.or")}
 							</div>
 						)}
 						<div className="w-full">
@@ -268,13 +269,13 @@ export default function Login() {
 									htmlFor="email"
 									className="inline-block text-[#222] font-inter text-[13px]  font-bold leading-5 h-5 mb-1.5"
 								>
-									Email
+									{t("layout.email")}
 								</Label>
 								<div className="relative">
 									<Input
 										id="email"
 										type="email"
-										placeholder="Enter your email"
+										placeholder={t("layout.enter-your-email")}
 										required
 										value={formData.email}
 										onChange={(e) => handleInputChange("email", e.target.value)}
@@ -293,7 +294,7 @@ export default function Login() {
 										htmlFor="password"
 										className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5"
 									>
-										Password
+										{t("layout.password")}
 									</Label>
 								</div>
 
@@ -310,7 +311,7 @@ export default function Login() {
 										id="password"
 										type={hidePassword ? "password" : "text"}
 										required
-										placeholder="Enter your password"
+										placeholder={t("layout.enter-your-password")}
 										value={formData.password}
 										onChange={(e) =>
 											handleInputChange("password", e.target.value)
@@ -336,14 +337,14 @@ export default function Login() {
 							disabled={isLoading}
 						>
 							<span className="flex-1">
-								{isLoading ? "Logging in..." : "Log In"}
+								{isLoading ? t("layout.logging-in") : t("layout.log-in")}
 							</span>
 						</Button>
 					</div>
 				</div>
 
 				<div className="text-text-body text-xs font-medium leading-tight">
-					Privacy Policy
+					{t("layout.privacy-policy")}
 				</div>
 			</div>
 		</div>

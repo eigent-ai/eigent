@@ -25,6 +25,8 @@ import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
+import { useTranslation } from "react-i18next";
+import { TooltipSimple } from "../ui/tooltip";
 
 interface EnvValue {
 	value: string;
@@ -54,8 +56,10 @@ export function AddWorker({
 	edit?: boolean;
 	workerInfo?: Agent | null;
 }) {
+	const { t } = useTranslation();
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const chatStore = useChatStore();
+	const activeTaskId = useChatStore((state) => state.activeTaskId);
+	const tasks = useChatStore((state) => state.tasks);
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -77,7 +81,7 @@ export function AddWorker({
 		console.log(mcp);
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
-			Object.keys(mcp.install_command.env).forEach((key) => {
+			for(const key of Object.keys(mcp.install_command.env)) {
 				initialValues[key] = {
 					value: "",
 					required: true,
@@ -86,7 +90,7 @@ export function AddWorker({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
-			});
+			}
 			setEnvValues(initialValues);
 		}
 	};
@@ -173,12 +177,12 @@ export function AddWorker({
 		setNameError("");
 		
 		if (!workerName) {
-			setNameError("Worker name cannot be empty");
+			setNameError(t("workforce.worker-name-cannot-be-empty"));
 			return;
 		}
 
 		if (!edit && workerList.find((worker: any) => worker.name === workerName)) {
-			setNameError("Worker name already exists");
+			setNameError(t("workforce.worker-name-already-exists"));
 			return;
 		}
 		let mcpLocal: any = {};
@@ -187,21 +191,19 @@ export function AddWorker({
 		}
 		const localTool: string[] = [];
 		const mcpList: string[] = [];
-		selectedTools.map((tool: any) => {
+		selectedTools.forEach((tool: any) => {
 			if (tool.isLocal) {
 				localTool.push(tool.toolkit as string);
 			} else {
 				mcpList.push(tool?.key || tool?.mcp_name);
 			}
 		});
-		Object.keys(mcpLocal.mcpServers).map((key) => {
-			console.log("mcpList", mcpList);
-			console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
-
+		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
+		for(const key of Object.keys(mcpLocal.mcpServers)) {
 			if (!mcpList.includes(key)) {
 				delete mcpLocal.mcpServers[key];
 			}
-		});
+		}
 		if (edit) {
 			const newWorkerList = workerList.map((worker) => {
 				if (worker.type === workerInfo?.type) {
@@ -230,8 +232,7 @@ export function AddWorker({
 			});
 			setWorkerList(newWorkerList);
 		} else if (
-			chatStore.activeTaskId &&
-			chatStore.tasks[chatStore.activeTaskId].messages.length === 0
+			activeTaskId && tasks[activeTaskId].messages.length === 0
 		) {
 			const worker: Agent = {
 				tasks: [],
@@ -253,7 +254,7 @@ export function AddWorker({
 			};
 			setWorkerList([...workerList, worker]);
 		} else {
-			fetchPost(`/task/${chatStore.activeTaskId}/add-agent`, {
+			fetchPost(`/task/${activeTaskId}/add-agent`, {
 				name: workerName,
 				description: workerDescription,
 				tools: localTool,
@@ -302,13 +303,13 @@ export function AddWorker({
 							}}
 						>
 							<Edit size={16} />
-							Edit
+							{t("workforce.edit")}
 						</Button>
 					) : (
 						<Button onClick={() => setDialogOpen(true)} variant="ghost">
 							<Plus className="w-6 h-6 text-icon-primary" />
 							<span className="text-text-body text-[13px] leading-13 font-bold">
-								New Worker
+								{t("workforce.new-worker")}
 							</span>
 						</Button>
 					)}
@@ -326,10 +327,12 @@ export function AddWorker({
 								)}
 								<div className="text-base font-bold leading-10 text-text-action">
 									{showEnvConfig
-										? "Configure MCP Server"
-										: "Add Your MCP Server"}
+										? t("workforce.configure-mcp-server")
+										: t("workforce.add-your-mcp-server")}
 								</div>
-								<CircleAlert size={16} />
+								<TooltipSimple content="Configure your MCP worker node here.">
+									<CircleAlert size={16} />
+								</TooltipSimple>
 							</div>
 						</DialogTitle>
 					</DialogHeader>
@@ -393,10 +396,10 @@ export function AddWorker({
 									variant="ghost"
 									size="sm"
 								>
-									Cancel
+									{t("workforce.cancel")}
 								</Button>
 								<Button size="sm" onClick={handleConfigureMcpEnvSetting}>
-									<span>Configure</span>
+									<span>{t("workforce.configure")}</span>
 									<ArrowRight size={16} />
 								</Button>
 							</DialogFooter>
@@ -418,7 +421,7 @@ export function AddWorker({
 									<div className="flex items-center gap-sm pb-md border-[0px] border-b border-solid border-border-secondary">
 										<Bot size={32} className="text-icon-primary" />
 										<Input
-											placeholder=""
+											placeholder="Server Name"
 											value={workerName}
 											onChange={(e) => {
 												setWorkerName(e.target.value);
@@ -428,6 +431,7 @@ export function AddWorker({
 											className={`!border-none !bg-transparent !shadow-none text-xl leading-2xl font-bold !ring-0 !ring-offset-0 ${
 												nameError ? "border-red-500" : ""
 											}`}
+											required
 										/>
 										<RefreshCw
 											size={16}
@@ -442,10 +446,10 @@ export function AddWorker({
 								</div>
 								<div className="flex flex-col gap-sm ">
 									<div className="text-text-body text-sm leading-normal font-bold">
-										Description (Optional)
+										{t("workforce.description-optional")}
 									</div>
 									<Textarea
-										placeholder=""
+										placeholder="Mcp for ..."
 										value={workerDescription}
 										onChange={(e) => setWorkerDescription(e.target.value)}
 										className="rounded-sm border border-solid border-input-border-default bg-input-bg-default  !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
@@ -454,9 +458,11 @@ export function AddWorker({
 								<div>
 									<div className="flex items-center gap-sm ">
 										<div className="text-text-body text-sm leading-normal font-bold">
-											Agent Tool
+											{t("workforce.agent-tool")}
 										</div>
-										<CircleAlert size={16} />
+										<TooltipSimple content="Select MCP tools for your worker node.">
+											<CircleAlert size={16} />
+										</TooltipSimple>
 									</div>
 								</div>
 								<ToolSelect
@@ -469,11 +475,11 @@ export function AddWorker({
 							<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
 								<DialogClose asChild>
 									<Button onClick={resetForm} variant="ghost" size="sm">
-										Cancel
+										{t("workforce.cancel")}
 									</Button>
 								</DialogClose>
 								<Button size="sm" onClick={handleAddWorker} type="submit">
-									<span>Save changes</span>
+									<span>{t("workforce.save-changes")}</span>
 								</Button>
 							</DialogFooter>
 						</>

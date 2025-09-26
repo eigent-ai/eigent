@@ -450,7 +450,7 @@ const chatStore = create<ChatStore>()(
 						let taskRunning = [...tasks[taskId].taskRunning]
 						let taskAssigning = [...tasks[taskId].taskAssigning]
 						const targetTaskIndex = taskRunning.findIndex((task) => task.id === task_id)
-						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id && (task.failure_count == 0 || !task.failure_count)))
+						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id && !task.reAssignTo))
 						if (targetTaskAssigningIndex !== -1) {
 							const taskIndex = taskAssigning[targetTaskAssigningIndex].tasks.findIndex((task: TaskInfo) => task.id === task_id)
 							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].status = state === "DONE" ? "completed" : "failed";
@@ -484,20 +484,19 @@ const chatStore = create<ChatStore>()(
 										content: targetResult,
 										step: "failed",
 									})
-									setStatus(taskId, 'pause')
 								}
 							}
 
 						}
 						if (targetTaskIndex !== -1) {
-
+							console.log("targetTaskIndex", targetTaskIndex, state)
 							taskRunning[targetTaskIndex].status = state === "DONE" ? "completed" : "failed";
 						}
 						setTaskRunning(taskId, taskRunning)
 						setTaskAssigning(taskId, taskAssigning)
 						return;
 					}
-					
+
 					// Activate agent
 					if (agentMessages.step === "activate_agent" || agentMessages.step === "deactivate_agent") {
 						let taskAssigning = [...tasks[taskId].taskAssigning]
@@ -540,7 +539,6 @@ const chatStore = create<ChatStore>()(
 							setTaskAssigning(taskId, [...taskAssigning]);
 						}
 						if (agentMessages.step === "deactivate_agent") {
-							taskAssigning[agentIndex].status = "completed";
 							if (message) {
 								const index = taskAssigning[agentIndex].log.findLastIndex((log) => log.data.method_name === agentMessages.data.method_name && log.data.toolkit_name === agentMessages.data.toolkit_name)
 								if (index != -1) {
@@ -549,12 +547,11 @@ const chatStore = create<ChatStore>()(
 								}
 
 							}
-							// const taskIndex = taskRunning!.findLastIndex((task) => task.agent?.agent_id === agent_id && task.status !== 'completed' && task.status !== 'failed');
-							const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
-							if (taskIndex !== -1) {
-								taskRunning![taskIndex].agent!.status = "completed";
-								taskRunning![taskIndex]!.status = "completed";
-							}
+							// const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+							// if (taskIndex !== -1) {
+							// 	taskRunning![taskIndex].agent!.status = "completed";
+							// 	taskRunning![taskIndex]!.status = "completed";
+							// }
 
 
 							if (!type && historyId) {
@@ -580,11 +577,12 @@ const chatStore = create<ChatStore>()(
 					if (agentMessages.step === "assign_task") {
 						if (!agentMessages.data?.assignee_id || !agentMessages.data?.task_id) return;
 
-						const { assignee_id, task_id, content = "", state: taskState } = agentMessages.data as any;
+						const { assignee_id, task_id, content = "", state: taskState, failure_count } = agentMessages.data as any;
 						let taskAssigning = [...tasks[taskId].taskAssigning]
 						let taskRunning = [...tasks[taskId].taskRunning]
 						let taskInfo = [...tasks[taskId].taskInfo]
 
+						// Find the index of the agent corresponding to assignee_id
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.agent_id === assignee_id);
 						// Find task corresponding to task_id
 						const task = taskInfo!.find((task: TaskInfo) => task.id === task_id);
@@ -594,23 +592,45 @@ const chatStore = create<ChatStore>()(
 						if (assigneeAgentIndex === -1) return;
 						const taskAgent = taskAssigning![assigneeAgentIndex];
 
-						// If the state is "waiting", only mark it in the agent's task list and do not add it to taskRunning
+						// Find the agent to reassign the task to
+						const target = taskAssigning
+							.map((agent, agentIndex) => {
+								if (agent.agent_id === assignee_id) return null
+
+								const taskIndex = agent.tasks.findIndex(
+									(task: TaskInfo) => task.id === task_id && !task.reAssignTo
+								)
+
+								return taskIndex !== -1 ? { agentIndex, taskIndex } : null
+							})
+							.find(Boolean)
+
+						if (target) {
+							const { agentIndex, taskIndex } = target
+							const agentName = taskAssigning.find((agent: Agent) => agent.agent_id === assignee_id)?.name
+							taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
+						}
+
+
+						// Handle task assignment to taskAssigning based on state
 						if (taskState === "waiting") {
 							if (!taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id)) {
 								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "waiting" });
 							}
 							setTaskAssigning(taskId, [...taskAssigning]);
-							return; // Return early, do not add to the running queue
-						}
 
+						}
 						// The following logic is for when the task actually starts executing (running)
-						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
+						else if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
 							// Check if task already exists in the agent's task list
 							const existingTaskIndex = taskAssigning[assigneeAgentIndex].tasks.findIndex(item => item.id === task_id);
-							
+
 							if (existingTaskIndex !== -1) {
 								// Task already exists, update its status
 								taskAssigning[assigneeAgentIndex].tasks[existingTaskIndex].status = "running";
+								if (failure_count !== 0) {
+									taskAssigning[assigneeAgentIndex].tasks[existingTaskIndex].failure_count = failure_count;
+								}
 							} else {
 								// Task doesn't exist, add it
 								let taskTemp = null
@@ -624,15 +644,18 @@ const chatStore = create<ChatStore>()(
 								taskAssigning[assigneeAgentIndex].tasks.push(taskTemp ?? { id: task_id, content, status: "running", });
 							}
 						}
-						
+
 						// Only update or add to taskRunning, never duplicate
 						if (taskRunningIndex === -1) {
 							// Task not in taskRunning, add it
+							if(task){
+								task.status = taskState === "waiting" ? "waiting" : "running";
+							}
 							taskRunning!.push(
 								task ?? {
 									id: task_id,
 									content,
-									status: "",
+									status: taskState === "waiting" ? "waiting" : "running",
 									agent: JSON.parse(JSON.stringify(taskAgent)),
 								}
 							);
@@ -640,8 +663,7 @@ const chatStore = create<ChatStore>()(
 							// Task already in taskRunning, update it
 							taskRunning![taskRunningIndex] = {
 								...taskRunning![taskRunningIndex],
-								content,
-								status: "",
+								status: taskState === "waiting" ? "waiting" : "running",
 								agent: JSON.parse(JSON.stringify(taskAgent)),
 							};
 						}
@@ -1638,7 +1660,17 @@ const chatStore = create<ChatStore>()(
 		clearTasks: () => {
 			const { create } = get()
 			console.log('clearTasks')
-			fetchDelete('/task/stop-all')
+
+			window.ipcRenderer.invoke('restart-backend')
+				.then((res) => {
+					console.log('restart-backend', res)
+				})
+				.catch((error) => {
+					console.error('Error in clearTasks cleanup:', error)
+				})
+
+
+			// Immediately create new task to maintain UI responsiveness
 			const newTaskId = create()
 			set((state) => ({
 				...state,

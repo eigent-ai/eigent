@@ -16,6 +16,7 @@
 [![Wechat][wechat-image]][wechat-url]
 [![][sponsor-shield]][sponsor-link]
 [![][built-with-camel]][camel-github]
+[![][join-us-image]][join-us]
 
 </div>
 
@@ -42,6 +43,8 @@
 - ✅ **MCP 集成**  
 
 <br/>
+
+[![][image-join-us]][join-us]
 
 <details>
 <summary><kbd>目录</kbd></summary>
@@ -147,16 +150,12 @@ Eigent 预定义了以下智能体工作者：
 
 ![Workforce](https://eigent-ai.github.io/.github/assets/gif/feature_dynamic_workforce.gif)
 
-[![][download-shield]][eigent-download]
-
 <br/>
 
 ### 🧠 全面模型支持  
 使用您偏好的模型本地部署 Eigent。  
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
-
-[![][download-shield]][eigent-download]
 
 <br/>
 
@@ -165,8 +164,6 @@ Eigent 内置大量 **模型上下文协议（MCP）** 工具（用于网页浏�
 
 ![MCP](https://eigent-ai.github.io/.github/assets/gif/feature_add_mcps.gif)
 
-[![][download-shield]][eigent-download]
-
 <br/>
 
 ### ✋ 人工介入  
@@ -174,16 +171,12 @@ Eigent 内置大量 **模型上下文协议（MCP）** 工具（用于网页浏�
 
 ![Human-in-the-loop](https://eigent-ai.github.io/.github/assets/gif/feature_human_in_the_loop.gif)
 
-[![][download-shield]][eigent-download]
-
 <br/>
 
 ### 👐 100% 开源  
 Eigent 完全开源。您可以下载、检查和修改代码，确保透明度并促进多智能体创新的社区驱动生态系统。
 
 ![Opensource][image-opensource]
-
-[![][download-shield]][eigent-download]
 
 <br/>
 
@@ -199,8 +192,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 2. 从 CSV 银行数据生成 Q2 报告 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM1MjY4OTE4MDgtODczOSI.aIjJmQ.WTdoX9mATwrcBr_w53BmGEHPo8U__1753526891808-8739)
 
 <details>
@@ -210,8 +201,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 </details>
 
 <br>
-
-[![][download-shield]][eigent-download]
 
 ### 3. 英国医疗市场调研报告自动化 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTMzOTM1NTg3OTctODcwNyI.aIey-Q.Jh9QXzYrRYarY0kz_qsgoj3ewX0__1753393558797-8707)
 
@@ -223,8 +212,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 4. 德国电动滑板市场可行性 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2NTI4MjY3ODctNjk2Ig.aIjGiA.t-qIXxk_BZ4ENqa-yVIm0wMVyXU__1753652826787-696)
 
 <details>
@@ -234,8 +221,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 </details>
 
 <br>
-
-[![][download-shield]][eigent-download]
 
 ### 5. 多智能体产品发布的 SEO 审计 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2OTk5NzExNDQtNTY5NiI.aIex0w.jc_NIPmfIf9e3zGt-oG9fbMi3K4__1753699971144-5696)
 
@@ -247,8 +232,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 6. 识别下载文件夹中的重复文件 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM3NjAzODgxNzEtMjQ4Ig.aIhKLQ.epOG--0Nj0o4Bqjtdqm9OZdaqRQ__1753760388171-248)
 
 <details>
@@ -259,8 +242,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 7. 添加签名到 PDF [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTQwOTU0ODM0NTItNTY2MSI.aJCHrA.Mg5yPOFqj86H_GQvvRNditzepXc__1754095483452-5661)
 
 <details>
@@ -270,8 +251,6 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 </details>
 
 <br>
-
-[![][download-shield]][eigent-download]
 
 ## 🛠️ 技术栈
 
@@ -372,6 +351,9 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 [eigent-download]: https://www.eigent.ai/download
 [download-shield]: https://img.shields.io/badge/Download%20Eigent-363AF5?style=plastic
 
+[join-us]:https://eigent-ai.notion.site/eigent-ai-careers
+[join-us-image]:https://img.shields.io/badge/Join%20Us-yellow?style=plastic
+
 <!-- camel & eigent -->
 [camel-site]: https://www.camel-ai.org
 [eigent-site]: https://www.eigent.ai
@@ -385,6 +367,7 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 [image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
 [image-opensource]: https://eigent-ai.github.io/.github/assets/opensource.png
 [image-wechat]: https://eigent-ai.github.io/.github/assets/wechat.png
+[image-join-us]: https://camel-ai.github.io/camel_asset/graphics/join_us.png
 
 <!-- feature -->
 [image-workforce]: https://eigent-ai.github.io/.github/assets/feature_dynamic_workforce.gif

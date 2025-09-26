@@ -29,8 +29,10 @@ import { proxyFetchGet } from "@/api/http";
 import { useChatStore } from "@/store/chatStore";
 import { useNavigate } from "react-router-dom";
 import { generateUniqueId } from "@/lib";
+import { useTranslation } from "react-i18next";
 
 export function SearchHistoryDialog() {
+	const {t} = useTranslation()
 	const [open, setOpen] = useState(false);
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	const chatStore = useChatStore();
@@ -71,15 +73,15 @@ export function SearchHistoryDialog() {
 				onClick={() => setOpen(true)}
 			>
 				<Search className="text-menutabs-icon-active" size={16} />
-				<span>Search</span>
+				<span>{t("task-hub.search")}</span>
 			</Button>
 			<CommandDialog open={open} onOpenChange={setOpen}>
 				<DialogTitle asChild>
-					<VisuallyHidden>Search Dialog</VisuallyHidden>
+					<VisuallyHidden>{t("task-hub.search-dialog")}</VisuallyHidden>
 				</DialogTitle>
-				<CommandInput placeholder="Search or ask a question" />
+				<CommandInput placeholder={t("task-hub.search-dialog-placeholder")} />
 				<CommandList>
-					<CommandEmpty>No results found.</CommandEmpty>
+					<CommandEmpty>{t("task-hub.no-results")}</CommandEmpty>
 					<CommandGroup heading="Today">
 						{historyTasks.map((task) => (
 							<CommandItem

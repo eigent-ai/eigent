@@ -14,6 +14,7 @@ import eye from "@/assets/eye.svg";
 import eyeOff from "@/assets/eye-off.svg";
 import { proxyFetchPost } from "@/api/http";
 import { hasStackKeys } from "@/lib";
+import { useTranslation } from "react-i18next";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -23,7 +24,7 @@ export default function SignUp() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
-
+	const { t } = useTranslation();
 	const [formData, setFormData] = useState({
 		email: "",
 		password: "",
@@ -50,15 +51,15 @@ export default function SignUp() {
 		};
 
 		if (!formData.email) {
-			newErrors.email = "Please enter email address";
+			newErrors.email = t("layout.please-enter-email-address");
 		} else if (!validateEmail(formData.email)) {
-			newErrors.email = "Please enter a valid email address";
+			newErrors.email = t("layout.please-enter-a-valid-email-address");
 		}
 
 		if (!formData.password) {
-			newErrors.password = "Please enter password";
+			newErrors.password = t("layout.please-enter-password");
 		} else if (formData.password.length < 8) {
-			newErrors.password = "Password must be at least 8 characters";
+			newErrors.password = t("layout.password-must-be-at-least-8-characters");
 		}
 
 		setErrors(newErrors);
@@ -98,7 +99,7 @@ export default function SignUp() {
 			});
 
 			if (data.code === 10 || data.code === 1) {
-				setGeneralError(data.text || "Sign up failed, please try again");
+				setGeneralError(data.text || t("layout.sign-up-failed-please-try-again"));
 				return;
 			}
 			if (data.code === 100 && data.error) {
@@ -121,7 +122,7 @@ export default function SignUp() {
 			navigate("/login");
 		} catch (error: any) {
 			console.error("Sign up failed:", error);
-			setGeneralError("Sign up failed, please check your email and password");
+			setGeneralError(t("layout.sign-up-failed-please-check-your-email-and-password"));
 		} finally {
 			setIsLoading(false);
 		}
@@ -135,7 +136,7 @@ export default function SignUp() {
 			});
 
 			if (data.code === 10) {
-				setGeneralError(data.text || "Login failed, please try again");
+				setGeneralError(data.text || t("layout.login-failed-please-try-again"));
 				return;
 			}
 			console.log("data", data);
@@ -143,7 +144,7 @@ export default function SignUp() {
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
-			setGeneralError("Login failed, please check your email and password");
+			setGeneralError(t("layout.login-failed-please-check-your-email-and-password"));
 		} finally {
 			setIsLoading(false);
 		}
@@ -238,12 +239,12 @@ export default function SignUp() {
 				<div className="flex-1 flex flex-col items-center justify-center">
 					<div className="w-80">
 						<div className="h-[46px] relative text-[#27272A] font-inter text-[36px] font-bold leading-[46px]">
-							Sign Up
+							{t("layout.sign-up")}
 							<span 
 								onClick={() => navigate("/login")}
 								className="absolute bottom-0 right-0 text-[#27272A] font-inter text-[13px] font-normal leading-5 cursor-pointer"
 							>
-								Login
+								{t("layout.login")}
 							</span>
 						</div>
 						{HAS_STACK_KEYS && <div className="w-full pt-6">
@@ -255,7 +256,7 @@ export default function SignUp() {
 								disabled={isLoading}
 							>
 								<img src={google} className="w-5 h-5" />
-								<span className="ml-2">Continue with Google</span>
+								<span className="ml-2">{t("layout.continue-with-google-sign-up")}</span>
 							</Button>
 							<Button
 								variant="primary"
@@ -265,25 +266,25 @@ export default function SignUp() {
 								disabled={isLoading}
 							>
 								<img src={github2} className="w-5 h-5" />
-								<span className="ml-2">Continue with Github</span>
+								<span className="ml-2">{t("layout.continue-with-github-sign-up")}</span>
 							</Button>
 							</div>}
 						{HAS_STACK_KEYS && <div className="mt-2 w-full text-[#222] text-center font-inter text-[15px] font-medium leading-[22px] mb-6">
-							or
+							{t("layout.or")}
 						</div>}
 						<div className="w-full">
 							{generalError && (
-								<p className="text-red-500 text-sm mt-0.5 mb-4">{generalError}</p>
+								<p className="text-red-500 text-sm mt-0.5 mb-4">{t("layout.general-error")}</p>
 							)}
 							<div className="w-full mb-4 relative">
 								<Label htmlFor="email" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-									Email
+									{t("layout.email")}
 								</Label>
 								<div className="relative">
 									<Input
 										id="email"
 										type="email"
-										placeholder="Enter your email"
+										placeholder={t("layout.enter-your-email")}
 										required
 										value={formData.email}
 										onChange={(e) => handleInputChange("email", e.target.value)}
@@ -291,13 +292,13 @@ export default function SignUp() {
 									/>
 								</div>
 								{errors.email && (
-									<p className="text-red-500 text-sm mt-0.5">{errors.email}</p>
+									<p className="text-red-500 text-sm mt-0.5">{t("layout.errors.email")}</p>
 								)}
 							</div>
 							<div className="w-full mb-4 relative">
 								<div className="flex items-center">
 									<Label htmlFor="password" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-										Password
+										{t("layout.password")}
 									</Label>
 								</div>
 
@@ -314,7 +315,7 @@ export default function SignUp() {
 										id="password"
 										type={hidePassword ? "password" : "text"}
 										required
-										placeholder="Enter your password"
+										placeholder={t("layout.enter-your-password")}
 										value={formData.password}
 										onChange={(e) =>
 											handleInputChange("password", e.target.value)
@@ -330,13 +331,13 @@ export default function SignUp() {
 							</div>
 							<div className="w-full mb-4 relative">
 								<Label htmlFor="invite_code" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-									Invitation Code (optional)
+									 {t("layout.invitation-code-optional")}
 								</Label>
 								<div className="relative">
 									<Input
 										id="invite_code"
 										type="text"
-										placeholder="Enter your invite code"
+										placeholder={t("layout.enter-your-invite-code")}
 										required
 										value={formData.invite_code}
 										onChange={(e) =>
@@ -361,14 +362,14 @@ export default function SignUp() {
 							disabled={isLoading}
 						>
 							<span className="flex-1">
-								{isLoading ? "Signing up..." : "Sign Up"}
+								{isLoading ? t("layout.signing-up") : t("layout.sign-up")}
 							</span>
 						</Button>
 					</div>
 				</div>
 
 				<div className="text-text-body text-xs font-medium leading-tight">
-					Privacy Policy
+					{t("layout.privacy-policy")}
 				</div>
 			</div>
 		</div>

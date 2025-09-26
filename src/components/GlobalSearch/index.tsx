@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/command";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Search } from "lucide-react";
-
+import { useTranslation } from "react-i18next";
 const items = [
 	"Apple",
 	"Banana",
@@ -31,7 +31,7 @@ const items = [
 
 export function GlobalSearch() {
 	const [open, setOpen] = useState(false);
-
+	const { t } = useTranslation();
 	return (
 		<>
 			<div
@@ -40,26 +40,26 @@ export function GlobalSearch() {
 			>
 				<Search className="w-4 h-4 text-text-secondary"></Search>
 				<span className="text-text-secondary font-inter text-[10px] leading-4">
-					Search for a task or document
+					{t("task-hub.search-for-a-task-or-document")}
 				</span>
 			</div>
 			<CommandDialog open={open} onOpenChange={setOpen}>
-				<DialogTitle className="sr-only">Search</DialogTitle>
+				<DialogTitle className="sr-only">{t("task-hub.search")}</DialogTitle>
 				<CommandInput placeholder="Type a command or search..." />
 				<CommandList>
-					<CommandEmpty>No results found.</CommandEmpty>
+					<CommandEmpty>{t("task-hub.no-results")}</CommandEmpty>
 					<CommandGroup heading="Today">
 						<CommandItem>
 							<Calendar />
-							<span>Calendar</span>
+							<span>{t("task-hub.calendar")}</span>
 						</CommandItem>
 						<CommandItem>
 							<Smile />
-							<span>Search Emoji</span>
+							<span>{t("task-hub.search-emoji")}</span>
 						</CommandItem>
 						<CommandItem>
 							<Calculator />
-							<span>Calculator</span>
+							<span>{t("task-hub.calculator")}</span>
 						</CommandItem>
 					</CommandGroup>
 					<CommandSeparator />

@@ -1,9 +1,7 @@
 import asyncio
 import os
-from pathlib import Path
-from typing import Any, Dict
 from camel.toolkits.terminal_toolkit import TerminalToolkit as BaseTerminalToolkit
-from app.component.command import uv
+from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.component.environment import env
 from app.service.task import Action, ActionTerminalData, Agents, get_task_lock
 from app.utils.listen.toolkit_listen import listen_toolkit
@@ -19,12 +17,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         api_task_id: str,
         agent_name: str | None = None,
         timeout: float | None = None,
-        shell_sessions: Dict[str, Any] | None = None,
         working_directory: str | None = None,
-        need_terminal: bool = True,
-        use_shell_mode: bool = True,
-        clone_current_env: bool = False,
+        use_docker_backend: bool = False,
+        docker_container_name: str | None = None,
+        session_logs_dir: str | None = None,
         safe_mode: bool = True,
+        allowed_commands: list[str] | None = None,
+        clone_current_env: bool = False,
     ):
         self.api_task_id = api_task_id
         if agent_name is not None:
@@ -33,13 +32,25 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             working_directory = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
         super().__init__(
             timeout=timeout,
-            shell_sessions=shell_sessions,
             working_directory=working_directory,
-            need_terminal=False,  # Override the code that creates GUI output logs, use queue for SSE output instead
-            use_shell_mode=use_shell_mode,
-            clone_current_env=clone_current_env,
+            use_docker_backend=use_docker_backend,
+            docker_container_name=docker_container_name,
+            session_logs_dir=session_logs_dir,
             safe_mode=safe_mode,
+            allowed_commands=allowed_commands,
+            clone_current_env=clone_current_env,
         )
+
+    def _write_to_log(self, log_file: str, content: str) -> None:
+        r"""Write content to log file with optional ANSI stripping.
+
+        Args:
+            log_file (str): Path to the log file
+            content (str): Content to write
+        """
+        # Convert ANSI escape sequences to plain text
+        super()._write_to_log(log_file, content)
+        self._update_terminal_output(_to_plain(content))
 
     def _update_terminal_output(self, output: str):
         task_lock = get_task_lock(self.api_task_id)
@@ -57,16 +68,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         if hasattr(task_lock, "add_background_task"):
             task_lock.add_background_task(task)
 
-    def _ensure_uv_available(self) -> bool:
-        self.uv_path = uv()
-        return True
-
     @listen_toolkit(
         BaseTerminalToolkit.shell_exec,
-        lambda _, id, command: f"id: {id}, command: {command}",
+        lambda _, id, command, block=True: f"id: {id}, command: {command}, block: {block}",
     )
-    def shell_exec(self, id: str, command: str) -> str:
-        return super().shell_exec(id=id, command=command)
+    def shell_exec(self, id: str, command: str, block: bool = True) -> str:
+        return super().shell_exec(id=id, command=command, block=block)
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_view,
@@ -77,17 +84,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_wait,
-        lambda _, id, seconds: f"id: {id}, seconds: {seconds}",
+        lambda _, id, wait_seconds=None: f"id: {id}, wait_seconds: {wait_seconds}",
     )
-    def shell_wait(self, id: str, seconds: int | None = None) -> str:
-        return super().shell_wait(id=id, seconds=seconds)
+    def shell_wait(self, id: str, wait_seconds: float = 5.0) -> str:
+        return super().shell_wait(id=id, wait_seconds=wait_seconds)
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_write_to_process,
-        lambda _, id, input, press_enter: f"id: {id}, input: {input}, press_enter: {press_enter}",
+        lambda _, id, command: f"id: {id}, command: {command}",
     )
-    def shell_write_to_process(self, id: str, input: str, press_enter: bool) -> str:
-        return super().shell_write_to_process(id=id, input=input, press_enter=press_enter)
+    def shell_write_to_process(self, id: str, command: str) -> str:
+        return super().shell_write_to_process(id=id, command=command)
 
     @listen_toolkit(
         BaseTerminalToolkit.shell_kill_process,
@@ -97,8 +104,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         return super().shell_kill_process(id=id)
 
     @listen_toolkit(
-        BaseTerminalToolkit.ask_user_for_help,
-        lambda _, id: f"id: {id}",
+        BaseTerminalToolkit.shell_ask_user_for_help,
+        lambda _, id, prompt: f"id: {id}, prompt: {prompt}",
     )
-    def ask_user_for_help(self, id: str) -> str:
-        return super().ask_user_for_help(id=id)
+    def shell_ask_user_for_help(self, id: str, prompt: str) -> str:
+        return super().shell_ask_user_for_help(id=id, prompt=prompt)

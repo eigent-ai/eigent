@@ -51,13 +51,10 @@ class SlackToolkit(BaseSlackToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseSlackToolkit.send_slack_message,
-        lambda _,
-        message,
-        channel_id,
-        user=None: f"send Slack message: {message} to channel id: {channel_id} for user: {user}",
+        lambda _, message, channel_id, file_path=None, user=None: f"send Slack message: {message} to channel id: {channel_id}, file: {file_path}, user: {user}",
     )
-    def send_slack_message(self, message: str, channel_id: str, user: str | None = None) -> str:
-        return super().send_slack_message(message, channel_id, user)
+    def send_slack_message(self, message: str, channel_id: str, file_path: str | None = None, user: str | None = None) -> str:
+        return super().send_slack_message(message, channel_id, file_path, user)
 
     @listen_toolkit(
         BaseSlackToolkit.delete_slack_message,
@@ -67,6 +64,20 @@ class SlackToolkit(BaseSlackToolkit, AbstractToolkit):
     )
     def delete_slack_message(self, time_stamp: str, channel_id: str) -> str:
         return super().delete_slack_message(time_stamp, channel_id)
+
+    @listen_toolkit(
+        BaseSlackToolkit.get_slack_user_list,
+        lambda _: "get Slack user list",
+    )
+    def get_slack_user_list(self) -> str:
+        return super().get_slack_user_list()
+
+    @listen_toolkit(
+        BaseSlackToolkit.get_slack_user_info,
+        lambda _, user_id: f"get Slack user info with user id: {user_id}",
+    )
+    def get_slack_user_info(self, user_id: str) -> str:
+        return super().get_slack_user_info(user_id)
 
     @classmethod
     def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:

@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SearchInputProps {
 	value: string;
@@ -10,7 +11,7 @@ interface SearchInputProps {
 export default function SearchInput({ value, onChange }: SearchInputProps) {
 	const [isFocused, setIsFocused] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
-
+	const { t } = useTranslation();
 	return (
 		<div className="relative w-full">
 			<Input
@@ -27,7 +28,7 @@ export default function SearchInput({ value, onChange }: SearchInputProps) {
 				<span className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-secondary select-none">
 					<Search className="w-4 h-4 mr-2 text-icon-secondary" />
 					<span className="text-xs leading-none text-text-body">
-						Search MCPs
+						{t("setting.search-mcp")}
 					</span>
 				</span>
 			)}

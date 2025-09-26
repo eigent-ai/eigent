@@ -1,23 +1,23 @@
 import { toast } from "sonner";
+import i18n from "@/i18n";
 
 export function showCreditsToast() {
 	toast.dismiss();
-	
 	toast(
 		<div>
-			You've reached the limit of your current plan.
+			{i18n.t("chat.you-ve-reached-the-limit-of-your-current-plan")}
 			<a
 				className="underline cursor-pointer"
 				onClick={() => (window.location.href = "https://www.eigent.ai/pricing")}
 			>
-				Upgrade
+				{i18n.t("chat.upgrade")}
 			</a>{" "}
-			your account or switch to a self-hosted model and API in{" "}
+			{i18n.t("chat.your-account-or-switch-to-a-self-hosted-model-and-api-in")}{" "}
 			<a
 				className="underline cursor-pointer"
 				onClick={() => (window.location.href = "#/setting/general")}
 			>
-				Settings
+				{i18n.t("chat.settings")}
 			</a>{" "}
 			.
 		</div>,

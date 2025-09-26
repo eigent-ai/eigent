@@ -22,7 +22,7 @@ import {
 	CircleSlash,
 } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
-import { TaskState } from "../TaskState";
+import { TaskState, TaskStateType } from "../TaskState";
 
 interface TaskCardProps {
 	taskInfo: any[];
@@ -34,6 +34,7 @@ interface TaskCardProps {
 	onAddTask: () => void;
 	onUpdateTask: (taskIndex: number, content: string) => void;
 	onDeleteTask: (taskIndex: number) => void;
+	clickable?: boolean;
 }
 
 export function TaskCard({
@@ -45,12 +46,49 @@ export function TaskCard({
 	onAddTask,
 	onUpdateTask,
 	onDeleteTask,
+	clickable = true,
 }: TaskCardProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
-
 	const chatStore = useChatStore();
+
+	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
+	const [filterTasks, setFilterTasks] = useState<any[]>([]);
+	useEffect(() => {
+		const tasks = taskRunning || [];
+
+		if (selectedState === "all") {
+			setFilterTasks(tasks);
+		} else {
+			const newFiltered = tasks.filter((task) => {
+				switch (selectedState) {
+					case "done":
+						return task.status === "completed" && !task.reAssignTo;
+					case "ongoing":
+						return (
+							task.status !== "failed" &&
+							task.status !== "completed" &&
+							task.status !== "skipped" &&
+							task.status !== "waiting" &&
+							task.status !== "" 
+						);
+					case "pending":
+						return (
+							(task.status === "skipped" ||
+								task.status === "waiting" ||
+								task.status === "") &&
+							!task.reAssignTo
+						);
+					case "failed":
+						return task.status === "failed";
+					default:
+						return false;
+				}
+			});
+			setFilterTasks(newFiltered);
+		}
+	}, [selectedState, taskInfo, taskRunning]);
 
 	const isAllTaskFinished = useMemo(() => {
 		return (
@@ -141,20 +179,43 @@ export function TaskCard({
 						<div className="flex items-center gap-2 ">
 							{taskType === 1 && (
 								<TaskState
-									done={0}
-									progress={
-										taskInfo.filter((task) => task.content !== "").length || 0
+									all={taskInfo.length || 0}
+									done={
+										taskInfo.filter((task) => task.status === "completed")
+											.length || 0
 									}
-									skipped={0}
+									progress={
+										taskInfo.filter(
+											(task) =>
+												task.status !== "completed" &&
+												task.status !== "failed" &&
+												task.status !== "skipped" &&
+												task.status !== "waiting" &&
+												task.status !== ""
+										).length || 0
+									}
+									skipped={
+										taskInfo.filter(
+											(task) =>
+												task.status === "skipped" ||
+												task.status === "waiting" ||
+												task.status === ""
+										).length || 0
+									}
+									failed={
+										taskInfo.filter((task) => task.status === "failed")
+											.length || 0
+									}
+									forceVisible={true}
+									clickable={clickable}
 								/>
 							)}
 							{taskType !== 1 && (
 								<TaskState
+									all={taskRunning?.length || 0}
 									done={
-										taskRunning?.filter(
-											(task) =>
-												task.status === "completed" || task.status === "failed"
-										).length || 0
+										taskRunning?.filter((task) => task.status === "completed")
+											.length || 0
 									}
 									progress={
 										taskRunning?.filter(
@@ -162,13 +223,26 @@ export function TaskCard({
 												task.status !== "completed" &&
 												task.status !== "failed" &&
 												task.status !== "skipped" &&
-												task.content !== ""
+												task.status !== "waiting" &&
+												task.status !== ""
 										).length || 0
 									}
 									skipped={
-										taskRunning?.filter((task) => task.status === "skipped")
+										taskRunning?.filter(
+											(task) =>
+												task.status === "skipped" ||
+												task.status === "waiting" ||
+												task.status === ""
+										).length || 0
+									}
+									failed={
+										taskRunning?.filter((task) => task.status === "failed")
 											.length || 0
 									}
+									forceVisible={true}
+									selectedState={selectedState}
+									onStateChange={setSelectedState}
+									clickable={clickable}
 								/>
 							)}
 						</div>
@@ -235,7 +309,7 @@ export function TaskCard({
 								}}
 							>
 								<div className="mt-sm flex flex-col px-2 gap-2">
-									{taskRunning.map((task: TaskInfo) => {
+									{filterTasks.map((task: TaskInfo) => {
 										return (
 											<div
 												onClick={() => {
@@ -279,7 +353,7 @@ export function TaskCard({
 													{task.status === "running" && (
 														<LoaderCircle
 															size={16}
-															className={`text-icon-success ${
+															className={`text-icon-information ${
 																chatStore.tasks[
 																	chatStore.activeTaskId as string
 																].status === "running" && "animate-spin"
@@ -316,7 +390,7 @@ export function TaskCard({
 												</div>
 												<div className="flex-1 flex flex-col items-start justify-center">
 													<div
-														className={` w-full ${
+														className={` w-full break-words [overflow-wrap:anywhere] whitespace-pre-line ${
 															task.status === "failed"
 																? "text-text-cuation-default"
 																: task.status === "blocked"

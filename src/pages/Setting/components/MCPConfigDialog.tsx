@@ -3,7 +3,7 @@ import { Switch } from "@/components/ui/switch";
 import type { MCPConfigForm, MCPUserItem } from "./types";
 import React, { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
-
+import { useTranslation } from "react-i18next";
 interface MCPConfigDialogProps {
   open: boolean;
   form: MCPConfigForm | null;
@@ -18,13 +18,13 @@ interface MCPConfigDialogProps {
 
 export default function MCPConfigDialog({ open, form, mcp, onChange, onSave, onClose, loading, errorMsg, onSwitchStatus }: MCPConfigDialogProps) {
   const [showEnvValues, setShowEnvValues] = useState<Record<string, boolean>>({});
-
+  const { t } = useTranslation();
   if (!open || !form || !mcp) return null;
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center ">
       <div className="bg-white-100% rounded-lg shadow-lg p-6 min-w-[340px] max-w-[90vw] w-[480px] relative">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-bold">Edit MCP Config</div>
+          <div className="font-bold">{t("setting.edit-mcp-config")}</div>
           <Switch
             checked={mcp.status === 1}
             disabled={loading}
@@ -33,19 +33,19 @@ export default function MCPConfigDialog({ open, form, mcp, onChange, onSave, onC
         </div>
         <form onSubmit={onSave} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Name</label>
-            <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.mcp_name} onChange={e => onChange({ ...form, mcp_name: e.target.value })} disabled={loading} />
+            <label className="block text-sm font-medium mb-1">{t("setting.name")}</label>
+            <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.mcp_name} onChange={e => onChange({ ...form, mcp_name: e.target.value })} disabled readOnly />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
+            <label className="block text-sm font-medium mb-1">{t("setting.description")}</label>
             <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.mcp_desc} onChange={e => onChange({ ...form, mcp_desc: e.target.value })} disabled={loading} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Command</label>
+            <label className="block text-sm font-medium mb-1">{t("setting.command")}</label>
             <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.command} onChange={e => onChange({ ...form, command: e.target.value })} disabled={loading} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Args (one per line)</label>
+            <label className="block text-sm font-medium mb-1">{t("setting.args-one-per-line")}</label>
             <textarea
               autoComplete="off"
               className="w-full border rounded px-3 py-2 text-sm"
@@ -90,8 +90,8 @@ export default function MCPConfigDialog({ open, form, mcp, onChange, onSave, onC
           </div>
           {errorMsg && <div className="text-red-500 text-xs mb-2">{errorMsg}</div>}
           <div className="flex justify-end mt-4 gap-2">
-            <Button size="md" type="button" variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-            <Button size="md" type="submit" disabled={loading}>Save</Button>
+            <Button size="md" type="button" variant="outline" onClick={onClose} disabled={loading}>{t("setting.cancel")}</Button>
+            <Button size="md" type="submit" disabled={loading}>{t("setting.save")}</Button>
           </div>
         </form>
       </div>

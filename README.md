@@ -16,6 +16,7 @@
 [![Wechat][wechat-image]][wechat-url]
 [![][sponsor-shield]][sponsor-link]
 [![][built-with-camel]][camel-github]
+[![][join-us-image]][join-us]
 
 </div>
 
@@ -42,6 +43,8 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 - ✅ **MCP Integration**
 
 <br/>
+
+[![][image-join-us]][join-us]
 
 <details>
 <summary><kbd>Table of contents</kbd></summary>
@@ -147,16 +150,12 @@ Eigent pre-defined the following agent workers:
 
 ![Workforce](https://eigent-ai.github.io/.github/assets/gif/feature_dynamic_workforce.gif)
 
-[![][download-shield]][eigent-download]
-
 <br/>
 
 ### 🧠 Comprehensive Model Support
 Deploy Eigent locally with your preferred models. 
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
-
-[![][download-shield]][eigent-download]
 
 <br/>
 
@@ -165,8 +164,6 @@ Eigent comes with massive built-in **Model Context Protocol (MCP)** tools (for
 
 ![MCP](https://eigent-ai.github.io/.github/assets/gif/feature_add_mcps.gif)
 
-[![][download-shield]][eigent-download]
-
 <br/>
 
 ### ✋ Human-in-the-Loop
@@ -174,16 +171,12 @@ If a task gets stuck or encounters uncertainty, Eigent will automatically reques
 
 ![Human-in-the-loop](https://eigent-ai.github.io/.github/assets/gif/feature_human_in_the_loop.gif)
 
-[![][download-shield]][eigent-download]
-
 <br/>
 
 ### 👐 100% Open Source
 Eigent is completely open-sourced. You can download, inspect, and modify the code, ensuring transparency and fostering a community-driven ecosystem for multi-agent innovation.
 
 ![Opensource][image-opensource]
-
-[![][download-shield]][eigent-download]
 
 <br/>
 
@@ -199,8 +192,6 @@ We are two tennis fans and want to go see the tennis tournament in Palm Springs 
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 2. Generate Q2 Report from CSV Bank Data [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM1MjY4OTE4MDgtODczOSI.aIjJmQ.WTdoX9mATwrcBr_w53BmGEHPo8U__1753526891808-8739)
 
 <details>
@@ -211,8 +202,6 @@ Please help me prepare a Q2 financial statement based on my bank transfer record
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 3. UK Healthcare Market Research Report Automation [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTMzOTM1NTg3OTctODcwNyI.aIey-Q.Jh9QXzYrRYarY0kz_qsgoj3ewX0__1753393558797-8707)
 
 <details>
@@ -222,8 +211,6 @@ Analyze the UK healthcare industry to support the planning of my next company. P
 </details>
 
 <br>
-
-[![][download-shield]][eigent-download]
 
 ### 4. German Electric Skateboard Market Feasibility [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2NTI4MjY3ODctNjk2Ig.aIjGiA.t-qIXxk_BZ4ENqa-yVIm0wMVyXU__1753652826787-696)
 
@@ -240,8 +227,6 @@ We are a company that produces high-end electric skateboards, and we are conside
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 5. SEO Audit for Workforce Multiagent Launch [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2OTk5NzExNDQtNTY5NiI.aIex0w.jc_NIPmfIf9e3zGt-oG9fbMi3K4__1753699971144-5696)
 
 <details>
@@ -251,8 +236,6 @@ To support the launch of our new Workforce Multiagent product, please run a thor
 </details>
 
 <br>
-
-[![][download-shield]][eigent-download]
 
 ### 6. Identify Duplicate Files in Downloads [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM3NjAzODgxNzEtMjQ4Ig.aIhKLQ.epOG--0Nj0o4Bqjtdqm9OZdaqRQ__1753760388171-248)
 
@@ -264,8 +247,6 @@ I have a folder named mydocs inside my Documents directory. Please scan it and i
 
 <br>
 
-[![][download-shield]][eigent-download]
-
 ### 7. Add Signature to PDF [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTQwOTU0ODM0NTItNTY2MSI.aJCHrA.Mg5yPOFqj86H_GQvvRNditzepXc__1754095483452-5661)
 
 <details>
@@ -275,8 +256,6 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 </details>
 
 <br>
-
-[![][download-shield]][eigent-download]
 
 ## 🛠️ Tech Stack
 
@@ -379,6 +358,9 @@ For more information please contact info@eigent.ai
 [eigent-download]: https://www.eigent.ai/download
 [download-shield]: https://img.shields.io/badge/Download%20Eigent-363AF5?style=plastic
 
+[join-us]:https://eigent-ai.notion.site/eigent-ai-careers
+[join-us-image]:https://img.shields.io/badge/Join%20Us-yellow?style=plastic
+
 <!-- camel & eigent -->
 [camel-site]: https://www.camel-ai.org
 [eigent-site]: https://www.eigent.ai
@@ -392,6 +374,7 @@ For more information please contact info@eigent.ai
 [image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
 [image-opensource]: https://eigent-ai.github.io/.github/assets/opensource.png
 [image-wechat]: https://eigent-ai.github.io/.github/assets/wechat.png
+[image-join-us]: https://camel-ai.github.io/camel_asset/graphics/join_us.png
 
 <!-- feature -->
 [image-workforce]: https://eigent-ai.github.io/.github/assets/feature_dynamic_workforce.gif

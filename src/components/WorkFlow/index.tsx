@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { useChatStore } from "@/store/chatStore";
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
+import { useTranslation } from "react-i18next";
 
 interface NodeData {
 	agent: Agent;
@@ -35,6 +36,7 @@ export default function Workflow({
 }: {
 	taskAssigning: Agent[];
 }) {
+	const {t} = useTranslation();
 	const chatStore = useChatStore();
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -131,7 +133,7 @@ export default function Workflow({
 
 				return prev.map((node) => {
 					// calculate node width and position based on expansion state
-					const nodeWidth = node.data.isExpanded ? 560 : 280;
+					const nodeWidth = node.data.isExpanded ? 684 : 342;
 					const newPosition = { x: currentX, y: node.position.y };
 					currentX += nodeWidth + 20; // 20 is the spacing between nodes
 
@@ -203,7 +205,7 @@ export default function Workflow({
 						};
 
 						// calculate node width and position based on expansion state
-						const nodeWidth = updatedNode.data.isExpanded ? 560 : 280;
+						const nodeWidth = updatedNode.data.isExpanded ? 684 : 342;
 						const newPosition = { x: currentX, y: node.position.y };
 						currentX += nodeWidth + 20; // 20 is the spacing between nodes
 
@@ -243,7 +245,7 @@ export default function Workflow({
 						},
 						position: isEditMode
 							? node.position
-							: { x: index * 300 + 8, y: 16 },
+							: { x: index * (342+20) + 8, y: 16 },
 					};
 				} else {
 					return {
@@ -257,7 +259,7 @@ export default function Workflow({
 							isEditMode: isEditMode,
 							workerInfo: agent?.workerInfo,
 						},
-						position: { x: index * 300 + 8, y: 16 },
+						position: { x: index * (342+20) + 8, y: 16 },
 						type: "node",
 					};
 				}
@@ -299,9 +301,9 @@ export default function Workflow({
 		<div className="w-full h-full flex flex-col items-center justify-center">
 			<div className="flex items-center justify-between w-full ">
 				<div className="text-text-body font-bold text-lg leading-relaxed">
-					Your AI Workforce
+					{t("workforce.your-ai-workforce")}
 				</div>
-				<div className="flex items-center justify-center gap-sm ">
+				<div className="flex items-center justify-center gap-sm">
 					{/* <Button
 						variant="outline"
 						size="icon"
@@ -377,7 +379,7 @@ export default function Workflow({
 									handleShare(chatStore.activeTaskId as string);
 								}}
 							>
-								Share
+								Share	{t("workforce.share")}
 							</Button>
 						</div>
 					)}

@@ -1,19 +1,21 @@
+import { useTranslation } from "react-i18next";
 export const TaskType = ({ type }: { type: 1 | 2 | 3 }) => {
+	const { t } = useTranslation();
 	const typeMap = {
 		1: {
-			label: "Task Splitting",
+			label: t("chat.task-splitting"),
 			textColor: "text-badge-splitting-surface-foreground",
 			bgColor: "bg-badge-splitting-surface",
 			dotColor: "bg-badge-splitting-surface-foreground",
 		},
 		2: {
-			label: "Task Running",
+			label: t("chat.task-running"),
 			textColor: "text-text-success-primary",
 			bgColor: "bg-bg-fill-success-secondary",
 			dotColor: "bg-text-success-primary",
 		},
 		3: {
-			label: "Task Completed",
+			label: t("chat.task-completed"),
 			textColor: "text-text-primary",
 			bgColor: "bg-transparent",
 			dotColor: "bg-text-primary",

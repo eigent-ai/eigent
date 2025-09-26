@@ -17,7 +17,11 @@ import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
 import chevron_left from "@/assets/chevron_left.svg";
 import { getAuthStore } from "@/store/authStore";
+import { useTranslation } from "react-i18next";
+import {  proxyFetchGet } from "@/api/http";
+import { toast } from "sonner";
 function HeaderWin() {
+	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
 	const controlsRef = useRef<HTMLDivElement>(null);
 	const [platform, setPlatform] = useState<string>("");
@@ -102,11 +106,27 @@ function HeaderWin() {
 				chatStore.activeTaskId as string
 			].summaryTask.split("|")[0];
 		}
-		return "New Project";
+		return t("chat.new-project");
 	}, [
 		chatStore.activeTaskId,
 		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
 	]);
+
+	const getReferFriendsLink = async () => {
+		try {
+			const res: any = await proxyFetchGet("/api/user/invite_code");
+			if (res?.invite_code) {
+				const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
+				await navigator.clipboard.writeText(inviteLink);
+				toast.success("Invitation link copied!");
+			} else {
+				toast.error("Failed to get invite code");
+			}
+		} catch (error) {
+			console.error("Failed to get referral link:", error);
+			toast.error("Failed to get invitation link");
+		}
+	};
 
 	return (
 		<div
@@ -149,14 +169,14 @@ function HeaderWin() {
 					</Button>
 					{location.pathname !== "/history" && (
 						<>
-							{activeTaskTitle === "New Project" ? (
+							{activeTaskTitle === t("chat.new-project") ? (
 								<Button
 									variant="ghost"
 									size="sm"
 									className="font-bold text-base no-drag max-w-56 truncate"
 									onClick={createNewProject}
 								>
-									{activeTaskTitle}
+									{t("chat.new-project")}
 								</Button>
 							) : (
 								<div className="font-bold leading-10 text-base min-w-10 max-w-56 truncate">
@@ -180,12 +200,10 @@ function HeaderWin() {
 						className="mr-2 no-drag leading-tight"
 					>
 						<FileDown className="w-4 h-4" />
-						Report a bug
+						{t("layout.report-bug")}
 					</Button>
 					<Button
-						onClick={() => {
-							window.location.href = "https://www.eigent.ai/dashboard";
-						}}
+						onClick={getReferFriendsLink}
 						variant="primary"
 						size="xs"
 						className="no-drag text-button-primary-text-default leading-tight"
@@ -195,7 +213,7 @@ function HeaderWin() {
 							alt="chevron_left"
 							className="w-4 h-4 text-button-primary-icon-default"
 						/>
-						Refer Friends
+						{t("layout.refer-friends")}
 					</Button>
 					<Button
 						onClick={() => navigate("/setting")}

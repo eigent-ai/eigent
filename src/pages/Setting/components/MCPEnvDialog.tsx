@@ -11,19 +11,73 @@ import { Bot, CircleAlert, Eye, EyeOff } from "lucide-react";
 import githubIcon from "@/assets/github.svg";
 import { Input } from "@/components/ui/input";
 import { useState, FC, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface EnvValue {
 	value: string;
 	required: boolean;
 	tip: string;
+	error?: string;
 }
 
 interface MCPEnvDialogProps {
 	showEnvConfig: boolean;
 	onClose: () => void;
-	onConnect: (mcp:any) => void;
+	onConnect: (mcp: any) => void;
 	activeMcp?: any;
 }
+
+export async function google_check(apiKey: string, searchEngineId: string) {
+	const query = "hello"; // rand word
+	const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(
+		query
+	)}&num=1`;
+
+	try {
+		const res = await fetch(url);
+		if (!res.ok) {
+			throw new Error(`Google API error: ${res.status}`);
+		}
+		const data = await res.json();
+
+		if ("items" in data) {
+			return { success: true, message: "Google key is valid ✅", sample: data.items[0] };
+		} else {
+			return { success: false, message: "Google key invalid ❌", error: data.error };
+		}
+	} catch (err: any) {
+		return { success: false, message: `Google check failed: ${err.message}` };
+	}
+}
+
+export async function exa_check(apiKey: string) {
+	const query = "hello"; // rand search word
+
+	try {
+		const res = await fetch("https://api.exa.ai/search", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ query }),
+		});
+		if (!res.ok) {
+			const data = await res.json();
+			throw new Error(`Exa API error: ${res.status} ${data.error}`);
+		}
+
+		const data = await res.json();
+		if ("results" in data) {
+			return { success: true, message: "Exa key is valid ✅", sample: data.results[0] };
+		} else {
+			return { success: false, message: "Exa key invalid ❌", error: data };
+		}
+	} catch (err: any) {
+		return { success: false, message: `Exa check failed: ${err.message}` };
+	}
+}
+
 
 export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 	showEnvConfig,
@@ -33,7 +87,8 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 }) => {
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
 	const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
-
+	const [isValidating, setIsValidating] = useState<boolean>(false);
+	const { t } = useTranslation();
 	useEffect(() => {
 		initializeEnvValues(activeMcp);
 	}, [activeMcp]);
@@ -42,7 +97,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
 			Object.keys(mcp.install_command.env).forEach((key) => {
-				
+
 				initialValues[key] = {
 					value: "",
 					required: true,
@@ -51,11 +106,11 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
-				if(key==='EXA_API_KEY'){
-					initialValues[key].required=false;
+				if (key === 'EXA_API_KEY') {
+					initialValues[key].required = false;
 				}
-				if(key==='GOOGLE_REFRESH_TOKEN'){
-					initialValues[key].required=false;
+				if (key === 'GOOGLE_REFRESH_TOKEN') {
+					initialValues[key].required = false;
 				}
 			});
 			setEnvValues(initialValues);
@@ -88,15 +143,63 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 		onClose();
 	};
 
-	const handleConfigureMcpEnvSetting = () => {
-		setEnvValues({});
-		setShowKeys({});
-		const mcp = { ...activeMcp };
+	const setFieldError = (key: string, error: string) => {
+		setEnvValues((prev) => ({
+			...prev,
+			[key]: {
+				...prev[key],
+				error,
+			},
+		}));
+	};
+
+	const clearFieldErrors = () => {
+		setEnvValues((prev) => {
+			const updated: typeof prev = {};
+			Object.keys(prev).forEach((key) => {
+				updated[key] = { ...prev[key], error: "" };
+			});
+			return updated;
+		});
+	};
+
+	const handleConfigureMcpEnvSetting = async () => {
+		if (isValidating) return;
+
+		setIsValidating(true);
+		clearFieldErrors();
+
 		const env: { [key: string]: string } = {};
-		Object.keys(envValues).map((key) => {
+		Object.keys(envValues).forEach((key) => {
 			env[key] = envValues[key]?.value;
 		});
-		mcp.install_command.env = env;
+
+		// Validate Google API key
+		if (env["GOOGLE_API_KEY"] && env["SEARCH_ENGINE_ID"]) {
+			const result = await google_check(env["GOOGLE_API_KEY"], env["SEARCH_ENGINE_ID"]);
+			if (!result.success) {
+				setFieldError("GOOGLE_API_KEY", result.message);
+				setFieldError("SEARCH_ENGINE_ID", result.message);
+				setIsValidating(false);
+				return;
+			}
+		}
+
+		// Validate Exa API key
+		if (env["EXA_API_KEY"]) {
+			const result = await exa_check(env["EXA_API_KEY"]);
+			if (!result.success) {
+				setFieldError("EXA_API_KEY", result.message);
+				setIsValidating(false);
+				return;
+			}
+		}
+
+		// Save only if all validations succeed
+		const mcp = { ...activeMcp, install_command: { ...activeMcp.install_command, env } };
+		setEnvValues({});
+		setShowKeys({});
+		setIsValidating(false);
 		onConnect(mcp);
 	};
 	return (
@@ -112,7 +215,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 						<DialogTitle className="m-0">
 							<div className="flex gap-xs items-center justify-start">
 								<div className="text-base font-bold leading-10 text-text-action">
-									Configure {activeMcp?.name} Toolkit
+									{t("setting.configure {name} Toolkit", { name: activeMcp?.name })}
 								</div>
 								<CircleAlert size={16} />
 							</div>
@@ -152,7 +255,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							{Object.keys(activeMcp?.install_command?.env || {}).map((key) => (
 								<div key={key}>
 									<div className="text-text-body text-sm leading-normal font-bold">
-										{key}{envValues[key]?.required&&'*'}
+										{key}{envValues[key]?.required && '*'}
 									</div>
 									<div className="relative">
 										<Input
@@ -175,23 +278,26 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 									</div>
 									<div className="text-input-label-default text-xs leading-normal">
 										{envValues[key]?.tip}
+										{envValues[key]?.error && (
+											<div className="text-red-500 text-xs mt-1">{envValues[key]?.error}</div>
+										)}
 										{key === 'SEARCH_ENGINE_ID' && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
+												{t("setting.get-it-from")}: <a onClick={() => {
 													window.location.href = "https://developers.google.com/custom-search/v1/overview";
-												}} className="underline text-blue-500">Google Custom Search API</a>
+												}} className="underline text-blue-500">{t("setting.google-custom-search-api")}</a>
 											</div>
 										)}
 										{key === 'GOOGLE_API_KEY' && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
+												{t("setting.get-it-from")}: <a onClick={() => {
 													window.location.href = "https://console.cloud.google.com/apis/credentials";
-												}} className="underline text-blue-500">Google Cloud Console</a>
+												}} className="underline text-blue-500">{t("setting.google-cloud-console")}</a>
 											</div>
 										)}
 										{key === 'EXA_API_KEY' && (
 											<div className="mt-1">
-												Get it from: <a onClick={()=>{
+												{t("setting.get-it-from")}: <a onClick={() => {
 													window.location.href = "https://exa.ai";
 												}} className="underline text-blue-500">Exa.ai</a> (Optional)
 											</div>
@@ -207,14 +313,15 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							variant="outline"
 							size="md"
 						>
-							Cancel
+							{t("setting.cancel")}
 						</Button>
 						<Button
 							onClick={handleConfigureMcpEnvSetting}
 							variant="primary"
 							size="md"
+							disabled={isValidating}
 						>
-							Connect
+							{isValidating ? "Validating..." : t("setting.connect")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

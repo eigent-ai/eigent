@@ -4,10 +4,11 @@ import { proxyFetchGet, proxyFetchPut } from "@/api/http";
 import { Button } from "@/components/ui/button";
 import { FolderSearch } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-
+import { useTranslation } from "react-i18next";
 export default function SettingPrivacy() {
 	const { email } = useAuthStore();
 	const [_privacy, setPrivacy] = useState(false);
+	const { t } = useTranslation();
 	const API_FIELDS = [
 		"take_screenshot",
 		"access_local_software",
@@ -116,52 +117,43 @@ export default function SettingPrivacy() {
 
 	return (
 		<div className="pr-2">
-			<h2 className="mb-2">Data Privacy</h2>
+			<h2 className="mb-2">{t("setting.data-privacy")}</h2>
 			<p className="mt-2 text-sm">
-				Eigent is built on a local-first principle to ensure your privacy. Your
-				data remains on your device by default. Cloud features are optional and
-				only use the minimum data necessary to function. For full details, visit
-				our{" "}
+				{t("setting.data-privacy-description")}
+				{" "}
 				<a
 					className="text-blue-500 no-underline"
 					href="https://www.eigent.ai/privacy-policy"
 					target="_blank"
 				>
-					Privacy Policy
+					{t("setting.privacy-policy")}
 				</a>
 				.
 			</p>
-			<h3 className="mb-0 text-sm">How we handle your data</h3>
+			<h3 className="mb-0 text-sm">{t("setting.how-we-handle-your-data")}</h3>
 			<ol className="pl-5 mt-2 text-sm">
-				<li>We only use the essential data needed to run your tasks:</li>
+				<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
 				<ul className="pl-4 mb-2">
 					<li>
-						Eigent may capture screenshots to analyze UI elements, read text,
-						and determine the next action, just as you would.
+						{t("setting.how-we-handle-your-data-line-1-line-1")}
 					</li>
 					<li>
-						Eigent may use your mouse and keyboard to access local software and
-						files you specify.
+						{t("setting.how-we-handle-your-data-line-1-line-2")}
 					</li>
 					<li>
-						Only the minimum task data is sent to AI model providers or the
-						third-party integrations you enable; we have zero data-retention
-						agreements with these providers.
+						{t("setting.how-we-handle-your-data-line-1-line-3")}
 					</li>
 				</ul>
 				<li>
-					Task files, outputs and screenshots remain in your designated task
-					folder locally.
+					{t("setting.how-we-handle-your-data-line-2")}
 				</li>
 				<li>
-					Credentials are stored locally, encrypted, and used only for approved
-					steps.
+					{t("setting.how-we-handle-your-data-line-3")}
 				</li>
 				<li>
-					Your data is never used to train our AI models without your explicit
-					consent.
+					{t("setting.how-we-handle-your-data-line-4")}
 				</li>
-				<li>We don’t sell your data to third parties.</li>
+				<li>{t("setting.how-we-handle-your-data-line-5")}</li>
 			</ol>
 
 			{/* Privacy controls */}
@@ -182,12 +174,10 @@ export default function SettingPrivacy() {
 				<div className="flex gap-md">
 					<div>
 						<div className="text-base font-bold leading-12 text-text-primary">
-							Enable Privacy Permissions Settings
+							{t("setting.enable-privacy-permissions-settings")}
 						</div>
 						<div className="text-sm leading-13">
-							By turning this on, you acknowledge that you have read and agree
-							to our Privacy Policy regarding how your task data is collected,
-							processed, and protected.
+							{t("setting.enable-privacy-permissions-settings-description")}
 						</div>
 					</div>
 					<div>

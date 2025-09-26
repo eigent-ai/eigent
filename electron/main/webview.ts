@@ -112,18 +112,23 @@ export class WebViewManager {
         }
         console.log(`Webview ${id} navigated to: ${navigationUrl}`)
         if (webViewInfo.isActive && webViewInfo.isShow && navigationUrl !== 'about:blank?use=0' && navigationUrl !== 'about:blank') {
-          console.log("did-navigate", id, url)
-          this.win?.webContents.send("url-updated", url);
+          console.log("did-navigate", id, navigationUrl)
+          this.win?.webContents.send("url-updated", navigationUrl);
           return
         }
         webViewInfo.view.setBounds({ x: -1919, y: -1079, width: 1920, height: 1080 })
         const activeSize = this.getActiveWebview().length
         const allSize = Array.from(this.webViews.values()).length
         if (allSize - activeSize <= 3) {
-          const newId = Array.from(this.webViews.keys()).length + 2
-          this.createWebview(newId.toString(), 'about:blank?use=0')
-          this.createWebview((newId + 1).toString(), 'about:blank?use=0')
-          this.createWebview((newId + 2).toString(), 'about:blank?use=0')
+          const existingKeys = Array.from(this.webViews.keys()).map(Number).filter(n => !isNaN(n))
+          const maxId = existingKeys.length > 0 ? Math.max(...existingKeys) : 0
+          const startId = maxId + 1
+
+          // Create webviews sequentially to avoid race conditions
+          for (let i = 0; i < 3; i++) {
+            const nextId = (startId + i).toString()
+            this.createWebview(nextId, 'about:blank?use=0')
+          }
         }
 
         // setTimeout(() => {
@@ -242,8 +247,12 @@ export class WebViewManager {
     }
   }
 
-  public distroy() {
-    // TODO: Destroy all webviews
+  public destroy() {
+    // Destroy all webviews
+    Array.from(this.webViews.keys()).forEach(id => {
+      this.destroyWebview(id)
+    })
+    this.webViews.clear()
   }
 }
 

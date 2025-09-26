@@ -12,9 +12,9 @@ interface MCPListProps {
 export default function MCPList({ items, onSetting, onDelete, onSwitch, switchLoading }: MCPListProps) {
   return (
     <div className='pt-4'>
-      {items.map(item => (
+      {items.map((item) => (
         <MCPListItem
-          key={item.mcp_id}
+          key={item.id}
           item={item}
           onSetting={onSetting}
           onDelete={onDelete}

@@ -586,7 +586,7 @@ class TestAgentFactoryFunctions:
              patch('app.utils.agent.get_toolkits') as mock_get_toolkits, \
              patch('asyncio.create_task'), \
              patch('app.utils.agent.HumanToolkit') as mock_human_toolkit, \
-             patch('app.utils.agent.FileWriteToolkit') as mock_file_toolkit, \
+             patch('app.utils.agent.FileToolkit') as mock_file_toolkit, \
              patch('app.utils.agent.PPTXToolkit') as mock_pptx_toolkit, \
              patch('app.utils.agent.MarkItDownToolkit') as mock_markdown_toolkit, \
              patch('app.utils.agent.ExcelToolkit') as mock_excel_toolkit, \
@@ -747,7 +747,7 @@ class TestToolkitFunctions:
         
         with patch('app.utils.agent.SearchToolkit') as mock_search_toolkit, \
              patch('app.utils.agent.TerminalToolkit') as mock_terminal_toolkit, \
-             patch('app.utils.agent.FileWriteToolkit') as mock_file_toolkit:
+             patch('app.utils.agent.FileToolkit') as mock_file_toolkit:
             
             # Mock toolkit instances - these should return tools directly from get_can_use_tools
             mock_search_instance = MagicMock()

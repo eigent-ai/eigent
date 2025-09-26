@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { ProgressInstall } from "@/components/ui/progress-install";
-import { FileDown, RefreshCcw, RotateCcw } from "lucide-react";
+import { FileDown, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Permissions } from "@/components/InstallStep/Permissions";
 import { CarouselStep } from "@/components/InstallStep/Carousel";
+
 import {
 	Dialog,
 	DialogContent,
@@ -12,6 +13,7 @@ import {
 	DialogTitle,
 	DialogFooter,
 } from "@/components/ui/dialog";
+import { useTranslation } from "react-i18next";
 
 interface InstallLog {
 	type: "stdout" | "stderr";
@@ -24,6 +26,7 @@ export const InstallDependencies: React.FC<{
 	setIsInstalling: (isInstalling: boolean) => void;
 }> = ({ isInstalling, setIsInstalling }) => {
 	const { initState, setInitState } = useAuthStore();
+	const {t} = useTranslation()
 	const [logs, setLogs] = useState<InstallLog[]>([]);
 	const [status, setStatus] = useState<
 		"idle" | "installing" | "success" | "error"
@@ -154,10 +157,10 @@ export const InstallDependencies: React.FC<{
 			<Dialog open={status === "error"}>
 				<DialogContent className="bg-white-100%">
 					<DialogHeader>
-						<DialogTitle>Installation Failed</DialogTitle>
+						<DialogTitle>{t("layout.installation-failed")}</DialogTitle>
 					</DialogHeader>
 					<DialogFooter>
-						<Button onClick={handleInstall}>Retry</Button>
+						<Button onClick={handleInstall}>{t("layout.retry")}</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -199,7 +202,7 @@ export const InstallDependencies: React.FC<{
 			<Dialog open={status === "error"}>
 				<DialogContent className="bg-white-100%">
 					<DialogHeader>
-						<DialogTitle>Installation Failed</DialogTitle>
+						<DialogTitle>{t("layout.installation-failed")}</DialogTitle>
 					</DialogHeader>
 					<DialogFooter>
 						<Button
@@ -209,10 +212,10 @@ export const InstallDependencies: React.FC<{
 							className="mr-2 no-drag leading-tight"
 						>
 							<FileDown className="w-4 h-4" />
-							Report a bug
+							{t("layout.report-bug")}
 						</Button>
 						<Button size="sm" onClick={handleInstall}>
-							Retry
+							{t("layout.retry")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
