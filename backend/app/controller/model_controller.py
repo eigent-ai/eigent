@@ -107,7 +107,7 @@ async def validate_model(request: ValidateModelRequest):
         is_tool_calls=is_tool_calls,
         message="Validation Success"
         if is_tool_calls
-        else "This model doesn’t support tool calls. please try with another model.",
+        else "This model doesn't support tool calls. please try with another model.",
         error_code=None,
         error=None,
     )
