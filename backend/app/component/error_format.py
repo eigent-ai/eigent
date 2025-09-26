@@ -43,7 +43,7 @@ def normalize_error_to_openai_format(exception: Exception) -> tuple[str, str | N
         lower = raw_msg.lower()
         if "invalid_api_key" in lower or "incorrect api key" in lower or "unauthorized" in lower or " 401" in lower:
             error_code = "invalid_api_key"
-            message = "Incorrect API key provided."
+            message = "Invalid key. Validation failed."
             error_obj = {
                 "message": message,
                 "type": "invalid_request_error",
@@ -52,7 +52,7 @@ def normalize_error_to_openai_format(exception: Exception) -> tuple[str, str | N
             }
         elif "model_not_found" in lower or "does not exist" in lower or " 404" in lower:
             error_code = "model_not_found"
-            message = "The model does not exist or you do not have access to it."
+            message = "Invalid model name. Validation failed."
             error_obj = {
                 "message": message,
                 "type": "invalid_request_error",
