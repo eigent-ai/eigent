@@ -326,9 +326,9 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     async def browser_get_page_snapshot(self) -> str:
         return await super().browser_get_page_snapshot()
 
-    # @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
-    # async def browser_get_som_screenshot(self):
-    #     return await super().browser_get_som_screenshot()
+    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
+    async def browser_get_som_screenshot(self):
+        return await super().browser_get_som_screenshot()
 
     @listen_toolkit(BaseHybridBrowserToolkit.browser_get_page_links)
     async def browser_get_page_links(self, *, ref: List[str]) -> Dict[str, Any]:
@@ -362,7 +362,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             FunctionTool(browser.browser_enter),
             FunctionTool(browser.browser_visit_page),
             FunctionTool(browser.browser_scroll),
-            # FunctionTool(browser.browser_get_som_screenshot),
+            FunctionTool(browser.browser_get_som_screenshot),
             # FunctionTool(browser.select),
             # FunctionTool(browser.wait_user),
         ]
