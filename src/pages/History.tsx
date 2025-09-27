@@ -295,7 +295,7 @@ export default function Home() {
 									}}
 									className={`${
 										chatStore.activeTaskId === taskId ? "!bg-white-100%" : ""
-									}  relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center gap-md flex-initial w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] px-6 shadow-history-item`}
+									}  relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center gap-md flex-1 w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] px-6 shadow-history-item`}
 								>
 									<div className="w-[133px] py-md h-full flex flex-col gap-1">
 										<div className="flex-1 flex justify-start items-end">
@@ -555,7 +555,7 @@ export default function Home() {
 										chatStore.activeTaskId === task.task_id
 											? "!bg-white-100%"
 											: ""
-									} relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center flex-wrap gap-md flex-initial w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] p-6 shadow-history-item border border-solid border-border-disabled`}
+									} relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center flex-wrap gap-md flex-1 w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] p-6 shadow-history-item border border-solid border-border-disabled`}
 								>
 									<div
 										className="flex justify-between items-end gap-1 w-full"
