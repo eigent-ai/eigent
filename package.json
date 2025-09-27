@@ -1,6 +1,6 @@
 {
   "name": "eigent",
-  "version": "0.0.71",
+  "version": "0.0.68",
   "main": "dist-electron/main/index.js",
   "description": "Eigent",
   "author": "Eigent.AI",
@@ -101,7 +101,7 @@
     "@vitejs/plugin-react": "^4.3.3",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
+    "electron": "^38.1.2",
     "electron-builder": "^24.13.3",
     "i18next": "^25.4.2",
     "jsdom": "^26.1.0",

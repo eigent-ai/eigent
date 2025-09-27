@@ -461,9 +461,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     async def browser_get_page_snapshot(self) -> str:
         return await super().browser_get_page_snapshot()
 
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
-    async def browser_get_som_screenshot(self, read_image: bool = False, instruction: str | None = None) -> str:
-        return await super().browser_get_som_screenshot(read_image, instruction)
+    # @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
+    # async def browser_get_som_screenshot(self, read_image: bool = False, instruction: str | None = None) -> str:
+    #     return await super().browser_get_som_screenshot(read_image, instruction)
 
     @listen_toolkit(BaseHybridBrowserToolkit.browser_click)
     async def browser_click(self, *, ref: str) -> Dict[str, Any]:
