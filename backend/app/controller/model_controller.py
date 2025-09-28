@@ -28,7 +28,7 @@ class ValidateModelResponse(BaseModel):
 @router.post("/model/validate")
 async def validate_model(request: ValidateModelRequest):
     try:
-        # 1) API key validation
+        # API key validation
         if request.api_key is not None and str(request.api_key).strip() == "":
             return ValidateModelResponse(
                 is_valid=False,
@@ -42,25 +42,6 @@ async def validate_model(request: ValidateModelRequest):
                     "code": "invalid_api_key",
                 },
             )
-
-        # 2) Model name validation
-        if request.model_type:
-            try:
-                # Will raise if not a valid enum name
-                _ = ModelType.from_name(request.model_type)
-            except Exception as e:
-                return ValidateModelResponse(
-                    is_valid=False,
-                    is_tool_calls=False,
-                    message="Invalid model name. Validation failed.",
-                    error_code=f"model_not_found : {e}",
-                    error={
-                        "message": "Invalid model name. Validation failed.",
-                        "type": "invalid_request_error",
-                        "param": None,
-                        "code": "model_not_found",
-                    },
-                )
 
         extra = request.extra_params or {}
 
