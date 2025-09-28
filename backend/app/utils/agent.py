@@ -725,7 +725,7 @@ def search_agent(options: Chat):
             "browser_enter",
             "browser_visit_page",
             "browser_scroll",
-            # "browser_get_som_screenshot",
+            "browser_get_som_screenshot",
         ],
     )
 
