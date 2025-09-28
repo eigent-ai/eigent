@@ -19,7 +19,6 @@ import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
-import e from 'express'
 
 const userData = app.getPath('userData');
 
@@ -841,7 +840,7 @@ function registerIpcHandlers() {
   ipcMain.handle('check-tool-installed', async () => {
     try {
       const isInstalled = await checkToolInstalled();
-      return { success: true, isInstalled };
+      return { success: true, isInstalled: isInstalled.success };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -987,21 +986,21 @@ const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
   try {
     const isToolInstalled = await checkToolInstalled();
-    if (isToolInstalled) {
+    if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
-  
+
       // Notify frontend installation success
       if (win && !win.isDestroyed()) {
         win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
       }
-  
+
       python_process = await startBackend((port) => {
         backendPort = port;
         log.info('Backend service started successfully', { port });
       });
-  
+
       python_process?.on('exit', (code, signal) => {
-  
+
         log.info('Python process exited', { code, signal });
       });
     } else {

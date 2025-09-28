@@ -100,7 +100,7 @@ Promise<PromiseReturnType> => {
  * Check if command line tools are installed, install if not
  */
 export async function installCommandTool(): Promise<PromiseReturnType> {
-  return new Promise(async (resolve, reject) => {
+  try {
       const ensureInstalled = async (toolName: 'uv' | 'bun', scriptName: string): Promise<PromiseReturnType> => {
         if (await isBinaryExists(toolName)) {
             return { message: `${toolName} already installed`, success: true };
@@ -123,24 +123,26 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
           });
         }
 
-        return { 
+        return {
           message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
-          success: installed 
+          success: installed
         };
       };
 
       const uvResult = await ensureInstalled('uv', 'install-uv.js');
       if (!uvResult.success) {
-          return reject({ message: uvResult.message, success: false });
-      }
-      
-      const bunResult = await ensureInstalled('bun', 'install-bun.js');
-      if (!bunResult.success) {
-          return reject({ message: bunResult.message, success: false });
+          return { message: uvResult.message, success: false };
       }
 
-      return resolve({ message: "Command tools installed successfully", success: true });
-  })
+      const bunResult = await ensureInstalled('bun', 'install-bun.js');
+      if (!bunResult.success) {
+          return { message: bunResult.message, success: false };
+      }
+
+      return { message: "Command tools installed successfully", success: true };
+  } catch (error) {
+      return { message: `Command tool installation failed: ${error}`, success: false };
+  }
 }
 
 let uv_path:string;
