@@ -12,7 +12,7 @@ export default function FolderComponent({ selectedFile }: Props) {
 		const raw = selectedFile?.content || "";
 		if (!raw) return "";
 
-		// 更严格的危险内容检测，防止各种绕过技术
+		// Strict dangerous content detection to prevent various bypass techniques
 		const dangerousPatterns = [
 			/ipcRenderer/gi,
 			/window\s*\[\s*['"`]ipcRenderer['"`]\s*\]/gi,
