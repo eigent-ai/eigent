@@ -71,7 +71,6 @@ class McpUserUpdate(BaseModel):
     server_url: Optional[str] = None
     command: Optional[str] = None
     args: Optional[str] = None
-    env: Optional[dict] = None
     mcp_key: Optional[str] = None
 
 
