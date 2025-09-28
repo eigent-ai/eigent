@@ -19,7 +19,6 @@ import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
-import e from 'express'
 
 const userData = app.getPath('userData');
 
