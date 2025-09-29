@@ -213,37 +213,23 @@ export default function SettingModels() {
 			if (res.is_tool_calls && res.is_valid) {
 				console.log("success");
 				toast(t("setting.validate-success"), {
-					description:
-						t("setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"),
+					description: t(
+						"setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"
+					),
 					closeButton: true,
 				});
 			} else {
 				console.log("failed", res.message);
 				toast(t("setting.validate-failed"), {
-					description: (
-						<div
-							style={{
-								maxHeight: "120px",
-								overflowY: "auto",
-							}}
-						>
-							<div>{res.message}</div>
-							<div className="flex justify-end">
-								<Button
-									size="xs"
-									variant="primary"
-									onClick={() => {
-										navigator.clipboard.writeText(res.message);
-										toast.success(t("setting.copied-to-clipboard"));
-									}}
-								>
-									{t("setting.copy")}
-								</Button>
-							</div>
-						</div>
-					),
-					closeButton: true,
-				});
+          description: res.message,
+          action: {
+            label: t("setting.copy"),
+            onClick: () => () => {
+							navigator.clipboard.writeText(res.message);
+							toast.success(t("setting.copied-to-clipboard"));
+						},
+          },
+        })
 
 				return;
 			}
@@ -370,8 +356,9 @@ export default function SettingModels() {
 				if (res.is_tool_calls && res.is_valid) {
 					console.log("success");
 					toast(t("setting.validate-success"), {
-						description:
-							t("setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"),
+						description: t(
+							"setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"
+						),
 						closeButton: true,
 					});
 				} else {
@@ -474,7 +461,9 @@ export default function SettingModels() {
 		if (!hasSearchKey) {
 			// Show warning toast instead of blocking
 			toast(t("setting.warning-google-search-not-configured"), {
-				description: t("setting.search-functionality-may-be-limited-without-google-api"),
+				description: t(
+					"setting.search-functionality-may-be-limited-without-google-api"
+				),
 				closeButton: true,
 			});
 		}
@@ -501,7 +490,9 @@ export default function SettingModels() {
 		if (!hasSearchKey) {
 			// Show warning toast instead of blocking
 			toast(t("setting.warning-google-search-not-configured"), {
-				description: t("setting.search-functionality-may-be-limited-without-google-api"),
+				description: t(
+					"setting.search-functionality-may-be-limited-without-google-api"
+				),
 				closeButton: true,
 			});
 		}
@@ -760,7 +751,9 @@ export default function SettingModels() {
 											<Input
 												id={`apiKey-${item.id}`}
 												type={showApiKey[idx] ? "text" : "password"}
-												placeholder={` ${t("setting.enter-your-api-key")} ${item.name} ${t("setting.key")}`}
+												placeholder={` ${t("setting.enter-your-api-key")} ${
+													item.name
+												} ${t("setting.key")}`}
 												className="w-full pr-10"
 												value={form[idx].apiKey}
 												onChange={(e) => {
@@ -805,7 +798,9 @@ export default function SettingModels() {
 									<div>
 										<Input
 											id={`apiHost-${item.id}`}
-											placeholder={`${t("setting.enter-your-api-host")} ${item.name} ${t("setting.url")}`}
+											placeholder={`${t("setting.enter-your-api-host")} ${
+												item.name
+											} ${t("setting.url")}`}
 											className="w-full"
 											value={form[idx].apiHost}
 											onChange={(e) => {
@@ -833,7 +828,9 @@ export default function SettingModels() {
 									<div>
 										<Input
 											id={`modelType-${item.id}`}
-											placeholder={`${t("setting.enter-your-model-type")} ${item.name} ${t("setting.model-type")}`}
+											placeholder={`${t("setting.enter-your-model-type")} ${
+												item.name
+											} ${t("setting.model-type")}`}
 											className="w-full"
 											value={form[idx].model_type}
 											onChange={(e) => {
