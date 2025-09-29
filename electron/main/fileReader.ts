@@ -445,7 +445,10 @@ export class FileReader {
 				if (type === 'md') {
 					const content = fs.readFileSync(filePath, 'utf-8')
 					resolve(content)
-				} else if (type === 'html') {
+				} else if (isShowSourceCode && type === 'html') {
+					const content = fs.readFileSync(filePath, 'utf-8')
+					resolve(content)
+				}else if (type === 'html') {
 					const content = fs.readFileSync(filePath, 'utf-8')
 					resolve(content)
 				} else if (["pdf"].includes(type)) {

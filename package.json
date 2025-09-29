@@ -93,7 +93,6 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/archiver": "^6.0.3",
-    "@types/dompurify": "^3.0.5",
     "@types/lodash-es": "^4.17.12",
     "@types/papaparse": "^5.3.16",
     "@types/react": "^18.3.12",
