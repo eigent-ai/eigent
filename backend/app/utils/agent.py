@@ -1436,7 +1436,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
-        "notion_toolkit": NotionMCPToolkit,
+        "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
         "reddit_toolkit": RedditToolkit,
         "search_toolkit": SearchToolkit,
@@ -1452,9 +1452,9 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         if item in toolkits:
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
-            res = toolkit.get_can_use_tools(api_task_id)
-            res = await res if asyncio.iscoroutine(res) else res
-            res.extend(res)
+            toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+            toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
+            res.extend(toolkit_tools)
         else:
             logger.warning(f"Toolkit {item} not found, please check your configuration.")
             traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")

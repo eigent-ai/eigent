@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CircleAlert, Store, X } from "lucide-react";
-import { proxyFetchGet, proxyFetchPost } from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, fetchPost } from "@/api/http";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
@@ -65,8 +65,73 @@ const ToolSelect = forwardRef<
 					.map(([key, value]: [string, any]) => {
 						let onInstall = null;
 
-						onInstall = () =>
-							(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+						// Special handling for Notion MCP
+						if (key.toLowerCase() === 'notion') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/notion");
+									if (response.success) {
+										// Save to config to mark as installed
+										await proxyFetchPost("/api/configs", {
+											config_group: "Notion",
+											config_name: "MCP_REMOTE_CONFIG_DIR",
+											config_value: response.toolkit_name || "NotionMCPToolkit",
+										});
+										console.log("Notion MCP installed successfully");
+										// After successful installation, add to selected tools
+										const notionItem = {
+											id: 0, // Use 0 for integration items
+											key: key,
+											name: key,
+											description: "Notion workspace integration for reading and managing Notion pages",
+											toolkit: "notion_mcp_toolkit", // Add the toolkit name
+											isLocal: true
+										};
+										addOption(notionItem, true);
+									} else {
+										console.error("Failed to install Notion MCP:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Notion MCP");
+									}
+								} catch (error: any) {
+									console.error("Failed to install Notion MCP:", error.message);
+									throw error;
+								}
+							};
+						} else if (key.toLowerCase() === 'google calendar') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/google_calendar");
+									if (response.success) {
+										// Save to config to mark as installed
+										await proxyFetchPost("/api/configs", {
+											config_group: "Google Calendar",
+											config_name: "GOOGLE_CLIENT_ID",
+											config_value: response.toolkit_name || "GoogleCalendarToolkit",
+										});
+										console.log("Google Calendar installed successfully");
+										// After successful installation, add to selected tools
+										const calendarItem = {
+											id: 0, // Use 0 for integration items
+											key: key,
+											name: key,
+											description: "Google Calendar integration for managing events and schedules",
+											toolkit: "google_calendar_toolkit", // Add the toolkit name
+											isLocal: true
+										};
+										addOption(calendarItem, true);
+									} else {
+										console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Google Calendar");
+									}
+								} catch (error: any) {
+									console.error("Failed to install Google Calendar:", error.message);
+									throw error;
+								}
+							};
+						} else {
+							onInstall = () =>
+								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+						}
 
 						return {
 							key: key,
@@ -78,6 +143,10 @@ const ToolSelect = forwardRef<
 									? `Environmental variables required: ${value.env_vars.join(
 											", "
 									  )}`
+									: key.toLowerCase() === 'notion'
+									? "Notion workspace integration for reading and managing Notion pages"
+									: key.toLowerCase() === 'google calendar'
+									? "Google Calendar integration for managing events and schedules"
 									: "",
 							onInstall,
 						};
