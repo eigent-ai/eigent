@@ -89,10 +89,12 @@ const ToolSelect = forwardRef<
 										};
 										addOption(notionItem, true);
 									} else {
-										console.error("Failed to install Notion MCP:", response.error);
+										console.error("Failed to install Notion MCP:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Notion MCP");
 									}
 								} catch (error: any) {
 									console.error("Failed to install Notion MCP:", error.message);
+									throw error;
 								}
 							};
 						} else if (key.toLowerCase() === 'google calendar') {
@@ -118,10 +120,12 @@ const ToolSelect = forwardRef<
 										};
 										addOption(calendarItem, true);
 									} else {
-										console.error("Failed to install Google Calendar:", response.error);
+										console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Google Calendar");
 									}
 								} catch (error: any) {
 									console.error("Failed to install Google Calendar:", error.message);
+									throw error;
 								}
 							};
 						} else {

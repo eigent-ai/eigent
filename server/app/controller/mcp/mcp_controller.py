@@ -191,7 +191,8 @@ async def import_mcp(
                 env=data.env,
                 server_url=None,
             )
-            break
+            mcp_user.save()
+        return {"message": "Local MCP servers imported successfully", "count": len(mcp_data)}
     elif mcp_type == McpImportType.Remote:
         is_valid, res = validate_mcp_remote_servers(mcp_data)
         if not is_valid:
@@ -209,5 +210,5 @@ async def import_mcp(
             mcp_name=data.server_name,
             server_url=data.server_url,
         )
-    mcp_user.save()
-    return mcp_user
+        mcp_user.save()
+        return mcp_user
