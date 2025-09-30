@@ -21,10 +21,12 @@ export async function checkToolInstalled() {
     return new Promise<PromiseReturnType>(async (resolve, reject) => {
         if (!(await isBinaryExists('uv'))) {
             resolve({success: false, message: "uv doesn't exist"})
+            return
         }
 
         if (!(await isBinaryExists('bun'))) {
             resolve({success: false, message: "Bun doesn't exist"})
+            return
         }
 
         resolve({success: true, message: "Tools exist already"})
