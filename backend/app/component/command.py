@@ -6,4 +6,4 @@ def bun():
 
 
 def uv():
-    return os.path.expanduser("~/.local/bin/uv")
+    return os.path.expanduser("~/.eigent/bin/uv")
