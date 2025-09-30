@@ -213,8 +213,9 @@ export default function SettingModels() {
 			if (res.is_tool_calls && res.is_valid) {
 				console.log("success");
 				toast(t("setting.validate-success"), {
-					description:
-						t("setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"),
+					description: t(
+						"setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"
+					),
 					closeButton: true,
 				});
 			} else {
@@ -370,8 +371,9 @@ export default function SettingModels() {
 				if (res.is_tool_calls && res.is_valid) {
 					console.log("success");
 					toast(t("setting.validate-success"), {
-						description:
-							t("setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"),
+						description: t(
+							"setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent"
+						),
 						closeButton: true,
 					});
 				} else {
@@ -474,7 +476,9 @@ export default function SettingModels() {
 		if (!hasSearchKey) {
 			// Show warning toast instead of blocking
 			toast(t("setting.warning-google-search-not-configured"), {
-				description: t("setting.search-functionality-may-be-limited-without-google-api"),
+				description: t(
+					"setting.search-functionality-may-be-limited-without-google-api"
+				),
 				closeButton: true,
 			});
 		}
@@ -501,7 +505,9 @@ export default function SettingModels() {
 		if (!hasSearchKey) {
 			// Show warning toast instead of blocking
 			toast(t("setting.warning-google-search-not-configured"), {
-				description: t("setting.search-functionality-may-be-limited-without-google-api"),
+				description: t(
+					"setting.search-functionality-may-be-limited-without-google-api"
+				),
 				closeButton: true,
 			});
 		}
@@ -683,8 +689,8 @@ export default function SettingModels() {
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
 									<SelectItem value="gpt-5-nano">GPT-5 nano</SelectItem>
-									<SelectItem value="claude-sonnet-4-20250514">
-										Claude Sonnet 4
+									<SelectItem value="claude-sonnet-4-5">
+										Claude Sonnet 4-5
 									</SelectItem>
 									<SelectItem value="claude-3-5-haiku-20241022">
 										Claude 3.5 Haiku
@@ -760,7 +766,9 @@ export default function SettingModels() {
 											<Input
 												id={`apiKey-${item.id}`}
 												type={showApiKey[idx] ? "text" : "password"}
-												placeholder={` ${t("setting.enter-your-api-key")} ${item.name} ${t("setting.key")}`}
+												placeholder={` ${t("setting.enter-your-api-key")} ${
+													item.name
+												} ${t("setting.key")}`}
 												className="w-full pr-10"
 												value={form[idx].apiKey}
 												onChange={(e) => {
@@ -805,7 +813,9 @@ export default function SettingModels() {
 									<div>
 										<Input
 											id={`apiHost-${item.id}`}
-											placeholder={`${t("setting.enter-your-api-host")} ${item.name} ${t("setting.url")}`}
+											placeholder={`${t("setting.enter-your-api-host")} ${
+												item.name
+											} ${t("setting.url")}`}
 											className="w-full"
 											value={form[idx].apiHost}
 											onChange={(e) => {
@@ -833,7 +843,9 @@ export default function SettingModels() {
 									<div>
 										<Input
 											id={`modelType-${item.id}`}
-											placeholder={`${t("setting.enter-your-model-type")} ${item.name} ${t("setting.model-type")}`}
+											placeholder={`${t("setting.enter-your-model-type")} ${
+												item.name
+											} ${t("setting.model-type")}`}
 											className="w-full"
 											value={form[idx].model_type}
 											onChange={(e) => {
