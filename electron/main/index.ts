@@ -4,7 +4,7 @@ import path from 'node:path'
 import os, { homedir } from 'node:os'
 import log from 'electron-log'
 import { update, registerUpdateIpcHandlers } from './update'
-import { checkToolInstalled, installDependencies, killProcessOnPort, startBackend } from './init'
+import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
 import { WebViewManager } from './webview'
 import { FileReader } from './fileReader'
 import { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -18,9 +18,9 @@ import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
+import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
 
 const userData = app.getPath('userData');
-const versionFile = path.join(userData, 'version.txt');
 
 // ==================== constants ====================
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,69 +49,6 @@ findAvailablePort(browser_port).then(port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 });
-
-// Read last run version and install dependencies on update
-async function checkAndInstallDepsOnUpdate(): Promise<boolean> {
-  const currentVersion = app.getVersion();
-  return new Promise(async (resolve, reject) => {
-    try {
-      log.info(' start check version', { currentVersion });
-
-      // Check if version file exists
-      const versionExists = fs.existsSync(versionFile);
-      let savedVersion = '';
-
-      if (versionExists) {
-        savedVersion = fs.readFileSync(versionFile, 'utf-8').trim();
-        log.info(' read saved version', { savedVersion });
-      } else {
-        log.info(' version file not exist, will create new file');
-      }
-
-      // If version file does not exist or version does not match, reinstall dependencies
-      if (!versionExists || savedVersion !== currentVersion) {
-        log.info(' version changed, prepare to reinstall uv dependencies...', {
-          currentVersion,
-          savedVersion: versionExists ? savedVersion : 'none',
-          reason: !versionExists ? 'version file not exist' : 'version not match'
-        });
-
-        // Notify frontend to update
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('update-notification', {
-            type: 'version-update',
-            currentVersion,
-            previousVersion: versionExists ? savedVersion : 'none',
-            reason: !versionExists ? 'version file not exist' : 'version not match'
-          });
-        }
-
-        // Update version file
-        fs.writeFileSync(versionFile, currentVersion);
-        log.info(' version file updated', { currentVersion });
-
-        // Install dependencies
-        const result = await installDependencies();
-        if (!result) {
-          log.error(' install dependencies failed');
-          resolve(false);
-          return
-        }
-        resolve(true);
-        log.info(' install dependencies complete');
-        return
-      } else {
-        log.info(' version not changed, skip install dependencies', { currentVersion });
-        resolve(true);
-        return
-      }
-    } catch (error) {
-      log.error(' check version and install dependencies error:', error);
-      resolve(false);
-      return
-    }
-  })
-}
 
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
@@ -257,51 +194,6 @@ const checkManagerInstance = (manager: any, name: string) => {
     throw new Error(`${name} not initialized`);
   }
   return manager;
-};
-
-export const handleDependencyInstallation = async () => {
-  try {
-    log.info(' start install dependencies...');
-
-    const isSuccess = await installDependencies();
-    if (!isSuccess) {
-      log.error(' install dependencies failed');
-      return { success: false, error: 'install dependencies failed' };
-    }
-
-    log.info(' install dependencies success, check tool installed status...');
-    const isToolInstalled = await checkToolInstalled();
-    log.info('isToolInstalled && !python_process', isToolInstalled && !python_process);
-    if (isToolInstalled && !python_process) {
-      log.info(' tool installed, start backend service...');
-      python_process = await startBackend((port) => {
-        backendPort = port;
-        log.info(' backend service start success', { port });
-      });
-
-      // Notify frontend to install success
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-      }
-
-      python_process?.on('exit', (code, signal) => {
-        log.info(' python process exit', { code, signal });
-      });
-    } else if (!isToolInstalled) {
-      log.warn(' tool not installed, skip backend start');
-    } else {
-      log.info(' backend process already exist, skip start');
-    }
-
-    log.info(' install dependencies complete');
-    return { success: true };
-  } catch (error: any) {
-    log.error(' install dependencies error:', error);
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
-    }
-    return { success: false, error: error.message };
-  }
 };
 
 function registerIpcHandlers() {
@@ -934,13 +826,35 @@ function registerIpcHandlers() {
   });
 
   // ==================== dependency install handler ====================
-  ipcMain.handle('install-dependencies', handleDependencyInstallation);
-  ipcMain.handle('frontend-ready', handleDependencyInstallation);
+  ipcMain.handle('install-dependencies', async () => {
+    try {
+      if(win === null) throw new Error("Window is null");
+      //Force installation even if versionFile exists
+      const isInstalled = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
+      return { success: true, isInstalled };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
 
   ipcMain.handle('check-tool-installed', async () => {
     try {
       const isInstalled = await checkToolInstalled();
-      return { success: true, isInstalled };
+      return { success: true, isInstalled: isInstalled.success };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle('get-installation-status', async () => {
+    try {
+      const { isInstalling, hasLockFile } = await getInstallationStatus();
+      return { 
+        success: true, 
+        isInstalling, 
+        hasLockFile,
+        timestamp: Date.now()
+      };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -1006,12 +920,13 @@ async function createWindow() {
   update(win);
 
   // ==================== check tool installed ====================
-  let res = await checkAndInstallDepsOnUpdate();
-  if (!res) {
-    log.info('checkAndInstallDepsOnUpdate,install dependencies failed');
-    win.webContents.send('install-dependencies-complete', { success: false, code: 2 });
+  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
+  if (!res.success) {
+    log.info("[DEPS INSTALL] Dependency Error: ", res.message);
+    win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
     return;
-  }
+  } 
+  log.info("[DEPS INSTALL] Dependency Success: ", res.message);
   await checkAndStartBackend();
 }
 
@@ -1069,27 +984,30 @@ const setupExternalLinkHandling = () => {
 // ==================== check and start backend ====================
 const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
+  try {
+    const isToolInstalled = await checkToolInstalled();
+    if (isToolInstalled.success) {
+      log.info('Tool installed, starting backend service...');
 
-  const isToolInstalled = await checkToolInstalled();
-  if (isToolInstalled) {
-    log.info('Tool installed, starting backend service...');
+      // Notify frontend installation success
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+      }
 
-    // Notify frontend installation success
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+      python_process = await startBackend((port) => {
+        backendPort = port;
+        log.info('Backend service started successfully', { port });
+      });
+
+      python_process?.on('exit', (code, signal) => {
+
+        log.info('Python process exited', { code, signal });
+      });
+    } else {
+      log.warn('Tool not installed, cannot start backend service');
     }
-
-    python_process = await startBackend((port) => {
-      backendPort = port;
-      log.info('Backend service started successfully', { port });
-    });
-
-    python_process?.on('exit', (code, signal) => {
-
-      log.info('Python process exited', { code, signal });
-    });
-  } else {
-    log.warn('Tool not installed, cannot start backend service');
+  } catch (error) {
+    log.debug("Cannot Start Backend due to ", error)
   }
 };
 

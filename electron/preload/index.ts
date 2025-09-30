@@ -62,9 +62,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteFolder: (email: string) => ipcRenderer.invoke('delete-folder', email),
   getMcpConfigPath: (email: string) => ipcRenderer.invoke('get-mcp-config-path', email),
   // install dependencies related API
-  installDependencies: () => ipcRenderer.invoke('install-dependencies'),
-  frontendReady: () => ipcRenderer.invoke('frontend-ready'),
+  checkAndInstallDepsOnUpdate: () => ipcRenderer.invoke('install-dependencies'),
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
+  getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);
   },
