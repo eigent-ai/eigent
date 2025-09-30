@@ -11,6 +11,7 @@ import {
 	ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import FolderComponent from "./FolderComponent";
 
 import { useChatStore } from "@/store/chatStore";
 import { MarkDown } from "@/components/ChatBox/MarkDown";
@@ -543,30 +544,20 @@ export default function Folder({ data }: { data?: Agent }) {
 								) : ["csv", "doc", "docx", "pptx", "xlsx"].includes(
 										selectedFile.type
 								  ) ? (
-									<div
-										className="w-full overflow-auto"
-										dangerouslySetInnerHTML={{
-											__html: selectedFile.content || "",
-										}}
-									/>
+									<FolderComponent selectedFile={selectedFile} />
 								) : selectedFile.type === "html" ? (
 									isShowSourceCode ? (
 										<>{selectedFile.content}</>
 									) : (
-										<iframe
-											src={
-												"localfile://" +
-												encodeURIComponent(selectedFile.content as string)
-											}
-											className="w-full h-full border-0"
-											title={selectedFile.name}
-										/>
+										<FolderComponent selectedFile={selectedFile} />
 									)
 								) : selectedFile.type === "zip" ? (
 									<div className="flex items-center justify-center h-full text-zinc-500">
 										<div className="text-center">
 											<FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
-											<p className="text-sm">{t("folder.zip-file-is-not-supported-yet")}</p>
+											<p className="text-sm">
+												{t("folder.zip-file-is-not-supported-yet")}
+											</p>
 										</div>
 									</div>
 								) : [
@@ -609,7 +600,9 @@ export default function Folder({ data }: { data?: Agent }) {
 							<div className="flex items-center justify-center h-full text-zinc-500">
 								<div className="text-center">
 									<FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
-									<p className="text-sm">{t("chat.select-a-file-to-view-its-contents")}</p>
+									<p className="text-sm">
+										{t("chat.select-a-file-to-view-its-contents")}
+									</p>
 								</div>
 							</div>
 						)}
