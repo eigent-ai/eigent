@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { fetchPost, proxyFetchPut } from "@/api/http";
-import { BottomInput } from "./BottomInput";
+import { fetchPost, proxyFetchPut, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
+import BottomBox, { type FileAttachment } from "./BottomBox";
 import { TaskCard } from "./TaskCard";
 import { MessageCard } from "./MessageCard";
 import { TypeCardSkeleton } from "./TypeCardSkeleton";
+import { FloatingAction } from "./floatingAction";
 import { FileText, TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
 import { useChatStore } from "@/store/chatStore";
@@ -13,6 +14,7 @@ import { NoticeCard } from "./NoticeCard";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { TaskStateType } from "../TaskState";
+import { toast } from "sonner";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
@@ -22,6 +24,7 @@ export default function ChatBox(): JSX.Element {
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [privacy, setPrivacy] = useState<any>(false);
 	const [hasSearchKey, setHasSearchKey] = useState<any>(false);
+	const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	// const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
 	const { modelType } = useAuthStore();
 	const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
@@ -90,6 +93,25 @@ export default function ChatBox(): JSX.Element {
 		const tempMessageContent = messageStr || message;
 		chatStore.setHasMessages(_taskId as string, true);
 		if (!_taskId) return;
+
+		// Multi-turn support: Check if task is running or planning (splitting)
+		const task = chatStore.tasks[_taskId];
+		const isTaskBusy = task.status === 'running' || 
+						  task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm);
+		
+		if (isTaskBusy && !task.activeAsk) {
+			// Queue the message instead of sending immediately
+			const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
+			chatStore.addQueuedMessage(_taskId, tempMessageContent, currentAttaches);
+			chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
+			setMessage("");
+			if (textareaRef.current) textareaRef.current.style.height = "60px";
+			toast.success("Message queued. It will be processed when the current task finishes.", {
+				closeButton: true,
+			});
+			return;
+		}
+		
 		chatStore.addMessages(_taskId, {
 			id: generateUniqueId(),
 			role: "user",
@@ -209,6 +231,36 @@ export default function ChatBox(): JSX.Element {
 		}
 	}, [scrollContainerRef.current?.scrollHeight]);
 
+	// Handle scrollbar visibility on scroll
+	useEffect(() => {
+		const scrollContainer = scrollContainerRef.current;
+		if (!scrollContainer) return;
+
+		const handleScroll = () => {
+			// Add scrolling class
+			scrollContainer.classList.add('scrolling');
+
+			// Clear existing timeout
+			if (scrollTimeoutRef.current) {
+				clearTimeout(scrollTimeoutRef.current);
+			}
+
+			// Remove scrolling class after 1 second of no scrolling
+			scrollTimeoutRef.current = setTimeout(() => {
+				scrollContainer.classList.remove('scrolling');
+			}, 1000);
+		};
+
+		scrollContainer.addEventListener('scroll', handleScroll);
+
+		return () => {
+			scrollContainer.removeEventListener('scroll', handleScroll);
+			if (scrollTimeoutRef.current) {
+				clearTimeout(scrollTimeoutRef.current);
+			}
+		};
+	}, []);
+
 	const [loading, setLoading] = useState(false);
 	const handleConfirmTask = async (taskId?: string) => {
 		const _taskId = taskId || chatStore.activeTaskId;
@@ -216,6 +268,157 @@ export default function ChatBox(): JSX.Element {
 		setLoading(true);
 		await chatStore.handleConfirmTask(_taskId);
 		setLoading(false);
+	};
+
+	// File selection handler
+	const handleFileSelect = async () => {
+		try {
+			const result = await window.electronAPI.selectFile({
+				title: t("chat.select-file"),
+				filters: [{ name: t("chat.all-files"), extensions: ["*"] }],
+			});
+
+			if (result.success && result.files && result.files.length > 0) {
+				const taskId = chatStore.activeTaskId as string;
+				const files = [
+					...chatStore.tasks[taskId].attaches.filter(
+						(f) => !result.files.find((r: File) => r.filePath === f.filePath)
+					),
+					...result.files,
+				];
+				chatStore.setAttaches(taskId, files);
+			}
+		} catch (error) {
+			console.error("Select File Error:", error);
+		}
+	};
+
+	// Replay handler
+	const [isReplayLoading, setIsReplayLoading] = useState(false);
+	const handleReplay = async () => {
+		const taskId = chatStore.activeTaskId as string;
+		setIsReplayLoading(true);
+		const question =
+			chatStore.tasks[taskId].messages[0].content;
+		await chatStore.replay(taskId, question, 0.1);
+		setIsReplayLoading(false);
+	};
+
+	// Pause/Resume handler
+	const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+	const handlePauseResume = () => {
+		const taskId = chatStore.activeTaskId as string;
+		const task = chatStore.tasks[taskId];
+		const type = task.status === 'running' ? 'pause' : 'resume';
+		
+		setIsPauseResumeLoading(true);
+		if (type === 'pause') {
+			let { taskTime, elapsed } = task;
+			const now = Date.now();
+			elapsed += now - taskTime;
+			chatStore.setElapsed(taskId, elapsed);
+			chatStore.setTaskTime(taskId, 0);
+			chatStore.setStatus(taskId, 'pause');
+		} else {
+			chatStore.setTaskTime(taskId, Date.now());
+			chatStore.setStatus(taskId, 'running');
+		}
+		
+		fetchPut(`/task/${taskId}/take-control`, {
+			action: type,
+		});
+		setIsPauseResumeLoading(false);
+	};
+
+	// Skip to next task handler
+	const handleSkip = async () => {
+		const taskId = chatStore.activeTaskId as string;
+		setIsPauseResumeLoading(true);
+		
+		try {
+			// Stop the current task
+			await fetchPut(`/task/${taskId}/take-control`, {
+				action: 'stop',
+			});
+			
+			// Update task status to finished
+			chatStore.setStatus(taskId, 'finished');
+			chatStore.setIsPending(taskId, false);
+			
+			toast.success("Task skipped successfully", {
+				closeButton: true,
+			});
+		} catch (error) {
+			console.error("Failed to skip task:", error);
+			toast.error("Failed to skip task", {
+				closeButton: true,
+			});
+		} finally {
+			setIsPauseResumeLoading(false);
+		}
+	};
+
+	// Edit query handler
+	const handleEditQuery = () => {
+		const taskId = chatStore.activeTaskId as string;
+		fetchDelete(`/chat/${taskId}`);
+		const messageIndex = chatStore.tasks[taskId].messages.findIndex(
+			(item) => item.step === "to_sub_tasks"
+		);
+		const question = chatStore.tasks[taskId].messages[messageIndex - 2].content;
+		let id = chatStore.create();
+		chatStore.setHasMessages(id, true);
+		chatStore.removeTask(taskId);
+		proxyFetchDelete(`/api/chat/history/${taskId}`);
+		setMessage(question);
+	};
+
+	// Task time tracking
+	const [taskTime, setTaskTime] = useState(
+		chatStore.getFormattedTaskTime(chatStore.activeTaskId as string)
+	);
+	useEffect(() => {
+		const interval = setInterval(() => {
+			if (chatStore.activeTaskId) {
+				setTaskTime(
+					chatStore.getFormattedTaskTime(chatStore.activeTaskId)
+				);
+			}
+		}, 500);
+		return () => clearInterval(interval);
+	}, [chatStore.activeTaskId]);
+
+	// Determine BottomBox state
+	const getBottomBoxState = () => {
+		if (!chatStore.activeTaskId) return "input";
+		const task = chatStore.tasks[chatStore.activeTaskId];
+		
+		// Check for queued messages
+		if (task.queuedMessages && task.queuedMessages.length > 0) {
+			return "queuing";
+		}
+		
+		// Check for splitting state (to_sub_tasks without confirmation)
+		const toSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
+		if (toSubTasksMessage && !toSubTasksMessage.isConfirm) {
+			return "splitting";
+		}
+		
+		// Check for confirm state (to_sub_tasks needs confirmation)
+		if (toSubTasksMessage && !toSubTasksMessage.isConfirm && task.status === 'pending') {
+			return "confirm";
+		}
+		
+		// Check task status
+		if (task.status === 'running' || task.status === 'pause') {
+			return "running";
+		}
+		
+		if (task.status === 'finished' && task.type !== '') {
+			return "finished";
+		}
+		
+		return "input";
 	};
 
 	const [hasSubTask, setHasSubTask] = useState(false);
@@ -258,11 +461,11 @@ export default function ChatBox(): JSX.Element {
 			{(chatStore.activeTaskId &&
 				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
 			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
-				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled p-2 pr-0  border-solid relative overflow-hidden">
+				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div
 						ref={scrollContainerRef}
-						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pr-2 gap-2"
+						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pl-2 gap-2 pt-2"
 					>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId].messages.map(
@@ -486,36 +689,66 @@ export default function ChatBox(): JSX.Element {
 								}
 							/>
 						)}
+						
+						{/* Floating Action Button for Pause/Resume/Skip */}
+						{chatStore.activeTaskId && (
+							<FloatingAction
+								status={chatStore.tasks[chatStore.activeTaskId]?.status}
+								onPause={handlePauseResume}
+								onResume={handlePauseResume}
+								onSkip={handleSkip}
+								loading={isPauseResumeLoading}
+							/>
+						)}
 					</div>
 					{chatStore.activeTaskId && (
-						<BottomInput
-							isTakeControl={
-								chatStore.tasks[chatStore.activeTaskId as string].isTakeControl
-							}
-							setIsTakeControl={(isTakeControl) =>
-								chatStore.setIsTakeControl(
-									chatStore.activeTaskId as string,
-									isTakeControl
-								)
-							}
-							isPending={chatStore.tasks[chatStore.activeTaskId].isPending}
-							onPendingChange={(val) =>
-								chatStore.setIsPending(chatStore.activeTaskId as string, val)
-							}
-							privacy={privacy}
-							message={message}
-							onMessageChange={setMessage}
-							onKeyDown={handleKeyDown}
-							onSend={handleSend}
-							textareaRef={textareaRef}
-							loading={loading}
+						<BottomBox
+							state={getBottomBoxState()}
+							queuedMessages={chatStore.tasks[chatStore.activeTaskId]?.queuedMessages?.map(m => ({
+								id: m.id,
+								content: m.content,
+								timestamp: m.timestamp
+							})) || []}
+							onRemoveQueuedMessage={(id) => chatStore.removeQueuedMessage(chatStore.activeTaskId as string, id)}
+							subTasks={chatStore.tasks[chatStore.activeTaskId]?.taskInfo?.map(t => ({
+								id: t.id || generateUniqueId(),
+								content: t.content,
+								status: 'pending' as const
+							})) || []}
+							subtitle={chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
 							onStartTask={() => handleConfirmTask()}
-							useCloudModelInDev={useCloudModelInDev}
+							onEdit={handleEditQuery}
+							tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+							taskTime={taskTime}
+							taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+							onReplay={handleReplay}
+							replayDisabled={chatStore.tasks[chatStore.activeTaskId]?.status !== 'finished'}
+							replayLoading={isReplayLoading}
+							onPauseResume={handlePauseResume}
+							pauseResumeLoading={isPauseResumeLoading}
+							loading={loading}
+							inputProps={{
+								value: message,
+								onChange: setMessage,
+								onSend: handleSend,
+								files: chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(f => ({
+									fileName: f.fileName,
+									filePath: f.filePath
+								})) || [],
+								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
+								onAddFile: handleFileSelect,
+								placeholder: t("chat.ask-placeholder"),
+								disabled: !privacy || useCloudModelInDev,
+								textareaRef: textareaRef,
+								allowDragDrop: true,
+								privacy: privacy,
+								useCloudModelInDev: useCloudModelInDev
+							}}
 						/>
 					)}
 				</div>
 			) : (
-				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled p-2 pr-0  border-solid  relative overflow-hidden">
+				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled py-2 border-solid  relative overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
@@ -528,19 +761,25 @@ export default function ChatBox(): JSX.Element {
 						</div>
 
 						{chatStore.activeTaskId && (
-							<BottomInput
-								isPending={chatStore.tasks[chatStore.activeTaskId].isPending}
-								onPendingChange={(val) =>
-									chatStore.setIsPending(chatStore.activeTaskId as string, val)
-								}
-								privacy={true}
-								message={message}
-								onMessageChange={setMessage}
-								onKeyDown={handleKeyDown}
-								onSend={handleSend}
-								textareaRef={textareaRef}
-								loading={loading}
-								useCloudModelInDev={useCloudModelInDev}
+							<BottomBox
+								state="input"
+								inputProps={{
+									value: message,
+									onChange: setMessage,
+									onSend: handleSend,
+									files: chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(f => ({
+										fileName: f.fileName,
+										filePath: f.filePath
+									})) || [],
+									onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
+									onAddFile: handleFileSelect,
+									placeholder: t("chat.ask-placeholder"),
+									disabled: useCloudModelInDev,
+									textareaRef: textareaRef,
+									allowDragDrop: false,
+									privacy: true,
+									useCloudModelInDev: useCloudModelInDev
+								}}
 							/>
 						)}
 						<div className="h-[210px] flex justify-center items-start gap-2 mt-3 pr-2">

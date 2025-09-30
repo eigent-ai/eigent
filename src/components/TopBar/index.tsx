@@ -8,6 +8,7 @@ import {
 	Menu,
 	Plus,
 	Import,
+	XCircle,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -18,7 +19,7 @@ import { useSidebarStore } from "@/store/sidebarStore";
 import chevron_left from "@/assets/chevron_left.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import {  proxyFetchGet } from "@/api/http";
+import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import { toast } from "sonner";
 function HeaderWin() {
 	const { t } = useTranslation();
@@ -128,6 +129,58 @@ function HeaderWin() {
 		}
 	};
 
+	const handleEndProject = async () => {
+		const taskId = chatStore.activeTaskId;
+		if (!taskId) {
+			toast.error("No active project to end");
+			return;
+		}
+
+		try {
+			const task = chatStore.tasks[taskId];
+			
+			// Stop the task if it's running
+			if (task && task.status === 'running') {
+				await fetchPut(`/task/${taskId}/take-control`, {
+					action: 'stop',
+				});
+			}
+
+			// Delete task from backend if it exists
+			try {
+				await fetchDelete(`/chat/${taskId}`);
+			} catch (error) {
+				console.log("Task may not exist on backend:", error);
+			}
+
+			// Delete from history
+			try {
+				await proxyFetchDelete(`/api/chat/history/${taskId}`);
+			} catch (error) {
+				console.log("Task may not exist in history:", error);
+			}
+
+			// Remove from local store
+			chatStore.removeTask(taskId);
+
+			// Create a new project
+			const newTaskId = chatStore.create();
+			chatStore.setActiveTaskId(newTaskId);
+
+			// Navigate to home
+			navigate("/");
+
+			toast.success("Project ended successfully", {
+				closeButton: true,
+			});
+		} catch (error) {
+			console.error("Failed to end project:", error);
+			toast.error("Failed to end project", {
+				closeButton: true,
+			});
+		}
+	};
+
 	return (
 		<div
 			className="flex !h-9 items-center justify-between pl-2 py-1 z-50"
@@ -147,9 +200,17 @@ function HeaderWin() {
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
 					<div className="flex-1 pt-1 pr-sm flex justify-start items-end">
-						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
+						<Button
+							onClick={() => navigate("/history")}
+							variant="ghost"
+							size="icon"
+							className="no-drag p-0 h-6 w-6"
+						>
+							<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
+						</Button>
 					</div>
 					{location.pathname !== "/history" && (
+						<div className="flex items-center">
 						<Button
 							onClick={toggle}
 							variant="ghost"
@@ -158,15 +219,16 @@ function HeaderWin() {
 						>
 							<Menu className="w-4 h-4" />
 						</Button>
+						<Button
+							 variant="ghost"
+							 size="icon"
+							 className="mr-2 no-drag"
+							 onClick={createNewProject}
+										>
+											<Plus className="w-4 h-4" />
+						</Button>
+						</div>
 					)}
-					<Button
-						variant="ghost"
-						size="icon"
-						className="mr-2 no-drag"
-						onClick={createNewProject}
-					>
-						<Plus className="w-4 h-4" />
-					</Button>
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("chat.new-project") ? (
@@ -188,42 +250,52 @@ function HeaderWin() {
 				</div>
 				<div id="maximize-window" className="flex-1 h-10"></div>
 				{/* right */}
-				<div
-					className={`${
-						platform === "darwin" && "pr-2"
-					} flex h-full items-center space-x-1 z-50 relative no-drag`}
-				>
-					<Button
-						onClick={exportLog}
-						variant="outline"
-						size="xs"
-						className="mr-2 no-drag leading-tight"
+				{location.pathname !== "/history" && (
+					<div
+						className={`${
+							platform === "darwin" && "pr-2"
+						} flex h-full items-center space-x-1 z-50 relative no-drag`}
 					>
-						<FileDown className="w-4 h-4" />
-						{t("layout.report-bug")}
-					</Button>
-					<Button
-						onClick={getReferFriendsLink}
-						variant="primary"
-						size="xs"
-						className="no-drag text-button-primary-text-default leading-tight"
-					>
-						<img
-							src={chevron_left}
-							alt="chevron_left"
-							className="w-4 h-4 text-button-primary-icon-default"
-						/>
-						{t("layout.refer-friends")}
-					</Button>
-					<Button
-						onClick={() => navigate("/setting")}
-						variant="ghost"
-						size="icon"
-						className="no-drag"
-					>
-						<Settings className="w-4 h-4" />
-					</Button>
-				</div>
+						<Button
+							onClick={exportLog}
+							variant="outline"
+							size="xs"
+							className="mr-2 no-drag leading-tight"
+						>
+							<FileDown className="w-4 h-4" />
+							{t("layout.report-bug")}
+						</Button>
+						<Button
+							onClick={getReferFriendsLink}
+							variant="primary"
+							size="xs"
+							className="no-drag text-button-primary-text-default leading-tight"
+						>
+							<img
+								src={chevron_left}
+								alt="chevron_left"
+								className="w-4 h-4 text-button-primary-icon-default"
+							/>
+							{t("layout.refer-friends")}
+						</Button>
+						<Button
+							onClick={() => navigate("/setting")}
+							variant="ghost"
+							size="icon"
+							className="no-drag"
+						>
+							<Settings className="w-4 h-4" />
+						</Button>
+						<Button
+							onClick={handleEndProject}
+							variant="outline"
+							size="xs"
+							className="no-drag leading-tight text-text-cuation"
+						>
+							End Project
+						</Button>
+					</div>
+				)}
 			</div>
 			{platform !== "darwin" && (
 				<div
