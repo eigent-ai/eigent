@@ -220,31 +220,15 @@ export default function SettingModels() {
 				});
 			} else {
 				console.log("failed", res.message);
-				toast(t("setting.validate-failed"), {
-					description: (
-						<div
-							style={{
-								maxHeight: "120px",
-								overflowY: "auto",
-							}}
-						>
-							<div>{res.message}</div>
-							<div className="flex justify-end">
-								<Button
-									size="xs"
-									variant="primary"
-									onClick={() => {
-										navigator.clipboard.writeText(res.message);
-										toast.success(t("setting.copied-to-clipboard"));
-									}}
-								>
-									{t("setting.copy")}
-								</Button>
-							</div>
-						</div>
-					),
-					closeButton: true,
-				});
+				const toastId = toast(t("setting.validate-failed"), {
+          description: res.message,
+          action: {
+            label: t("setting.close"),
+            onClick: () => {
+							toast.dismiss(toastId);
+						},
+          },
+        })
 
 				return;
 			}
@@ -378,30 +362,14 @@ export default function SettingModels() {
 					});
 				} else {
 					console.log("failed", res.message);
-					toast(t("setting.validate-failed"), {
-						description: (
-							<div
-								style={{
-									maxHeight: "120px",
-									overflowY: "auto",
-								}}
-							>
-								<div>{res.message}</div>
-								<div className="flex justify-end">
-									<Button
-										size="xs"
-										variant="primary"
-										onClick={() => {
-											navigator.clipboard.writeText(res.message);
-											toast.success(t("setting.copied-to-clipboard"));
-										}}
-									>
-										{t("setting.copy")}
-									</Button>
-								</div>
-							</div>
-						),
-						closeButton: true,
+					const toastId = toast(t("setting.validate-failed"), {
+						description: res.message,
+						action: {
+							label: t("setting.close"),
+							onClick: () => {
+								toast.dismiss(toastId);
+							},
+						},
 					});
 
 					return;
