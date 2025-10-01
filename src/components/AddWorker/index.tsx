@@ -328,7 +328,7 @@ export function AddWorker({
 								<div className="text-base font-bold leading-10 text-text-action">
 									{showEnvConfig
 										? t("workforce.configure-mcp-server")
-										: t("workforce.add-your-mcp-server")}
+										: t("workforce.add-your-agent")}
 								</div>
 								<TooltipSimple content="Configure your MCP worker node here.">
 									<CircleAlert size={16} />
@@ -399,7 +399,7 @@ export function AddWorker({
 									{t("workforce.cancel")}
 								</Button>
 								<Button size="sm" onClick={handleConfigureMcpEnvSetting}>
-									<span>{t("workforce.configure")}</span>
+									<span>{t("Connect")}</span>
 									<ArrowRight size={16} />
 								</Button>
 							</DialogFooter>
@@ -421,7 +421,7 @@ export function AddWorker({
 									<div className="flex items-center gap-sm pb-md border-[0px] border-b border-solid border-border-secondary">
 										<Bot size={32} className="text-icon-primary" />
 										<Input
-											placeholder="Server Name"
+											placeholder="Agent Name"
 											value={workerName}
 											onChange={(e) => {
 												setWorkerName(e.target.value);
@@ -449,7 +449,7 @@ export function AddWorker({
 										{t("workforce.description-optional")}
 									</div>
 									<Textarea
-										placeholder="Mcp for ..."
+										placeholder="I'm an agent specially designed for..."
 										value={workerDescription}
 										onChange={(e) => setWorkerDescription(e.target.value)}
 										className="rounded-sm border border-solid border-input-border-default bg-input-bg-default  !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"

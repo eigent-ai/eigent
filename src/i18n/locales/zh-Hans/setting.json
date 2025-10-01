@@ -89,7 +89,7 @@
 	"coming-soon": "即将推出",
 	"uninstall": "卸载",
 	"install": "安装",
-	"add-your-mcp-server": "添加您的 MCP 服务器",
+	"add-your-agent": "添加您的智能体",
 	"add-a-local-mcp-server-by-providing-a-valid-json-configuration": "通过提供有效的 JSON 配置添加本地 MCP 服务器。",
 	"learn-more": "了解更多",
 	"installing": "安装中...",
