@@ -449,7 +449,7 @@ export function AddWorker({
 										{t("workforce.description-optional")}
 									</div>
 									<Textarea
-										placeholder="Mcp for ..."
+										placeholder="I'm an agent specially designed for..."
 										value={workerDescription}
 										onChange={(e) => setWorkerDescription(e.target.value)}
 										className="rounded-sm border border-solid border-input-border-default bg-input-bg-default  !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
