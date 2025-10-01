@@ -4,7 +4,7 @@ import BottomBox, { type FileAttachment } from "./BottomBox";
 import { TaskCard } from "./TaskCard";
 import { MessageCard } from "./MessageCard";
 import { TypeCardSkeleton } from "./TypeCardSkeleton";
-import { FloatingAction } from "./floatingAction";
+import { FloatingAction } from "./FloatingAction";
 import { FileText, TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
 import { useChatStore } from "@/store/chatStore";
@@ -392,32 +392,40 @@ export default function ChatBox(): JSX.Element {
 	const getBottomBoxState = () => {
 		if (!chatStore.activeTaskId) return "input";
 		const task = chatStore.tasks[chatStore.activeTaskId];
-		
+
 		// Check for queued messages
 		if (task.queuedMessages && task.queuedMessages.length > 0) {
 			return "queuing";
 		}
-		
-		// Check for splitting state (to_sub_tasks without confirmation)
+
+		// Determine if we're in the "splitting in progress" phase (skeleton visible)
+		// Equivalent to the skeleton condition used in the JSX below
 		const toSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
-		if (toSubTasksMessage && !toSubTasksMessage.isConfirm) {
+		const isSkeletonPhase = ((!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl);
+		if (isSkeletonPhase) {
 			return "splitting";
 		}
-		
-		// Check for confirm state (to_sub_tasks needs confirmation)
+
+		// After splitting completes and TaskCard is awaiting user confirmation,
+		// the Task becomes 'pending' and we show the confirm state.
 		if (toSubTasksMessage && !toSubTasksMessage.isConfirm && task.status === 'pending') {
 			return "confirm";
 		}
-		
+
+		// If subtasks exist but not yet confirmed while task is still running, keep showing splitting
+		if (toSubTasksMessage && !toSubTasksMessage.isConfirm) {
+			return "splitting";
+		}
+
 		// Check task status
 		if (task.status === 'running' || task.status === 'pause') {
 			return "running";
 		}
-		
+
 		if (task.status === 'finished' && task.type !== '') {
 			return "finished";
 		}
-		
+
 		return "input";
 	};
 
@@ -702,8 +710,8 @@ export default function ChatBox(): JSX.Element {
 						)}
 					</div>
 					{chatStore.activeTaskId && (
-						<BottomBox
-							state={getBottomBoxState()}
+					<BottomBox
+						state={getBottomBoxState()}
 							queuedMessages={chatStore.tasks[chatStore.activeTaskId]?.queuedMessages?.map(m => ({
 								id: m.id,
 								content: m.content,
@@ -715,7 +723,9 @@ export default function ChatBox(): JSX.Element {
 								content: t.content,
 								status: 'pending' as const
 							})) || []}
-							subtitle={chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
+						subtitle={getBottomBoxState() === 'confirm' 
+							? chatStore.tasks[chatStore.activeTaskId]?.messages?.[0]?.content 
+							: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
 							onStartTask={() => handleConfirmTask()}
 							onEdit={handleEditQuery}
 							tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}

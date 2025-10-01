@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronUp, ChevronDown, ChevronLeft, Circle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AnimateIcon } from "@/components/animate-ui/icons/icon";
+import { Orbit } from "@/components/animate-ui/icons/orbit";
 
 /**
  * Queued message item
@@ -163,7 +165,12 @@ export const BoxHeader = ({
 
 					{/* Splitting State: Show Title only */}
 					{state === "splitting" && (
-						<div className="flex flex-col justify-center relative shrink-0">
+						<div className="flex items-center gap-1 justify-center relative shrink-0">
+						 <div className="inline-flex justify-center items-center px-2 py-1">
+							<AnimateIcon animate loop className="justify-center items-center h-4 w-4">
+							  <Orbit size={16} className="text-icon-information" />
+						  </AnimateIcon>
+						 </div>
 							<span className="font-['Inter'] font-bold leading-17 text-text-information text-sm whitespace-nowrap">
 								Splitting Tasks
 							</span>
@@ -173,7 +180,7 @@ export const BoxHeader = ({
 					{/* Confirm State: Show Subtitle only */}
 					{state === "confirm" && subtitle && (
 						<div className="flex-1 flex flex-col justify-center min-h-px min-w-px overflow-ellipsis overflow-hidden relative">
-							<span className="font-['Inter'] font-normal leading-tight text-text-label text-[10px] whitespace-nowrap overflow-ellipsis overflow-hidden m-0">
+							<span className="font-['Inter'] font-normal leading-tight text-text-label text-xs whitespace-nowrap overflow-ellipsis overflow-hidden m-0">
 								{subtitle}
 							</span>
 						</div>
@@ -193,32 +200,24 @@ export const BoxHeader = ({
 				)}
 			</div>
 
-		{/* Header Content - Accordion Items */}
-		<div
-			className={cn(
-				"box-border flex flex-col gap-1 items-start px-2 py-0 relative w-full overflow-y-auto scrollbar-always-visible transition-all duration-200 ease-in-out",
-				isExpanded && items.length > 0 ? "max-h-[156px] opacity-100" : "max-h-0 opacity-0"
-			)}
-		>
-			{state === "queuing" &&
-				queuedMessages.map((msg) => (
-					<QueueingItem
-						key={msg.id}
-						content={msg.content}
-						onRemove={() => onRemoveQueuedMessage?.(msg.id)}
-					/>
-				))}
-
-			{state === "confirm" &&
-				subTasks.map((task) => (
-					<SubTaskItem
-						key={task.id}
-						content={task.content}
-						status={task.status}
-						onRemove={() => onRemoveSubTask?.(task.id)}
-					/>
-				))}
-		</div>
+		{/* Header Content - Accordion Items (hidden in confirm state) */}
+		{state !== "confirm" && (
+			<div
+				className={cn(
+					"box-border flex flex-col gap-1 items-start px-2 py-0 relative w-full overflow-y-auto scrollbar-always-visible transition-all duration-200 ease-in-out",
+					isExpanded && items.length > 0 ? "max-h-[156px] opacity-100" : "max-h-0 opacity-0"
+				)}
+			>
+				{state === "queuing" &&
+					queuedMessages.map((msg) => (
+						<QueueingItem
+							key={msg.id}
+							content={msg.content}
+							onRemove={() => onRemoveQueuedMessage?.(msg.id)}
+						/>
+					))}
+			</div>
+		)}
 		</div>
 	);
 };

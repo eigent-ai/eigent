@@ -9,6 +9,8 @@ import {
 	Plus,
 	Import,
 	XCircle,
+	Power,
+	ChevronDown,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -16,11 +18,13 @@ import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
-import chevron_left from "@/assets/chevron_left.svg";
+import giftIcon from "@/assets/gift.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import { toast } from "sonner";
+import EndNoticeDialog from "@/components/Dialog/EndNotice";
+ 
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -32,6 +36,7 @@ function HeaderWin() {
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
+	const [endDialogOpen, setEndDialogOpen] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
@@ -178,6 +183,8 @@ function HeaderWin() {
 			toast.error("Failed to end project", {
 				closeButton: true,
 			});
+		} finally {
+			setEndDialogOpen(false);
 		}
 	};
 
@@ -212,38 +219,38 @@ function HeaderWin() {
 					{location.pathname !== "/history" && (
 						<div className="flex items-center">
 						<Button
-							onClick={toggle}
-							variant="ghost"
-							size="icon"
-							className="mr-1 no-drag"
-						>
-							<Menu className="w-4 h-4" />
-						</Button>
-						<Button
 							 variant="ghost"
 							 size="icon"
-							 className="mr-2 no-drag"
+							 className="no-drag"
 							 onClick={createNewProject}
-										>
-											<Plus className="w-4 h-4" />
+									>
+									<Plus className="w-4 h-4" />
 						</Button>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("chat.new-project") ? (
-								<Button
-									variant="ghost"
-									size="sm"
-									className="font-bold text-base no-drag max-w-56 truncate"
-									onClick={createNewProject}
-								>
+								<Button 
+								  variant="ghost" 
+									className="font-bold text-base no-drag truncate" 
+								  onClick={toggle}
+								  size="sm"
+								  >
 									{t("chat.new-project")}
+									<ChevronDown />
 								</Button>
 							) : (
-								<div className="font-bold leading-10 text-base min-w-10 max-w-56 truncate">
+								<Button
+									id="active-task-title-btn"
+									variant="ghost"
+									size="sm"
+									className="font-bold text-base no-drag truncate"
+									onClick={toggle}
+								>
 									{activeTaskTitle}
-								</div>
+									<ChevronDown />
+								</Button>
 							)}
 						</>
 					)}
@@ -258,7 +265,7 @@ function HeaderWin() {
 					>
 						<Button
 							onClick={exportLog}
-							variant="outline"
+							variant="ghost"
 							size="xs"
 							className="mr-2 no-drag leading-tight"
 						>
@@ -267,16 +274,25 @@ function HeaderWin() {
 						</Button>
 						<Button
 							onClick={getReferFriendsLink}
-							variant="primary"
+							variant="ghost"
 							size="xs"
-							className="no-drag text-button-primary-text-default leading-tight"
+							className="no-drag"
 						>
 							<img
-								src={chevron_left}
-								alt="chevron_left"
-								className="w-4 h-4 text-button-primary-icon-default"
+								src={giftIcon}
+								alt="gift-icon"
+								className="w-4 h-4"
 							/>
 							{t("layout.refer-friends")}
+						</Button>
+						<Button
+							onClick={() => setEndDialogOpen(true)}
+							variant="ghost"
+							size="xs"
+							className="no-drag leading-tight text-text-cuation"
+						>
+							<Power />
+							End Project
 						</Button>
 						<Button
 							onClick={() => navigate("/setting")}
@@ -285,14 +301,6 @@ function HeaderWin() {
 							className="no-drag"
 						>
 							<Settings className="w-4 h-4" />
-						</Button>
-						<Button
-							onClick={handleEndProject}
-							variant="outline"
-							size="xs"
-							className="no-drag leading-tight text-text-cuation"
-						>
-							End Project
 						</Button>
 					</div>
 				)}
@@ -323,6 +331,11 @@ function HeaderWin() {
 					</div>
 				</div>
 			)}
+			<EndNoticeDialog
+				open={endDialogOpen}
+				onOpenChange={setEndDialogOpen}
+				onConfirm={handleEndProject}
+			/>
 		</div>
 	);
 }
