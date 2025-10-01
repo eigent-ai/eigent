@@ -89,7 +89,7 @@
 	"coming-soon": "近日公開",
 	"uninstall": "アンインストール",
 	"install": "インストール",
-	"add-your-mcp-server": "MCPサーバーを追加",
+	"add-your-agent": "エージェントを追加",
 	"add-a-local-mcp-server-by-providing-a-valid-json-configuration": "有効なJSON構成を提供して、ローカルMCPサーバーを追加します。",
 	"learn-more": "詳細はこちら",
 	"installing": "インストール中...",

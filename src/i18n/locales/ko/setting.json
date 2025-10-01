@@ -89,7 +89,7 @@
 	"coming-soon": "출시 예정",
 	"uninstall": "제거",
 	"install": "설치",
-	"add-your-mcp-server": "MCP 서버 추가",
+	"add-your-agent": "에이전트 추가",
 	"add-a-local-mcp-server-by-providing-a-valid-json-configuration": "유효한 JSON 구성을 제공하여 로컬 MCP 서버를 추가하세요.",
 	"learn-more": "더 알아보기",
 	"installing": "설치 중...",
