@@ -57,26 +57,41 @@ export async function getBinaryName(name: string): Promise<string> {
 }
 
 export async function getBinaryPath(name?: string): Promise<string> {
-  if (!name) {
-    return path.join(os.homedir(), '.eigent', 'bin')
-  }
-  const binaryName = await getBinaryName(name)
   const binariesDir = path.join(os.homedir(), '.eigent', 'bin')
-  const binariesDirExists = await fs.existsSync(binariesDir)
 
-  return binariesDirExists ? path.join(binariesDir, binaryName) : binaryName
+  // Ensure .eigent/bin directory exists
+  if (!fs.existsSync(binariesDir)) {
+    fs.mkdirSync(binariesDir, { recursive: true })
+  }
+
+  if (!name) {
+    return binariesDir
+  }
+
+  const binaryName = await getBinaryName(name)
+  return path.join(binariesDir, binaryName)
 }
 
 export function getCachePath(folder: string): string {
   const cacheDir = path.join(os.homedir(), '.eigent', 'cache', folder)
-  console.log('cacheDir+++++++++++++++++++++++++++')
-  console.log('Cache directory:', cacheDir)
-  console.log('cacheDir--------------------')
+
+  // Ensure cache directory exists
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true })
+  }
+
   return cacheDir
 }
 
 export function getVenvPath(version: string): string {
   const venvDir = path.join(os.homedir(), '.eigent', 'venvs', `backend-${version}`)
+
+  // Ensure venvs directory exists (parent of the actual venv)
+  const venvsBaseDir = path.dirname(venvDir)
+  if (!fs.existsSync(venvsBaseDir)) {
+    fs.mkdirSync(venvsBaseDir, { recursive: true })
+  }
+
   return venvDir
 }
 

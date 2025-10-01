@@ -59,13 +59,26 @@ Promise<PromiseReturnType> => {
     try {
       const versionExists:boolean = checkInstallOperations.getSavedVersion();
 
+      // Check if command tools are installed
+      const uvExists = await isBinaryExists('uv');
+      const bunExists = await isBinaryExists('bun');
+      const toolsMissing = !uvExists || !bunExists;
+
       // If version file does not exist or version does not match, reinstall dependencies
-      if (forceInstall || !versionExists || savedVersion !== currentVersion) {
-        log.info('[DEPS INSTALL] version changed, prepare to reinstall uv dependencies...', {
-          currentVersion,
-          savedVersion: versionExists ? savedVersion : 'none',
-          reason: !versionExists ? 'version file not exist' : 'version not match'
-        });
+      // Or if command tools are missing, need to install them
+      if (forceInstall || !versionExists || savedVersion !== currentVersion || toolsMissing) {
+        if (toolsMissing) {
+          log.info('[DEPS INSTALL] Command tools missing, starting installation...', {
+            uvExists,
+            bunExists
+          });
+        } else {
+          log.info('[DEPS INSTALL] version changed, prepare to reinstall uv dependencies...', {
+            currentVersion,
+            savedVersion: versionExists ? savedVersion : 'none',
+            reason: !versionExists ? 'version file not exist' : 'version not match'
+          });
+        }
 
         // Notify frontend to update
         checkInstallOperations.handleUpdateNotification(versionExists);
@@ -85,8 +98,8 @@ Promise<PromiseReturnType> => {
         log.info('[DEPS INSTALL] install dependencies complete');
         return
       } else {
-        log.info('[DEPS INSTALL] version not changed, skip install dependencies', { currentVersion });
-        resolve({ message: "Version not changed, skipped installation", success: true });
+        log.info('[DEPS INSTALL] version not changed and tools installed, skip install dependencies', { currentVersion });
+        resolve({ message: "Version not changed and tools installed, skipped installation", success: true });
         return
       }
     } catch (error) {
@@ -149,6 +162,13 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 let uv_path:string;
 const mainWindow = getMainWindow();
 const backendPath = getBackendPath();
+
+// Ensure backend directory exists
+if (!fs.existsSync(backendPath)) {
+  log.info(`Creating backend directory: ${backendPath}`);
+  fs.mkdirSync(backendPath, { recursive: true });
+}
+
 const installingLockPath = path.join(backendPath, 'uv_installing.lock')
 const installedLockPath = path.join(backendPath, 'uv_installed.lock')
 // const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
