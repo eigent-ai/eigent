@@ -399,7 +399,7 @@ export function AddWorker({
 									{t("workforce.cancel")}
 								</Button>
 								<Button size="sm" onClick={handleConfigureMcpEnvSetting}>
-									<span>{t("workforce.configure")}</span>
+									<span>{t("Connect")}</span>
 									<ArrowRight size={16} />
 								</Button>
 							</DialogFooter>
