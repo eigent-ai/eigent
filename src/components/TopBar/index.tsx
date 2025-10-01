@@ -24,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
+import { share } from "@/lib/share";
  
 function HeaderWin() {
 	const { t } = useTranslation();
@@ -188,6 +189,10 @@ function HeaderWin() {
 		}
 	};
 
+	const handleShare = async (taskId: string) => {
+		share(taskId);
+	};
+
 	return (
 		<div
 			className="flex !h-9 items-center justify-between pl-2 py-1 z-50"
@@ -267,7 +272,7 @@ function HeaderWin() {
 							onClick={exportLog}
 							variant="ghost"
 							size="xs"
-							className="mr-2 no-drag leading-tight"
+							className="mr-2 no-drag leading-tight hidden"
 						>
 							<FileDown className="w-4 h-4" />
 							{t("layout.report-bug")}
@@ -276,7 +281,7 @@ function HeaderWin() {
 							onClick={getReferFriendsLink}
 							variant="ghost"
 							size="xs"
-							className="no-drag"
+							className="no-drag hidden"
 						>
 							<img
 								src={giftIcon}
@@ -289,7 +294,7 @@ function HeaderWin() {
 							onClick={() => setEndDialogOpen(true)}
 							variant="ghost"
 							size="xs"
-							className="no-drag leading-tight text-text-cuation"
+							className="no-drag !text-text-cuation"
 						>
 							<Power />
 							End Project
@@ -301,6 +306,14 @@ function HeaderWin() {
 							className="no-drag"
 						>
 							<Settings className="w-4 h-4" />
+						</Button>
+						<Button
+							onClick={() => handleShare(chatStore.activeTaskId as string)}
+							variant="information"
+							size="xs"
+							className="no-drag !text-button-fill-information-foreground"
+						>
+							Share
 						</Button>
 					</div>
 				)}

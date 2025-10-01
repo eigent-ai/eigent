@@ -16,6 +16,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import SideBar from "@/components/SideBar";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
@@ -168,12 +169,11 @@ export default function Home() {
 		}
 	};
 
-	return (
-		<div className="h-full">
-			<ReactFlowProvider>
-				<div className="h-full flex flex-col">
-						<div className="flex-1 flex items-center justify-center gap-2 relative">
-						<ResizablePanelGroup direction="horizontal">
+		return (
+			<div className="h-full flex flex-row">
+				<ReactFlowProvider>
+						<div className="flex-1 min-w-0 flex items-center justify-center gap-2 relative">
+							<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
 						<div
 							className="w-full h-full flex flex-col items-center justify-center transition-all duration-300"
@@ -185,7 +185,7 @@ export default function Home() {
 						<ResizablePanel>
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							?.activeWorkSpace && (
-							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300">
+							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300 bg-surface-secondary border border-border-disabled rounded-2xl">
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
 								]?.taskAssigning.find(
@@ -270,10 +270,13 @@ export default function Home() {
 								<BottomBar />
 							</div>
 						)}
-						</ResizablePanel>
-						</ResizablePanelGroup>
+							</ResizablePanel>
+							{/* Fixed sidebar on the right */}
+							<div className="h-full z-30">
+								<SideBar />
+							</div>
+							</ResizablePanelGroup>
 					</div>
-				</div>
 			</ReactFlowProvider>
 			<UpdateElectron />
 		</div>

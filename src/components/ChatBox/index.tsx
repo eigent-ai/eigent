@@ -758,7 +758,7 @@ export default function ChatBox(): JSX.Element {
 					)}
 				</div>
 			) : (
-				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled py-2 border-solid  relative overflow-hidden">
+				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled border-solid  relative overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
