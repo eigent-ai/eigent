@@ -172,25 +172,9 @@ export default function Home() {
 		<div className="h-full">
 			<ReactFlowProvider>
 				<div className="h-full flex flex-col">
-					<div className="flex-1 flex items-center justify-center gap-2 relative">
+						<div className="flex-1 flex items-center justify-center gap-2 relative">
 						<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
-						{/* left transparent area */}
-						<div
-							style={{
-								position: "absolute",
-								left: -8,
-								top: 0,
-								width: "12px",
-								height: "100%",
-								background: "transparent",
-								zIndex: 20,
-								cursor: "pointer",
-							}}
-							onMouseEnter={() => {
-								toggle();
-							}}
-						/>
 						<div
 							className="w-full h-full flex flex-col items-center justify-center transition-all duration-300"
 						>
