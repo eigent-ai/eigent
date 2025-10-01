@@ -75,6 +75,48 @@ export function getCachePath(folder: string): string {
   return cacheDir
 }
 
+export function getVenvPath(version: string): string {
+  const venvDir = path.join(os.homedir(), '.eigent', 'venvs', `backend-${version}`)
+  return venvDir
+}
+
+export function getVenvsBaseDir(): string {
+  return path.join(os.homedir(), '.eigent', 'venvs')
+}
+
+export async function cleanupOldVenvs(currentVersion: string): Promise<void> {
+  const venvsBaseDir = getVenvsBaseDir()
+
+  // Check if venvs directory exists
+  if (!fs.existsSync(venvsBaseDir)) {
+    return
+  }
+
+  try {
+    const entries = fs.readdirSync(venvsBaseDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('backend-')) {
+        const versionMatch = entry.name.match(/^backend-(.+)$/)
+        if (versionMatch && versionMatch[1] !== currentVersion) {
+          const oldVenvPath = path.join(venvsBaseDir, entry.name)
+          console.log(`Cleaning up old venv: ${oldVenvPath}`)
+
+          try {
+            // Remove old venv directory recursively
+            fs.rmSync(oldVenvPath, { recursive: true, force: true })
+            console.log(`Successfully removed old venv: ${entry.name}`)
+          } catch (err) {
+            console.error(`Failed to remove old venv ${entry.name}:`, err)
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error during venv cleanup:', err)
+  }
+}
+
 export async function isBinaryExists(name: string): Promise<boolean> {
   const cmd = await getBinaryPath(name)
 
