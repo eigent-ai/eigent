@@ -226,7 +226,7 @@ const ToolSelect = forwardRef<
 		envValue?: { [key: string]: any },
 		activeMcp?: any
 	) => {
-		// is exa search
+		// is exa search or google calendar
 		if (activeMcp && envValue) {
 			const env: { [key: string]: string } = {};
 			Object.keys(envValue).map((key) => {
@@ -240,6 +240,19 @@ const ToolSelect = forwardRef<
 					activeMcp.install_command.env[key]
 				);
 			});
+			
+			// Add to selected tools after saving config
+			if (activeMcp.key === "Google Calendar") {
+				const calendarItem = {
+					id: activeMcp.id,
+					key: activeMcp.key,
+					name: activeMcp.name,
+					description: "Google Calendar integration for managing events and schedules",
+					toolkit: "google_calendar_toolkit",
+					isLocal: true
+				};
+				addOption(calendarItem, true);
+			}
 			return;
 			// async function fetchInstalled() {
 			// 	try {

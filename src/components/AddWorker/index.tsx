@@ -117,7 +117,7 @@ export function AddWorker({
 
 		// call ToolSelect's install method
 		if (toolSelectRef.current) {
-			if (activeMcp.key === "EXA Search") {
+			if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar") {
 				await toolSelectRef.current.installMcp(
 					activeMcp.id,
 					{ ...envValues },
