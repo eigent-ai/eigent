@@ -3,7 +3,7 @@
 	"new-worker": "新增 Worker",
 	"edit": "編輯",
 	"configure-mcp-server": "設定 MCP 伺服器",
-	"add-your-mcp-server": "新增您的 MCP 伺服器",
+	"add-your-agent": "新增您的智能體",
 	"cancel": "取消",
 	"save-changes": "儲存變更",
 	"description-optional": "描述（可選）",

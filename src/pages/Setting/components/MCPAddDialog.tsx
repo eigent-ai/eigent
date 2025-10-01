@@ -102,7 +102,7 @@ export default function MCPAddDialog({
 			<DialogContent className="min-w-[340px] w-[600px] max-w-[95vw] p-0">
 				<DialogHeader className=" bg-gray-100 rounded-t-xl px-6 ">
 					<DialogTitle className="font-bold text-lg text-gray-800 ">
-						{t("setting.add-your-mcp-server")}
+						{t("setting.add-your-agent")}
 					</DialogTitle>
 				</DialogHeader>
 				<div className="px-md py-md bg-white-100% rounded-b-xl">

@@ -89,7 +89,7 @@
 	"coming-soon": "Скоро",
 	"uninstall": "Удалить",
 	"install": "Установить",
-	"add-your-mcp-server": "Добавьте свой MCP-сервер",
+	"add-your-agent": "Добавьте своего агента",
 	"add-a-local-mcp-server-by-providing-a-valid-json-configuration": "Добавьте локальный MCP-сервер, предоставив допустимую JSON-конфигурацию.",
 	"learn-more": "Подробнее",
 	"installing": "Установка...",
