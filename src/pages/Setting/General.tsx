@@ -126,7 +126,7 @@ export default function SettingGeneral() {
 	}, []);
 
 	return (
-		<div className="space-y-8">
+		<div className="flex flex-col gap-4 pb-40">
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
 				<div className="text-base font-bold leading-12 text-text-body">
 					{t("setting.account")}

@@ -12,6 +12,7 @@ import {
 	Info,
 	RotateCcw,
 	Loader2,
+	Check,
 } from "lucide-react";
 import { INIT_PROVODERS } from "@/lib/llm";
 import { Provider } from "@/types";
@@ -531,32 +532,48 @@ export default function SettingModels() {
 	};
 
 	return (
-		<div className="space-y-2">
+		<div className="flex flex-col gap-4 pb-40">
 			{import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && (
-				<div className="w-[630px] pt-4 self-stretch px-6 py-4 bg-surface-secondary rounded-2xl inline-flex flex-col justify-start items-start gap-4">
+				<div className="w-full pt-4 self-stretch px-6 py-4 bg-gradient-to-t from-orange-50 to-surface-tertiary rounded-2xl inline-flex flex-col justify-start items-start gap-4 border-solid border-border-disabled">
 					<div className="self-stretch flex flex-col justify-start items-start gap-1">
-						<div className="self-stretch h-6 inline-flex justify-start items-center gap-2.5">
-							<div className="flex-1 justify-center text-text-body text-base font-bold leading-snug">
+						<div className="self-stretch inline-flex justify-start items-center gap-2">
+							<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
 								{t("setting.eigent-cloud-version")}
 							</div>
-							<Switch
-								checked={cloudPrefer}
-								onCheckedChange={(checked) => {
-									if (checked) {
-										setLocalPrefer(false);
-										setActiveModelIdx(null);
-										setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-										setCloudPrefer(true);
-										setModelType("cloud");
-									} else {
-										setCloudPrefer(false);
-										setModelType("custom");
-									}
+						{cloudPrefer ? (
+							<Button
+								variant="success"
+								size="sm"
+								className="focus-none"
+								onClick={() => {
+									// currently selected -> unselect
+									setCloudPrefer(false);
+									setModelType("custom");
 								}}
-							/>
+							>
+								Default
+								<Check/>
+							</Button>
+						) : (
+							<Button
+								variant="ghost"
+								size="sm"
+								className="!text-text-success"
+								onClick={() => {
+									// not selected -> select cloud prefer
+									setLocalPrefer(false);
+									setActiveModelIdx(null);
+									setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+									setCloudPrefer(true);
+									setModelType("cloud");
+								}}
+							>
+								Set as Default
+							</Button>
+						)}
 						</div>
 						<div className="self-stretch justify-center">
-							<span className="text-text-body text-xs font-normal font-['Inter'] leading-tight">
+							<span className="text-text-label text-body-sm">
 								{t("setting.you-are-currently-subscribed-to-the")}{" "}
 								{subscription?.plan_key?.charAt(0).toUpperCase() +
 									subscription?.plan_key?.slice(1)}
@@ -566,7 +583,7 @@ export default function SettingModels() {
 								onClick={() => {
 									window.location.href = `https://www.eigent.ai/pricing`;
 								}}
-								className="cursor-pointer text-text-body text-xs font-normal font-['Inter'] underline leading-tight"
+								className="cursor-pointer text-text-label text-body-sm underline"
 							>
 								{t("setting.pricing-options")}
 							</span>
@@ -575,7 +592,7 @@ export default function SettingModels() {
 							</span>
 						</div>
 					</div>
-					<div className="flex flex-row items-center justify-start gap-2 mt-2 w-full">
+					<div className="flex flex-row items-center justify-start gap-4 w-full pb-2">
 						<Button
 							onClick={() => {
 								window.location.href = `https://www.eigent.ai/dashboard`;
@@ -591,7 +608,7 @@ export default function SettingModels() {
 							)}
 							<Settings />
 						</Button>
-						<div className="text-text-body text-sm font-normal font-['Inter'] leading-tight">
+						<div className="text-text-body text-body-sm">
 							{t("setting.credits")}:{" "}
 							{loadingCredits ? (
 								<Loader2 className="w-4 h-4 animate-spin" />
@@ -600,15 +617,15 @@ export default function SettingModels() {
 							)}
 						</div>
 					</div>
-					<div className="w-full flex items-center flex-1 justify-between pt-4 border-t border-border-secondary">
+					<div className="w-full flex items-center flex-1 justify-between pt-6 border-b-0 border-x-0 border-solid border-border-disabled">
 						<div className="flex items-center flex-1 min-w-0">
-							<span className="whitespace-nowrap overflow-hidden text-ellipsis text-xs font-medium leading-tight">
+							<span className="whitespace-nowrap overflow-hidden text-ellipsis text-body-sm">
 								{t("setting.select-model-type")}
 							</span>
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<span className="ml-1 cursor-pointer inline-flex items-center">
-										<Info className="w-4 h-4 text-gray-400" />
+										<Info className="w-4 h-4 text-icon-secondary" />
 									</span>
 								</TooltipTrigger>
 								<TooltipContent
@@ -668,18 +685,20 @@ export default function SettingModels() {
 				</div>
 			)}
 			{/* customer models */}
-			<div className="self-stretch pt-4 border-t border-border-disabled inline-flex flex-col justify-start items-start gap-4">
-				<div className="self-stretch inline-flex justify-start items-center gap-2 relative px-6">
-					<div className="justify-center text-text-body text-base font-bold leading-snug">
+			<div className="self-stretch mt-4 pb-10 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
+				<div className="sticky top-[79px] z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 py-6">
+					<div className="flex flex-col items-start gap-1">
+					<span className="justify-center text-text-body text-body-md font-bold">
 						{t("setting.custom-model")}
-					</div>
-					<div className="justify-center text-text-body text-xs font-medium leading-none">
+					</span>
+					<span className="justify-center text-text-body text-label-sm font-normal">
 						{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
+					</span>
 					</div>
 					<div className="flex-1" />
 					<Button
 						variant="ghost"
-						size="icon"
+						size="md"
 						onClick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
@@ -709,24 +728,41 @@ export default function SettingModels() {
 						return (
 							<div
 								key={item.id}
-								className="w-[630px] px-6 py-4 bg-surface-secondary rounded-2xl gap-4"
+								className="w-full bg-surface-secondary rounded-2xl overflow-hidden"
 							>
-								<div className="h6 flex items-center justify-between">
-									<div>
-										<div className="text-base font-bold leading-12 text-text-primary">
+								<div className="self-stretch flex flex-col justify-between items-start gap-1 px-6 py-4">
+								  <div className="self-stretch inline-flex justify-between items-center gap-2">
+										<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
 											{item.name}
 										</div>
-										<div className="text-sm leading-13 py-1">
+									{form[idx].prefer ? (
+										<Button
+											variant="success"
+											size="sm"
+											className="focus-none"
+											disabled={!canSwitch || loading === idx}
+											onClick={() => handleVerify(idx)}
+										>
+											Default
+											<Check />
+										</Button>
+									) : (
+										<Button
+											variant="ghost"
+											size="sm"
+											disabled={!canSwitch || loading === idx}
+											onClick={() => handleVerify(idx)}
+											className={canSwitch ? "!text-text-success" : ""}
+										>
+											{!canSwitch ? "Not Configured" : "Set as Default"}
+										</Button>
+									)}
+									</div>
+									<div className="text-body-sm text-text-label">
 											{item.description}
 										</div>
-									</div>
-									<Switch
-										checked={form[idx].prefer}
-										disabled={!canSwitch || loading === idx}
-										onCheckedChange={(checked) => handleVerify(idx)}
-									/>
 								</div>
-								<div className="flex w-full items-center gap-2">
+								<div className="flex w-full items-center gap-2 px-6">
 									<div className="relative w-full">
 										<div className="flex-1">
 											<Input
@@ -770,12 +806,12 @@ export default function SettingModels() {
 									</div>
 								</div>
 								{errors[idx]?.apiKey && (
-									<div className="text-xs text-red-500 mt-1">
+									<div className="text-label-xs text-text-cuation mt-2 px-10">
 										{errors[idx].apiKey}
 									</div>
 								)}
 
-								<div className="mt-md space-y-4">
+								<div className="flex flex-col gap-4 mt-md px-6">
 									<div>
 										<Input
 											id={`apiHost-${item.id}`}
@@ -799,7 +835,7 @@ export default function SettingModels() {
 											}}
 										/>
 										{errors[idx]?.apiHost && (
-											<div className="text-xs text-red-500 mt-1">
+											<div className="text-label-xs text-text-cuation mt-2 px-10">
 												{errors[idx].apiHost}
 											</div>
 										)}
@@ -829,7 +865,7 @@ export default function SettingModels() {
 											}}
 										/>
 										{errors[idx]?.model_type && (
-											<div className="text-xs text-red-500 mt-1">
+											<div className="text-label-xs text-text-cuation mt-2 px-4">
 												{errors[idx].model_type}
 											</div>
 										)}
@@ -901,18 +937,16 @@ export default function SettingModels() {
 											</div>
 										))}
 								</div>
-								<div className="flex justify-end mt-2">
+								<div className="flex justify-end mt-6 px-6 py-4 border-b-0 border-x-0 border-solid border-border-secondary">
 									<Button
-										variant="secondary"
+										variant="primary"
 										size="sm"
-										type="button"
 										onClick={() => handleVerify(idx)}
 										disabled={loading === idx}
 									>
 										<span className="text-text-inverse-primary">
-											{loading === idx ? "..." : t("setting.verify")}
+											{loading === idx ? "Configuring..." : "Save"}
 										</span>
-										<Circle className="text-text-inverse-primary"></Circle>
 									</Button>
 								</div>
 							</div>
@@ -921,16 +955,33 @@ export default function SettingModels() {
 				</div>
 			</div>
 			{/* Local Model */}
-			<div className="w-[630px] mt-4 px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col gap-4">
-				<div className="flex items-center justify-between mb-2">
-					<div className="font-bold text-base">{t("setting.local-model")}</div>
-					<Switch
-						checked={localPrefer}
-						disabled={!localEndpoint}
-						onCheckedChange={(checked) => handleLocalSwitch(checked)}
-					/>
+			<div className="mt-8 bg-surface-secondary rounded-2xl flex flex-col gap-4">
+				<div className="flex items-center justify-between mb-2 px-6 pt-4">
+					<div className="font-bold text-body-lg text-text-heading">{t("setting.local-model")}</div>
+					{localPrefer ? (
+						<Button
+							variant="success"
+							size="sm"
+							className="focus-none"
+							disabled={!localEndpoint}
+							onClick={() => handleLocalSwitch(false)}
+						>
+							Default
+							<Check />
+						</Button>
+					) : (
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={!localEndpoint}
+							onClick={() => handleLocalSwitch(true)}
+							className={localEndpoint ? "!text-text-success" : ""}
+						>
+							{!localEndpoint ? "Not Configured" : "Set as Default"}
+						</Button>
+					)}
 				</div>
-				<div className="flex flex-col gap-3">
+				<div className="flex flex-col gap-4 px-6">
 					<div>
 						<label className="block text-sm font-bold mb-1">
 							{t("setting.model-platform")}
@@ -1005,17 +1056,16 @@ export default function SettingModels() {
 						</Select> */}
 					</div>
 				</div>
-				<div className="flex justify-end mt-2 ">
+				<div className="flex justify-end mt-2 px-6 py-4 border-b-0 border-x-0 border-solid border-border-secondary">
 					<Button
 						onClick={handleLocalVerify}
 						disabled={!localEnabled || localVerifying}
-						variant="secondary"
+						variant="primary"
 						size="sm"
 					>
 						<span className="text-text-inverse-primary">
-							{localVerifying ? t("setting.verifying") : t("setting.verify")}
+							{localVerifying ? "Configuring..." : "Save"}
 						</span>
-						<Circle />
 					</Button>
 				</div>
 			</div>

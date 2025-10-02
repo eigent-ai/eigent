@@ -1,9 +1,14 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useLocation, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import VerticalNavigation, { type VerticalNavItem } from "@/components/Navigation";
 import { useTranslation } from "react-i18next";
 import useAppVersion from "@/hooks/use-app-version";
 import vsersionLogo from "@/assets/version-logo.png";
+import General from "@/pages/Setting/General";
+import Privacy from "@/pages/Setting/Privacy";
+import Models from "@/pages/Setting/Models";
+import MCP from "@/pages/Setting/MCP";
 import {
 	X,
 	CircleCheck,
@@ -45,33 +50,19 @@ export default function Setting() {
 			path: "/setting/mcp",
 		},
 	];
-	// Get currently selected sub-page from URL path
+	// Initialize tab from URL once, then manage locally without routing
 	const getCurrentTab = () => {
 		const path = location.pathname;
 		const tabFromUrl = path.split("/setting/")[1] || "general";
-		// if mcp_market, return mcp
-		if (tabFromUrl === "mcp_market") {
-			return "mcp";
-		}
+		if (tabFromUrl === "mcp_market") return "mcp";
 		return settingMenus.find((menu) => menu.id === tabFromUrl)?.id || "general";
 	};
 
 	const [activeTab, setActiveTab] = useState(getCurrentTab);
 
-	// Listen to path changes, update activeTab
-	useEffect(() => {
-		const newTab = getCurrentTab();
-		if (newTab !== activeTab) {
-			setActiveTab(newTab);
-		}
-	}, [location.pathname]);
-
-	// Switch tabs
+	// Switch tabs locally (no navigation)
 	const handleTabChange = (tabId: string) => {
-		const targetMenu = settingMenus.find((menu) => menu.id === tabId);
-		if (targetMenu) {
-			navigate(targetMenu.path);
-		}
+		setActiveTab(tabId);
 	};
 
 	// Close settings page
@@ -80,43 +71,24 @@ export default function Setting() {
 	};
 
 	return (
-		<div className="max-w-[900px] h-full px-4 m-auto flex flex-col">
-			<div className="h-14 flex items-center justify-between pb-4 border-[0px] border-b border-solid border-b-white-80% flex-shrink-0 flex-grow-0">
-				<div className="text-2xl font-bold leading-4 text-primary">
-					{t("setting.settings")}
-				</div>
-				<div>
-					<Button variant="ghost" size="icon" onClick={handleClose}>
-						<X className="!w-6 !h-6" />
-					</Button>
-				</div>
-			</div>
-			<div className="w-full flex-1 flex  min-h-0">
-				<div className="!w-[222px] h-full flex-shrink-0 flex-grow-0  pt-md pr-4 flex flex-col min-h-0">
-					<div className="h-full overflow-y-auto scrollbar mb-1">
-						<nav className="space-y-1">
-							{settingMenus.map((menu) => {
+		<div className="max-w-[900px] h-auto px-4 m-auto flex flex-col">
+			<div className="w-full h-auto flex px-3">
+					<div className="!w-[222px] flex-shrink-0 flex-grow-0 pt-md pr-4 flex flex-col sticky top-20 self-start">
+						<VerticalNavigation
+							items={settingMenus.map((menu) => {
 								const Icon = menu.icon;
-								return (
-									<button
-										key={menu.id}
-										onClick={() => handleTabChange(menu.id)}
-										className={`w-full flex items-center gap-2 px-2 py-2 text-left rounded-lg transition-colors text-text-body ${
-											activeTab === menu.id
-												? "bg-white-100% "
-												: "bg-transparent hover:bg-bg-fill-transparent"
-										}`}
-									>
-										<Icon className="w-4 h-4 text-icon-primary" />
-										<span className="text-sm font-bold leading-13">
-											{menu.name}
-										</span>
-									</button>
-								);
-							})}
-						</nav>
-					</div>
-					<div className="w-full h-[55px] pt-4 pb-2 flex items-center justify-center border-[0px] border-t border-solid border-white-80% flex-shrink-0 flex-grow-0">
+								return {
+									value: menu.id,
+									label: <span className="text-sm font-bold leading-13">{menu.name}</span>,
+								};
+							}) as VerticalNavItem[]}
+							value={activeTab}
+							onValueChange={handleTabChange}
+							className="w-full h-full flex-1 min-h-0 gap-0"
+							listClassName="w-full h-full overflow-y-auto"
+							contentClassName="hidden"
+						/>
+						<div className="w-full mt-8 pt-4 pb-2 flex items-center justify-center border-[0px] border-t border-solid border-white-80% flex-shrink-0 flex-grow-0">
 						<div className="flex items-center gap-1 leading-9">
 							<img src={vsersionLogo} alt="version-logo" className="h-6" />
 						</div>
@@ -129,9 +101,12 @@ export default function Setting() {
 					</div>
 				</div>
 
-				<div className="flex-1 flex flex-col min-h-0">
-					<div className="max-h-[calc(100vh-120px)] flex-1 overflow-y-auto scrollbar py-md bg-white rounded-lg border border-gray-200">
-						<Outlet />
+				<div className="flex-1 flex flex-col w-full h-auto">
+					<div className="flex flex-col gap-4 pb-md py-md">
+						{activeTab === "general" && <General />}
+						{activeTab === "privacy" && <Privacy />}
+						{activeTab === "models" && <Models />}
+						{activeTab === "mcp" && <MCP />}
 					</div>
 				</div>
 			</div>

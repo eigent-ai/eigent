@@ -358,7 +358,7 @@ module.exports = {
 				},
 				menubutton: {
 					"fill-default": "var(--menubutton-fill-default)",
-					"fill-hover": "var(--menubutton-fill-hover)",
+					"fill-hover": "var(--menubutton-fill-active)",
 					"fill-active": "var(--menubutton-fill-active)",
 					"border-active": "var(--menubutton-border-active)",
 					"border-default": "var(--menubutton-border-default)",
@@ -453,7 +453,7 @@ module.exports = {
 				"surface-action": "var(--surface-action)",
 				"surface-action-hover": "var(--surface-action-hover)",
 				"surface-disabled": "var(--surface-disabled)",
-				"surface-tirtery": "var(--surface-tirtery)",
+				"surface-tertiary": "var(--surface-tertiary)",
 				"surface-card": "var(--surface-card)",
 				"surface-card-hover": "var(--surface-card-hover)",
 				"surface-card-focus": "var(--surface-card-focus)",
@@ -461,6 +461,7 @@ module.exports = {
 
 				"border-primary": "var(--border-primary)",
 				"border-secondary": "var(--border-secondary)",
+				"border-tertiary": "var(--border-tertiary)",
 				"border-information": "var(--border-information)",
 				"border-success": "var(--border-success)",
 				"border-warning": "var(--border-warning)",
@@ -570,6 +571,7 @@ module.exports = {
 				mono: ["SFMono-Regular", "Menlo", "monospace"],
 				inter: ["Inter"],
 				menlo: ["Menlo"],
+				serif: ["Palatino"],
 			},
 			fontSize: {
 				xs: "var(--fontSize-xs, 10px)",

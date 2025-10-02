@@ -381,7 +381,7 @@ export default function SettingMCP() {
 	};
 
 	return (
-		<div className="space-y-md">
+		<div className="flex flex-col gap-4 pb-40">
 			<div className="flex items-center justify-between">
 				<div className="text-base font-bold leading-snug text-text-body">
 					{t("setting.mcp-and-tools")}

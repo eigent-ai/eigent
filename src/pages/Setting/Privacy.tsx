@@ -116,7 +116,7 @@ export default function SettingPrivacy() {
 	};
 
 	return (
-		<div className="pr-2">
+		<div className="flex flex-col gap-4 pb-40">
 			<h2 className="mb-2">{t("setting.data-privacy")}</h2>
 			<p className="mt-2 text-sm">
 				{t("setting.data-privacy-description")}

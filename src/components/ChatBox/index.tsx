@@ -461,7 +461,7 @@ export default function ChatBox(): JSX.Element {
 	]);
 
 	return (
-		<div className="w-full h-full flex flex-col items-center justify-center">
+		<div className="w-full h-full flex-1 flex-col items-center justify-center">
 			{/* <PrivacyDialog
 				open={privacyDialogOpen}
 				onOpenChange={setPrivacyDialogOpen}
@@ -469,7 +469,7 @@ export default function ChatBox(): JSX.Element {
 			{(chatStore.activeTaskId &&
 				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
 			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
-				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
+				<div className="w-full h-full flex-col border border-border-disabled border-solid relative shadow-blur-effect overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div
 						ref={scrollContainerRef}
@@ -758,7 +758,7 @@ export default function ChatBox(): JSX.Element {
 					)}
 				</div>
 			) : (
-				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled border-solid  relative overflow-hidden">
+				<div className="w-full h-full flex items-center border border-border-disabled border-solid  relative overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">

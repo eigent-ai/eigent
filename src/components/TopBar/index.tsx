@@ -11,6 +11,8 @@ import {
 	XCircle,
 	Power,
 	ChevronDown,
+	ChevronLeft,
+	Share,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -19,6 +21,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
 import giftIcon from "@/assets/gift.svg";
+import giftwhiteIcon from "@/assets/gift-white.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
@@ -195,7 +198,7 @@ function HeaderWin() {
 
 	return (
 		<div
-			className="flex !h-9 items-center justify-between pl-2 py-1 z-50"
+			className="flex !h-9 items-center justify-between pl-2 py-1 z-50 bg-bg-page"
 			id="titlebar"
 			ref={titlebarRef}
 		>
@@ -211,7 +214,7 @@ function HeaderWin() {
 			{/* center */}
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
-					<div className="flex-1 pt-1 pr-sm flex justify-start items-end">
+					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
 						<Button
 							onClick={() => navigate("/history")}
 							variant="ghost"
@@ -222,7 +225,15 @@ function HeaderWin() {
 						</Button>
 					</div>
 					{location.pathname !== "/history" && (
-						<div className="flex items-center">
+						<div className="flex items-center mr-1">
+						<Button
+							 variant="ghost"
+							 size="icon"
+							 className="no-drag"
+							 onClick={() => navigate("/history")}
+									>
+									<ChevronLeft className="w-4 h-4" />
+						</Button>
 						<Button
 							 variant="ghost"
 							 size="icon"
@@ -300,20 +311,33 @@ function HeaderWin() {
 							End Project
 						</Button>
 						<Button
-							onClick={() => navigate("/setting")}
+							onClick={() => handleShare(chatStore.activeTaskId as string)}
 							variant="ghost"
 							size="icon"
 							className="no-drag"
 						>
-							<Settings className="w-4 h-4" />
+							<Share />
 						</Button>
+					</div>
+				)}
+				{location.pathname === "/history" && (
+					<div
+						className={`${
+							platform === "darwin" && "pr-2"
+						} flex h-full items-center space-x-1 z-50 relative no-drag`}
+					>
 						<Button
-							onClick={() => handleShare(chatStore.activeTaskId as string)}
-							variant="information"
+							onClick={getReferFriendsLink}
+							variant="outline"
 							size="xs"
-							className="no-drag !text-button-fill-information-foreground"
+							className="no-drag"
 						>
-							Share
+							<img
+								src={giftIcon}
+								alt="gift-icon"
+								className="w-4 h-4"
+							/>
+							{t("layout.refer-friends")}
 						</Button>
 					</div>
 				)}

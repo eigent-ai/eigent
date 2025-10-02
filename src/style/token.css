@@ -333,6 +333,7 @@
     --menubutton-border-default: var(--border-transparent);
     --menubutton-border-hover: var(--border-disabled);
     --menubutton-disabled: 1.25rem;
+    
     /* Dropdown Component */
     --dropdown-bg: var(--fill-default);
     --dropdown-border: var(--border-secondary);
@@ -360,14 +361,14 @@
     --tag-text-success: var(--text-success);
 
     /* Message Component */
-    --message-fill-default: var(--surface-tirtery);
+    --message-fill-default: var(--surface-tertiary);
     --message-fill-hover: var(--surface-secondary);
     --message-fill-active: var(--surface-primary);
     --message-border-default: var(--border-disabled);
     --message-border-focus: var(--border-focus);
 
     /* Task Component */
-    --task-surface: var(--surface-tirtery);
+    --task-surface: var(--surface-tertiary);
     --task-border-default: var(--border-disabled);
     --task-border-focus: var(--border-focus);
     --task-fill-default: var(--fill-fill-tertiary);
@@ -380,7 +381,7 @@
     --task-border-focus-error: var(--border-cuation);
 
     /* Worker Component */
-    --worker-surface-primary: var(--surface-tirtery);
+    --worker-surface-primary: var(--surface-tertiary);
     --worker-border-default: var(--border-disabled);
     --worker-border-focus: var(--border-focus);
     --worker-surface-secondary: var(--surface-disabled);
@@ -440,13 +441,14 @@
     --surface-action: var(--colors-primary-2);
     --surface-action-hover: var(--colors-primary-1);
     --surface-disabled: var(--colors-off-white-30);
-    --surface-tirtery: var(--colors-white-100);
+    --surface-tertiary: var(--colors-white-100);
     --surface-card: var(--colors-off-white-30);
     --surface-card-hover: var(--colors-off-white-80);
     --surface-card-focus: var(--colors-white-100);
     --surface-card-default: 1.25rem;
     --border-primary: var(--colors-primary-4);
     --border-secondary: var(--colors-primary-3);
+    --border-tertiary: var(--colors-primary-1);
     --border-information: var(--colors-blue-default);
     --border-success: var(--colors-green-default);
     --border-warning: var(--colors-yellow-default);
@@ -556,13 +558,14 @@
     --surface-action: var(--colors-primary-2);
     --surface-action-hover: var(--colors-primary-1);
     --surface-disabled: var(--colors-off-white-30);
-    --surface-tirtery: var(--colors-white-100);
+    --surface-tertiary: var(--colors-white-100);
     --surface-card: var(--colors-off-white-30);
     --surface-card-hover: var(--colors-off-white-80);
     --surface-card-focus: var(--colors-white-100);
     --surface-card-default: 1.25rem;
     --border-primary: var(--colors-primary-4);
     --border-secondary: var(--colors-primary-3);
+    --border-tertiary: var(--colors-primary-1);
     --border-information: var(--colors-blue-default);
     --border-success: var(--colors-green-default);
     --border-warning: var(--colors-yellow-default);

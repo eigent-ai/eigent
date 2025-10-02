@@ -173,19 +173,16 @@ export default function Home() {
 			<div className="h-full flex flex-row">
 				<ReactFlowProvider>
 						<div className="flex-1 min-w-0 flex items-center justify-center gap-2 relative">
-							<ResizablePanelGroup direction="horizontal">
+						<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
-						<div
-							className="w-full h-full flex flex-col items-center justify-center transition-all duration-300"
-						>
 							<ChatBox />
-						</div>
+
 						</ResizablePanel>
 							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
 						<ResizablePanel>
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							?.activeWorkSpace && (
-							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300 bg-surface-secondary border border-border-disabled rounded-2xl">
+							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300">
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
 								]?.taskAssigning.find(
@@ -271,10 +268,10 @@ export default function Home() {
 							</div>
 						)}
 							</ResizablePanel>
-							{/* Fixed sidebar on the right */}
+							{/* Fixed sidebar on the right
 							<div className="h-full z-30">
 								<SideBar />
-							</div>
+							</div>*/}
 							</ResizablePanelGroup>
 					</div>
 			</ReactFlowProvider>
