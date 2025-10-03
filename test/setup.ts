@@ -7,6 +7,13 @@ global.electronAPI = {
   // Add mock implementations for electron preload APIs
 }
 
+// Mock ipcRenderer
+global.ipcRenderer = {
+  invoke: vi.fn(),
+  on: vi.fn(),
+  removeAllListeners: vi.fn(),
+}
+
 // Mock environment variables
 process.env.NODE_ENV = 'test'
 
@@ -20,6 +27,13 @@ global.waitFor = async (callback: () => boolean, timeout = 5000) => {
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   throw new Error(`Timeout waiting for condition after ${timeout}ms`)
+}
+
+// Add type declarations for globals
+declare global {
+  var electronAPI: any
+  var ipcRenderer: any
+  var waitFor: (callback: () => boolean, timeout?: number) => Promise<void>
 }
 
 // Setup DOM environment
