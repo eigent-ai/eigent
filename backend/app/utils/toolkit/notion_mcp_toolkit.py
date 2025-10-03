@@ -42,9 +42,7 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
             List[FunctionTool]: List of available tools.
         """
         all_tools = []
-        a =1
         for client in self.clients:
-            a+=1
             try:
                 original_build_schema = client._build_tool_schema
 
@@ -68,13 +66,12 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
             except Exception as e:
 
                 logger.error(f"Failed to get tools from client: {e}")
-        print("ssssssss",a)
         return all_tools
 
     def _build_custom_tool_schema(self, mcp_tool, original_build_schema):
         r"""Build tool schema with custom modifications."""
         schema = original_build_schema(mcp_tool)
-        # self._customize_function_parameters(schema)
+        self._customize_function_parameters(schema)
         return schema
 
     def _customize_function_parameters(self, schema: Dict[str, Any]) -> None:
