@@ -7,7 +7,14 @@ export const ENV_END = '# === MCP INTEGRATION ENV END ===';
 
 export function getEnvPath(email: string) {
   const tempEmail = email.split("@")[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(".", "_")
-  const envPath = path.join(os.homedir(), '.eigent', '.env.' + tempEmail)
+  const eigentDir = path.join(os.homedir(), '.eigent')
+
+  // Ensure .eigent directory exists
+  if (!fs.existsSync(eigentDir)) {
+    fs.mkdirSync(eigentDir, { recursive: true });
+  }
+
+  const envPath = path.join(eigentDir, '.env.' + tempEmail)
   const defaultEnv = path.join(process.resourcesPath, 'backend', '.env');
   if (!fs.existsSync(envPath) && fs.existsSync(defaultEnv)) {
     fs.copyFileSync(defaultEnv, envPath);

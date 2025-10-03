@@ -21,11 +21,20 @@ export const useInstallationSetup = () => {
       try {
         console.log('[useInstallationSetup] Checking tool installation status...');
         const result = await window.ipcRenderer.invoke("check-tool-installed");
-        
+
+        console.log('[useInstallationSetup] Tool check result:', result, 'initState:', initState);
+
+        // If tools are NOT installed and we're in done state, go back to carousel
         if (result.success && initState === "done" && !result.isInstalled) {
           console.log('[useInstallationSetup] Tool not installed, setting initState to carousel');
           setInitState("carousel");
-        }        
+        }
+
+        // If tools ARE installed and we're in carousel state, go to done
+        if (result.success && initState === "carousel" && result.isInstalled) {
+          console.log('[useInstallationSetup] Tools installed but initState is carousel, setting to done');
+          setInitState("done");
+        }
       } catch (error) {
         console.error("[useInstallationSetup] Tool installation check failed:", error);
       }

@@ -3,7 +3,7 @@ import path from 'node:path'
 import log from 'electron-log'
 import { getMainWindow } from './init'
 import fs from 'node:fs'
-import { getBackendPath, getBinaryPath, getCachePath, isBinaryExists, runInstallScript } from './utils/process'
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, cleanupOldVenvs, isBinaryExists, runInstallScript } from './utils/process'
 import { spawn } from 'child_process'
 import { safeMainWindowSend } from './utils/safeWebContentsSend'
 
@@ -59,33 +59,47 @@ Promise<PromiseReturnType> => {
     try {
       const versionExists:boolean = checkInstallOperations.getSavedVersion();
 
+      // Check if command tools are installed
+      const uvExists = await isBinaryExists('uv');
+      const bunExists = await isBinaryExists('bun');
+      const toolsMissing = !uvExists || !bunExists;
+
       // If version file does not exist or version does not match, reinstall dependencies
-      if (forceInstall || !versionExists || savedVersion !== currentVersion) {
-        log.info('[DEPS INSTALL] version changed, prepare to reinstall uv dependencies...', {
-          currentVersion,
-          savedVersion: versionExists ? savedVersion : 'none',
-          reason: !versionExists ? 'version file not exist' : 'version not match'
-        });
+      // Or if command tools are missing, need to install them
+      if (forceInstall || !versionExists || savedVersion !== currentVersion || toolsMissing) {
+        if (toolsMissing) {
+          log.info('[DEPS INSTALL] Command tools missing, starting installation...', {
+            uvExists,
+            bunExists
+          });
+        } else {
+          log.info('[DEPS INSTALL] version changed, prepare to reinstall uv dependencies...', {
+            currentVersion,
+            savedVersion: versionExists ? savedVersion : 'none',
+            reason: !versionExists ? 'version file not exist' : 'version not match'
+          });
+        }
 
         // Notify frontend to update
         checkInstallOperations.handleUpdateNotification(versionExists);
 
-        // Update version file
-        checkInstallOperations.createVersionFile();
-
-        // Install dependencies
-        const result = await installDependencies();
+        // Install dependencies (version.txt will be updated AFTER successful install)
+        const result = await installDependencies(currentVersion);
         if (!result.success) {
           log.error(' install dependencies failed');
           resolve({ message: `Install dependencies failed, msg ${result.message}`, success: false });
           return
         }
+
+        // Update version file ONLY after successful installation
+        checkInstallOperations.createVersionFile();
+
         resolve({ message: "Dependencies installed successfully after update", success: true });
         log.info('[DEPS INSTALL] install dependencies complete');
         return
       } else {
-        log.info('[DEPS INSTALL] version not changed, skip install dependencies', { currentVersion });
-        resolve({ message: "Version not changed, skipped installation", success: true });
+        log.info('[DEPS INSTALL] version not changed and tools installed, skip install dependencies', { currentVersion });
+        resolve({ message: "Version not changed and tools installed, skipped installation", success: true });
         return
       }
     } catch (error) {
@@ -148,6 +162,13 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 let uv_path:string;
 const mainWindow = getMainWindow();
 const backendPath = getBackendPath();
+
+// Ensure backend directory exists
+if (!fs.existsSync(backendPath)) {
+  log.info(`Creating backend directory: ${backendPath}`);
+  fs.mkdirSync(backendPath, { recursive: true });
+}
+
 const installingLockPath = path.join(backendPath, 'uv_installing.lock')
 const installedLockPath = path.join(backendPath, 'uv_installed.lock')
 // const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
@@ -185,9 +206,13 @@ export async function getInstallationStatus(): Promise<{
 
 class InstallLogs {
   private node_process;
+  private version: string;
 
-  constructor(extraArgs:string[]) {
-    console.log('start install dependencies', extraArgs)
+  constructor(extraArgs:string[], version: string) {
+    console.log('start install dependencies', extraArgs, 'version:', version)
+    const venvPath = getVenvPath(version);
+    this.version = version;
+
     this.node_process = spawn(uv_path, [
         'sync',
         '--no-dev',
@@ -198,6 +223,7 @@ class InstallLogs {
             ...process.env,
             UV_TOOL_DIR: getCachePath('uv_tool'),
             UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+            UV_PROJECT_ENVIRONMENT: venvPath,
         }
     })
   }
@@ -256,8 +282,8 @@ class InstallLogs {
   }
 }
 
-const runInstall = (extraArgs: string[]) => {
-  const installLogs = new InstallLogs(extraArgs);
+const runInstall = (extraArgs: string[], version: string) => {
+  const installLogs = new InstallLogs(extraArgs, version);
   return new Promise<PromiseReturnType>((resolveInner, rejectInner) => {
     try {
         installLogs.onStdout();
@@ -271,7 +297,7 @@ const runInstall = (extraArgs: string[]) => {
           })
         })
     } catch (err) {
-        log.error('run install failed', err)    
+        log.error('run install failed', err)
         // Clean up uv_installing.lock file if installation fails
         InstallLogs.cleanLockPath();
         rejectInner({ message: `Installation failed: ${err}`, success: false })
@@ -279,14 +305,23 @@ const runInstall = (extraArgs: string[]) => {
   })
 }
 
-export async function installDependencies(): Promise<PromiseReturnType> {
+export async function installDependencies(version: string): Promise<PromiseReturnType> {
   uv_path = await getBinaryPath('uv');
+  const venvPath = getVenvPath(version);
+
   const handleInstallOperations = {
     spawnBabel: (message:"mirror"|"main"="main") => {
       fs.writeFileSync(installedLockPath, '')
       log.info('[DEPS INSTALL] Script completed successfully')
-      console.log(`Install Dependencies completed ${message}`)
-      spawn(uv_path, ['run', 'task', 'babel'], { cwd: backendPath })
+      console.log(`Install Dependencies completed ${message} for version ${version}`)
+      console.log(`Virtual environment path: ${venvPath}`)
+      spawn(uv_path, ['run', 'task', 'babel'], {
+        cwd: backendPath,
+        env: {
+          ...process.env,
+          UV_PROJECT_ENVIRONMENT: venvPath,
+        }
+      })
     },
     notifyInstallDependenciesPage: ():boolean => {
       const success = safeMainWindowSend('install-dependencies-start');
@@ -315,9 +350,15 @@ export async function installDependencies(): Promise<PromiseReturnType> {
     InstallLogs.setLockPath();
 
     // try default install
-    const installSuccess = await runInstall([])
+    const installSuccess = await runInstall([], version)
     if (installSuccess.success) {
         handleInstallOperations.spawnBabel()
+
+        // Clean up old venvs after successful installation
+        log.info('[DEPS INSTALL] Cleaning up old virtual environments...')
+        await cleanupOldVenvs(version)
+        log.info('[DEPS INSTALL] Old venvs cleanup completed')
+
         resolve({ message: "Dependencies installed successfully", success: true })
         return
     }
@@ -325,10 +366,16 @@ export async function installDependencies(): Promise<PromiseReturnType> {
     // try mirror install
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
     let mirrorInstallSuccess: PromiseReturnType = { message: "", success: false }
-    mirrorInstallSuccess = (timezone === 'Asia/Shanghai')? await runInstall(proxyArgs) :await runInstall([])
+    mirrorInstallSuccess = (timezone === 'Asia/Shanghai')? await runInstall(proxyArgs, version) :await runInstall([], version)
 
     if (mirrorInstallSuccess.success) {
         handleInstallOperations.spawnBabel("mirror")
+
+        // Clean up old venvs after successful installation
+        log.info('[DEPS INSTALL] Cleaning up old virtual environments...')
+        await cleanupOldVenvs(version)
+        log.info('[DEPS INSTALL] Old venvs cleanup completed')
+
         resolve({ message: "Dependencies installed successfully with mirror", success: true })
     } else {
         log.error('Both default and mirror install failed')
