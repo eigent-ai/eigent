@@ -21,7 +21,7 @@ class McpSearchToolkit(BaseToolkit, AbstractToolkit):
         page: f"keyword: {keyword}, size: {size}, page: {page}",
         return_msg=lambda res: f"Search {len(res)} results: ",
     )
-    async def search(
+    async def search_mcp_from_url(
         self,
         keyword: str,
         size: int = 15,
@@ -56,4 +56,4 @@ class McpSearchToolkit(BaseToolkit, AbstractToolkit):
             return data
 
     def get_tools(self) -> List[FunctionTool]:
-        return [FunctionTool(self.search)]
+        return [FunctionTool(self.search_mcp_from_url)]
