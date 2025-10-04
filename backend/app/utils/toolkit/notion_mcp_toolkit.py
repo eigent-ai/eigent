@@ -36,7 +36,7 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
         super().__init__(config_dict=config_dict, timeout=timeout)
 
     def get_tools(self) -> List[FunctionTool]:
-        r"""Returns a list of tools provided by the OrigeneToolkit.
+        r"""Returns a list of tools provided by the NotionMCPToolkit.
 
         Returns:
             List[FunctionTool]: List of available tools.
@@ -64,7 +64,6 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
                 client._build_tool_schema = original_build_schema  # type: ignore[method-assign]
 
             except Exception as e:
-
                 logger.error(f"Failed to get tools from client: {e}")
         return all_tools
 
@@ -76,7 +75,7 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
 
     def _customize_function_parameters(self, schema: Dict[str, Any]) -> None:
         r"""Customize function parameters for specific functions.
-        
+
         This method allows modifying parameter descriptions or other schema
         attributes for specific functions.
         """
@@ -84,7 +83,7 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
         function_name = function_info.get("name", "")
         parameters = function_info.get("parameters", {})
         properties = parameters.get("properties", {})
-        
+
         # Modify the notion-create-pages function to make parent optional
         if function_name == "notion-create-pages":
             if "parent" in properties:
