@@ -383,11 +383,17 @@ export async function installDependencies(version: string): Promise<PromiseRetur
         }
 
         // Run npm install
+        const npmCacheDir = path.join(venvPath, '.npm-cache');
+        if (!fs.existsSync(npmCacheDir)) {
+          fs.mkdirSync(npmCacheDir, { recursive: true });
+        }
+        
         const npmInstall = spawn(npmCommand[0], [...npmCommand.slice(1), 'install'], {
           cwd: toolkitPath,
           env: {
             ...process.env,
             UV_PROJECT_ENVIRONMENT: venvPath,
+            npm_config_cache: npmCacheDir,
           },
           shell: true // Important for Windows
         });
@@ -436,6 +442,7 @@ export async function installDependencies(version: string): Promise<PromiseRetur
           env: {
             ...process.env,
             UV_PROJECT_ENVIRONMENT: venvPath,
+            npm_config_cache: npmCacheDir,
           },
           shell: true // Important for Windows
         });

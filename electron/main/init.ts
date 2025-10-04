@@ -153,11 +153,17 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         setPort(port);
     }
 
+    const npmCacheDir = path.join(venvPath, '.npm-cache');
+    if (!fs.existsSync(npmCacheDir)) {
+        fs.mkdirSync(npmCacheDir, { recursive: true });
+    }
+
     const env = {
         ...process.env,
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         UV_PROJECT_ENVIRONMENT: venvPath,
+        npm_config_cache: npmCacheDir,
     }
 
     //Redirect output
