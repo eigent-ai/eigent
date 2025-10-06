@@ -329,6 +329,199 @@ export async function installDependencies(version: string): Promise<PromiseRetur
         log.warn('[DEPS INSTALL] Main window not available, continuing installation without UI updates');
       }
       return success;
+    },
+    installHybridBrowserDependencies: async (): Promise<boolean> => {
+      try {
+        // Find the hybrid_browser_toolkit ts directory in the virtual environment
+        // Need to determine the Python version to construct the correct path
+        let sitePackagesPath: string | null = null;
+        const libPath = path.join(venvPath, 'lib');
+
+        // Try to find the site-packages directory (it varies by Python version)
+        if (fs.existsSync(libPath)) {
+          const libContents = fs.readdirSync(libPath);
+          const pythonDir = libContents.find(name => name.startsWith('python'));
+          if (pythonDir) {
+            sitePackagesPath = path.join(libPath, pythonDir, 'site-packages');
+          }
+        }
+
+        if (!sitePackagesPath || !fs.existsSync(sitePackagesPath)) {
+          log.warn('[DEPS INSTALL] site-packages directory not found in venv, skipping npm install');
+          return true; // Not an error if the venv structure is different
+        }
+
+        const toolkitPath = path.join(sitePackagesPath, 'camel', 'toolkits', 'hybrid_browser_toolkit', 'ts');
+
+        if (!fs.existsSync(toolkitPath)) {
+          log.warn('[DEPS INSTALL] hybrid_browser_toolkit ts directory not found at ' + toolkitPath + ', skipping npm install');
+          return true; // Not an error if the toolkit isn't installed
+        }
+
+        log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit npm dependencies...');
+        safeMainWindowSend('install-dependencies-log', {
+          type: 'stdout',
+          data: 'Installing browser toolkit dependencies...\n'
+        });
+
+        // Try to find npm - first try system npm, then try uv run npm
+        let npmCommand: string[];
+        const testNpm = spawn('npm', ['--version'], { shell: true });
+        const npmExists = await new Promise<boolean>(resolve => {
+          testNpm.on('close', (code) => resolve(code === 0));
+          testNpm.on('error', () => resolve(false));
+        });
+
+        if (npmExists) {
+          // Use system npm directly
+          npmCommand = ['npm'];
+          log.info('[DEPS INSTALL] Using system npm for installation');
+        } else {
+          // Try uv run npm (might not work if nodejs-wheel isn't properly set up)
+          npmCommand = [uv_path, 'run', 'npm'];
+          log.info('[DEPS INSTALL] Attempting to use uv run npm');
+        }
+
+        // Run npm install
+        const npmCacheDir = path.join(venvPath, '.npm-cache');
+        if (!fs.existsSync(npmCacheDir)) {
+          fs.mkdirSync(npmCacheDir, { recursive: true });
+        }
+        
+        const npmInstall = spawn(npmCommand[0], [...npmCommand.slice(1), 'install'], {
+          cwd: toolkitPath,
+          env: {
+            ...process.env,
+            UV_PROJECT_ENVIRONMENT: venvPath,
+            npm_config_cache: npmCacheDir,
+          },
+          shell: true // Important for Windows
+        });
+
+        await new Promise<void>((resolve, reject) => {
+          if (npmInstall.stdout) {
+            npmInstall.stdout.on('data', (data) => {
+              log.info(`[DEPS INSTALL] npm install: ${data}`);
+              safeMainWindowSend('install-dependencies-log', { type: 'stdout', data: data.toString() });
+            });
+          }
+
+          if (npmInstall.stderr) {
+            npmInstall.stderr.on('data', (data) => {
+              log.warn(`[DEPS INSTALL] npm install stderr: ${data}`);
+              safeMainWindowSend('install-dependencies-log', { type: 'stderr', data: data.toString() });
+            });
+          }
+
+          npmInstall.on('close', (code) => {
+            if (code === 0) {
+              log.info('[DEPS INSTALL] npm install completed successfully');
+              resolve();
+            } else {
+              log.error(`[DEPS INSTALL] npm install failed with code ${code}`);
+              reject(new Error(`npm install failed with code ${code}`));
+            }
+          });
+
+          npmInstall.on('error', (err) => {
+            log.error(`[DEPS INSTALL] npm install process error: ${err}`);
+            reject(err);
+          });
+        });
+
+        // Run npm build (use the same npm command as install)
+        log.info('[DEPS INSTALL] Building hybrid_browser_toolkit TypeScript...');
+        safeMainWindowSend('install-dependencies-log', {
+          type: 'stdout',
+          data: 'Building browser toolkit TypeScript...\n'
+        });
+
+        const buildArgs = npmCommand[0] === 'npm' ? ['run', 'build'] : [...npmCommand.slice(1), 'run', 'build'];
+        const npmBuild = spawn(npmCommand[0], buildArgs, {
+          cwd: toolkitPath,
+          env: {
+            ...process.env,
+            UV_PROJECT_ENVIRONMENT: venvPath,
+            npm_config_cache: npmCacheDir,
+          },
+          shell: true // Important for Windows
+        });
+
+        await new Promise<void>((resolve, reject) => {
+          if (npmBuild.stdout) {
+            npmBuild.stdout.on('data', (data) => {
+              log.info(`[DEPS INSTALL] npm build: ${data}`);
+              safeMainWindowSend('install-dependencies-log', { type: 'stdout', data: data.toString() });
+            });
+          }
+
+          if (npmBuild.stderr) {
+            npmBuild.stderr.on('data', (data) => {
+              // TypeScript build warnings are common, don't treat as errors
+              log.info(`[DEPS INSTALL] npm build output: ${data}`);
+              safeMainWindowSend('install-dependencies-log', { type: 'stdout', data: data.toString() });
+            });
+          }
+
+          npmBuild.on('close', (code) => {
+            if (code === 0) {
+              log.info('[DEPS INSTALL] TypeScript build completed successfully');
+              resolve();
+            } else {
+              log.error(`[DEPS INSTALL] TypeScript build failed with code ${code}`);
+              reject(new Error(`TypeScript build failed with code ${code}`));
+            }
+          });
+
+          npmBuild.on('error', (err) => {
+            log.error(`[DEPS INSTALL] npm build process error: ${err}`);
+            reject(err);
+          });
+        });
+
+        // Optionally install Playwright browsers
+        try {
+          log.info('[DEPS INSTALL] Installing Playwright browsers...');
+          const npxCommand = npmCommand[0] === 'npm' ? ['npx'] : [uv_path, 'run', 'npx'];
+          const playwrightInstall = spawn(npxCommand[0], [...npxCommand.slice(1), 'playwright', 'install'], {
+            cwd: toolkitPath,
+            env: {
+              ...process.env,
+              UV_PROJECT_ENVIRONMENT: venvPath,
+            },
+            shell: true
+          });
+
+          await new Promise<void>((resolve) => {
+            playwrightInstall.on('close', (code) => {
+              if (code === 0) {
+                log.info('[DEPS INSTALL] Playwright browsers installed successfully');
+                // Create marker file
+                const markerPath = path.join(toolkitPath, '.playwright_installed');
+                fs.writeFileSync(markerPath, 'installed');
+              } else {
+                log.warn('[DEPS INSTALL] Playwright installation failed, but continuing anyway');
+              }
+              resolve();
+            });
+
+            playwrightInstall.on('error', (err) => {
+              log.warn('[DEPS INSTALL] Playwright installation process error:', err);
+              resolve(); // Non-critical, continue
+            });
+          });
+        } catch (error) {
+          log.warn('[DEPS INSTALL] Failed to install Playwright browsers:', error);
+          // Non-critical, continue
+        }
+
+        log.info('[DEPS INSTALL] hybrid_browser_toolkit dependencies installed successfully');
+        return true;
+      } catch (error) {
+        log.error('[DEPS INSTALL] Failed to install hybrid_browser_toolkit dependencies:', error);
+        // Don't fail the entire installation if this fails
+        return false;
+      }
     }
   }
 
@@ -352,6 +545,10 @@ export async function installDependencies(version: string): Promise<PromiseRetur
     // try default install
     const installSuccess = await runInstall([], version)
     if (installSuccess.success) {
+        // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
+        log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...')
+        await handleInstallOperations.installHybridBrowserDependencies()
+
         handleInstallOperations.spawnBabel()
 
         // Clean up old venvs after successful installation
@@ -369,6 +566,10 @@ export async function installDependencies(version: string): Promise<PromiseRetur
     mirrorInstallSuccess = (timezone === 'Asia/Shanghai')? await runInstall(proxyArgs, version) :await runInstall([], version)
 
     if (mirrorInstallSuccess.success) {
+        // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
+        log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...')
+        await handleInstallOperations.installHybridBrowserDependencies()
+
         handleInstallOperations.spawnBabel("mirror")
 
         // Clean up old venvs after successful installation
