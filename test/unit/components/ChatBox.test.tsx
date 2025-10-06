@@ -737,11 +737,21 @@ describe('ChatBox Component', () => {
     })
 
     it('should handle privacy fetch errors', async () => {
+      // Mock console.error to suppress expected error logs
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
       // Mock the fetch to reject properly for testing error handling
       mockProxyFetchGet.mockRejectedValue(new Error('Privacy fetch failed'))
 
       // Rendering should not throw even with fetch error
       expect(() => renderChatBox()).not.toThrow()
+
+      // Wait for the promise to settle
+      await waitFor(() => {
+        expect(consoleErrorSpy).toHaveBeenCalled()
+      })
+
+      consoleErrorSpy.mockRestore()
     })
   })
 })
