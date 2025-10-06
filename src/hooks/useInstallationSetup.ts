@@ -41,16 +41,20 @@ export const useInstallationSetup = () => {
     };
 
     const checkBackendStatus = async() => {
-      // Also check if installation is currently in progress
-      const installationStatus = await window.electronAPI.getInstallationStatus();
-      console.log('[useInstallationSetup] Installation status check:', installationStatus);
-      
-      if (installationStatus.success && installationStatus.isInstalling) {
-        console.log('[useInstallationSetup] Installation in progress, starting frontend state');
-        startInstallation();
+      try {
+        // Also check if installation is currently in progress
+        const installationStatus = await window.electronAPI.getInstallationStatus();
+        console.log('[useInstallationSetup] Installation status check:', installationStatus);
+
+        if (installationStatus.success && installationStatus.isInstalling) {
+          console.log('[useInstallationSetup] Installation in progress, starting frontend state');
+          startInstallation();
+        }
+      } catch (err) {
+        console.error('[useInstallationSetup] Failed to check installation status:', err);
       }
     }
-    
+
     checkToolInstalled();
     checkBackendStatus();
   }, [initState, setInitState, startInstallation]);
