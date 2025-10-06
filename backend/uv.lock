@@ -240,7 +240,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.76a6" },
+    { name = "camel-ai", extras = ["eigent"], specifier = ">=0.2.76a11" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
@@ -324,7 +324,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.76a7"
+version = "0.2.76a12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -337,10 +337,11 @@ dependencies = [
     { name = "psutil" },
     { name = "pydantic" },
     { name = "tiktoken" },
+    { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/29/21de5a8db6b7aeabf4b609e47f290b2e9691881710e3912e77bf85c99d90/camel_ai-0.2.76a7.tar.gz", hash = "sha256:eca5315772b4a4242fe00a50a9067804c58c8e03795f9982072565b8002fe822", size = 952732, upload-time = "2025-09-26T09:14:26.227Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/0b/9308af994f5d0fa71f4c01d947942c06564632ef52041d0096caa3bbfdd4/camel_ai-0.2.76a12.tar.gz", hash = "sha256:75305b2eb2380644e313d0397e923dedfab1cadcf6e240864d0a887dfa96cbab", size = 950257, upload-time = "2025-10-05T10:22:22.672Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/21/c5c4bd452315d962d3027d925c201202fc876f36b2af43dbaca4832ab755/camel_ai-0.2.76a7-py3-none-any.whl", hash = "sha256:044174949528034dacb3e4a8b20b35ee276c7a9ff150710e7b56f8f8ad495e2d", size = 1399149, upload-time = "2025-09-26T09:14:23.562Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/8d/dbf712ab093e0980335a7f2780516918a188d9a28d8cae66171a17b730e5/camel_ai-0.2.76a12-py3-none-any.whl", hash = "sha256:1d2b987ec43101b266339a1b249cebc71315513047a1ddb4c460814a3d80c560", size = 1400003, upload-time = "2025-10-05T10:22:20.035Z" },
 ]
 
 [package.optional-dependencies]
@@ -351,6 +352,8 @@ eigent = [
     { name = "exa-py" },
     { name = "ffmpeg-python" },
     { name = "google-api-python-client" },
+    { name = "google-auth-httplib2" },
+    { name = "google-auth-oauthlib" },
     { name = "imageio", extra = ["pyav"] },
     { name = "markitdown", extra = ["all"] },
     { name = "mcp-server-fetch" },
@@ -843,6 +846,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/56/be/217a598a818567b28e859ff087f347475c807a5649296fb5a817c58dacef/google-auth-httplib2-0.2.0.tar.gz", hash = "sha256:38aa7badf48f974f1eb9861794e9c0cb2a0511a4ec0679b1f886d108f5640e05", size = 10842, upload-time = "2023-12-12T17:40:30.722Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/8a/fe34d2f3f9470a27b01c9e76226965863f153d5fbe276f83608562e49c04/google_auth_httplib2-0.2.0-py2.py3-none-any.whl", hash = "sha256:b65a0a2123300dd71281a7bf6e64d65a0759287df52729bdd1ae2e47dc311a3d", size = 9253, upload-time = "2023-12-12T17:40:13.055Z" },
+]
+
+[[package]]
+name = "google-auth-oauthlib"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-auth" },
+    { name = "requests-oauthlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/0f/1772edb8d75ecf6280f1c7f51cbcebe274e8b17878b382f63738fd96cee5/google_auth_oauthlib-1.2.1.tar.gz", hash = "sha256:afd0cad092a2eaa53cd8e8298557d6de1034c6cb4a740500b5357b648af97263", size = 24970, upload-time = "2024-07-08T23:11:24.377Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/8e/22a28dfbd218033e4eeaf3a0533b2b54852b6530da0c0fe934f0cc494b29/google_auth_oauthlib-1.2.1-py2.py3-none-any.whl", hash = "sha256:2d58a27262d55aa1b87678c3ba7142a080098cbc2024f903c62355deb235d91f", size = 24930, upload-time = "2024-07-08T23:11:23.038Z" },
 ]
 
 [[package]]
