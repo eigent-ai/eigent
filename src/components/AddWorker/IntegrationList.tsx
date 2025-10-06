@@ -15,6 +15,7 @@ interface IntegrationItem {
 	name: string;
 	desc: string;
 	env_vars: string[];
+	toolkit?: string;  // Add toolkit field
 	onInstall: () => void | Promise<void>;
 }
 
@@ -316,8 +317,11 @@ export default function IntegrationList({
 									"Github",
 								].includes(item.name)
 							) {
-								if (item.env_vars.length === 0 || isInstalled) {
-									addOption(item, true);
+                                if (item.env_vars.length === 0 || isInstalled) {
+                                    // Ensure toolkit field is passed and normalized for known cases
+                                    const normalizedToolkit =
+                                        item.name === "Notion" ? "notion_mcp_toolkit" : item.toolkit;
+                                    addOption({ ...item, toolkit: normalizedToolkit }, true);
 								} else {
 									handleInstall(item);
 								}
