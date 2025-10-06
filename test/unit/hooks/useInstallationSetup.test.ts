@@ -286,6 +286,9 @@ describe('useInstallationSetup Hook', () => {
     })
 
     it('should handle installation status check failure', async () => {
+      // Mock console.error to suppress expected error logs
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
       electronAPI.getInstallationStatus.mockRejectedValue(new Error('Status check failed'))
 
       renderHook(() => useInstallationSetup())
@@ -294,6 +297,13 @@ describe('useInstallationSetup Hook', () => {
       await vi.waitFor(() => {
         expect(electronAPI.getInstallationStatus).toHaveBeenCalled()
       })
+
+      // Wait for error to be logged
+      await vi.waitFor(() => {
+        expect(consoleErrorSpy).toHaveBeenCalled()
+      })
+
+      consoleErrorSpy.mockRestore()
     })
   })
 

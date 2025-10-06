@@ -2,6 +2,36 @@
 import { vi } from 'vitest'
 import '@testing-library/jest-dom'
 
+// Mock react-i18next
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => {
+      // Map translation keys to English text
+      const translations: Record<string, string> = {
+        'chat.welcome-to-eigent': 'Welcome to Eigent',
+        'chat.how-can-i-help-you': 'How can I help you today?',
+        'chat.palm-springs-tennis-trip-planner': 'Palm Springs Tennis Trip Planner',
+        'chat.bank-transfer-csv-analysis-and-visualization': 'Bank Transfer CSV Analysis and Visualization',
+        'chat.find-duplicate-files-in-downloads-folder': 'Find Duplicate Files in Downloads Folder',
+        'setting.search-mcp': 'Search MCPs',
+        'chat.by-messaging-eigent': 'By messaging Eigent, you agree to our',
+        'chat.terms-of-use': 'Terms of Use',
+        'chat.and': 'and',
+        'chat.privacy-policy': 'Privacy Policy',
+        'chat.palm-springs-tennis-trip-planner-message': 'Plan a tennis trip to Palm Springs',
+        'chat.bank-transfer-csv-analysis-and-visualization-message': 'Analyze and visualize bank transfer CSV',
+        'chat.find-duplicate-files-in-downloads-folder-message': 'Find duplicate files in Downloads folder',
+        'chat.no-reply-received-task-continue': 'No reply received, task will continue',
+      }
+      return translations[key] || key
+    },
+    i18n: {
+      language: 'en',
+      changeLanguage: vi.fn(),
+    },
+  }),
+}))
+
 // Mock Electron APIs if needed
 global.electronAPI = {
   // Add mock implementations for electron preload APIs
