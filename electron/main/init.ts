@@ -1,4 +1,4 @@
-import { getBackendPath, getBinaryPath, getCachePath, isBinaryExists, runInstallScript } from "./utils/process";
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, isBinaryExists, runInstallScript } from "./utils/process";
 import { spawn, exec } from 'child_process'
 import log from 'electron-log'
 import fs from 'fs'
@@ -121,7 +121,10 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     const uv_path = await getBinaryPath('uv')
     const backendPath = getBackendPath()
     const userData = app.getPath('userData');
+    const currentVersion = app.getVersion();
+    const venvPath = getVenvPath(currentVersion);
     console.log('userData', userData)
+    console.log('Using venv path:', venvPath)
     // Try to find an available port, with aggressive cleanup if needed
     let port: number;
     const portFile = path.join(userData, 'port.txt');
@@ -150,10 +153,17 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         setPort(port);
     }
 
+    const npmCacheDir = path.join(venvPath, '.npm-cache');
+    if (!fs.existsSync(npmCacheDir)) {
+        fs.mkdirSync(npmCacheDir, { recursive: true });
+    }
+
     const env = {
         ...process.env,
         SERVER_URL: "https://dev.eigent.ai/api",
-        PYTHONIOENCODING: 'utf-8'
+        PYTHONIOENCODING: 'utf-8',
+        UV_PROJECT_ENVIRONMENT: venvPath,
+        npm_config_cache: npmCacheDir,
     }
 
     //Redirect output

@@ -12,7 +12,7 @@ import { useInstallationUI } from "@/store/installationStore";
 import { useInstallationSetup } from "@/hooks/useInstallationSetup";
 import InstallationErrorDialog from "../InstallStep/InstallationErrorDialog/InstallationErrorDialog";
 const Layout = () => {
-	const { initState, isFirstLaunch, setIsFirstLaunch } = useAuthStore();
+	const { initState, isFirstLaunch, setIsFirstLaunch, setInitState } = useAuthStore();
 	const [noticeOpen, setNoticeOpen] = useState(false);
 	const chatStore = useChatStore();
 	const {
@@ -22,10 +22,29 @@ const Layout = () => {
 		isInstalling,
 		shouldShowInstallScreen,
 		retryInstallation,
-	} = useInstallationUI();	
-	
+	} = useInstallationUI();
+
 	// Setup installation IPC listeners and state synchronization
 	useInstallationSetup();
+
+	// Additional check: If initState is carousel but tools are installed, skip to done
+	useEffect(() => {
+		const checkAndSkipCarousel = async () => {
+			if (initState === 'carousel' && !isInstalling) {
+				try {
+					const result = await window.ipcRenderer.invoke("check-tool-installed");
+					if (result.success && result.isInstalled) {
+						console.log('[Layout] Tools installed, skipping carousel and setting initState to done');
+						setInitState('done');
+					}
+				} catch (error) {
+					console.error('[Layout] Failed to check tool installation:', error);
+				}
+			}
+		};
+
+		checkAndSkipCarousel();
+	}, [initState, isInstalling, setInitState]);
 
 	useEffect(() => {
 		const handleBeforeClose = () => {
@@ -46,7 +65,11 @@ const Layout = () => {
 
 	// Determine what to show based on states
 	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling;
-	const shouldShowMainContent = !shouldShowInstallScreen;
+	// Show install screen if either:
+	// 1. The installation store says to show it (isVisible && not completed)
+	// 2. OR if initState is not 'done' (meaning permissions or carousel should show)
+	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done';
+	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (
 		<div className="h-full flex flex-col">
@@ -62,7 +85,7 @@ const Layout = () => {
 				)}
 
 				{/* Installation screen */}
-				{shouldShowInstallScreen && <InstallDependencies />}
+				{actualShouldShowInstallScreen && <InstallDependencies />}
 
 				{/* Main app content */}
 				{shouldShowMainContent && (
