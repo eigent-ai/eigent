@@ -57,8 +57,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     workforce = None
     while True:
         if await request.is_disconnected():
+            logger.warning(f"Client disconnected for task {options.task_id}")
             if workforce is not None:
-                workforce.stop()
+                if workforce._running:
+                    workforce.stop()
+                workforce.stop_gracefully()
+            task_lock.status = Status.done
+            try:
+                await delete_task_lock(task_lock.id)
+            except Exception as e:
+                logger.error(f"Error deleting task lock on disconnect: {e}")
             break
         try:
             item = await task_lock.get_queue()

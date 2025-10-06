@@ -1377,9 +1377,14 @@ async def mcp_agent(options: Chat):
     ]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
-            tools = [*tools, *await get_mcp_tools(options.installed_mcp)]
+            mcp_tools = await get_mcp_tools(options.installed_mcp)
+            traceroot_logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.task_id}")
+            if mcp_tools:
+                tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in mcp_tools]
+                traceroot_logger.debug(f"MCP tools: {tool_names}")
+            tools = [*tools, *mcp_tools]
         except Exception as e:
-            logger.debug(repr(e))
+            traceroot_logger.debug(repr(e))
 
     task_lock = get_task_lock(options.task_id)
     agent_id = str(uuid.uuid4())
@@ -1436,7 +1441,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
-        "notion_toolkit": NotionMCPToolkit,
+        "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
         "reddit_toolkit": RedditToolkit,
         "search_toolkit": SearchToolkit,
@@ -1452,9 +1457,9 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         if item in toolkits:
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
-            res = toolkit.get_can_use_tools(api_task_id)
-            res = await res if asyncio.iscoroutine(res) else res
-            res.extend(res)
+            toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+            toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
+            res.extend(toolkit_tools)
         else:
             logger.warning(f"Toolkit {item} not found, please check your configuration.")
             traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")
@@ -1475,12 +1480,21 @@ async def get_mcp_tools(mcp_server: McpServers):
         # Set global auth directory to persist authentication across tasks
         if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
             server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
-    
-    mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=20)
+
+    mcp_toolkit = None
     try:
+        mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
         await mcp_toolkit.connect()
+
         traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
+        tools = mcp_toolkit.get_tools()
+        if tools:
+            tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in tools]
+            traceroot_logger.debug(f"MCP tool names: {tool_names}")
+        return tools
+    except asyncio.CancelledError:
+        traceroot_logger.info("MCP connection cancelled during get_mcp_tools")
+        return []
     except Exception as e:
-        logger.warning(f"Failed to connect MCP toolkit: {e!r}")
         traceroot_logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
-    return mcp_toolkit.get_tools()
+        return []

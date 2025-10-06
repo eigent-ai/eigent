@@ -45,9 +45,16 @@ interface ElectronAPI {
   envRemove: (email: string, key: string) => Promise<any>;
   getEnvPath: (email: string) => Promise<string>;
   executeCommand: (command: string,email:string) => Promise<{ success: boolean; stdout?: string; stderr?: string; error?: string }>;
-  installDependencies: () => Promise<{ success: boolean; error?: string }>;
-  frontendReady: () => Promise<{ success: boolean; error?: string }>;
+  checkAndInstallDepsOnUpdate: () => Promise<{ success: boolean; error?: string }>;
   checkInstallBrowser: () => Promise<{ data:any[] }>;
+  getInstallationStatus: () => Promise<{ 
+    success: boolean; 
+    isInstalling?: boolean; 
+    hasLockFile?: boolean;
+    installedExists?: boolean;
+    timestamp?: number;
+    error?: string 
+  }>;
   onInstallDependenciesStart: (callback: () => void) => void;
   onInstallDependenciesLog: (callback: (data: { type: string; data: string }) => void) => void;
   onInstallDependenciesComplete: (callback: (data: { success: boolean; code?: number; error?: string }) => void) => void;

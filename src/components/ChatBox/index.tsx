@@ -53,16 +53,18 @@ export default function ChatBox(): JSX.Element {
 			})
 			.catch((err) => console.error("Failed to fetch settings:", err));
 
-		proxyFetchGet("/api/configs").then((configsRes) => {
-			const configs = Array.isArray(configsRes) ? configsRes : [];
-			const _hasApiKey = configs.find(
-				(item) => item.config_name === "GOOGLE_API_KEY"
-			);
-			const _hasApiId = configs.find(
-				(item) => item.config_name === "SEARCH_ENGINE_ID"
-			);
-			if (_hasApiKey && _hasApiId) setHasSearchKey(true);
-		});
+		proxyFetchGet("/api/configs")
+			.then((configsRes) => {
+				const configs = Array.isArray(configsRes) ? configsRes : [];
+				const _hasApiKey = configs.find(
+					(item) => item.config_name === "GOOGLE_API_KEY"
+				);
+				const _hasApiId = configs.find(
+					(item) => item.config_name === "SEARCH_ENGINE_ID"
+				);
+				if (_hasApiKey && _hasApiId) setHasSearchKey(true);
+			})
+			.catch((err) => console.error("Failed to fetch configs:", err));
 	}, []);
 
 	// Refresh privacy status when dialog closes

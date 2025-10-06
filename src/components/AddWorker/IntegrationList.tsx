@@ -15,7 +15,8 @@ interface IntegrationItem {
 	name: string;
 	desc: string;
 	env_vars: string[];
-	onInstall: () => void;
+	toolkit?: string;  // Add toolkit field
+	onInstall: () => void | Promise<void>;
 }
 
 
@@ -239,6 +240,8 @@ export default function IntegrationList({
 			}
 			if (installed[item.key]) return;
 			await item.onInstall();
+			// refresh configs after install to update installed state indicator
+			await fetchInstalled();
 		},
 		[installed]
 	);
@@ -298,7 +301,7 @@ export default function IntegrationList({
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			{items.filter((item) => item.name !== "Notion").map((item) => {
+			{items.map((item) => {
 				const isInstalled = !!installed[item.key];
 				return (
 					<div
@@ -314,8 +317,11 @@ export default function IntegrationList({
 									"Github",
 								].includes(item.name)
 							) {
-								if (item.env_vars.length === 0 || isInstalled) {
-									addOption(item, true);
+                                if (item.env_vars.length === 0 || isInstalled) {
+                                    // Ensure toolkit field is passed and normalized for known cases
+                                    const normalizedToolkit =
+                                        item.name === "Notion" ? "notion_mcp_toolkit" : item.toolkit;
+                                    addOption({ ...item, toolkit: normalizedToolkit }, true);
 								} else {
 									handleInstall(item);
 								}

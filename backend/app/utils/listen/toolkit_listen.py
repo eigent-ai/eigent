@@ -24,7 +24,7 @@ def listen_toolkit(
 
         if iscoroutinefunction(func):
             # async function wrapper
-            @wraps(func)
+            @wraps(wrap)
             async def async_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
                 task_lock = get_task_lock(toolkit.api_task_id)
@@ -93,7 +93,7 @@ def listen_toolkit(
 
         else:
             # sync function wrapper
-            @wraps(func)
+            @wraps(wrap)
             def sync_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
                 task_lock = get_task_lock(toolkit.api_task_id)
