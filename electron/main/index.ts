@@ -19,7 +19,7 @@ import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
-import { isBinaryExists, getBackendPath } from './utils/process'
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
 
 const userData = app.getPath('userData');
 
@@ -956,7 +956,11 @@ async function createWindow() {
   const installedLockPath = path.join(backendPath, 'uv_installed.lock');
   const installationCompleted = fs.existsSync(installedLockPath);
 
-  const needsInstallation = !versionExists || savedVersion !== currentVersion || !uvExists || !bunExists || !installationCompleted;
+  // Check if venv path exists for current version
+  const venvPath = getVenvPath(currentVersion);
+  const venvExists = fs.existsSync(venvPath);
+
+  const needsInstallation = !versionExists || savedVersion !== currentVersion || !uvExists || !bunExists || !installationCompleted || !venvExists;
 
   log.info('Installation check result:', {
     needsInstallation,
@@ -964,7 +968,9 @@ async function createWindow() {
     versionMatch: savedVersion === currentVersion,
     uvExists,
     bunExists,
-    installationCompleted
+    installationCompleted,
+    venvExists,
+    venvPath
   });
 
   // Handle localStorage based on installation state
@@ -987,9 +993,13 @@ async function createWindow() {
     }
 
     // Set up the injection for when page loads
-    win.webContents.on('dom-ready', () => {
+    win.webContents.once('dom-ready', () => {
+      if (!win || win.isDestroyed()) {
+        log.warn('Window destroyed before DOM ready - skipping localStorage injection');
+        return;
+      }
       log.info('DOM ready - creating auth-storage with carousel state');
-      win!.webContents.executeJavaScript(`
+      win.webContents.executeJavaScript(`
         (function() {
           try {
             // Create fresh auth storage with carousel state
@@ -1025,8 +1035,12 @@ async function createWindow() {
     log.info('Installation already complete - ensuring initState is done');
 
     win.webContents.once('dom-ready', () => {
+      if (!win || win.isDestroyed()) {
+        log.warn('Window destroyed before DOM ready - skipping localStorage update');
+        return;
+      }
       log.info('DOM ready - checking and updating auth-storage to done state');
-      win!.webContents.executeJavaScript(`
+      win.webContents.executeJavaScript(`
         (function() {
           try {
             const authStorage = localStorage.getItem('auth-storage');
@@ -1034,8 +1048,15 @@ async function createWindow() {
               const parsed = JSON.parse(authStorage);
               if (parsed.state && parsed.state.initState !== 'done') {
                 console.log('[ELECTRON] Updating initState from', parsed.state.initState, 'to done');
-                parsed.state.initState = 'done';
-                localStorage.setItem('auth-storage', JSON.stringify(parsed));
+                // Only update the initState field, preserve all other data
+                const updatedStorage = {
+                  ...parsed,
+                  state: {
+                    ...parsed.state,
+                    initState: 'done'
+                  }
+                };
+                localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
                 console.log('[ELECTRON] initState updated to done, reloading page...');
                 return true; // Signal that we need to reload
               }
@@ -1043,6 +1064,7 @@ async function createWindow() {
             return false; // No reload needed
           } catch (e) {
             console.error('[ELECTRON] Failed to update initState:', e);
+            // Don't modify localStorage if there's an error to prevent data corruption
             return false;
           }
         })();
