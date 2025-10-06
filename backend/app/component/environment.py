@@ -73,16 +73,16 @@ def env(key: str, default=None):
 def env_or_fail(key: str):
     value = env(key)
     if value is None:
-        traceroot_logger.warning(f"[ENVIRONMENT] can't get env config value.")
-        raise Exception("can't get env config value.")
+        traceroot_logger.warning(f"[ENVIRONMENT] can't get env config value for key: {key}")
+        raise Exception(f"can't get env config value for key: {key}")
     return value
 
 @traceroot.trace()
 def env_not_empty(key: str):
     value = env(key)
     if not value:
-        traceroot_logger.warning(f"[ENVIRONMENT] env config value can't be empty.")
-        raise Exception("env config value can't be empty.")
+        traceroot_logger.warning(f"[ENVIRONMENT] env config value can't be empty for key: {key}")
+        raise Exception(f"env config value can't be empty for key: {key}")
     return value
 
 
