@@ -16,6 +16,7 @@
 [![Wechat][wechat-image]][wechat-url]
 [![][sponsor-shield]][sponsor-link]
 [![][built-with-camel]][camel-github]
+[![][join-us-image]][join-us]
 
 </div>
 
@@ -42,6 +43,8 @@
 - ✅ **MCP 集成**  
 
 <br/>
+
+[![][image-join-us]][join-us]
 
 <details>
 <summary><kbd>目录</kbd></summary>
@@ -348,6 +351,9 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 [eigent-download]: https://www.eigent.ai/download
 [download-shield]: https://img.shields.io/badge/Download%20Eigent-363AF5?style=plastic
 
+[join-us]:https://eigent-ai.notion.site/eigent-ai-careers
+[join-us-image]:https://img.shields.io/badge/Join%20Us-yellow?style=plastic
+
 <!-- camel & eigent -->
 [camel-site]: https://www.camel-ai.org
 [eigent-site]: https://www.eigent.ai
@@ -361,6 +367,7 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 [image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
 [image-opensource]: https://eigent-ai.github.io/.github/assets/opensource.png
 [image-wechat]: https://eigent-ai.github.io/.github/assets/wechat.png
+[image-join-us]: https://camel-ai.github.io/camel_asset/graphics/join_us.png
 
 <!-- feature -->
 [image-workforce]: https://eigent-ai.github.io/.github/assets/feature_dynamic_workforce.gif

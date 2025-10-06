@@ -15,7 +15,7 @@
 	"you-are-using-self-hosted-mode": "您正在使用自部署模式。云端模型不能在这里使用 — 设置您自己的本地云模型以保持运行。",
 	"you-are-using-self-hosted-mode-mcp": "您正在使用自部署模式。在“MCP和工具”中输入 Google 搜索密钥以确保 Eigent 正常工作。",
 	"palm-springs-tennis-trip-planner": "棕榈泉网球之旅规划师",
-	"palm-springs-tennis-trip-planner-message": "我是两个网球爱好者，想去观看2026年棕榈泉的网球比赛。我住在旧金山——请准备一个详细的行程，包括航班、酒店、为期3天的活动安排——围绕半决赛/决赛的时间。我们喜欢徒步、素食和 SPA。预算为5,000美元。行程应是一个详细的时间表，包括时间、活动、费用、其他细节，以及购买门票/预订的链接（如适用）。完成任务后，请生成一份关于此次旅行的 HTML 报告；编写此计划的摘要，并将文本摘要和报告 HTML 链接发送到 Slack #tennis-trip-sf 频道。",
+	"palm-springs-tennis-trip-planner-message": "我是一名网球迷，想去棕榈泉看网球锦标赛。我住在旧金山（SF）。请为我准备一份为期三天的详细行程，包括半决赛/决赛期间的航班、酒店和活动。我喜欢徒步、素食和水疗。我的预算是5000美元。行程应为详细的时间表，显示时间、活动、费用和其他细节，并在适用的情况下提供购买门票或进行预订的链接。偏好：1. 如果能有水疗中心就更好了，但不是必须的。2. 完成此任务后，请生成一份关于此次旅行的HTML报告。",
 	"bank-transfer-csv-analysis-and-visualization": "银行转账 CSV 分析和可视化",
 	"bank-transfer-csv-analysis-and-visualization-message": "创建一个包含10列和10行的模拟银行转账 CSV 文件。读取生成的 CSV 文件并总结数据，生成一个图表来可视化相关趋势或洞察数据。",
 	"find-duplicate-files-in-downloads-folder": "查找下载文件夹中的重复文件",

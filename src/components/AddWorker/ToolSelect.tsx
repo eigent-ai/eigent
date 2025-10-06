@@ -7,11 +7,11 @@ import React, {
 } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CircleAlert, Store, X } from "lucide-react";
-import { proxyFetchGet, proxyFetchPost } from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, fetchPost } from "@/api/http";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { TooltipSimple } from "../ui/tooltip";
 import IntegrationList from "./IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { capitalizeFirstLetter } from "@/lib";
@@ -65,8 +65,73 @@ const ToolSelect = forwardRef<
 					.map(([key, value]: [string, any]) => {
 						let onInstall = null;
 
-						onInstall = () =>
-							(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+						// Special handling for Notion MCP
+						if (key.toLowerCase() === 'notion') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/notion");
+									if (response.success) {
+										// Save to config to mark as installed
+										await proxyFetchPost("/api/configs", {
+											config_group: "Notion",
+											config_name: "MCP_REMOTE_CONFIG_DIR",
+											config_value: response.toolkit_name || "NotionMCPToolkit",
+										});
+										console.log("Notion MCP installed successfully");
+										// After successful installation, add to selected tools
+										const notionItem = {
+											id: 0, // Use 0 for integration items
+											key: key,
+											name: key,
+											description: "Notion workspace integration for reading and managing Notion pages",
+											toolkit: "notion_mcp_toolkit", // Add the toolkit name
+											isLocal: true
+										};
+										addOption(notionItem, true);
+									} else {
+										console.error("Failed to install Notion MCP:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Notion MCP");
+									}
+								} catch (error: any) {
+									console.error("Failed to install Notion MCP:", error.message);
+									throw error;
+								}
+							};
+						} else if (key.toLowerCase() === 'google calendar') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/google_calendar");
+									if (response.success) {
+										// Save to config to mark as installed
+										await proxyFetchPost("/api/configs", {
+											config_group: "Google Calendar",
+											config_name: "GOOGLE_CLIENT_ID",
+											config_value: response.toolkit_name || "GoogleCalendarToolkit",
+										});
+										console.log("Google Calendar installed successfully");
+										// After successful installation, add to selected tools
+										const calendarItem = {
+											id: 0, // Use 0 for integration items
+											key: key,
+											name: key,
+											description: "Google Calendar integration for managing events and schedules",
+											toolkit: "google_calendar_toolkit", // Add the toolkit name
+											isLocal: true
+										};
+										addOption(calendarItem, true);
+									} else {
+										console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Google Calendar");
+									}
+								} catch (error: any) {
+									console.error("Failed to install Google Calendar:", error.message);
+									throw error;
+								}
+							};
+						} else {
+							onInstall = () =>
+								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+						}
 
 						return {
 							key: key,
@@ -78,6 +143,10 @@ const ToolSelect = forwardRef<
 									? `Environmental variables required: ${value.env_vars.join(
 											", "
 									  )}`
+									: key.toLowerCase() === 'notion'
+									? "Notion workspace integration for reading and managing Notion pages"
+									: key.toLowerCase() === 'google calendar'
+									? "Google Calendar integration for managing events and schedules"
 									: "",
 							onInstall,
 						};
@@ -157,7 +226,7 @@ const ToolSelect = forwardRef<
 		envValue?: { [key: string]: any },
 		activeMcp?: any
 	) => {
-		// is exa search
+		// is exa search or google calendar
 		if (activeMcp && envValue) {
 			const env: { [key: string]: string } = {};
 			Object.keys(envValue).map((key) => {
@@ -171,6 +240,19 @@ const ToolSelect = forwardRef<
 					activeMcp.install_command.env[key]
 				);
 			});
+			
+			// Add to selected tools after saving config
+			if (activeMcp.key === "Google Calendar") {
+				const calendarItem = {
+					id: activeMcp.id,
+					key: activeMcp.key,
+					name: activeMcp.name,
+					description: "Google Calendar integration for managing events and schedules",
+					toolkit: "google_calendar_toolkit",
+					isLocal: true
+				};
+				addOption(calendarItem, true);
+			}
 			return;
 			// async function fetchInstalled() {
 			// 	try {
@@ -368,19 +450,12 @@ const ToolSelect = forwardRef<
 				<div className="text-sm font-bold leading-17 text-text-action overflow-hidden text-ellipsis break-words line-clamp-1">
 					{item.name}
 				</div>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<CircleAlert
+				<TooltipSimple content={item.description}>
+					<CircleAlert
 							className="w-4 h-4 text-icon-primary cursor-pointer"
 							onClick={(e) => e.stopPropagation()}
 						/>
-					</TooltipTrigger>
-					<TooltipContent>
-						<div className="text-xs font-bold leading-17 text-text-body">
-							{item.description}
-						</div>
-					</TooltipContent>
-				</Tooltip>
+				</TooltipSimple>
 			</div>
 			<div className="flex items-center gap-1">
 				{getGithubRepoName(item.home_page) && (
@@ -434,19 +509,12 @@ const ToolSelect = forwardRef<
 				<div className="text-sm font-bold leading-17 text-text-action overflow-hidden text-ellipsis break-words line-clamp-1">
 					{item.mcp_name}
 				</div>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<CircleAlert
-							className="w-4 h-4 text-icon-primary cursor-pointer"
-							onClick={(e) => e.stopPropagation()}
-						/>
-					</TooltipTrigger>
-					<TooltipContent>
-						<div className="text-xs font-bold leading-17 text-text-body">
-							{item.mcp_desc}
-						</div>
-					</TooltipContent>
-				</Tooltip>
+				<TooltipSimple content={item.mcp_desc}>
+					<CircleAlert
+						className="w-4 h-4 text-icon-primary cursor-pointer"
+						onClick={(e) => e.stopPropagation()}
+					/>
+				</TooltipSimple>
 			</div>
 			<div className="flex items-center gap-1">
 				<Button

@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 from fastapi import Depends, HTTPException, Query, Response, APIRouter
 from sqlmodel import Session, select
@@ -5,9 +6,51 @@ from app.component.database import session
 from app.component.auth import Auth, auth_must
 from fastapi_babel import _
 from app.model.mcp.mcp_user import McpUser, McpUserIn, McpUserOut, McpUserUpdate, Status
+from app.model.mcp.mcp import Mcp
 from loguru import logger
+from camel.toolkits.mcp_toolkit import MCPToolkit
+from app.component.environment import env
 
 router = APIRouter(tags=["McpUser Management"])
+
+
+async def pre_instantiate_mcp_toolkit(config_dict: dict) -> bool:
+    """
+    Pre-instantiate MCP toolkit to complete authentication process
+
+    Args:
+        config_dict: MCP server configuration dictionary
+
+    Returns:
+        bool: Whether successfully instantiated and connected
+    """
+    try:
+        # Ensure unified auth directory for all mcp servers
+        for server_config in config_dict.get("mcpServers", {}).values():
+            if "env" not in server_config:
+                server_config["env"] = {}
+            # Set global auth directory to persist authentication across tasks
+            if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
+                server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
+                    "MCP_REMOTE_CONFIG_DIR",
+                    os.path.expanduser("~/.mcp-auth")
+                )
+
+        # Create MCP toolkit and attempt to connect
+        mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=30)
+        await mcp_toolkit.connect()
+
+        # Get tools list to ensure connection is successful
+        tools = mcp_toolkit.get_tools()
+        logger.info(f"Successfully pre-instantiated MCP toolkit with {len(tools)} tools")
+
+        # Disconnect, authentication info is already saved
+        await mcp_toolkit.disconnect()
+        return True
+
+    except Exception as e:
+        logger.warning(f"Failed to pre-instantiate MCP toolkit: {e!r}")
+        return False
 
 
 @router.get("/mcp/users", name="list mcp users", response_model=List[McpUserOut])
@@ -42,6 +85,24 @@ async def create_mcp_user(mcp_user: McpUserIn, session: Session = Depends(sessio
     ).first()
     if exists:
         raise HTTPException(status_code=400, detail=_("mcp is installed"))
+
+    # Get MCP configuration from the main Mcp table
+    mcp = session.get(Mcp, mcp_user.mcp_id)
+    if mcp and mcp.install_command:
+        # Pre-instantiate MCP toolkit for authentication
+        config_dict = {
+            "mcpServers": {
+                mcp.key: mcp.install_command
+            }
+        }
+
+        try:
+            success = await pre_instantiate_mcp_toolkit(config_dict)
+            if not success:
+                logger.warning(f"Pre-instantiation failed for MCP {mcp.key}, but continuing with user creation")
+        except Exception as e:
+            logger.warning(f"Exception during pre-instantiation for MCP {mcp.key}: {e}")
+
     db_mcp_user = McpUser(mcp_id=mcp_user.mcp_id, user_id=auth.user.id, env=mcp_user.env)
     session.add(db_mcp_user)
     session.commit()

@@ -78,102 +78,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             self.websocket = None
 
     async def start(self):
-        # Check if node_modules exists (dependencies installed)
-        node_modules_path = os.path.join(self.ts_dir, "node_modules")
-        if not os.path.exists(node_modules_path):
-            logger.warning("Node modules not found. Running npm install...")
-            install_result = subprocess.run(
-                [uv(), "run", "npm", "install"],
-                cwd=self.ts_dir,
-                capture_output=True,
-                text=True,
-            )
-            if install_result.returncode != 0:
-                logger.error(f"npm install failed: {install_result.stderr}")
-                raise RuntimeError(
-                    f"Failed to install npm dependencies: {install_result.stderr}\n"  # noqa:E501
-                    f"Please run 'npm install' in {self.ts_dir} manually."
-                )
-            logger.info("npm dependencies installed successfully")
-
-        # Ensure the TypeScript code is built
-        build_result = subprocess.run(
-            [uv(), "run", "npm", "run", "build"],
-            cwd=self.ts_dir,
-            capture_output=True,
-            text=True,
-        )
-        if build_result.returncode != 0:
-            logger.error(f"TypeScript build failed: {build_result.stderr}")
-            raise RuntimeError(f"TypeScript build failed: {build_result.stderr}")
-        else:
-            # Log warnings but don't fail on them
-            if build_result.stderr:
-                logger.warning(f"TypeScript build warnings: {build_result.stderr}")
-            logger.info("TypeScript build completed successfully")
-
-        # Start the WebSocket server
-        self.process = subprocess.Popen(
-            [uv(), "run", "node", "websocket-server.js"],  # bun not support playwright, use uv nodejs-bin
-            cwd=self.ts_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-
-        # Wait for server to output the port
-        server_ready = False
-        timeout = 10  # 10 seconds timeout
-        start_time = time.time()
-
-        while not server_ready and time.time() - start_time < timeout:
-            if self.process.poll() is not None:
-                # Process died
-                stderr = self.process.stderr.read()  # type: ignore
-                raise RuntimeError(f"WebSocket server failed to start: {stderr}")
-
-            try:
-                line = self.process.stdout.readline()  # type: ignore
-                logger.debug(f"WebSocket server output: {line}")
-                if line.startswith("SERVER_READY:"):
-                    self.server_port = int(line.split(":")[1].strip())
-                    server_ready = True
-                    logger.info(f"WebSocket server ready on port {self.server_port}")
-            except (ValueError, IndexError):
-                continue
-
-        if not server_ready:
-            self.process.kill()
-            raise RuntimeError("WebSocket server failed to start within timeout")
-
-        # Connect to the WebSocket server
-        try:
-            self.websocket = await websockets.connect(
-                f"ws://localhost:{self.server_port}",
-                ping_interval=30,
-                ping_timeout=10,
-                max_size=50 * 1024 * 1024,  # 50MB limit to match server
-            )
-            logger.info("Connected to WebSocket server")
-        except Exception as e:
-            self.process.kill()
-            raise RuntimeError(f"Failed to connect to WebSocket server: {e}") from e
-
-        # Start the background receiver task - THIS WAS MISSING!
-        self._receive_task = asyncio.create_task(self._receive_loop())
-        logger.debug("Started WebSocket receiver task")
-
-        # Initialize the browser toolkit
-        logger.debug(f"send init {self.config}")
-        try:
-            await self._send_command("init", self.config)
-            logger.debug("WebSocket server initialized successfully")
-        except RuntimeError as e:
-            if "Timeout waiting for response to command: init" in str(e):
-                logger.warning("Init timeout - continuing anyway (CDP connection may be slow)")
-                # Continue without error - the WebSocket server is likely still initializing
-            else:
-                raise
+        # Simply use the parent implementation which uses system npm/node
+        logger.info("Starting WebSocket server using parent implementation (system npm/node)")
+        await super().start()
 
     async def _send_command(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Send a command to the WebSocket server with enhanced error handling."""
@@ -461,9 +368,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     async def browser_get_page_snapshot(self) -> str:
         return await super().browser_get_page_snapshot()
 
-    # @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
-    # async def browser_get_som_screenshot(self, read_image: bool = False, instruction: str | None = None) -> str:
-    #     return await super().browser_get_som_screenshot(read_image, instruction)
+    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
+    async def browser_get_som_screenshot(self, read_image: bool = False, instruction: str | None = None) -> str:
+        return await super().browser_get_som_screenshot(read_image, instruction)
 
     @listen_toolkit(BaseHybridBrowserToolkit.browser_click)
     async def browser_click(self, *, ref: str) -> Dict[str, Any]:

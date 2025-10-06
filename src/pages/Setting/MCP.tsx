@@ -61,6 +61,7 @@ export default function SettingMCP() {
 
 	// add: integrations list
 	const [integrations, setIntegrations] = useState<any[]>([]);
+	const [refreshKey, setRefreshKey] = useState<number>(0);
 	const [essentialIntegrations, setEssentialIntegrations] = useState<any[]>([
 		{
 			key: "Search",
@@ -111,8 +112,57 @@ export default function SettingMCP() {
 				const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
 
-					onInstall = () =>
-						(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+					// Special handling for Notion MCP
+					if (key.toLowerCase() === 'notion') {
+						onInstall = async () => {
+							try {
+								const response = await fetchPost("/install/tool/notion");
+								if (response.success) {
+									toast.success("Notion MCP installed successfully");
+									// Save to config to mark as installed
+									await proxyFetchPost("/api/configs", {
+										config_group: "Notion",
+										config_name: "MCP_REMOTE_CONFIG_DIR",
+										config_value: response.toolkit_name || "NotionMCPToolkit",
+									});
+									// Refresh the integrations list to show the installed state
+									fetchList();
+									// Force refresh IntegrationList component
+									setRefreshKey(prev => prev + 1);
+								} else {
+									toast.error(response.error || "Failed to install Notion MCP");
+								}
+							} catch (error: any) {
+								toast.error(error.message || "Failed to install Notion MCP");
+							}
+						};
+					} else if (key.toLowerCase() === 'google calendar') {
+						onInstall = async () => {
+							try {
+								const response = await fetchPost("/install/tool/google_calendar");
+								if (response.success) {
+									toast.success("Google Calendar installed successfully");
+									// Save to config to mark as installed
+									await proxyFetchPost("/api/configs", {
+										config_group: "Google Calendar",
+										config_name: "GOOGLE_CLIENT_ID",
+										config_value: response.toolkit_name || "GoogleCalendarToolkit",
+									});
+									// Refresh the integrations list to show the installed state
+									fetchList();
+									// Force refresh IntegrationList component
+									setRefreshKey(prev => prev + 1);
+								} else {
+									toast.error(response.error || "Failed to install Google Calendar");
+								}
+							} catch (error: any) {
+								toast.error(error.message || "Failed to install Google Calendar");
+							}
+						};
+					} else {
+						onInstall = () =>
+							(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+					}
 
 					return {
 						key,
@@ -123,11 +173,17 @@ export default function SettingMCP() {
 								? `${t("setting.environmental-variables-required")}: ${value.env_vars.join(
 										", "
 								  )}`
+								: key.toLowerCase() === 'notion'
+								? "Notion workspace integration for reading and managing Notion pages"
+								: key.toLowerCase() === 'google calendar'
+								? "Google Calendar integration for managing events and schedules"
 								: "",
 						onInstall,
 					};
 				});
-				console.log("list", list);
+				console.log("API response:", res);
+				console.log("Generated list:", list);
+				console.log("Essential integrations:", essentialIntegrations);
 
 				setIntegrations(
 					list.filter(
@@ -351,7 +407,7 @@ export default function SettingMCP() {
 			</div>
 			<IntegrationList items={essentialIntegrations} />
 			<div className="text-text-body font-bold text-base leading-snug">MCP</div>
-			<IntegrationList items={integrations} />
+			<IntegrationList key={refreshKey} items={integrations} />
 
 			<div className="pt-4">
 				<div className="self-stretch inline-flex justify-start items-center gap-1">

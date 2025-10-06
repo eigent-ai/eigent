@@ -23,7 +23,6 @@ export default defineConfig({
         'test/',
         'dist/',
         'dist-electron/',
-        'electron/',
         'build/',
         '**/*.d.ts',
         '**/*.config.*',

@@ -26,6 +26,7 @@ import { fetchPost } from "@/api/http";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
+import { TooltipSimple } from "../ui/tooltip";
 
 interface EnvValue {
 	value: string;
@@ -57,7 +58,8 @@ export function AddWorker({
 }) {
 	const { t } = useTranslation();
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const chatStore = useChatStore();
+	const activeTaskId = useChatStore((state) => state.activeTaskId);
+	const tasks = useChatStore((state) => state.tasks);
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -79,7 +81,7 @@ export function AddWorker({
 		console.log(mcp);
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
-			Object.keys(mcp.install_command.env).forEach((key) => {
+			for(const key of Object.keys(mcp.install_command.env)) {
 				initialValues[key] = {
 					value: "",
 					required: true,
@@ -88,7 +90,7 @@ export function AddWorker({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
-			});
+			}
 			setEnvValues(initialValues);
 		}
 	};
@@ -115,7 +117,7 @@ export function AddWorker({
 
 		// call ToolSelect's install method
 		if (toolSelectRef.current) {
-			if (activeMcp.key === "EXA Search") {
+			if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar") {
 				await toolSelectRef.current.installMcp(
 					activeMcp.id,
 					{ ...envValues },
@@ -189,21 +191,19 @@ export function AddWorker({
 		}
 		const localTool: string[] = [];
 		const mcpList: string[] = [];
-		selectedTools.map((tool: any) => {
+		selectedTools.forEach((tool: any) => {
 			if (tool.isLocal) {
 				localTool.push(tool.toolkit as string);
 			} else {
 				mcpList.push(tool?.key || tool?.mcp_name);
 			}
 		});
-		Object.keys(mcpLocal.mcpServers).map((key) => {
-			console.log("mcpList", mcpList);
-			console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
-
+		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
+		for(const key of Object.keys(mcpLocal.mcpServers)) {
 			if (!mcpList.includes(key)) {
 				delete mcpLocal.mcpServers[key];
 			}
-		});
+		}
 		if (edit) {
 			const newWorkerList = workerList.map((worker) => {
 				if (worker.type === workerInfo?.type) {
@@ -232,8 +232,7 @@ export function AddWorker({
 			});
 			setWorkerList(newWorkerList);
 		} else if (
-			chatStore.activeTaskId &&
-			chatStore.tasks[chatStore.activeTaskId].messages.length === 0
+			activeTaskId && tasks[activeTaskId].messages.length === 0
 		) {
 			const worker: Agent = {
 				tasks: [],
@@ -255,7 +254,7 @@ export function AddWorker({
 			};
 			setWorkerList([...workerList, worker]);
 		} else {
-			fetchPost(`/task/${chatStore.activeTaskId}/add-agent`, {
+			fetchPost(`/task/${activeTaskId}/add-agent`, {
 				name: workerName,
 				description: workerDescription,
 				tools: localTool,
@@ -329,9 +328,11 @@ export function AddWorker({
 								<div className="text-base font-bold leading-10 text-text-action">
 									{showEnvConfig
 										? t("workforce.configure-mcp-server")
-										: t("workforce.add-your-mcp-server")}
+										: t("workforce.add-your-agent")}
 								</div>
-								<CircleAlert size={16} />
+								<TooltipSimple content="Configure your MCP worker node here.">
+									<CircleAlert size={16} />
+								</TooltipSimple>
 							</div>
 						</DialogTitle>
 					</DialogHeader>
@@ -398,7 +399,7 @@ export function AddWorker({
 									{t("workforce.cancel")}
 								</Button>
 								<Button size="sm" onClick={handleConfigureMcpEnvSetting}>
-									<span>{t("workforce.configure")}</span>
+									<span>{t("Connect")}</span>
 									<ArrowRight size={16} />
 								</Button>
 							</DialogFooter>
@@ -420,7 +421,7 @@ export function AddWorker({
 									<div className="flex items-center gap-sm pb-md border-[0px] border-b border-solid border-border-secondary">
 										<Bot size={32} className="text-icon-primary" />
 										<Input
-											placeholder=""
+											placeholder="Agent Name"
 											value={workerName}
 											onChange={(e) => {
 												setWorkerName(e.target.value);
@@ -430,6 +431,7 @@ export function AddWorker({
 											className={`!border-none !bg-transparent !shadow-none text-xl leading-2xl font-bold !ring-0 !ring-offset-0 ${
 												nameError ? "border-red-500" : ""
 											}`}
+											required
 										/>
 										<RefreshCw
 											size={16}
@@ -447,7 +449,7 @@ export function AddWorker({
 										{t("workforce.description-optional")}
 									</div>
 									<Textarea
-										placeholder=""
+										placeholder="I'm an agent specially designed for..."
 										value={workerDescription}
 										onChange={(e) => setWorkerDescription(e.target.value)}
 										className="rounded-sm border border-solid border-input-border-default bg-input-bg-default  !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
@@ -458,7 +460,9 @@ export function AddWorker({
 										<div className="text-text-body text-sm leading-normal font-bold">
 											{t("workforce.agent-tool")}
 										</div>
-										<CircleAlert size={16} />
+										<TooltipSimple content="Select MCP tools for your worker node.">
+											<CircleAlert size={16} />
+										</TooltipSimple>
 									</div>
 								</div>
 								<ToolSelect

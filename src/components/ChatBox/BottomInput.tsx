@@ -13,16 +13,19 @@ import {
 	Play,
 	Image,
 	FileText,
+	UploadCloud,
 } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 
 import racPause from "@/assets/rac-pause.svg";
 import { fetchDelete, proxyFetchDelete } from "@/api/http";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchPut } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { useTranslation } from "react-i18next";
+import { TooltipSimple } from "../ui/tooltip";
+import { toast } from "sonner";
 
 export const BottomInput = ({
 	message,
@@ -86,6 +89,8 @@ export const BottomInput = ({
 	}, [chatStore]);
 
 	const [isLoading, setIsLoading] = useState(false);
+	const [isDragging, setIsDragging] = useState(false);
+	const dragCounter = useRef(0);
 	const handleTakeControl = (type: "pause" | "resume") => {
 		setIsLoading(true);
 		if (type === "pause") {
@@ -130,6 +135,64 @@ export const BottomInput = ({
 			}
 		} catch (error) {
 			console.error("Select File Error:", error);
+		}
+	};
+
+	// drag & drop files
+	const isFileDrag = (e: React.DragEvent) => {
+		try {
+			return Array.from(e.dataTransfer?.types || []).includes("Files");
+		} catch {
+			return false;
+		}
+	};
+
+	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+		if (!privacy || isPending || useCloudModelInDev) return;
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		e.stopPropagation();
+		e.dataTransfer.dropEffect = "copy";
+		setIsDragging(true);
+	};
+
+	const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+		if (!privacy || isPending || useCloudModelInDev) return;
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		e.stopPropagation();
+		dragCounter.current += 1;
+		setIsDragging(true);
+	};
+
+	const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+		dragCounter.current = Math.max(0, dragCounter.current - 1);
+		if (dragCounter.current === 0) setIsDragging(false);
+	};
+
+	const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setIsDragging(false);
+		dragCounter.current = 0;
+		if (!privacy || isPending || useCloudModelInDev) return;
+		try {
+			const dropped = Array.from(e.dataTransfer?.files || []);
+			if (dropped.length === 0) return;
+			const current = chatStore.tasks[chatStore.activeTaskId as string].attaches;
+			const mapped = dropped.map((f: File) => ({
+				fileName: f.name,
+				filePath: (f as any).path || f.name,
+			}));
+			const files = [
+				...current.filter((f: File) => !mapped.find((m) => m.filePath === f.filePath)),
+				...mapped.filter((m) => !current.find((f) => f.filePath === m.filePath)),
+			];
+			chatStore.setAttaches(chatStore.activeTaskId as string, files as File[]);
+		} catch (error) {
+			console.error("Drop File Error:", error);
 		}
 	};
 
@@ -310,7 +373,22 @@ export const BottomInput = ({
 					)}
 				</div>
 			) : (
-				<div className="mr-2 relative z-10  h-auto min-h-[82px] rounded-2xl bg-input-bg-default !px-2 !pb-2 gap-0 space-x-1 shadow-none border-solid border border-zinc-300">
+				<div
+					className={`mr-2 relative z-10  h-auto min-h-[82px] rounded-2xl bg-input-bg-default !px-2 !pb-2 gap-0 space-x-1 shadow-none border-solid border border-zinc-300 transition-colors ${isDragging ? 'border-blue-400 bg-blue-50/40' : ''}`}
+					onDragEnter={handleDragEnter}
+					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
+					onDrop={handleDrop}
+				>
+					{isDragging && (
+						<div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/70 text-blue-700 backdrop-blur-sm">
+							<UploadCloud className="w-8 h-8" />
+							<div className="text-sm font-semibold">
+								Drop files to attach
+							</div>
+							
+						</div>
+					)}
 					<Textarea
 						disabled={!privacy || isPending}
 						ref={textareaRef}
@@ -385,74 +463,82 @@ export const BottomInput = ({
 					)}
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-1">
-							<Button
-								disabled={!privacy || isPending}
-								onClick={handleFileSelect}
-								variant="ghost"
-								size="icon"
-								className="rounded"
-								title="Select File"
-							>
-								<Paperclip
-									size={16}
-									className="text-button-transparent-icon-disabled"
-								/>
-							</Button>
+							<TooltipSimple content="Select File">
+								<Button
+									disabled={!privacy || isPending || useCloudModelInDev}
+									onClick={handleFileSelect}
+									variant="ghost"
+									size="icon"
+									className="rounded"
+								>
+									<Paperclip
+										size={16}
+										className="text-button-transparent-icon-disabled"
+									/>
+								</Button>
+							</TooltipSimple>
 						</div>
-						<Button
-							disabled={!privacy || isPending}
-							onClick={() => {
-								if (isPending) {
-									if (isTakeControl) {
-										handleTakeControl("resume");
-										setIsTakeControl && setIsTakeControl(false);
+						<TooltipSimple content={message.trim().length > 0 ? "Send Message" : "Enter message to send first"}>
+							<Button
+								disabled={!privacy || isPending || useCloudModelInDev}
+								onClick={() => {
+									if (isPending) {
+										if (isTakeControl) {
+											handleTakeControl("resume");
+											setIsTakeControl && setIsTakeControl(false);
+										} else {
+											setIsTakeControl && setIsTakeControl(true);
+											handleTakeControl("pause");
+										}
+									} else if(message.trim().length > 0) {
+										onSend();
+										onPendingChange(true);
 									} else {
-										setIsTakeControl && setIsTakeControl(true);
-										handleTakeControl("pause");
+										console.log("Message is empty ", message);
+										toast.error("Message cannot be empty", {
+											closeButton: true,
+										});
 									}
-								} else {
-									onSend();
-									onPendingChange(true);
-								}
-							}}
-							size="icon"
-							variant={
-								isPending
-									? isTakeControl
+								}}
+								size="icon"
+								variant={
+									isPending
+										? isTakeControl
+											? "success"
+											: "cuation"
+										: message.trim().length > 0
 										? "success"
-										: "cuation"
-									: message.length > 0
-									? "success"
-									: "primary"
-							}
-							className={`rounded-full  transition-all w-6`}
-						>
-							{isPending ? (
-								// <CircleLoader className="w-4 h-4" />
-								<>
-									{isTakeControl ? (
-										<Play
-											color="white"
-											className="w-4 h-4 text-button-primary-icon-default"
-										/>
-									) : (
-										<img
-											src={racPause}
-											alt="racPause"
-											className="w-4 h-4 text-text-inverse-primary"
+										: "primary"
+								}
+								className={`rounded-full  transition-all w-6`}
+							>
+								{isPending ? (
+									// <CircleLoader className="w-4 h-4" />
+									<>
+										{isTakeControl ? (
+											<Play
+												color="white"
+												className="w-4 h-4 text-button-primary-icon-default"
+											/>
+										) : (
+											<img
+												src={racPause}
+												alt="racPause"
+												className="w-4 h-4 text-text-inverse-primary"
+											/>
+										)}
+									</>
+								) : (
+										<ArrowRight
+											size={16}
+											style={{
+												transform: message ? "rotate(-90deg)" : "rotate(0deg)",
+											}}
+											className="transition-all text-button-primary-icon-default"
 										/>
 									)}
-								</>
-							) : (
-								<ArrowRight
-									size={16}
-									style={{
-										transform: message ? "rotate(-90deg)" : "rotate(0deg)",
-									}}
-									className="transition-all text-button-primary-icon-default"
-								/>
-							)}
-						</Button>
+							</Button>
+						</TooltipSimple>
 					</div>
 				</div>
 			)}

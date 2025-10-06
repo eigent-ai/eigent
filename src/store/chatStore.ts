@@ -489,7 +489,7 @@ const chatStore = create<ChatStore>()(
 
 						}
 						if (targetTaskIndex !== -1) {
-							console.log("targetTaskIndex", targetTaskIndex,state)
+							console.log("targetTaskIndex", targetTaskIndex, state)
 							taskRunning[targetTaskIndex].status = state === "DONE" ? "completed" : "failed";
 						}
 						setTaskRunning(taskId, taskRunning)
@@ -612,17 +612,16 @@ const chatStore = create<ChatStore>()(
 						}
 
 
-						// If the state is "waiting", only mark it in the agent's task list and do not add it to taskRunning
+						// Handle task assignment to taskAssigning based on state
 						if (taskState === "waiting") {
 							if (!taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id)) {
 								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "waiting" });
 							}
 							setTaskAssigning(taskId, [...taskAssigning]);
-							return; // Return early, do not add to the running queue
-						}
 
+						}
 						// The following logic is for when the task actually starts executing (running)
-						if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
+						else if (taskAssigning && taskAssigning[assigneeAgentIndex]) {
 							// Check if task already exists in the agent's task list
 							const existingTaskIndex = taskAssigning[assigneeAgentIndex].tasks.findIndex(item => item.id === task_id);
 
@@ -649,11 +648,14 @@ const chatStore = create<ChatStore>()(
 						// Only update or add to taskRunning, never duplicate
 						if (taskRunningIndex === -1) {
 							// Task not in taskRunning, add it
+							if(task){
+								task.status = taskState === "waiting" ? "waiting" : "running";
+							}
 							taskRunning!.push(
 								task ?? {
 									id: task_id,
 									content,
-									status: "",
+									status: taskState === "waiting" ? "waiting" : "running",
 									agent: JSON.parse(JSON.stringify(taskAgent)),
 								}
 							);
@@ -661,7 +663,7 @@ const chatStore = create<ChatStore>()(
 							// Task already in taskRunning, update it
 							taskRunning![taskRunningIndex] = {
 								...taskRunning![taskRunningIndex],
-								status: "",
+								status: taskState === "waiting" ? "waiting" : "running",
 								agent: JSON.parse(JSON.stringify(taskAgent)),
 							};
 						}
