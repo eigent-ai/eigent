@@ -1311,13 +1311,16 @@ const chatStore = create<ChatStore>()(
 			}))
 		},
 		handleConfirmTask: async (taskId: string, type?: string) => {
-			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo } = get();
+			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning } = get();
 			if (!taskId) return;
 
 			// record task start time
 			setTaskTime(taskId, Date.now());
 			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
 			setTaskInfo(taskId, taskInfo)
+			// Also update taskRunning with the filtered tasks to keep counts consistent
+			const taskRunning = tasks[taskId].taskRunning.filter((task) => task.content !== '')
+			setTaskRunning(taskId, taskRunning)
 			if (!type) {
 				await fetchPut(`/task/${taskId}`, {
 					task: taskInfo,
