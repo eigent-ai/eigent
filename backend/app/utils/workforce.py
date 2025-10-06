@@ -132,7 +132,11 @@ class Workforce(BaseWorkforce):
                 continue
             # Find task content
             task_obj = get_camel_task(item.task_id, tasks)
-            content = task_obj.content if task_obj else ""
+            if task_obj is None:
+                logger.warning(f"[WF] WARN: Task {item.task_id} not found in tasks list during ASSIGN phase. This may indicate a task tree inconsistency.")
+                content = ""
+            else:
+                content = task_obj.content
             # Asynchronously send waiting notification
             task = asyncio.create_task(
                 task_lock.put_queue(

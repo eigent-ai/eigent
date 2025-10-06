@@ -589,6 +589,13 @@ const chatStore = create<ChatStore>()(
 
 						const taskRunningIndex = taskRunning!.findIndex((task: TaskInfo) => task.id === task_id);
 
+						// Skip tasks with empty content only if the task doesn't exist in taskInfo
+						// If task exists in taskInfo, we should still process status updates
+						if ((!content || content.trim() === "") && !task) {
+							console.warn(`Skipping task ${task_id} with empty content and not found in taskInfo`);
+							return;
+						}
+
 						if (assigneeAgentIndex === -1) return;
 						const taskAgent = taskAssigning![assigneeAgentIndex];
 
