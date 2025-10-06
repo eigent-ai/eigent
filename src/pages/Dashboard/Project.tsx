@@ -215,7 +215,7 @@ export default function Project() {
 	const TABLE_VIEW_ENABLED = false;
 
 	return (
-	    <div className="flex flex-col h-full max-w-[900px] mx-auto">
+	    <div className="flex flex-col h-full max-w-[900px] mx-auto py-4">
     		{/* alert dialog */}
 			<AlertDialog
 				isOpen={deleteModalOpen}
@@ -347,7 +347,7 @@ export default function Project() {
   </div>
 ) : (
   // List
-  <div className="p-6 flex flex-col justify-start items-center gap-4 ">
+  <div className="p-6 flex flex-col justify-start items-center gap-4">
     {Object.keys(chatStore.tasks).map((taskId) => {
       const task = chatStore.tasks[taskId];
       return task.status != "finished" && !task.type ? (
@@ -555,7 +555,7 @@ export default function Project() {
   </div>
 ) : (
   // List
-  <div className="p-6 flex flex-col justify-start items-center gap-4">
+  <div className="p-6 flex flex-col justify-start items-center gap-4 pb-40">
     {historyTasks.map((task) => {
       return (
         <div

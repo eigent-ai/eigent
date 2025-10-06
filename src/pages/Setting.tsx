@@ -43,18 +43,11 @@ export default function Setting() {
 			icon: TextSelect,
 			path: "/setting/models",
 		},
-		{
-			id: "mcp",
-			name: t("setting.mcp"),
-			icon: Server,
-			path: "/setting/mcp",
-		},
 	];
 	// Initialize tab from URL once, then manage locally without routing
 	const getCurrentTab = () => {
 		const path = location.pathname;
 		const tabFromUrl = path.split("/setting/")[1] || "general";
-		if (tabFromUrl === "mcp_market") return "mcp";
 		return settingMenus.find((menu) => menu.id === tabFromUrl)?.id || "general";
 	};
 
@@ -71,7 +64,7 @@ export default function Setting() {
 	};
 
 	return (
-		<div className="max-w-[900px] h-auto px-4 m-auto flex flex-col">
+		<div className="max-w-[900px] h-auto px-4 m-auto flex flex-col py-4">
 			<div className="w-full h-auto flex px-3">
 					<div className="!w-[222px] flex-shrink-0 flex-grow-0 pt-md pr-4 flex flex-col sticky top-20 self-start">
 						<VerticalNavigation
@@ -106,7 +99,6 @@ export default function Setting() {
 						{activeTab === "general" && <General />}
 						{activeTab === "privacy" && <Privacy />}
 						{activeTab === "models" && <Models />}
-						{activeTab === "mcp" && <MCP />}
 					</div>
 				</div>
 			</div>

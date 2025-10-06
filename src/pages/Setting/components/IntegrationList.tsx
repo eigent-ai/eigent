@@ -345,6 +345,7 @@ export default function IntegrationList({
 							</div>
 						</div>
 						<Button
+							type="button"
 							disabled={[
 								"X(Twitter)",
 								"WhatsApp",
@@ -354,9 +355,11 @@ export default function IntegrationList({
 							].includes(item.name)}
 							variant={isInstalled ? "secondary" : "primary"}
 							size="sm"
-							onClick={() =>
-								isInstalled ? handleUninstall(item) : handleInstall(item)
-							}
+							onClick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								return isInstalled ? handleUninstall(item) : handleInstall(item);
+							}}
 						>
 							{[
 								"X(Twitter)",

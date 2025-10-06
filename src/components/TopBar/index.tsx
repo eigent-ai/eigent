@@ -310,14 +310,17 @@ function HeaderWin() {
 							<Power />
 							End Project
 						</Button>
-						<Button
-							onClick={() => handleShare(chatStore.activeTaskId as string)}
-							variant="ghost"
-							size="icon"
-							className="no-drag"
-						>
-							<Share />
-						</Button>
+						{chatStore.activeTaskId &&
+							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+								<Button
+									onClick={() => handleShare(chatStore.activeTaskId as string)}
+									variant="ghost"
+									size="icon"
+									className="no-drag"
+								>
+									<Share />
+								</Button>
+							)}
 					</div>
 				)}
 				{location.pathname === "/history" && (
@@ -328,7 +331,7 @@ function HeaderWin() {
 					>
 						<Button
 							onClick={getReferFriendsLink}
-							variant="outline"
+							variant="ghost"
 							size="xs"
 							className="no-drag"
 						>
@@ -338,6 +341,14 @@ function HeaderWin() {
 								className="w-4 h-4"
 							/>
 							{t("layout.refer-friends")}
+						</Button>
+						<Button
+							onClick={() => (window.location.href = "https://www.eigent.ai/pricing")}
+							variant="outline"
+							size="xs"
+							className="no-drag"
+						>
+							Upgrade
 						</Button>
 					</div>
 				)}

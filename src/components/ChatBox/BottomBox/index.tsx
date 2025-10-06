@@ -83,7 +83,7 @@ export default function BottomBox({
 	}
 
 	return (
-		<div className={`flex flex-col gap-2 w-full p-2 rounded-xl ${backgroundClass} overflow-hidden relative z-50`}>
+		<div className={`flex flex-col gap-2 w-full p-2 rounded-xl ${backgroundClass} overflow-hidden z-50`}>
 			{/* BoxHeader (conditionally visible by state) */}
 			{headerState && (
 				<BoxHeader

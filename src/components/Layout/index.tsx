@@ -52,7 +52,7 @@ const Layout = () => {
 		<div className="h-full flex flex-col">
 		
 			<TopBar />
-			<div className="flex-1 h-full">
+			<div className="flex-1 h-full min-h-0 overflow-hidden">
 				{/* Onboarding animation */}
 				{shouldShowOnboarding && (
 					<AnimationJson

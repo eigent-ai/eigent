@@ -685,8 +685,8 @@ export default function SettingModels() {
 				</div>
 			)}
 			{/* customer models */}
-			<div className="self-stretch mt-4 pb-10 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
-				<div className="sticky top-[79px] z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 py-6">
+			<div className="self-stretch my-4 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
+				<div className="sticky top-[79px] z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 my-6 border-y-0 border-r-0 border-solid border-border-secondary">
 					<div className="flex flex-col items-start gap-1">
 					<span className="justify-center text-text-body text-body-md font-bold">
 						{t("setting.custom-model")}
@@ -955,7 +955,7 @@ export default function SettingModels() {
 				</div>
 			</div>
 			{/* Local Model */}
-			<div className="mt-8 bg-surface-secondary rounded-2xl flex flex-col gap-4">
+			<div className="mt-2 bg-surface-secondary rounded-2xl flex flex-col gap-4">
 				<div className="flex items-center justify-between mb-2 px-6 pt-4">
 					<div className="font-bold text-body-lg text-text-heading">{t("setting.local-model")}</div>
 					{localPrefer ? (

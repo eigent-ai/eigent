@@ -13,12 +13,14 @@ import MCPDeleteDialog from "./components/MCPDeleteDialog";
 import { parseArgsToArray, arrayToArgsJson } from "./components/utils";
 import type { MCPUserItem, MCPConfigForm } from "./components/types";
 import { Button } from "@/components/ui/button";
-import { Plus, Store } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Store, ChevronLeft } from "lucide-react";
+import SearchInput from "@/components/SearchInput";
 import { useNavigate } from "react-router-dom";
 import IntegrationList from "./components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
+import MCPMarket from "./MCPMarket";
 
 import { toast } from "sonner";
 import { ConfigFile } from "electron/main/utils/mcpConfig";
@@ -57,7 +59,11 @@ export default function SettingMCP() {
 	const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>(
 		{}
 	);
-	
+const [collapsed, setCollapsed] = useState(false);
+const [collapsedMCP, setCollapsedMCP] = useState(false);
+const [collapsedExternal, setCollapsedExternal] = useState(false);
+const [showMarket, setShowMarket] = useState(false);
+const [marketKeyword, setMarketKeyword] = useState("");
 
 	// add: integrations list
 	const [integrations, setIntegrations] = useState<any[]>([]);
@@ -159,10 +165,13 @@ export default function SettingMCP() {
 								toast.error(error.message || "Failed to install Google Calendar");
 							}
 						};
-					} else {
-						onInstall = () =>
-							(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
-					}
+                    } else {
+                        onInstall = () => {
+                            const url = `${baseURL}/api/oauth/${key.toLowerCase()}/login`;
+                            // Open in a new window to avoid navigating the app/webview
+                            window.open(url, "_blank");
+                        };
+                    }
 
 					return {
 						key,
@@ -381,86 +390,140 @@ export default function SettingMCP() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 pb-40">
-			<div className="flex items-center justify-between">
-				<div className="text-base font-bold leading-snug text-text-body">
-					{t("setting.mcp-and-tools")}
-				</div>
-				<div className="flex items-center gap-sm">
-					<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-						<Plus />
-						<span>{t("setting.add-mcp-server")}</span>
-					</Button>
-
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => navigate("/setting/mcp_market")}
-					>
-						<Store />
-						<span>{t("setting.market")}</span>
-					</Button>
-				</div>
-			</div>
-			<div className="text-text-body font-bold text-base leading-snug">
-				{t("setting.tools")}
-			</div>
-			<IntegrationList items={essentialIntegrations} />
-			<div className="text-text-body font-bold text-base leading-snug">MCP</div>
-			<IntegrationList key={refreshKey} items={integrations} />
-
-			<div className="pt-4">
-				<div className="self-stretch inline-flex justify-start items-center gap-1">
-					<div className="justify-center text-text-body text-base font-bold leading-snug">
-						{t("setting.added-external-servers")}
+		<div className="max-w-[900px] h-auto m-auto flex flex-col px-6 pb-40">
+			<div className="sticky top-[79px] z-20 flex items-center justify-between py-8 bg-bg-page border-b border-border-secondary">
+				{showMarket ? (
+					<div className="flex w-full items-center justify-between gap-sm">
+						<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
+							<ChevronLeft />
+						</Button>
+						<div className="text-body-lg font-bold text-text-body">
+							{t("setting.mcp-market")}
+						</div>
+						<div className="flex items-center gap-2 ml-auto">
+						  <div className="w-full">
+								<SearchInput value={marketKeyword} onChange={(e) => setMarketKeyword(e.target.value)} />
+							</div>
+						</div>
 					</div>
-				</div>
-				{isLoading && (
-					<div className="text-center py-8 text-gray-400">{t("setting.loading")}</div>
+				) : (
+					<div className="flex items-center justify-between w-full">
+						<div className="text-body-lg font-bold text-text-body">
+							{t("setting.mcp-and-tools")}
+						</div>
+						<div className="flex items-center gap-sm">
+							<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+								<Plus />
+								<span>{t("setting.add-mcp-server")}</span>
+							</Button>
+							<Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
+								<Store />
+								<span>{t("setting.market")}</span>
+							</Button>
+						</div>
+					</div>
 				)}
-				{error && <div className="text-center py-8 text-red-500">{error}</div>}
-				{!isLoading && !error && items.length === 0 && (
-					<div className="text-center py-8 text-gray-400">{t("setting.no-mcp-servers")}</div>
+			</div>
+			<div className="flex flex-col gap-8">
+				{showMarket ? (
+					<div className="pt-2">
+						<MCPMarket onBack={() => setShowMarket(false)} keyword={marketKeyword} />
+					</div>
+				) : (
+					<>
+						<div className="flex flex-col">
+							<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 py-2">
+								<div className="flex flex-col items-start gap-1">
+									<span className="justify-center text-text-body text-body-md font-bold">{t("setting.tools")}</span>
+								</div>
+								<div className="flex-1" />
+								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsed((c) => !c); }}>
+									{collapsed ? (
+										<ChevronDown className="w-4 h-4" />
+									) : (
+										<ChevronUp className="w-4 h-4" />
+									)}
+								</Button>
+							</div>
+							{!collapsed && <IntegrationList items={essentialIntegrations} />}
+						</div>
+						<div className="flex flex-col">
+							<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-center gap-2 py-2">
+								<span className="text-text-body text-body-md font-bold">MCP</span>
+								<div className="flex-1" />
+								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedMCP((c) => !c); }}>
+									{collapsedMCP ? (
+										<ChevronDown className="w-4 h-4" />
+									) : (
+										<ChevronUp className="w-4 h-4" />
+									)}
+								</Button>
+							</div>
+							{!collapsedMCP && <IntegrationList key={refreshKey} items={integrations} />}
+						</div>
+						<div className="flex flex-col">
+							<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-center gap-2 py-2">
+								<div className="justify-center text-text-body text-body-md font-bold">{t("setting.added-external-servers")}</div>
+								<div className="flex-1" />
+								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedExternal((c) => !c); }}>
+									{collapsedExternal ? (
+										<ChevronDown className="w-4 h-4" />
+									) : (
+										<ChevronUp className="w-4 h-4" />
+									)}
+								</Button>
+							</div>
+							{!collapsedExternal && (
+								<>
+									{isLoading && (<div className="text-center py-8 text-gray-400">{t("setting.loading")}</div>)}
+									{error && <div className="text-center py-8 text-red-500">{error}</div>}
+									{!isLoading && !error && items.length === 0 && (<div className="text-center py-8 text-gray-400">{t("setting.no-mcp-servers")}</div>)}
+									{!isLoading && (
+										<MCPList
+											items={items}
+											onSetting={setShowConfig}
+											onDelete={setDeleteTarget}
+											onSwitch={handleSwitch}
+											switchLoading={switchLoading}
+										/>
+									)}
+								</>
+							)}
+							<MCPConfigDialog
+								open={!!showConfig}
+								form={configForm}
+								mcp={showConfig}
+								onChange={setConfigForm as any}
+								onSave={handleConfigSave}
+								onClose={handleConfigClose}
+								loading={saving}
+								errorMsg={errorMsg}
+								onSwitchStatus={handleConfigSwitch}
+							/>
+							<MCPAddDialog
+								open={showAdd}
+								addType={addType}
+								setAddType={setAddType}
+								localJson={localJson}
+								setLocalJson={setLocalJson}
+								remoteName={remoteName}
+								setRemoteName={setRemoteName}
+								remoteUrl={remoteUrl}
+								setRemoteUrl={setRemoteUrl}
+								installing={installing}
+								onClose={() => setShowAdd(false)}
+								onInstall={handleInstall}
+							/>
+							<MCPDeleteDialog
+								open={!!deleteTarget}
+								target={deleteTarget}
+								onCancel={() => setDeleteTarget(null)}
+								onConfirm={handleDelete}
+								loading={deleting}
+							/>
+						</div>
+					</>
 				)}
-				{!isLoading && <MCPList
-					items={items}
-					onSetting={setShowConfig}
-					onDelete={setDeleteTarget}
-					onSwitch={handleSwitch}
-					switchLoading={switchLoading}
-				/>}
-				<MCPConfigDialog
-					open={!!showConfig}
-					form={configForm}
-					mcp={showConfig}
-					onChange={setConfigForm as any}
-					onSave={handleConfigSave}
-					onClose={handleConfigClose}
-					loading={saving}
-					errorMsg={errorMsg}
-					onSwitchStatus={handleConfigSwitch}
-				/>
-				<MCPAddDialog
-					open={showAdd}
-					addType={addType}
-					setAddType={setAddType}
-					localJson={localJson}
-					setLocalJson={setLocalJson}
-					remoteName={remoteName}
-					setRemoteName={setRemoteName}
-					remoteUrl={remoteUrl}
-					setRemoteUrl={setRemoteUrl}
-					installing={installing}
-					onClose={() => setShowAdd(false)}
-					onInstall={handleInstall}
-				/>
-				<MCPDeleteDialog
-					open={!!deleteTarget}
-					target={deleteTarget}
-					onCancel={() => setDeleteTarget(null)}
-					onConfirm={handleDelete}
-					loading={deleting}
-				/>
 			</div>
 		</div>
 	);
