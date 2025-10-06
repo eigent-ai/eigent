@@ -611,6 +611,15 @@ const chatStore = create<ChatStore>()(
 							taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
 						}
 
+						// Clear logs from the assignee agent that are related to this task
+						// This prevents logs from previous attempts appearing in the reassigned task
+						// This needs to happen whether it's a reassignment to a different agent or a retry with the same agent
+						if (taskState !== "waiting" && failure_count && failure_count > 0) {
+							taskAssigning[assigneeAgentIndex].log = taskAssigning[assigneeAgentIndex].log.filter(
+								(log) => log.data.process_task_id !== task_id
+							)
+						}
+
 
 						// Handle task assignment to taskAssigning based on state
 						if (taskState === "waiting") {
