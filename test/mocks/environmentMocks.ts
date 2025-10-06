@@ -445,7 +445,14 @@ export function createProcessUtilsMock() {
       )
       
       utilsMock.runInstallScript.mockImplementation(async (scriptPath: string) => {
-        // Simulate successful script execution by default
+        // Simulate successful script execution and update binary state
+        if (scriptPath.includes('install-uv')) {
+          mockState.filesystem.binariesExist['uv'] = true
+          mockState.processes.uvAvailable = true
+        } else if (scriptPath.includes('install-bun')) {
+          mockState.filesystem.binariesExist['bun'] = true
+          mockState.processes.bunAvailable = true
+        }
         return true
       })
       

@@ -291,6 +291,19 @@ export function createElectronAPIMock(): MockedElectronAPI {
       }, 100)
     },
 
+    simulateEnvCorruption: () => {
+      mockState.envFileExists = true
+      mockState.envContent = 'INVALID_ENV_CONTENT\n# === MCP INTEGRATION ENV START ===\nBROKEN'
+    },
+
+    simulateUserEmailChange: (email: string) => {
+      mockState.userEmail = email
+    },
+
+    simulateMcpConfigMissing: () => {
+      mockState.mcpRemoteConfigExists = false
+    },
+
     reset: () => {
       Object.assign(mockState, {
         venvExists: true,
@@ -302,13 +315,20 @@ export function createElectronAPIMock(): MockedElectronAPI {
         uvicornStarting: false,
         toolInstalled: true,
         allowForceInstall: false,
+        // Reset environment-related state
+        envFileExists: true,
+        envContent: 'MOCK_VAR=mock_value\n# === MCP INTEGRATION ENV START ===\nMCP_KEY=test_value\n# === MCP INTEGRATION ENV END ===',
+        eigentDirExists: true,
+        userEmail: 'test@example.com',
+        mcpRemoteConfigExists: true,
+        hasToken: true,
       })
-      
+
       // Clear all listeners
       installStartListeners.length = 0
       installLogListeners.length = 0
       installCompleteListeners.length = 0
-      
+
       // Reset all mocks
       electronAPI.checkAndInstallDepsOnUpdate.mockClear()
       electronAPI.getInstallationStatus.mockClear()
@@ -317,6 +337,11 @@ export function createElectronAPIMock(): MockedElectronAPI {
       electronAPI.onInstallDependenciesLog.mockClear()
       electronAPI.onInstallDependenciesComplete.mockClear()
       electronAPI.removeAllListeners.mockClear()
+      electronAPI.getEnvPath.mockClear()
+      electronAPI.updateEnvBlock.mockClear()
+      electronAPI.removeEnvKey.mockClear()
+      electronAPI.getEmailFolderPath.mockClear()
+      electronAPI.parseEnvBlock.mockClear()
     }
   }
 
