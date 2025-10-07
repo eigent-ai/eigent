@@ -264,7 +264,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	},
 	
 	getChatStore: (projectId?: string, chatId?: string) => {
-		const { projects, activeProjectId, createProject } = get();
+		const { projects, activeProjectId, createProject, createChatStore } = get();
 		
 		// Use provided projectId or fall back to activeProjectId
 		const targetProjectId = projectId || activeProjectId;
@@ -287,14 +287,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 		
 		// If no active project exists, create a new one
-		if (!activeProjectId) {
-			const newProjectId = createProject(
-				"new project",
-				"new project description"
-			);
-			const newProject = projects[newProjectId];
-			if (newProject && newProject.activeChatId) {
-				return newProject.chatStores[newProject.activeChatId] || null;
+		if (!targetProjectId || !projects[targetProjectId]) {
+			console.log('[ProjectStore] No project found, creating new project in getChatStore');
+			const newProjectId = createProject("New Project", "Auto-created project");
+			
+			// Get updated state after project creation
+			const updatedState = get();
+			const newProject = updatedState.projects[newProjectId];
+			if (newProject && newProject.activeChatId && newProject.chatStores[newProject.activeChatId]) {
+				return newProject.chatStores[newProject.activeChatId];
 			}
 		}
 		
@@ -302,14 +303,43 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	},
 	
 	getActiveChatStore: (projectId?: string) => {
-		const { projects, activeProjectId } = get();
+		const { projects, activeProjectId, createProject, createChatStore } = get();
 		
 		const targetProjectId = projectId || activeProjectId;
 		
 		if (targetProjectId && projects[targetProjectId]) {
 			const project = projects[targetProjectId];
+			
 			if (project.activeChatId && project.chatStores[project.activeChatId]) {
 				return project.chatStores[project.activeChatId];
+			}
+			
+			// If project exists but has no chat stores, create one
+			const chatStoreKeys = Object.keys(project.chatStores);
+			if (chatStoreKeys.length === 0) {
+				console.log('[ProjectStore] Project exists but no chat stores found, creating new chat store');
+				const newChatId = createChatStore(targetProjectId);
+				if (newChatId) {
+					const updatedState = get();
+					return updatedState.projects[targetProjectId].chatStores[newChatId];
+				}
+			}
+			
+			// If there are chat stores but no active one, return the first available
+			if (chatStoreKeys.length > 0) {
+				return project.chatStores[chatStoreKeys[0]];
+			}
+		}
+		
+		// If no active project exists or no targetProjectId, create a new project
+		if (!targetProjectId || !projects[targetProjectId]) {
+			console.log('[ProjectStore] No active project found, creating new project');
+			const newProjectId = createProject("New Project", "Auto-created project");
+			// Get updated state after project creation
+			const updatedState = get();
+			const newProject = updatedState.projects[newProjectId];
+			if (newProject && newProject.activeChatId && newProject.chatStores[newProject.activeChatId]) {
+				return newProject.chatStores[newProject.activeChatId];
 			}
 		}
 		
