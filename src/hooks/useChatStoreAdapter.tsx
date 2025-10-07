@@ -1,7 +1,11 @@
-import { useProjectStore } from '@/store/projectStore';
+import { ChatStore } from '@/store/chatStore';
+import { ProjectStore, useProjectStore } from '@/store/projectStore';
 import React, { useEffect, useMemo, useState } from 'react'
 
-const useChatStoreAdapter = () => {
+const useChatStoreAdapter = ():{
+  projectStore: ProjectStore, 
+  chatStore: ChatStore
+} => {
   const projectStore = useProjectStore();
     
   // Get the active chat store from project store
