@@ -21,7 +21,7 @@ import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 export default function Home() {
 	const { toggle } = useSidebarStore();
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -144,7 +144,7 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!chatStore.activeTaskId) {
-			chatStore.create();
+			projectStore.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");

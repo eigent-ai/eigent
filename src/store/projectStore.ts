@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { generateUniqueId } from "@/lib";
 import { useChatStore, VanillaChatStore } from './chatStore';
+import { devtools } from 'zustand/middleware';
 
 interface Project {
 	id: string;
@@ -54,6 +55,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const initialChatId = generateUniqueId();
 		const initialChatStore = useChatStore();
 		
+		// Initialize the chat store with a task using the create() function
+		initialChatStore.getState().create();
+		
 		// Create new project with default chat store
 		const newProject: Project = {
 			id: projectId,
@@ -69,6 +73,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 				status: 'active'
 			}
 		};
+		
+		console.log("[store] Creating a new project");
 		
 		set((state) => ({
 			projects: {
@@ -113,6 +119,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		
 		const chatId = generateUniqueId();
 		const newChatStore = useChatStore();
+		
+		// Initialize the chat store with a task using the create() function
+		newChatStore.getState().create();
 		
 		set((state) => ({
 			projects: {

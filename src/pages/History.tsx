@@ -51,7 +51,7 @@ export default function Home() {
 	const {t} = useTranslation()
 	const navigate = useNavigate();
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -224,7 +224,7 @@ export default function Home() {
 			navigate(`/`);
 			return;
 		}
-		chatStore.create();
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 

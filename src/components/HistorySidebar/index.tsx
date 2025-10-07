@@ -44,7 +44,7 @@ export default function HistorySidebar() {
 	const { isOpen, close } = useSidebarStore();
 	const navigate = useNavigate();
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -87,7 +87,8 @@ export default function HistorySidebar() {
 			chatStore.tasks[chatStore.activeTaskId as string].messages.length === 0
 		) {
 		}
-		chatStore.create();
+		//Create a new project
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 

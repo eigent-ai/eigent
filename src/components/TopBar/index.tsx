@@ -29,7 +29,7 @@ function HeaderWin() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -99,7 +99,7 @@ function HeaderWin() {
 			navigate("/");
 			return;
 		}
-		chatStore.create();
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 

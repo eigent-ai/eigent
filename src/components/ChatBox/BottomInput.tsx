@@ -58,7 +58,7 @@ export const BottomInput = ({
 	useCloudModelInDev: boolean;
 }) => {
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -212,7 +212,10 @@ export const BottomInput = ({
 			chatStore.tasks[chatStore.activeTaskId as string].messages[
 				messageIndex - 2
 			].content;
-		let id = chatStore.create();
+		//Create new chat in same project
+		if(!projectStore.activeProjectId) return
+		let id = projectStore.createChatStore(projectStore.activeProjectId);
+		
 		chatStore.setHasMessages(id, true);
 		chatStore.removeTask(tempTaskId as string);
 		proxyFetchDelete(`/api/chat/history/${tempTaskId}`);
