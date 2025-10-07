@@ -8,7 +8,8 @@ interface Project {
 	description?: string;
 	createdAt: number;
 	updatedAt: number;
-	chatStore: VanillaChatStore | null; // Serialized state of the chatStore for this project
+	chatStores: { [chatId: string]: VanillaChatStore }; // Multiple chat stores for this project
+	activeChatId: string | null; // ID of the currently active chat store
 	metadata?: {
 		tags?: string[];
 		priority?: 'low' | 'medium' | 'high';
@@ -27,8 +28,13 @@ interface ProjectStore {
 	updateProject: (projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) => void;
 	
 	// Chat store state management
-	saveChatStore: (projectId: string, state: VanillaChatStore) => void;
-	getChatStore: (projectId: string) => VanillaChatStore | null;
+	createChatStore: (projectId: string, chatName?: string) => string | null;
+	setActiveChatStore: (projectId: string, chatId: string) => void;
+	removeChatStore: (projectId: string, chatId: string) => void;
+	saveChatStore: (projectId: string, chatId: string, state: VanillaChatStore) => void;
+	getChatStore: (projectId?: string, chatId?: string) => VanillaChatStore | null;
+	getActiveChatStore: (projectId?: string) => VanillaChatStore | null;
+	getAllChatStores: (projectId: string) => { [chatId: string]: VanillaChatStore };
 	
 	// Utility methods
 	getAllProjects: () => Project[];
@@ -44,14 +50,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const projectId = generateUniqueId();
 		const now = Date.now();
 		
-		// Create new project with default chat store state
+		// Create initial chat store for the project
+		const initialChatId = generateUniqueId();
+		const initialChatStore = useChatStore();
+		
+		// Create new project with default chat store
 		const newProject: Project = {
 			id: projectId,
 			name,
 			description,
 			createdAt: now,
 			updatedAt: now,
-			chatStore: useChatStore(),
+			chatStores: {
+				[initialChatId]: initialChatStore
+			},
+			activeChatId: initialChatId,
 			metadata: {
 				status: 'active'
 			}
@@ -88,6 +101,107 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 				}
 			}
 		}));
+	},
+	
+	createChatStore: (projectId: string, chatName?: string) => {
+		const { projects } = get();
+		
+		if (!projects[projectId]) {
+			console.warn(`Project ${projectId} not found`);
+			return null;
+		}
+		
+		const chatId = generateUniqueId();
+		const newChatStore = useChatStore();
+		
+		set((state) => ({
+			projects: {
+				...state.projects,
+				[projectId]: {
+					...state.projects[projectId],
+					chatStores: {
+						...state.projects[projectId].chatStores,
+						[chatId]: newChatStore
+					},
+					activeChatId: chatId,
+					updatedAt: Date.now()
+				}
+			}
+		}));
+		
+		return chatId;
+	},
+	
+	setActiveChatStore: (projectId: string, chatId: string) => {
+		const { projects } = get();
+		
+		if (!projects[projectId]) {
+			console.warn(`Project ${projectId} not found`);
+			return;
+		}
+		
+		if (!projects[projectId].chatStores[chatId]) {
+			console.warn(`Chat ${chatId} not found in project ${projectId}`);
+			return;
+		}
+		
+		set((state) => ({
+			projects: {
+				...state.projects,
+				[projectId]: {
+					...state.projects[projectId],
+					activeChatId: chatId,
+					updatedAt: Date.now()
+				}
+			}
+		}));
+	},
+	
+	removeChatStore: (projectId: string, chatId: string) => {
+		const { projects } = get();
+		
+		if (!projects[projectId]) {
+			console.warn(`Project ${projectId} not found`);
+			return;
+		}
+		
+		const project = projects[projectId];
+		const chatStoreKeys = Object.keys(project.chatStores);
+		
+		// Don't allow removing the last chat store
+		if (chatStoreKeys.length === 1) {
+			console.warn('Cannot remove the last chat store from a project');
+			return;
+		}
+		
+		if (!project.chatStores[chatId]) {
+			console.warn(`Chat ${chatId} not found in project ${projectId}`);
+			return;
+		}
+		
+		// If removing the active chat, switch to another one
+		let newActiveChatId = project.activeChatId;
+		if (project.activeChatId === chatId) {
+			const remainingChats = chatStoreKeys.filter(id => id !== chatId);
+			newActiveChatId = remainingChats[0];
+		}
+		
+		set((state) => {
+			const newChatStores = { ...state.projects[projectId].chatStores };
+			delete newChatStores[chatId];
+			
+			return {
+				projects: {
+					...state.projects,
+					[projectId]: {
+						...state.projects[projectId],
+						chatStores: newChatStores,
+						activeChatId: newActiveChatId,
+						updatedAt: Date.now()
+					}
+				}
+			};
+		});
 	},
 	
 	removeProject: (projectId: string) => {
@@ -129,26 +243,87 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}));
 	},
 	
-	saveChatStore: (projectId: string, state: VanillaChatStore) => {
+	saveChatStore: (projectId: string, chatId: string, state: VanillaChatStore) => {
 		const { projects } = get();
 		
-		if (projects[projectId]) {
+		if (projects[projectId] && projects[projectId].chatStores[chatId]) {
 			set((currentState) => ({
 				projects: {
 					...currentState.projects,
 					[projectId]: {
 						...currentState.projects[projectId],
-						chatStore: state
+						chatStores: {
+							...currentState.projects[projectId].chatStores,
+							[chatId]: state
+						},
+						updatedAt: Date.now()
 					}
 				}
 			}));
 		}
 	},
 	
-	getChatStore: (projectId: string) => {
+	getChatStore: (projectId?: string, chatId?: string) => {
+		const { projects, activeProjectId, createProject } = get();
+		
+		// Use provided projectId or fall back to activeProjectId
+		const targetProjectId = projectId || activeProjectId;
+		
+		if (targetProjectId && projects[targetProjectId]) {
+			const project = projects[targetProjectId];
+			
+			// Use provided chatId or fall back to activeChatId
+			const targetChatId = chatId || project.activeChatId;
+			
+			if (targetChatId && project.chatStores[targetChatId]) {
+				return project.chatStores[targetChatId];
+			}
+			
+			// If no active chat or chat not found, return the first available one
+			const chatStoreKeys = Object.keys(project.chatStores);
+			if (chatStoreKeys.length > 0) {
+				return project.chatStores[chatStoreKeys[0]];
+			}
+		}
+		
+		// If no active project exists, create a new one
+		if (!activeProjectId) {
+			const newProjectId = createProject(
+				"new project",
+				"new project description"
+			);
+			const newProject = projects[newProjectId];
+			if (newProject && newProject.activeChatId) {
+				return newProject.chatStores[newProject.activeChatId] || null;
+			}
+		}
+		
+		return null;
+	},
+	
+	getActiveChatStore: (projectId?: string) => {
+		const { projects, activeProjectId } = get();
+		
+		const targetProjectId = projectId || activeProjectId;
+		
+		if (targetProjectId && projects[targetProjectId]) {
+			const project = projects[targetProjectId];
+			if (project.activeChatId && project.chatStores[project.activeChatId]) {
+				return project.chatStores[project.activeChatId];
+			}
+		}
+		
+		return null;
+	},
+	
+	getAllChatStores: (projectId: string) => {
 		const { projects } = get();
-		const project = projects[projectId];
-		return project?.chatStore || null;
+		
+		if (projects[projectId]) {
+			return projects[projectId].chatStores;
+		}
+		
+		return {};
 	},
 	
 	getAllProjects: () => {
