@@ -3,6 +3,11 @@ import { generateUniqueId } from "@/lib";
 import { useChatStore, VanillaChatStore } from './chatStore';
 import { devtools } from 'zustand/middleware';
 
+export enum ProjectType {
+	NORMAL = 'normal',
+	REPLAY = 'replay'
+}
+
 interface Project {
 	id: string;
 	name: string;
@@ -23,7 +28,7 @@ interface ProjectStore {
 	projects: { [projectId: string]: Project };
 	
 	// Project management
-	createProject: (name: string, description?: string) => string;
+	createProject: (name: string, description?: string, projectId?:string, type?:ProjectType) => string;
 	setActiveProject: (projectId: string) => void;
 	removeProject: (projectId: string) => void;
 	updateProject: (projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) => void;
@@ -48,8 +53,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	activeProjectId: null,
 	projects: {},
 	
-	createProject: (name: string, description?: string) => {
-		const projectId = generateUniqueId();
+	createProject: (name: string, description?: string, projectId?: string, type?:ProjectType) => {
+		const targetProjectId = projectId ?? generateUniqueId();
 		const now = Date.now();
 		
 		// Create initial chat store for the project
@@ -61,7 +66,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		
 		// Create new project with default chat store
 		const newProject: Project = {
-			id: projectId,
+			id: targetProjectId,
 			name,
 			description,
 			createdAt: now,
@@ -76,16 +81,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		};
 		
 		console.log("[store] Creating a new project");
-		
 		set((state) => ({
 			projects: {
 				...state.projects,
-				[projectId]: newProject
+				[targetProjectId]: newProject
 			},
-			activeProjectId: projectId
+			activeProjectId: targetProjectId
 		}));
 		
-		return projectId;
+		return targetProjectId;
 	},
 	
 	setActiveProject: (projectId: string) => {
@@ -263,6 +267,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const { projects, removeProject, createProject, createChatStore } = get();
 		
 		let replayProjectId: string;
+
+		//TODO: For now handle the question as unique identifier to avoid duplicate
+		if(!projectId) 
+			projectId = "Replay: "+question;
 		
 		// If projectId is provided, reset that project
 		if (projectId) {
@@ -273,13 +281,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			// Create project with the specific naming
 			replayProjectId = createProject(
 				`Replay Project ${question}`, 
-				`Replayed project from ${question}`
+				`Replayed project from ${question}`,
+				projectId
 			);
 		} else {
 			// Create a new project only once
 			replayProjectId = createProject(
 				`Replay Project ${question}`, 
-				`Replayed project with ${taskIds.length} tasks`
+				`Replayed project with ${taskIds.length} tasks`,
+				projectId
 			);
 		}
 		
