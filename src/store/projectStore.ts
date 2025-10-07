@@ -49,11 +49,88 @@ interface ProjectStore {
 }
 
 
+// Helper function to check if a project is empty/unused
+const isEmptyProject = (project: Project): boolean => {
+	try {
+		// Check if project has only one chat store
+		const chatStoreIds = Object.keys(project.chatStores);
+		if (chatStoreIds.length !== 1) {
+			return false;
+		}
+		
+		const chatStore = project.chatStores[chatStoreIds[0]];
+		if (!chatStore || !chatStore.getState) {
+			return false;
+		}
+		
+		const chatState = chatStore.getState();
+		const taskIds = Object.keys(chatState.tasks);
+		
+		// Check if chat store has only one task
+		if (taskIds.length !== 1) {
+			return false;
+		}
+		
+		const task = chatState.tasks[taskIds[0]];
+		if (!task) {
+			return false;
+		}
+		
+		// Check if task is in initial/empty state
+		const isEmpty = (
+			Array.isArray(task.messages) && task.messages.length === 0 &&
+			task.summaryTask === "" &&
+			task.progressValue === 0 &&
+			task.isPending === false &&
+			task.status === "pending" &&
+			task.taskTime === 0 &&
+			task.tokens === 0 &&
+			task.elapsed === 0 &&
+			task.hasWaitComfirm === false
+		);
+		
+		return isEmpty;
+	} catch (error) {
+		console.warn("[store] Error checking if project is empty:", error);
+		return false;
+	}
+};
+
 const projectStore = create<ProjectStore>()((set, get) => ({
 	activeProjectId: null,
 	projects: {},
 	
 	createProject: (name: string, description?: string, projectId?: string, type?:ProjectType) => {
+		const { projects } = get();
+		
+		//Replay doesn't need to use an empty project container
+		if(type !== ProjectType.REPLAY) {
+			// First, check if there are any existing empty projects
+			const existingEmptyProject = Object.values(projects).find(project => isEmptyProject(project));
+			
+			if (existingEmptyProject) {
+				console.log("[store] Found existing empty project, reusing:", existingEmptyProject.id);
+				
+				// Update the existing empty project with new name and description
+				const now = Date.now();
+				set((state) => ({
+					projects: {
+						...state.projects,
+						[existingEmptyProject.id]: {
+							...existingEmptyProject,
+							name,
+							description,
+							updatedAt: now
+						}
+					},
+					activeProjectId: existingEmptyProject.id
+				}));
+				
+				return existingEmptyProject.id;
+			}
+		}
+		
+		// If no empty project exists, create a new one
 		const targetProjectId = projectId ?? generateUniqueId();
 		const now = Date.now();
 		
@@ -62,7 +139,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const initialChatStore = useChatStore();
 		
 		// Initialize the chat store with a task using the create() function
-		initialChatStore.getState().create();
+		if(type !== ProjectType.REPLAY)
+			initialChatStore.getState().create();
 		
 		// Create new project with default chat store
 		const newProject: Project = {
@@ -279,14 +357,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			replayProjectId = createProject(
 				`Replay Project ${question}`, 
 				`Replayed project from ${question}`,
-				projectId
+				projectId,
+				ProjectType.REPLAY
 			);
 		} else {
 			// Create a new project only once
 			replayProjectId = createProject(
 				`Replay Project ${question}`, 
 				`Replayed project with ${taskIds.length} tasks`,
-				projectId
+				projectId,
+				ProjectType.REPLAY
 			);
 		}
 		
