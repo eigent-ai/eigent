@@ -213,8 +213,7 @@ export const BottomInput = ({
 				messageIndex - 2
 			].content;
 		//Create new chat in same project
-		if(!projectStore.activeProjectId) return
-		let id = projectStore.createChatStore(projectStore.activeProjectId);
+		let id = chatStore.create();
 		
 		chatStore.setHasMessages(id, true);
 		chatStore.removeTask(tempTaskId as string);

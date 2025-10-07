@@ -125,9 +125,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const chatId = generateUniqueId();
 		const newChatStore = useChatStore();
 		
-		// Initialize the chat store with a task using the create() function
-		newChatStore.getState().create();
-		
 		set((state) => ({
 			projects: {
 				...state.projects,
@@ -339,7 +336,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	},
 	
 	getChatStore: (projectId?: string, chatId?: string) => {
-		const { projects, activeProjectId, createProject, createChatStore } = get();
+		const { projects, activeProjectId, createProject } = get();
 		
 		// Use provided projectId or fall back to activeProjectId
 		const targetProjectId = projectId || activeProjectId;
