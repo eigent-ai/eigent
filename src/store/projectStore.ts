@@ -27,6 +27,7 @@ interface ProjectStore {
 	setActiveProject: (projectId: string) => void;
 	removeProject: (projectId: string) => void;
 	updateProject: (projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) => void;
+	replayProject: (taskIds: string[], question?: string, projectId?: string) => string;
 	
 	// Chat store state management
 	createChatStore: (projectId: string, chatName?: string) => string | null;
@@ -250,6 +251,61 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 				}
 			}
 		}));
+	},
+
+	/**
+	 * Simplified replay functionality
+	 * @param taskIds - array of taskIds to replay
+	 * @param projectId - optional projectId to create/overwrite
+	 * @returns the created project ID
+	 */
+	replayProject: (taskIds: string[], question: string="Replay task", projectId?: string) => {
+		const { projects, removeProject, createProject, createChatStore } = get();
+		
+		let replayProjectId: string;
+		
+		// If projectId is provided, reset that project
+		if (projectId) {
+			if (projects[projectId]) {
+				console.log(`[ProjectStore] Overwriting existing project ${projectId}`);
+				removeProject(projectId);
+			}
+			// Create project with the specific naming
+			replayProjectId = createProject(
+				`Replay Project ${question}`, 
+				`Replayed project from ${question}`
+			);
+		} else {
+			// Create a new project only once
+			replayProjectId = createProject(
+				`Replay Project ${question}`, 
+				`Replayed project with ${taskIds.length} tasks`
+			);
+		}
+		
+		console.log(`[ProjectStore] Created replay project ${replayProjectId} for ${taskIds.length} tasks`);
+		
+		// For each taskId, create a chat store within the project and call replay
+		taskIds.forEach(async (taskId, index) => {
+			console.log(`[ProjectStore] Creating replay for task ${index + 1}/${taskIds.length}: ${taskId}`);
+			
+			// Create a new chat store for this task
+			const chatId = createChatStore(replayProjectId, `Task ${taskId}`);
+			
+			if (chatId) {
+				const project = get().projects[replayProjectId];
+				const chatStore = project.chatStores[chatId];
+				
+				if (chatStore) {					
+					// Call replay on the chat store with the taskId, question, and 0 delay
+					await chatStore.getState().replay(taskId, question, 0);
+					console.log(`[ProjectStore] Started replay for task ${taskId}`);
+				}
+			}
+		});
+		
+		console.log(`[ProjectStore] Completed replay setup for ${taskIds.length} tasks`);
+		return replayProjectId;
 	},
 	
 	saveChatStore: (projectId: string, chatId: string, state: VanillaChatStore) => {

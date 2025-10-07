@@ -161,7 +161,7 @@ export default function HistorySidebar() {
 
 	const handleReplay = async (taskId: string, question: string) => {
 		close();
-		chatStore.replay(taskId, question, 0);
+		projectStore.replayProject([taskId], question);
 		navigate({ pathname: "/" });
 	};
 

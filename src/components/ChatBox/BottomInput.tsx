@@ -226,7 +226,7 @@ export const BottomInput = ({
 		let taskId = chatStore.activeTaskId as string;
 		const question =
 			chatStore.tasks[chatStore.activeTaskId as string].messages[0].content;
-		chatStore.replay(taskId, question, 0.1);
+		projectStore.replayProject([taskId], question);
 	};
 
 	return (

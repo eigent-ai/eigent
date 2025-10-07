@@ -37,7 +37,7 @@ export function SearchHistoryDialog() {
 	const [open, setOpen] = useState(false);
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -55,7 +55,7 @@ export function SearchHistoryDialog() {
 		}
 	};
 	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(taskId, question, 0);
+		projectStore.replayProject([taskId], question);
 		navigate({ pathname: "/" });
 	};
 	useEffect(() => {
