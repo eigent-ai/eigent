@@ -26,6 +26,7 @@ import { Tag } from "../ui/tag";
 import { useTranslation } from "react-i18next";
 import { TooltipSimple } from "../ui/tooltip";
 import { toast } from "sonner";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export const BottomInput = ({
 	message,
@@ -56,7 +57,12 @@ export const BottomInput = ({
 	setIsTakeControl?: (v: boolean) => void;
 	useCloudModelInDev: boolean;
 }) => {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const {t} = useTranslation();
 	const [isConfirm, setIsConfirm] = useState(true);
 	const [hasSubTask, setHasSubTask] = useState(false);

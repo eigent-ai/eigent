@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { TaskState, TaskStateType } from "../TaskState";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface TaskCardProps {
 	taskInfo: any[];
@@ -51,7 +52,12 @@ export function TaskCard({
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 
 	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
 	const [filterTasks, setFilterTasks] = useState<any[]>([]);

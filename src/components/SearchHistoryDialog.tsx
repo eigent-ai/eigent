@@ -30,12 +30,18 @@ import { useChatStore } from "@/store/chatStore";
 import { useNavigate } from "react-router-dom";
 import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export function SearchHistoryDialog() {
 	const {t} = useTranslation()
 	const [open, setOpen] = useState(false);
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const navigate = useNavigate();
 	const handleSetActive = (taskId: string, question: string) => {
 		const task = chatStore.tasks[taskId];

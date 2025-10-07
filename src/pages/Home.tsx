@@ -16,10 +16,16 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
 	window.ipcRenderer?.on("webview-show", (_event, id: string) => {

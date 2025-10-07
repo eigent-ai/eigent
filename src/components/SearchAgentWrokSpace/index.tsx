@@ -17,9 +17,15 @@ import {
 import { Button } from "../ui/button";
 import { fetchPut } from "@/api/http";
 import { TaskState } from "../TaskState";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 

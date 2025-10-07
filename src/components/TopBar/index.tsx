@@ -20,6 +20,7 @@ import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import {  proxyFetchGet } from "@/api/http";
 import { toast } from "sonner";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -27,7 +28,12 @@ function HeaderWin() {
 	const [platform, setPlatform] = useState<string>("");
 	const navigate = useNavigate();
 	const location = useLocation();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
