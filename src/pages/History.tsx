@@ -203,7 +203,7 @@ export default function Home() {
 		} else {
 			chatStore.setTaskTime(taskId, Date.now());
 		}
-		fetchPut(`/task/${taskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: type,
 		});
 		if (type === "pause") {

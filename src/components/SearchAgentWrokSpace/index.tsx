@@ -101,7 +101,7 @@ export default function Home() {
 	const [isTakeControl, setIsTakeControl] = useState(false);
 	const handleTakeControl = (id: string) => {
 		console.log("handleTakeControl", id);
-		fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: "pause",
 		});
 
@@ -164,7 +164,7 @@ export default function Home() {
 				<div className="p-1 rounded-full bg-transparent border border-solid border-border-primary">
 					<Button
 						onClick={() => {
-							fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+							fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 								action: "resume",
 							});
 							setIsTakeControl(false);

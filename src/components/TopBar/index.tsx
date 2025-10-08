@@ -152,7 +152,7 @@ function HeaderWin() {
 			
 			// Stop the task if it's running
 			if (task && task.status === 'running') {
-				await fetchPut(`/task/${taskId}/take-control`, {
+				await fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 					action: 'stop',
 				});
 			}

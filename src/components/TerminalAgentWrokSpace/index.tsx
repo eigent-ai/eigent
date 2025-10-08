@@ -22,7 +22,7 @@ import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function TerminalAgentWrokSpace() {
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -103,7 +103,7 @@ export default function TerminalAgentWrokSpace() {
 	const [isTakeControl, setIsTakeControl] = useState(false);
 	const handleTakeControl = (id: string) => {
 		console.log("handleTakeControl", id);
-		fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: "pause",
 		});
 		setIsTakeControl(true);
@@ -117,7 +117,7 @@ export default function TerminalAgentWrokSpace() {
 						size="sm"
 						variant="success"
 						onClick={() => {
-							fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+							fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 								action: "resume",
 							});
 							setIsTakeControl(false);

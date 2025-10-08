@@ -106,19 +106,8 @@ export default function ChatBox(): JSX.Element {
 		const task = chatStore.tasks[_taskId];
 		const isTaskBusy = task.status === 'running' || 
 						  task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm);
-		
-		if (isTaskBusy && !task.activeAsk) {
-			// Queue the message instead of sending immediately
-			const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-			projectStore.addQueuedMessage(projectStore.activeProjectId as string, tempMessageContent, currentAttaches);
-			chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
-			setMessage("");
-			if (textareaRef.current) textareaRef.current.style.height = "60px";
-			toast.success("Message queued. It will be processed when the current task finishes.", {
-				closeButton: true,
-			});
-			return;
-		}
+
+		console.log(`Current task is ${isTaskBusy} with ${task}`);
 		
 		chatStore.addMessages(_taskId, {
 			id: generateUniqueId(),
@@ -137,7 +126,7 @@ export default function ChatBox(): JSX.Element {
 			if (chatStore.tasks[_taskId].activeAsk) {
 				chatStore.setIsPending(_taskId, true);
 
-				await fetchPost(`/chat/${_taskId}/human-reply`, {
+				await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
 					agent: chatStore.tasks[_taskId].activeAsk,
 					reply: tempMessageContent,
 				});
@@ -156,6 +145,37 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
+				//If task has been triggered before
+				if (chatStore.tasks[_taskId].isPending) {
+					const project_id = projectStore.activeProjectId;
+					// Queue the message instead of sending immediately
+					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
+					projectStore.addQueuedMessage(project_id as string, tempMessageContent, currentAttaches);
+					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
+					setMessage("");
+					if (textareaRef.current) textareaRef.current.style.height = "60px";
+					toast.success("Message queued. It will be processed when the current task finishes.", {
+						closeButton: true,
+					});
+
+					try {
+						await fetchPost(`/chat/${project_id}/add-task`, {
+							content: tempMessageContent,
+							project_id: project_id,
+							task_id: _taskId,
+							additional_info: {
+								agent: chatStore.tasks[_taskId].activeAsk,
+								reply: tempMessageContent,
+								timestamp: Date.now()
+							}
+						});
+					} catch (error) {
+						console.error(`Removing Message "${tempMessageContent.slice(0, 10)}..." due to ${error}`)
+						projectStore.removeQueuedMessage(project_id as string, tempMessageContent);
+					}
+					return;
+				}
+
 				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
 					// If the task has not started yet (pending status), start it normally
 					if (chatStore.tasks[_taskId as string].status === "pending") {
@@ -164,7 +184,7 @@ export default function ChatBox(): JSX.Element {
 						// keep hasWaitComfirm as true so that follow-up improves work as usual
 					} else {
 						// Task already started and is waiting for user confirmation – use improve API
-						fetchPost(`/chat/${_taskId}`, {
+						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
 						});
 						chatStore.setIsPending(_taskId, true);
@@ -202,8 +222,16 @@ export default function ChatBox(): JSX.Element {
 		}
 	}, [share_token]);
 
+	useEffect(() => {
+		console.log("ChatStore Data: ", chatStore);
+	}, []);
+
 	const handleSendShare = async (token: string) => {
 		if (!token) return;
+		if (!projectStore.activeProjectId) {
+			console.warn("Can't send share due to no active projectId");
+			return;
+		}
 		let _token: string = token.split("__")[0];
 		let taskId: string = token.split("__")[1];
 		chatStore.create(taskId, "share");
@@ -217,7 +245,7 @@ export default function ChatBox(): JSX.Element {
 			});
 			chatStore.startTask(taskId, "share", _token, 0.1);
 			chatStore.setActiveTaskId(taskId);
-			chatStore.handleConfirmTask(taskId, "share");
+			chatStore.handleConfirmTask(projectStore.activeProjectId, taskId, "share");
 		}
 	};
 
@@ -272,9 +300,9 @@ export default function ChatBox(): JSX.Element {
 	const [loading, setLoading] = useState(false);
 	const handleConfirmTask = async (taskId?: string) => {
 		const _taskId = taskId || chatStore.activeTaskId;
-		if (!_taskId) return;
+		if (!_taskId || !projectStore.activeProjectId) return;
 		setLoading(true);
-		await chatStore.handleConfirmTask(_taskId);
+		await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
 		setLoading(false);
 	};
 
@@ -332,7 +360,7 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setStatus(taskId, 'running');
 		}
 		
-		fetchPut(`/task/${taskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: type,
 		});
 		setIsPauseResumeLoading(false);
@@ -345,7 +373,7 @@ export default function ChatBox(): JSX.Element {
 		
 		try {
 			// Stop the current task
-			await fetchPut(`/task/${taskId}/take-control`, {
+			await fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 				action: 'stop',
 			});
 			

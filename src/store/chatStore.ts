@@ -4,6 +4,7 @@ import { createStore } from 'zustand';
 import { generateUniqueId, uploadLog } from "@/lib";
 import { FileText } from 'lucide-react';
 import { getAuthStore, useWorkerList } from './authStore';
+import { useProjectStore } from './projectStore';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 
@@ -51,7 +52,7 @@ export interface ChatStore {
 	setActiveTaskId: (taskId: string) => void;
 	replay: (taskId: string, question: string, time: number) => Promise<void>;
 	startTask: (taskId: string, type?: string, shareToken?: string, delayTime?: number) => Promise<void>;
-	handleConfirmTask: (taskId: string, type?: string) => void;
+	handleConfirmTask: (project_id:string, taskId: string, type?: string) => void;
 	addMessages: (taskId: string, messages: Message) => void;
 	setMessages: (taskId: string, messages: Message[]) => void;
 	setAttaches: (taskId: string, attaches: File[]) => void;
@@ -186,7 +187,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				setType(taskId, type)
 			}
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
-			const api = type == 'share' ? `${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` : type == 'replay' ? `${base_Url}/api/chat/steps/playback/${taskId}?delay_time=${delayTime}` : `${baseURL}/chat`
+			const api = type == 'share' ? 
+			`${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` 
+			: type == 'replay' ? 
+				`${base_Url}/api/chat/steps/playback/${taskId}?delay_time=${delayTime}` 
+				: `${baseURL}/chat`
 
 			const { tasks } = get()
 			let historyId: string | null = null;
@@ -268,11 +273,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.log('get-env-path error', error)
 			}
 
+			//ProjectStore must exist as chatStore is already
+			const projectStore = useProjectStore.getState();
+			const project_id = projectStore.activeProjectId;
+
 			// create history
 			if (!type) {
 				const authStore = getAuthStore();
 
 				const obj = {
+					"project_id": project_id,
 					"task_id": taskId,
 					"user_id": authStore.user_id,
 					"question": tasks[taskId]?.messages[0]?.content ?? '',
@@ -296,6 +306,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				openWhenHidden: true,
 				headers: { "Content-Type": "application/json", "Authorization": type == 'replay' ? `Bearer ${token}` : undefined as unknown as string },
 				body: !type ? JSON.stringify({
+					project_id: project_id,
 					task_id: taskId,
 					question: getLastUserMessage()?.content,
 					model_platform: apiModel.model_platform,
@@ -341,8 +352,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								const isConfirm = message?.isConfirm || false;
 								const isTakeControl =
 									tasks[taskId].isTakeControl;
-								if (!isConfirm && !isTakeControl && !tasks[taskId].isTaskEdit) {
-									handleConfirmTask(taskId);
+								
+								if (project_id && !isConfirm && !isTakeControl && !tasks[taskId].isTaskEdit) {
+									handleConfirmTask(project_id, taskId);
 								}
 								setIsTaskEdit(taskId, false);
 							}, 30000);
@@ -870,6 +882,60 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return
 					}
 
+					// Handle add_task events for project store
+					if (agentMessages.step === "add_task") {
+						try {
+							const taskData = agentMessages.data;
+							if (taskData && taskData.project_id && taskData.content) {
+								console.log(`Task added to project queue: ${taskData.project_id}`);
+							}
+						} catch (error) {
+							const taskIdToRemove = agentMessages.data.task_id as string;
+							const projectStore = useProjectStore.getState();
+							//Remove the task from the queue on error
+							if(projectStore.activeProjectId) {
+								const project = projectStore.getProjectById(projectStore.activeProjectId);
+								if (project && project.queuedMessages) {
+									const messageToRemove = project.queuedMessages.find(msg => 
+										msg.id === taskIdToRemove || msg.content.includes(taskIdToRemove)
+									);
+									if (messageToRemove) {
+										projectStore.removeQueuedMessage(projectStore.activeProjectId, messageToRemove.id);
+										console.log(`Task removed from project queue: ${taskIdToRemove}`);
+									}
+								}
+							}
+							console.error('Error adding task to project store:', error);
+						}
+						return;
+					}
+
+					// Handle remove_task events for project store
+					if (agentMessages.step === "remove_task") {
+						try {
+							const taskIdToRemove = agentMessages.data.task_id as string;
+							if (taskIdToRemove) {
+								const projectStore = useProjectStore.getState();
+								if (agentMessages.data.project_id) {
+									// Find and remove the message with matching task ID
+									const project = projectStore.getProjectById(agentMessages.data.project_id);
+									if (project && project.queuedMessages) {
+										const messageToRemove = project.queuedMessages.find(msg => 
+											msg.id === taskIdToRemove || msg.content.includes(taskIdToRemove)
+										);
+										if (messageToRemove) {
+											projectStore.removeQueuedMessage(agentMessages.data.project_id, messageToRemove.id);
+											console.log(`Task removed from project queue: ${taskIdToRemove}`);
+										}
+									}
+								}
+							}
+						} catch (error) {
+							console.error('Error removing task from project store:', error);
+						}
+						return;
+					}
+
 					if (agentMessages.step === "end") {
 						// compute task time
 						const { setTaskTime, setElapsed } = get();
@@ -1127,6 +1193,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 		replay: async (taskId: string, question: string, time: number) => {
 			const { create, setHasMessages, addMessages, startTask, setActiveTaskId, handleConfirmTask } = get();
+			//get project id
+			const project_id = useProjectStore.getState().activeProjectId
+			if(!project_id) {
+				console.error("Can't replay task because no project id provided")
+				return;
+			}
+
 			create(taskId, "replay");
 			setHasMessages(taskId, true);
 			addMessages(taskId, {
@@ -1137,7 +1210,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			await startTask(taskId, "replay", undefined, time);
 			setActiveTaskId(taskId);
-			handleConfirmTask(taskId, "replay");
+			handleConfirmTask(project_id, taskId, "replay");
 		},
 		setUpdateCount() {
 			set((state) => ({
@@ -1326,7 +1399,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				},
 			}))
 		},
-		handleConfirmTask: async (taskId: string, type?: string) => {
+		handleConfirmTask: async (project_id:string, taskId: string, type?: string) => {
 			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning } = get();
 			if (!taskId) return;
 
@@ -1338,10 +1411,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const taskRunning = tasks[taskId].taskRunning.filter((task) => task.content !== '')
 			setTaskRunning(taskId, taskRunning)
 			if (!type) {
-				await fetchPut(`/task/${taskId}`, {
+				await fetchPut(`/task/${project_id}`, {
 					task: taskInfo,
 				});
-				await fetchPost(`/task/${taskId}/start`, {});
+				await fetchPost(`/task/${project_id}/start`, {});
 			}
 			setActiveWorkSpace(taskId, 'workflow')
 			setStatus(taskId, 'running')

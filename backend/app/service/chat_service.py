@@ -57,7 +57,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     workforce = None
     while True:
         if await request.is_disconnected():
-            logger.warning(f"Client disconnected for task {options.task_id}")
+            logger.warning(f"Client disconnected for project {options.project_id}")
             if workforce is not None:
                 if workforce._running:
                     workforce.stop()
@@ -104,6 +104,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     summary_task_agent = task_summary_agent(options)
                     task_lock.status = Status.confirmed
                     question = question + options.summary_prompt
+                    # Keep the task id consistent
                     camel_task = Task(content=question, id=options.task_id)
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
@@ -361,8 +362,8 @@ async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent
             [
                 *(
                     ToolkitMessageIntegration(
-                        message_handler=HumanToolkit(options.task_id, key).send_message_to_user
-                    ).register_toolkits(NoteTakingToolkit(options.task_id, working_directory=working_directory))
+                        message_handler=HumanToolkit(options.project_id, key).send_message_to_user
+                    ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
                 ).get_tools()
             ],
         )
@@ -395,11 +396,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         """,
         options,
         [
-            *HumanToolkit.get_can_use_tools(options.task_id, Agents.new_worker_agent),
+            *HumanToolkit.get_can_use_tools(options.project_id, Agents.new_worker_agent),
             *(
                 ToolkitMessageIntegration(
-                    message_handler=HumanToolkit(options.task_id, Agents.new_worker_agent).send_message_to_user
-                ).register_toolkits(NoteTakingToolkit(options.task_id, working_directory=working_directory))
+                    message_handler=HumanToolkit(options.project_id, Agents.new_worker_agent).send_message_to_user
+                ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
             ).get_tools(),
         ],
     )
@@ -424,7 +425,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         model_platform_enum = None
 
     workforce = Workforce(
-        options.task_id,
+        options.project_id,
         "A workforce",
         graceful_shutdown_timeout=3,  # 30 seconds for debugging
         share_memory=False,
@@ -506,7 +507,7 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     working_directory = options.file_save_path()
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.task_id)]
+    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:
         tool_names.append(titleize(item))
     if data.mcp_tools is not None:
