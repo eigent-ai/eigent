@@ -9,7 +9,7 @@ from loguru import logger
 from app.utils import traceroot_wrapper as traceroot
 from app.component import code
 from app.exception.exception import UserException
-from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat, AddTaskRequest, RemoveTaskRequest, TaskResponse, IndependentTaskQueueResponse
+from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat, AddTaskRequest
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
