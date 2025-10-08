@@ -130,7 +130,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Add task to the workforce queue
                 workforce.add_task(
                     item.content,
-                    f"{item.project_id}_{item.task_id or (len(camel_task.subtasks) + 1)}",
+                    item.task_id,
                     item.additional_info
                 )
 
@@ -153,6 +153,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
                 yield sse_json("task_state", item.data)
+            elif item.action == Action.new_task_state:
+                yield sse_json("new_task_state", item.data)
             elif item.action == Action.create_agent:
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
