@@ -15,9 +15,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";
 import { Badge } from "../ui/badge";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export function WorkSpaceMenu() {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const workerList = useWorkerList();
 	const baseWorker: Agent[] = [
 		{

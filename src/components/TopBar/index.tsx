@@ -25,6 +25,7 @@ import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/ht
 import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
  
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -32,7 +33,12 @@ function HeaderWin() {
 	const [platform, setPlatform] = useState<string>("");
 	const navigate = useNavigate();
 	const location = useLocation();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
@@ -99,7 +105,7 @@ function HeaderWin() {
 			navigate("/");
 			return;
 		}
-		chatStore.create();
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 

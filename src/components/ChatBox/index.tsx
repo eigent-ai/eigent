@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { fetchPost, proxyFetchPut, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import BottomBox, { type FileAttachment } from "./BottomBox";
 import { TaskCard } from "./TaskCard";
@@ -7,7 +7,6 @@ import { TypeCardSkeleton } from "./TypeCardSkeleton";
 import { FloatingAction } from "./FloatingAction";
 import { FileText, TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
-import { useChatStore } from "@/store/chatStore";
 import { proxyFetchGet } from "@/api/http";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { NoticeCard } from "./NoticeCard";
@@ -15,10 +14,17 @@ import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { TaskStateType } from "../TaskState";
 import { toast } from "sonner";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
-	const chatStore = useChatStore();
+
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { t } = useTranslation();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);

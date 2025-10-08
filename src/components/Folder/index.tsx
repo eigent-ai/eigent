@@ -18,6 +18,7 @@ import { MarkDown } from "@/components/ChatBox/MarkDown";
 import { useAuthStore } from "@/store/authStore";
 import { proxyFetchGet } from "@/api/http";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 // Type definitions
 interface FileTreeNode {
@@ -154,7 +155,12 @@ function downloadByBrowser(url: string) {
 }
 
 export default function Folder({ data }: { data?: Agent }) {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const authStore = useAuthStore();
 	const { t } = useTranslation();
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);

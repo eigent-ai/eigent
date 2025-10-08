@@ -17,9 +17,15 @@ import {
 import { Button } from "../ui/button";
 import { fetchPut } from "@/api/http";
 import { TaskState } from "../TaskState";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -109,8 +115,9 @@ export default function Home() {
 
 	// listen to webview container size
 	useEffect(() => {
-		if (!chatStore.activeTaskId) {
-			chatStore.create();
+		if (!projectStore.activeProjectId) {
+			projectStore.createProject("new project");
+			console.warn("No active projectId found in WorkSpace, creating a new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");

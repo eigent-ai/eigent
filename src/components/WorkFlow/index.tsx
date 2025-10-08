@@ -16,6 +16,7 @@ import { useChatStore } from "@/store/chatStore";
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface NodeData {
 	agent: Agent;
@@ -37,7 +38,12 @@ export default function Workflow({
 	taskAssigning: Agent[];
 }) {
 	const {t} = useTranslation();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
 	const [nodes, setNodes, onNodesChange] = useNodesState<CustomNode>([]);

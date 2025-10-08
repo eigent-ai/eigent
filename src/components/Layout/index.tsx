@@ -11,10 +11,18 @@ import { useChatStore } from "@/store/chatStore";
 import { useInstallationUI } from "@/store/installationStore";
 import { useInstallationSetup } from "@/hooks/useInstallationSetup";
 import InstallationErrorDialog from "../InstallStep/InstallationErrorDialog/InstallationErrorDialog";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 const Layout = () => {
 	const { initState, isFirstLaunch, setIsFirstLaunch, setInitState } = useAuthStore();
 	const [noticeOpen, setNoticeOpen] = useState(false);
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {		
+		console.log(chatStore);
+		
+		return <div>Loading...</div>;
+	}
+
 	const {
 		installationState,
 		latestLog,

@@ -45,11 +45,17 @@ import { SearchHistoryDialog } from "@/components/SearchHistoryDialog";
 import { Tag } from "@/components/ui/tag";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
 	const {t} = useTranslation()
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { history_type, setHistoryType } = useGlobalStore();
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -170,7 +176,7 @@ export default function Home() {
 	};
 
 	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(taskId, question, 0);
+		projectStore.replayProject([taskId], question);
 		navigate({ pathname: "/" });
 	};
 
@@ -218,7 +224,7 @@ export default function Home() {
 			navigate(`/`);
 			return;
 		}
-		chatStore.create();
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 
