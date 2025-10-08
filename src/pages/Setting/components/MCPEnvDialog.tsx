@@ -163,11 +163,50 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 		});
 	};
 
+	const validateRequiredFields = () => {
+		let hasErrors = false;
+		const updatedEnvValues = { ...envValues };
+
+		Object.keys(envValues).forEach((key) => {
+			const field = envValues[key];
+			if (field?.required && (!field.value || field.value.trim() === "")) {
+				updatedEnvValues[key] = {
+					...field,
+					error: `${getTitleContent(key)} is required`,
+				};
+				hasErrors = true;
+			}
+		});
+
+		if (hasErrors) {
+			setEnvValues(updatedEnvValues);
+		}
+
+		return !hasErrors;
+	};
+
+	const getTitleContent = (key: string) => {
+		if (key === 'SEARCH_ENGINE_ID') {
+			return "Search Engine ID";
+		} else if (key === 'GOOGLE_API_KEY') {
+			return "Google API Key";
+		} else if (key === 'EXA_API_KEY') {
+			return "Exa API Key";
+		}
+		return key;
+	};
+
 	const handleConfigureMcpEnvSetting = async () => {
 		if (isValidating) return;
 
 		setIsValidating(true);
 		clearFieldErrors();
+
+		// Validate required fields first
+		if (!validateRequiredFields()) {
+			setIsValidating(false);
+			return;
+		}
 
 		const env: { [key: string]: string } = {};
 		Object.keys(envValues).forEach((key) => {
@@ -210,8 +249,8 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 			}}
 		>
 			<form>
-				<DialogContent aria-describedby={undefined} className="sm:max-w-[425px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm">
-					<DialogHeader className="!bg-popup-surface !rounded-t-xl p-md">
+				<DialogContent aria-describedby={undefined} className="sm:max-w-[425px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-border-secondary shadow-sm">
+					<DialogHeader className="p-md">
 						<DialogTitle className="m-0">
 							<div className="flex gap-xs items-center justify-start">
 								<div className="text-base font-bold leading-10 text-text-action">
@@ -251,66 +290,45 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 								</div>
 							</div>
 						</div>
-						<div className="flex flex-col gap-sm">
-							{Object.keys(activeMcp?.install_command?.env || {}).map((key) => (
-								<div key={key}>
-									<div className="text-text-body text-sm leading-normal font-bold">
-										{key}{envValues[key]?.required && '*'}
-									</div>
-									<div className="relative">
-										<Input
-											type={showKeys[key] ? "text" : "password"}
-											placeholder=""
-											className="h-7 pr-8 rounded-sm border border-solid border-input-border-default bg-input-bg-default !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
-											value={envValues[key]?.value || ""}
-											onChange={(e) => updateEnvValue(key, e.target.value)}
-										/>
-										<span
-											className="absolute inset-y-0 right-2 flex items-center cursor-pointer text-gray-500 hover:text-gray-700"
-											onClick={() => setShowKeys(prev => ({ ...prev, [key]: !prev[key] }))}
-										>
-											{showKeys[key] ? (
-												<Eye className="w-4 h-4" />
-											) : (
-												<EyeOff className="w-4 h-4" />
-											)}
-										</span>
-									</div>
-									<div className="text-input-label-default text-xs leading-normal">
-										{envValues[key]?.tip}
-										{envValues[key]?.error && (
-											<div className="text-red-500 text-xs mt-1">{envValues[key]?.error}</div>
-										)}
-										{key === 'SEARCH_ENGINE_ID' && (
-											<div className="mt-1">
-												{t("setting.get-it-from")}: <a onClick={() => {
-													window.location.href = "https://developers.google.com/custom-search/v1/overview";
-												}} className="underline text-blue-500">{t("setting.google-custom-search-api")}</a>
-											</div>
-										)}
-										{key === 'GOOGLE_API_KEY' && (
-											<div className="mt-1">
-												{t("setting.get-it-from")}: <a onClick={() => {
-													window.location.href = "https://console.cloud.google.com/apis/credentials";
-												}} className="underline text-blue-500">{t("setting.google-cloud-console")}</a>
-											</div>
-										)}
-										{key === 'EXA_API_KEY' && (
-											<div className="mt-1">
-												{t("setting.get-it-from")}: <a onClick={() => {
-													window.location.href = "https://exa.ai";
-												}} className="underline text-blue-500">Exa.ai</a> (Optional)
-											</div>
-										)}
-									</div>
-								</div>
-							))}
+						<div className="flex flex-col gap-md">
+							{Object.keys(activeMcp?.install_command?.env || {}).map((key) => {
+								const getNoteContent = () => {
+									let noteContent = envValues[key]?.tip || "";
+									
+									if (key === 'SEARCH_ENGINE_ID') {
+										noteContent += ` ${t("setting.get-it-from")}: https://developers.google.com/custom-search/v1/overview`;
+									} else if (key === 'GOOGLE_API_KEY') {
+										noteContent += ` ${t("setting.get-it-from")}: https://console.cloud.google.com/apis/credentials`;
+									} else if (key === 'EXA_API_KEY') {
+										noteContent += ` ${t("setting.get-it-from")}: https://exa.ai (Optional)`;
+									}
+									
+									return noteContent;
+								};
+
+								return (
+									<Input
+										key={key}
+										size="default"
+										title={getTitleContent(key)}
+										note={getNoteContent()}
+										required={envValues[key]?.required || false}
+										state={envValues[key]?.error ? "error" : "default"}
+										type={showKeys[key] ? "text" : "password"}
+										placeholder={`Enter ${getTitleContent(key)}`}
+										value={envValues[key]?.value || ""}
+										backIcon={showKeys[key] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+										onBackIconClick={() => setShowKeys(prev => ({ ...prev, [key]: !prev[key] }))}
+										onChange={(e) => updateEnvValue(key, e.target.value)}
+									/>
+								);
+							})}
 						</div>
 					</div>
 					<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
 						<Button
 							onClick={handleCloseMcpEnvSetting}
-							variant="outline"
+							variant="ghost"
 							size="md"
 						>
 							{t("setting.cancel")}

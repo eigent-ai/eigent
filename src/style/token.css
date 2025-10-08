@@ -180,6 +180,7 @@
     --input-bg-spliting: var(--surface-information);
     --input-bg-confirm: var(--surface-success);
     --input-bg-default: var(--surface-primary);
+    --input-bg-hover: var(--fill-default);
     --input-border-default: var(--border-action);
     --input-border-hover: var(--border-action-hover);
     --input-border-focus: var(--border-information);

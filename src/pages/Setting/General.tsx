@@ -127,11 +127,12 @@ export default function SettingGeneral() {
 
 	return (
 		<div className="flex flex-col gap-4 pb-40">
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-base font-bold leading-12 text-text-body">
+			<div className="px-6 py-4 flex flex-col w-fullitems-center justify-between gap-2 bg-surface-secondary rounded-2xl">
+			<div className="text-body-lg font-bold text-text-heading">
 					{t("setting.account")}
 				</div>
-				<div className="text-sm leading-13 mb-4">
+				<div className="flex flex-row items-center justify-between gap-2">
+				<div className="text-body-sm text-text-body font-normal">
 					{t("setting.you-are-currently-signed-in-with", {
 						email: authStore.email,
 					})}
@@ -160,9 +161,10 @@ export default function SettingGeneral() {
 						{t("setting.log-out")}
 					</Button>
 				</div>
+				</div>
 			</div>
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-base font-bold leading-12 text-text-primary">
+				<div className="text-body-lg font-bold text-text-heading">
 					{t("setting.language")}
 				</div>
 				<div className="mt-md">
@@ -186,7 +188,7 @@ export default function SettingGeneral() {
 				</div>
 			</div>
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-base font-bold leading-12 text-text-primary">
+				<div className="text-body-lg font-bold text-text-heading">
 					{t("setting.appearance")}
 				</div>
 				<div className="flex items-center gap-md mt-md">

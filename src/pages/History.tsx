@@ -19,6 +19,7 @@ import Setting from "@/pages/Setting";
 import { cn } from "@/lib/utils";
 import { Hammer } from "@/components/animate-ui/icons/hammer";
 import MCP from "./Setting/MCP";
+import folderIcon from "@/assets/Folder.svg";
 
 
 
@@ -82,22 +83,27 @@ export default function Home() {
 			confirmText="Delete"
 			cancelText="Cancel"
 		/>
-		{/* welcome text */}
-			<div className="flex flex-col w-full pt-12 pb-4 bg-bg-page">
-				<div className="mx-auto w-full px-8">
+		  {/* welcome text */}
+			<div className="flex flex-col w-full pt-16 px-20 bg-surface-tertiary">
 					<span className="text-text-primary text-heading-lg !font-serif font-bold">Welcome {welcomeName}</span>
-				</div>
 			</div>
-			{/* top bar */}
-			<div className="sticky top-0 z-20 flex flex-col justify-between items-center bg-gradient-to-t from-surface-secondary to-bg-page backdrop-blur-xl pt-4">
-				<div className="flex flex-row justify-between items-center pb-6 px-8 border-border-disabled border-x-0 border-t-0 border-solid w-full mx-auto">
-				<MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
-			  	<MenuToggleItem size="sm" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>Projects</MenuToggleItem>
-					<MenuToggleItem size="sm" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>MCP & Tools</MenuToggleItem>
-					<MenuToggleItem size="sm" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>Settings</MenuToggleItem>
-			  	<MenuToggleItem size="sm" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>Workers</MenuToggleItem>
-			  	<MenuToggleItem size="sm" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>Triggers</MenuToggleItem>
-		  	</MenuToggleGroup>
+			{/* Navbar */}
+		<div
+			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-surface-tertiary px-20 pt-8 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
+		>
+				<div className="flex flex-row justify-between items-center w-full mx-auto">
+				<div className="flex items-center gap-2">
+				<div className="w-10 h-10 object-contain object-center cursor-pointer">
+					<img className="w-full h-full mt-0.5 object-contain object-center" src={folderIcon} alt="folder-icon" />
+				</div>
+			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
+			  	 <MenuToggleItem size="sm" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>Projects</MenuToggleItem>
+					 <MenuToggleItem size="sm" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>MCP & Tools</MenuToggleItem>
+					 <MenuToggleItem size="sm" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>Settings</MenuToggleItem>
+			  	 <MenuToggleItem size="sm" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>Workers</MenuToggleItem>
+			  	 <MenuToggleItem size="sm" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>Triggers</MenuToggleItem>
+		  	 </MenuToggleGroup>
+				</div>
 		  	<Button variant="primary" size="sm" onClick={createChat}>
 				<Plus />
 				{t("task-hub.new-project")}

@@ -12,6 +12,7 @@ import {
 	Power,
 	ChevronDown,
 	ChevronLeft,
+	House,
 	Share,
 } from "lucide-react";
 import "./index.css";
@@ -28,6 +29,7 @@ import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/ht
 import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
+import { TooltipSimple } from "@/components/ui/tooltip";
  
 function HeaderWin() {
 	const { t } = useTranslation();
@@ -198,7 +200,7 @@ function HeaderWin() {
 
 	return (
 		<div
-			className="flex !h-9 items-center justify-between pl-2 py-1 z-50 bg-bg-page"
+			className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 "
 			id="titlebar"
 			ref={titlebarRef}
 		>
@@ -208,39 +210,45 @@ function HeaderWin() {
 					platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
 				} flex items-center justify-center no-drag`}
 			>
-				{platform !== "darwin" && <span>Eigent</span>}
+				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
 			</div>
 
 			{/* center */}
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
 					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
-						<Button
-							onClick={() => navigate("/history")}
-							variant="ghost"
-							size="icon"
-							className="no-drag p-0 h-6 w-6"
-						>
-							<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-						</Button>
+						{location.pathname !== "/history" && (
+							<Button
+								onClick={() => navigate("/history")}
+								variant="ghost"
+								size="icon"
+								className="no-drag p-0 h-6 w-6"
+							>
+								<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
+							</Button>
+						)}
 					</div>
 					{location.pathname !== "/history" && (
 						<div className="flex items-center mr-1">
-						<Button
-							 variant="ghost"
-							 size="icon"
-							 className="no-drag"
-							 onClick={() => navigate("/history")}
+						<TooltipSimple content={"Home"} side="bottom" align="center">
+							<Button
+								 variant="ghost"
+								 size="icon"
+								 className="no-drag"
+								 onClick={() => navigate("/history")}
 									>
-									<ChevronLeft className="w-4 h-4" />
-						</Button>
+									<House className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
 						<Button
 							 variant="ghost"
 							 size="icon"
 							 className="no-drag"
 							 onClick={createNewProject}
 									>
+								<TooltipSimple content={"New Project"} side="bottom" align="center">
 									<Plus className="w-4 h-4" />
+								</TooltipSimple>
 						</Button>
 						</div>
 					)}
@@ -277,50 +285,67 @@ function HeaderWin() {
 					<div
 						className={`${
 							platform === "darwin" && "pr-2"
-						} flex h-full items-center space-x-1 z-50 relative no-drag`}
+						} flex h-full items-center space-x-1 z-50 relative no-drag gap-1`}
 					>
-						<Button
-							onClick={exportLog}
-							variant="ghost"
-							size="xs"
-							className="mr-2 no-drag leading-tight hidden"
-						>
-							<FileDown className="w-4 h-4" />
-							{t("layout.report-bug")}
-						</Button>
-						<Button
-							onClick={getReferFriendsLink}
-							variant="ghost"
-							size="xs"
-							className="no-drag hidden"
-						>
-							<img
-								src={giftIcon}
-								alt="gift-icon"
-								className="w-4 h-4"
-							/>
-							{t("layout.refer-friends")}
-						</Button>
-						<Button
-							onClick={() => setEndDialogOpen(true)}
-							variant="ghost"
-							size="xs"
-							className="no-drag !text-text-cuation"
-						>
-							<Power />
-							End Project
-						</Button>
+						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+							<>
+								<TooltipSimple content={t("layout.report-bug")} side="bottom" align="center">
+									<Button
+										onClick={exportLog}
+										variant="ghost"
+										size="icon"
+										className="no-drag leading-tight"
+									>
+										<FileDown className="w-4 h-4" />
+									</Button>
+								</TooltipSimple>
+							</>
+						)}
+						<TooltipSimple content={t("layout.refer-friends")} side="bottom" align="center">
+							<Button
+								onClick={getReferFriendsLink}
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+							>
+								<img
+									src={giftIcon}
+									alt="gift-icon"
+									className="w-4 h-4"
+								/>
+							</Button>
+						</TooltipSimple>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+							<TooltipSimple content={"Share"} side="bottom" align="end">
 								<Button
 									onClick={() => handleShare(chatStore.activeTaskId as string)}
-									variant="ghost"
-									size="icon"
-									className="no-drag"
+									variant="primary"
+									size="xs"
+									className="no-drag !text-button-fill-information-foreground"
 								>
-									<Share />
+									Share
 								</Button>
-							)}
+							</TooltipSimple>
+						)}
+						{chatStore.activeTaskId &&
+							chatStore.tasks[chatStore.activeTaskId as string] &&
+							(
+								chatStore.tasks[chatStore.activeTaskId as string].messages.length > 0 ||
+								chatStore.tasks[chatStore.activeTaskId as string].hasMessages ||
+								chatStore.tasks[chatStore.activeTaskId as string].status !== 'pending'
+							) && (
+							<TooltipSimple content={"End Project"} side="bottom" align="end">
+								<Button
+									onClick={() => setEndDialogOpen(true)}
+									variant="outline"
+									size="icon"
+									className="no-drag !text-text-cuation w-10 justify-center"
+								>
+									<Power />
+								</Button>
+							</TooltipSimple>
+						)}
 					</div>
 				)}
 				{location.pathname === "/history" && (
@@ -329,27 +354,6 @@ function HeaderWin() {
 							platform === "darwin" && "pr-2"
 						} flex h-full items-center space-x-1 z-50 relative no-drag`}
 					>
-						<Button
-							onClick={getReferFriendsLink}
-							variant="ghost"
-							size="xs"
-							className="no-drag"
-						>
-							<img
-								src={giftIcon}
-								alt="gift-icon"
-								className="w-4 h-4"
-							/>
-							{t("layout.refer-friends")}
-						</Button>
-						<Button
-							onClick={() => (window.location.href = "https://www.eigent.ai/pricing")}
-							variant="outline"
-							size="xs"
-							className="no-drag"
-						>
-							Upgrade
-						</Button>
 					</div>
 				)}
 			</div>

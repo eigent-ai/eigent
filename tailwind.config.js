@@ -199,18 +199,23 @@ module.exports = {
 
 				input: {
 					"bg-default": "var(--input-bg-default)",
+					"bg-hover": "var(--input-bg-hover)",
 					"bg-spliting": "var(--input-bg-spliting)",
 					"bg-confirm": "var(--input-bg-confirm)",
 					"bg-input": "var(--input-bg-input)",
 					"border-default": "var(--input-border-default)",
 					"border-hover": "var(--input-border-hover)",
 					"border-focus": "var(--input-border-focus)",
-					"text-default": "var(--input-text-default)",
-					"text-focus": "var(--input-text-focus)",
-					"label-default": "var(--input-label-default)",
 					"border-success": "var(--input-border-success)",
 					"border-cuation": "var(--input-border-cuation)",
 					"border-warning": "var(--input-border-warning)",
+					"text-default": "var(--input-text-default)",
+					"text-focus": "var(--input-text-focus)",
+					"text-success": "var(--text-success)",
+					"text-cuation": "var(--text-cuation)",
+					"text-warning": "var(--text-warning)",
+					"label-default": "var(--input-label-default)",
+
 				},
 				popup: {
 					surface: "var(--popup-surface)",

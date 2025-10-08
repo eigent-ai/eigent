@@ -170,7 +170,7 @@ export default function Home() {
 	};
 
 		return (
-			<div className="h-full min-h-0 flex flex-row overflow-hidden">
+			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-8">
 				<ReactFlowProvider>
 					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center gap-2 relative overflow-hidden">
 						<ResizablePanelGroup direction="horizontal">

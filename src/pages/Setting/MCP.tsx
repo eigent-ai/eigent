@@ -24,10 +24,12 @@ import MCPMarket from "./MCPMarket";
 
 import { toast } from "sonner";
 import { ConfigFile } from "electron/main/utils/mcpConfig";
+import { SelectItem } from "@/components/ui/select";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
-	const { checkAgentTool } = useAuthStore();
+    const { checkAgentTool } = useAuthStore();
+    const { modelType } = useAuthStore();
 	const { t } = useTranslation();
 	const [items, setItems] = useState<MCPUserItem[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -71,7 +73,7 @@ const [marketKeyword, setMarketKeyword] = useState("");
 	const [essentialIntegrations, setEssentialIntegrations] = useState<any[]>([
 		{
 			key: "Search",
-			name: "Search (Google and Exa)",
+			name: "Search Engine",
 			env_vars: ["GOOGLE_API_KEY", "SEARCH_ENGINE_ID", "EXA_API_KEY"],
 			desc: (
 				<>
@@ -109,6 +111,34 @@ const [marketKeyword, setMarketKeyword] = useState("");
 			),
 		},
 	]);
+
+	// default search engine and availability
+	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("");
+	const [hasGoogleSearch, setHasGoogleSearch] = useState<boolean>(false);
+	const [hasExaSearch, setHasExaSearch] = useState<boolean>(false);
+
+	useEffect(() => {
+		proxyFetchGet("/api/configs").then((configsRes) => {
+			const configs = Array.isArray(configsRes) ? configsRes : [];
+			const hasGoogleApiKey = !!configs.find(
+				(item: any) => item.config_name === "GOOGLE_API_KEY"
+			);
+			const hasGoogleCseId = !!configs.find(
+				(item: any) => item.config_name === "SEARCH_ENGINE_ID"
+			);
+			const hasExa = !!configs.find(
+				(item: any) => item.config_name === "EXA_API_KEY"
+			);
+			setHasGoogleSearch(hasGoogleApiKey && hasGoogleCseId);
+			setHasExaSearch(hasExa);
+			const defaultEngine = configs.find(
+				(item: any) =>
+					item.config_group?.toLowerCase() === "search" &&
+					item.config_name === "DEFAULT_SEARCH_ENGINE"
+			)?.config_value;
+			if (defaultEngine) setDefaultSearchEngine(defaultEngine);
+		});
+	}, []);
 
 	// get integrations
 	useEffect(() => {
@@ -391,7 +421,7 @@ const [marketKeyword, setMarketKeyword] = useState("");
 
 	return (
 		<div className="max-w-[900px] h-auto m-auto flex flex-col px-6 pb-40">
-			<div className="sticky top-[79px] z-20 flex items-center justify-between py-8 bg-bg-page border-b border-border-secondary">
+			<div className="flex items-center justify-between py-8 border-b border-border-secondary">
 				{showMarket ? (
 					<div className="flex w-full items-center justify-between gap-sm">
 						<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
@@ -432,23 +462,44 @@ const [marketKeyword, setMarketKeyword] = useState("");
 				) : (
 					<>
 						<div className="flex flex-col">
-							<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 py-2">
-								<div className="flex flex-col items-start gap-1">
-									<span className="justify-center text-text-body text-body-md font-bold">{t("setting.tools")}</span>
-								</div>
+							{/*<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 py-2">
 								<div className="flex-1" />
-								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsed((c) => !c); }}>
-									{collapsed ? (
-										<ChevronDown className="w-4 h-4" />
-									) : (
-										<ChevronUp className="w-4 h-4" />
-									)}
-								</Button>
-							</div>
-							{!collapsed && <IntegrationList items={essentialIntegrations} />}
+							</div>*/}
+                            {!collapsed && (
+                                <IntegrationList
+                                    items={essentialIntegrations}
+                                    showConfigButton={true}
+                                    showInstallButton={false}
+                                    showSelect
+																		showStatusDot={false}
+                                    selectPlaceholder={
+                                        modelType === "cloud"
+                                            ? "Google Search"
+                                            : "Select default search engine"
+                                    }
+                                    selectContent={
+                                        modelType === "cloud" ? (
+                                            // Cloud: allow selecting the default option only
+                                            <SelectItem value="google" disabled={false}>
+                                                Google Search
+                                            </SelectItem>
+                                        ) : undefined
+                                    }
+                                    onSelectChange={async (value) => {
+                                        try {
+                                            setDefaultSearchEngine(value);
+                                            await proxyFetchPost("/api/configs", {
+                                                config_group: "Search",
+                                                config_name: "DEFAULT_SEARCH_ENGINE",
+                                                config_value: value,
+                                            });
+                                        } catch (e) {}
+                                    }}
+                                />
+                            )}
 						</div>
 						<div className="flex flex-col">
-							<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-center gap-2 py-2">
+							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
 								<span className="text-text-body text-body-md font-bold">MCP</span>
 								<div className="flex-1" />
 								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedMCP((c) => !c); }}>
@@ -459,11 +510,11 @@ const [marketKeyword, setMarketKeyword] = useState("");
 									)}
 								</Button>
 							</div>
-							{!collapsedMCP && <IntegrationList key={refreshKey} items={integrations} />}
+							{!collapsedMCP && <IntegrationList key={refreshKey} items={integrations} showConfigButton={false} showInstallButton={true} />}
 						</div>
 						<div className="flex flex-col">
-							<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-center gap-2 py-2">
-								<div className="justify-center text-text-body text-body-md font-bold">{t("setting.added-external-servers")}</div>
+							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
+								<div className="justify-center text-text-body text-body-md font-bold">Your own MCPs</div>
 								<div className="flex-1" />
 								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedExternal((c) => !c); }}>
 									{collapsedExternal ? (
@@ -475,9 +526,9 @@ const [marketKeyword, setMarketKeyword] = useState("");
 							</div>
 							{!collapsedExternal && (
 								<>
-									{isLoading && (<div className="text-center py-8 text-gray-400">{t("setting.loading")}</div>)}
+									{isLoading && (<div className="text-center py-8 text-text-label">{t("setting.loading")}</div>)}
 									{error && <div className="text-center py-8 text-red-500">{error}</div>}
-									{!isLoading && !error && items.length === 0 && (<div className="text-center py-8 text-gray-400">{t("setting.no-mcp-servers")}</div>)}
+									{!isLoading && !error && items.length === 0 && (<div className="text-center py-8 text-text-label">{t("setting.no-mcp-servers")}</div>)}
 									{!isLoading && (
 										<MCPList
 											items={items}

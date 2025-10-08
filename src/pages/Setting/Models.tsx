@@ -64,9 +64,9 @@ export default function SettingModels() {
 		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => false)
 	);
 	const [loading, setLoading] = useState<number | null>(null);
-	const [errors, setErrors] = useState<
-		{ apiKey?: string; apiHost?: string; model_type?: string }[]
-	>(() =>
+const [errors, setErrors] = useState<
+    { apiKey?: string; apiHost?: string; model_type?: string; externalConfig?: string }[]
+>(() =>
 		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => ({
 			apiKey: "",
 			apiHost: "",
@@ -203,7 +203,7 @@ export default function SettingModels() {
 		}
 
 		console.log(form[idx]);
-		try {
+      try {
 			const res = await fetchPost("/model/validate", {
 				model_platform: item.id,
 				model_type: form[idx].model_type,
@@ -211,7 +211,7 @@ export default function SettingModels() {
 				url: form[idx].apiHost,
 				extra_params: external,
 			});
-			if (res.is_tool_calls && res.is_valid) {
+        if (res.is_tool_calls && res.is_valid) {
 				console.log("success");
 				toast(t("setting.validate-success"), {
 					description: t(
@@ -220,22 +220,26 @@ export default function SettingModels() {
 					closeButton: true,
 				});
 			} else {
-				console.log("failed", res.message);
-				const toastId = toast(t("setting.validate-failed"), {
-          description: res.message,
-          action: {
-            label: t("setting.close"),
-            onClick: () => {
-							toast.dismiss(toastId);
-						},
-          },
-        })
-
-				return;
+          console.log("failed", res.message);
+          // Surface error inline on API Key input
+          setErrors((prev) => {
+            const next = [...prev];
+            if (!next[idx]) next[idx] = {} as any;
+            next[idx].apiKey = res?.message || t("setting.validate-failed");
+            return next;
+          });
+          return;
 			}
 			console.log(res);
 		} catch (e) {
-			console.log(e);
+        console.log(e);
+        // Network/exception case: show inline error
+        setErrors((prev) => {
+          const next = [...prev];
+          if (!next[idx]) next[idx] = {} as any;
+          next[idx].apiKey = t("setting.validate-failed");
+          return next;
+        });
 		} finally {
 			setLoading(null);
 		}
@@ -657,27 +661,19 @@ export default function SettingModels() {
 								value={cloud_model_type}
 								onValueChange={setCloudModelType}
 							>
-								<SelectTrigger className="h-7 min-w-[160px]  px-3 py-1 text-xs">
+								<SelectTrigger size="sm">
 									<SelectValue placeholder="Select Model Type" />
 								</SelectTrigger>
-								<SelectContent className="bg-input-bg-default">
-									<SelectItem value="gemini/gemini-2.5-pro">
-										Gemini 2.5 Pro
-									</SelectItem>
-									<SelectItem value="gemini-2.5-flash">
-										Gemini 2.5 Flash
-									</SelectItem>
+								<SelectContent>
+									<SelectItem value="gemini/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+									<SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
 									<SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
 									<SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
 									<SelectItem value="gpt-5-nano">GPT-5 nano</SelectItem>
-									<SelectItem value="claude-sonnet-4-5">
-										Claude Sonnet 4-5
-									</SelectItem>
-									<SelectItem value="claude-3-5-haiku-20241022">
-										Claude 3.5 Haiku
-									</SelectItem>
+									<SelectItem value="claude-sonnet-4-5">Claude Sonnet 4-5</SelectItem>
+									<SelectItem value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</SelectItem>
 								</SelectContent>
 							</Select>
 						</div>
@@ -685,39 +681,40 @@ export default function SettingModels() {
 				</div>
 			)}
 			{/* customer models */}
-			<div className="self-stretch my-4 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
-				<div className="sticky top-[79px] z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 my-6 border-y-0 border-r-0 border-solid border-border-secondary">
-					<div className="flex flex-col items-start gap-1">
-					<span className="justify-center text-text-body text-body-md font-bold">
-						{t("setting.custom-model")}
-					</span>
-					<span className="justify-center text-text-body text-label-sm font-normal">
-						{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
-					</span>
-					</div>
-					<div className="flex-1" />
-					<Button
-						variant="ghost"
-						size="md"
-						onClick={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							setCollapsed((c) => !c);
-						}}
-					>
-						{collapsed ? (
-							<ChevronDown className="w-4 h-4" />
-						) : (
-							<ChevronUp className="w-4 h-4" />
-						)}
-					</Button>
+			<div className="self-stretch my-2 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
+				{/* header */}
+				<div className="sticky top-[87px] py-2 z-10 bg-surface-tertiary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 my-6 border-y-0 border-r-0 border-solid border-border-secondary">
+						<div className="flex flex-col w-full items-start gap-1">
+								<span className="justify-center text-text-body text-body-md font-bold">
+									{t("setting.custom-model")}
+								</span>
+								<span className="justify-center text-text-body text-label-sm font-normal">
+									{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
+								</span>
+						</div>
+						<Button
+							variant="ghost"
+							size="md"
+							onClick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								setCollapsed((c) => !c);
+							}}
+						>
+							{collapsed ? (
+								<ChevronDown className="w-4 h-4" />
+							) : (
+								<ChevronUp className="w-4 h-4" />
+							)}
+						</Button>
 				</div>
+
 				{/*  model list */}
 				<div
-					className={`self-stretch inline-flex flex-col justify-start items-start gap-4 transition-all duration-300 ease-in-out overflow-hidden ${
+					className={`self-stretch inline-flex flex-col justify-start items-start gap-8 transition-all duration-300 ease-in-out overflow-hidden ${
 						collapsed
 							? "max-h-0 opacity-0 pointer-events-none"
-							: "max-h-[3000px] opacity-100"
+							: "opacity-100"
 					}`}
 					style={{
 						transform: collapsed ? "translateY(-10px)" : "translateY(0)",
@@ -730,7 +727,7 @@ export default function SettingModels() {
 								key={item.id}
 								className="w-full bg-surface-secondary rounded-2xl overflow-hidden"
 							>
-								<div className="self-stretch flex flex-col justify-between items-start gap-1 px-6 py-4">
+								<div className="flex flex-col justify-between items-start gap-1 px-6 py-4">
 								  <div className="self-stretch inline-flex justify-between items-center gap-2">
 										<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
 											{item.name}
@@ -762,18 +759,24 @@ export default function SettingModels() {
 											{item.description}
 										</div>
 								</div>
-								<div className="flex w-full items-center gap-2 px-6">
-									<div className="relative w-full">
-										<div className="flex-1">
-											<Input
-												id={`apiKey-${item.id}`}
-												type={showApiKey[idx] ? "text" : "password"}
-												placeholder={` ${t("setting.enter-your-api-key")} ${
-													item.name
-												} ${t("setting.key")}`}
-												className="w-full pr-10"
-												value={form[idx].apiKey}
-												onChange={(e) => {
+								<div className="flex flex-col w-full items-center gap-4 px-6">
+										{/* API Key Setting */}
+										<Input
+											id={`apiKey-${item.id}`}
+											type={showApiKey[idx] ? "text" : "password"}
+											size="default"
+											title="API Key Setting"
+											state={errors[idx]?.apiKey ? "error" : "default"}
+											note={errors[idx]?.apiKey ?? undefined}
+											placeholder={` ${t("setting.enter-your-api-key")} ${
+											    item.name
+													} ${t("setting.key")}`}
+											backIcon={showApiKey[idx] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+											onBackIconClick={() =>
+														setShowApiKey((arr) => arr.map((v, i) => (i === idx ? !v : v)))
+													}
+											value={form[idx].apiKey}
+											onChange={(e) => {
 													const v = e.target.value;
 													setForm((f) =>
 														f.map((fi, i) =>
@@ -785,40 +788,18 @@ export default function SettingModels() {
 															i === idx ? { ...er, apiKey: "" } : er
 														)
 													);
-												}}
-											/>
-											<span
-												className="absolute inset-y-0 right-2 flex items-center cursor-pointer text-black-100"
-												onClick={() =>
-													setShowApiKey((arr) =>
-														arr.map((v, i) => (i === idx ? !v : v))
-													)
-												}
-												tabIndex={-1}
-											>
-												{showApiKey[idx] ? (
-													<Eye className="w-5 h-5" />
-												) : (
-													<EyeOff className="w-5 h-5" />
-												)}
-											</span>
-										</div>
-									</div>
-								</div>
-								{errors[idx]?.apiKey && (
-									<div className="text-label-xs text-text-cuation mt-2 px-10">
-										{errors[idx].apiKey}
-									</div>
-								)}
-
-								<div className="flex flex-col gap-4 mt-md px-6">
-									<div>
+											}}
+										/>
+										{/* API Host Setting */}
 										<Input
 											id={`apiHost-${item.id}`}
+											size="default"
+											title="API Host Setting"
+											state={errors[idx]?.apiHost ? "error" : "default"}
+											note={errors[idx]?.apiHost ?? undefined}
 											placeholder={`${t("setting.enter-your-api-host")} ${
 												item.name
 											} ${t("setting.url")}`}
-											className="w-full"
 											value={form[idx].apiHost}
 											onChange={(e) => {
 												const v = e.target.value;
@@ -834,21 +815,16 @@ export default function SettingModels() {
 												);
 											}}
 										/>
-										{errors[idx]?.apiHost && (
-											<div className="text-label-xs text-text-cuation mt-2 px-10">
-												{errors[idx].apiHost}
-											</div>
-										)}
-									</div>
-
-									{/* model type */}
-									<div>
+										{/* Model Type Setting */}
 										<Input
 											id={`modelType-${item.id}`}
+											size="default"
+											title="Model Type Setting"
+											state={errors[idx]?.model_type ? "error" : "default"}
+											note={errors[idx]?.model_type ?? undefined}
 											placeholder={`${t("setting.enter-your-model-type")} ${
 												item.name
 											} ${t("setting.model-type")}`}
-											className="w-full"
 											value={form[idx].model_type}
 											onChange={(e) => {
 												const v = e.target.value;
@@ -864,20 +840,11 @@ export default function SettingModels() {
 												);
 											}}
 										/>
-										{errors[idx]?.model_type && (
-											<div className="text-label-xs text-text-cuation mt-2 px-4">
-												{errors[idx].model_type}
-											</div>
-										)}
-									</div>
-									{/* externalConfig render */}
+										{/* externalConfig render */}
 									{item.externalConfig &&
 										form[idx].externalConfig &&
 										form[idx].externalConfig.map((ec, ecIdx) => (
-											<div key={ec.key} className="mt-2">
-												<label className="block text-xs font-medium mb-1">
-													{ec.name}
-												</label>
+											<div key={ec.key} className="w-full h-full flex flex-col gap-4">
 												{ec.options && ec.options.length > 0 ? (
 													<Select
 														value={ec.value}
@@ -899,10 +866,10 @@ export default function SettingModels() {
 															);
 														}}
 													>
-														<SelectTrigger className="bg-white-100% w-full border border-gray-200 rounded px-3 py-2 text-sm">
+														<SelectTrigger size="default" title={ec.name} state={errors[idx]?.externalConfig ? "error" : undefined} note={errors[idx]?.externalConfig ?? undefined}>
 															<SelectValue placeholder="please select" />
 														</SelectTrigger>
-														<SelectContent className="bg-white-100%">
+														<SelectContent>
 															{ec.options.map((opt) => (
 																<SelectItem key={opt.value} value={opt.value}>
 																	{opt.label}
@@ -912,7 +879,10 @@ export default function SettingModels() {
 													</Select>
 												) : (
 													<Input
-														className="w-full"
+														size="default"
+														title={ec.name}
+														state={errors[idx]?.externalConfig ? "error" : undefined}
+														note={errors[idx]?.externalConfig ?? undefined}
 														value={ec.value}
 														onChange={(e) => {
 															const v = e.target.value;
@@ -937,6 +907,7 @@ export default function SettingModels() {
 											</div>
 										))}
 								</div>
+								{/* Action Nutton */}
 								<div className="flex justify-end mt-6 px-6 py-4 border-b-0 border-x-0 border-solid border-border-secondary">
 									<Button
 										variant="primary"
@@ -982,10 +953,7 @@ export default function SettingModels() {
 					)}
 				</div>
 				<div className="flex flex-col gap-4 px-6">
-					<div>
-						<label className="block text-sm font-bold mb-1">
-							{t("setting.model-platform")}
-						</label>
+
 						<Select
 							value={localPlatform}
 							onValueChange={(v) => {
@@ -994,7 +962,7 @@ export default function SettingModels() {
 							}}
 							disabled={!localEnabled}
 						>
-							<SelectTrigger className="w-full border border-solid border-border-primary bg-input-bg-default rounded px-3 py-2 text-sm">
+							<SelectTrigger size="default" title={t("setting.model-platform")} state={localInputError ? "error" : undefined} note={localError ?? undefined}>
 								<SelectValue placeholder="Select platform" />
 							</SelectTrigger>
 							<SelectContent className="bg-white-100%">
@@ -1004,18 +972,11 @@ export default function SettingModels() {
 								<SelectItem value="lmstudio">LMStudio</SelectItem>
 							</SelectContent>
 						</Select>
-					</div>
-					<div>
-						<label
-							className="block text-sm font-bold mb-1"
-							style={{ color: localInputError ? "#ef4444" : undefined }}
-						>
-							{t("setting.model-endpoint-url")}
-						</label>
+
 						<Input
-							className={`bg-white-100% w-full${
-								localInputError ? " border-red-500" : ""
-							}`}
+						  size="default"
+							title={t("setting.model-endpoint-url")}
+							state={localInputError ? "error" : "default"}
 							value={localEndpoint}
 							onChange={(e) => {
 								setLocalEndpoint(e.target.value);
@@ -1024,37 +985,17 @@ export default function SettingModels() {
 							}}
 							disabled={!localEnabled}
 							placeholder="http://localhost:11434/v1"
+							note={localError ?? undefined}
 						/>
-						{localError && (
-							<div className="text-xs text-red-500 mt-1">{localError}</div>
-						)}
-					</div>
-					<div className="gap-1.5">
-						<label className="block text-sm font-bold mb-1 leading-tight">
-							{t("setting.model-type")}
-						</label>
 						<Input
+							size="default"
+							title={t("setting.model-type")}
+							state={localInputError ? "error" : "default"}
 							placeholder={t("setting.enter-your-local-model-type")}
-							className="w-full"
 							value={localType}
 							onChange={(e) => setLocalType(e.target.value)}
 							disabled={!localEnabled}
 						/>
-						{/* <Select
-							value={localType}
-							onValueChange={(v) => setLocalType(v)}
-							disabled={!localEnabled}
-						>
-							<SelectTrigger className="w-full border border-solid border-border-primary bg-input-bg-default rounded px-3 py-2 text-sm">
-								<SelectValue placeholder="Select type" />
-							</SelectTrigger>
-							<SelectContent className="bg-white-100%">
-								<SelectItem value="llama3.2">llama3.2</SelectItem>
-								<SelectItem value="qwen3">qwen3</SelectItem>
-								<SelectItem value="deepseek-r1">deepseek r1</SelectItem>
-							</SelectContent>
-						</Select> */}
-					</div>
 				</div>
 				<div className="flex justify-end mt-2 px-6 py-4 border-b-0 border-x-0 border-solid border-border-secondary">
 					<Button
