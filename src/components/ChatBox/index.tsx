@@ -150,7 +150,15 @@ export default function ChatBox(): JSX.Element {
 					const project_id = projectStore.activeProjectId;
 					// Queue the message instead of sending immediately
 					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-					projectStore.addQueuedMessage(project_id as string, tempMessageContent, currentAttaches);
+					const new_task_id = projectStore.addQueuedMessage(
+						project_id as string, 
+						tempMessageContent, 
+						currentAttaches
+					);
+					if(!new_task_id) {
+						console.error("Error queueing message as no task id is returned")
+						return;
+					}
 					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
 					setMessage("");
 					if (textareaRef.current) textareaRef.current.style.height = "60px";
@@ -162,7 +170,7 @@ export default function ChatBox(): JSX.Element {
 						await fetchPost(`/chat/${project_id}/add-task`, {
 							content: tempMessageContent,
 							project_id: project_id,
-							task_id: _taskId,
+							task_id: new_task_id,
 							additional_info: {
 								agent: chatStore.tasks[_taskId].activeAsk,
 								reply: tempMessageContent,
@@ -170,8 +178,8 @@ export default function ChatBox(): JSX.Element {
 							}
 						});
 					} catch (error) {
-						console.error(`Removing Message "${tempMessageContent.slice(0, 10)}..." due to ${error}`)
-						projectStore.removeQueuedMessage(project_id as string, tempMessageContent);
+						console.error(`Removing Message "${tempMessageContent}..." due to ${error}`)
+						projectStore.removeQueuedMessage(project_id as string, new_task_id);
 					}
 					return;
 				}
@@ -497,6 +505,45 @@ export default function ChatBox(): JSX.Element {
 		message, // depend on message
 	]);
 
+	const handleRemoveTaskQueue = async (task_id: string) => {
+		const project_id = projectStore.activeProjectId;
+		if (!project_id) {
+			console.error("No active project ID found");
+			return;
+		}
+		
+		// Store the original message before removal for potential restoration
+		const project = projectStore.getProjectById(project_id);
+		const originalMessage = project?.queuedMessages?.find(m => m.task_id === task_id);
+		
+		if (!originalMessage) {
+			console.error(`Message with task_id ${task_id} not found`);
+			return;
+		}
+		
+		// Create a copy of the original message for restoration
+		const messageBackup = {
+			task_id: originalMessage.task_id,
+			content: originalMessage.content,
+			timestamp: originalMessage.timestamp,
+			attaches: [...originalMessage.attaches]
+		};
+		
+		try {
+			//Optimistic Removal
+			projectStore.removeQueuedMessage(project_id, task_id);
+			
+			await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
+				project_id: project_id,
+				task_id: task_id
+			});
+		} catch (error) {
+			// Revert the optimistic removal by restoring the original message
+			projectStore.restoreQueuedMessage(project_id, messageBackup);
+			console.error(`Can't remove ${task_id} due to ${error}`)
+		}
+	}
+
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
 			{/* <PrivacyDialog
@@ -750,11 +797,11 @@ export default function ChatBox(): JSX.Element {
 					<BottomBox
 						state={getBottomBoxState()}
 							queuedMessages={projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
-								id: m.id,
+								id: m.task_id,
 								content: m.content,
 								timestamp: m.timestamp
 							})) || []}
-							onRemoveQueuedMessage={(id) => projectStore.removeQueuedMessage(projectStore.activeProjectId as string, id)}
+							onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
 							subTasks={chatStore.tasks[chatStore.activeTaskId]?.taskInfo?.map(t => ({
 								id: t.id || generateUniqueId(),
 								content: t.content,

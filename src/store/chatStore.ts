@@ -897,10 +897,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								const project = projectStore.getProjectById(projectStore.activeProjectId);
 								if (project && project.queuedMessages) {
 									const messageToRemove = project.queuedMessages.find(msg => 
-										msg.id === taskIdToRemove || msg.content.includes(taskIdToRemove)
+										msg.task_id === taskIdToRemove || msg.content.includes(taskIdToRemove)
 									);
 									if (messageToRemove) {
-										projectStore.removeQueuedMessage(projectStore.activeProjectId, messageToRemove.id);
+										projectStore.removeQueuedMessage(projectStore.activeProjectId, messageToRemove.task_id);
 										console.log(`Task removed from project queue: ${taskIdToRemove}`);
 									}
 								}
@@ -921,10 +921,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									const project = projectStore.getProjectById(agentMessages.data.project_id);
 									if (project && project.queuedMessages) {
 										const messageToRemove = project.queuedMessages.find(msg => 
-											msg.id === taskIdToRemove || msg.content.includes(taskIdToRemove)
+											msg.task_id === taskIdToRemove || msg.content.includes(taskIdToRemove)
 										);
 										if (messageToRemove) {
-											projectStore.removeQueuedMessage(agentMessages.data.project_id, messageToRemove.id);
+											projectStore.removeQueuedMessage(agentMessages.data.project_id, messageToRemove.task_id);
 											console.log(`Task removed from project queue: ${taskIdToRemove}`);
 										}
 									}
