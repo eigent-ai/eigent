@@ -9,7 +9,7 @@ from loguru import logger
 from app.utils import traceroot_wrapper as traceroot
 from app.component import code
 from app.exception.exception import UserException
-from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
+from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat, AddTaskRequest, RemoveTaskRequest, TaskResponse, IndependentTaskQueueResponse
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
@@ -17,10 +17,15 @@ from app.service.task import (
     ActionInstallMcpData,
     ActionStopData,
     ActionSupplementData,
+    ActionGetIndependentQueue,
+    ActionAddTaskData,
+    ActionRemoveTaskData,
     create_task_lock,
     get_task_lock,
 )
 from app.component.environment import set_user_env_path
+from app.utils.workforce import Workforce
+from camel.tasks.task import Task
 
 
 router = APIRouter(tags=["chat"])
@@ -32,8 +37,8 @@ chat_logger = traceroot.get_logger('chat_controller')
 @router.post("/chat", name="start chat")
 @traceroot.trace()
 async def post(data: Chat, request: Request):
-    chat_logger.info(f"Starting new chat session for task_id: {data.task_id}, user: {data.email}")
-    task_lock = create_task_lock(data.task_id)
+    chat_logger.info(f"Starting new chat session for project_id: {data.project_id}, user: {data.email}")
+    task_lock = create_task_lock(data.project_id)
     
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -48,7 +53,7 @@ async def post(data: Chat, request: Request):
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
     email = re.sub(r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]).strip(".")
-    camel_log = Path.home() / ".eigent" / email / ("task_" + data.task_id) / "camel_logs"
+    camel_log = Path.home() / ".eigent" / email / ("task_" + data.project_id) / "camel_logs"
     camel_log.mkdir(parents=True, exist_ok=True)
 
     os.environ["CAMEL_LOG_DIR"] = str(camel_log)
@@ -56,7 +61,7 @@ async def post(data: Chat, request: Request):
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
     
-    chat_logger.info(f"Chat session initialized, starting streaming response for task_id: {data.task_id}")
+    chat_logger.info(f"Chat session initialized, starting streaming response for project_id: {data.project_id}")
     return StreamingResponse(step_solve(data, request, task_lock), media_type="text/event-stream")
 
 
@@ -113,3 +118,66 @@ def install_mcp(id: str, data: McpServers):
     asyncio.run(task_lock.put_queue(ActionInstallMcpData(action=Action.install_mcp, data=data)))
     chat_logger.info(f"MCP installation queued for task_id: {id}")
     return Response(status_code=201)
+
+
+@router.get("/chat/{id}/independent-task-queue", name="get independent task queue")
+@traceroot.trace()
+def get_independent_task_queue(id: str):
+    """Get the current independent task queue for a workforce"""
+    chat_logger.info(f"Getting independent task queue for task_id: {id}")
+    task_lock = get_task_lock(id)
+    
+    try:
+        # Queue the action to get independent task queue
+        asyncio.run(task_lock.put_queue(ActionGetIndependentQueue()))
+        chat_logger.info(f"Independent task queue request queued for task_id: {id}")
+        
+        return Response(status_code=201)
+        
+    except Exception as e:
+        chat_logger.error(f"Error getting independent task queue for task_id: {id}: {e}")
+        raise UserException(code.error, f"Failed to get independent task queue: {str(e)}")
+
+
+@router.post("/chat/{id}/add-task", name="add task to workforce")
+@traceroot.trace()
+def add_task(id: str, data: AddTaskRequest):
+    """Add a new task to the workforce"""
+    chat_logger.info(f"Adding task to workforce for task_id: {id}, content: {data.content[:100]}...")
+    task_lock = get_task_lock(id)
+    
+    try:
+        # Queue the add task action
+        add_task_action = ActionAddTaskData(
+            content=data.content,
+            project_id=data.project_id,
+            task_id=data.task_id,
+            additional_info=data.additional_info,
+            insert_position=data.insert_position
+        )
+        asyncio.run(task_lock.put_queue(add_task_action))
+        return Response(status_code=201)
+        
+    except Exception as e:
+        chat_logger.error(f"Error adding task for task_id: {id}: {e}")
+        raise UserException(code.error, f"Failed to add task: {str(e)}")
+
+
+@router.delete("/chat/{project_id}/remove-task/{task_id}", name="remove task from workforce")
+@traceroot.trace()
+def remove_task(project_id: str, task_id: str):
+    """Remove a task from the workforce"""
+    chat_logger.info(f"Removing task {task_id} from workforce for project_id: {project_id}")
+    task_lock = get_task_lock(project_id)
+    
+    try:
+        # Queue the remove task action
+        remove_task_action = ActionRemoveTaskData(task_id=task_id, project_id=project_id)
+        asyncio.run(task_lock.put_queue(remove_task_action))
+
+        chat_logger.info(f"Task removal request queued for project_id: {project_id}, removing task: {task_id}")
+        return Response(status_code=204)
+            
+    except Exception as e:
+        chat_logger.error(f"Error removing task {task_id} for project_id: {project_id}: {e}")
+        raise UserException(code.error, f"Failed to remove task: {str(e)}")

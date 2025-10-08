@@ -124,6 +124,28 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 sub_tasks = update_sub_tasks(sub_tasks, update_tasks)
                 add_sub_tasks(camel_task, item.data.task)
                 yield to_sub_tasks(camel_task, summary_task_content)
+            elif item.action == Action.add_task:
+                assert camel_task is not None
+                # Add task to the workforce queue
+                workforce.add_task(
+                    item.content,
+                    f"{item.project_id}_{item.task_id or (len(camel_task.subtasks) + 1)}",
+                    item.additional_info
+                )
+
+                returnData = {
+                    "project_id": item.project_id,
+                    "task_id": item.task_id or (len(camel_task.subtasks) + 1)
+                }
+                yield sse_json(str(Action.add_task), returnData)
+            elif item.action == Action.remove_task:
+                assert camel_task is not None
+                workforce.remove_task(item.task_id)
+                returnData = {
+                    "project_id": item.project_id,
+                    "task_id": item.task_id
+                }
+                yield sse_json(str(Action.remove_task), returnData)
             elif item.action == Action.start:
                 task_lock.status = Status.processing
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))

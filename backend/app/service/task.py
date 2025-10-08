@@ -36,6 +36,8 @@ class Action(str, Enum):
     resume = "resume"  # user -> backend  user take control
     new_agent = "new_agent"  # user -> backend
     budget_not_enough = "budget_not_enough"  # backend -> user
+    add_task = "add_task"  # user -> backend
+    remove_task = "remove_task"  # user -> backend
 
 
 class ActionImproveData(BaseModel):
@@ -169,6 +171,21 @@ class ActionBudgetNotEnough(BaseModel):
     action: Literal[Action.budget_not_enough] = Action.budget_not_enough
 
 
+class ActionAddTaskData(BaseModel):
+    action: Literal[Action.add_task] = Action.add_task
+    content: str
+    project_id: str | None = None
+    task_id: str | None = None
+    additional_info: dict | None = None
+    insert_position: int = -1
+
+
+class ActionRemoveTaskData(BaseModel):
+    action: Literal[Action.remove_task] = Action.remove_task
+    task_id: str
+    project_id: str
+
+
 ActionData = (
     ActionImproveData
     | ActionStartData
@@ -192,6 +209,8 @@ ActionData = (
     | ActionTakeControl
     | ActionNewAgent
     | ActionBudgetNotEnough
+    | ActionAddTaskData
+    | ActionRemoveTaskData
 )
 
 
