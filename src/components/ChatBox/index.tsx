@@ -20,7 +20,7 @@ export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
 
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -110,7 +110,7 @@ export default function ChatBox(): JSX.Element {
 		if (isTaskBusy && !task.activeAsk) {
 			// Queue the message instead of sending immediately
 			const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-			chatStore.addQueuedMessage(_taskId, tempMessageContent, currentAttaches);
+			projectStore.addQueuedMessage(projectStore.activeProjectId as string, tempMessageContent, currentAttaches);
 			chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
 			setMessage("");
 			if (textareaRef.current) textareaRef.current.style.height = "60px";
@@ -400,9 +400,10 @@ export default function ChatBox(): JSX.Element {
 	const getBottomBoxState = () => {
 		if (!chatStore.activeTaskId) return "input";
 		const task = chatStore.tasks[chatStore.activeTaskId];
+		const activeProject = projectStore.getProjectById(projectStore.activeProjectId || '');
 
-		// Check for queued messages
-		if (task.queuedMessages && task.queuedMessages.length > 0) {
+		// Check for queued messages at project level
+		if (activeProject?.queuedMessages && activeProject.queuedMessages.length > 0) {
 			return "queuing";
 		}
 
@@ -720,12 +721,12 @@ export default function ChatBox(): JSX.Element {
 					{chatStore.activeTaskId && (
 					<BottomBox
 						state={getBottomBoxState()}
-							queuedMessages={chatStore.tasks[chatStore.activeTaskId]?.queuedMessages?.map(m => ({
+							queuedMessages={projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
 								id: m.id,
 								content: m.content,
 								timestamp: m.timestamp
 							})) || []}
-							onRemoveQueuedMessage={(id) => chatStore.removeQueuedMessage(chatStore.activeTaskId as string, id)}
+							onRemoveQueuedMessage={(id) => projectStore.removeQueuedMessage(projectStore.activeProjectId as string, id)}
 							subTasks={chatStore.tasks[chatStore.activeTaskId]?.taskInfo?.map(t => ({
 								id: t.id || generateUniqueId(),
 								content: t.content,

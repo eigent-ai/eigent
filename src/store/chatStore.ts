@@ -39,7 +39,6 @@ interface Task {
 	snapshotsTemp: any[];
 	isTakeControl: boolean;
 	isTaskEdit: boolean;
-	queuedMessages: Array<{ id: string; content: string; timestamp: number; attaches: File[] }>;
 }
 
 export interface ChatStore {
@@ -95,9 +94,6 @@ export interface ChatStore {
 	setSnapshotsTemp: (taskId: string, snapshot: any) => void,
 	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
 	clearTasks: () => void,
-	addQueuedMessage: (taskId: string, content: string, attaches: File[]) => void;
-	removeQueuedMessage: (taskId: string, messageId: string) => void;
-	clearQueuedMessages: (taskId: string) => void;
 }
 
 
@@ -146,7 +142,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						snapshotsTemp: [],
 						isTakeControl: false,
 						isTaskEdit: false,
-						queuedMessages: []
 					},
 				}
 			}))
@@ -1701,50 +1696,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				tasks: {
 					[newTaskId]: {
 						...state.tasks[newTaskId],
-					},
-				},
-			}))
-		},
-		addQueuedMessage(taskId: string, content: string, attaches: File[]) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						queuedMessages: [
-							...state.tasks[taskId].queuedMessages,
-							{
-								id: generateUniqueId(),
-								content,
-								timestamp: Date.now(),
-								attaches: [...attaches]
-							}
-						]
-					},
-				},
-			}))
-		},
-		removeQueuedMessage(taskId: string, messageId: string) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						queuedMessages: state.tasks[taskId].queuedMessages.filter(m => m.id !== messageId)
-					},
-				},
-			}))
-		},
-		clearQueuedMessages(taskId: string) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						queuedMessages: []
 					},
 				},
 			}))
