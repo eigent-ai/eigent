@@ -5,7 +5,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
-from loguru import logger
 from app.utils import traceroot_wrapper as traceroot
 from app.component import code
 from app.exception.exception import UserException

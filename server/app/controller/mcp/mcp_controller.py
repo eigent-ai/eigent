@@ -11,9 +11,11 @@ from app.component.database import session
 from app.model.mcp.mcp import Mcp, McpOut, McpType
 from app.model.mcp.mcp_env import McpEnv, Status as McpEnvStatus
 from app.model.mcp.mcp_user import McpImportType, McpUser, Status
-from loguru import logger
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("server_mcp_controller")
 
 from app.component.validator.McpServer import (
     McpRemoteServer,

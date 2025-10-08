@@ -2,11 +2,13 @@ from typing import Any, Dict, List, Literal
 from camel.toolkits import SearchToolkit as BaseSearchToolkit
 from camel.toolkits.function_tool import FunctionTool
 import httpx
-from loguru import logger
 from app.component.environment import env, env_not_empty
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("search_toolkit")
 
 
 class SearchToolkit(BaseSearchToolkit, AbstractToolkit):

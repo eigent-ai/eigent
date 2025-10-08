@@ -7,9 +7,11 @@ from app.component.auth import Auth, auth_must
 from fastapi_babel import _
 from app.model.mcp.mcp_user import McpUser, McpUserIn, McpUserOut, McpUserUpdate, Status
 from app.model.mcp.mcp import Mcp
-from loguru import logger
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("server_mcp_user_controller")
 
 router = APIRouter(tags=["McpUser Management"])
 

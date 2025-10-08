@@ -3,12 +3,14 @@ from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from loguru import logger
 from app import api
 from app.component import code
 from app.exception.exception import NoPermissionException, ProgramException, TokenException
 from app.component.pydantic.i18n import trans, get_language
 from app.exception.exception import UserException
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("exception_handler")
 
 
 @api.exception_handler(RequestValidationError)

@@ -8,8 +8,10 @@ from app.component.encrypt import password_verify
 from app.component.stack_auth import StackAuth
 from app.exception.exception import UserException
 from app.model.user.user import LoginByPasswordIn, LoginResponse, Status, User, RegisterIn
-from loguru import logger
 from app.component.environment import env
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("server_login_controller")
 
 
 router = APIRouter(tags=["Login/Registration"])

@@ -1,8 +1,10 @@
 from app import api
 from app.component.environment import auto_include_routers, env
-from loguru import logger
 import os
 from fastapi.staticfiles import StaticFiles
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("server_main")
 
 prefix = env("url_prefix", "")
 auto_include_routers(api, prefix, "app/controller")
@@ -20,11 +22,3 @@ if public_dir and os.path.isdir(public_dir):
     api.mount("/public", StaticFiles(directory=public_dir), name="public")
 else:
     logger.warning("Skipping /public mount because public directory is unavailable")
-
-logger.add(
-    "runtime/log/app.log",
-    rotation="10 MB",
-    retention="10 days",
-    level="DEBUG",
-    enqueue=True,
-)

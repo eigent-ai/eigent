@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 from exa_py import Exa
-from loguru import logger
 from app.component.auth import key_must
 from app.component.environment import env_not_empty
 from app.model.mcp.proxy import ExaSearch
 from typing import Any, cast
 import requests
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("server_proxy_controller")
 
 from app.model.user.key import Key
 

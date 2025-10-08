@@ -3,8 +3,6 @@ from functools import wraps
 from inspect import iscoroutinefunction
 import json
 from typing import Any, Callable
-
-from loguru import logger
 from app.service.task import (
     ActionActivateToolkitData,
     ActionDeactivateToolkitData,
@@ -12,6 +10,9 @@ from app.service.task import (
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("toolkit_listen")
 
 
 def listen_toolkit(

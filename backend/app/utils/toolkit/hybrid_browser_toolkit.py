@@ -4,7 +4,6 @@ import time
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
-from loguru import logger
 import websockets
 import websockets.exceptions
 
@@ -18,6 +17,9 @@ from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("hybrid_browser_toolkit")
 
 
 class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):

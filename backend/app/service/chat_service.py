@@ -19,7 +19,6 @@ from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.workforce import Workforce
-from loguru import logger
 from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
 from camel.tasks import Task
 from app.utils.agent import (
@@ -40,6 +39,9 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
+from app.utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("chat_service")
 
 
 @sync_step

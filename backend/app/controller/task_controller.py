@@ -1,7 +1,6 @@
 from typing import Literal
 from dotenv import load_dotenv
 from fastapi import APIRouter, Response
-from loguru import logger
 from pydantic import BaseModel
 from app.model.chat import NewAgent, UpdateData
 from app.service.task import (
@@ -16,6 +15,10 @@ from app.service.task import (
 )
 import asyncio
 from app.component.environment import set_user_env_path
+from app.utils import traceroot_wrapper as traceroot
+
+# traceroot logger for task controller
+logger = traceroot.get_logger("task_controller")
 
 
 router = APIRouter(tags=["task"])
