@@ -529,58 +529,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					// New Task State from queue
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
-						if (!task_id || !content) return;
+						if (!task_id || !content || !project_id) return;
 
-						// Get project store to create new chat instance
-						const projectStore = useProjectStore.getState();
-						const currentProjectId = projectStore.activeProjectId;
+						const storeResult = projectStore.appendInitChatStore(project_id);
+						if (!storeResult) return;
 						
-						if (!currentProjectId) {
-							console.warn("No active project found for new_task_state");
-							return;
-						}
-
-						// Create new chat store in the current project
-						const newChatId = projectStore.createChatStore(currentProjectId, `Task: ${content.substring(0, 50)}...`);
+						const {taskId: newTaskId, chatStore: newChatStore} = storeResult;
 						
-						if (!newChatId) {
-							console.error("Failed to create new chat store");
-							return;
-						}
-
-						// Get the new chat store instance
-						const newChatStore = projectStore.getChatStore(currentProjectId, newChatId);
-						
-						if (!newChatStore) {
-							console.error("Failed to get new chat store instance");
-							return;
-						}
-
-						// Create a new task in the new chat store with the queued content
-						const newTaskId = newChatStore.getState().create();
-						
-						// Add the user message (the task content)
+						// Customize the initialTask data
 						newChatStore.getState().addMessages(newTaskId, {
 							id: generateUniqueId(),
 							role: "user",
 							content: content,
 						});
-
-						// Set the task as having messages
 						newChatStore.getState().setHasMessages(newTaskId, true);
-
-						// Set Active Task to the latest one
-						newChatStore.getState().setActiveTaskId(newTaskId);
-
-						// Set up initial task state similar to confirmed step
-						newChatStore.getState().setActiveWorkSpace(newTaskId, 'workflow');
-						newChatStore.getState().setStatus(newTaskId, 'pending');
 						newChatStore.getState().setTaskTime(newTaskId, Date.now());
-
-						// Set the new chat store as active - this will make subsequent events use the new context
-						projectStore.setActiveChatStore(currentProjectId, newChatId);
 						
-
 						console.log(`Created new chat instance for task: ${task_id} with content: ${content}`);
 						return;
 					}

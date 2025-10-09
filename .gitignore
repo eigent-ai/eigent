@@ -46,3 +46,4 @@ public/
 
 # Testing
 coverage/
+.traceroot-config.yaml
