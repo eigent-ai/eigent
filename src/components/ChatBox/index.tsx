@@ -173,6 +173,24 @@ export default function ChatBox(): JSX.Element {
 					toast.success("Task queued. It will be processed when the current task finishes.", {
 						closeButton: true,
 					});
+
+					//Send the task as soon as possible
+					//Workforce internal queue handles it
+					try {
+						await fetchPost(`/chat/${project_id}/add-task`, {
+							content: tempMessageContent,
+							project_id: project_id,
+							task_id: new_task_id,
+							additional_info: {
+								agent: chatStore.tasks[_taskId].activeAsk,
+								reply: tempMessageContent,
+								timestamp: Date.now()
+							}
+						});
+					} catch (error) {
+						console.error(`Removing Message "${tempMessageContent}..." due to ${error}`)
+						projectStore.removeQueuedMessage(project_id as string, new_task_id);
+					}
 					return;
 				}
 
@@ -238,38 +256,6 @@ export default function ChatBox(): JSX.Element {
 	useEffect(() => {
 		console.log("ChatStore Data: ", chatStore);
 	}, []);
-
-	// When current task finishes, automatically dispatch next queued task (if any)
-	useEffect(() => {
-		const maybeDispatchNext = async () => {
-			const project_id = projectStore.activeProjectId;
-			if (!project_id) return;
-			const project = projectStore.getProjectById(project_id);
-			const next = project?.queuedMessages?.[0];
-			if (!next) return;
-			try {
-				await fetchPost(`/chat/${project_id}/add-task`, {
-					content: next.content,
-					project_id: project_id,
-					task_id: next.task_id,
-					additional_info: {
-						timestamp: Date.now(),
-					},
-				});
-				// Optimistically remove from queued box; backend also emits remove_task
-				projectStore.removeQueuedMessage(project_id, next.task_id);
-			} catch (error) {
-				console.error("Failed to dispatch queued task:", error);
-			}
-		};
-
-		const activeId = chatStore.activeTaskId as string;
-		const status = activeId ? chatStore.tasks[activeId]?.status : undefined;
-		if (status === 'finished') {
-			maybeDispatchNext();
-		}
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.status, projectStore.activeProjectId]);
 
 	const handleSendShare = async (token: string) => {
 		if (!token) return;
