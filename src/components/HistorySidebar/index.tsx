@@ -150,7 +150,7 @@ export default function HistorySidebar() {
 
 	const handleReplay = async (taskId: string, question: string) => {
 		close();
-		projectStore.replayProject([taskId], question);
+		projectStore.replayProject([taskId], question, projectStore.activeProjectId ?? undefined);
 		navigate({ pathname: "/" });
 	};
 

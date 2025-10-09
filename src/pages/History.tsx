@@ -176,7 +176,7 @@ export default function Home() {
 	};
 
 	const handleReplay = async (taskId: string, question: string) => {
-		projectStore.replayProject([taskId], question);
+		projectStore.replayProject([taskId], question, projectStore.activeProjectId ?? undefined);
 		navigate({ pathname: "/" });
 	};
 
