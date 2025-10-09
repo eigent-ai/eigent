@@ -75,21 +75,8 @@ export default function HistorySidebar() {
 
 	const createChat = () => {
 		close();
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			console.log(chatStore.tasks[taskId].messages.length);
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate(`/`);
-			return;
-		}
-		if (
-			chatStore.tasks[chatStore.activeTaskId as string] &&
-			chatStore.tasks[chatStore.activeTaskId as string].messages.length === 0
-		) {
-		}
 		//Create a new project
+		//Handles refocusing id & non duplicate logic internally
 		projectStore.createProject("new project");
 		navigate("/");
 	};

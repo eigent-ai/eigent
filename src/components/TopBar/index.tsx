@@ -97,14 +97,7 @@ function HeaderWin() {
 
 	// create new project handler reused by plus icon and label
 	const createNewProject = () => {
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate("/");
-			return;
-		}
+		//Handles refocusing id & nonduplicate internally
 		projectStore.createProject("new project");
 		navigate("/");
 	};
