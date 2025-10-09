@@ -24,7 +24,7 @@ import { useChatStore } from "@/store/chatStore";
 import { useGlobalStore } from "@/store/globalStore";
 import folderIcon from "@/assets/Folder-1.svg";
 import { Progress } from "@/components/ui/progress";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { TooltipSimple } from "../ui/tooltip";
 import { generateUniqueId } from "@/lib";
 import {
 	Popover,
@@ -201,13 +201,22 @@ export default function HistorySidebar() {
 	};
 
 	useEffect(() => {
-		if (isOpen) {
+		const updateAnchor = () => {
 			const btn = document.getElementById("active-task-title-btn");
 			if (btn) {
 				const rect = btn.getBoundingClientRect();
 				setAnchorStyle({ left: rect.left, top: rect.bottom + 6 });
 			}
+		};
+
+		if (isOpen) {
+			updateAnchor();
+			window.addEventListener("resize", updateAnchor);
 		}
+
+		return () => {
+			window.removeEventListener("resize", updateAnchor);
+		};
 	}, [isOpen]);
 
 	return (
@@ -246,7 +255,7 @@ export default function HistorySidebar() {
 							top: anchorStyle ? anchorStyle.top : 40,
 						}}
 					>
-						<div className="flex items-center justify-between px-sm">
+						{/*<div className="flex items-center justify-between px-sm">
 							<Button
 								variant="ghost"
 								size="sm"
@@ -268,26 +277,23 @@ export default function HistorySidebar() {
 							>
 								<GalleryVerticalEnd className="h-4 w-4" />
 							</Button>
-						</div>
-						<div className="pt-4 pb-2  px-sm ">
+						</div>*/}
+						<div className="py-2 pl-2 flex justify-between items-center">
 							{/* Search */}
-							<SearchInput value={searchValue} onChange={handleSearch} />
+							<SearchInput 
+							  value={searchValue} 
+								onChange={handleSearch} 
+				       />
+							<Button variant="ghost" size="md" onClick={createChat}>
+								<Plus className="w-8 h-8 text-icon-tertiary group-hover:text-icon-primary transition-all duration-300" />
+							</Button>
 						</div>
-						<div className="mb-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+						<div className="mt-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
 							<div className="px-sm flex flex-col  gap-2">
-								{/* new Project */}
-								<div
-									onClick={createChat}
-									className="cursor-pointer select-none  rounded-md p-3 h-16 flex items-center justify-start gap-md transition-all duration-300 group"
-								>
-									<Plus className="w-8 h-8 text-icon-tertiary group-hover:text-icon-primary transition-all duration-300" />
-									<span className="text-text-tertiary font-bold text-[14px] leading-9 group-hover:text-text-body transition-all duration-300">
-										{t("task-hub.new-project")}
-									</span>
-								</div>
-								{history_type === "table" ? (
-									// Table
-									<div className="flex justify-start items-center flex-wrap gap-2">
+									{/* Table view hidden
+									{history_type === "table" ? (
+										// Table
+										<div className="flex justify-start items-center flex-wrap gap-2">
 										{Object.keys(chatStore.tasks)
 											.reverse()
 											.map((taskId) => {
@@ -387,6 +393,7 @@ export default function HistorySidebar() {
 									</div>
 								) : (
 									// List
+								*/}
 									<div className=" flex flex-col justify-start items-center gap-2 ">
 										{Object.keys(chatStore.tasks)
 											.reverse()
@@ -404,55 +411,36 @@ export default function HistorySidebar() {
 															chatStore.activeTaskId === taskId
 																? "!bg-white-100%"
 																: ""
-														} max-w-full flex w-full items-center border-radius-2xl bg-white-30% box-sizing-border-box p-3 relative h-14 gap-2 transition-all duration-300 hover:bg-white-100% rounded-2xl`}
+														} max-w-full flex w-full items-center border-radius-2xl bg-white-30% box-sizing-border-box p-3 relative h-14 gap-md transition-all duration-300 hover:bg-white-100% rounded-2xl cursor-pointer`}
 													>
 														<img
 															className="w-8 h-8"
 															src={folderIcon}
 															alt="folder-icon"
 														/>
-														<div className="flex-1 overflow-hidden text-text-body text-ellipsis font-inter text-[13px] font-bold leading-8 whitespace-nowrap overflow-hidden text-ellipsis">
-															<Tooltip>
-																<TooltipTrigger asChild>
-																	<span>
-																		{task?.messages[0]?.content ||
-																			t("task-hub.new-project")}
-																	</span>
-																</TooltipTrigger>
-																<TooltipContent className="w-[200px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto !fixed ">
-																	<p>
-																		{task?.messages[0]?.content ||
-																			t("task-hub.new-project")}
-																	</p>
-																</TooltipContent>
-															</Tooltip>
+												<div className="flex-1 overflow-hidden text-text-body text-ellipsis text-body-sm font-bold whitespace-nowrap">
+													<TooltipSimple
+														content={
+															<p>
+																{task?.messages[0]?.content || t("task-hub.new-project")}
+															</p>
+														}
+														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
+													>
+														<span>
+															{task?.messages[0]?.content || t("task-hub.new-project")}
+														</span>
+													</TooltipSimple>
 														</div>
 													</div>
 												) : (
 													""
 												);
 											})}
-									</div>
-								)}
+										</div>
+									{/* )} */}
 							</div>
 							<div className="px-sm py-4 flex flex-col gap-2">
-								<div className="flex justify-between items-center">
-									<div className="text-text-primary text-base font-bold leading-9">
-										{t("task-hub.project-archives")}
-									</div>
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => toggleOpenHistory()}
-									>
-										<ChevronDown
-											size={24}
-											className={`transition-transform duration-200 ${
-												historyOpen ? "rotate-180" : ""
-											}`}
-										/>
-									</Button>
-								</div>
 								<AnimatePresence>
 									{historyOpen && (
 										<motion.div
@@ -461,9 +449,10 @@ export default function HistorySidebar() {
 											exit={{ height: 0, opacity: 0 }}
 											className=" flex-1"
 										>
-											{history_type === "table" ? (
-												// Table
-												<div className="flex justify-start items-center flex-wrap gap-2 ">
+										{/* Table view hidden
+										{history_type === "table" ? (
+											// Table
+											<div className="flex justify-start items-center flex-wrap gap-2 ">
 													{historyTasks
 														.filter((task) =>
 															task.question
@@ -507,11 +496,16 @@ export default function HistorySidebar() {
 																</div>
 															);
 														})}
-												</div>
-											) : (
-												// List
-												<div className=" flex flex-col justify-start items-center gap-4 ">
-												{historyTasks.map((task) => {
+											</div>
+										) : (
+										    // List
+										*/}
+											<div className=" flex flex-col justify-start items-center gap-4 ">
+											{historyTasks
+												.filter((task) =>
+													task.question?.toLowerCase().includes(searchValue.toLowerCase())
+												)
+												.map((task) => {
 													return (
 														<div
 															onClick={() => {
@@ -526,25 +520,23 @@ export default function HistorySidebar() {
 														>
 															<img className="w-8 h-8" src={folderIcon} alt="folder-icon" />
 						
-															<div className="w-full text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<span>
-																			{" "}
-																			{task?.question.split("|")[0] || t("task-hub.new-project")}
-																		</span>
-																	</TooltipTrigger>
-																	<TooltipContent
-																		align="start"
-																		className="w-[800px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto"
-																	>
-																		<div>
-																			{" "}
-																			{task?.question.split("|")[0] || t("task-hub.new-project")}
-																		</div>
-																	</TooltipContent>
-																</Tooltip>
+												<div className="w-full text-body-sm text-text-body font-bold overflow-hidden text-ellipsis whitespace-nowrap">
+													<TooltipSimple
+														align="start"
+														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
+														content={
+															<div>
+																{" "}
+																{task?.question.split("|")[0] || t("task-hub.new-project")}
 															</div>
+														}
+													>
+														<span>
+															{" "}
+															{task?.question.split("|")[0] || t("task-hub.new-project")}
+														</span>
+													</TooltipSimple>
+												</div>
 															<Tag
 																variant="primary"
 																className="text-xs leading-17 font-medium text-nowrap"
@@ -601,9 +593,9 @@ export default function HistorySidebar() {
 															</Popover>
 														</div>
 													);
-												})}
-											</div>
-											)}
+											})}
+												</div>
+											{/* )} */}
 										</motion.div>
 									)}
 								</AnimatePresence>

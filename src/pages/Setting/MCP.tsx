@@ -465,38 +465,38 @@ const [marketKeyword, setMarketKeyword] = useState("");
 							{/*<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 py-2">
 								<div className="flex-1" />
 							</div>*/}
-                            {!collapsed && (
-                                <IntegrationList
-                                    items={essentialIntegrations}
-                                    showConfigButton={true}
-                                    showInstallButton={false}
-                                    showSelect
-																		showStatusDot={false}
-                                    selectPlaceholder={
-                                        modelType === "cloud"
-                                            ? "Google Search"
-                                            : "Select default search engine"
-                                    }
-                                    selectContent={
-                                        modelType === "cloud" ? (
-                                            // Cloud: allow selecting the default option only
-                                            <SelectItem value="google" disabled={false}>
-                                                Google Search
-                                            </SelectItem>
-                                        ) : undefined
-                                    }
-                                    onSelectChange={async (value) => {
-                                        try {
-                                            setDefaultSearchEngine(value);
-                                            await proxyFetchPost("/api/configs", {
-                                                config_group: "Search",
-                                                config_name: "DEFAULT_SEARCH_ENGINE",
-                                                config_value: value,
-                                            });
-                                        } catch (e) {}
-                                    }}
-                                />
-                            )}
+							{!collapsed && (
+									<IntegrationList
+											items={essentialIntegrations}
+											showConfigButton={true}
+											showInstallButton={false}
+											showSelect
+											showStatusDot={false}
+											selectPlaceholder={
+													modelType === "cloud"
+															? "Google Search"
+															: "Select default search engine"
+											}
+											selectContent={
+													modelType === "cloud" ? (
+															// Cloud: allow selecting the default option only
+															<SelectItem value="google" disabled={false}>
+																	Google Search
+															</SelectItem>
+													) : undefined
+											}
+											onSelectChange={async (value) => {
+													try {
+															setDefaultSearchEngine(value);
+															await proxyFetchPost("/api/configs", {
+																	config_group: "Search",
+																	config_name: "DEFAULT_SEARCH_ENGINE",
+																	config_value: value,
+															});
+													} catch (e) {}
+											}}
+									/>
+							)}
 						</div>
 						<div className="flex flex-col">
 							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">

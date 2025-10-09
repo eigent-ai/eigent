@@ -3,10 +3,7 @@ import {
 	DialogContent,
 	DialogFooter,
 	DialogHeader,
-	DialogTitle,
 } from "@/components/ui/dialog";
-
-import { Button } from "@/components/ui/button";
 import { Bot, CircleAlert, Eye, EyeOff } from "lucide-react";
 import githubIcon from "@/assets/github.svg";
 import { Input } from "@/components/ui/input";
@@ -249,19 +246,10 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 			}}
 		>
 			<form>
-				<DialogContent aria-describedby={undefined} className="sm:max-w-[425px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-border-secondary shadow-sm">
-					<DialogHeader className="p-md">
-						<DialogTitle className="m-0">
-							<div className="flex gap-xs items-center justify-start">
-								<div className="text-base font-bold leading-10 text-text-action">
-									{t("setting.configure {name} Toolkit", { name: activeMcp?.name })}
-								</div>
-								<CircleAlert size={16} />
-							</div>
-						</DialogTitle>
-					</DialogHeader>
+				<DialogContent aria-describedby={undefined} size="sm" showCloseButton onClose={handleCloseMcpEnvSetting}>
+					<DialogHeader title={t("setting.configure {name} Toolkit", { name: activeMcp?.name })} />
 
-					<div className="flex flex-col gap-3 bg-white-100% p-md">
+					<div className="flex flex-col gap-3 p-md">
 						<div className="flex gap-md items-center">
 							{getCategoryIcon(activeMcp?.category?.name)}
 							<div>
@@ -325,23 +313,17 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 							})}
 						</div>
 					</div>
-					<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
-						<Button
-							onClick={handleCloseMcpEnvSetting}
-							variant="ghost"
-							size="md"
-						>
-							{t("setting.cancel")}
-						</Button>
-						<Button
-							onClick={handleConfigureMcpEnvSetting}
-							variant="primary"
-							size="md"
-							disabled={isValidating}
-						>
-							{isValidating ? "Validating..." : t("setting.connect")}
-						</Button>
-					</DialogFooter>
+					<DialogFooter
+						className="bg-white-100% !rounded-b-xl p-md"
+						showCancelButton
+						cancelButtonText={t("setting.cancel")}
+						onCancel={handleCloseMcpEnvSetting}
+						cancelButtonVariant="ghost"
+						showConfirmButton
+						confirmButtonText={isValidating ? "Validating..." : t("setting.connect")}
+						onConfirm={handleConfigureMcpEnvSetting}
+						confirmButtonVariant="primary"
+					/>
 				</DialogContent>
 			</form>
 		</Dialog>

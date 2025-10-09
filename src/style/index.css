@@ -379,14 +379,14 @@ code {
 }
 
 .alert-dialog {
-  z-index: 900;
-
+  z-index: 9998;
+  pointer-events: auto;
 }
 
 .alert-dialog-wrapper {
   width: 450px;
-  height: 220px;
-  z-index: 910;
+  height: auto;
+  z-index: 9999;
   top: calc(50vh - 110px);
   left: calc(50vw - 225px);
   background: rgba(255, 255, 255, 0.8);

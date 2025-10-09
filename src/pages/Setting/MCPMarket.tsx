@@ -261,59 +261,50 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 	};
 	return (
 		<div className="h-full flex flex-col items-center ">
-			{/* Internal header+filters only when not externally controlled */}
-	{externalKeyword === undefined && (
+	  {externalKeyword === undefined && (
 				<>
-					<div
-						className="text-body flex items-center justify-between sticky top-0 z-[20]  backdrop-blur border-b py-2 mb-0 w-full max-w-4xl"
-						style={{ left: 0, right: 0 }}
-					>
-						<div className="flex items-center gap-2">
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={handleBack}
-								className="mr-2"
-							>
-								<ChevronLeft className="w-6 h-6 bg-button-transparent-fill-default/0 rounded-md" />
-							</Button>
-							<span className="text-base font-bold leading-12 text-text-primary">
-								{t("setting.mcp-market")}
-							</span>
-						</div>
-						{/* removed internal Select; external UI or toggle row below */}
+					<div className="text-body flex items-center justify-between sticky top-0 z-[20] py-2 mb-0 w-full max-w-4xl">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={handleBack}
+							className="mr-2"
+						>
+							<ChevronLeft className="w-6 h-6" />
+						</Button>
+						<span className="text-base font-bold leading-12 text-text-primary">
+							{t("setting.mcp-market")}
+						</span>
 					</div>
-					<div className="w-40 max-w-4xl bg-white/80 backdrop-blur border-b py-2 mb-2">
-						<div className="flex items-center gap-2 px-2">
+					<div className="w-40 max-w-4xl">
 							<SearchInput
 								value={keyword}
 								onChange={(e) => setKeyword(e.target.value)}
-							></SearchInput>
-						</div>
+							/>	
 					</div>
 				</>
-			)}
+		  )}
 
-	{/* Category toggle row */}
-	<div className="w-full flex py-2">
-		<ToggleGroup
-			type="single"
-			value={categoryId ? String(categoryId) : "all"}
-			onValueChange={(val) => setCategoryId(!val || val === "all" ? undefined : Number(val))}
-			className="flex flex-wrap"
-		>
-			<ToggleGroupItem value="all">
-				{t("setting.all")}
-			</ToggleGroupItem>
-			{mcpCategory.map((cat) => (
-				<ToggleGroupItem key={cat.id} value={String(cat.id)}>
-					{cat.name}
-				</ToggleGroupItem>
-			))}
-		</ToggleGroup>
-	</div>
+			{/* Category toggle row */}
+			<div className="w-full flex py-2">
+				<ToggleGroup
+					type="single"
+					value={categoryId ? String(categoryId) : "all"}
+					onValueChange={(val) => setCategoryId(!val || val === "all" ? undefined : Number(val))}
+					className="flex flex-wrap"
+				>
+					<ToggleGroupItem value="all">
+						{t("setting.all")}
+					</ToggleGroupItem>
+					{mcpCategory.map((cat) => (
+						<ToggleGroupItem key={cat.id} value={String(cat.id)}>
+							{cat.name}
+						</ToggleGroupItem>
+					))}
+				</ToggleGroup>
+			</div>
 
-	{/* list */}
+	    {/* list */}
 			<MCPEnvDialog
 				showEnvConfig={showEnvConfig}
 				onClose={onClose}

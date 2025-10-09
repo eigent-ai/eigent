@@ -1,42 +1,30 @@
 import { Input } from "@/components/ui/input";
+import type { InputSize } from "@/components/ui/input";
 import { Search } from "lucide-react";
-import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 interface SearchInputProps {
 	value: string;
 	onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+	placeholder?: string;
+	size?: InputSize;
+	leadingIcon?: ReactNode;
 }
 
-export default function SearchInput({ value, onChange }: SearchInputProps) {
-	const [isFocused, setIsFocused] = useState(false);
-	const inputRef = useRef<HTMLInputElement>(null);
+export default function SearchInput({ value, onChange, placeholder, size = "sm", leadingIcon }: SearchInputProps) {
 	const { t } = useTranslation();
 
 	return (
 		<div className="relative w-full">
 			<Input
-				ref={inputRef}
+				size={size}
 				value={value}
+				className="w-full rounded-full"
 				onChange={onChange}
-				onFocus={() => setIsFocused(true)}
-				onBlur={() => setIsFocused(false)}
-				className="h-6 pl-8 pr-4 py-2 bg-bg-surface-tertiary rounded-full border-none shadow-none text-sm focus-visible:ring-0 focus-visible:ring-transparent focus-visible:border-none text-gray-900"
-				style={{ textAlign: value || isFocused ? "left" : "center" }}
+				placeholder={placeholder ?? t("task-hub.search")}
+				leadingIcon={leadingIcon ?? <Search className="w-5 h-5 text-icon-secondary" />}
 			/>
-			{/* placeholder */}
-			{!value && !isFocused && (
-				<span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-text-label select-none cursor-text">
-					<Search className="w-4 h-4 mr-1 text-icon-secondary" />
-					{t("task-hub.search")}
-				</span>
-			)}
-			
-			{(value || isFocused) && (
-				<span className="absolute left-2 top-[calc(50%+4px)] -translate-y-1/2 text-icon-secondary">
-					<Search className="w-5 h-5" />
-				</span>
-			)}
 		</div>
 	);
 }

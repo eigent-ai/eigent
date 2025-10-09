@@ -426,7 +426,13 @@ export default function IntegrationList({
                   "Reddit",
                   "Github",
                 ].includes(item.name)}
-                variant={isInstalled ? "secondary" : "primary"}
+                variant={[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name) ? "ghost" : (isInstalled ? "outline" : "primary")}
                 size="sm"
                 onClick={(e) => {
                   e.preventDefault();

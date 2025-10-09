@@ -84,12 +84,12 @@ export default function Home() {
 			cancelText="Cancel"
 		/>
 		  {/* welcome text */}
-			<div className="flex flex-col w-full pt-16 px-20 bg-surface-tertiary">
+			<div className="flex flex-col w-full pt-16 px-20 bg-gradient-to-b from-transparent to-[#F9F8F6]">
 					<span className="text-text-primary text-heading-lg !font-serif font-bold">Welcome {welcomeName}</span>
 			</div>
 			{/* Navbar */}
 		<div
-			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-surface-tertiary px-20 pt-8 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
+			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-[#F9F8F6] px-20 pt-8 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
 		>
 				<div className="flex flex-row justify-between items-center w-full mx-auto">
 				<div className="flex items-center gap-2">
@@ -106,7 +106,7 @@ export default function Home() {
 				</div>
 		  	<Button variant="primary" size="sm" onClick={createChat}>
 				<Plus />
-				{t("task-hub.new-project")}
+				New Project
 		  	</Button>
 			</div>
 		  </div>

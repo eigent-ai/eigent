@@ -255,12 +255,13 @@ function HeaderWin() {
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("chat.new-project") ? (
-								<Button 
-								  variant="ghost" 
-									className="font-bold text-base no-drag truncate" 
-								  onClick={toggle}
-								  size="sm"
-								  >
+									<Button 
+										id="active-task-title-btn"
+										variant="ghost" 
+											className="font-bold text-base no-drag truncate" 
+										onClick={toggle}
+										size="sm"
+										>
 									{t("chat.new-project")}
 									<ChevronDown />
 								</Button>
