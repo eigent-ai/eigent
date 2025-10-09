@@ -102,10 +102,17 @@ export default function ChatBox(): JSX.Element {
 		chatStore.setHasMessages(_taskId as string, true);
 		if (!_taskId) return;
 
-		// Multi-turn support: Check if task is running or planning (splitting)
+		// Multi-turn support: Check if task is running or planning (splitting/confirm)
 		const task = chatStore.tasks[_taskId];
-		const isTaskBusy = task.status === 'running' || 
-						  task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm);
+		const isTaskBusy = (
+			// running or paused counts as busy
+			task.status === 'running' || task.status === 'pause' ||
+			// splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+			((!task.messages.find(m => m.step === 'to_sub_tasks') && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl) ||
+			// explicit confirm wait while task is pending but card not confirmed yet
+			(!!task.messages.find(m => m.step === 'to_sub_tasks' && !m.isConfirm) && task.status === 'pending')
+		);
 
 		console.log(`Current task is ${isTaskBusy} with ${task}`);
 		
@@ -146,16 +153,16 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
-				//If task has been triggered before
-				if (chatStore.tasks[_taskId].isPending) {
+			// If current task is busy (splitting/confirm/running), queue the new message instead of sending immediately
+			if (isTaskBusy) {
 					const project_id = projectStore.activeProjectId;
-					// Queue the message instead of sending immediately
-					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-					const new_task_id = projectStore.addQueuedMessage(
-						project_id as string, 
-						tempMessageContent, 
-						currentAttaches
-					);
+				// Queue the message locally; do not send to backend yet.
+				const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
+				const new_task_id = projectStore.addQueuedMessage(
+					project_id as string,
+					tempMessageContent,
+					currentAttaches
+				);
 					if(!new_task_id) {
 						console.error("Error queueing message as no task id is returned")
 						return;
@@ -163,25 +170,9 @@ export default function ChatBox(): JSX.Element {
 					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
 					setMessage("");
 					if (textareaRef.current) textareaRef.current.style.height = "60px";
-					toast.success("Message queued. It will be processed when the current task finishes.", {
+				toast.success("Task queued. It will be processed when the current task finishes.", {
 						closeButton: true,
 					});
-
-					try {
-						await fetchPost(`/chat/${project_id}/add-task`, {
-							content: tempMessageContent,
-							project_id: project_id,
-							task_id: new_task_id,
-							additional_info: {
-								agent: chatStore.tasks[_taskId].activeAsk,
-								reply: tempMessageContent,
-								timestamp: Date.now()
-							}
-						});
-					} catch (error) {
-						console.error(`Removing Message "${tempMessageContent}..." due to ${error}`)
-						projectStore.removeQueuedMessage(project_id as string, new_task_id);
-					}
 					return;
 				}
 
@@ -247,6 +238,38 @@ export default function ChatBox(): JSX.Element {
 	useEffect(() => {
 		console.log("ChatStore Data: ", chatStore);
 	}, []);
+
+	// When current task finishes, automatically dispatch next queued task (if any)
+	useEffect(() => {
+		const maybeDispatchNext = async () => {
+			const project_id = projectStore.activeProjectId;
+			if (!project_id) return;
+			const project = projectStore.getProjectById(project_id);
+			const next = project?.queuedMessages?.[0];
+			if (!next) return;
+			try {
+				await fetchPost(`/chat/${project_id}/add-task`, {
+					content: next.content,
+					project_id: project_id,
+					task_id: next.task_id,
+					additional_info: {
+						timestamp: Date.now(),
+					},
+				});
+				// Optimistically remove from queued box; backend also emits remove_task
+				projectStore.removeQueuedMessage(project_id, next.task_id);
+			} catch (error) {
+				console.error("Failed to dispatch queued task:", error);
+			}
+		};
+
+		const activeId = chatStore.activeTaskId as string;
+		const status = activeId ? chatStore.tasks[activeId]?.status : undefined;
+		if (status === 'finished') {
+			maybeDispatchNext();
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [chatStore.tasks[chatStore.activeTaskId as string]?.status, projectStore.activeProjectId]);
 
 	const handleSendShare = async (token: string) => {
 		if (!token) return;
@@ -452,10 +475,7 @@ export default function ChatBox(): JSX.Element {
 		const task = chatStore.tasks[chatStore.activeTaskId];
 		const activeProject = projectStore.getProjectById(projectStore.activeProjectId || '');
 
-		// Check for queued messages at project level
-		if (activeProject?.queuedMessages && activeProject.queuedMessages.length > 0) {
-			return "queuing";
-		}
+		// Queued messages no longer change BottomBox state; QueuedBox renders independently
 
 		// Determine if we're in the "splitting in progress" phase (skeleton visible)
 		// Equivalent to the skeleton condition used in the JSX below
