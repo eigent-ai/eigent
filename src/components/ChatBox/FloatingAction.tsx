@@ -17,25 +17,6 @@ export interface FloatingActionProps {
 	className?: string;
 }
 
-/**
- * FloatingAction Component
- * 
- * A floating action button that appears at the bottom of the chat to control task execution.
- * 
- * States:
- * - **Running**: Shows a "Pause" button
- * - **Paused**: Shows "Resume" and "Skip to Next" buttons
- * 
- * @example
- * ```tsx
- * <FloatingAction
- *   status="running"
- *   onPause={() => console.log("Pause clicked")}
- *   onResume={() => console.log("Resume clicked")}
- *   onSkip={() => console.log("Skip clicked")}
- * />
- * ```
- */
 export const FloatingAction = ({
 	status,
 	onPause,
@@ -52,11 +33,11 @@ export const FloatingAction = ({
 	return (
 		<div
 			className={cn(
-				"sticky top-2 bottom-4 left-0 right-0 flex w-full justify-center items-center z-20 pointer-events-none",
+				"sticky top-2 bottom-2 left-0 right-0 flex w-full justify-center items-center z-20 pointer-events-none",
 				className
 			)}
 		>
-			<div className="pointer-events-auto flex items-center gap-2 bg-bg-surface-primary/95 backdrop-blur-md rounded-full px-4 py-2 shadow-[0px_4px_16px_rgba(0,0,0,0.12)] border border-border-default">
+			<div className="pointer-events-auto flex items-center gap-2 bg-bg-surface-primary/95 backdrop-blur-md rounded-full p-1 shadow-[0px_4px_16px_rgba(0,0,0,0.12)] border border-border-default">
 				{status === "running" ? (
 					// State 1: Running - Show Pause button
 					<Button
