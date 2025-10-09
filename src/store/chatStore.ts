@@ -555,19 +555,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
 						if (!task_id || !content || !project_id) return;
 
-						const storeResult = projectStore.appendInitChatStore(project_id);
+						const storeResult = projectStore.appendInitChatStore(project_id, task_id);
 						if (!storeResult) return;
 						
-						const {taskId: newTaskId, chatStore: newChatStore} = storeResult;
+						const {chatStore: newChatStore} = storeResult;
 						
 						// Customize the initialTask data
-						newChatStore.getState().addMessages(newTaskId, {
+						newChatStore.getState().addMessages(task_id, {
 							id: generateUniqueId(),
 							role: "user",
 							content: content,
 						});
-						newChatStore.getState().setHasMessages(newTaskId, true);
-						newChatStore.getState().setTaskTime(newTaskId, Date.now());
+						newChatStore.getState().setHasMessages(task_id, true);
+						newChatStore.getState().setTaskTime(task_id, Date.now());
 						
 						console.log(`Created new chat instance for task: ${task_id} with content: ${content}`);
 						return;

@@ -43,7 +43,7 @@ interface ProjectStore {
 	
 	// Chat store state management
 	createChatStore: (projectId: string, chatName?: string) => string | null;
-	appendInitChatStore: (projectId: string, chatName?: string) => {taskId:string, chatStore:VanillaChatStore} | null;
+	appendInitChatStore: (projectId: string, customTaskId?:string, chatName?: string) => {taskId:string, chatStore:VanillaChatStore} | null;
 	setActiveChatStore: (projectId: string, chatId: string) => void;
 	removeChatStore: (projectId: string, chatId: string) => void;
 	saveChatStore: (projectId: string, chatId: string, state: VanillaChatStore) => void;
@@ -235,7 +235,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		return chatId;
 	},
 
-	appendInitChatStore: (projectId: string, chatName?: string) => {
+	/**
+	 * 
+	 * @param projectId project id to append a new chatStore to
+	 * @param taskId the taskId that will be used to initialize the new taskId
+	 * @param chatName [optional] used to give a chatName
+	 * @returns {taskId, chatStore} | null
+	 */
+	appendInitChatStore: (projectId: string, customTaskId?:string, chatName?: string) => {
 		const { projects, createChatStore, getChatStore, setActiveChatStore } = get();
 
 		if (!projectId) {
@@ -265,10 +272,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 
 		// Create a new task in the new chat store with the queued content
-		const newTaskId = newChatStore.getState().create();
-		
-		// Set the new chat store as active - this will make subsequent events use the new context
-		setActiveChatStore(projectId, newChatId);
+		const newTaskId = newChatStore.getState().create(customTaskId);
 
 		//Set the initTask as the active taskId
 		newChatStore.getState().setActiveTaskId(newTaskId);
