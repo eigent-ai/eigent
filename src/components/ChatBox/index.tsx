@@ -847,7 +847,7 @@ export default function ChatBox(): JSX.Element {
 					{/* Floating Action Button for Pause/Resume/Skip */}
 					{chatStore.activeTaskId && 
 					//Not New ChatStore (no messages & not running)
-					(chatStore.tasks[chatStore.activeTaskId].status !== "running" && 
+					(chatStore.tasks[chatStore.activeTaskId].status === "running" && 
 						chatStore.tasks[chatStore.activeTaskId].hasMessages)
 						&& (
 						<FloatingAction
