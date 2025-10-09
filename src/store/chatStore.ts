@@ -352,7 +352,31 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return currentStore.activeTaskId || taskId;
 					};
 
-					const { setNuwFileNum, setCotList, getTokens, setUpdateCount, addTokens, setStatus, addWebViewUrl, setIsPending, addMessages, setHasWaitComfirm, setSummaryTask, setTaskAssigning, setTaskInfo, setTaskRunning, addTerminal, addFileList, setActiveAsk, setActiveAskList, tasks, create, setActiveTaskId } = getCurrentChatStore()
+					const { 
+						setNuwFileNum, 
+						setCotList, 
+						getTokens, 
+						setUpdateCount, 
+						addTokens, 
+						setStatus, 
+						addWebViewUrl, 
+						setIsPending, 
+						addMessages, 
+						setHasWaitComfirm, 
+						setSummaryTask, 
+						setTaskAssigning,
+						setTaskInfo,
+						setTaskRunning,
+						addTerminal,
+						addFileList,
+						setActiveAsk,
+						setActiveAskList,
+						tasks,
+						create,
+						setTaskTime,
+						setElapsed,
+						setActiveTaskId } = getCurrentChatStore()
+
 					const currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
 					if (agentMessages.step === "to_sub_tasks") {
@@ -982,7 +1006,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					if (agentMessages.step === "end") {
 						// compute task time
-						const { setTaskTime, setElapsed } = get();
 						console.log('tasks[taskId].snapshotsTemp', tasks[currentTaskId].snapshotsTemp)
 						Promise.all(tasks[currentTaskId].snapshotsTemp.map((snapshot) =>
 							proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
