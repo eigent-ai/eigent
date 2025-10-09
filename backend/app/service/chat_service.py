@@ -55,6 +55,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     question_agent = question_confirm_agent(options)
     camel_task = None
     workforce = None
+    last_completed_task_result = ""  # Track the last completed task result
     while True:
         if await request.is_disconnected():
             logger.warning(f"Client disconnected for project {options.project_id}")
@@ -158,62 +159,71 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
+                # Track completed task results for the end event
+                if item.data.get('state') == 'DONE' and item.data.get('result'):
+                    last_completed_task_result = item.data.get('result', '')
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
+                assert camel_task is not None
+                
+                # Store the old task result before updating camel_task
+                old_task_result = str(camel_task.result)
+                
+                # Extract task content from the new task data immediately
+                new_task_content = item.data.get('content', '')
+                
+                # Update camel_task to the new task right away
+                if new_task_content:
+                    import time
+                    # Generate unique task ID 
+                    task_id = item.data.get('task_id', f"{int(time.time() * 1000)}-multi")
+                    # Create and assign new task immediately
+                    new_camel_task = Task(content=new_task_content, id=task_id)
+                    # Preserve additional_info from the previous task if it exists
+                    if hasattr(camel_task, 'additional_info') and camel_task.additional_info:
+                        new_camel_task.additional_info = camel_task.additional_info
+                    camel_task = new_camel_task
+                
+                # Now trigger end of previous task using stored result
+                yield sse_json("end", old_task_result)
                 # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
                 # Trigger Queue Removal
                 yield sse_json("remove_task", {"task_id": item.data.get("task_id")})
                 
                 # Then handle multi-turn processing
-                if workforce is not None:
+                if workforce is not None and new_task_content:
                     logger.info(f"[CHAT] MULTI-TURN: Processing new task {item.data.get('task_id')}")
                     task_lock.status = Status.confirming
                     workforce.pause()
                     
-                    # Extract task content from the new task data
-                    new_task_content = item.data.get('content', '')
-                    
-                    if new_task_content:
-                        try:
-                            # Generate the same events as ActionImproveData inline
-                            import time
-                            
-                            # Generate unique task ID 
-                            task_id = item.data.get('task_id', f"{int(time.time() * 1000)}-multi")
-                            
-                            # Create new task
-                            new_task = Task(content=new_task_content, id=task_id)
-                            if len(options.attaches) > 0:
-                                new_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
-                            
-                            yield sse_json("confirmed", "")
-                            task_lock.status = Status.confirmed
-                            
-                            # Use existing workforce to decompose (without creating new one)
-                            # Append to _pending_tasks
-                            new_sub_tasks = await workforce.handle_decompose_append_task(
-                                new_task,
-                                reset=False  # Keep existing agents and context
-                            )
-                            
-                            # Generate summary using existing agents
-                            summary_task_agent_instance = task_summary_agent(options)
-                            new_summary_content = await summary_task(summary_task_agent_instance, new_task)
-                            
-                            # Send the extracted events
-                            yield to_sub_tasks(new_task, new_summary_content)
-                            
-                            # Update the context with new task data
-                            sub_tasks = new_sub_tasks
-                            camel_task = new_task
-                            summary_task_content = new_summary_content
-                            
-                            logger.info(f"[CHAT] Multi-turn task decomposed into {len(sub_tasks)} subtasks")
-                            
-                        except Exception as e:
-                            logger.error(f"[CHAT] Error processing multi-turn task: {e}")
-                            # Continue with existing context if decomposition fails
+                    try:
+                        yield sse_json("confirmed", "")
+                        task_lock.status = Status.confirmed
+                        
+                        # Use existing workforce to decompose (without creating new one)
+                        # Append to _pending_tasks
+                        new_sub_tasks = await workforce.handle_decompose_append_task(
+                            camel_task,  # Use the updated camel_task
+                            reset=False  # Keep existing agents and context
+                        )
+                        
+                        # Generate summary using existing agents
+                        summary_task_agent_instance = task_summary_agent(options)
+                        new_summary_content = await summary_task(summary_task_agent_instance, camel_task)
+                        
+                        # Send the extracted events
+                        yield to_sub_tasks(camel_task, new_summary_content)
+                        
+                        # Update the context with new task data
+                        sub_tasks = new_sub_tasks
+                        summary_task_content = new_summary_content
+                        
+                        logger.info(f"[CHAT] Multi-turn task decomposed into {len(sub_tasks)} subtasks")
+                        
+                    except Exception as e:
+                        logger.error(f"[CHAT] Error processing multi-turn task: {e}")
+                        # Continue with existing context if decomposition fails
             elif item.action == Action.create_agent:
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
@@ -264,7 +274,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.end:
                 assert camel_task is not None
                 task_lock.status = Status.done
-                yield sse_json("end", str(camel_task.result))
+                # Get the final result from multiple sources in priority order:
+                final_result = ""
+                if last_completed_task_result:
+                    final_result = last_completed_task_result
+                else:
+                    final_result = str(camel_task.result or "")
+                yield sse_json("end", final_result)
                 if workforce is not None:
                     workforce.stop_gracefully()
                 break
