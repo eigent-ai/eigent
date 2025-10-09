@@ -106,7 +106,8 @@ export default function ChatBox(): JSX.Element {
 		const task = chatStore.tasks[_taskId];
 		const isTaskBusy = (
 			// running or paused counts as busy
-			task.status === 'running' || task.status === 'pause' ||
+			// TODO: Bug where when replay end hasMessages = false & status = running
+			(task.status === 'running' && !task.hasMessages) || task.status === 'pause' ||
 			// splitting phase: has to_sub_tasks not confirmed OR skeleton computing
 			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
 			((!task.messages.find(m => m.step === 'to_sub_tasks') && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl) ||
@@ -844,7 +845,11 @@ export default function ChatBox(): JSX.Element {
 						}
 					</div>
 					{/* Floating Action Button for Pause/Resume/Skip */}
-					{chatStore.activeTaskId && (
+					{chatStore.activeTaskId && 
+					//Not New ChatStore (no messages & not running)
+					(chatStore.tasks[chatStore.activeTaskId].status === "running" && 
+						chatStore.tasks[chatStore.activeTaskId].hasMessages)
+						&& (
 						<FloatingAction
 							status={chatStore.tasks[chatStore.activeTaskId as string]?.status}
 							onPause={handlePauseResume}
