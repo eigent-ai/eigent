@@ -805,30 +805,20 @@ export default function ChatBox(): JSX.Element {
 											/>
 										)}
 										
-										{/* Floating Action Button for Pause/Resume/Skip */}
-										{chatStore.getState().activeTaskId && (
-											<FloatingAction
-												status={chatStore.getState().tasks[chatStore.getState().activeTaskId as string]?.status}
-												onPause={handlePauseResume}
-												onResume={handlePauseResume}
-												onSkip={handleSkip}
-												loading={isPauseResumeLoading}
-											/>
-										)}
 								</>
 							)
-					}
+						}
 					</div>
 					{chatStore.activeTaskId && (
-					<BottomBox
+						<BottomBox
 						state={getBottomBoxState()}
-							queuedMessages={projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
-								id: m.task_id,
-								content: m.content,
-								timestamp: m.timestamp
-							})) || []}
-							onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-							subTasks={chatStore.tasks[chatStore.activeTaskId]?.taskInfo?.map(t => ({
+						queuedMessages={projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
+							id: m.task_id,
+							content: m.content,
+							timestamp: m.timestamp
+						})) || []}
+						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+						subTasks={chatStore.tasks[chatStore.activeTaskId]?.taskInfo?.map(t => ({
 								id: t.id || generateUniqueId(),
 								content: t.content,
 								status: 'pending' as const
@@ -864,6 +854,16 @@ export default function ChatBox(): JSX.Element {
 								privacy: privacy,
 								useCloudModelInDev: useCloudModelInDev
 							}}
+						/>
+					)}
+					{/* Floating Action Button for Pause/Resume/Skip */}
+					{chatStore.activeTaskId && (
+						<FloatingAction
+							status={chatStore.tasks[chatStore.activeTaskId as string]?.status}
+							onPause={handlePauseResume}
+							onResume={handlePauseResume}
+							onSkip={handleSkip}
+							loading={isPauseResumeLoading}
 						/>
 					)}
 				</div>
