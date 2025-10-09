@@ -46,14 +46,12 @@ export interface ChatStore {
 	updateCount: number;
 	activeTaskId: string | null;
 	tasks: { [key: string]: Task };
-	activeConnections: Set<string>; // Track active SSE connections by task ID
 	create: (id?: string, type?: any) => string;
 	removeTask: (taskId: string) => void;
 	setStatus: (taskId: string, status: 'running' | 'finished' | 'pending' | 'pause') => void;
 	setActiveTaskId: (taskId: string) => void;
 	replay: (taskId: string, question: string, time: number) => Promise<void>;
 	startTask: (taskId: string, type?: string, shareToken?: string, delayTime?: number) => Promise<void>;
-	startChildTask: (taskId: string, content: string, projectId: string) => Promise<void>;
 	handleConfirmTask: (project_id:string, taskId: string, type?: string) => void;
 	addMessages: (taskId: string, messages: Message) => void;
 	setMessages: (taskId: string, messages: Message[]) => void;
@@ -107,7 +105,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		activeTaskId: null,
 		tasks: initial?.tasks ?? {},
 		updateCount: 0,
-		activeConnections: new Set(), // Track active SSE connections
 		create(id?: string, type?: any) {
 			const taskId = id ? id : generateUniqueId();
 			console.log("Create Task", taskId)
@@ -179,7 +176,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number) => {
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
 			const workerList = useWorkerList();
-			const { getLastUserMessage, setDelayTime, setType, activeConnections } = get();
+			const { getLastUserMessage, setDelayTime, setType } = get();
 			const baseURL = await getBaseURL();
 			let systemLanguage = language
 			if (language === 'system') {
@@ -304,11 +301,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-			
-			// Track this connection
-			activeConnections.add(taskId);
-			console.log(`Starting SSE connection for task: ${taskId}. Active connections: ${activeConnections.size}`);
-			
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
 				openWhenHidden: true,
@@ -345,26 +337,44 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						multi_modal_agent: "Multi Modal Agent",
 						social_medium_agent: "Social Media Agent",
 					};
-					const { setNuwFileNum, setCotList, getTokens, setUpdateCount, addTokens, setStatus, addWebViewUrl, setIsPending, addMessages, setHasWaitComfirm, setSummaryTask, setTaskAssigning, setTaskInfo, setTaskRunning, addTerminal, addFileList, setActiveAsk, setActiveAskList, tasks, create, setActiveTaskId } = get()
-					// if (tasks[taskId].status === 'finished') return
+					
+					// Dynamic getter function that always returns the current active chat store
+					const getCurrentChatStore = () => {
+						if (!project_id) return get();
+						
+						const activeChatStore = projectStore.getActiveChatStore(project_id);
+						return activeChatStore ? activeChatStore.getState() : get();
+					};
+					
+					// Get current active task ID dynamically
+					const getCurrentTaskId = () => {
+						const currentStore = getCurrentChatStore();
+						return currentStore.activeTaskId || taskId;
+					};
+
+					const { setNuwFileNum, setCotList, getTokens, setUpdateCount, addTokens, setStatus, addWebViewUrl, setIsPending, addMessages, setHasWaitComfirm, setSummaryTask, setTaskAssigning, setTaskInfo, setTaskRunning, addTerminal, addFileList, setActiveAsk, setActiveAskList, tasks, create, setActiveTaskId } = getCurrentChatStore()
+					const currentTaskId = getCurrentTaskId();
+					// if (tasks[currentTaskId].status === 'finished') return
 					if (agentMessages.step === "to_sub_tasks") {
 
 
-						const messages = [...tasks[taskId].messages]
+						const messages = [...tasks[currentTaskId].messages]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
 						if (toSubTaskIndex === -1) {
 							// 30 seconds auto confirm
 							setTimeout(() => {
-								const { tasks, handleConfirmTask, setIsTaskEdit } = get();
-								const message = tasks[taskId].messages.findLast((item) => item.step === "to_sub_tasks");
+								const currentStore = getCurrentChatStore();
+								const currentId = getCurrentTaskId();
+								const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
+								const message = tasks[currentId].messages.findLast((item) => item.step === "to_sub_tasks");
 								const isConfirm = message?.isConfirm || false;
 								const isTakeControl =
-									tasks[taskId].isTakeControl;
+									tasks[currentId].isTakeControl;
 								
-								if (project_id && !isConfirm && !isTakeControl && !tasks[taskId].isTaskEdit) {
-									handleConfirmTask(project_id, taskId);
+								if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
+									handleConfirmTask(project_id, currentId);
 								}
-								setIsTaskEdit(taskId, false);
+								setIsTaskEdit(currentId, false);
 							}, 30000);
 
 							const newNoticeMessage: Message = {
@@ -373,7 +383,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								content: "",
 								step: 'notice_card',
 							};
-							addMessages(taskId, newNoticeMessage)
+							addMessages(currentTaskId, newNoticeMessage)
 							const newMessage: Message = {
 								id: generateUniqueId(),
 								role: "agent",
@@ -383,7 +393,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								showType: "list",
 								isConfirm: type ? true : false // share and replay, skip to_sub_tasks
 							};
-							addMessages(taskId, newMessage)
+							addMessages(currentTaskId, newMessage)
 							const newTaskInfo = {
 								id: "",
 								content: "",
@@ -400,13 +410,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								"project_name": agentMessages.data!.summary_task?.split('|')[0] || '',
 								"summary": agentMessages.data!.summary_task?.split('|')[1] || '',
 								"status": 1,
-								"tokens": getTokens(taskId)
+								"tokens": getTokens(currentTaskId)
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 						}
-						setSummaryTask(taskId, agentMessages.data.summary_task as string)
-						setTaskInfo(taskId, agentMessages.data.sub_tasks as TaskInfo[])
-						setTaskRunning(taskId, agentMessages.data.sub_tasks as TaskInfo[])
+						setSummaryTask(currentTaskId, agentMessages.data.summary_task as string)
+						setTaskInfo(currentTaskId, agentMessages.data.sub_tasks as TaskInfo[])
+						setTaskRunning(currentTaskId, agentMessages.data.sub_tasks as TaskInfo[])
 						return;
 					}
 					// Create agent
@@ -417,7 +427,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Add agent to taskAssigning
 						if (!['mcp_agent', 'new_worker_agent', 'task_agent', 'task_summary_agent', "coordinator_agent"].includes(agent_name)) {
 							// if (agentNameMap[agent_name as keyof typeof agentNameMap]) {
-							const hasAgent = tasks[taskId].taskAssigning.find((agent) => agent.agent_id === agent_id)
+							const hasAgent = tasks[currentTaskId].taskAssigning.find((agent) => agent.agent_id === agent_id)
 
 							if (!hasAgent) {
 								let activeWebviewIds: any = [];
@@ -432,7 +442,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										})
 									})
 								}
-								setTaskAssigning(taskId, [...tasks[taskId].taskAssigning, {
+								setTaskAssigning(currentTaskId, [...tasks[currentTaskId].taskAssigning, {
 									agent_id,
 									name: agentNameMap[agent_name as keyof typeof agentNameMap] || agent_name,
 									type: agent_name as AgentNameType,
@@ -447,9 +457,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "wait_confirm") {
-						setHasWaitComfirm(taskId, true)
-						setIsPending(taskId, false)
-						addMessages(taskId, {
+						setHasWaitComfirm(currentTaskId, true)
+						setIsPending(currentTaskId, false)
+						addMessages(currentTaskId, {
 							id: generateUniqueId(),
 							role: "agent",
 							content: agentMessages.data!.content as string,
@@ -459,7 +469,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "confirmed") {
-						setHasWaitComfirm(taskId, false)
+						setHasWaitComfirm(currentTaskId, false)
 						return
 					}
 					// Task State
@@ -467,8 +477,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						const { state, task_id, result, failure_count } = agentMessages.data;
 						if (!state && !task_id) return
 
-						let taskRunning = [...tasks[taskId].taskRunning]
-						let taskAssigning = [...tasks[taskId].taskAssigning]
+						let taskRunning = [...tasks[currentTaskId].taskRunning]
+						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
 						const targetTaskIndex = taskRunning.findIndex((task) => task.id === task_id)
 						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id && !task.reAssignTo))
 						if (targetTaskAssigningIndex !== -1) {
@@ -477,7 +487,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].failure_count = failure_count || 0
 
 							// destroy webview
-							tasks[taskId].taskAssigning = tasks[taskId].taskAssigning.map((item) => {
+							tasks[currentTaskId].taskAssigning = tasks[currentTaskId].taskAssigning.map((item) => {
 								if (item.type === "search_agent" && item.activeWebviewIds?.length && item.activeWebviewIds?.length > 0) {
 									let removeList: number[] = []
 									item.activeWebviewIds.map((webview, index) => {
@@ -498,7 +508,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								let targetResult = result.replace(taskAssigning[targetTaskAssigningIndex].agent_id, taskAssigning[targetTaskAssigningIndex].name)
 								taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].report = targetResult
 								if (state === "FAILED" && failure_count && failure_count >= 3) {
-									addMessages(taskId, {
+									addMessages(currentTaskId, {
 										id: generateUniqueId(),
 										role: "agent",
 										content: targetResult,
@@ -512,33 +522,75 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							console.log("targetTaskIndex", targetTaskIndex, state)
 							taskRunning[targetTaskIndex].status = state === "DONE" ? "completed" : "failed";
 						}
-						setTaskRunning(taskId, taskRunning)
-						setTaskAssigning(taskId, taskAssigning)
+						setTaskRunning(currentTaskId, taskRunning)
+						setTaskAssigning(currentTaskId, taskAssigning)
 						return;
 					}
-					// New Task State from queue - now handled by add_task with new SSE
+					// New Task State from queue
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
-						if (!task_id || !content || !project_id) return;
+						if (!task_id || !content) return;
 
-						console.log(`new_task_state received for task: ${task_id}, creating a new SSE connection`);
+						// Get project store to create new chat instance
+						const projectStore = useProjectStore.getState();
+						const currentProjectId = projectStore.activeProjectId;
 						
-						// This creates a completely new SSE connection for the child task
-						// Log for debugging but don't process
-						// Automatically start a new SSE connection for this child task
-						const { startChildTask } = get();
-						await startChildTask(task_id, content, project_id);
+						if (!currentProjectId) {
+							console.warn("No active project found for new_task_state");
+							return;
+						}
+
+						// Create new chat store in the current project
+						const newChatId = projectStore.createChatStore(currentProjectId, `Task: ${content.substring(0, 50)}...`);
 						
-						console.log(`Started new SSE stream for child task: ${task_id}`);
+						if (!newChatId) {
+							console.error("Failed to create new chat store");
+							return;
+						}
+
+						// Get the new chat store instance
+						const newChatStore = projectStore.getChatStore(currentProjectId, newChatId);
+						
+						if (!newChatStore) {
+							console.error("Failed to get new chat store instance");
+							return;
+						}
+
+						// Create a new task in the new chat store with the queued content
+						const newTaskId = newChatStore.getState().create();
+						
+						// Add the user message (the task content)
+						newChatStore.getState().addMessages(newTaskId, {
+							id: generateUniqueId(),
+							role: "user",
+							content: content,
+						});
+
+						// Set the task as having messages
+						newChatStore.getState().setHasMessages(newTaskId, true);
+
+						// Set Active Task to the latest one
+						newChatStore.getState().setActiveTaskId(newTaskId);
+
+						// Set up initial task state similar to confirmed step
+						newChatStore.getState().setActiveWorkSpace(newTaskId, 'workflow');
+						newChatStore.getState().setStatus(newTaskId, 'pending');
+						newChatStore.getState().setTaskTime(newTaskId, Date.now());
+
+						// Set the new chat store as active - this will make subsequent events use the new context
+						projectStore.setActiveChatStore(currentProjectId, newChatId);
+						
+
+						console.log(`Created new chat instance for task: ${task_id} with content: ${content}`);
 						return;
 					}
 
 					// Activate agent
 					if (agentMessages.step === "activate_agent" || agentMessages.step === "deactivate_agent") {
-						let taskAssigning = [...tasks[taskId].taskAssigning]
-						let taskRunning = [...tasks[taskId].taskRunning]
+						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
+						let taskRunning = [...tasks[currentTaskId].taskRunning]
 						if (agentMessages.data.tokens) {
-							addTokens(taskId, agentMessages.data.tokens)
+							addTokens(currentTaskId, agentMessages.data.tokens)
 						}
 						const { state, agent_id, process_task_id } = agentMessages.data;
 						if (!state && !agent_id && !process_task_id) return
@@ -571,15 +623,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									task.status = "running";
 								}
 							}
-							setTaskRunning(taskId, [...taskRunning]);
-							setTaskAssigning(taskId, [...taskAssigning]);
+							setTaskRunning(currentTaskId, [...taskRunning]);
+							setTaskAssigning(currentTaskId, [...taskAssigning]);
 						}
 						if (agentMessages.step === "deactivate_agent") {
 							if (message) {
 								const index = taskAssigning[agentIndex].log.findLastIndex((log) => log.data.method_name === agentMessages.data.method_name && log.data.toolkit_name === agentMessages.data.toolkit_name)
 								if (index != -1) {
 									taskAssigning[agentIndex].log[index].status = "completed";
-									setTaskAssigning(taskId, [...taskAssigning]);
+									setTaskAssigning(currentTaskId, [...taskAssigning]);
 								}
 
 							}
@@ -592,17 +644,17 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							if (!type && historyId) {
 								const obj = {
-									"project_name": tasks[taskId].summaryTask.split('|')[0],
-									"summary": tasks[taskId].summaryTask.split('|')[1],
+									"project_name": tasks[currentTaskId].summaryTask.split('|')[0],
+									"summary": tasks[currentTaskId].summaryTask.split('|')[1],
 									"status": 1,
-									"tokens": getTokens(taskId)
+									"tokens": getTokens(currentTaskId)
 								}
 								proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 							}
 
 
-							setTaskRunning(taskId, [...taskRunning]);
-							setTaskAssigning(taskId, [...taskAssigning]);
+							setTaskRunning(currentTaskId, [...taskRunning]);
+							setTaskAssigning(currentTaskId, [...taskAssigning]);
 
 
 
@@ -614,9 +666,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (!agentMessages.data?.assignee_id || !agentMessages.data?.task_id) return;
 
 						const { assignee_id, task_id, content = "", state: taskState, failure_count } = agentMessages.data as any;
-						let taskAssigning = [...tasks[taskId].taskAssigning]
-						let taskRunning = [...tasks[taskId].taskRunning]
-						let taskInfo = [...tasks[taskId].taskInfo]
+						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
+						let taskRunning = [...tasks[currentTaskId].taskRunning]
+						let taskInfo = [...tasks[currentTaskId].taskInfo]
 
 						// Find the index of the agent corresponding to assignee_id
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.agent_id === assignee_id);
@@ -669,7 +721,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							if (!taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id)) {
 								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "waiting" });
 							}
-							setTaskAssigning(taskId, [...taskAssigning]);
+							setTaskAssigning(currentTaskId, [...taskAssigning]);
 
 						}
 						// The following logic is for when the task actually starts executing (running)
@@ -719,8 +771,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								agent: JSON.parse(JSON.stringify(taskAgent)),
 							};
 						}
-						setTaskRunning(taskId, [...taskRunning]);
-						setTaskAssigning(taskId, [...taskAssigning]);
+						setTaskRunning(currentTaskId, [...taskRunning]);
+						setTaskAssigning(currentTaskId, [...taskAssigning]);
 
 						return;
 					}
@@ -730,32 +782,32 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							return
 						}
 						// add log
-						let taskAssigning = [...tasks[taskId].taskAssigning]
+						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
 							if (message) {
 								taskAssigning[assigneeAgentIndex].log.push(agentMessages);
-								setTaskAssigning(taskId, [...taskAssigning]);
+								setTaskAssigning(currentTaskId, [...taskAssigning]);
 							}
 						}
 						console.log('agentMessages.data', agentMessages.data.toolkit_name, agentMessages.data.method_name)
 
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'browser visit page') {
 							console.log('match success')
-							addWebViewUrl(taskId, agentMessages.data.message?.replace(/url=/g, '').replace(/'/g, '') as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, agentMessages.data.message?.replace(/url=/g, '').replace(/'/g, '') as string, agentMessages.data.process_task_id as string)
 						}
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'visit page') {
 							console.log('match success')
-							addWebViewUrl(taskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
 						}
 						if (agentMessages.data.toolkit_name === 'ElectronToolkit' && agentMessages.data.method_name === 'browse_url') {
-							addWebViewUrl(taskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
 						}
 						if (agentMessages.data.method_name === 'browser_navigate' && agentMessages.data.message?.startsWith('{"url"')) {
-							addWebViewUrl(taskId, JSON.parse(agentMessages.data.message)?.url as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, JSON.parse(agentMessages.data.message)?.url as string, agentMessages.data.process_task_id as string)
 						}
-						let taskRunning = [...tasks[taskId].taskRunning]
+						let taskRunning = [...tasks[currentTaskId].taskRunning]
 
 						const taskIndex = taskRunning.findIndex((task) => task.id === agentMessages.data.process_task_id);
 
@@ -777,7 +829,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										task.toolkits ??= []
 										task.toolkits.push({ ...toolkit });
 										task.status = "running";
-										setTaskAssigning(taskId, [...taskAssigning]);
+										setTaskAssigning(currentTaskId, [...taskAssigning]);
 									}
 									taskRunning![taskIndex].status = "running";
 									taskRunning![taskIndex].toolkits ??= [];
@@ -786,14 +838,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							}
 						}
-						setTaskRunning(taskId, taskRunning);
+						setTaskRunning(currentTaskId, taskRunning);
 						return;
 					}
 					// Deactivate Toolkit
 					if (agentMessages.step === "deactivate_toolkit") {
 
 						// add log
-						let taskAssigning = [...tasks[taskId].taskAssigning]
+						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
@@ -824,11 +876,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								}
 								taskAssigning[assigneeAgentIndex].log.push(agentMessages);
 
-								setTaskAssigning(taskId, [...taskAssigning]);
+								setTaskAssigning(currentTaskId, [...taskAssigning]);
 							}
 						}
 
-						let taskRunning = [...tasks[taskId].taskRunning]
+						let taskRunning = [...tasks[currentTaskId].taskRunning]
 						const { toolkit_name, method_name, message } =
 							agentMessages.data;
 						const taskIndex = taskRunning.findIndex((task) =>
@@ -851,19 +903,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							}
 						}
-						setTaskAssigning(taskId, [...taskAssigning]);
-						setTaskRunning(taskId, taskRunning);
+						setTaskAssigning(currentTaskId, [...taskAssigning]);
+						setTaskRunning(currentTaskId, taskRunning);
 						return;
 					}
 					// Terminal
 					if (agentMessages.step === "terminal") {
-						addTerminal(taskId, agentMessages.data.process_task_id as string, agentMessages.data.output as string)
+						addTerminal(currentTaskId, agentMessages.data.process_task_id as string, agentMessages.data.output as string)
 						return
 					}
 					// Write File
 					if (agentMessages.step === "write_file") {
 						console.log('write_to_file', agentMessages.data)
-						setNuwFileNum(taskId, tasks[taskId].nuwFileNum + 1)
+						setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1)
 						const { file_path } = agentMessages.data;
 						const fileName = file_path?.replace(/\\/g, "/").split("/").pop() || "";
 						const fileType = fileName.split(".").pop() || "";
@@ -873,15 +925,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							path: file_path || "",
 							icon: FileText,
 						};
-						addFileList(taskId, agentMessages.data.process_task_id as string, fileInfo);
+						addFileList(currentTaskId, agentMessages.data.process_task_id as string, fileInfo);
 						return;
 					}
 
 					if (agentMessages.step === "budget_not_enough") {
 						console.log('error', agentMessages.data)
 						showCreditsToast()
-						setStatus(taskId, 'pause');
-						uploadLog(taskId, type)
+						setStatus(currentTaskId, 'pause');
+						uploadLog(currentTaskId, type)
 						return
 					}
 
@@ -902,7 +954,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							role: "agent",
 							content: `❌ **Error**: ${errorMessage}`,
 						});
-						uploadLog(taskId, type)
+						uploadLog(currentTaskId, type)
 						return
 					}
 
@@ -910,7 +962,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "add_task") {
 						try {
 							const taskData = agentMessages.data;
-							if (taskData && taskData.project_id && taskData.content && taskData.task_id) {
+							if (taskData && taskData.project_id && taskData.content) {
 								console.log(`Task added to project queue: ${taskData.project_id}`);
 							}
 						} catch (error) {
@@ -965,8 +1017,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "end") {
 						// compute task time
 						const { setTaskTime, setElapsed } = get();
-						console.log('tasks[taskId].snapshotsTemp', tasks[taskId].snapshotsTemp)
-						Promise.all(tasks[taskId].snapshotsTemp.map((snapshot) =>
+						console.log('tasks[taskId].snapshotsTemp', tasks[currentTaskId].snapshotsTemp)
+						Promise.all(tasks[currentTaskId].snapshotsTemp.map((snapshot) =>
 							proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
 						));
 
@@ -974,7 +1026,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						let res = await window.ipcRenderer.invoke(
 							"get-file-list",
 							email,
-							taskId as string
+							currentTaskId as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
 							// Upload files sequentially to avoid overwhelming the server
@@ -988,7 +1040,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 											const formData = new FormData();
 											const blob = new Blob([result.data], { type: 'application/octet-stream' });
 											formData.append('file', blob, file.name);
-											formData.append('task_id', taskId);
+											formData.append('task_id', currentTaskId);
 
 											// Upload file
 											await uploadFile('/api/chat/files/upload', formData);
@@ -1033,18 +1085,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						if (!type && historyId) {
 							const obj = {
-								"project_name": tasks[taskId].summaryTask.split('|')[0],
-								"summary": tasks[taskId].summaryTask.split('|')[1],
+								"project_name": tasks[currentTaskId].summaryTask.split('|')[0],
+								"summary": tasks[currentTaskId].summaryTask.split('|')[1],
 								"status": 2,
-								"tokens": getTokens(taskId)
+								"tokens": getTokens(currentTaskId)
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 						}
-						uploadLog(taskId, type)
+						uploadLog(currentTaskId, type)
 
 
-						let taskRunning = [...tasks[taskId].taskRunning];
-						let taskAssigning = [...tasks[taskId].taskAssigning];
+						let taskRunning = [...tasks[currentTaskId].taskRunning];
+						let taskAssigning = [...tasks[currentTaskId].taskAssigning];
 						taskAssigning = taskAssigning.map((agent) => {
 							agent.tasks = agent.tasks.map((task) => {
 								if (task.status !== "completed" && task.status !== "failed" && !type) {
@@ -1062,12 +1114,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							}
 							return task
 						})
-						setTaskAssigning(taskId, [...taskAssigning]);
-						setTaskRunning(taskId, [...taskRunning]);
+						setTaskAssigning(currentTaskId, [...taskAssigning]);
+						setTaskRunning(currentTaskId, [...taskRunning]);
 
-						if (!taskId || !tasks[taskId]) return "N/A";
+						if (!currentTaskId || !tasks[currentTaskId]) return "N/A";
 
-						const task = tasks[taskId];
+						const task = tasks[currentTaskId];
 						let taskTime = task.taskTime;
 						let elapsed = task.elapsed;
 						// if task is running, compute current time
@@ -1076,9 +1128,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							elapsed += currentTime - taskTime
 						}
 
-						setTaskTime(taskId, 0);
-						setElapsed(taskId, elapsed);
-						const fileList = tasks[taskId].taskAssigning.map((agent) => {
+						setTaskTime(currentTaskId, 0);
+						setElapsed(currentTaskId, elapsed);
+						const fileList = tasks[currentTaskId].taskAssigning.map((agent) => {
 							return agent.tasks.map((task) => {
 								return task.fileList || []
 							}).flat()
@@ -1086,7 +1138,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						let endMessage = agentMessages.data as string
 						let summary = endMessage.match(/<summary>(.*?)<\/summary>/)?.[1]
 						let newMessage: Message | null = null
-						const agent_summary_end = tasks[taskId].messages.findLast((message: Message) => message.step === 'agent_summary_end')
+						const agent_summary_end = tasks[currentTaskId].messages.findLast((message: Message) => message.step === 'agent_summary_end')
 						console.log('summary', summary)
 						if (summary) {
 							endMessage = summary
@@ -1110,21 +1162,21 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						};
 
 
-						addMessages(taskId, newMessage);
+						addMessages(currentTaskId, newMessage);
 
-						setIsPending(taskId, false);
-						setStatus(taskId, 'finished');
+						setIsPending(currentTaskId, false);
+						setStatus(currentTaskId, 'finished');
 						// completed tasks move to history
 						setUpdateCount();
 
-						console.log(tasks[taskId], 'end');
+						console.log(tasks[currentTaskId], 'end');
 
 
 						return;
 					}
 					if (agentMessages.step === "notice") {
 						if (agentMessages.data.process_task_id !== '') {
-							let taskAssigning = [...tasks[taskId].taskAssigning]
+							let taskAssigning = [...tasks[currentTaskId].taskAssigning]
 
 							const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
 							const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
@@ -1139,9 +1191,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								task.toolkits ??= []
 								task.toolkits.push({ ...toolkit });
 							}
-							setTaskAssigning(taskId, [...taskAssigning]);
+							setTaskAssigning(currentTaskId, [...taskAssigning]);
 						} else {
-							const messages = [...tasks[taskId].messages]
+							const messages = [...tasks[currentTaskId].messages]
 							const noticeCardIndex = messages.findLastIndex((message) => message.step === 'notice_card')
 							if (noticeCardIndex === -1) {
 								const newMessage: Message = {
@@ -1150,17 +1202,17 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									content: "",
 									step: 'notice_card',
 								};
-								addMessages(taskId, newMessage)
+								addMessages(currentTaskId, newMessage)
 							}
-							setCotList(taskId, [...tasks[taskId].cotList, agentMessages.data.notice as string])
-							// addMessages(taskId, newMessage);
+							setCotList(currentTaskId, [...tasks[currentTaskId].cotList, agentMessages.data.notice as string])
+							// addMessages(currentTaskId, newMessage);
 						}
 						return
 
 					}
 					if (["sync"].includes(agentMessages.step)) return
 					if (agentMessages.step === "ask") {
-						if (tasks[taskId].activeAsk != '') {
+						if (tasks[currentTaskId].activeAsk != '') {
 							const newMessage: Message = {
 								id: generateUniqueId(),
 								role: "agent",
@@ -1175,12 +1227,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								step: agentMessages.step,
 								isConfirm: false,
 							};
-							let activeAskList = tasks[taskId].askList
-							setActiveAskList(taskId, [...activeAskList, newMessage]);
+							let activeAskList = tasks[currentTaskId].askList
+							setActiveAskList(currentTaskId, [...activeAskList, newMessage]);
 							return
 						}
-						setActiveAsk(taskId, agentMessages.data.agent || '')
-						setIsPending(taskId, false)
+						setActiveAsk(currentTaskId, agentMessages.data.agent || '')
+						setIsPending(currentTaskId, false)
 					}
 					const newMessage: Message = {
 						id: generateUniqueId(),
@@ -1195,7 +1247,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						step: agentMessages.step,
 						isConfirm: false,
 					};
-					addMessages(taskId, newMessage);
+					addMessages(currentTaskId, newMessage);
 				},
 				async onopen(respond) {
 					console.log("open", respond);
@@ -1212,70 +1264,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				// Server closes connection
 				onclose() {
 					console.log("server closed");
-					// Clean up connection tracking
-					const { activeConnections } = get();
-					activeConnections.delete(taskId);
-					console.log(`SSE connection closed for task: ${taskId}. Active connections: ${activeConnections.size}`);
 				},
 			});
 
-		},
-
-		startChildTask: async (taskId: string, content: string, projectId: string) => {
-			console.log(`Starting child task: ${taskId} for project: ${projectId}`);
-			
-			// Get project store to create new chat instance
-			const projectStore = useProjectStore.getState();
-			
-			if (!projectId) {
-				console.warn("No project ID provided for child task");
-				return;
-			}
-
-			// Create new chat store in the specified project
-			const newChatId = projectStore.createChatStore(projectId, `Task: ${content.substring(0, 50)}...`);
-			
-			if (!newChatId) {
-				console.error("Failed to create new chat store for child task");
-				return;
-			}
-
-			// Get the new chat store instance
-			const newChatStore = projectStore.getChatStore(projectId, newChatId);
-			
-			if (!newChatStore) {
-				console.error("Failed to get new chat store instance for child task");
-				return;
-			}
-
-			// Create a new task in the new chat store with the specific task ID
-			const newTaskId = newChatStore.getState().create(taskId);
-			
-			// Add the user message (the task content)
-			newChatStore.getState().addMessages(newTaskId, {
-				id: generateUniqueId(),
-				role: "user",
-				content: content,
-			});
-
-			// Set the task as having messages
-			newChatStore.getState().setHasMessages(newTaskId, true);
-
-			// Set Active Task to the latest one
-			newChatStore.getState().setActiveTaskId(newTaskId);
-
-			// Set up initial task state
-			newChatStore.getState().setActiveWorkSpace(newTaskId, 'workflow');
-			newChatStore.getState().setStatus(newTaskId, 'pending');
-			newChatStore.getState().setTaskTime(newTaskId, Date.now());
-
-			// Set the new chat store as active
-			projectStore.setActiveChatStore(projectId, newChatId);
-
-			// Now start a completely new SSE connection for this child task
-			await newChatStore.getState().startTask(newTaskId);
-			
-			console.log(`Started new SSE connection for child task: ${taskId}`);
 		},
 
 		replay: async (taskId: string, question: string, time: number) => {
