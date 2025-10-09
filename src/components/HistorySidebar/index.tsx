@@ -240,7 +240,7 @@ export default function HistorySidebar() {
 						transition={{ type: "spring", damping: 22, stiffness: 220 }}
 						onMouseLeave={close}
 						ref={panelRef}
-						className="backdrop-blur-xl flex flex-col fixed w-[360px] max-h-[70vh] bg-bg-surface-tertiary rounded-xl p-sm z-50 perfect-shadow overflow-hidden"
+						className="backdrop-blur-xl flex flex-col fixed w-[360px] max-h-[70vh] bg-bg-surface-tertiary rounded-xl p-sm z-50 shadow-perfect overflow-hidden"
 						style={{
 							left: anchorStyle ? anchorStyle.left : 0,
 							top: anchorStyle ? anchorStyle.top : 40,

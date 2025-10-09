@@ -100,7 +100,8 @@ export default function BottomBox({
 			)}
 
 			{/* Inputbox (always visible) */}
-			<Inputbox {...inputProps} />
+			<Inputbox
+		   {...inputProps} />
 
 			{/* BoxAction (visible after initial input, when task has started) */}
 			{state !== "input" && (

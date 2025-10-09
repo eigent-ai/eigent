@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { CircleAlert, Store, X } from "lucide-react";
 import { proxyFetchGet, proxyFetchPost, fetchPost } from "@/api/http";
 import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
 import { TooltipSimple } from "../ui/tooltip";
@@ -157,7 +158,7 @@ const ToolSelect = forwardRef<
 	};
 
 	// Refs
-	const inputRef = useRef<HTMLInputElement>(null);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -528,29 +529,36 @@ const ToolSelect = forwardRef<
 	);
 	return (
 		<div className="w-full relative" ref={containerRef}>
-			<div className="flex flex-wrap gap-1 min-h-[40px] border rounded-lg bg-white">
+			<div className="flex flex-wrap gap-1.5 min-h-[40px] border rounded-lg bg-white">
+				<div className="text-text-body text-sm leading-normal font-bold flex items-center gap-1">
+					{t("workforce.agent-tool")}
+					<TooltipSimple content={t("workforce.agent-tool-tooltip")}>
+						<CircleAlert size={16} className="text-icon-primary" />
+					</TooltipSimple>
+				</div>
 				<div
 					onClick={() => {
 						inputRef.current?.focus();
 						setIsOpen(true);
 					}}
-					className="flex flex-wrap gap-1 justify-start px-[6px] py-1 min-h-[60px] max-h-[120px] overflow-y-auto w-full rounded-sm border border-solid border-input-border-default bg-input-bg-default !shadow-none text-sm leading-normal"
+					className="flex flex-wrap gap-1 justify-start px-[6px] py-1 min-h-[60px] max-h-[120px] overflow-y-auto w-full rounded-lg border border-solid border-input-border-default bg-input-bg-default"
 				>
 					{renderSelectedItems()}
-					<Input
+					<Textarea
+						variant="none"
 						value={keyword}
 						onChange={(e) => setKeyword(e.target.value)}
 						onFocus={() => setIsOpen(true)}
 						ref={inputRef}
-						className="bg-transparent border-none !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 w-auto !h-[20px] p-0"
+						className="bg-transparent border-none !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 w-auto !h-[20px] p-0 resize-none"
 					/>
 				</div>
 			</div>
 
 			{/* floating dropdown */}
 			{isOpen && (
-				<div className="absolute top-full left-0 right-0 z-50 mt-1 bg-dropdown-bg">
-					<div className="border rounded-lg shadow-lg bg-white max-h-[192px] overflow-y-auto">
+				<div className="absolute top-full left-0 right-0 z-50 mt-1 bg-dropdown-bg rounded-lg border border-solid border-input-border-default overflow-y-auto">
+					<div className="max-h-[192px] overflow-y-auto">
 						<IntegrationList
 							onShowEnvConfig={onShowEnvConfig}
 							addOption={addOption}

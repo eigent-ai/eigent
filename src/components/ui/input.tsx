@@ -2,6 +2,8 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "./button"
+import { TooltipSimple } from "./tooltip"
+import { CircleAlert } from "lucide-react"
 
 export type InputSize = "default" | "sm"
 export type InputState = "default" | "hover" | "input" | "error" | "success" | "disabled"
@@ -10,6 +12,7 @@ type BaseInputProps = Omit<React.ComponentProps<"input">, "size"> & {
   size?: InputSize
   state?: InputState
   title?: string
+  tooltip?: string
   note?: string
   required?: boolean
   leadingIcon?: React.ReactNode
@@ -80,6 +83,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       size = "default",
       state = "default",
       title,
+      tooltip,
       note,
       required = false,
       leadingIcon,
@@ -99,9 +103,14 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     return (
       <div className={cn("w-full", stateCls.container)}>
         {title ? (
-          <div className="mb-1.5 text-body-sm font-bold text-text-heading">
-            {title}
-            {required && <span className="text-text-body ml-1">*</span>}
+          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+            <span>{title}</span>
+            {required && <span className="text-text-body">*</span>}
+            {tooltip && (
+              <TooltipSimple content={tooltip}>
+                <CircleAlert size={16} className="text-icon-primary" />
+              </TooltipSimple>
+            )}
           </div>
         ) : null}
 
