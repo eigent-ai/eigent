@@ -48,7 +48,7 @@ interface ProjectStore {
 	saveChatStore: (projectId: string, chatId: string, state: VanillaChatStore) => void;
 	getChatStore: (projectId?: string, chatId?: string) => VanillaChatStore | null;
 	getActiveChatStore: (projectId?: string) => VanillaChatStore | null;
-	getAllChatStores: (projectId: string) => { [chatId: string]: VanillaChatStore };
+	getAllChatStores: (projectId: string) => Array<{ chatId: string; chatStore: VanillaChatStore }>;
 	
 	// Utility methods
 	getAllProjects: () => Project[];
@@ -619,10 +619,13 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const { projects } = get();
 		
 		if (projects[projectId]) {
-			return projects[projectId].chatStores;
+			return Object.entries(projects[projectId].chatStores).map(([chatId, chatStore]) => ({
+				chatId,
+				chatStore
+			}));
 		}
 		
-		return {};
+		return [];
 	},
 	
 	getAllProjects: () => {

@@ -559,239 +559,251 @@ export default function ChatBox(): JSX.Element {
 						ref={scrollContainerRef}
 						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pl-2 gap-2 pt-2"
 					>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId].messages.map(
-								(item, index) => {
-									if (item.content.length > 0) {
-										// Use specialized component for agent summaries
-										if (item.step === "end") {
-											return (
-												<div
-													key={"end-" + item.id}
-													className="flex flex-col gap-4"
-												>
-													<MessageCard
-														typewriter={
-															chatStore.tasks[chatStore.activeTaskId as string]
-																.type !== "replay" ||
-															(chatStore.tasks[chatStore.activeTaskId as string]
-																.type === "replay" &&
-																chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].delayTime !== 0)
-														}
-														id={item.id}
-														key={item.id}
-														role={item.role}
-														content={item.content}
-														onTyping={scrollToBottom}
-													/>
-													<div className="flex gap-2 flex-wrap">
-														{item.fileList?.map((file) => {
+					{
+						projectStore.activeProjectId &&
+							projectStore.getAllChatStores(projectStore.activeProjectId).map(({chatId, chatStore}) =>
+								<>
+										{chatStore.getState().activeTaskId && chatStore.getState().tasks[chatStore.getState().activeTaskId as string] &&
+											chatStore.getState().tasks[chatStore.getState().activeTaskId as string].messages?.map(
+												(item: any, index: number) => {
+													if (item.content.length > 0) {
+														// Use specialized component for agent summaries
+														if (item.step === "end") {
 															return (
 																<div
-																	key={"file-" + file.name}
-																	onClick={() => {
-																		// set selected file
-																		chatStore.setSelectedFile(
-																			chatStore.activeTaskId as string,
-																			file
-																		);
-																		// open DocumentWorkSpace
-																		chatStore.setActiveWorkSpace(
-																			chatStore.activeTaskId as string,
-																			"documentWorkSpace"
-																		);
-																	}}
-																	className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
+																	key={"end-" + item.id}
+																	className="flex flex-col gap-4"
 																>
-																	<FileText
-																		size={24}
-																		className="flex-shrink-0"
+																	<MessageCard
+																		typewriter={
+																			chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																				.type !== "replay" ||
+																			(chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																				.type === "replay" &&
+																				chatStore.getState().tasks[
+																					chatStore.getState().activeTaskId as string
+																				].delayTime !== 0)
+																		}
+																		id={item.id}
+																		key={item.id}
+																		role={item.role}
+																		content={item.content}
+																		onTyping={scrollToBottom}
 																	/>
-																	<div className="flex flex-col">
-																		<div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
-																			{file.name.split(".")[0]}
-																		</div>
-																		<div className="font-medium leading-29 text-xs text-text-body">
-																			{file.type}
-																		</div>
+																	<div className="flex gap-2 flex-wrap">
+																		{item.fileList?.map((file: any) => {
+																			return (
+																				<div
+																					key={"file-" + file.name}
+																					onClick={() => {
+																						// set selected file
+																						chatStore.getState().setSelectedFile(
+																							chatStore.getState().activeTaskId as string,
+																							file
+																						);
+																						// open DocumentWorkSpace
+																						chatStore.getState().setActiveWorkSpace(
+																							chatStore.getState().activeTaskId as string,
+																							"documentWorkSpace"
+																						);
+																					}}
+																					className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
+																				>
+																					<FileText
+																						size={24}
+																						className="flex-shrink-0"
+																					/>
+																					<div className="flex flex-col">
+																						<div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
+																							{file.name.split(".")[0]}
+																						</div>
+																						<div className="font-medium leading-29 text-xs text-text-body">
+																							{file.type}
+																						</div>
+																					</div>
+																				</div>
+																			);
+																		})}
 																	</div>
 																</div>
 															);
-														})}
-													</div>
-												</div>
-											);
-										} else if (item.content === "skip") {
-											return (
-												<MessageCard
-													id={item.id}
-													key={item.id}
-													role={item.role}
-													content={t("chat.no-reply-received-task-continue")}
-													onTyping={scrollToBottom}
-												/>
-											);
-										} else {
-											return (
-												<MessageCard
-													typewriter={
-														chatStore.tasks[chatStore.activeTaskId as string]
-															.type !== "replay" ||
-														(chatStore.tasks[chatStore.activeTaskId as string]
-															.type === "replay" &&
-															chatStore.tasks[chatStore.activeTaskId as string]
-																.delayTime !== 0)
-													}
-													id={item.id}
-													key={item.id}
-													role={item.role}
-													content={item.content}
-													onTyping={scrollToBottom}
-													attaches={item.attaches}
-												/>
-											);
-										}
-									} else if (item.step === "end" && item.content === "") {
-										return (
-											<div
-												key={"end-" + item.id}
-												className="flex flex-col gap-4"
-											>
-												{/* <MessageCard
-													id={item.id}
-													content={
-														"Task complete! If you have any further questions or need additional information, feel free to ask again."
-													}
-													className="!px-0 !py-1"
-													role={item.role}
-													onTyping={scrollToBottom}
-												/> */}
-												<div className="flex gap-2 flex-wrap">
-													{item.fileList?.map((file) => {
+														} else if (item.content === "skip") {
+															return (
+																<MessageCard
+																	id={item.id}
+																	key={item.id}
+																	role={item.role}
+																	content={t("chat.no-reply-received-task-continue")}
+																	onTyping={scrollToBottom}
+																/>
+															);
+														} else {
+															return (
+																<MessageCard
+																	typewriter={
+																		chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																			.type !== "replay" ||
+																		(chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																			.type === "replay" &&
+																			chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																				.delayTime !== 0)
+																	}
+																	id={item.id}
+																	key={item.id}
+																	role={item.role}
+																	content={item.content}
+																	onTyping={scrollToBottom}
+																	attaches={item.attaches}
+																/>
+															);
+														}
+													} else if (item.step === "end" && item.content === "") {
 														return (
 															<div
-																key={"file-" + file.name}
-																onClick={() => {
-																	// set selected file
-																	chatStore.setSelectedFile(
-																		chatStore.activeTaskId as string,
-																		file
-																	);
-																	chatStore.setActiveWorkSpace(
-																		chatStore.activeTaskId as string,
-																		"documentWorkSpace"
-																	);
-																}}
-																className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
+																key={"end-" + item.id}
+																className="flex flex-col gap-4"
 															>
-																<FileText size={24} className="flex-shrink-0" />
-																<div className="flex flex-col">
-																	<div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
-																		{file.name.split(".")[0]}
-																	</div>
-																	<div className="font-medium leading-29 text-xs text-text-body">
-																		{file.type}
-																	</div>
+																{/* <MessageCard
+																	id={item.id}
+																	content={
+																		"Task complete! If you have any further questions or need additional information, feel free to ask again."
+																	}
+																	className="!px-0 !py-1"
+																	role={item.role}
+																	onTyping={scrollToBottom}
+																/> */}
+																<div className="flex gap-2 flex-wrap">
+																	{item.fileList?.map((file: any) => {
+																		return (
+																			<div
+																				key={"file-" + file.name}
+																				onClick={() => {
+																					// set selected file
+																					chatStore.getState().setSelectedFile(
+																						chatStore.getState().activeTaskId as string,
+																						file
+																					);
+																					chatStore.getState().setActiveWorkSpace(
+																						chatStore.getState().activeTaskId as string,
+																						"documentWorkSpace"
+																					);
+																				}}
+																				className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
+																			>
+																				<FileText size={24} className="flex-shrink-0" />
+																				<div className="flex flex-col">
+																					<div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
+																						{file.name.split(".")[0]}
+																					</div>
+																					<div className="font-medium leading-29 text-xs text-text-body">
+																						{file.type}
+																					</div>
+																				</div>
+																			</div>
+																		);
+																	})}
 																</div>
 															</div>
 														);
-													})}
-												</div>
-											</div>
-										);
-									}
-									if (
-										item.step === "notice_card" &&
-										!chatStore.tasks[chatStore.activeTaskId as string]
-											.isTakeControl &&
-										chatStore.tasks[chatStore.activeTaskId as string].cotList
-											.length > 0
-									) {
-										return <NoticeCard key={"notice-" + item.id} />;
-									}
-									if (
-										item.step === "to_sub_tasks" &&
-										!chatStore.tasks[chatStore.activeTaskId as string]
-											.isTakeControl
-									) {
-										if (!chatStore.activeTaskId) return <> </>;
-										return (
-											<TaskCard
-												key={"task-" + item.id}
-												taskInfo={
-													chatStore.tasks[chatStore.activeTaskId].taskInfo || []
+													}
+													if (
+														item.step === "notice_card" &&
+														!chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+															.isTakeControl &&
+														chatStore.getState().tasks[chatStore.getState().activeTaskId as string].cotList
+															.length > 0
+													) {
+														return <NoticeCard key={"notice-" + item.id} />;
+													}
+													if (
+														item.step === "to_sub_tasks" &&
+														!chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+															.isTakeControl
+													) {
+														const activeTaskId = chatStore.getState().activeTaskId;
+														if (!activeTaskId) return null;
+														return (
+															<TaskCard
+																key={"task-" + item.id}
+																taskInfo={
+																	chatStore.getState().tasks[activeTaskId]?.taskInfo || []
+																}
+																taskType={item.taskType || 1}
+																taskAssigning={
+																	chatStore.getState().tasks[activeTaskId]
+																		?.taskAssigning || []
+																}
+																taskRunning={
+																	chatStore.getState().tasks[activeTaskId]?.taskRunning ||
+																	[]
+																}
+																progressValue={
+																	chatStore.getState().tasks[activeTaskId]?.progressValue || 0
+																}
+																summaryTask={
+																	chatStore.getState().tasks[activeTaskId]?.summaryTask ||
+																	""
+																}
+																onAddTask={() => {
+																	chatStore.getState().setIsTaskEdit(
+																		activeTaskId,
+																		true
+																	);
+																	chatStore.getState().addTaskInfo();
+																}}
+																onUpdateTask={(taskIndex, content) => {
+																	chatStore.getState().setIsTaskEdit(
+																		activeTaskId,
+																		true
+																	);
+																	chatStore.getState().updateTaskInfo(taskIndex, content);
+																}}
+																onDeleteTask={(taskIndex) => {
+																	chatStore.getState().setIsTaskEdit(
+																		activeTaskId,
+																		true
+																	);
+																	chatStore.getState().deleteTaskInfo(taskIndex);
+																}}
+																clickable={true}
+															/>
+														);
+													}
 												}
-												taskType={item.taskType || 1}
-												taskAssigning={
-													chatStore.tasks[chatStore.activeTaskId]
-														.taskAssigning || []
+											)
+										}
+										{/* Skeleton  */}
+										{((!chatStore.getState().tasks[
+												chatStore.getState().activeTaskId as string
+											]?.messages?.find((message) => message.step === "to_sub_tasks")
+												? true : false &&
+											!chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+												?.hasWaitComfirm &&
+											chatStore.getState().tasks[chatStore.getState().activeTaskId as string]?.messages
+												?.length > 0) ||
+											chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+												?.isTakeControl) && (
+											<TypeCardSkeleton
+												isTakeControl={
+													chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+														?.isTakeControl || false
 												}
-												taskRunning={
-													chatStore.tasks[chatStore.activeTaskId].taskRunning ||
-													[]
-												}
-												progressValue={
-													chatStore.tasks[chatStore.activeTaskId].progressValue
-												}
-												summaryTask={
-													chatStore.tasks[chatStore.activeTaskId].summaryTask ||
-													""
-												}
-												onAddTask={() => {
-													chatStore.setIsTaskEdit(
-														chatStore.activeTaskId as string,
-														true
-													);
-													chatStore.addTaskInfo();
-												}}
-												onUpdateTask={(taskIndex, content) => {
-													chatStore.setIsTaskEdit(
-														chatStore.activeTaskId as string,
-														true
-													);
-													chatStore.updateTaskInfo(taskIndex, content);
-												}}
-												onDeleteTask={(taskIndex) => {
-													chatStore.setIsTaskEdit(
-														chatStore.activeTaskId as string,
-														true
-													);
-													chatStore.deleteTaskInfo(taskIndex);
-												}}
-												clickable={true}
 											/>
-										);
-									}
-								}
-							)}
-						{/* Skeleton  */}
-						{((!hasSubTask &&
-							!chatStore.tasks[chatStore.activeTaskId as string]
-								?.hasWaitComfirm &&
-							chatStore.tasks[chatStore.activeTaskId as string]?.messages
-								.length > 0) ||
-							chatStore.tasks[chatStore.activeTaskId as string]
-								.isTakeControl) && (
-							<TypeCardSkeleton
-								isTakeControl={
-									chatStore.tasks[chatStore.activeTaskId as string]
-										.isTakeControl
-								}
-							/>
-						)}
-						
-						{/* Floating Action Button for Pause/Resume/Skip */}
-						{chatStore.activeTaskId && (
-							<FloatingAction
-								status={chatStore.tasks[chatStore.activeTaskId]?.status}
-								onPause={handlePauseResume}
-								onResume={handlePauseResume}
-								onSkip={handleSkip}
-								loading={isPauseResumeLoading}
-							/>
-						)}
+										)}
+										
+										{/* Floating Action Button for Pause/Resume/Skip */}
+										{chatStore.getState().activeTaskId && (
+											<FloatingAction
+												status={chatStore.getState().tasks[chatStore.getState().activeTaskId as string]?.status}
+												onPause={handlePauseResume}
+												onResume={handlePauseResume}
+												onSkip={handleSkip}
+												loading={isPauseResumeLoading}
+											/>
+										)}
+								</>
+							)
+					}
 					</div>
 					{chatStore.activeTaskId && (
 					<BottomBox
