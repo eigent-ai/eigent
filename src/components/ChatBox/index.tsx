@@ -153,16 +153,16 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
-			// If current task is busy (splitting/confirm/running), queue the new message instead of sending immediately
-			if (isTaskBusy) {
+				// If current task is busy (splitting/confirm/running), queue the new message instead of sending immediately
+				if (isTaskBusy) {
 					const project_id = projectStore.activeProjectId;
-				// Queue the message locally; do not send to backend yet.
-				const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-				const new_task_id = projectStore.addQueuedMessage(
-					project_id as string,
-					tempMessageContent,
-					currentAttaches
-				);
+					// Queue the message locally; do not send to backend yet.
+					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
+					const new_task_id = projectStore.addQueuedMessage(
+						project_id as string,
+						tempMessageContent,
+						currentAttaches
+					);
 					if(!new_task_id) {
 						console.error("Error queueing message as no task id is returned")
 						return;
@@ -170,7 +170,7 @@ export default function ChatBox(): JSX.Element {
 					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
 					setMessage("");
 					if (textareaRef.current) textareaRef.current.style.height = "60px";
-				toast.success("Task queued. It will be processed when the current task finishes.", {
+					toast.success("Task queued. It will be processed when the current task finishes.", {
 						closeButton: true,
 					});
 					return;
