@@ -312,6 +312,13 @@ def create_task_lock(id: str) -> TaskLock:
     return task_locks[id]
 
 
+def get_or_create_task_lock(id: str) -> TaskLock:
+    """Get existing task lock or create a new one if it doesn't exist"""
+    if id in task_locks:
+        return task_locks[id]
+    return create_task_lock(id)
+
+
 async def delete_task_lock(id: str):
     if id not in task_locks:
         raise ProgramException("Task not found")

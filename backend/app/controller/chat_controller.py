@@ -19,7 +19,7 @@ from app.service.task import (
     ActionSupplementData,
     ActionAddTaskData,
     ActionRemoveTaskData,
-    create_task_lock,
+    get_or_create_task_lock,
     get_task_lock,
 )
 from app.component.environment import set_user_env_path
@@ -37,7 +37,7 @@ chat_logger = traceroot.get_logger('chat_controller')
 @traceroot.trace()
 async def post(data: Chat, request: Request):
     chat_logger.info(f"Starting new chat session for project_id: {data.project_id}, user: {data.email}")
-    task_lock = create_task_lock(data.project_id)
+    task_lock = get_or_create_task_lock(data.project_id)
     
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -117,25 +117,6 @@ def install_mcp(id: str, data: McpServers):
     asyncio.run(task_lock.put_queue(ActionInstallMcpData(action=Action.install_mcp, data=data)))
     chat_logger.info(f"MCP installation queued for task_id: {id}")
     return Response(status_code=201)
-
-
-@router.get("/chat/{id}/independent-task-queue", name="get independent task queue")
-@traceroot.trace()
-def get_independent_task_queue(id: str):
-    """Get the current independent task queue for a workforce"""
-    chat_logger.info(f"Getting independent task queue for task_id: {id}")
-    task_lock = get_task_lock(id)
-    
-    try:
-        # Queue the action to get independent task queue
-        asyncio.run(task_lock.put_queue(ActionGetIndependentQueue()))
-        chat_logger.info(f"Independent task queue request queued for task_id: {id}")
-        
-        return Response(status_code=201)
-        
-    except Exception as e:
-        chat_logger.error(f"Error getting independent task queue for task_id: {id}: {e}")
-        raise UserException(code.error, f"Failed to get independent task queue: {str(e)}")
 
 
 @router.post("/chat/{id}/add-task", name="add task to workforce")
