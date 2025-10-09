@@ -138,7 +138,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "project_id": item.project_id,
                     "task_id": item.task_id or (len(camel_task.subtasks) + 1)
                 }
-                yield sse_json(str(Action.add_task), returnData)
+                yield sse_json("add_task", returnData)
             elif item.action == Action.remove_task:
                 assert camel_task is not None
                 workforce.remove_task(item.task_id)
@@ -146,7 +146,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "project_id": item.project_id,
                     "task_id": item.task_id
                 }
-                yield sse_json(str(Action.remove_task), returnData)
+                yield sse_json("remove_task", returnData)
             elif item.action == Action.start:
                 task_lock.status = Status.processing
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
@@ -154,7 +154,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.task_state:
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
+                # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
+                # Trigger Queue Removal
+                yield sse_json("remove_task", {"task_id": item.data.get("task_id")})
             elif item.action == Action.create_agent:
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
