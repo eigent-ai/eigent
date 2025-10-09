@@ -779,25 +779,27 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							const { toolkit_name, method_name } = agentMessages.data;
 							if (toolkit_name && method_name) {
 
-								const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
-								const message = filterMessage(agentMessages)
-								if (message) {
-									const toolkit = {
-										toolkitId: generateUniqueId(),
-										toolkitName: toolkit_name,
-										toolkitMethods: method_name,
-										message: message.data.message as string,
-										toolkitStatus: "running" as AgentStatus,
+								if (assigneeAgentIndex !== -1) {
+									const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
+									const message = filterMessage(agentMessages)
+									if (message) {
+										const toolkit = {
+											toolkitId: generateUniqueId(),
+											toolkitName: toolkit_name,
+											toolkitMethods: method_name,
+											message: message.data.message as string,
+											toolkitStatus: "running" as AgentStatus,
+										}
+										if (task) {
+											task.toolkits ??= []
+											task.toolkits.push({ ...toolkit });
+											task.status = "running";
+											setTaskAssigning(currentTaskId, [...taskAssigning]);
+										}
+										taskRunning![taskIndex].status = "running";
+										taskRunning![taskIndex].toolkits ??= [];
+										taskRunning![taskIndex].toolkits.push({ ...toolkit });
 									}
-									if (assigneeAgentIndex !== -1 && task) {
-										task.toolkits ??= []
-										task.toolkits.push({ ...toolkit });
-										task.status = "running";
-										setTaskAssigning(currentTaskId, [...taskAssigning]);
-									}
-									taskRunning![taskIndex].status = "running";
-									taskRunning![taskIndex].toolkits ??= [];
-									taskRunning![taskIndex].toolkits.push({ ...toolkit });
 								}
 
 							}
@@ -1597,11 +1599,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 				return hasTask
 			})
-			const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((task) => task.id === processTaskId)
 			if (taskAssigningIndex !== -1) {
-				taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList ??= []
-				taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList?.push({ ...fileInfo, agent_id: agentId, task_id: processTaskId })
-				setTaskAssigning(taskId, taskAssigning)
+				const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((task) => task.id === processTaskId)
+				if (taskIndex !== -1) {
+					taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList ??= []
+					taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList?.push({ ...fileInfo, agent_id: agentId, task_id: processTaskId })
+					setTaskAssigning(taskId, taskAssigning)
+				}
 			}
 		},
 		setFileList(taskId, processTaskId, fileList: FileInfo[]) {
