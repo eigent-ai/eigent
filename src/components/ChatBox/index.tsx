@@ -109,21 +109,22 @@ export default function ChatBox(): JSX.Element {
 
 		console.log(`Current task is ${isTaskBusy} with ${task}`);
 		
-		chatStore.addMessages(_taskId, {
-			id: generateUniqueId(),
-			role: "user",
-			content: tempMessageContent,
-			attaches:
-				JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
-		});
-		setMessage("");
-
-		setTimeout(() => {
-			scrollToBottom();
-		}, 200);
 		if (textareaRef.current) textareaRef.current.style.height = "60px";
 		try {
 			if (chatStore.tasks[_taskId].activeAsk) {
+				chatStore.addMessages(_taskId, {
+					id: generateUniqueId(),
+					role: "user",
+					content: tempMessageContent,
+					attaches:
+						JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
+				});
+				setMessage("");
+		
+				setTimeout(() => {
+					scrollToBottom();
+				}, 200);
+
 				chatStore.setIsPending(_taskId, true);
 
 				await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
@@ -183,6 +184,19 @@ export default function ChatBox(): JSX.Element {
 					}
 					return;
 				}
+
+				chatStore.addMessages(_taskId, {
+					id: generateUniqueId(),
+					role: "user",
+					content: tempMessageContent,
+					attaches:
+						JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
+				});
+				setMessage("");
+		
+				setTimeout(() => {
+					scrollToBottom();
+				}, 200);
 
 				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
 					// If the task has not started yet (pending status), start it normally
