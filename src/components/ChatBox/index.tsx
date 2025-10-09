@@ -578,15 +578,39 @@ export default function ChatBox(): JSX.Element {
 		}
 	}
 
+	const getAllChatStoresMemoized = useMemo(() => {
+		const project_id = projectStore.activeProjectId;
+		if(!project_id) return [];
+
+		return projectStore.getAllChatStores(project_id);
+	}, [projectStore, projectStore.activeProjectId, chatStore])
+
+	// Check if any chat store in the project has messages
+	const hasAnyMessages = useMemo(() => {
+		// First check current active chat store
+		if (chatStore.activeTaskId && 
+			(chatStore.tasks[chatStore.activeTaskId].messages.length > 0 || 
+			 chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages)) {
+			return true;
+		}
+
+		// Then check all other chat stores in the project
+		return getAllChatStoresMemoized.some(({chatStore: store}) => {
+			const state = store.getState();
+			return state.activeTaskId && 
+				   state.tasks[state.activeTaskId] && 
+				   (state.tasks[state.activeTaskId].messages.length > 0 || 
+					state.tasks[state.activeTaskId].hasMessages);
+		});
+	}, [chatStore, getAllChatStoresMemoized]);
+
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
 			{/* <PrivacyDialog
 				open={privacyDialogOpen}
 				onOpenChange={setPrivacyDialogOpen}
 			/> */}
-			{(chatStore.activeTaskId &&
-				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
-			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
+			{hasAnyMessages ? (
 				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div
@@ -594,11 +618,10 @@ export default function ChatBox(): JSX.Element {
 						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pl-2 gap-2 pt-2"
 					>
 					{
-						projectStore.activeProjectId &&
-							projectStore.getAllChatStores(projectStore.activeProjectId).map(({chatId, chatStore}) =>
+						getAllChatStoresMemoized.map(({chatId, chatStore: iteratedChatStore}) =>
 								<>
-										{chatStore.getState().activeTaskId && chatStore.getState().tasks[chatStore.getState().activeTaskId as string] &&
-											chatStore.getState().tasks[chatStore.getState().activeTaskId as string].messages?.map(
+										{iteratedChatStore.getState().activeTaskId && iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string] &&
+											iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string].messages?.map(
 												(item: any, index: number) => {
 													if (item.content.length > 0) {
 														// Use specialized component for agent summaries
@@ -610,12 +633,12 @@ export default function ChatBox(): JSX.Element {
 																>
 																	<MessageCard
 																		typewriter={
-																			chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																			iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 																				.type !== "replay" ||
-																			(chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																			(iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 																				.type === "replay" &&
-																				chatStore.getState().tasks[
-																					chatStore.getState().activeTaskId as string
+																				iteratedChatStore.getState().tasks[
+																					iteratedChatStore.getState().activeTaskId as string
 																				].delayTime !== 0)
 																		}
 																		id={item.id}
@@ -631,13 +654,13 @@ export default function ChatBox(): JSX.Element {
 																					key={"file-" + file.name}
 																					onClick={() => {
 																						// set selected file
-																						chatStore.getState().setSelectedFile(
-																							chatStore.getState().activeTaskId as string,
+																						iteratedChatStore.getState().setSelectedFile(
+																							iteratedChatStore.getState().activeTaskId as string,
 																							file
 																						);
 																						// open DocumentWorkSpace
-																						chatStore.getState().setActiveWorkSpace(
-																							chatStore.getState().activeTaskId as string,
+																						iteratedChatStore.getState().setActiveWorkSpace(
+																							iteratedChatStore.getState().activeTaskId as string,
 																							"documentWorkSpace"
 																						);
 																					}}
@@ -675,11 +698,11 @@ export default function ChatBox(): JSX.Element {
 															return (
 																<MessageCard
 																	typewriter={
-																		chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																		iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 																			.type !== "replay" ||
-																		(chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																		(iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 																			.type === "replay" &&
-																			chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+																			iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 																				.delayTime !== 0)
 																	}
 																	id={item.id}
@@ -713,12 +736,12 @@ export default function ChatBox(): JSX.Element {
 																				key={"file-" + file.name}
 																				onClick={() => {
 																					// set selected file
-																					chatStore.getState().setSelectedFile(
-																						chatStore.getState().activeTaskId as string,
+																					iteratedChatStore.getState().setSelectedFile(
+																						iteratedChatStore.getState().activeTaskId as string,
 																						file
 																					);
-																					chatStore.getState().setActiveWorkSpace(
-																						chatStore.getState().activeTaskId as string,
+																					iteratedChatStore.getState().setActiveWorkSpace(
+																						iteratedChatStore.getState().activeTaskId as string,
 																						"documentWorkSpace"
 																					);
 																				}}
@@ -742,62 +765,62 @@ export default function ChatBox(): JSX.Element {
 													}
 													if (
 														item.step === "notice_card" &&
-														!chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+														!iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 															.isTakeControl &&
-														chatStore.getState().tasks[chatStore.getState().activeTaskId as string].cotList
+														iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string].cotList
 															.length > 0
 													) {
 														return <NoticeCard key={"notice-" + item.id} />;
 													}
 													if (
 														item.step === "to_sub_tasks" &&
-														!chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
+														!iteratedChatStore.getState().tasks[iteratedChatStore.getState().activeTaskId as string]
 															.isTakeControl
 													) {
-														const activeTaskId = chatStore.getState().activeTaskId;
+														const activeTaskId = iteratedChatStore.getState().activeTaskId;
 														if (!activeTaskId) return null;
 														return (
 															<TaskCard
 																key={"task-" + item.id}
 																taskInfo={
-																	chatStore.getState().tasks[activeTaskId]?.taskInfo || []
+																	iteratedChatStore.getState().tasks[activeTaskId]?.taskInfo || []
 																}
 																taskType={item.taskType || 1}
 																taskAssigning={
-																	chatStore.getState().tasks[activeTaskId]
+																	iteratedChatStore.getState().tasks[activeTaskId]
 																		?.taskAssigning || []
 																}
 																taskRunning={
-																	chatStore.getState().tasks[activeTaskId]?.taskRunning ||
+																	iteratedChatStore.getState().tasks[activeTaskId]?.taskRunning ||
 																	[]
 																}
 																progressValue={
-																	chatStore.getState().tasks[activeTaskId]?.progressValue || 0
+																	iteratedChatStore.getState().tasks[activeTaskId]?.progressValue || 0
 																}
 																summaryTask={
-																	chatStore.getState().tasks[activeTaskId]?.summaryTask ||
+																	iteratedChatStore.getState().tasks[activeTaskId]?.summaryTask ||
 																	""
 																}
 																onAddTask={() => {
-																	chatStore.getState().setIsTaskEdit(
+																	iteratedChatStore.getState().setIsTaskEdit(
 																		activeTaskId,
 																		true
 																	);
-																	chatStore.getState().addTaskInfo();
+																	iteratedChatStore.getState().addTaskInfo();
 																}}
 																onUpdateTask={(taskIndex, content) => {
-																	chatStore.getState().setIsTaskEdit(
+																	iteratedChatStore.getState().setIsTaskEdit(
 																		activeTaskId,
 																		true
 																	);
-																	chatStore.getState().updateTaskInfo(taskIndex, content);
+																	iteratedChatStore.getState().updateTaskInfo(taskIndex, content);
 																}}
 																onDeleteTask={(taskIndex) => {
-																	chatStore.getState().setIsTaskEdit(
+																	iteratedChatStore.getState().setIsTaskEdit(
 																		activeTaskId,
 																		true
 																	);
-																	chatStore.getState().deleteTaskInfo(taskIndex);
+																	iteratedChatStore.getState().deleteTaskInfo(taskIndex);
 																}}
 																clickable={true}
 															/>
@@ -806,29 +829,44 @@ export default function ChatBox(): JSX.Element {
 												}
 											)
 										}
-										{/* Skeleton  */}
-										{((!chatStore.getState().tasks[
-												chatStore.getState().activeTaskId as string
-											]?.messages?.find((message) => message.step === "to_sub_tasks")
-												? true : false &&
-											!chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
-												?.hasWaitComfirm &&
-											chatStore.getState().tasks[chatStore.getState().activeTaskId as string]?.messages
-												?.length > 0) ||
-											chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
-												?.isTakeControl) && (
-											<TypeCardSkeleton
-												isTakeControl={
-													chatStore.getState().tasks[chatStore.getState().activeTaskId as string]
-														?.isTakeControl || false
-												}
-											/>
-										)}
+										{/* Skeleton - only show for the currently active global chat store */}
+										{(() => {
+											// Get the project and check if this chat store is the active one
+											const project = projectStore.getProjectById(projectStore.activeProjectId || '');
+											if (!project || project.activeChatId !== chatId) return null;
+											
+											const currentTaskId = chatStore.activeTaskId;
+											const currentTask = currentTaskId ? chatStore.tasks[currentTaskId] : null;
+											
+											if (!currentTask) return null;
+											
+											const hasToSubTasks = currentTask.messages?.find((message: any) => message.step === "to_sub_tasks");
+											const shouldShowSkeleton = (
+												(!hasToSubTasks && !currentTask.hasWaitComfirm && currentTask.messages?.length > 0) || 
+												currentTask.isTakeControl
+											);
+											
+											return shouldShowSkeleton ? (
+												<TypeCardSkeleton
+													isTakeControl={currentTask.isTakeControl || false}
+												/>
+											) : null;
+										})()}
 										
 								</>
 							)
 						}
 					</div>
+					{/* Floating Action Button for Pause/Resume/Skip */}
+					{chatStore.activeTaskId && (
+						<FloatingAction
+							status={chatStore.tasks[chatStore.activeTaskId as string]?.status}
+							onPause={handlePauseResume}
+							onResume={handlePauseResume}
+							onSkip={handleSkip}
+							loading={isPauseResumeLoading}
+						/>
+					)}
 					{chatStore.activeTaskId && (
 						<BottomBox
 						state={getBottomBoxState()}
@@ -874,16 +912,6 @@ export default function ChatBox(): JSX.Element {
 								privacy: privacy,
 								useCloudModelInDev: useCloudModelInDev
 							}}
-						/>
-					)}
-					{/* Floating Action Button for Pause/Resume/Skip */}
-					{chatStore.activeTaskId && (
-						<FloatingAction
-							status={chatStore.tasks[chatStore.activeTaskId as string]?.status}
-							onPause={handlePauseResume}
-							onResume={handlePauseResume}
-							onSkip={handleSkip}
-							loading={isPauseResumeLoading}
 						/>
 					)}
 				</div>

@@ -1247,11 +1247,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 				onerror(err) {
 					console.error("Error:", err);
+					if(project_id) {
+						console.log("Creating a new Chat Instance for current project on end")
+						projectStore.appendInitChatStore(project_id)
+					}
 					throw err;
 				},
 
 				// Server closes connection
 				onclose() {
+					if(project_id) {
+						console.log("Creating a new Chat Instance for current project on end")
+						projectStore.appendInitChatStore(project_id)
+					}
 					console.log("server closed");
 				},
 			});
