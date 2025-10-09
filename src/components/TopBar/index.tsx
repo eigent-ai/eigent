@@ -152,14 +152,14 @@ function HeaderWin() {
 
 			// Delete task from backend if it exists
 			try {
-				await fetchDelete(`/chat/${taskId}`);
+				await fetchDelete(`/chat/${projectStore.activeProjectId}`);
 			} catch (error) {
 				console.log("Task may not exist on backend:", error);
 			}
 
 			// Delete from history
 			try {
-				await proxyFetchDelete(`/api/chat/history/${taskId}`);
+				await proxyFetchDelete(`/api/chat/history/${projectStore.activeProjectId}`);
 			} catch (error) {
 				console.log("Task may not exist in history:", error);
 			}
