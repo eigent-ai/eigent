@@ -268,7 +268,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const newTaskId = newChatStore.getState().create();
 		
 		// Set the new chat store as active - this will make subsequent events use the new context
-		setActiveChatStore(projectId, newTaskId);
+		setActiveChatStore(projectId, newChatId);
 
 		//Set the initTask as the active taskId
 		newChatStore.getState().setActiveTaskId(newTaskId);
