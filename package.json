@@ -30,6 +30,7 @@
   "dependencies": {
     "@electron/notarize": "^2.5.0",
     "@fontsource/inter": "^5.2.5",
+    "@gsap/react": "^2.1.2",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@monaco-editor/loader": "^1.5.0",
     "@monaco-editor/react": "^4.7.0",
@@ -71,7 +72,7 @@
     "lucide-react": "^0.509.0",
     "mammoth": "^1.9.1",
     "monaco-editor": "^0.52.2",
-    "motion": "^12.23.22",
+    "motion": "^12.23.23",
     "next-themes": "^0.4.6",
     "papaparse": "^5.5.3",
     "postprocessing": "^6.37.8",

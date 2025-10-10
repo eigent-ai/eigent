@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { Hammer } from "@/components/animate-ui/icons/hammer";
 import MCP from "./Setting/MCP";
 import folderIcon from "@/assets/Folder.svg";
+import SplitText from "@/components/ui/SplitText/SplitText";
+import WordCarousel from "@/components/ui/WordCarousel";
 
 
 
@@ -49,6 +51,10 @@ export default function Home() {
 	};
 
 	const welcomeName = formatWelcomeName(displayName);
+
+	const handleAnimationComplete = () => {
+		console.log('All letters have animated!');
+	};
 
 	const confirmDelete = () => {
 		setDeleteModalOpen(false);
@@ -83,25 +89,34 @@ export default function Home() {
 			confirmText="Delete"
 			cancelText="Cancel"
 		/>
-		  {/* welcome text */}
-			<div className="flex flex-col w-full pt-16 px-20 bg-gradient-to-b from-transparent to-[#F9F8F6]">
-					<span className="text-text-primary text-heading-lg !font-serif font-bold">Welcome {welcomeName}</span>
+			{/* welcome text */}
+			<div className="flex flex-row w-full pt-16 px-20 bg-gradient-to-b from-transparent to-[#F9F8F6]">
+					<WordCarousel
+						words={[`Welcome, ${welcomeName} !`]}
+						className="text-heading-lg font-serif italic font-bold"
+						rotateIntervalMs={1600}
+						sweepDurationMs={2200}
+						sweepOnce
+						gradient={`linear-gradient(in oklch 90deg,
+							#f9f8f6 0%, #f9f8f6 30%,
+							#a855f7 35%, #fb2c36 45%, #ff8904 50%,
+							#Fe9a00 55%, #00bc7d 60%, #00a6f4 65%,
+							#1d1d1d 70%, #1d1d1d 100%)`}
+						ariaLabel="rotating headline"
+					/>
 			</div>
 			{/* Navbar */}
 		<div
-			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-[#F9F8F6] px-20 pt-8 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
+			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-[#F9F8F6] px-20 pt-10 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
 		>
 				<div className="flex flex-row justify-between items-center w-full mx-auto">
 				<div className="flex items-center gap-2">
-				<div className="w-10 h-10 object-contain object-center cursor-pointer">
-					<img className="w-full h-full mt-0.5 object-contain object-center" src={folderIcon} alt="folder-icon" />
-				</div>
 			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
-			  	 <MenuToggleItem size="sm" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>Projects</MenuToggleItem>
-					 <MenuToggleItem size="sm" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>MCP & Tools</MenuToggleItem>
-					 <MenuToggleItem size="sm" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>Settings</MenuToggleItem>
-			  	 <MenuToggleItem size="sm" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>Workers</MenuToggleItem>
-			  	 <MenuToggleItem size="sm" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>Triggers</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>Projects</MenuToggleItem>
+					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>MCP & Tools</MenuToggleItem>
+					 <MenuToggleItem size="xs" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>Settings</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>Workers</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>Triggers</MenuToggleItem>
 		  	 </MenuToggleGroup>
 				</div>
 		  	<Button variant="primary" size="sm" onClick={createChat}>

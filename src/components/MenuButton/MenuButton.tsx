@@ -9,7 +9,7 @@ const menuButtonVariants = cva(
 	{
 		variants: {
 			size: {
-				xs: "p-1 gap-1 text-label-sm font-bold [&_svg]:size-[16px]",
+				xs: "py-1 px-2 gap-1 text-label-sm font-bold [&_svg]:size-[16px]",
 				sm: "p-2 gap-1 text-label-sm font-bold [&_svg]:size-[20px]",
 				md: "p-2 gap-1 text-label-md font-bold [&_svg]:size-[24px]",
 			},

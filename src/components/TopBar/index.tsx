@@ -217,16 +217,14 @@ function HeaderWin() {
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
 					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
-						{location.pathname !== "/history" && (
-							<Button
-								onClick={() => navigate("/history")}
-								variant="ghost"
-								size="icon"
-								className="no-drag p-0 h-6 w-6"
-							>
-								<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-							</Button>
-						)}
+					<Button
+						onClick={() => navigate("/history")}
+						variant="ghost"
+						size="icon"
+						className="no-drag p-0 h-6 w-6"
+					>
+						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
+					</Button>
 					</div>
 					{location.pathname !== "/history" && (
 						<div className="flex items-center mr-1">
