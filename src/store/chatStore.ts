@@ -186,6 +186,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				setDelayTime(taskId, delayTime as number)
 				setType(taskId, type)
 			}
+
+			//ProjectStore must exist as chatStore is already
+			const projectStore = useProjectStore.getState();
+			const project_id = projectStore.activeProjectId;
+			//Create a new chatStore on Start
+			if(project_id && type !== "replay") {
+				console.log("Creating a new Chat Instance for current project on end")
+				projectStore.appendInitChatStore(project_id)
+			}
+
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
 			const api = type == 'share' ? 
 			`${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` 
@@ -273,9 +283,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.log('get-env-path error', error)
 			}
 
-			//ProjectStore must exist as chatStore is already
-			const projectStore = useProjectStore.getState();
-			const project_id = projectStore.activeProjectId;
 
 			// create history
 			if (!type) {
@@ -959,14 +966,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							const taskIdToRemove = agentMessages.data.task_id as string;
 							const projectStore = useProjectStore.getState();
 							//Remove the task from the queue on error
-							if(projectStore.activeProjectId) {
-								const project = projectStore.getProjectById(projectStore.activeProjectId);
+							if(project_id) {
+								const project = projectStore.getProjectById(project_id);
 								if (project && project.queuedMessages) {
 									const messageToRemove = project.queuedMessages.find(msg => 
 										msg.task_id === taskIdToRemove || msg.content.includes(taskIdToRemove)
 									);
 									if (messageToRemove) {
-										projectStore.removeQueuedMessage(projectStore.activeProjectId, messageToRemove.task_id);
+										projectStore.removeQueuedMessage(project_id, messageToRemove.task_id);
 										console.log(`Task removed from project queue: ${taskIdToRemove}`);
 									}
 								}
@@ -1247,19 +1254,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 				onerror(err) {
 					console.error("Error:", err);
-					if(project_id) {
-						console.log("Creating a new Chat Instance for current project on end")
-						projectStore.appendInitChatStore(project_id)
-					}
 					throw err;
 				},
 
 				// Server closes connection
 				onclose() {
-					if(project_id) {
-						console.log("Creating a new Chat Instance for current project on end")
-						projectStore.appendInitChatStore(project_id)
-					}
 					console.log("server closed");
 				},
 			});
