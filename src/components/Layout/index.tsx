@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { AnimationJson } from "@/components/AnimationJson";
 import animationData from "@/assets/animation/onboarding_success.json";
 import CloseNoticeDialog from "../Dialog/CloseNotice";
-import { useChatStore } from "@/store/chatStore";
+
 import { useInstallationUI } from "@/store/installationStore";
 import { useInstallationSetup } from "@/hooks/useInstallationSetup";
 import InstallationErrorDialog from "../InstallStep/InstallationErrorDialog/InstallationErrorDialog";

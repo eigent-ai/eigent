@@ -13,7 +13,7 @@ import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useChatStore } from "@/store/chatStore";
+
 import { useSidebarStore } from "@/store/sidebarStore";
 import chevron_left from "@/assets/chevron_left.svg";
 import { getAuthStore } from "@/store/authStore";

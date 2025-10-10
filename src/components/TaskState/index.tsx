@@ -1,5 +1,5 @@
 import { CircleCheckBig, CircleSlash2, LoaderCircle } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
+
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 

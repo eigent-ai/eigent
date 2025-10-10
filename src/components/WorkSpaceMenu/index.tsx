@@ -10,7 +10,7 @@ import {
 	Bird,
 	LayoutGrid,
 } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
+
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";

@@ -1,4 +1,4 @@
-import { useChatStore } from "@/store/chatStore";
+
 import { useEffect, useState, useRef } from "react";
 import {
 	ArrowDown,

@@ -12,7 +12,7 @@ import { Node as CustomNodeComponent } from "./node";
 
 import { SquareStack, ChevronLeft, ChevronRight, Share } from "lucide-react";
 import "@xyflow/react/dist/style.css";
-import { useChatStore } from "@/store/chatStore";
+
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";

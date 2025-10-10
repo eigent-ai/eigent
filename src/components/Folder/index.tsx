@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import FolderComponent from "./FolderComponent";
 
-import { useChatStore } from "@/store/chatStore";
+
 import { MarkDown } from "@/components/ChatBox/MarkDown";
 import { useAuthStore } from "@/store/authStore";
 import { proxyFetchGet } from "@/api/http";

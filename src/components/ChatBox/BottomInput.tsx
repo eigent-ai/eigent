@@ -15,7 +15,6 @@ import {
 	FileText,
 	UploadCloud,
 } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
 
 import racPause from "@/assets/rac-pause.svg";
 import { fetchDelete, proxyFetchDelete } from "@/api/http";

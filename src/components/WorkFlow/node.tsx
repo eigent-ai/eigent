@@ -21,7 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Folder from "../Folder";
 import Terminal from "../Terminal";
-import { useChatStore } from "@/store/chatStore";
+
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import ShinyText from "../ui/ShinyText/ShinyText";
 import { MarkDown } from "./MarkDown";

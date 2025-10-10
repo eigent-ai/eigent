@@ -1,4 +1,4 @@
-import { useChatStore } from "@/store/chatStore";
+
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
