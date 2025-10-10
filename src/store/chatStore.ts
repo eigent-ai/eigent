@@ -1,6 +1,6 @@
 import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
-import { create } from 'zustand';
+import { createStore } from 'zustand';
 import { generateUniqueId, uploadLog } from "@/lib";
 import { FileText } from 'lucide-react';
 import { getAuthStore, useWorkerList } from './authStore';
@@ -41,7 +41,7 @@ interface Task {
 	isTaskEdit: boolean;
 }
 
-interface ChatStore {
+export interface ChatStore {
 	updateCount: number;
 	activeTaskId: string | null;
 	tasks: { [key: string]: Task };
@@ -99,10 +99,10 @@ interface ChatStore {
 
 
 
-const chatStore = create<ChatStore>()(
+const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
 		activeTaskId: null,
-		tasks: {},
+		tasks: initial?.tasks ?? {},
 		updateCount: 0,
 		create(id?: string, type?: any) {
 			const taskId = id ? id : generateUniqueId();
@@ -1724,4 +1724,6 @@ const filterMessage = (message: AgentMessage) => {
 
 export const useChatStore = chatStore;
 
-export const getToolStore = () => chatStore.getState();
+export type VanillaChatStore = ReturnType<typeof chatStore>;
+
+export const getToolStore = () => chatStore().getState();

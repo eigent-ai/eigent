@@ -2,7 +2,7 @@ import ChatBox from "@/components/ChatBox";
 import Workflow from "@/components/WorkFlow";
 import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
-import { useChatStore } from "@/store/chatStore";
+
 import { useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
@@ -16,10 +16,16 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
 	window.ipcRenderer?.on("webview-show", (_event, id: string) => {
@@ -138,7 +144,7 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!chatStore.activeTaskId) {
-			chatStore.create();
+			projectStore.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");

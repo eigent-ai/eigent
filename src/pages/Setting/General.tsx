@@ -10,7 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
-import { useChatStore } from "@/store/chatStore";
+
 import { LocaleEnum, switchLanguage } from "@/i18n";
 import { useTranslation } from "react-i18next";
 
@@ -23,6 +23,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function SettingGeneral() {
 	const { t } = useTranslation();
@@ -36,7 +37,12 @@ export default function SettingGeneral() {
 	const fullNameRef: RefObject<HTMLInputElement> = createRef();
 	const nickNameRef: RefObject<HTMLInputElement> = createRef();
 	const workDescRef: RefObject<HTMLInputElement> = createRef();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 
 	const [themeList, setThemeList] = useState<any>([
 		{

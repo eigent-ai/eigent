@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useRef } from "react";
 import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
-import { useChatStore } from "@/store/chatStore";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { TooltipSimple } from "../ui/tooltip";
@@ -56,10 +56,16 @@ export function AddWorker({
 	edit?: boolean;
 	workerInfo?: Agent | null;
 }) {
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	const activeTaskId = chatStore.activeTaskId;
+	const tasks = chatStore.tasks;
+	
 	const { t } = useTranslation();
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const activeTaskId = useChatStore((state) => state.activeTaskId);
-	const tasks = useChatStore((state) => state.tasks);
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});

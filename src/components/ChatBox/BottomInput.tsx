@@ -15,7 +15,6 @@ import {
 	FileText,
 	UploadCloud,
 } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
 
 import racPause from "@/assets/rac-pause.svg";
 import { fetchDelete, proxyFetchDelete } from "@/api/http";
@@ -26,6 +25,7 @@ import { Tag } from "../ui/tag";
 import { useTranslation } from "react-i18next";
 import { TooltipSimple } from "../ui/tooltip";
 import { toast } from "sonner";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export const BottomInput = ({
 	message,
@@ -56,7 +56,12 @@ export const BottomInput = ({
 	setIsTakeControl?: (v: boolean) => void;
 	useCloudModelInDev: boolean;
 }) => {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const {t} = useTranslation();
 	const [isConfirm, setIsConfirm] = useState(true);
 	const [hasSubTask, setHasSubTask] = useState(false);
@@ -206,7 +211,9 @@ export const BottomInput = ({
 			chatStore.tasks[chatStore.activeTaskId as string].messages[
 				messageIndex - 2
 			].content;
+		//Create new chat in same project
 		let id = chatStore.create();
+		
 		chatStore.setHasMessages(id, true);
 		chatStore.removeTask(tempTaskId as string);
 		proxyFetchDelete(`/api/chat/history/${tempTaskId}`);
@@ -217,7 +224,7 @@ export const BottomInput = ({
 		let taskId = chatStore.activeTaskId as string;
 		const question =
 			chatStore.tasks[chatStore.activeTaskId as string].messages[0].content;
-		chatStore.replay(taskId, question, 0.1);
+		projectStore.replayProject([taskId], question);
 	};
 
 	return (

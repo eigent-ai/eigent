@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import SearchInput from "./SearchInput";
 import { useEffect, useState } from "react";
-import { useChatStore } from "@/store/chatStore";
+
 import { useGlobalStore } from "@/store/globalStore";
 import folderIcon from "@/assets/Folder-1.svg";
 import { Progress } from "@/components/ui/progress";
@@ -37,12 +37,18 @@ import { proxyFetchGet, proxyFetchDelete, proxyFetchPost } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
 	const { isOpen, close } = useSidebarStore();
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const getTokens = chatStore.getTokens;
 	const { history_type, toggleHistoryType } = useGlobalStore();
 	const [searchValue, setSearchValue] = useState("");
@@ -81,7 +87,8 @@ export default function HistorySidebar() {
 			chatStore.tasks[chatStore.activeTaskId as string].messages.length === 0
 		) {
 		}
-		chatStore.create();
+		//Create a new project
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 
@@ -154,7 +161,7 @@ export default function HistorySidebar() {
 
 	const handleReplay = async (taskId: string, question: string) => {
 		close();
-		chatStore.replay(taskId, question, 0);
+		projectStore.replayProject([taskId], question);
 		navigate({ pathname: "/" });
 	};
 
