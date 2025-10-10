@@ -4,10 +4,11 @@ from camel.toolkits import VideoAnalysisToolkit as BaseVideoAnalysisToolkit
 
 from app.component.environment import env
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
+@auto_listen_toolkit(BaseVideoAnalysisToolkit)
 class VideoAnalysisToolkit(BaseVideoAnalysisToolkit, AbstractToolkit):
     agent_name: str = Agents.multi_modal_agent
 
@@ -36,10 +37,3 @@ class VideoAnalysisToolkit(BaseVideoAnalysisToolkit, AbstractToolkit):
             cookies_path,
             timeout,
         )
-
-    @listen_toolkit(
-        BaseVideoAnalysisToolkit.ask_question_about_video,
-        lambda _, video_path, question: f"transcribe video from {video_path} and ask question: {question}",
-    )
-    def ask_question_about_video(self, video_path: str, question: str) -> str:
-        return super().ask_question_about_video(video_path, question)

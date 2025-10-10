@@ -3,10 +3,11 @@ from typing import Any, Dict
 from camel.toolkits import WebDeployToolkit as BaseWebDeployToolkit
 
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
+@auto_listen_toolkit(BaseWebDeployToolkit)
 class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
 
@@ -43,11 +44,3 @@ class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
     ) -> Dict[str, Any]:
         subdirectory = str(uuid.uuid4())
         return super().deploy_folder(folder_path, port, domain, subdirectory)
-
-    @listen_toolkit(BaseWebDeployToolkit.stop_server)
-    def stop_server(self, port: int) -> Dict[str, Any]:
-        return super().stop_server(port)
-
-    @listen_toolkit(BaseWebDeployToolkit.list_running_servers)
-    def list_running_servers(self) -> Dict[str, Any]:
-        return super().list_running_servers()

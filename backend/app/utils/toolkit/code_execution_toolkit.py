@@ -1,10 +1,11 @@
 from typing import List, Literal
 from camel.toolkits import CodeExecutionToolkit as BaseCodeExecutionToolkit, FunctionTool
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
+@auto_listen_toolkit(BaseCodeExecutionToolkit)
 class CodeExecutionToolkit(BaseCodeExecutionToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
 
@@ -20,18 +21,6 @@ class CodeExecutionToolkit(BaseCodeExecutionToolkit, AbstractToolkit):
     ) -> None:
         self.api_task_id = api_task_id
         super().__init__(sandbox, verbose, unsafe_mode, import_white_list, require_confirm, timeout)
-
-    @listen_toolkit(
-        BaseCodeExecutionToolkit.execute_code,
-    )
-    def execute_code(self, code: str, code_type: str = "python") -> str:
-        return super().execute_code(code, code_type)
-
-    @listen_toolkit(
-        BaseCodeExecutionToolkit.execute_command,
-    )
-    def execute_command(self, command: str) -> str | tuple[str, str]:
-        return super().execute_command(command)
 
     def get_tools(self) -> List[FunctionTool]:
         return [

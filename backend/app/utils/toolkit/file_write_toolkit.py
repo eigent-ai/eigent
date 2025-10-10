@@ -5,10 +5,11 @@ from camel.toolkits import FileToolkit as BaseFileToolkit
 from app.component.environment import env
 from app.service.task import process_task
 from app.service.task import ActionWriteFileData, Agents, get_task_lock
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
+@auto_listen_toolkit(BaseFileToolkit)
 class FileToolkit(BaseFileToolkit, AbstractToolkit):
     agent_name: str = Agents.document_agent
 
@@ -54,15 +55,3 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 )
             )
         return res
-
-    @listen_toolkit(
-        BaseFileToolkit.read_file,
-    )
-    def read_file(self, file_paths: str | list[str]) -> str | dict[str, str]:
-        return super().read_file(file_paths)
-
-    @listen_toolkit(
-        BaseFileToolkit.edit_file,
-    )
-    def edit_file(self, file_path: str, old_content: str, new_content: str) -> str:
-        return super().edit_file(file_path, old_content, new_content)

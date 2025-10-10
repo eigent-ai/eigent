@@ -9,10 +9,11 @@ from camel.toolkits.twitter_toolkit import (
 
 from app.component.environment import env
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
+@auto_listen_toolkit(BaseTwitterToolkit)
 class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
     agent_name: str = Agents.social_medium_agent
 

@@ -4,11 +4,12 @@ from camel.toolkits.terminal_toolkit import TerminalToolkit as BaseTerminalToolk
 from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.component.environment import env
 from app.service.task import Action, ActionTerminalData, Agents, get_task_lock
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
 
 
+@auto_listen_toolkit(BaseTerminalToolkit)
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
 
@@ -67,45 +68,3 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         )
         if hasattr(task_lock, "add_background_task"):
             task_lock.add_background_task(task)
-
-    @listen_toolkit(
-        BaseTerminalToolkit.shell_exec,
-        lambda _, id, command, block=True: f"id: {id}, command: {command}, block: {block}",
-    )
-    def shell_exec(self, id: str, command: str, block: bool = True) -> str:
-        return super().shell_exec(id=id, command=command, block=block)
-
-    @listen_toolkit(
-        BaseTerminalToolkit.shell_view,
-        lambda _, id: f"id: {id}",
-    )
-    def shell_view(self, id: str) -> str:
-        return super().shell_view(id)
-
-    @listen_toolkit(
-        BaseTerminalToolkit.shell_wait,
-        lambda _, id, wait_seconds=None: f"id: {id}, wait_seconds: {wait_seconds}",
-    )
-    def shell_wait(self, id: str, wait_seconds: float = 5.0) -> str:
-        return super().shell_wait(id=id, wait_seconds=wait_seconds)
-
-    @listen_toolkit(
-        BaseTerminalToolkit.shell_write_to_process,
-        lambda _, id, command: f"id: {id}, command: {command}",
-    )
-    def shell_write_to_process(self, id: str, command: str) -> str:
-        return super().shell_write_to_process(id=id, command=command)
-
-    @listen_toolkit(
-        BaseTerminalToolkit.shell_kill_process,
-        lambda _, id: f"id: {id}",
-    )
-    def shell_kill_process(self, id: str) -> str:
-        return super().shell_kill_process(id=id)
-
-    @listen_toolkit(
-        BaseTerminalToolkit.shell_ask_user_for_help,
-        lambda _, id, prompt: f"id: {id}, prompt: {prompt}",
-    )
-    def shell_ask_user_for_help(self, id: str, prompt: str) -> str:
-        return super().shell_ask_user_for_help(id=id, prompt=prompt)
