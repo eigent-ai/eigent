@@ -51,7 +51,7 @@ export interface ChatStore {
 	setStatus: (taskId: string, status: 'running' | 'finished' | 'pending' | 'pause') => void;
 	setActiveTaskId: (taskId: string) => void;
 	replay: (taskId: string, question: string, time: number) => Promise<void>;
-	startTask: (taskId: string, type?: string, shareToken?: string, delayTime?: number) => Promise<void>;
+	startTask: (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => Promise<void>;
 	handleConfirmTask: (project_id:string, taskId: string, type?: string) => void;
 	addMessages: (taskId: string, messages: Message) => void;
 	setMessages: (taskId: string, messages: Message[]) => void;
@@ -173,7 +173,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			})
 		},
-		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number) => {
+		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
 			const workerList = useWorkerList();
 			const { getLastUserMessage, setDelayTime, setType } = get();
@@ -191,9 +191,28 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const projectStore = useProjectStore.getState();
 			const project_id = projectStore.activeProjectId;
 			//Create a new chatStore on Start
+			let newTaskId = taskId;
+			let targetChatStore = { getState: () => get() }; // Default to current store
 			if(project_id && type !== "replay") {
 				console.log("Creating a new Chat Instance for current project on end")
-				projectStore.appendInitChatStore(project_id)
+				const newChatResult = projectStore.appendInitChatStore(project_id);
+
+				if (newChatResult) {
+					newTaskId = newChatResult.taskId;
+					targetChatStore = newChatResult.chatStore;
+					targetChatStore.getState().setIsPending(newTaskId, true);
+					
+					//From handleSend if message is given
+					// Add the message to the new chatStore if provided
+					if (messageContent) {
+						targetChatStore.getState().addMessages(newTaskId, {
+							id: generateUniqueId(),
+							role: "user",
+							content: messageContent,
+							attaches: messageAttaches || [],
+						});
+					}
+				}
 			}
 
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
@@ -290,9 +309,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 				const obj = {
 					"project_id": project_id,
-					"task_id": taskId,
+					"task_id": newTaskId,
 					"user_id": authStore.user_id,
-					"question": tasks[taskId]?.messages[0]?.content ?? '',
+					"question": messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
 					"language": systemLanguage,
 					"model_platform": apiModel.model_platform,
 					"model_type": apiModel.model_type,
@@ -314,8 +333,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				headers: { "Content-Type": "application/json", "Authorization": type == 'replay' ? `Bearer ${token}` : undefined as unknown as string },
 				body: !type ? JSON.stringify({
 					project_id: project_id,
-					task_id: taskId,
-					question: getLastUserMessage()?.content,
+					task_id: newTaskId,
+					question: messageContent || targetChatStore.getState().getLastUserMessage()?.content,
 					model_platform: apiModel.model_platform,
 					email,
 					model_type: apiModel.model_type,
@@ -325,7 +344,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					installed_mcp: mcpLocal,
 					language: systemLanguage,
 					allow_local_system: true,
-					attaches: tasks[taskId].attaches.map(f => f.filePath),
+					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
 					bun_mirror: systemLanguage === 'zh-cn' ? 'https://registry.npmmirror.com' : '',
 					uvx_mirror: systemLanguage === 'zh-cn' ? 'http://mirrors.aliyun.com/pypi/simple/' : '',
 					summary_prompt: ``,
@@ -356,7 +375,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					// Get current active task ID dynamically
 					const getCurrentTaskId = () => {
 						const currentStore = getCurrentChatStore();
-						return currentStore.activeTaskId || taskId;
+						return currentStore.activeTaskId || newTaskId;
 					};
 
 					const { 

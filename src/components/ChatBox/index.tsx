@@ -195,24 +195,13 @@ export default function ChatBox(): JSX.Element {
 					return;
 				}
 
-				chatStore.addMessages(_taskId, {
-					id: generateUniqueId(),
-					role: "user",
-					content: tempMessageContent,
-					attaches:
-						JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
-				});
-				setMessage("");
-		
-				setTimeout(() => {
-					scrollToBottom();
-				}, 200);
-
 				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
 					// If the task has not started yet (pending status), start it normally
 					if (chatStore.tasks[_taskId as string].status === "pending") {
-						chatStore.setIsPending(_taskId, true);
-						chatStore.startTask(_taskId);
+						setMessage("");
+						// Pass the message content to startTask instead of adding it to current chatStore
+						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
+						chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
 						// keep hasWaitComfirm as true so that follow-up improves work as usual
 					} else {
 						// Task already started and is waiting for user confirmation – use improve API
@@ -238,8 +227,15 @@ export default function ChatBox(): JSX.Element {
 						proxyFetchPut("/api/user/privacy", requestData);
 						setPrivacy(true);
 					}
-					chatStore.setIsPending(_taskId, true);
-					chatStore.startTask(_taskId);
+					
+					setTimeout(() => {
+						scrollToBottom();
+					}, 200);
+					
+					// For the very first message, add it to the current chatStore first, then call startTask
+					const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
+					setMessage("");
+					chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
 					chatStore.setHasWaitComfirm(_taskId as string, true);
 				}
 			}
