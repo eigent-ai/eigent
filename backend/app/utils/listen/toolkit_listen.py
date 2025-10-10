@@ -3,6 +3,8 @@ from functools import wraps
 from inspect import iscoroutinefunction, getmembers, ismethod, signature
 import json
 from typing import Any, Callable, Type, TypeVar
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from loguru import logger
 from app.service.task import (
@@ -12,6 +14,36 @@ from app.service.task import (
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
+
+
+def _safe_put_queue(task_lock, data):
+    """Safely put data to the queue, handling both sync and async contexts"""
+    try:
+        # Try to get current event loop
+        loop = asyncio.get_running_loop()
+        # We're in an async context, create a task
+        task = asyncio.create_task(task_lock.put_queue(data))
+        if hasattr(task_lock, "add_background_task"):
+            task_lock.add_background_task(task)
+    except RuntimeError:
+        # No running event loop, we need to handle this differently
+        try:
+            # Try to find an existing event loop in the current thread
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule the coroutine in the existing running loop
+                future = asyncio.run_coroutine_threadsafe(
+                    task_lock.put_queue(data),
+                    loop
+                )
+                # Log but don't wait for the result
+                logger.debug(f"[listen_toolkit] Scheduled put_queue in existing event loop")
+            else:
+                # Create a new event loop just for this operation
+                logger.debug(f"[listen_toolkit] Creating new event loop for put_queue")
+                asyncio.run(task_lock.put_queue(data))
+        except Exception as e:
+            logger.error(f"[listen_toolkit] Failed to send data to queue: {e}")
 
 
 def listen_toolkit(
@@ -27,6 +59,11 @@ def listen_toolkit(
             @wraps(wrap)
             async def async_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
+                # Check if api_task_id exists
+                if not hasattr(toolkit, 'api_task_id'):
+                    logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_task_id, calling method directly")
+                    return await func(*args, **kwargs)
+                    
                 task_lock = get_task_lock(toolkit.api_task_id)
 
                 if inputs is not None:
@@ -42,17 +79,18 @@ def listen_toolkit(
 
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                await task_lock.put_queue(
-                    ActionActivateToolkitData(
-                        data={
-                            "agent_name": toolkit.agent_name,
-                            "process_task_id": process_task.get(""),
-                            "toolkit_name": toolkit_name,
-                            "method_name": method_name,
-                            "message": args_str,
-                        },
-                    )
+                logger.info(f"[listen_toolkit] {toolkit_name}.{method_name} called with args: {args_str}")
+                activate_data = ActionActivateToolkitData(
+                    data={
+                        "agent_name": toolkit.agent_name,
+                        "process_task_id": process_task.get(""),
+                        "toolkit_name": toolkit_name,
+                        "method_name": method_name,
+                        "message": args_str,
+                    },
                 )
+                logger.debug(f"[listen_toolkit] Sending activate data: {activate_data.model_dump()}")
+                await task_lock.put_queue(activate_data)
                 error = None
                 res = None
                 try:
@@ -74,17 +112,17 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
-                await task_lock.put_queue(
-                    ActionDeactivateToolkitData(
-                        data={
-                            "agent_name": toolkit.agent_name,
-                            "process_task_id": process_task.get(""),
-                            "toolkit_name": toolkit_name,
-                            "method_name": method_name,
-                            "message": res_msg,
-                        },
-                    )
+                deactivate_data = ActionDeactivateToolkitData(
+                    data={
+                        "agent_name": toolkit.agent_name,
+                        "process_task_id": process_task.get(""),
+                        "toolkit_name": toolkit_name,
+                        "method_name": method_name,
+                        "message": res_msg,
+                    },
                 )
+                logger.debug(f"[listen_toolkit] Sending deactivate data: {deactivate_data.model_dump()}")
+                await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
                 return res
@@ -96,6 +134,11 @@ def listen_toolkit(
             @wraps(wrap)
             def sync_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
+                # Check if api_task_id exists
+                if not hasattr(toolkit, 'api_task_id'):
+                    logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_task_id, calling method directly")
+                    return func(*args, **kwargs)
+                    
                 task_lock = get_task_lock(toolkit.api_task_id)
 
                 if inputs is not None:
@@ -111,21 +154,18 @@ def listen_toolkit(
 
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                task = asyncio.create_task(
-                    task_lock.put_queue(
-                        ActionActivateToolkitData(
-                            data={
-                                "agent_name": toolkit.agent_name,
-                                "process_task_id": process_task.get(""),
-                                "toolkit_name": toolkit_name,
-                                "method_name": method_name,
-                                "message": args_str,
-                            },
-                        )
-                    )
+                logger.info(f"[listen_toolkit] {toolkit_name}.{method_name} called with args: {args_str}")
+                activate_data = ActionActivateToolkitData(
+                    data={
+                        "agent_name": toolkit.agent_name,
+                        "process_task_id": process_task.get(""),
+                        "toolkit_name": toolkit_name,
+                        "method_name": method_name,
+                        "message": args_str,
+                    },
                 )
-                if hasattr(task_lock, "add_background_task"):
-                    task_lock.add_background_task(task)
+                logger.debug(f"[listen_toolkit sync] Sending activate data: {activate_data.model_dump()}")
+                _safe_put_queue(task_lock, activate_data)
                 error = None
                 res = None
                 try:
@@ -154,21 +194,17 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
-                task = asyncio.create_task(
-                    task_lock.put_queue(
-                        ActionDeactivateToolkitData(
-                            data={
-                                "agent_name": toolkit.agent_name,
-                                "process_task_id": process_task.get(""),
-                                "toolkit_name": toolkit_name,
-                                "method_name": method_name,
-                                "message": res_msg,
-                            },
-                        )
-                    )
+                deactivate_data = ActionDeactivateToolkitData(
+                    data={
+                        "agent_name": toolkit.agent_name,
+                        "process_task_id": process_task.get(""),
+                        "toolkit_name": toolkit_name,
+                        "method_name": method_name,
+                        "message": res_msg,
+                    },
                 )
-                if hasattr(task_lock, "add_background_task"):
-                    task_lock.add_background_task(task)
+                logger.debug(f"[listen_toolkit sync] Sending deactivate data: {deactivate_data.model_dump()}")
+                _safe_put_queue(task_lock, deactivate_data)
                 if error is not None:
                     raise error
                 return res
@@ -192,13 +228,19 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
             agent_name: str = Agents.document_agent
     """
     def class_decorator(cls: Type[T]) -> Type[T]:
+        logger.debug(f"[auto_listen_toolkit] Decorating class: {cls.__name__} with base: {base_toolkit_class.__name__}")
+
         base_methods = {}
-        for name, method in getmembers(base_toolkit_class, predicate=ismethod):
+        for name in dir(base_toolkit_class):
             if not name.startswith('_'):
-                base_methods[name] = method
-                
+                attr = getattr(base_toolkit_class, name)
+                if callable(attr):
+                    base_methods[name] = attr
+                    logger.debug(f"[auto_listen_toolkit] Found base method: {name}")
+
         for method_name, base_method in base_methods.items():
             if method_name in cls.__dict__:
+                logger.debug(f"[auto_listen_toolkit] Skipping {method_name} - already defined in {cls.__name__}")
                 continue
                 
             sig = signature(base_method)
@@ -221,7 +263,8 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
             decorated_method = listen_toolkit(base_method)(wrapper)
             
             setattr(cls, method_name, decorated_method)
-            
+            logger.info(f"[auto_listen_toolkit] Added wrapped method: {method_name} to {cls.__name__}")
+
         return cls
     
     return class_decorator

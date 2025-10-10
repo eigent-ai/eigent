@@ -241,7 +241,10 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
     ) -> None:
+        logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
         self.api_task_id = api_task_id
+        logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
+        logger.debug(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}")
         super().__init__(
             headless=headless,
             user_data_dir=user_data_dir,
@@ -265,16 +268,20 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
+        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
+        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
         global websocket_connection_pool
 
         # Get session ID from config or use default
         session_id = self._ws_config.get("session_id", "default")
+        logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
         # Get or create connection from pool
         self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
+        logger.info(f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}")
 
         # Additional health check
         if self._ws_wrapper.websocket is None:
