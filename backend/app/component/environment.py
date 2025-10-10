@@ -1,4 +1,4 @@
-from app.utils import traceroot_wrapper as traceroot
+import traceroot
 import importlib.util
 import os
 from pathlib import Path

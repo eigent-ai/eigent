@@ -1,10 +1,12 @@
 from camel.toolkits import SlackToolkit as BaseSlackToolkit
 from camel.toolkits.function_tool import FunctionTool
-from loguru import logger
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+import traceroot
+
+logger = traceroot.get_logger("slack_toolkit")
 
 
 class SlackToolkit(BaseSlackToolkit, AbstractToolkit):

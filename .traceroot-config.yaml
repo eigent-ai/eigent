@@ -1,0 +1,9 @@
+token: "Your token here"
+name: "eigent-ai-test"
+service_name: "test1"
+github_owner: "eigent-ai"
+github_repo_name: "eigent"
+github_commit_hash: "main"
+
+
+

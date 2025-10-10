@@ -9,7 +9,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 import weakref
-from loguru import logger
+import traceroot
+
+logger = traceroot.get_logger("task_service")
 
 
 class Action(str, Enum):
