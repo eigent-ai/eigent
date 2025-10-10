@@ -15,9 +15,8 @@ from app.service.task import (
 )
 import asyncio
 from app.component.environment import set_user_env_path
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
-# traceroot logger for task controller
 logger = traceroot.get_logger("task_controller")
 
 

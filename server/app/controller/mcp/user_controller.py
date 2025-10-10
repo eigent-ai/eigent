@@ -9,7 +9,7 @@ from app.model.mcp.mcp_user import McpUser, McpUserIn, McpUserOut, McpUserUpdate
 from app.model.mcp.mcp import Mcp
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("server_mcp_user_controller")
 

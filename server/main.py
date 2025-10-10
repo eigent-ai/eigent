@@ -1,34 +1,20 @@
 import os
-import sys
-from pathlib import Path
 from dotenv import load_dotenv
-
-# Add project root to path for shared utils
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-
-# Initialize TraceRoot before other imports
-from utils import traceroot_wrapper as traceroot
-
-if traceroot.is_enabled():
-    import traceroot as tr
-    tr.init()
-    from traceroot.integrations.fastapi import connect_fastapi
-
+import traceroot
 from app import api
 from app.component.environment import auto_include_routers, env
 from fastapi.staticfiles import StaticFiles
 
-# Connect FastAPI to TraceRoot if enabled
-if traceroot.is_enabled():
-    connect_fastapi(api)
+load_dotenv()
+traceroot.init()
+from traceroot.integrations.fastapi import connect_fastapi
+connect_fastapi(api)
 
 logger = traceroot.get_logger("server_main")
 
 prefix = env("url_prefix", "")
 auto_include_routers(api, prefix, "app/controller")
 public_dir = os.environ.get("PUBLIC_DIR") or os.path.join(os.path.dirname(__file__), "app", "public")
-# Ensure static directory exists or gracefully skip mounting
 if not os.path.isdir(public_dir):
     try:
         os.makedirs(public_dir, exist_ok=True)

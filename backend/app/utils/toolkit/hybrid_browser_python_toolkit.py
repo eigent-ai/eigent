@@ -17,7 +17,7 @@ from app.exception.exception import ProgramException
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("hybrid_browser_python_toolkit")
 

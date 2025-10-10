@@ -6,7 +6,7 @@ from fastapi_babel import _
 from sqlmodel import Session, select, desc
 from app.component.auth import Auth, auth_must
 from app.component.database import session
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("server_chat_history")
 

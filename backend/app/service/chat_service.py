@@ -39,7 +39,7 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("chat_service")
 

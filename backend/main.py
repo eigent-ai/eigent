@@ -3,25 +3,19 @@ import pathlib
 import signal
 import asyncio
 import atexit
-import sys
+
 from dotenv import load_dotenv
 
-# Add project root to path for shared utils
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
-# Initialize TraceRoot before other imports
-from utils import traceroot_wrapper as traceroot
-
-if traceroot.is_enabled():
-    import traceroot as tr
-    tr.init()
-    from traceroot.integrations.fastapi import connect_fastapi
-    
+# 1) Load env and init traceroot BEFORE importing modules that get a logger
+load_dotenv()
+import traceroot
+from traceroot.integrations.fastapi import connect_fastapi
 from app import api
-from app.component.environment import auto_include_routers, env
+traceroot.init()
+connect_fastapi(api)
 
-# Connect FastAPI to TraceRoot if enabled
-if traceroot.is_enabled():
-    connect_fastapi(api)
+# 2) Now safe to import modules that use traceroot.get_logger() at import-time
+from app.component.environment import auto_include_routers, env
 
 
 os.environ["PYTHONIOENCODING"] = "utf-8"

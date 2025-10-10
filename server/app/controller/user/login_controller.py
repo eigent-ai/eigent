@@ -9,7 +9,7 @@ from app.component.stack_auth import StackAuth
 from app.exception.exception import UserException
 from app.model.user.user import LoginByPasswordIn, LoginResponse, Status, User, RegisterIn
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("server_login_controller")
 
@@ -26,9 +26,7 @@ async def by_password(data: LoginByPasswordIn, session: Session = Depends(sessio
     logger.info(f"Login attempt for email: {data.email}")
     user = User.by(User.email == data.email, s=session).one_or_none()
     if not user or not password_verify(data.password, user.password):
-        logger.warning(f"Failed login attempt for email: {data.email}")
         raise UserException(code.password, _("Account or password error"))
-    logger.info(f"Successful login for user: {user.id}")
     return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
 
 

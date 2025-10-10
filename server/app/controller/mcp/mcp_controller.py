@@ -13,7 +13,7 @@ from app.model.mcp.mcp_env import McpEnv, Status as McpEnvStatus
 from app.model.mcp.mcp_user import McpImportType, McpUser, Status
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("server_mcp_controller")
 

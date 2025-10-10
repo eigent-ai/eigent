@@ -5,7 +5,7 @@ import os
 import json
 from app.service.chat_service import Chat
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("sync_step")
 

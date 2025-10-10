@@ -8,7 +8,7 @@ from app.component import code
 from app.exception.exception import NoPermissionException, ProgramException, TokenException
 from app.component.pydantic.i18n import trans, get_language
 from app.exception.exception import UserException
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("exception_handler")
 

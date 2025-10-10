@@ -22,7 +22,7 @@ from app.service.task import (
     get_task_lock,
 )
 from app.utils.single_agent_worker import SingleAgentWorker
-from utils import traceroot_wrapper as traceroot
+import traceroot
 
 logger = traceroot.get_logger("workforce")
 
