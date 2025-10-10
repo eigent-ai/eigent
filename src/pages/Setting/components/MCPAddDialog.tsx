@@ -1,6 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Laptop, CloudCog, X, ArrowRight } from "lucide-react";
+ 
 import MonacoEditor from "@monaco-editor/react";
 import loader from "@monaco-editor/loader";
 import * as monaco from "monaco-editor";
@@ -10,9 +8,7 @@ import {
 	DialogContent,
 	DialogHeader,
 	DialogFooter,
-	DialogTitle,
-	DialogDescription,
-	DialogClose,
+	DialogContentSection,
 } from "@/components/ui/dialog";
 import { useTranslation } from "react-i18next";
 
@@ -99,29 +95,24 @@ export default function MCPAddDialog({
 				if (!v) onClose();
 			}}
 		>
-			<DialogContent className="min-w-[340px] w-[600px] max-w-[95vw] p-0">
-				<DialogHeader className=" bg-gray-100 rounded-t-xl px-6 ">
-					<DialogTitle className="font-bold text-lg text-gray-800 ">
-						{t("setting.add-your-agent")}
-					</DialogTitle>
-				</DialogHeader>
-				<div className="px-md py-md bg-white-100% rounded-b-xl">
-					<div className="mb-4 text-sm text-gray-600 rounded-xl">
+			<DialogContent size="lg" showCloseButton onClose={onClose} className="p-0">
+				<DialogHeader title={t("setting.add-your-agent")} />
+				<DialogContentSection>
+					<div className="mb-4 text-body-sm text-text-label">
 						{t("setting.add-a-local-mcp-server-by-providing-a-valid-json-configuration")}
 						<a
 							href="https://modelcontextprotocol.io/docs/getting-started/intro"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-blue-600 underline"
+							className="text-text-information underline"
 						>
 							{t("setting.learn-more")}
 						</a>
 					</div>
 					{jsonError && (
-						<div className="mb-2 text-red-500 text-xs">{jsonError}</div>
+						<div className="mb-2 text-text-cuation text-label-md">{jsonError}</div>
 					)}
-					<div className="mb-4">
-						<div className="rounded-xl overflow-hidden border border-gray-200">
+						<div className="rounded-xl overflow-hidden border border-border-primary">
 							<MonacoEditor
 								height="300px"
 								width="100%"
@@ -140,19 +131,13 @@ export default function MCPAddDialog({
 								}}
 							/>
 						</div>
-					</div>
-					<DialogFooter className="flex justify-end gap-2 mt-2 rounded-b-xl pt-sm">
-						<Button
-							onClick={onInstall}
-							disabled={installing}
-							variant="primary"
-							size="sm"
-						>
-							{installing ? t("setting.installing") : t("setting.install")}
-							<ArrowRight className="w-4 h-4" />
-						</Button>
-					</DialogFooter>
-				</div>
+				</DialogContentSection>
+				<DialogFooter
+					showConfirmButton
+					confirmButtonText={installing ? t("setting.installing") : t("setting.install")}
+					onConfirm={onInstall}
+					confirmButtonVariant="primary"
+				/>
 			</DialogContent>
 		</Dialog>
 	);

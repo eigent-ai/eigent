@@ -21,6 +21,7 @@ import githubIcon from "@/assets/github.svg";
 import { useAuthStore } from "@/store/authStore";
 import SearchInput from "@/components/SearchInput";
 import { useTranslation } from "react-i18next";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 interface MCPItem {
 	id: number;
 	name: string;
@@ -69,7 +70,12 @@ const svgIcons = import.meta.glob("@/assets/mcp/*.svg", {
 	import: "default",
 });
 
-export default function MCPMarket({ onBack }: { onBack?: () => void }) {
+type MCPMarketProps = {
+	onBack?: () => void;
+	keyword?: string;
+};
+
+export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarketProps) {
 	const { t } = useTranslation();
 	const { checkAgentTool } = useAuthStore();
 	const [items, setItems] = useState<MCPItem[]>([]);
@@ -78,7 +84,8 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 	const [page, setPage] = useState(1);
 	const [hasMore, setHasMore] = useState(true);
 	const [keyword, setKeyword] = useState("");
-	const debouncedKeyword = useDebounce(keyword, 400);
+	const effectiveKeyword = externalKeyword !== undefined ? externalKeyword : keyword;
+	const debouncedKeyword = useDebounce(effectiveKeyword, 400);
 	const loader = useRef<HTMLDivElement | null>(null);
 	const [installing, setInstalling] = useState<{ [id: number]: boolean }>({});
 	const [installed, setInstalled] = useState<{ [id: number]: boolean }>({});
@@ -92,6 +99,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 	const [activeMcp, setActiveMcp] = useState<MCPItem | null>(null);
 
 	const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+	const effectiveCategoryId = categoryId;
 	const [userInstallMcp, setUserInstallMcp] = useState<any | undefined>([]);
 	// get installed MCP list
 	useEffect(() => {
@@ -150,12 +158,12 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 
 	useEffect(() => {
 		setPage(1);
-		loadData(1, debouncedKeyword, categoryId);
+		loadData(1, debouncedKeyword, effectiveCategoryId);
 		// eslint-disable-next-line
-	}, [debouncedKeyword, categoryId]);
+	}, [debouncedKeyword, effectiveCategoryId]);
 
 	useEffect(() => {
-		if (page > 1) loadData(page, debouncedKeyword, categoryId);
+		if (page > 1) loadData(page, debouncedKeyword, effectiveCategoryId);
 		// eslint-disable-next-line
 	}, [page]);
 
@@ -253,91 +261,57 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 	};
 	return (
 		<div className="h-full flex flex-col items-center ">
-			{/* MCP Market top panel sticky */}
-			<div
-				className="text-body flex items-center justify-between sticky top-0 z-[20]  backdrop-blur border-b py-2 mb-0 w-full max-w-4xl"
-				style={{ left: 0, right: 0 }}
-			>
-				<div className="flex items-center gap-2">
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={handleBack}
-						className="mr-2"
-					>
-						<ChevronLeft className="w-6 h-6 bg-button-transparent-fill-default/0 rounded-md" />
-					</Button>
-					<span className="text-base font-bold leading-12 text-text-primary">
-						{t("setting.mcp-market")}
-					</span>
-				</div>
-				<div className="flex items-center gap-2 bg-white-100%">
-					<Select
-						value={categoryId ? String(categoryId) : ""}
-						onValueChange={(val) =>
-							setCategoryId(val ? Number(val) : undefined)
-						}
-					>
-						<SelectTrigger className="min-w-[107px] h-6">
-							<SelectValue placeholder={t("setting.all")} />
-						</SelectTrigger>
-						<SelectContent className="bg-white-100% px-2 py-1 rounded overflow-hidden">
-							<SelectItem
-								value="all"
-								className="leading-none text-xs font-bold text-button-tertiery-text-default"
-							>
-								<span>{t("setting.all")}</span>
-							</SelectItem>
-							{mcpCategory.map((cat) => {
-								const iconKey = categoryIconMap[cat.name];
-								const iconUrl = iconKey
-									? (svgIcons[`/src/assets/mcp/${iconKey}.svg`] as string)
-									: "";
-								return (
-									<SelectItem key={cat.id} value={String(cat.id)}>
-										<span
-											style={{ display: "inline-flex", alignItems: "center" }}
-										>
-											{iconUrl && (
-												<img
-													src={iconUrl}
-													alt={cat.name}
-													style={{
-														width: 16,
-														height: 16,
-														marginRight: 6,
-														display: "inline-block",
-														verticalAlign: "middle",
-													}}
-												/>
-											)}
-											{cat.name}
-										</span>
-									</SelectItem>
-								);
-							})}
-						</SelectContent>
-					</Select>
-				</div>
-			</div>
-			{/* search mcp input sticky */}
-			<div className="sticky top-[48px] z-[19] w-full max-w-4xl bg-white/80 backdrop-blur border-b py-2 mb-2">
-				<div className="flex items-center gap-2 px-2">
-					<SearchInput
-						value={keyword}
-						onChange={(e) => setKeyword(e.target.value)}
-					></SearchInput>
-				</div>
+	  {externalKeyword === undefined && (
+				<>
+					<div className="text-body flex items-center justify-between sticky top-0 z-[20] py-2 mb-0 w-full max-w-4xl">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={handleBack}
+							className="mr-2"
+						>
+							<ChevronLeft className="w-6 h-6" />
+						</Button>
+						<span className="text-base font-bold leading-12 text-text-primary">
+							{t("setting.mcp-market")}
+						</span>
+					</div>
+					<div className="w-40 max-w-4xl">
+							<SearchInput
+								value={keyword}
+								onChange={(e) => setKeyword(e.target.value)}
+							/>	
+					</div>
+				</>
+		  )}
+
+			{/* Category toggle row */}
+			<div className="w-full flex py-2">
+				<ToggleGroup
+					type="single"
+					value={categoryId ? String(categoryId) : "all"}
+					onValueChange={(val) => setCategoryId(!val || val === "all" ? undefined : Number(val))}
+					className="flex flex-wrap"
+				>
+					<ToggleGroupItem value="all">
+						{t("setting.all")}
+					</ToggleGroupItem>
+					{mcpCategory.map((cat) => (
+						<ToggleGroupItem key={cat.id} value={String(cat.id)}>
+							{cat.name}
+						</ToggleGroupItem>
+					))}
+				</ToggleGroup>
 			</div>
 
-			{/* list */}
+	    {/* list */}
 			<MCPEnvDialog
 				showEnvConfig={showEnvConfig}
 				onClose={onClose}
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			<div className="space-y-md w-full max-w-4xl overflow-y-auto scrollbar">
+			<div className="flex flex-col gap-4 w-full pt-4">
 				{isLoading && items.length === 0 && (
 					<div className="text-center py-8 text-gray-400">{t("setting.loading")}</div>
 				)}
@@ -348,7 +322,7 @@ export default function MCPMarket({ onBack }: { onBack?: () => void }) {
 				{items.map((item) => (
 					<div
 						key={item.id}
-						className="p-4 bg-bg-surface-tertiary rounded-2xl flex items-center"
+						className="p-4 bg-surface-secondary rounded-2xl flex items-center"
 					>
 						{/* Left: Icon */}
 						<div className="flex items-center mr-4">

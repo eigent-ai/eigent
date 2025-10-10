@@ -74,20 +74,20 @@ export default function MCPListItem({
                       setShowMenu(false);
                     }}
 									>
-										<Settings className="w-4 h-4 mr-2 text-gray-500" /> {t("setting.setting")}
+										<Settings className="w-4 h-4" /> {t("setting.setting")}
 									</Button>
 								</PopoverClose>
 								<PopoverClose asChild>
 									<Button
 										variant="ghost"
 										size="sm"
-										className="w-full"
+										className="w-full !text-text-cuation"
 										onClick={() => {
 											onDelete(item);
 											setShowMenu(false);
 										}}
 									>
-										<Trash2 className="w-4 h-4 mr-2" /> {t("setting.delete")}
+										<Trash2 className="w-4 h-4" /> {t("setting.delete")}
 									</Button>
 								</PopoverClose>
 							</div>
