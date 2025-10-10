@@ -396,7 +396,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									tasks[currentId].isTakeControl;
 								
 								if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
-									handleConfirmTask(project_id, currentId);
+									handleConfirmTask(project_id, currentId, type);
 								}
 								setIsTaskEdit(currentId, false);
 							}, 30000);
@@ -1490,9 +1490,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					task: taskInfo,
 				});
 				await fetchPost(`/task/${project_id}/start`, {});
+				
+				setActiveWorkSpace(taskId, 'workflow')
+				setStatus(taskId, 'running')
 			}
-			setActiveWorkSpace(taskId, 'workflow')
-			setStatus(taskId, 'running')
 			let messages = [...tasks[taskId].messages]
 			const cardTaskIndex = messages.findLastIndex((message) => message.step === 'to_sub_tasks')
 			if (cardTaskIndex !== -1) {
