@@ -1,8 +1,8 @@
 import asyncio
 from functools import wraps
-from inspect import iscoroutinefunction
+from inspect import iscoroutinefunction, getmembers, ismethod, signature
 import json
-from typing import Any, Callable
+from typing import Any, Callable, Type, TypeVar
 
 from loguru import logger
 from app.service.task import (
@@ -176,3 +176,52 @@ def listen_toolkit(
             return sync_wrapper
 
     return decorator
+
+
+T = TypeVar('T')
+
+
+def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type[T]]:
+    """
+    Class decorator that automatically wraps all public methods from the base toolkit
+    with the @listen_toolkit decorator.
+    
+    Usage:
+        @auto_listen_toolkit(BaseNoteTakingToolkit)
+        class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
+            agent_name: str = Agents.document_agent
+    """
+    def class_decorator(cls: Type[T]) -> Type[T]:
+        base_methods = {}
+        for name, method in getmembers(base_toolkit_class, predicate=ismethod):
+            if not name.startswith('_'):
+                base_methods[name] = method
+                
+        for method_name, base_method in base_methods.items():
+            if method_name in cls.__dict__:
+                continue
+                
+            sig = signature(base_method)
+            
+            def create_wrapper(method_name: str, base_method: Callable) -> Callable:
+                if iscoroutinefunction(base_method):
+                    async def async_method_wrapper(self, *args, **kwargs):
+                        return await getattr(super(cls, self), method_name)(*args, **kwargs)
+                    async_method_wrapper.__name__ = method_name
+                    async_method_wrapper.__signature__ = sig
+                    return async_method_wrapper
+                else:
+                    def sync_method_wrapper(self, *args, **kwargs):
+                        return getattr(super(cls, self), method_name)(*args, **kwargs)
+                    sync_method_wrapper.__name__ = method_name
+                    sync_method_wrapper.__signature__ = sig
+                    return sync_method_wrapper
+            
+            wrapper = create_wrapper(method_name, base_method)
+            decorated_method = listen_toolkit(base_method)(wrapper)
+            
+            setattr(cls, method_name, decorated_method)
+            
+        return cls
+    
+    return class_decorator
