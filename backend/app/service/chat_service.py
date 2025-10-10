@@ -39,12 +39,13 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
-from app.utils import traceroot_wrapper as traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("chat_service")
 
 
 @sync_step
+@traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # if True:
     #     import faulthandler
@@ -57,6 +58,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     question_agent = question_confirm_agent(options)
     camel_task = None
     workforce = None
+    logger.info(f"Starting step_solve for task_id: {options.task_id}, user: {options.email}")
+    logger.debug(f"Step solve options: {options.model_dump_json()}")
     while True:
         if await request.is_disconnected():
             logger.warning(f"Client disconnected for task {options.task_id}")
@@ -74,7 +77,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             item = await task_lock.get_queue()
             # logger.info(f"item: {dump_class(item)}")
         except Exception as e:
-            logger.error(f"Error getting item from queue: {e}")
+            logger.error(f"Error getting item from queue for task {options.task_id}: {e}", exc_info=True)
+            logger.debug(f"Task lock: {task_lock.model_dump_json()}")
             break
 
         try:
@@ -212,26 +216,34 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 logger.warning(f"Unknown action: {item.action}")
         except ModelProcessingError as e:
             if "Budget has been exceeded" in str(e):
+                logger.warning(f"Budget exceeded for task {options.task_id}, action: {item.action}")
                 # workforce decompose task don't use ListenAgent, this need return sse
                 if "workforce" in locals() and workforce is not None:
                     workforce.pause()
                 yield sse_json(Action.budget_not_enough, {"message": "budget not enouth"})
             else:
-                logger.error(f"Error processing action {item.action}: {e}")
+                logger.error(f"ModelProcessingError for task {options.task_id}, action {item.action}: {e}", exc_info=True)
                 yield sse_json("error", {"message": str(e)})
                 if "workforce" in locals() and workforce is not None and workforce._running:
                     workforce.stop()
         except Exception as e:
-            logger.error(f"Error processing action {item.action}: {e}")
+            logger.error(f"Unhandled exception for task {options.task_id}, action {item.action}: {e}", exc_info=True)
             yield sse_json("error", {"message": str(e)})
             # Continue processing other items instead of breaking
 
 
+@traceroot.trace()
 async def install_mcp(
     mcp: ListenChatAgent,
     install_mcp: ActionInstallMcpData,
 ):
-    mcp.add_tools(await get_mcp_tools(install_mcp.data))
+    logger.info(f"Installing MCP tools: {list(install_mcp.data.get('mcpServers', {}).keys())}")
+    try:
+        mcp.add_tools(await get_mcp_tools(install_mcp.data))
+        logger.info("MCP tools installed successfully")
+    except Exception as e:
+        logger.error(f"Error installing MCP tools: {e}", exc_info=True)
+        raise
 
 
 def to_sub_tasks(task: Task, summary_task_content: str):
@@ -289,6 +301,7 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
+@traceroot.trace()
 async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal[True]:
     prompt = f"""
 > **Your Role:** You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action.
@@ -305,14 +318,22 @@ async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal
 >     * **For a Simple Query:** Provide a direct and helpful response.
 >     * **For a Complex Task:** Your *only* response should be "yes". This will trigger a specialized workforce to handle the task. Do not include any other text, punctuation, or pleasantries.
         """
-    resp = agent.step(prompt)
-    logger.info(f"resp: {agent.chat_history}")
-    if resp.msgs[0].content.lower() != "yes":
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content})
-    else:
-        return True
+    logger.debug(f"Question confirmation prompt: {prompt}")
+    try:
+        resp = agent.step(prompt)
+        logger.info(f"Question confirmation response: {resp.msgs[0].content}")
+        if resp.msgs[0].content.lower() != "yes":
+            logger.info("Question requires user confirmation")
+            return sse_json("wait_confirm", {"content": resp.msgs[0].content})
+        else:
+            logger.info("Question confirmed, proceeding with complex task")
+            return True
+    except Exception as e:
+        logger.error(f"Error in question_confirm: {e}", exc_info=True)
+        raise
 
 
+@traceroot.trace()
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
     prompt = f"""The user's task is:
 ---
@@ -326,13 +347,22 @@ Your instructions are:
 Example format: "Task Name|This is the summary of the task."
 Do not include any other text or formatting.
 """
-    res = agent.step(prompt)
-    logger.info(f"summary_task: {res.msgs[0].content}")
-    return res.msgs[0].content
+    logger.debug(f"Generating task summary for task_id: {task.id}")
+    try:
+        res = agent.step(prompt)
+        summary = res.msgs[0].content
+        logger.info(f"Task summary generated: {summary}")
+        return summary
+    except Exception as e:
+        logger.error(f"Error generating task summary: {e}", exc_info=True)
+        raise
 
 
+@traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
+    logger.info(f"Constructing workforce for task_id: {options.task_id}")
     working_directory = options.file_save_path()
+    logger.debug(f"Working directory: {working_directory}")
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -483,7 +513,10 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
+@traceroot.trace()
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
+    logger.info(f"Creating new agent: {data.name} for task_id: {options.task_id}")
+    logger.debug(f"New agent data: {data.model_dump_json()}")
     working_directory = options.file_save_path()
     tool_names = []
     tools = [*await get_toolkits(data.tools, data.name, options.task_id)]
@@ -494,7 +527,8 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
         for item in data.mcp_tools["mcpServers"].keys():
             tool_names.append(titleize(item))
     for item in tools:
-        logger.debug(f"new agent function tool  ====== {item.func.__name__}")
+        logger.debug(f"Agent {data.name} tool: {item.func.__name__}")
+    logger.info(f"Agent {data.name} created with {len(tools)} tools: {tool_names}")
     # Enhanced system message with platform information
     enhanced_description = f"""{data.description}
 - You are now working in system {platform.system()} with architecture

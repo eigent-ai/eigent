@@ -5,7 +5,7 @@ import re
 from typing import Literal
 from pydantic import BaseModel, field_validator
 from camel.types import ModelType, RoleType
-from app.utils import traceroot_wrapper as traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("chat_model")
 

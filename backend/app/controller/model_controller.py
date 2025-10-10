@@ -3,6 +3,9 @@ from pydantic import BaseModel, Field
 from app.component.model_validation import create_agent
 from camel.types import ModelType
 from app.component.error_format import normalize_error_to_openai_format
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("model_controller")
 
 
 router = APIRouter(tags=["model"])
@@ -26,10 +29,13 @@ class ValidateModelResponse(BaseModel):
 
 
 @router.post("/model/validate")
+@traceroot.trace()
 async def validate_model(request: ValidateModelRequest):
+    logger.info(f"Validating model: {request.model_platform}/{request.model_type}")
     try:
         # API key validation
         if request.api_key is not None and str(request.api_key).strip() == "":
+            logger.warning(f"Invalid API key for model {request.model_platform}/{request.model_type}")
             return ValidateModelResponse(
                 is_valid=False,
                 is_tool_calls=False,
@@ -63,6 +69,7 @@ async def validate_model(request: ValidateModelRequest):
         )
     except Exception as e:
         # Normalize error to OpenAI-style error structure
+        logger.error(f"Model validation failed for {request.model_platform}/{request.model_type}: {e}", exc_info=True)
         message, error_code, error_obj = normalize_error_to_openai_format(e)
 
         return ValidateModelResponse(
@@ -83,7 +90,7 @@ async def validate_model(request: ValidateModelRequest):
                 == "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
             )
 
-    return ValidateModelResponse(
+    result = ValidateModelResponse(
         is_valid=is_valid,
         is_tool_calls=is_tool_calls,
         message="Validation Success"
@@ -92,3 +99,5 @@ async def validate_model(request: ValidateModelRequest):
         error_code=None,
         error=None,
     )
+    logger.info(f"Model validation result for {request.model_platform}/{request.model_type}: valid={is_valid}, tool_calls={is_tool_calls}")
+    return result

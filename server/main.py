@@ -1,8 +1,27 @@
+import os
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Add project root to path for shared utils
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+# Initialize TraceRoot before other imports
+from utils import traceroot_wrapper as traceroot
+
+if traceroot.is_enabled():
+    import traceroot as tr
+    tr.init()
+    from traceroot.integrations.fastapi import connect_fastapi
+
 from app import api
 from app.component.environment import auto_include_routers, env
-import os
 from fastapi.staticfiles import StaticFiles
-from app.utils import traceroot_wrapper as traceroot
+
+# Connect FastAPI to TraceRoot if enabled
+if traceroot.is_enabled():
+    connect_fastapi(api)
 
 logger = traceroot.get_logger("server_main")
 

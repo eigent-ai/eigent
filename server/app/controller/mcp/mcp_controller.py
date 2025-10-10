@@ -13,7 +13,7 @@ from app.model.mcp.mcp_env import McpEnv, Status as McpEnvStatus
 from app.model.mcp.mcp_user import McpImportType, McpUser, Status
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
-from app.utils import traceroot_wrapper as traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("server_mcp_controller")
 
@@ -67,6 +67,7 @@ async def pre_instantiate_mcp_toolkit(config_dict: dict) -> bool:
 
 
 @router.get("/mcps", name="mcp list")
+@traceroot.trace()
 async def gets(
     keyword: str | None = None,
     category_id: int | None = None,
@@ -74,6 +75,7 @@ async def gets(
     session: Session = Depends(session),
     auth: Auth = Depends(auth_must),
 ) -> Page[McpOut]:
+    logger.info(f"Listing MCPs for user {auth.user.id}, keyword: {keyword}, category: {category_id}, mine: {mine}")
     stmt = (
         select(Mcp)
         .where(Mcp.no_delete())
@@ -97,23 +99,32 @@ async def gets(
                 with_loader_criteria(McpUser, col(McpUser.user_id) == auth.user.id),
             )
         )
-    return paginate(session, stmt)
+    result = paginate(session, stmt)
+    logger.debug(f"Found {result.total if hasattr(result, 'total') else 'N/A'} MCPs")
+    return result
 
 
 @router.get("/mcp", name="mcp detail", response_model=McpOut)
+@traceroot.trace()
 async def get(id: int, session: Session = Depends(session)):
+    logger.info(f"Getting MCP detail for id: {id}")
     stmt = select(Mcp).where(Mcp.no_delete(), Mcp.id == id).options(selectinload(Mcp.category), selectinload(Mcp.envs))
     model = session.exec(stmt).one()
+    logger.debug(f"MCP found: {model.key}")
     return model
 
 
 @router.post("/mcp/install", name="mcp install")
+@traceroot.trace()
 async def install(mcp_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
+    logger.info(f"Installing MCP {mcp_id} for user {auth.user.id}")
     mcp = session.get_one(Mcp, mcp_id)
     if not mcp:
+        logger.warning(f"MCP not found: {mcp_id}")
         raise HTTPException(status_code=404, detail=_("Mcp not found"))
     exists = session.exec(select(McpUser).where(McpUser.mcp_id == mcp.id, McpUser.user_id == auth.user.id)).first()
     if exists:
+        logger.warning(f"MCP {mcp.key} already installed for user {auth.user.id}")
         raise HTTPException(status_code=400, detail=_("mcp is installed"))
 
     install_command: dict = mcp.install_command
@@ -126,11 +137,14 @@ async def install(mcp_id: int, session: Session = Depends(session), auth: Auth =
     }
 
     try:
+        logger.debug(f"Pre-instantiating MCP toolkit for {mcp.key}")
         success = await pre_instantiate_mcp_toolkit(config_dict)
         if not success:
             logger.warning(f"Pre-instantiation failed for MCP {mcp.key}, but continuing with installation")
+        else:
+            logger.info(f"MCP toolkit pre-instantiated successfully for {mcp.key}")
     except Exception as e:
-        logger.warning(f"Exception during pre-instantiation for MCP {mcp.key}: {e}")
+        logger.error(f"Exception during pre-instantiation for MCP {mcp.key}: {e}", exc_info=True)
 
     mcp_user = McpUser(
         mcp_id=mcp.id,
@@ -146,14 +160,16 @@ async def install(mcp_id: int, session: Session = Depends(session), auth: Auth =
         server_url=None,
     )
     mcp_user.save()
+    logger.info(f"MCP {mcp.key} installed successfully for user {auth.user.id}")
     return mcp_user
 
 
 @router.post("/mcp/import/{mcp_type}", name="mcp import")
+@traceroot.trace()
 async def import_mcp(
     mcp_type: McpImportType, mcp_data: dict, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
-    logger.debug(mcp_type, mcp_type.value)
+    logger.info(f"Importing MCP, type: {mcp_type.value}, user: {auth.user.id}")
 
     if mcp_type == McpImportType.Local:
         is_valid, res = validate_mcp_servers(mcp_data)
@@ -194,6 +210,7 @@ async def import_mcp(
                 server_url=None,
             )
             mcp_user.save()
+        logger.info(f"Imported {len(mcp_data)} local MCP servers for user {auth.user.id}")
         return {"message": "Local MCP servers imported successfully", "count": len(mcp_data)}
     elif mcp_type == McpImportType.Remote:
         is_valid, res = validate_mcp_remote_servers(mcp_data)
@@ -213,4 +230,5 @@ async def import_mcp(
             server_url=data.server_url,
         )
         mcp_user.save()
+        logger.info(f"Imported remote MCP server {data.server_name} for user {auth.user.id}")
         return mcp_user
