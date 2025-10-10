@@ -54,6 +54,7 @@ interface ProjectStore {
 	// Utility methods
 	getAllProjects: () => Project[];
 	getProjectById: (projectId: string) => Project | null;
+	getProjectTotalTokens: (projectId: string) => number;
 }
 
 
@@ -243,7 +244,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	 * @returns {taskId, chatStore} | null
 	 */
 	appendInitChatStore: (projectId: string, customTaskId?:string, chatName?: string) => {
-		const { projects, createChatStore, getChatStore, setActiveChatStore } = get();
+		const { projects, createChatStore, getChatStore, setActiveChatStore, getProjectTotalTokens } = get();
 
 		if (!projectId) {
 			console.warn("No active project found to appendNewChatStore");
@@ -254,6 +255,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			console.warn(`Project ${projectId} not found`);
 			return null;
 		}
+		
+		// Calculate total tokens across all chat stores in the project
+		const totalProjectTokens = getProjectTotalTokens(projectId);
 		
 		// Create new chat store & append in the current project
 		const newChatId = createChatStore(projectId, chatName);
@@ -273,6 +277,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
 		// Create a new task in the new chat store with the queued content
 		const newTaskId = newChatStore.getState().create(customTaskId);
+
+		// Accumulate project tokens
+		newChatStore.getState().addTokens(newTaskId, totalProjectTokens);
 
 		//Set the initTask as the active taskId
 		newChatStore.getState().setActiveTaskId(newTaskId);
@@ -689,6 +696,33 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 		
 		return project;
+	},
+
+	getProjectTotalTokens: (projectId: string) => {
+		const { projects } = get();
+		const project = projects[projectId];
+		
+		if (!project) {
+			console.warn(`Project ${projectId} not found for token calculation`);
+			return 0;
+		}
+		
+		let totalTokens = 0;
+		
+		// Iterate through all chat stores in the project
+		Object.values(project.chatStores).forEach(chatStore => {
+			if (chatStore && chatStore.getState) {
+				const chatState = chatStore.getState();
+				// Iterate through all tasks in the chat store
+				Object.values(chatState.tasks).forEach(task => {
+					if (task && typeof task.tokens === 'number') {
+						totalTokens += task.tokens;
+					}
+				});
+			}
+		});
+		
+		return totalTokens;
 	}
 }));
 
