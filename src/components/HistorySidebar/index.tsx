@@ -299,7 +299,8 @@ export default function HistorySidebar() {
 																	/>
 																</div>
 																<div className="text-left text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis break-words line-clamp-3">
-																	{task?.messages[0]?.content || t("task-hub.new-project")}
+																	{task?.messages?.[0]?.content ||
+																		t("task-hub.new-project")}
 																</div>
 																<div className="w-full">
 																	<Progress
@@ -398,13 +399,13 @@ export default function HistorySidebar() {
 															<Tooltip>
 																<TooltipTrigger asChild>
 																	<span>
-																		{task?.messages[0]?.content ||
+																		{task?.messages?.[0]?.content ||
 																			t("task-hub.new-project")}
 																	</span>
 																</TooltipTrigger>
 																<TooltipContent className="w-[200px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto !fixed ">
 																	<p>
-																		{task?.messages[0]?.content ||
+																		{task?.messages?.[0]?.content ||
 																			t("task-hub.new-project")}
 																	</p>
 																</TooltipContent>
@@ -449,7 +450,7 @@ export default function HistorySidebar() {
 												<div className="flex justify-start items-center flex-wrap gap-2 ">
 													{historyTasks
 														.filter((task) =>
-															task.question
+															task?.question
 																?.toLowerCase()
 																.includes(searchValue.toLowerCase())
 														)
@@ -457,11 +458,14 @@ export default function HistorySidebar() {
 															return (
 																<div
 																	onClick={() =>
-																		handleSetActive(task.task_id, task.question)
+																		handleSetActive(
+																			task?.task_id,
+																			task?.question
+																		)
 																	}
 																	key={task.task_id}
 																	className={`${
-																		chatStore.activeTaskId === task.task_id
+																		chatStore.activeTaskId === task?.task_id
 																			? "!bg-white-100%"
 																			: ""
 																	} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl w-[316px] h-[180px] p-6 shadow-history-item`}
@@ -475,16 +479,16 @@ export default function HistorySidebar() {
 																			alt="folder-icon"
 																		/>
 																		<Tag variant="primary">
-																			# Token {task.tokens || 0}
+																			# Token {task?.tokens || 0}
 																		</Tag>
 																	</div>
 
 																	<div className="text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-																		{task?.question.split("|")[0] ||
+																		{task?.question?.split("|")?.[0] ||
 																			t("task-hub.new-project")}
 																	</div>
 																	<div className="text-xs text-black leading-17  overflow-hidden text-ellipsis break-words line-clamp-2">
-																		{task?.question.split("|")[1] ||
+																		{task?.question?.split("|")?.[1] ||
 																			t("task-hub.new-project")}
 																	</div>
 																</div>
@@ -494,98 +498,111 @@ export default function HistorySidebar() {
 											) : (
 												// List
 												<div className=" flex flex-col justify-start items-center gap-4 ">
-												{historyTasks.map((task) => {
-													return (
-														<div
-															onClick={() => {
-																handleSetActive(task.task_id, task.question);
-															}}
-															key={task.task_id}
-															className={`${
-																chatStore.activeTaskId === task.task_id
-																	? "!bg-white-100%"
-																	: ""
-															} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
-														>
-															<img className="w-8 h-8" src={folderIcon} alt="folder-icon" />
-						
-															<div className="w-full text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<span>
-																			{" "}
-																			{task?.question.split("|")[0] || t("task-hub.new-project")}
-																		</span>
-																	</TooltipTrigger>
-																	<TooltipContent
-																		align="start"
-																		className="w-[800px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto"
-																	>
-																		<div>
-																			{" "}
-																			{task?.question.split("|")[0] || t("task-hub.new-project")}
-																		</div>
-																	</TooltipContent>
-																</Tooltip>
-															</div>
-															<Tag
-																variant="primary"
-																className="text-xs leading-17 font-medium text-nowrap"
+													{historyTasks.map((task) => {
+														return (
+															<div
+																onClick={() => {
+																	handleSetActive(
+																		task?.task_id,
+																		task?.question
+																	);
+																}}
+																key={task.task_id}
+																className={`${
+																	chatStore.activeTaskId === task?.task_id
+																		? "!bg-white-100%"
+																		: ""
+																} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
 															>
-																# Token {task.tokens || 0}
-															</Tag>
-						
-															<Popover>
-																<PopoverTrigger asChild>
-																	<Button
-																		size="icon"
-																		onClick={(e) => e.stopPropagation()}
-																		variant="ghost"
-																	>
-																		<Ellipsis size={16} className="text-text-primary" />
-																	</Button>
-																</PopoverTrigger>
-																<PopoverContent className=" w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
-																	<div className="space-y-1">
-																		<PopoverClose asChild>
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				className="w-full"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					handleShare(task.task_id);
-																				}}
-																			>
-																				<Share size={16} />
-																				{t("task-hub.share")}
-																			</Button>
-																		</PopoverClose>
-						
-																		<PopoverClose asChild>
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				className="w-full"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					handleDelete(task.id);
-																				}}
-																			>
-																				<Trash2
-																					size={16}
-																					className="text-icon-primary group-hover:text-icon-cuation"
-																				/>
-																				{t("task-hub.delete")}
-																			</Button>
-																		</PopoverClose>
-																	</div>
-																</PopoverContent>
-															</Popover>
-														</div>
-													);
-												})}
-											</div>
+																<img
+																	className="w-8 h-8"
+																	src={folderIcon}
+																	alt="folder-icon"
+																/>
+
+																<div className="w-full text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<span>
+																				{" "}
+																				{(task?.question &&
+																					task?.question?.split("|")?.[0]) ||
+																					t("task-hub.new-project")}
+																			</span>
+																		</TooltipTrigger>
+																		<TooltipContent
+																			align="start"
+																			className="w-[800px] bg-white-100% p-2 text-wrap break-words text-xs select-text pointer-events-auto"
+																		>
+																			<div>
+																				{" "}
+																				{task?.question?.split("|")?.[0] ||
+																					t("task-hub.new-project")}
+																			</div>
+																		</TooltipContent>
+																	</Tooltip>
+																</div>
+																<Tag
+																	variant="primary"
+																	className="text-xs leading-17 font-medium text-nowrap"
+																>
+																	# Token {task?.tokens || 0}
+																</Tag>
+
+																<Popover>
+																	<PopoverTrigger asChild>
+																		<Button
+																			size="icon"
+																			onClick={(e) => e.stopPropagation()}
+																			variant="ghost"
+																		>
+																			<Ellipsis
+																				size={16}
+																				className="text-text-primary"
+																			/>
+																		</Button>
+																	</PopoverTrigger>
+																	<PopoverContent className=" w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+																		<div className="space-y-1">
+																			<PopoverClose asChild>
+																				<Button
+																					variant="ghost"
+																					size="sm"
+																					className="w-full"
+																					onClick={(e) => {
+																						e.stopPropagation();
+																						handleShare(task?.task_id);
+																					}}
+																				>
+																					<Share size={16} />
+																					{t("task-hub.share")}
+																				</Button>
+																			</PopoverClose>
+
+																			<PopoverClose asChild>
+																				<Button
+																					variant="ghost"
+																					size="sm"
+																					className="w-full"
+																					onClick={(e) => {
+																						e.stopPropagation();
+																						handleDelete(task?.id);
+																					}}
+																				>
+																					<Trash2
+																						size={16}
+																						className="text-icon-primary group-hover:text-icon-cuation"
+																					/>
+																					{t("task-hub.delete")}
+																				</Button>
+																			</PopoverClose>
+																		</div>
+																	</PopoverContent>
+																</Popover>
+															</div>
+														);
+													})}
+												</div>
 											)}
 										</motion.div>
 									)}
