@@ -45,10 +45,68 @@ const preload = path.join(__dirname, '../preload/index.mjs');
 const indexHtml = path.join(RENDERER_DIST, 'index.html');
 const logPath = log.transports.file.getFile().path;
 
-// Set remote debugging port
-findAvailablePort(browser_port).then(port => {
+// Profile initialization promise
+let profileInitPromise: Promise<void>;
+
+// Set remote debugging port and profile
+profileInitPromise = findAvailablePort(browser_port).then(async port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
+  
+  // Set user data dir for browser profile persistence using port as index
+  const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
+  const sourceProfile = path.join(browserProfilesBase, 'profile_user_login');
+  const targetProfile = path.join(browserProfilesBase, `profile_${port}`);
+  
+  // Ensure profile_user_login exists (create empty if not)
+  if (!fs.existsSync(sourceProfile)) {
+    await fsp.mkdir(sourceProfile, { recursive: true });
+    log.info(`[PROJECT BROWSER] Created empty profile_user_login directory at ${sourceProfile}`);
+  }
+  
+  // Always copy/update profile_{port} from profile_user_login
+  try {
+    // Remove existing target profile to ensure fresh copy
+    if (fs.existsSync(targetProfile)) {
+      log.info(`[PROJECT BROWSER] Removing existing profile at ${targetProfile} for update`);
+      await fsp.rm(targetProfile, { recursive: true, force: true });
+    }
+    
+    // Copy from source profile
+    log.info(`[PROJECT BROWSER] Copying user profile from ${sourceProfile} to ${targetProfile}`);
+    await fsp.cp(sourceProfile, targetProfile, { recursive: true });
+    log.info(`[PROJECT BROWSER] Successfully copied user profile to ${targetProfile}`);
+    
+    // Verify the copy
+    const partitionPath = path.join(targetProfile, 'Partitions', 'user_login');
+    if (fs.existsSync(partitionPath)) {
+      const files = await fsp.readdir(partitionPath);
+      log.info(`[PROJECT BROWSER] Partition contains ${files.length} files`);
+      if (files.includes('Cookies')) {
+        const cookieStat = await fsp.stat(path.join(partitionPath, 'Cookies'));
+        log.info(`[PROJECT BROWSER] Cookies file size: ${cookieStat.size} bytes`);
+      }
+    }
+  } catch (error) {
+    log.error(`[PROJECT BROWSER] Failed to copy profile: ${error}`);
+    // Create empty directory if copy fails
+    try {
+      await fsp.mkdir(targetProfile, { recursive: true });
+      log.info(`[PROJECT BROWSER] Created empty profile directory as fallback`);
+    } catch (mkdirError) {
+      log.error(`[PROJECT BROWSER] Failed to create directory: ${mkdirError}`);
+    }
+  }
+  
+  // IMPORTANT: Set user-data-dir before app is ready
+  app.commandLine.appendSwitch('user-data-dir', targetProfile);
+  
+  // Also set Electron's paths
+  app.setPath('userData', targetProfile);
+  app.setPath('sessionData', targetProfile);
+  
+  log.info(`[PROJECT BROWSER STARTING] Chrome DevTools Protocol enabled on port ${port}`);
+  log.info(`[PROJECT BROWSER STARTING] User data directory: ${targetProfile}`);
 });
 
 // ==================== app config ====================
@@ -205,6 +263,21 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  
+  // ==================== restart app handler ====================
+  ipcMain.handle('restart-app', async () => {
+    log.info('[RESTART] Restarting app to apply user profile changes');
+    
+    // Clean up Python process first
+    await cleanupPythonProcess();
+    
+    // Schedule relaunch after a short delay
+    setTimeout(() => {
+      app.relaunch();
+      app.quit();
+    }, 100);
+  });
+  
   ipcMain.handle('restart-backend', async () => {
     try {
       if (backendPort) {
@@ -893,6 +966,10 @@ async function createWindow() {
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
 
+  log.info(`[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`);
+  log.info(`[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath('userData')}`);
+  log.info(`[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue('user-data-dir')}`);
+  
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -920,12 +997,14 @@ async function createWindow() {
 
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
-  webViewManager = new WebViewManager(win);
+  webViewManager = new WebViewManager(win, browser_port);
 
   // create multiple webviews
+  log.info(`[PROJECT BROWSER] Creating WebViews with partition: persist:user_login`);
   for (let i = 1; i <= 8; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
+  log.info('[PROJECT BROWSER] WebViewManager initialized with webviews');
 
   // ==================== set event listeners ====================
   setupWindowEventListeners();
@@ -1239,7 +1318,15 @@ const handleBeforeClose = () => {
 }
 
 // ==================== app event handle ====================
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Wait for profile initialization to complete
+  log.info('[MAIN] Waiting for profile initialization...');
+  try {
+    await profileInitPromise;
+    log.info('[MAIN] Profile initialization completed');
+  } catch (error) {
+    log.error('[MAIN] Profile initialization failed:', error);
+  }
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {

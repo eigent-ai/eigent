@@ -20,8 +20,11 @@ export class WebViewManager {
   private webViews = new Map<string, WebViewInfo>()
   private win: BrowserWindow | null = null
   private size: Size = { x: 0, y: 0, width: 0, height: 0 }
-  constructor(window: BrowserWindow) {
+  private browserPort: number
+  
+  constructor(window: BrowserWindow, browserPort: number = 9222) {
     this.win = window
+    this.browserPort = browserPort
   }
 
   // Remove automatic IPC handler registration from constructor
@@ -63,6 +66,7 @@ export class WebViewManager {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
+          partition: 'persist:user_login',  // 使用与 tool_controller.py 相同的 partition
         },
       })
       view.webContents.on('did-finish-load', () => {
