@@ -228,7 +228,6 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
             agent_name: str = Agents.document_agent
     """
     def class_decorator(cls: Type[T]) -> Type[T]:
-        logger.debug(f"[auto_listen_toolkit] Decorating class: {cls.__name__} with base: {base_toolkit_class.__name__}")
 
         base_methods = {}
         for name in dir(base_toolkit_class):
@@ -240,7 +239,6 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
 
         for method_name, base_method in base_methods.items():
             if method_name in cls.__dict__:
-                logger.debug(f"[auto_listen_toolkit] Skipping {method_name} - already defined in {cls.__name__}")
                 continue
                 
             sig = signature(base_method)
@@ -263,7 +261,6 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
             decorated_method = listen_toolkit(base_method)(wrapper)
             
             setattr(cls, method_name, decorated_method)
-            logger.info(f"[auto_listen_toolkit] Added wrapped method: {method_name} to {cls.__name__}")
 
         return cls
     

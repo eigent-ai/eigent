@@ -1,18 +1,19 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Settings, Check } from "lucide-react";
+import { LogOut, Settings, Check, Chrome, RefreshCw } from "lucide-react";
 import light from "@/assets/light.png";
 import dark from "@/assets/dark.png";
 import transparent from "@/assets/transparent.png";
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate } from "react-router-dom";
-import { proxyFetchPut, proxyFetchGet } from "@/api/http";
+import { proxyFetchPut, proxyFetchGet, fetchPost } from "@/api/http";
 import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
 import { useChatStore } from "@/store/chatStore";
 import { LocaleEnum, switchLanguage } from "@/i18n";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import {
 	Select,
@@ -29,6 +30,7 @@ export default function SettingGeneral() {
 	const authStore = useAuthStore();
 	const navigate = useNavigate();
 	const [isLoading, setIsLoading] = useState(false);
+	const [isBrowserOpening, setIsBrowserOpening] = useState(false);
 	const setAppearance = authStore.setAppearance;
 	const language = authStore.language;
 	const setLanguage = authStore.setLanguage;
@@ -125,6 +127,25 @@ export default function SettingGeneral() {
 		}
 	}, []);
 
+	const handleOpenBrowserLogin = async () => {
+		try {
+			setIsBrowserOpening(true);
+			const response = await fetchPost("/browser/login");
+			
+			if (response.success) {
+				toast.success(t("setting.browser-opened-successfully"));
+				console.log("Browser session info:", response);
+			} else {
+				toast.error(t("setting.failed-to-open-browser"));
+			}
+		} catch (error) {
+			console.error("Error opening browser:", error);
+			toast.error(t("setting.failed-to-open-browser"));
+		} finally {
+			setIsBrowserOpening(false);
+		}
+	};
+
 	return (
 		<div className="space-y-8">
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
@@ -158,6 +179,41 @@ export default function SettingGeneral() {
 					>
 						<LogOut className="w-4 h-4 text-button-tertiery-text-default" />
 						{t("setting.log-out")}
+					</Button>
+				</div>
+			</div>
+			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
+				<div className="text-base font-bold leading-12 text-text-primary">
+					{t("setting.browser-login")}
+				</div>
+				<div className="text-sm leading-13 mb-4 text-text-secondary">
+					{t("setting.browser-login-description")}
+				</div>
+				<div className="flex gap-2">
+					<Button
+						onClick={handleOpenBrowserLogin}
+						variant="outline"
+						size="sm"
+						disabled={isBrowserOpening}
+					>
+						<Chrome className="w-4 h-4" />
+						{isBrowserOpening ? t("setting.opening-browser") : t("setting.open-browser-login")}
+					</Button>
+					<Button
+						onClick={async () => {
+							try {
+								console.log("Attempting to restart app...");
+								await window.ipcRenderer.invoke("restart-app");
+							} catch (error) {
+								console.error("Failed to restart app:", error);
+								toast.error("Failed to restart app");
+							}
+						}}
+						variant="outline"
+						size="sm"
+					>
+						<RefreshCw className="w-4 h-4" />
+						{t("setting.restart-to-apply")}
 					</Button>
 				</div>
 			</div>

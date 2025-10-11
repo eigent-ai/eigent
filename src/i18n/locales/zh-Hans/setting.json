@@ -118,5 +118,13 @@
 	"search-mcp": "搜索 MCP",
 	"installed": "已安装",
 	"worker-name-cannot-be-empty": "Worker 名称不能为空",
-	"worker-name-already-exists": "Worker 名称已存在"
+	"worker-name-already-exists": "Worker 名称已存在",
+	
+	"browser-login": "浏览器登录",
+	"browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
+	"open-browser-login": "打开浏览器登录",
+	"opening-browser": "正在打开浏览器...",
+	"browser-opened-successfully": "浏览器已成功打开。请登录您的账户。",
+	"failed-to-open-browser": "打开浏览器失败，请重试。",
+	"restart-to-apply": "重启应用"
 }
