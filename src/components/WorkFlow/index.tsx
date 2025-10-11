@@ -36,7 +36,7 @@ export default function Workflow({
 }: {
 	taskAssigning: Agent[];
 }) {
-	const {t} = useTranslation();
+	const { t } = useTranslation();
 	const chatStore = useChatStore();
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -245,7 +245,7 @@ export default function Workflow({
 						},
 						position: isEditMode
 							? node.position
-							: { x: index * (342+20) + 8, y: 16 },
+							: { x: index * (342 + 20) + 8, y: 16 },
 					};
 				} else {
 					return {
@@ -259,7 +259,7 @@ export default function Workflow({
 							isEditMode: isEditMode,
 							workerInfo: agent?.workerInfo,
 						},
-						position: { x: index * (342+20) + 8, y: 16 },
+						position: { x: index * (342 + 20) + 8, y: 16 },
 						type: "node",
 					};
 				}
@@ -400,6 +400,10 @@ export default function Workflow({
 					nodesDraggable={isEditMode}
 					panOnScrollMode={PanOnScrollMode.Horizontal}
 					onMove={(event, viewport) => {
+						const current = getViewport();
+						if (viewport.zoom !== current.zoom) {
+							setViewport({ ...viewport, zoom: current.zoom });
+						}
 						if (isEditMode) {
 							setLastViewport(viewport);
 						}
