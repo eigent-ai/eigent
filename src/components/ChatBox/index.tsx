@@ -585,7 +585,11 @@ export default function ChatBox(): JSX.Element {
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					
 					{/* New Project Chat Container */}
-					<ProjectChatContainer />
+					<ProjectChatContainer 
+						onPauseResume={handlePauseResume}
+						onSkip={handleSkip}
+						isPauseResumeLoading={isPauseResumeLoading}
+					/>
 					{chatStore.activeTaskId && (
 						<BottomBox
 						state={getBottomBoxState()}
