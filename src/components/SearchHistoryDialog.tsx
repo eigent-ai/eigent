@@ -43,21 +43,33 @@ export function SearchHistoryDialog() {
 	}
 	
 	const navigate = useNavigate();
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
-			// if there is a record, show the result
-			chatStore.setActiveTaskId(taskId);
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
+			// if there is record, show result
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
+			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
-	const handleReplay = async (taskId: string, question: string) => {
-		projectStore.replayProject([taskId], question, projectStore.activeProjectId ?? undefined);
+
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
+		close();
+		/**
+		 * TODO(history): For now all replaying is appending to the same instance
+		 * of task_id (to be renamed projectId). Later we need to filter task_id from
+		 * /api/chat/histories by project_id then feed it here.
+		 */
+		const taskIdsList = [projectId];
+		projectStore.replayProject(taskIdsList, question, projectId, historyId);
 		navigate({ pathname: "/" });
 	};
+
 	useEffect(() => {
 		const fetchHistoryTasks = async () => {
 			try {
@@ -93,7 +105,11 @@ export function SearchHistoryDialog() {
 							<CommandItem
 								key={task.id}
 								className="cursor-pointer"
-								onSelect={() => handleSetActive(task.task_id, task.question)}
+								/**
+								 * TODO(history): Update to use project_id field 
+								 * after update instead.
+								 */
+								onSelect={() => handleSetActive(task.task_id, task.question, task.id)}
 							>
 								<ScanFace />
 								<div className="overflow-hidden text-ellipsis whitespace-nowrap">

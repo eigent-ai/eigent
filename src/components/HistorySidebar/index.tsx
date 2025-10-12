@@ -148,9 +148,15 @@ export default function HistorySidebar() {
 		fetchHistoryTasks();
 	}, [chatStore.updateCount]);
 
-	const handleReplay = async (taskId: string, question: string) => {
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		projectStore.replayProject([taskId], question, projectStore.activeProjectId ?? undefined);
+		/**
+		 * TODO(history): For now all replaying is appending to the same instance
+		 * of task_id (to be renamed projectId). Later we need to filter task_id from
+		 * /api/chat/histories by project_id then feed it here.
+		 */
+		const taskIdsList = [projectId];
+		projectStore.replayProject(taskIdsList, question, projectId, historyId);
 		navigate({ pathname: "/" });
 	};
 
@@ -181,16 +187,18 @@ export default function HistorySidebar() {
 		share(taskId);
 	};
 
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
 			// if there is record, show result
-			chatStore.setActiveTaskId(taskId);
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
 			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
 
@@ -468,7 +476,11 @@ export default function HistorySidebar() {
 															return (
 																<div
 																	onClick={() =>
-																		handleSetActive(task.task_id, task.question)
+																		/**
+																		 * TODO(history): Update to use project_id field 
+																		 * after update instead.
+																		 */
+																		handleSetActive(task.task_id, task.question, task.id)
 																	}
 																	key={task.task_id}
 																	className={`${
@@ -509,7 +521,11 @@ export default function HistorySidebar() {
 													return (
 														<div
 															onClick={() => {
-																handleSetActive(task.task_id, task.question);
+																/**
+																 * TODO(history): Update to use project_id field 
+																 * after update instead.
+																 */
+																handleSetActive(task.task_id, task.question, task.id);
 															}}
 															key={task.task_id}
 															className={`${

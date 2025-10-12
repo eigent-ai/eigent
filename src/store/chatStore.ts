@@ -193,6 +193,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			//Create a new chatStore on Start
 			let newTaskId = taskId;
 			let targetChatStore = { getState: () => get() }; // Default to current store
+			/**
+			 * Replay creates its own chatStore for each task with replayProject
+			 */
 			if(project_id && type !== "replay") {
 				console.log("Creating a new Chat Instance for current project on end")
 				const newChatResult = projectStore.appendInitChatStore(project_id);
@@ -219,12 +222,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const api = type == 'share' ? 
 			`${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` 
 			: type == 'replay' ? 
-				`${base_Url}/api/chat/steps/playback/${taskId}?delay_time=${delayTime}` 
+				`${base_Url}/api/chat/steps/playback/${project_id}?delay_time=${delayTime}` 
 				: `${baseURL}/chat`
 
 			const { tasks } = get()
-			let historyId: string | null = null;
+			let historyId: string | null = projectStore.getHistoryId(project_id);
 			let snapshots: any = [];
+			let skipFirstConfirmOnReplay = true;
 
 			// replay or share request
 			if (type) {
@@ -304,12 +308,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 
 			// create history
-			if (!type) {
+			if (!type && !historyId) {
 				const authStore = getAuthStore();
 
 				const obj = {
-					"project_id": project_id,
-					"task_id": newTaskId,
+					/**
+					 * TODO(history): Currently reusing project_id as the source
+					 * of truth per project. Need to update field
+					 * name after backend update.
+					 */
+					"task_id": project_id,
 					"user_id": authStore.user_id,
 					"question": messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
 					"language": systemLanguage,
@@ -324,6 +332,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 				await proxyFetchPost(`/api/chat/history`, obj).then(res => {
 					historyId = res.id;
+
+					/**Save history id for replay reuse purposes.
+					 * TODO(history): Remove historyId handling to support per projectId 
+					 * instead in history api
+					 */
+					if(project_id && historyId) projectStore.setHistoryId(project_id, historyId);
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
@@ -363,6 +377,41 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						multi_modal_agent: "Multi Modal Agent",
 						social_medium_agent: "Social Media Agent",
 					};
+
+					//Create new chatStore for replay
+					//TODO(history): Remove when per task replay is implemented
+					// waiting for implementing project_id to backend
+					if(type === "replay" && agentMessages.step === "confirmed" 
+						&& !skipFirstConfirmOnReplay) {
+						const { question } = agentMessages.data;
+						/**
+						 * For Tasks where appended to existing project by
+						 * reusing same projectId. Need to create new chatStore
+						 * as it has been skipped earlier in startTask.
+						 */
+						if(type && project_id) {
+							const newChatResult = projectStore.appendInitChatStore(project_id);
+
+							if (newChatResult) {
+								newTaskId = newChatResult.taskId;
+								targetChatStore = newChatResult.chatStore;
+								targetChatStore.getState().setIsPending(newTaskId, false);
+								
+								//From handleSend if message is given
+								// Add the message to the new chatStore if provided
+								if (question) {
+									targetChatStore.getState().addMessages(newTaskId, {
+										id: generateUniqueId(),
+										role: "user",
+										content: question,
+										attaches: messageAttaches || [],
+									});
+								}
+							}
+						}
+					}
+					//Enable it for the rest of current SSE session
+					skipFirstConfirmOnReplay = false;
 					
 					// Dynamic getter function that always returns the current active chat store
 					const getCurrentChatStore = () => {

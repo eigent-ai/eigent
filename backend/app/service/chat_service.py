@@ -96,7 +96,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if confirm is not True:
                     yield confirm
                 else:
-                    yield sse_json("confirmed", "")
+                    yield sse_json("confirmed", {"question": question})
                     (workforce, mcp) = await construct_workforce(options)
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
