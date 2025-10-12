@@ -244,6 +244,18 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
         self.api_task_id = api_task_id
         logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
+        
+        # Set default user_data_dir if not provided
+        if user_data_dir is None:
+            # Use browser port to determine profile directory
+            browser_port = env('browser_port', '9222')
+            user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
+            user_data_dir = os.path.join(user_data_base, f"profile_{browser_port}")
+            os.makedirs(user_data_dir, exist_ok=True)
+            logger.info(f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})")
+        else:
+            logger.info(f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}")
+
         logger.debug(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}")
         super().__init__(
             headless=headless,
@@ -279,6 +291,10 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         session_id = self._ws_config.get("session_id", "default")
         logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
+        # Log when connecting to browser
+        cdp_url = self._ws_config.get("cdp_url", f"http://localhost:{env('browser_port', '9222')}")
+        logger.info(f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}")
+
         # Get or create connection from pool
         self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
         logger.info(f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}")
@@ -295,10 +311,16 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         if new_session_id is None:
             new_session_id = str(uuid.uuid4())[:8]
 
+        # For cloned sessions, use the same user_data_dir to share login state
+        # This allows multiple agents to use the same browser profile without conflicts
+        logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
+
+        # Use the same session_id to share the same browser instance
+        # This ensures all clones use the same WebSocket connection and browser
         return HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
-            user_data_dir=self._user_data_dir,
+            user_data_dir=self._user_data_dir,  # Use the same user_data_dir
             stealth=self._stealth,
             web_agent_model=self._web_agent_model,
             cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
