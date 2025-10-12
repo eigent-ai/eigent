@@ -17,27 +17,23 @@ export default function SettingPrivacy() {
 	];
 	const [settings, setSettings] = useState([
 		{
-			title: "Allow Agent to Take Screenshots",
-			description:
-				"Permit the agent to capture screenshots of your computer screen. This can be used for support, diagnostics, or monitoring purposes. Screenshots may include visible personal information, so please enable with care.",
+			title: t("setting.allow-agent-to-take-screenshots"),
+			description: t("setting.allow-agent-to-take-screenshots-description"),
 			checked: false,
 		},
 		{
-			title: "Allow Agent to Access Local Software",
-			description:
-				"Grant the agent permission to interact with and utilize software installed on your local machine. This may be necessary for troubleshooting, running diagnostics, or performing specific tasks.",
+			title: t("setting.allow-agent-to-access-local-software"),
+			description: t("setting.allow-agent-to-access-local-software-description"),
 			checked: false,
 		},
 		{
-			title: "Allow Agent to Access Your Address",
-			description:
-				"Authorize the agent to view and use your location or address details. This may be required for location-based services or personalized support.",
+			title: t("setting.allow-agent-to-access-your-address"),
+			description: t("setting.allow-agent-to-access-your-address-description"),
 			checked: false,
 		},
 		{
-			title: "Password Storage",
-			description:
-				"Determine how passwords are handled and stored. You can choose to store passwords securely on the device or within the application, or opt out to manually enter them each time. All stored passwords are encrypted.",
+			title: t("setting.password-storage"),
+			description: t("setting.password-storage-description"),
 			checked: false,
 		},
 	]);

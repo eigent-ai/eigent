@@ -82,16 +82,16 @@ function HeaderWin() {
 			const response = await window.electronAPI.exportLog();
 
 			if (!response.success) {
-				alert("Export cancelled:" + response.error);
+				alert(t("layout.export-cancelled") + response.error);
 				return;
 			}
 			if (response.savedPath) {
 				window.location.href =
 					"https://github.com/eigent-ai/eigent/issues/new/choose";
-				alert("log saved:" + response.savedPath);
+				alert(t("layout.log-saved") + response.savedPath);
 			}
 		} catch (e: any) {
-			alert("export error:" + e.message);
+			alert(t("layout.export-error") + e.message);
 		}
 	};
 
@@ -118,7 +118,7 @@ function HeaderWin() {
 				chatStore.activeTaskId as string
 			].summaryTask.split("|")[0];
 		}
-		return t("chat.new-project");
+		return t("layout.new-project");
 	}, [
 		chatStore.activeTaskId,
 		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
@@ -130,20 +130,20 @@ function HeaderWin() {
 			if (res?.invite_code) {
 				const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
 				await navigator.clipboard.writeText(inviteLink);
-				toast.success("Invitation link copied!");
+				toast.success(t("layout.invitation-link-copied"));
 			} else {
-				toast.error("Failed to get invite code");
+				toast.error(t("layout.failed-to-get-invite-code"));
 			}
 		} catch (error) {
 			console.error("Failed to get referral link:", error);
-			toast.error("Failed to get invitation link");
+			toast.error(t("layout.failed-to-get-invitation-link"));
 		}
 	};
 
 	const handleEndProject = async () => {
 		const taskId = chatStore.activeTaskId;
 		if (!taskId) {
-			toast.error("No active project to end");
+			toast.error(t("layout.no-active-project-to-end"));
 			return;
 		}
 
@@ -181,12 +181,12 @@ function HeaderWin() {
 			// Navigate to home
 			navigate("/");
 
-			toast.success("Project ended successfully", {
+			toast.success(t("layout.project-ended-successfully"), {
 				closeButton: true,
 			});
 		} catch (error) {
 			console.error("Failed to end project:", error);
-			toast.error("Failed to end project", {
+			toast.error(t("layout.failed-to-end-project"), {
 				closeButton: true,
 			});
 		} finally {
@@ -228,7 +228,7 @@ function HeaderWin() {
 					</div>
 					{location.pathname !== "/history" && (
 						<div className="flex items-center mr-1">
-						<TooltipSimple content={"Home"} side="bottom" align="center">
+						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
 							<Button
 								 variant="ghost"
 								 size="icon"
@@ -244,7 +244,7 @@ function HeaderWin() {
 							 className="no-drag"
 							 onClick={createNewProject}
 									>
-								<TooltipSimple content={"New Project"} side="bottom" align="center">
+								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
 									<Plus className="w-4 h-4" />
 								</TooltipSimple>
 						</Button>
@@ -252,7 +252,7 @@ function HeaderWin() {
 					)}
 					{location.pathname !== "/history" && (
 						<>
-							{activeTaskTitle === t("chat.new-project") ? (
+							{activeTaskTitle === t("layout.new-project") ? (
 									<Button 
 										id="active-task-title-btn"
 										variant="ghost" 
@@ -260,7 +260,7 @@ function HeaderWin() {
 										onClick={toggle}
 										size="sm"
 										>
-									{t("chat.new-project")}
+									{t("layout.new-project")}
 									<ChevronDown />
 								</Button>
 							) : (
@@ -316,14 +316,14 @@ function HeaderWin() {
 						</TooltipSimple>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-							<TooltipSimple content={"Share"} side="bottom" align="end">
+							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
 								<Button
 									onClick={() => handleShare(chatStore.activeTaskId as string)}
 									variant="primary"
 									size="xs"
 									className="no-drag !text-button-fill-information-foreground"
 								>
-									Share
+									{t("layout.share")}
 								</Button>
 							</TooltipSimple>
 						)}
@@ -334,7 +334,7 @@ function HeaderWin() {
 								chatStore.tasks[chatStore.activeTaskId as string].hasMessages ||
 								chatStore.tasks[chatStore.activeTaskId as string].status !== 'pending'
 							) && (
-							<TooltipSimple content={"End Project"} side="bottom" align="end">
+							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
 									onClick={() => setEndDialogOpen(true)}
 									variant="outline"

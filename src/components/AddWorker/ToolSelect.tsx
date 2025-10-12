@@ -141,13 +141,13 @@ const ToolSelect = forwardRef<
 							toolkit: value.toolkit,
 							desc:
 								value.env_vars && value.env_vars.length > 0
-									? `Environmental variables required: ${value.env_vars.join(
+									? `${t("layout.environmental-variables-required")} ${value.env_vars.join(
 											", "
 									  )}`
 									: key.toLowerCase() === 'notion'
-									? "Notion workspace integration for reading and managing Notion pages"
+									? t("layout.notion-workspace-integration")
 									: key.toLowerCase() === 'google calendar'
-									? "Google Calendar integration for managing events and schedules"
+									? t("layout.google-calendar-integration")
 									: "",
 							onInstall,
 						};
@@ -361,10 +361,10 @@ const ToolSelect = forwardRef<
 	};
 
 	const getInstallButtonText = (itemId: number) => {
-		if (installedIds.includes(itemId)) return t("setting.installed");
-		if (installing[itemId]) return t("setting.installing");
-		if (installed[itemId]) return t("setting.installed");
-		return t("setting.install");
+		if (installedIds.includes(itemId)) return t("layout.installed");
+		if (installing[itemId]) return t("layout.installing");
+		if (installed[itemId]) return t("layout.installed");
+		return t("layout.install");
 	};
 
 	// Effects
@@ -522,7 +522,7 @@ const ToolSelect = forwardRef<
 					className="leading-17 text-xs font-bold text-button-secondary-text-default h-6 px-sm py-xs bg-button-secondary-fill-default hover:bg-button-tertiery-text-default rounded-md shadow-sm"
 					disabled={true}
 				>
-					{t("setting.installed")}
+					{t("layout.installed")}
 				</Button>
 			</div>
 		</div>

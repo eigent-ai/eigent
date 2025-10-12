@@ -14,5 +14,10 @@
 	"search-for-a-task-or-document": "Искать задачу или документ",
 	"calendar": "Календарь",
 	"search-emoji": "Поиск эмодзи",
-	"calculator": "Калькулятор"
+	"calculator": "Калькулятор",
+	"developer-agent": "Агент разработчика",
+	"search-agent": "Агент поиска",
+	"document-agent": "Агент документов",
+	"multi-modal-agent": "Мультимодальный агент",
+	"social-media-agent": "Агент социальных сетей"
 }

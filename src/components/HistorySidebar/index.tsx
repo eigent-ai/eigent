@@ -89,7 +89,7 @@ export default function HistorySidebar() {
 
 	const agentMap = {
 		developer_agent: {
-			name: "Developer Agent",
+			name: t("layout.developer-agent"),
 			textColor: "text-text-developer",
 			bgColor: "bg-bg-fill-coding-active",
 			shapeColor: "bg-bg-fill-coding-default",
@@ -97,7 +97,7 @@ export default function HistorySidebar() {
 			bgColorLight: "bg-emerald-200",
 		},
 		search_agent: {
-			name: "Search Agent",
+			name: t("layout.search-agent"),
 
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -106,7 +106,7 @@ export default function HistorySidebar() {
 			bgColorLight: "bg-blue-200",
 		},
 		document_agent: {
-			name: "Document Agent",
+			name: t("layout.document-agent"),
 
 			textColor: "text-yellow-700",
 			bgColor: "bg-bg-fill-writing-active",
@@ -115,7 +115,7 @@ export default function HistorySidebar() {
 			bgColorLight: "bg-yellow-200",
 		},
 		multi_modal_agent: {
-			name: "Multi Modal Agent",
+			name: t("layout.multi-modal-agent"),
 
 			textColor: "text-fuchsia-700",
 			bgColor: "bg-bg-fill-multimodal-active",
@@ -124,7 +124,7 @@ export default function HistorySidebar() {
 			bgColorLight: "bg-fuchsia-200",
 		},
 		social_medium_agent: {
-			name: "Social Media Agent",
+			name: t("layout.social-media-agent"),
 
 			textColor: "text-purple-700",
 			bgColor: "bg-violet-700",
@@ -228,10 +228,10 @@ export default function HistorySidebar() {
 						isOpen={deleteModalOpen}
 						onClose={() => setDeleteModalOpen(false)}
 						onConfirm={confirmDelete}
-						title="Delete Task"
-						message="Are you sure you want to delete this task? This action cannot be undone."
-						confirmText="Delete"
-						cancelText="Cancel"
+						title={t("layout.delete-task")}
+						message={t("layout.are-you-sure-you-want-to-delete")}
+						confirmText={t("layout.delete")}
+						cancelText={t("layout.cancel")}
 					/>
 					{/* background cover */}
 					<motion.div
@@ -267,7 +267,7 @@ export default function HistorySidebar() {
 							>
 								<ArrowLeft size={16} />
 								<span className="text-text-primary text-sm font-bold leading-13">
-									{t("task-hub.task-hub")}
+									{t("dashboard.task-hub")}
 								</span>
 							</Button>
 							<Button
@@ -322,7 +322,7 @@ export default function HistorySidebar() {
 																	/>
 																</div>
 																<div className="text-left text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis break-words line-clamp-3">
-																	{task?.messages[0]?.content || t("task-hub.new-project")}
+																	{task?.messages[0]?.content || t("layout.new-project")}
 																</div>
 																<div className="w-full">
 																	<Progress
@@ -334,7 +334,7 @@ export default function HistorySidebar() {
 															<div className="w-[122px] pt-md h-full flex flex-col gap-sm">
 																<div className="flex justify-between items-center ">
 																	<div className="text-xs leading-17 font-medium text-text-secondary">
-																		TASKS
+																		{t("layout.tasks")}
 																	</div>
 																	<div className="text-xs leading-17 font-medium text-text-tertiary">
 																		{task.taskRunning?.filter(
@@ -422,13 +422,13 @@ export default function HistorySidebar() {
 													<TooltipSimple
 														content={
 															<p>
-																{task?.messages[0]?.content || t("task-hub.new-project")}
+																{task?.messages[0]?.content || t("layout.new-project")}
 															</p>
 														}
 														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
 													>
 														<span>
-															{task?.messages[0]?.content || t("task-hub.new-project")}
+															{task?.messages[0]?.content || t("dashboard.new-project")}
 														</span>
 													</TooltipSimple>
 														</div>
@@ -481,17 +481,17 @@ export default function HistorySidebar() {
 																			alt="folder-icon"
 																		/>
 																		<Tag variant="primary">
-																			# Token {task.tokens || 0}
+																			{t("layout.token")} {task.tokens || 0}
 																		</Tag>
 																	</div>
 
 																	<div className="text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
 																		{task?.question.split("|")[0] ||
-																			t("task-hub.new-project")}
+																			t("dashboard.new-project")}
 																	</div>
 																	<div className="text-xs text-black leading-17  overflow-hidden text-ellipsis break-words line-clamp-2">
 																		{task?.question.split("|")[1] ||
-																			t("task-hub.new-project")}
+																			t("dashboard.new-project")}
 																	</div>
 																</div>
 															);
@@ -527,13 +527,13 @@ export default function HistorySidebar() {
 														content={
 															<div>
 																{" "}
-																{task?.question.split("|")[0] || t("task-hub.new-project")}
+																{task?.question.split("|")[0] || t("layout.new-project")}
 															</div>
 														}
 													>
 														<span>
 															{" "}
-															{task?.question.split("|")[0] || t("task-hub.new-project")}
+															{task?.question.split("|")[0] || t("layout.new-project")}
 														</span>
 													</TooltipSimple>
 												</div>
@@ -541,7 +541,7 @@ export default function HistorySidebar() {
 																variant="primary"
 																className="text-xs leading-17 font-medium text-nowrap"
 															>
-																# Token {task.tokens || 0}
+																{t("layout.token")} {task.tokens || 0}
 															</Tag>
 						
 															<Popover>
@@ -567,7 +567,7 @@ export default function HistorySidebar() {
 																				}}
 																			>
 																				<Share size={16} />
-																				{t("task-hub.share")}
+																				{t("layout.share")}
 																			</Button>
 																		</PopoverClose>
 						
@@ -585,7 +585,7 @@ export default function HistorySidebar() {
 																					size={16}
 																					className="text-icon-primary group-hover:text-icon-cuation"
 																				/>
-																				{t("task-hub.delete")}
+																				{t("layout.delete")}
 																			</Button>
 																		</PopoverClose>
 																	</div>

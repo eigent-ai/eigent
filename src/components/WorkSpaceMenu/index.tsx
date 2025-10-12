@@ -15,15 +15,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";
 import { Badge } from "../ui/badge";
+import { useTranslation } from "react-i18next";
 
 export function WorkSpaceMenu() {
+	const { t } = useTranslation();
 	const chatStore = useChatStore();
 	const workerList = useWorkerList();
 	const baseWorker: Agent[] = [
 		{
 			tasks: [],
 			agent_id: "developer_agent",
-			name: "Developer Agent",
+			name: t("layout.developer-agent"),
 			type: "developer_agent",
 			log: [],
 			activeWebviewIds: [],
@@ -31,7 +33,7 @@ export function WorkSpaceMenu() {
 		{
 			tasks: [],
 			agent_id: "search_agent",
-			name: "Search Agent",
+			name: t("layout.search-agent"),
 			type: "search_agent",
 			log: [],
 			activeWebviewIds: [],
@@ -39,7 +41,7 @@ export function WorkSpaceMenu() {
 		{
 			tasks: [],
 			agent_id: "multi_modal_agent",
-			name: "Multi Modal Agent",
+			name: t("layout.multi-modal-agent"),
 			type: "multi_modal_agent",
 			log: [],
 			activeWebviewIds: [],
@@ -55,7 +57,7 @@ export function WorkSpaceMenu() {
 		{
 			tasks: [],
 			agent_id: "document_agent",
-			name: "Document Agent",
+			name: t("layout.document-agent"),
 			type: "document_agent",
 			log: [],
 			activeWebviewIds: [],
@@ -205,7 +207,7 @@ export function WorkSpaceMenu() {
 
 	const agentMap = {
 		developer_agent: {
-			name: "Developer Agent",
+			name: t("layout.developer-agent"),
 			icon: <CodeXml size={16} className="text-text-primary" />,
 			textColor: "text-text-developer",
 			bgColor: "bg-bg-fill-coding-active",
@@ -214,7 +216,7 @@ export function WorkSpaceMenu() {
 			bgColorLight: "bg-emerald-200",
 		},
 		search_agent: {
-			name: "Search Agent",
+			name: t("layout.search-agent"),
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -223,7 +225,7 @@ export function WorkSpaceMenu() {
 			bgColorLight: "bg-blue-200",
 		},
 		document_agent: {
-			name: "Document Agent",
+			name: t("layout.document-agent"),
 			icon: <FileText size={16} className="text-text-primary" />,
 			textColor: "text-yellow-700",
 			bgColor: "bg-bg-fill-writing-active",
@@ -232,7 +234,7 @@ export function WorkSpaceMenu() {
 			bgColorLight: "bg-yellow-200",
 		},
 		multi_modal_agent: {
-			name: "Multi Modal Agent",
+			name: t("layout.multi-modal-agent"),
 			icon: <Image size={16} className="text-text-primary" />,
 			textColor: "text-fuchsia-700",
 			bgColor: "bg-bg-fill-multimodal-active",
@@ -241,7 +243,7 @@ export function WorkSpaceMenu() {
 			bgColorLight: "bg-fuchsia-200",
 		},
 		social_medium_agent: {
-			name: "Social Media Agent",
+			name: t("layout.social-media-agent"),
 			icon: <Bird size={16} className="text-text-primary" />,
 			textColor: "text-purple-700",
 			bgColor: "bg-violet-700",

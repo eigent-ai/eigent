@@ -127,20 +127,20 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
 					{title && (
 						<div className="flex items-center gap-1">
 							<DialogPrimitive.Title asChild>
-								<span className="text-body-sm font-bold text-text-heading my-[1px]">
+								<span className="text-body-md font-bold text-text-heading my-[1px]">
 									{title}
 								</span>
 							</DialogPrimitive.Title>
 							{showTooltip && tooltip && (
 								<TooltipSimple content={tooltip}>
-									<AlertCircle className="h-4 w-4 text-[#222222]" />
+									<AlertCircle className="h-4 w-4 text-icon-primary" />
 								</TooltipSimple>
 							)}
 						</div>
 					)}
 					{subtitle && (
 						<DialogPrimitive.Description asChild>
-							<span className="text-label-sm text-text-label">
+							<span className="text-label-sm text-text-label font-extralight mt-1">
 								{subtitle}
 							</span>
 						</DialogPrimitive.Description>

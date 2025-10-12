@@ -10,6 +10,7 @@ import MCPList from "./components/MCPList";
 import MCPConfigDialog from "./components/MCPConfigDialog";
 import MCPAddDialog from "./components/MCPAddDialog";
 import MCPDeleteDialog from "./components/MCPDeleteDialog";
+import SearchEngineConfigDialog from "./components/SearchEngineConfigDialog";
 import { parseArgsToArray, arrayToArgsJson } from "./components/utils";
 import type { MCPUserItem, MCPConfigForm } from "./components/types";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ import MCPMarket from "./MCPMarket";
 
 import { toast } from "sonner";
 import { ConfigFile } from "electron/main/utils/mcpConfig";
-import { SelectItem } from "@/components/ui/select";
+import { SelectItem, SelectItemWithButton } from "@/components/ui/select";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
@@ -61,11 +62,11 @@ export default function SettingMCP() {
 	const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>(
 		{}
 	);
-const [collapsed, setCollapsed] = useState(false);
 const [collapsedMCP, setCollapsedMCP] = useState(false);
 const [collapsedExternal, setCollapsedExternal] = useState(false);
 const [showMarket, setShowMarket] = useState(false);
 const [marketKeyword, setMarketKeyword] = useState("");
+const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 
 	// add: integrations list
 	const [integrations, setIntegrations] = useState<any[]>([]);
@@ -116,10 +117,12 @@ const [marketKeyword, setMarketKeyword] = useState("");
 	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("");
 	const [hasGoogleSearch, setHasGoogleSearch] = useState<boolean>(false);
 	const [hasExaSearch, setHasExaSearch] = useState<boolean>(false);
+	const [configs, setConfigs] = useState<any[]>([]);
 
 	useEffect(() => {
 		proxyFetchGet("/api/configs").then((configsRes) => {
 			const configs = Array.isArray(configsRes) ? configsRes : [];
+			setConfigs(configs);
 			const hasGoogleApiKey = !!configs.find(
 				(item: any) => item.config_name === "GOOGLE_API_KEY"
 			);
@@ -154,7 +157,7 @@ const [marketKeyword, setMarketKeyword] = useState("");
 							try {
 								const response = await fetchPost("/install/tool/notion");
 								if (response.success) {
-									toast.success("Notion MCP installed successfully");
+									toast.success(t("setting.notion-mcp-installed-successfully"));
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
 										config_group: "Notion",
@@ -166,10 +169,10 @@ const [marketKeyword, setMarketKeyword] = useState("");
 									// Force refresh IntegrationList component
 									setRefreshKey(prev => prev + 1);
 								} else {
-									toast.error(response.error || "Failed to install Notion MCP");
+									toast.error(response.error || t("setting.failed-to-install-notion-mcp"));
 								}
 							} catch (error: any) {
-								toast.error(error.message || "Failed to install Notion MCP");
+								toast.error(error.message || t("setting.failed-to-install-notion-mcp"));
 							}
 						};
 					} else if (key.toLowerCase() === 'google calendar') {
@@ -177,7 +180,7 @@ const [marketKeyword, setMarketKeyword] = useState("");
 							try {
 								const response = await fetchPost("/install/tool/google_calendar");
 								if (response.success) {
-									toast.success("Google Calendar installed successfully");
+									toast.success(t("setting.google-calendar-installed-successfully"));
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
 										config_group: "Google Calendar",
@@ -189,10 +192,10 @@ const [marketKeyword, setMarketKeyword] = useState("");
 									// Force refresh IntegrationList component
 									setRefreshKey(prev => prev + 1);
 								} else {
-									toast.error(response.error || "Failed to install Google Calendar");
+									toast.error(response.error || t("setting.failed-to-install-google-calendar"));
 								}
 							} catch (error: any) {
-								toast.error(error.message || "Failed to install Google Calendar");
+								toast.error(error.message || t("setting.failed-to-install-google-calendar"));
 							}
 						};
                     } else {
@@ -213,9 +216,9 @@ const [marketKeyword, setMarketKeyword] = useState("");
 										", "
 								  )}`
 								: key.toLowerCase() === 'notion'
-								? "Notion workspace integration for reading and managing Notion pages"
+								? t("setting.notion-workspace-integration")
 								: key.toLowerCase() === 'google calendar'
-								? "Google Calendar integration for managing events and schedules"
+								? t("setting.google-calendar-integration")
 								: "",
 						onInstall,
 					};
@@ -364,7 +367,7 @@ const [marketKeyword, setMarketKeyword] = useState("");
 						items.some((d) => d.mcp_name === name)
 					);
 					if (conflict) {
-						toast.error(`MCP server "${conflict}" already exists`, {
+						toast.error(t("setting.mcp-server-already-exists", { name: conflict }), {
 							closeButton: true,
 						});
 						setInstalling(false);
@@ -419,6 +422,76 @@ const [marketKeyword, setMarketKeyword] = useState("");
 		}
 	};
 
+	// Generate search engine selection content
+	const generateSearchEngineSelectContent = () => {
+		console.log("Generating search engine select content, configs:", configs);
+		
+		// Google Search - requires API key and Search Engine ID
+		const hasGoogleApiKey = configs.some((c: any) => c.config_name === "GOOGLE_API_KEY");
+		const hasGoogleCseId = configs.some((c: any) => c.config_name === "SEARCH_ENGINE_ID");
+		const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
+
+		// Exa Search - requires API key
+		const hasExa = configs.some((c: any) => c.config_name === "EXA_API_KEY");
+
+		// DuckDuckGo - requires API key
+		const hasDuckDuckGo = configs.some((c: any) => c.config_name === "DUCKDUCKGO_API_KEY");
+
+		// Brave Search - requires API key
+		const hasBrave = configs.some((c: any) => c.config_name === "BRAVE_API_KEY");
+
+		console.log("Search engine status:", { hasGoogle, hasExa, hasDuckDuckGo, hasBrave });
+
+		return (
+			<>
+				{/* Google Search - requires configuration */}
+				<SelectItemWithButton 
+					value="google" 
+					label="Google Search" 
+					enabled={hasGoogle}
+					buttonText={t("setting.setting")}
+					onButtonClick={() => setShowSearchEngineConfig(true)}
+				/>
+				
+				{/* Exa Search - requires configuration */}
+				<SelectItemWithButton 
+					value="exa" 
+					label="Exa Search" 
+					enabled={hasExa}
+					buttonText={t("setting.setting")}
+					onButtonClick={() => setShowSearchEngineConfig(true)}
+				/>
+
+				{/* DuckDuckGo - requires configuration */}
+				<SelectItemWithButton 
+					value="duckduckgo" 
+					label="DuckDuckGo Search" 
+					enabled={hasDuckDuckGo}
+					buttonText={t("setting.setting")}
+					onButtonClick={() => setShowSearchEngineConfig(true)}
+				/>
+
+				{/* Brave Search - requires configuration */}
+				<SelectItemWithButton 
+					value="brave" 
+					label="Brave Search" 
+					enabled={hasBrave}
+					buttonText={t("setting.setting")}
+					onButtonClick={() => setShowSearchEngineConfig(true)}
+				/>
+
+				{/* Bing Search - no API key required, always enabled */}
+				<SelectItem value="bing">Bing Search</SelectItem>
+
+				{/* Baidu Search - no API key required, always enabled */}
+				<SelectItem value="baidu">Baidu Search</SelectItem>
+
+				{/* Wiki Search - no API key required, always enabled */}
+				<SelectItem value="wiki">Wiki Search</SelectItem>
+			</>
+		);
+	};
+
 	return (
 		<div className="max-w-[900px] h-auto m-auto flex flex-col px-6 pb-40">
 			<div className="flex items-center justify-between py-8 border-b border-border-secondary">
@@ -462,45 +535,34 @@ const [marketKeyword, setMarketKeyword] = useState("");
 				) : (
 					<>
 						<div className="flex flex-col">
-							{/*<div className="sticky top-40 z-10 bg-surface-primary self-stretch inline-flex justify-start items-start gap-2 py-2">
-								<div className="flex-1" />
-							</div>*/}
-							{!collapsed && (
-									<IntegrationList
-											items={essentialIntegrations}
-											showConfigButton={true}
-											showInstallButton={false}
-											showSelect
-											showStatusDot={false}
-											selectPlaceholder={
-													modelType === "cloud"
-															? "Google Search"
-															: "Select default search engine"
+							<IntegrationList
+									items={essentialIntegrations}
+									showConfigButton={true}
+									showInstallButton={false}
+									showSelect
+									showStatusDot={false}
+									selectPlaceholder={t("setting.select-default-search-engine")}
+									selectContent={generateSearchEngineSelectContent()}
+									onSelectChange={async (value) => {
+											try {
+													setDefaultSearchEngine(value);
+													await proxyFetchPost("/api/configs", {
+															config_group: "Search",
+															config_name: "DEFAULT_SEARCH_ENGINE",
+															config_value: value,
+													});
+											} catch (e) {}
+									}}
+									onConfigClick={(item) => {
+											if (item.key === "Search") {
+													setShowSearchEngineConfig(true);
 											}
-											selectContent={
-													modelType === "cloud" ? (
-															// Cloud: allow selecting the default option only
-															<SelectItem value="google" disabled={false}>
-																	Google Search
-															</SelectItem>
-													) : undefined
-											}
-											onSelectChange={async (value) => {
-													try {
-															setDefaultSearchEngine(value);
-															await proxyFetchPost("/api/configs", {
-																	config_group: "Search",
-																	config_name: "DEFAULT_SEARCH_ENGINE",
-																	config_value: value,
-															});
-													} catch (e) {}
-											}}
-									/>
-							)}
+									}}
+							/>
 						</div>
 						<div className="flex flex-col">
 							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
-								<span className="text-text-body text-body-md font-bold">MCP</span>
+								<span className="text-text-body text-body-md font-bold">{t("setting.mcp")}</span>
 								<div className="flex-1" />
 								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedMCP((c) => !c); }}>
 									{collapsedMCP ? (
@@ -514,7 +576,7 @@ const [marketKeyword, setMarketKeyword] = useState("");
 						</div>
 						<div className="flex flex-col">
 							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
-								<div className="justify-center text-text-body text-body-md font-bold">Your own MCPs</div>
+								<div className="justify-center text-text-body text-body-md font-bold">{t("setting.your-own-mcps")}</div>
 								<div className="flex-1" />
 								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedExternal((c) => !c); }}>
 									{collapsedExternal ? (
@@ -571,6 +633,10 @@ const [marketKeyword, setMarketKeyword] = useState("");
 								onCancel={() => setDeleteTarget(null)}
 								onConfirm={handleDelete}
 								loading={deleting}
+							/>
+							<SearchEngineConfigDialog
+								open={showSearchEngineConfig}
+								onClose={() => setShowSearchEngineConfig(false)}
 							/>
 						</div>
 					</>

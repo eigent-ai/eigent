@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import {
 	Dialog,
 	DialogClose,
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm }: Props) {
+	const { t } = useTranslation();
 	const onSubmit = useCallback(() => {
 		onConfirm();
 	}, [onConfirm]);
@@ -27,16 +29,16 @@ export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm
 			{trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
 			<DialogContent className="sm:max-w-[600px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm">
 				<DialogHeader className="!bg-popup-surface !rounded-t-xl p-md">
-					<DialogTitle className="m-0">End project</DialogTitle>
+					<DialogTitle className="m-0">{t("layout.end-project")}</DialogTitle>
 				</DialogHeader>
 				<div className="flex flex-col gap-md bg-popup-bg p-md">
-					Ending this project will stop any running tasks, remove it from history, and create a new empty project. Are you sure you want to proceed?
+					{t("layout.ending-this-project-will-stop")}
 				</div>
 				<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
 					<DialogClose asChild>
-						<Button variant="ghost" size="md">Cancel</Button>
+						<Button variant="ghost" size="md">{t("layout.cancel")}</Button>
 					</DialogClose>
-					<Button size="md" onClick={onSubmit} variant="cuation">Yes, end project</Button>
+					<Button size="md" onClick={onSubmit} variant="cuation">{t("layout.yes-end-project")}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

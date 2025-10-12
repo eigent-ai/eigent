@@ -22,7 +22,7 @@ export default function SearchInput({ value, onChange, placeholder, size = "sm",
 				value={value}
 				className="w-full rounded-full"
 				onChange={onChange}
-				placeholder={placeholder ?? t("task-hub.search")}
+				placeholder={placeholder ?? t("layout.search")}
 				leadingIcon={leadingIcon ?? <Search className="w-5 h-5 text-icon-secondary" />}
 			/>
 		</div>

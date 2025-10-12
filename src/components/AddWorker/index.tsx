@@ -317,7 +317,7 @@ export function AddWorker({
 				<DialogContent size="sm" className="p-0 gap-0">
 					<DialogHeader
 						title={showEnvConfig ? t("workforce.configure-mcp-server") : t("workforce.add-your-agent")}
-						tooltip="Configure your MCP worker node here."
+						tooltip={t("layout.configure-your-mcp-worker-node-here")}
 						showTooltip={true}
 						showBackButton={showEnvConfig}
 						onBackClick={handleCloseMcpEnvSetting}
@@ -381,7 +381,7 @@ export function AddWorker({
 								showCancelButton={true}
 								showConfirmButton={true}
 								cancelButtonText={t("workforce.cancel")}
-								confirmButtonText={t("Connect")}
+								confirmButtonText={t("layout.connect")}
 								onCancel={handleCloseMcpEnvSetting}
 								onConfirm={handleConfigureMcpEnvSetting}
 								cancelButtonVariant="ghost"
@@ -410,8 +410,8 @@ export function AddWorker({
 										</div>
 										<Input
 											size="sm"
-											title="Name Your Agent"
-											placeholder="add an agent name..."
+											title={t("layout.name-your-agent")}
+											placeholder={t("layout.add-an-agent-name")}
 											value={workerName}
 											onChange={(e) => {
 												setWorkerName(e.target.value);
@@ -434,7 +434,7 @@ export function AddWorker({
 									  variant="enhanced"
 										size="sm"
 										title={t("workforce.description-optional")}
-										placeholder="I'm an agent specially designed for..."
+										placeholder={t("layout.im-an-agent-specially-designed-for")}
 										value={workerDescription}
 										onChange={(e) => setWorkerDescription(e.target.value)}
 								/>

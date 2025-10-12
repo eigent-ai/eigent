@@ -21,13 +21,13 @@ return (
 			isOpen={deleteModalOpen}
 			onClose={() => setDeleteModalOpen(false)}
 			onConfirm={confirmDelete}
-			title="Delete Task"
-			message="Are you sure you want to delete this task? This action cannot be undone."
-			confirmText="Delete"
-			cancelText="Cancel"
+			title={t("layout.delete-task")}
+			message={t("layout.delete-task-confirmation")}
+			confirmText={t("layout.delete")}
+			cancelText={t("layout.cancel")}
 		/>
     <div className="px-6 py-4 flex justify-between items-center">
-<div className="text-2xl font-bold leading-4">Triggers</div>
+<div className="text-2xl font-bold leading-4">{t("layout.triggers")}</div>
 <div className="flex items-center gap-md">
 </div>
     </div>

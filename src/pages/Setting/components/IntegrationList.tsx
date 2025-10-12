@@ -468,44 +468,7 @@ export default function IntegrationList({
 						  		<SelectContent className="z-100">
 										{selectContent ?? (
 											<>
-												{item.key === "Search" ? (
-													<>
-														{/** compute availability **/}
-														{(() => {
-															const hasGoogleApiKey = configs.some((c: any) => c.config_name === "GOOGLE_API_KEY");
-															const hasGoogleCseId = configs.some((c: any) => c.config_name === "SEARCH_ENGINE_ID");
-															const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
-															const hasExa = configs.some((c: any) => c.config_name === "EXA_API_KEY");
-
-
-														return (
-															<>
-																<SelectItemWithButton 
-																	value="google" 
-																	label="Google Search" 
-																	enabled={hasGoogle}
-																	buttonText={t("setting.setting")}
-																	onButtonClick={() => handleOpenConfig(item)}
-																/>
-																<SelectItemWithButton 
-																	value="exa" 
-																	label="Exa Search" 
-																	enabled={hasExa}
-																	buttonText={t("setting.setting")}
-																	onButtonClick={() => handleOpenConfig(item)}
-																/>
-																<SelectItem value="duckduckgo">DuckDuckGo Search</SelectItem>
-																<SelectItem value="bing">Bing Search</SelectItem>
-																<SelectItem value="brave">Brave Search</SelectItem>
-															</>
-														);
-													})()}
-													</>
-												) : (
-													<>
-														<SelectItem value="more">More integrations</SelectItem>
-													</>
-												)}
+												<SelectItem value="more">More integrations</SelectItem>
 											</>
 										)}
 						  		</SelectContent>

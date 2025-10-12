@@ -84,24 +84,24 @@ export default function Home() {
 			isOpen={deleteModalOpen}
 			onClose={() => setDeleteModalOpen(false)}
 			onConfirm={confirmDelete}
-			title="Delete Task"
-			message="Are you sure you want to delete this task? This action cannot be undone."
-			confirmText="Delete"
-			cancelText="Cancel"
+			title={t("layout.delete-task")}
+			message={t("layout.delete-task-confirmation")}
+			confirmText={t("layout.delete")}
+			cancelText={t("layout.cancel")}
 		/>
 			{/* welcome text */}
 			<div className="flex flex-row w-full pt-16 px-20 bg-gradient-to-b from-transparent to-[#F9F8F6]">
 					<WordCarousel
-						words={[`Welcome, ${welcomeName} !`]}
-						className="text-heading-lg font-serif italic font-bold"
-						rotateIntervalMs={1600}
-						sweepDurationMs={2200}
+						words={[`${t("layout.welcome")}, ${welcomeName} !`]}
+						className="text-heading-xl font-bold tracking-tight"
+						rotateIntervalMs={100}
+						sweepDurationMs={2000}
 						sweepOnce
 						gradient={`linear-gradient(in oklch 90deg,
-							#f9f8f6 0%, #f9f8f6 30%,
-							#a855f7 35%, #fb2c36 45%, #ff8904 50%,
-							#Fe9a00 55%, #00bc7d 60%, #00a6f4 65%,
-							#1d1d1d 70%, #1d1d1d 100%)`}
+							#f9f8f6 0%, var(--colors-blue-300) 30%,
+							var(--colors-emerald-default) 50%, 
+							var(--colors-green-500) 70%,
+							var(--colors-orange-300) 100%)`}
 						ariaLabel="rotating headline"
 					/>
 			</div>
@@ -112,16 +112,16 @@ export default function Home() {
 				<div className="flex flex-row justify-between items-center w-full mx-auto">
 				<div className="flex items-center gap-2">
 			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
-			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>Projects</MenuToggleItem>
-					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>MCP & Tools</MenuToggleItem>
-					 <MenuToggleItem size="xs" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>Settings</MenuToggleItem>
-			  	 <MenuToggleItem size="xs" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>Workers</MenuToggleItem>
-			  	 <MenuToggleItem size="xs" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>Triggers</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>{t("layout.projects")}</MenuToggleItem>
+					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>{t("layout.mcp-tools")}</MenuToggleItem>
+					 <MenuToggleItem size="xs" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>{t("layout.settings")}</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>{t("layout.workers")}</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>{t("layout.triggers")}</MenuToggleItem>
 		  	 </MenuToggleGroup>
 				</div>
 		  	<Button variant="primary" size="sm" onClick={createChat}>
 				<Plus />
-				New Project
+				{t("layout.new-project")}
 		  	</Button>
 			</div>
 		  </div>

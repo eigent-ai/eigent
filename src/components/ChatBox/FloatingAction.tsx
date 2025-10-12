@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Pause, Play, SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export interface FloatingActionProps {
 	/** Current task status */
@@ -44,6 +45,7 @@ export const FloatingAction = ({
 	loading = false,
 	className,
 }: FloatingActionProps) => {
+	const { t } = useTranslation();
 	// Only show when task is running or paused
 	if (status !== "running" && status !== "pause") {
 		return null;
@@ -66,7 +68,7 @@ export const FloatingAction = ({
 						disabled={loading}
 						className="rounded-full"
 					>
-						<span className="text-sm font-semibold">Pause</span>
+						<span className="text-sm font-semibold">{t("layout.pause")}</span>
 					</Button>
 				) : (
 					// State 2: Paused - Show Resume and Skip buttons
@@ -79,7 +81,7 @@ export const FloatingAction = ({
 							className="gap-1.5 rounded-full min-w-[80px]"
 						>
 							<Play className="w-3.5 h-3.5" />
-							<span className="text-sm font-semibold">Resume</span>
+							<span className="text-sm font-semibold">{t("layout.resume")}</span>
 						</Button>
 						<Button
 							variant="outline"
@@ -88,7 +90,7 @@ export const FloatingAction = ({
 							disabled={loading}
 							className="gap-1.5 rounded-full"
 						>
-							<span className="text-sm font-semibold">Next Task</span>
+							<span className="text-sm font-semibold">{t("layout.next-task")}</span>
 						</Button>
 					</>
 				)}

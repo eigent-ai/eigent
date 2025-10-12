@@ -106,7 +106,7 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
 			setMessage("");
 			if (textareaRef.current) textareaRef.current.style.height = "60px";
-			toast.success("Message queued. It will be processed when the current task finishes.", {
+			toast.success(t("layout.message-queued"), {
 				closeButton: true,
 			});
 			return;
@@ -345,12 +345,12 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setStatus(taskId, 'finished');
 			chatStore.setIsPending(taskId, false);
 			
-			toast.success("Task skipped successfully", {
+			toast.success(t("layout.task-skipped-successfully"), {
 				closeButton: true,
 			});
 		} catch (error) {
 			console.error("Failed to skip task:", error);
-			toast.error("Failed to skip task", {
+			toast.error(t("layout.failed-to-skip-task"), {
 				closeButton: true,
 			});
 		} finally {
@@ -544,7 +544,7 @@ export default function ChatBox(): JSX.Element {
 													id={item.id}
 													key={item.id}
 													role={item.role}
-													content={t("chat.no-reply-received-task-continue")}
+													content={t("layout.no-reply-received-task-continue")}
 													onTyping={scrollToBottom}
 												/>
 											);
@@ -746,7 +746,7 @@ export default function ChatBox(): JSX.Element {
 								})) || [],
 								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 								onAddFile: handleFileSelect,
-								placeholder: t("chat.ask-placeholder"),
+									placeholder: t("layout.ask-placeholder"),
 								disabled: !privacy || useCloudModelInDev,
 								textareaRef: textareaRef,
 								allowDragDrop: true,
@@ -762,10 +762,10 @@ export default function ChatBox(): JSX.Element {
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-body-lg text-text-heading text-center font-bold">
-								{t("chat.welcome-to-eigent")}
+								{t("layout.welcome-to-eigent")}
 							</div>
 							<div className="text-body-lg leading-7 text-text-label text-center mb-5">
-								{t("chat.how-can-i-help-you")}
+								{t("layout.how-can-i-help-you")}
 							</div>
 						</div>
 
@@ -782,7 +782,7 @@ export default function ChatBox(): JSX.Element {
 									})) || [],
 									onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 									onAddFile: handleFileSelect,
-									placeholder: t("chat.ask-placeholder"),
+									placeholder: t("layout.ask-placeholder"),
 									disabled: useCloudModelInDev,
 									textareaRef: textareaRef,
 									allowDragDrop: false,
@@ -826,23 +826,23 @@ export default function ChatBox(): JSX.Element {
 											className="text-icon-information"
 										/>
 										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
-											{t("chat.by-messaging-eigent")}{" "}
+											{t("layout.by-messaging-eigent")}{" "}
 											<a
 												href="https://www.eigent.ai/terms-of-use"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												{t("chat.terms-of-use")}
+												{t("layout.terms-of-use")}
 											</a>{" "}
-											{t("chat.and")}{" "}
+											{t("layout.and")}{" "}
 											<a
 												href="https://www.eigent.ai/privacy-policy"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												{t("chat.privacy-policy")}
+												{t("layout.privacy-policy")}
 											</a>
 											.
 										</span>
@@ -853,25 +853,25 @@ export default function ChatBox(): JSX.Element {
 									<div className="mr-2 flex flex-col items-center gap-2">
 										{[
 											{
-												label: t("chat.palm-springs-tennis-trip-planner"),
+												label: t("layout.palm-springs-tennis-trip-planner"),
 												message: t(
-													"chat.palm-springs-tennis-trip-planner-message"
+													"layout.palm-springs-tennis-trip-planner-message"
 												),
 											},
 											{
 												label: t(
-													"chat.bank-transfer-csv-analysis-and-visualization"
+													"layout.bank-transfer-csv-analysis"
 												),
 												message: t(
-													"chat.bank-transfer-csv-analysis-and-visualization-message"
+													"layout.bank-transfer-csv-analysis-message"
 												),
 											},
 											{
 												label: t(
-													"chat.find-duplicate-files-in-downloads-folder"
+													"layout.find-duplicate-files"
 												),
 												message: t(
-													"chat.find-duplicate-files-in-downloads-folder-message"
+													"layout.find-duplicate-files-message"
 												),
 											},
 										].map(({ label, message }) => (

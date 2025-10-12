@@ -109,7 +109,7 @@ export default function SignUp() {
 				};
 				data.error.map((item: any) => {
 					errors[item.loc.at(-1) as keyof typeof errors] = item.msg.replace(
-						"Value error,",
+						t("layout.value-error"),
 						""
 					);
 				});
