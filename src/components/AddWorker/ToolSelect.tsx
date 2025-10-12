@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CircleAlert, Store, X } from "lucide-react";
-import { proxyFetchGet, proxyFetchPost, fetchPost } from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, proxyFetchPut, fetchPost } from "@/api/http";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
@@ -210,12 +210,30 @@ const ToolSelect = forwardRef<
 		envVarKey: string,
 		value: string
 	) => {
+		// First fetch current configs to check for existing ones
+		const configsRes = await proxyFetchGet("/api/configs");
+		const configs = Array.isArray(configsRes) ? configsRes : [];
+		
 		const configPayload = {
 			config_group: capitalizeFirstLetter(provider),
 			config_name: envVarKey,
 			config_value: value,
 		};
-		await proxyFetchPost("/api/configs", configPayload);
+		
+		// Check if config already exists
+		const existingConfig = configs.find(
+			(c: any) => c.config_name === envVarKey && 
+			c.config_group?.toLowerCase() === provider.toLowerCase()
+		);
+		
+		if (existingConfig) {
+			// Update existing config
+			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+		} else {
+			// Create new config
+			await proxyFetchPost("/api/configs", configPayload);
+		}
+		
 		if (window.electronAPI?.envWrite) {
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
@@ -233,36 +251,49 @@ const ToolSelect = forwardRef<
 				env[key] = envValue[key]?.value;
 			});
 			activeMcp.install_command.env = env;
-			Object.keys(activeMcp.install_command.env).map(async (key) => {
-				await saveEnvAndConfig(
-					activeMcp.key,
-					key,
-					activeMcp.install_command.env[key]
-				);
-			});
 			
-			// Add to selected tools after saving config
+			// Save all env vars and wait for completion
+			console.log("[installMcp] Saving env vars for", activeMcp.key);
+			try {
+				await Promise.all(
+					Object.keys(activeMcp.install_command.env).map(async (key) => {
+						console.log("[installMcp] Saving", key, "=", activeMcp.install_command.env[key]);
+						return saveEnvAndConfig(
+							activeMcp.key,
+							key,
+							activeMcp.install_command.env[key]
+						);
+					})
+				);
+				console.log("[installMcp] All env vars saved successfully");
+			} catch (error) {
+				console.error("[installMcp] Failed to save env vars:", error);
+				// Continue anyway to trigger installation
+			}
+			
+			// Trigger instantiation for Google Calendar
 			if (activeMcp.key === "Google Calendar") {
-				const calendarItem = {
-					id: activeMcp.id,
-					key: activeMcp.key,
-					name: activeMcp.name,
-					description: "Google Calendar integration for managing events and schedules",
-					toolkit: "google_calendar_toolkit",
-					isLocal: true
-				};
-				addOption(calendarItem, true);
+				try {
+					const response = await fetchPost("/install/tool/google_calendar");
+					
+					if (response.success) {
+						const selectedItem = {
+							id: activeMcp.id,
+							key: activeMcp.key,
+							name: activeMcp.name,
+							description: "Google Calendar integration for managing events and schedules",
+							toolkit: "google_calendar_toolkit",
+							isLocal: true
+						};
+						addOption(selectedItem, true);
+					} else {
+						console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+					}
+				} catch (error: any) {
+					console.error("Failed to install Google Calendar:", error.message);
+				}
 			}
 			return;
-			// async function fetchInstalled() {
-			// 	try {
-			// 		const configsRes = await proxyFetchGet("/api/configs");
-			// 		setConfigs(Array.isArray(configsRes) ? configsRes : []);
-			// 	} catch (e) {
-			// 		setConfigs([]);
-			// 	}
-			// }
-			// fetchInstalled();
 		}
 		setInstalling((prev) => ({ ...prev, [id]: true }));
 		try {

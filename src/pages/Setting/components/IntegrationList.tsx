@@ -8,6 +8,7 @@ import { CircleAlert } from "lucide-react";
 import {
 	proxyFetchGet,
 	proxyFetchPost,
+	proxyFetchPut,
 	proxyFetchDelete,
 } from "@/api/http";
 
@@ -102,7 +103,21 @@ export default function IntegrationList({
 			config_name: envVarKey,
 			config_value: value,
 		};
-		await proxyFetchPost("/api/configs", configPayload);
+		
+		// Check if config already exists
+		const existingConfig = configs.find(
+			(c: any) => c.config_name === envVarKey && 
+			c.config_group?.toLowerCase() === provider.toLowerCase()
+		);
+		
+		if (existingConfig) {
+			// Update existing config
+			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+		} else {
+			// Create new config
+			await proxyFetchPost("/api/configs", configPayload);
+		}
+		
 		if (window.electronAPI?.envWrite) {
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
@@ -228,38 +243,49 @@ export default function IntegrationList({
 				return;
 			}
 
-			if (item.key === "Google Calendar") {
-				let mcp = {
-					name: "Google Calendar",
-					key: "Google Calendar",
-					install_command: {
-						env: {} as any,
-					},
-					id: 14,
-				};
-				item.env_vars.map((key) => {
-					mcp.install_command.env[key] = "";
-				});
-				setActiveMcp(mcp);
-				setShowEnvConfig(true);
-				return;
-			}
+	if (item.key === "Google Calendar") {
+		let mcp = {
+			name: "Google Calendar",
+			key: "Google Calendar",
+			install_command: {
+				env: {} as any,
+			},
+			id: 14,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		setActiveMcp(mcp);
+		setShowEnvConfig(true);
+		return;
+	}
 
-			if (installed[item.key]) return;
-			await item.onInstall();
+	if (installed[item.key]) return;
+	await item.onInstall();
 		},
 		[installed]
 	);
 
 	const onConnect = async (mcp: any) => {
-		console.log(mcp);
+		// Refresh configs first to get latest state
+		await fetchInstalled();
+		
+		// Save all environment variables
 		await Promise.all(
 			Object.keys(mcp.install_command.env).map((key) => {
 				return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
 			})
 		);
 
-		fetchInstalled();
+		// After saving env vars, trigger installation/instantiation for Google Calendar
+		if (mcp.key === "Google Calendar") {
+			const calendarItem = items.find(item => item.key === "Google Calendar");
+			if (calendarItem && calendarItem.onInstall) {
+				await calendarItem.onInstall();
+			}
+		}
+
+		await fetchInstalled();
 		onClose();
 	};
 	const onClose = () => {
