@@ -15,6 +15,7 @@ interface Project {
 	createdAt: number;
 	updatedAt: number;
 	chatStores: { [chatId: string]: VanillaChatStore }; // Multiple chat stores for this project
+	chatStoreTimestamps: { [chatId: string]: number }; // Track creation time of each chat store
 	activeChatId: string | null; // ID of the currently active chat store
 	queuedMessages: Array<{ task_id: string; content: string; timestamp: number; attaches: File[] }>; // Project-level queued messages
 	metadata?: {
@@ -166,6 +167,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			chatStores: {
 				[initialChatId]: initialChatStore
 			},
+			chatStoreTimestamps: {
+				[initialChatId]: now
+			},
 			activeChatId: initialChatId,
 			queuedMessages: [], // Initialize empty queued messages array
 			metadata: {
@@ -217,6 +221,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		
 		const chatId = generateUniqueId();
 		const newChatStore = useChatStore();
+		const now = Date.now();
 		
 		set((state) => ({
 			projects: {
@@ -227,8 +232,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 						...state.projects[projectId].chatStores,
 						[chatId]: newChatStore
 					},
+					chatStoreTimestamps: {
+						...state.projects[projectId].chatStoreTimestamps,
+						[chatId]: now
+					},
 					activeChatId: chatId,
-					updatedAt: Date.now()
+					updatedAt: now
 				}
 			}
 		}));
@@ -672,10 +681,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const { projects } = get();
 		
 		if (projects[projectId]) {
-			return Object.entries(projects[projectId].chatStores).map(([chatId, chatStore]) => ({
-				chatId,
-				chatStore
-			}));
+			const project = projects[projectId];
+			const chatStoreEntries = Object.entries(project.chatStores);
+			
+			// Sort by creation timestamp (oldest first)
+			return chatStoreEntries
+				.map(([chatId, chatStore]) => ({
+					chatId,
+					chatStore,
+					createdAt: project.chatStoreTimestamps?.[chatId] || 0
+				}))
+				.sort((a, b) => a.createdAt - b.createdAt)
+				.map(({ chatId, chatStore }) => ({
+					chatId,
+					chatStore
+				}));
 		}
 		
 		return [];
@@ -693,6 +713,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		// Ensure backwards compatibility - add queuedMessages if it doesn't exist
 		if (project && !project.queuedMessages) {
 			project.queuedMessages = [];
+		}
+		
+		// Ensure backwards compatibility - add chatStoreTimestamps if it doesn't exist
+		if (project && !project.chatStoreTimestamps) {
+			project.chatStoreTimestamps = {};
+			// Initialize timestamps for existing chat stores with project creation time
+			Object.keys(project.chatStores).forEach(chatId => {
+				project.chatStoreTimestamps[chatId] = project.createdAt;
+			});
 		}
 		
 		return project;

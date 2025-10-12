@@ -268,7 +268,7 @@ code {
 }
 
 .scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .scrollbar-always-visible {
@@ -289,7 +289,7 @@ code {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 
