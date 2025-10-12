@@ -1,14 +1,13 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { fetchPost, proxyFetchPut, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
-import BottomBox, { type FileAttachment } from "./BottomBox";
+import BottomBox from "./BottomBox";
 import { ProjectChatContainer } from "./ProjectChatContainer";
-import { FileText, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
 import { proxyFetchGet } from "@/api/http";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import { TaskStateType } from "../TaskState";
 import { toast } from "sonner";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
@@ -557,32 +556,6 @@ export default function ChatBox(): JSX.Element {
 			console.error(`Can't remove ${task_id} due to ${error}`)
 		}
 	}
-
-	const getAllChatStoresMemoized = useMemo(() => {
-		const project_id = projectStore.activeProjectId;
-		if(!project_id) return [];
-
-		return projectStore.getAllChatStores(project_id);
-	}, [projectStore, projectStore.activeProjectId, chatStore])
-
-	// Check if any chat store in the project has messages
-	const hasAnyMessages = useMemo(() => {
-		// First check current active chat store
-		if (chatStore.activeTaskId && 
-			(chatStore.tasks[chatStore.activeTaskId].messages.length > 0 || 
-			 chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages)) {
-			return true;
-		}
-
-		// Then check all other chat stores in the project
-		return getAllChatStoresMemoized.some(({chatStore: store}) => {
-			const state = store.getState();
-			return state.activeTaskId && 
-				   state.tasks[state.activeTaskId] && 
-				   (state.tasks[state.activeTaskId].messages.length > 0 || 
-					state.tasks[state.activeTaskId].hasMessages);
-		});
-	}, [chatStore, getAllChatStoresMemoized]);
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
