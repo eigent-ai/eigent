@@ -19,6 +19,7 @@ import { zipFolder } from './utils/log'
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
 
 const userData = app.getPath('userData');
 
@@ -864,9 +865,33 @@ function registerIpcHandlers() {
   registerUpdateIpcHandlers();
 }
 
+// ==================== ensure eigent directories ====================
+const ensureEigentDirectories = () => {
+  const eigentBase = path.join(os.homedir(), '.eigent');
+  const requiredDirs = [
+    eigentBase,
+    path.join(eigentBase, 'bin'),
+    path.join(eigentBase, 'cache'),
+    path.join(eigentBase, 'venvs'),
+    path.join(eigentBase, 'runtime'),
+  ];
+
+  for (const dir of requiredDirs) {
+    if (!fs.existsSync(dir)) {
+      log.info(`Creating directory: ${dir}`);
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  log.info('.eigent directory structure ensured');
+};
+
 // ==================== window create ====================
 async function createWindow() {
   const isMac = process.platform === 'darwin';
+
+  // Ensure .eigent directories exist before anything else
+  ensureEigentDirectories();
 
   win = new BrowserWindow({
     title: 'Eigent',
@@ -902,14 +927,6 @@ async function createWindow() {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
 
-  // ==================== load content ====================
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
-    win.webContents.openDevTools();
-  } else {
-    win.loadFile(indexHtml);
-  }
-
   // ==================== set event listeners ====================
   setupWindowEventListeners();
   setupDevToolsShortcuts();
@@ -919,14 +936,175 @@ async function createWindow() {
   // ==================== auto update ====================
   update(win);
 
-  // ==================== check tool installed ====================
+  // ==================== CHECK IF INSTALLATION IS NEEDED BEFORE LOADING CONTENT ====================
+  log.info('Pre-checking if dependencies need to be installed...');
+
+  // Check version and tools status synchronously
+  const currentVersion = app.getVersion();
+  const versionFile = path.join(app.getPath('userData'), 'version.txt');
+  const versionExists = fs.existsSync(versionFile);
+  let savedVersion = '';
+  if (versionExists) {
+    savedVersion = fs.readFileSync(versionFile, 'utf-8').trim();
+  }
+
+  const uvExists = await isBinaryExists('uv');
+  const bunExists = await isBinaryExists('bun');
+
+  // Check if installation was previously completed
+  const backendPath = getBackendPath();
+  const installedLockPath = path.join(backendPath, 'uv_installed.lock');
+  const installationCompleted = fs.existsSync(installedLockPath);
+
+  // Check if venv path exists for current version
+  const venvPath = getVenvPath(currentVersion);
+  const venvExists = fs.existsSync(venvPath);
+
+  const needsInstallation = !versionExists || savedVersion !== currentVersion || !uvExists || !bunExists || !installationCompleted || !venvExists;
+
+  log.info('Installation check result:', {
+    needsInstallation,
+    versionExists,
+    versionMatch: savedVersion === currentVersion,
+    uvExists,
+    bunExists,
+    installationCompleted,
+    venvExists,
+    venvPath
+  });
+
+  // Handle localStorage based on installation state
+  if (needsInstallation) {
+    log.info('Installation needed - clearing auth storage to force carousel state');
+
+    // Clear the persisted auth storage file to force fresh initialization with carousel
+    const localStoragePath = path.join(app.getPath('userData'), 'Local Storage');
+    const leveldbPath = path.join(localStoragePath, 'leveldb');
+
+    try {
+      // Delete the localStorage database to force fresh init
+      if (fs.existsSync(leveldbPath)) {
+        log.info('Removing localStorage database to force fresh state...');
+        fs.rmSync(leveldbPath, { recursive: true, force: true });
+        log.info('Successfully cleared localStorage');
+      }
+    } catch (error) {
+      log.error('Error clearing localStorage:', error);
+    }
+
+    // Set up the injection for when page loads
+    win.webContents.once('dom-ready', () => {
+      if (!win || win.isDestroyed()) {
+        log.warn('Window destroyed before DOM ready - skipping localStorage injection');
+        return;
+      }
+      log.info('DOM ready - creating auth-storage with carousel state');
+      win.webContents.executeJavaScript(`
+        (function() {
+          try {
+            // Create fresh auth storage with carousel state
+            const newAuthStorage = {
+              state: {
+                token: null,
+                username: null,
+                email: null,
+                user_id: null,
+                appearance: 'light',
+                language: 'system',
+                isFirstLaunch: true,
+                modelType: 'cloud',
+                cloud_model_type: 'gpt-4.1',
+                initState: 'carousel',
+                share_token: null,
+                workerListData: {}
+              },
+              version: 0
+            };
+            localStorage.setItem('auth-storage', JSON.stringify(newAuthStorage));
+            console.log('[ELECTRON PRE-INJECT] Created fresh auth-storage with carousel state');
+          } catch (e) {
+            console.error('[ELECTRON PRE-INJECT] Failed to create storage:', e);
+          }
+        })();
+      `).catch(err => {
+        log.error('Failed to inject script:', err);
+      });
+    });
+  } else {
+    // Installation is complete - ensure initState is set to 'done'
+    log.info('Installation already complete - ensuring initState is done');
+
+    win.webContents.once('dom-ready', () => {
+      if (!win || win.isDestroyed()) {
+        log.warn('Window destroyed before DOM ready - skipping localStorage update');
+        return;
+      }
+      log.info('DOM ready - checking and updating auth-storage to done state');
+      win.webContents.executeJavaScript(`
+        (function() {
+          try {
+            const authStorage = localStorage.getItem('auth-storage');
+            if (authStorage) {
+              const parsed = JSON.parse(authStorage);
+              if (parsed.state && parsed.state.initState !== 'done') {
+                console.log('[ELECTRON] Updating initState from', parsed.state.initState, 'to done');
+                // Only update the initState field, preserve all other data
+                const updatedStorage = {
+                  ...parsed,
+                  state: {
+                    ...parsed.state,
+                    initState: 'done'
+                  }
+                };
+                localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
+                console.log('[ELECTRON] initState updated to done, reloading page...');
+                return true; // Signal that we need to reload
+              }
+            }
+            return false; // No reload needed
+          } catch (e) {
+            console.error('[ELECTRON] Failed to update initState:', e);
+            // Don't modify localStorage if there's an error to prevent data corruption
+            return false;
+          }
+        })();
+      `).then(needsReload => {
+        if (needsReload) {
+          log.info('Reloading window after localStorage update');
+          win!.reload();
+        }
+      }).catch(err => {
+        log.error('Failed to inject script:', err);
+      });
+    });
+  }
+
+  // Load content
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
+    win.webContents.openDevTools();
+  } else {
+    win.loadFile(indexHtml);
+  }
+
+  // Wait for window to be ready
+  await new Promise<void>(resolve => {
+    win!.webContents.once('did-finish-load', () => {
+      log.info('Window content loaded, starting dependency check immediately...');
+      resolve();
+    });
+  });
+
+  // Now check and install dependencies
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
     win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
     return;
-  } 
+  }
   log.info("[DEPS INSTALL] Dependency Success: ", res.message);
+
+  // Start backend after dependencies are ready
   await checkAndStartBackend();
 }
 

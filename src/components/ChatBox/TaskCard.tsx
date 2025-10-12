@@ -181,14 +181,17 @@ export function TaskCard({
 						<div className="flex items-center gap-2 ">
 							{taskType === 1 && (
 								<TaskState
-									all={taskInfo.length || 0}
+									all={taskInfo.filter((task) => task.content !== "").length || 0}
 									done={
-										taskInfo.filter((task) => task.status === "completed")
-											.length || 0
+										taskInfo.filter(
+											(task) =>
+												task.content !== "" && task.status === "completed"
+										).length || 0
 									}
 									progress={
 										taskInfo.filter(
 											(task) =>
+												task.content !== "" &&
 												task.status !== "completed" &&
 												task.status !== "failed" &&
 												task.status !== "skipped" &&
@@ -199,14 +202,16 @@ export function TaskCard({
 									skipped={
 										taskInfo.filter(
 											(task) =>
-												task.status === "skipped" ||
-												task.status === "waiting" ||
-												task.status === ""
+												task.content !== "" &&
+												(task.status === "skipped" ||
+													task.status === "waiting" ||
+													task.status === "")
 										).length || 0
 									}
 									failed={
-										taskInfo.filter((task) => task.status === "failed")
-											.length || 0
+										taskInfo.filter(
+											(task) => task.content !== "" && task.status === "failed"
+										).length || 0
 									}
 									forceVisible={true}
 									clickable={clickable}

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useInstallationStore } from '@/store/installationStore';
 import { useAuthStore } from '@/store/authStore';
 
@@ -8,43 +8,66 @@ import { useAuthStore } from '@/store/authStore';
  */
 export const useInstallationSetup = () => {
   const { initState, setInitState } = useAuthStore();
-  
+
+  // Use ref to track if initial check is done to prevent repeated checks
+  const hasCheckedOnMount = useRef(false);
+
   // Extract only the functions we need to avoid dependency issues
   const startInstallation = useInstallationStore(state => state.startInstallation);
   const addLog = useInstallationStore(state => state.addLog);
   const setSuccess = useInstallationStore(state => state.setSuccess);
   const setError = useInstallationStore(state => state.setError);
 
-  // Check tool installation status on mount
+  // Check tool installation status on mount - but only during setup phase
   useEffect(() => {
+    // Only run this check once on initial mount
+    if (hasCheckedOnMount.current) {
+      return;
+    }
+
+    hasCheckedOnMount.current = true;
+
     const checkToolInstalled = async () => {
       try {
         console.log('[useInstallationSetup] Checking tool installation status...');
         const result = await window.ipcRenderer.invoke("check-tool-installed");
-        
-        if (result.success && initState === "done" && !result.isInstalled) {
-          console.log('[useInstallationSetup] Tool not installed, setting initState to carousel');
-          setInitState("carousel");
-        }        
+
+        console.log('[useInstallationSetup] Tool check result:', result, 'initState:', initState);
+
+        // Only perform tool check during setup phase (permissions or carousel)
+        // Once user is in 'done' state (main app), don't check again
+        // This prevents unexpected navigation away from the main app
+        if (initState !== 'done') {
+          // If tools ARE installed and we're in carousel state, go to done
+          if (result.success && initState === "carousel" && result.isInstalled) {
+            console.log('[useInstallationSetup] Tools installed but initState is carousel, setting to done');
+            setInitState("done");
+          }
+        }
       } catch (error) {
         console.error("[useInstallationSetup] Tool installation check failed:", error);
       }
     };
 
     const checkBackendStatus = async() => {
-      // Also check if installation is currently in progress
-      const installationStatus = await window.electronAPI.getInstallationStatus();
-      console.log('[useInstallationSetup] Installation status check:', installationStatus);
-      
-      if (installationStatus.success && installationStatus.isInstalling) {
-        console.log('[useInstallationSetup] Installation in progress, starting frontend state');
-        startInstallation();
+      try {
+        // Also check if installation is currently in progress
+        const installationStatus = await window.electronAPI.getInstallationStatus();
+        console.log('[useInstallationSetup] Installation status check:', installationStatus);
+
+        if (installationStatus.success && installationStatus.isInstalling) {
+          console.log('[useInstallationSetup] Installation in progress, starting frontend state');
+          startInstallation();
+        }
+      } catch (err) {
+        console.error('[useInstallationSetup] Failed to check installation status:', err);
       }
     }
-    
+
     checkToolInstalled();
     checkBackendStatus();
-  }, [initState, setInitState, startInstallation]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Setup Electron IPC listeners (only once)
   useEffect(() => {

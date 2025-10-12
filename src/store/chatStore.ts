@@ -594,6 +594,13 @@ const chatStore = create<ChatStore>()(
 
 						const taskRunningIndex = taskRunning!.findIndex((task: TaskInfo) => task.id === task_id);
 
+						// Skip tasks with empty content only if the task doesn't exist in taskInfo
+						// If task exists in taskInfo, we should still process status updates
+						if ((!content || content.trim() === "") && !task) {
+							console.warn(`Skipping task ${task_id} with empty content and not found in taskInfo`);
+							return;
+						}
+
 						if (assigneeAgentIndex === -1) return;
 						const taskAgent = taskAssigning![assigneeAgentIndex];
 
@@ -614,6 +621,15 @@ const chatStore = create<ChatStore>()(
 							const { agentIndex, taskIndex } = target
 							const agentName = taskAssigning.find((agent: Agent) => agent.agent_id === assignee_id)?.name
 							taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
+						}
+
+						// Clear logs from the assignee agent that are related to this task
+						// This prevents logs from previous attempts appearing in the reassigned task
+						// This needs to happen whether it's a reassignment to a different agent or a retry with the same agent
+						if (taskState !== "waiting" && failure_count && failure_count > 0) {
+							taskAssigning[assigneeAgentIndex].log = taskAssigning[assigneeAgentIndex].log.filter(
+								(log) => log.data.process_task_id !== task_id
+							)
 						}
 
 
@@ -1316,13 +1332,16 @@ const chatStore = create<ChatStore>()(
 			}))
 		},
 		handleConfirmTask: async (taskId: string, type?: string) => {
-			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo } = get();
+			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning } = get();
 			if (!taskId) return;
 
 			// record task start time
 			setTaskTime(taskId, Date.now());
 			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
 			setTaskInfo(taskId, taskInfo)
+			// Also update taskRunning with the filtered tasks to keep counts consistent
+			const taskRunning = tasks[taskId].taskRunning.filter((task) => task.content !== '')
+			setTaskRunning(taskId, taskRunning)
 			if (!type) {
 				await fetchPut(`/task/${taskId}`, {
 					task: taskInfo,
