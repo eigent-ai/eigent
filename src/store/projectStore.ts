@@ -22,6 +22,11 @@ interface Project {
 		tags?: string[];
 		priority?: 'low' | 'medium' | 'high';
 		status?: 'active' | 'completed' | 'archived';
+		/**Save history id for replay reuse purposes.
+		 * TODO(history): Remove historyId handling to support per projectId 
+		 * instead in history api
+		 */
+		historyId?: string;
 	};
 }
 
@@ -30,11 +35,20 @@ interface ProjectStore {
 	projects: { [projectId: string]: Project };
 	
 	// Project management
-	createProject: (name: string, description?: string, projectId?:string, type?:ProjectType) => string;
+	/**
+	 * 
+	 * @param name 
+	 * @param description 
+	 * @param projectId 
+	 * @param type 
+	 * @param historyId Mainly passed from @function replayProject 
+	 * @returns projectId
+	 */
+	createProject: (name: string, description?: string, projectId?:string, type?:ProjectType, historyId?: string) => string;
 	setActiveProject: (projectId: string) => void;
 	removeProject: (projectId: string) => void;
 	updateProject: (projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) => void;
-	replayProject: (taskIds: string[], question?: string, projectId?: string) => string;
+	replayProject: (taskIds: string[], question?: string, projectId?: string, historyId?: string) => string;
 	
 	// Project-level queued messages management
 	addQueuedMessage: (projectId: string, content: string, attaches: File[]) => string|null;
@@ -56,6 +70,10 @@ interface ProjectStore {
 	getAllProjects: () => Project[];
 	getProjectById: (projectId: string) => Project | null;
 	getProjectTotalTokens: (projectId: string) => number;
+
+	//History ID
+	setHistoryId: (projectId: string, historyId: string) => void;
+	getHistoryId: (projectId: string | null) => string | null;
 }
 
 
@@ -115,7 +133,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	activeProjectId: null,
 	projects: {},
 	
-	createProject: (name: string, description?: string, projectId?: string, type?:ProjectType) => {
+	createProject: (name: string, description?: string, projectId?: string, type?:ProjectType, historyId?: string) => {
 		const { projects } = get();
 		
 		//Replay doesn't need to use an empty project container
@@ -135,6 +153,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 							...existingEmptyProject,
 							name,
 							description,
+							metadata: {
+								...existingEmptyProject.metadata,
+								historyId: historyId
+							},
 							updatedAt: now
 						}
 					},
@@ -173,7 +195,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			activeChatId: initialChatId,
 			queuedMessages: [], // Initialize empty queued messages array
 			metadata: {
-				status: 'active'
+				status: 'active',
+				historyId: historyId
 			}
 		};
 		
@@ -411,9 +434,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	 * Simplified replay functionality
 	 * @param taskIds - array of taskIds to replay
 	 * @param projectId - optional projectId to create/overwrite
+	 * @param historyId - optional, used to init historyId to new project
 	 * @returns the created project ID
 	 */
-	replayProject: (taskIds: string[], question: string="Replay task", projectId?: string) => {
+	replayProject: (taskIds: string[], question: string="Replay task", projectId?: string, historyId?: string) => {
 		const { projects, removeProject, createProject, createChatStore } = get();
 		
 		let replayProjectId: string;
@@ -433,7 +457,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 				`Replay Project ${question}`, 
 				`Replayed project from ${question}`,
 				projectId,
-				ProjectType.REPLAY
+				ProjectType.REPLAY,
+				historyId
 			);
 		} else {
 			// Create a new project only once
@@ -441,7 +466,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 				`Replay Project ${question}`, 
 				`Replayed project with ${taskIds.length} tasks`,
 				projectId,
-				ProjectType.REPLAY
+				ProjectType.REPLAY,
+				historyId
 			);
 		}
 		
@@ -460,7 +486,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 				
 				if (chatStore) {					
 					// Call replay on the chat store with the taskId, question, and 0 delay
-					await chatStore.getState().replay(taskId, question, 0);
+					await chatStore.getState().replay(taskId, question, 0.2);
 					console.log(`[ProjectStore] Started replay for task ${taskId}`);
 				}
 			}
@@ -752,6 +778,46 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		});
 		
 		return totalTokens;
+	},
+
+	setHistoryId: (projectId: string, historyId: string) => {
+		const { projects } = get();
+		
+		if (!projects[projectId]) {
+			console.warn(`Project ${projectId} not found for setting history ID`);
+			return;
+		}
+		
+		set((state) => ({
+			projects: {
+				...state.projects,
+				[projectId]: {
+					...state.projects[projectId],
+					metadata: {
+						...state.projects[projectId].metadata,
+						historyId
+					},
+					updatedAt: Date.now()
+				}
+			}
+		}));
+	},
+
+	getHistoryId: (projectId: string | null) => {
+		if(!projectId) {
+			console.warn(`Project id is null for getting history ID`);
+			return null;	
+		}
+
+		const { projects } = get();
+		const project = projects[projectId];
+		
+		if (!project) {
+			console.warn(`Project ${projectId} not found for getting history ID`);
+			return null;
+		}
+		
+		return project.metadata?.historyId || null;
 	}
 }));
 
