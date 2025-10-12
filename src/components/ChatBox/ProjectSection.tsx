@@ -9,13 +9,19 @@ interface ProjectSectionProps {
   chatStore: VanillaChatStore;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
+  onPauseResume: () => void;
+  onSkip: () => void;
+  isPauseResumeLoading: boolean;
 }
 
 export const ProjectSection: React.FC<ProjectSectionProps> = ({
   chatId,
   chatStore,
   activeQueryId,
-  onQueryActive
+  onQueryActive,
+  onPauseResume,
+  onSkip,
+  isPauseResumeLoading
 }) => {
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
@@ -57,18 +63,10 @@ export const ProjectSection: React.FC<ProjectSectionProps> = ({
       {activeTaskId && (
         <FloatingAction
           status={task.status}
-          onPause={() => {
-            // Handle pause/resume logic
-            const type = task.status === 'running' ? 'pause' : 'resume';
-            // Implementation would go here
-          }}
-          onResume={() => {
-            // Handle resume logic
-          }}
-          onSkip={() => {
-            // Handle skip logic
-          }}
-          loading={false}
+          onPause={onPauseResume}
+          onResume={onPauseResume}
+          onSkip={onSkip}
+          loading={isPauseResumeLoading}
         />
       )}
     </motion.div>
