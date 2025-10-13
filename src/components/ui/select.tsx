@@ -219,7 +219,7 @@ SelectSeparator.displayName = SelectPrimitive.Separator.displayName
 
 type SelectItemWithButtonProps = {
   value: string
-  label: string
+  label: React.ReactNode
   enabled: boolean
   buttonText?: string
   onButtonClick?: (e: React.MouseEvent) => void

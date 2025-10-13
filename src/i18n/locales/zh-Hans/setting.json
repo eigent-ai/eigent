@@ -158,5 +158,6 @@
 	"connection-test-successful": "连接测试成功！",
 	"connection-test-failed": "连接测试失败。",
 	"configuration-saved-successfully": "配置保存成功！",
-	"failed-to-save-configuration": "保存配置失败。"
+	"failed-to-save-configuration": "保存配置失败。",
+	"recommended": "推荐"
 }

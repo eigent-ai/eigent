@@ -14,14 +14,16 @@ import { proxyFetchGet, proxyFetchPost } from "@/api/http";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { t } from "i18next";
+import { useAuthStore } from "@/store/authStore";
+import { Tag as TagComponent } from "@/components/ui/tag";
 
 interface SearchEngineProvider {
 	id: string;
 	name: string;
-	icon: string;
 	description: string;
 	requiresApiKey: boolean;
 	enabledByDefault?: boolean;
+	recommended?: boolean;
 	fields: Array<{
 		key: string;
 		label: string;
@@ -35,99 +37,142 @@ interface SearchEngineConfigDialogProps {
 	onClose: () => void;
 }
 
-const searchEngines: SearchEngineProvider[] = [
-	{
-		id: "google",
-		name: "Google",
-		icon: "🔍",
-		description: "Connect to the Google Custom Search API for powerful and accurate web results.",
-		requiresApiKey: true,
-		fields: [
+function buildSearchEngines(modelType: 'cloud' | 'local' | 'custom'): SearchEngineProvider[] {
+	// Always-available engines in both versions
+	const commonEngines: SearchEngineProvider[] = [
+		{
+			id: "bing",
+			name: "Bing",
+			description: "Bing web crawling. No setup required — enabled by default.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			fields: [],
+		},
+		{
+			id: "baidu",
+			name: "Baidu",
+			description: "Baidu web crawling for Chinese-language results. Enabled by default.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			fields: [],
+		},
+		{
+			id: "wiki",
+			name: "Wiki",
+			description: "Wikipedia public API. Enabled by default.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			fields: [],
+		},
+		{
+			id: "duckduckgo",
+			name: "DuckDuckGo",
+			description: "DuckDuckGo free public API. No setup required.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			fields: [],
+		},
+	];
+
+	if (modelType === 'local') {
+		return [
 			{
-				key: "GOOGLE_API_KEY",
-				label: "Google API Key",
-				placeholder: "Enter your Google API key from Google Cloud Console",
-				note: "Learn how to get your Google API key → https://developers.google.com/custom-search/v1/overview",
+				id: "google",
+				name: "Google",
+				description: "Connect to Google Custom Search (requires API key and CSE ID).",
+				requiresApiKey: true,
+				fields: [
+					{
+						key: "GOOGLE_API_KEY",
+						label: "Google API Key",
+						placeholder: "Enter your Google API key from Google Cloud Console",
+						note: "Learn how to get your Google API key → https://developers.google.com/custom-search/v1/overview",
+					},
+					{
+						key: "SEARCH_ENGINE_ID",
+						label: "Search Engine ID",
+						placeholder: "Enter the Custom Search Engine ID associated with your API key",
+					},
+				],
 			},
 			{
-				key: "SEARCH_ENGINE_ID",
-				label: "Search Engine ID",
-				placeholder: "Enter the Custom Search Engine ID associated with your API key",
+				id: "exa",
+				name: "Exa Search",
+				description: "Connect to Exa Search API (requires API key).",
+				requiresApiKey: true,
+				fields: [
+					{
+						key: "EXA_API_KEY",
+						label: "Exa API Key",
+						placeholder: "Enter your Exa API key",
+						note: "Get your key → https://exa.ai",
+					},
+				],
 			},
-		],
-	},
-	{
-		id: "bing",
-		name: "Bing",
-		icon: "🪟",
-		description: "Use Bing's public search integration. No setup required — automatically enabled by default.",
-		requiresApiKey: false,
-		enabledByDefault: true,
-		fields: [],
-	},
-	{
-		id: "baidu",
-		name: "Baidu",
-		icon: "🀄",
-		description: "Use Baidu's open search for Chinese-language results. No configuration required — automatically enabled by default.",
-		requiresApiKey: false,
-		enabledByDefault: true,
-		fields: [],
-	},
-	{
-		id: "duckduckgo",
-		name: "DuckDuckGo",
-		icon: "🦆",
-		description: "Use DuckDuckGo's free public API for privacy-friendly search results.",
-		requiresApiKey: true,
-		fields: [
 			{
-				key: "DUCKDUCKGO_API_KEY",
-				label: "Public API Key",
-				placeholder: "Enter your DuckDuckGo public API key",
-				note: "Get a free API key → https://duckduckgo.com/api",
+				id: "brave",
+				name: "Brave Search",
+				description: "Connect to Brave Search API (requires API key).",
+				requiresApiKey: true,
+				fields: [
+					{
+						key: "BRAVE_API_KEY",
+						label: "Brave API Key",
+						placeholder: "Enter your Brave Search API key",
+						note: "Get your key → https://brave.com/search/api/",
+					},
+				],
 			},
-		],
-	},
-	{
-		id: "brave",
-		name: "Brave Search",
-		icon: "🦁",
-		description: "Use Brave's private API for ad-free, privacy-focused search results.",
-		requiresApiKey: true,
-		fields: [
-			{
-				key: "BRAVE_API_KEY",
-				label: "Brave API Key",
-				placeholder: "Enter your Brave Search API key",
-				note: "Get your key from Brave Developers → https://brave.com/search/api/",
-			},
-		],
-	},
-	{
-		id: "wiki",
-		name: "Wiki Search",
-		icon: "📚",
-		description: "Retrieve knowledge directly from Wikipedia's public API. No setup required — automatically enabled by default.",
-		requiresApiKey: false,
-		enabledByDefault: true,
-		fields: [],
-	},
-];
+			...commonEngines,
+		];
+	}
+
+	// cloud or custom → provide as selectable options, no config required
+	return [
+		{
+			id: "google",
+			name: "Google",
+			description: "Google Search integration available for cloud mode.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			recommended: true,
+			fields: [],
+		},
+		{
+			id: "exa",
+			name: "Exa Search",
+			description: "Exa Search integration available for cloud mode.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			fields: [],
+		},
+		{
+			id: "brave",
+			name: "Brave Search",
+			description: "Brave Search integration available for cloud mode.",
+			requiresApiKey: false,
+			enabledByDefault: true,
+			fields: [],
+		},
+		...commonEngines,
+	];
+}
 
 export default function SearchEngineConfigDialog({
 	open,
 	onClose,
 }: SearchEngineConfigDialogProps) {
 	const { t } = useTranslation();
+	const { modelType } = useAuthStore();
 	const [selectedProvider, setSelectedProvider] = useState<SearchEngineProvider>(
-		searchEngines[0]
+		buildSearchEngines(modelType)[0]
 	);
 	const [configs, setConfigs] = useState<any[]>([]);
 	const [formData, setFormData] = useState<Record<string, string>>({});
 	const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
 	const [testing, setTesting] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const engines = buildSearchEngines(modelType);
 
 	// Load existing configurations
 	useEffect(() => {
@@ -137,7 +182,7 @@ export default function SearchEngineConfigDialog({
 					setConfigs(Array.isArray(res) ? res : []);
 					// Initialize form data with existing values
 					const existingData: Record<string, string> = {};
-					searchEngines.forEach((engine) => {
+				engines.forEach((engine) => {
 						engine.fields.forEach((field) => {
 							const config = res.find(
 								(c: any) => c.config_name === field.key
@@ -287,28 +332,33 @@ export default function SearchEngineConfigDialog({
 
 				<DialogContentSection className="flex h-full">
 					{/* Left Panel - Provider List */}
-					<div className="w-1/3 border-y-0 border-l-0 border border-solid border-border-secondary pr-4">
+			<div className="w-1/3 border-y-0 border-l-0 border border-solid border-border-secondary pr-4">
 							<div className="flex flex-col gap-2">
-								{searchEngines.map((provider) => {
+							{engines.map((provider) => {
 									const status = getProviderStatus(provider);
 									const isSelected = selectedProvider.id === provider.id;
-									return (
+								return (
 										<Button
                       variant="ghost"
                       size="md"
 											key={provider.id}
-											onClick={() => setSelectedProvider(provider)}
+										onClick={() => setSelectedProvider(provider)}
 											className={`w-full justify-between border border-solid border-transparent bg-transparent transition-colors duration-200 ease-in-out ${isSelected ? "bg-surface-secondary border border-solid border-border-primary" : "hover:bg-surface-secondary"}`}
 										>
                       
 											<div className="flex items-center gap-3">
                           {getStatusIcon(status)}
-													<div className="font-bold text-label-sm">
-														{provider.name}
-													</div>	
+											<div className="font-bold text-label-sm flex items-center gap-2">
+												<span>{provider.name}</span>
+                                                {provider.recommended ? (
+                                                    <TagComponent asChild>
+                                                        <span>{t("setting.recommended")}</span>
+                                                    </TagComponent>
+                                                ) : null}
+											</div>	
 											</div>
                       <div className="text-xs text-text-label font-extralight">
-													{getStatusText(status)}
+										{getStatusText(status)}
 											</div>
 										</Button>
 									);

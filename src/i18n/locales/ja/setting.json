@@ -158,6 +158,7 @@
 	"connection-test-successful": "接続テストが成功しました！",
 	"connection-test-failed": "接続テストが失敗しました。",
 	"configuration-saved-successfully": "設定が正常に保存されました！",
-	"failed-to-save-configuration": "設定の保存に失敗しました。"
+	"failed-to-save-configuration": "設定の保存に失敗しました。",
+	"recommended": "おすすめ"
 }
 

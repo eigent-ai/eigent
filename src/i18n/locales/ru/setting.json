@@ -158,6 +158,7 @@
 	"connection-test-successful": "Тест соединения успешен!",
 	"connection-test-failed": "Тест соединения не удался.",
 	"configuration-saved-successfully": "Конфигурация успешно сохранена!",
-	"failed-to-save-configuration": "Не удалось сохранить конфигурацию."
+	"failed-to-save-configuration": "Не удалось сохранить конфигурацию.",
+	"recommended": "Рекомендуется"
 }
 

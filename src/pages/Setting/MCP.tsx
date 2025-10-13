@@ -26,6 +26,7 @@ import MCPMarket from "./MCPMarket";
 import { toast } from "sonner";
 import { ConfigFile } from "electron/main/utils/mcpConfig";
 import { SelectItem, SelectItemWithButton } from "@/components/ui/select";
+import { Tag as TagComponent } from "@/components/ui/tag";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
@@ -425,6 +426,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	// Generate search engine selection content
 	const generateSearchEngineSelectContent = () => {
 		console.log("Generating search engine select content, configs:", configs);
+		const isCloud = modelType === 'cloud';
 		
 		// Google Search - requires API key and Search Engine ID
 		const hasGoogleApiKey = configs.some((c: any) => c.config_name === "GOOGLE_API_KEY");
@@ -444,50 +446,57 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 
 		return (
 			<>
-				{/* Google Search - requires configuration */}
-				<SelectItemWithButton 
-					value="google" 
-					label="Google Search" 
-					enabled={hasGoogle}
-					buttonText={t("setting.setting")}
-					onButtonClick={() => setShowSearchEngineConfig(true)}
-				/>
-				
-				{/* Exa Search - requires configuration */}
-				<SelectItemWithButton 
-					value="exa" 
-					label="Exa Search" 
-					enabled={hasExa}
-					buttonText={t("setting.setting")}
-					onButtonClick={() => setShowSearchEngineConfig(true)}
-				/>
+				{/* Cloud mode: offer Google (recommended), Exa, Brave without config gating */}
+				{isCloud ? (
+					<>
+							<SelectItem value="google">
+								<span>Google Search </span>
+								<TagComponent asChild>
+									<span>{t("setting.recommended")}</span>
+								</TagComponent>
+							</SelectItem>
+						<SelectItem value="exa">Exa Search</SelectItem>
+						<SelectItem value="brave">Brave Search</SelectItem>
+					</>
+				) : (
+					<>
+						{/* Local mode: gated by configuration with button */}
+						<SelectItemWithButton 
+							value="google" 
+							label={
+								<span>
+									<span>Google Search </span>
+									<TagComponent asChild>
+										<span>{t("setting.recommended")}</span>
+									</TagComponent>
+								</span>
+							}
+							enabled={hasGoogle}
+							buttonText={t("setting.setting")}
+							onButtonClick={() => setShowSearchEngineConfig(true)}
+						/>
+						<SelectItemWithButton 
+							value="exa" 
+							label="Exa Search" 
+							enabled={hasExa}
+							buttonText={t("setting.setting")}
+							onButtonClick={() => setShowSearchEngineConfig(true)}
+						/>
+						<SelectItemWithButton 
+							value="brave" 
+							label="Brave Search" 
+							enabled={hasBrave}
+							buttonText={t("setting.setting")}
+							onButtonClick={() => setShowSearchEngineConfig(true)}
+						/>
+					</>
+				)}
 
-				{/* DuckDuckGo - requires configuration */}
-				<SelectItemWithButton 
-					value="duckduckgo" 
-					label="DuckDuckGo Search" 
-					enabled={hasDuckDuckGo}
-					buttonText={t("setting.setting")}
-					onButtonClick={() => setShowSearchEngineConfig(true)}
-				/>
-
-				{/* Brave Search - requires configuration */}
-				<SelectItemWithButton 
-					value="brave" 
-					label="Brave Search" 
-					enabled={hasBrave}
-					buttonText={t("setting.setting")}
-					onButtonClick={() => setShowSearchEngineConfig(true)}
-				/>
-
-				{/* Bing Search - no API key required, always enabled */}
-				<SelectItem value="bing">Bing Search</SelectItem>
-
-				{/* Baidu Search - no API key required, always enabled */}
-				<SelectItem value="baidu">Baidu Search</SelectItem>
-
-				{/* Wiki Search - no API key required, always enabled */}
-				<SelectItem value="wiki">Wiki Search</SelectItem>
+				{/* Always available across modes with requested notes */}
+				<SelectItem value="bing">Bing</SelectItem>
+				<SelectItem value="baidu">Baidu</SelectItem>
+				<SelectItem value="wiki">Wiki</SelectItem>
+				<SelectItem value="duckduckgo">DuckDuckGo</SelectItem>
 			</>
 		);
 	};

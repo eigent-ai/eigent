@@ -158,5 +158,6 @@
 	"connection-test-successful": "Verbindungstest erfolgreich!",
 	"connection-test-failed": "Verbindungstest fehlgeschlagen.",
 	"configuration-saved-successfully": "Konfiguration erfolgreich gespeichert!",
-	"failed-to-save-configuration": "Fehler beim Speichern der Konfiguration."
+	"failed-to-save-configuration": "Fehler beim Speichern der Konfiguration.",
+	"recommended": "Empfohlen"
 }
