@@ -341,6 +341,28 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+			
+			// Lock the chatStore reference at the start of SSE session to prevent focus changes
+			// during active message processing
+			let lockedChatStore = targetChatStore;
+			let lockedTaskId = newTaskId;
+			
+			// Getter functions that use the locked references instead of dynamic ones
+			const getCurrentChatStore = () => {
+				return lockedChatStore.getState();
+			};
+			
+			// Get the locked task ID - this won't change during the SSE session
+			const getCurrentTaskId = () => {
+				return lockedTaskId;
+			};
+			
+			// Function to update locked references (only for special cases like replay)
+			const updateLockedReferences = (newChatStore: VanillaChatStore, newTaskId: string) => {
+				lockedChatStore = newChatStore;
+				lockedTaskId = newTaskId;
+			};
+			
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
 				openWhenHidden: true,
@@ -389,12 +411,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						 * reusing same projectId. Need to create new chatStore
 						 * as it has been skipped earlier in startTask.
 						 */
-						if(type && project_id) {
+						if(type && project_id && question) {
 							const newChatResult = projectStore.appendInitChatStore(project_id);
 
 							if (newChatResult) {
+								// Update both the variables and the locked references
 								newTaskId = newChatResult.taskId;
 								targetChatStore = newChatResult.chatStore;
+								updateLockedReferences(newChatResult.chatStore, newChatResult.taskId);
+								
 								targetChatStore.getState().setIsPending(newTaskId, false);
 								
 								//From handleSend if message is given
@@ -412,20 +437,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					}
 					//Enable it for the rest of current SSE session
 					skipFirstConfirmOnReplay = false;
-					
-					// Dynamic getter function that always returns the current active chat store
-					const getCurrentChatStore = () => {
-						if (!project_id) return get();
-						
-						const activeChatStore = projectStore.getActiveChatStore(project_id);
-						return activeChatStore ? activeChatStore.getState() : get();
-					};
-					
-					// Get current active task ID dynamically
-					const getCurrentTaskId = () => {
-						const currentStore = getCurrentChatStore();
-						return currentStore.activeTaskId || newTaskId;
-					};
 
 					const { 
 						setNuwFileNum, 
@@ -634,6 +645,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (!storeResult) return;
 						
 						const {chatStore: newChatStore} = storeResult;
+						updateLockedReferences(newChatStore, task_id);
 						
 						// Customize the initialTask data
 						newChatStore.getState().addMessages(task_id, {
