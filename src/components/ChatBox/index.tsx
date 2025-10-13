@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { replayActiveTask } from "@/lib";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
@@ -356,11 +357,8 @@ export default function ChatBox(): JSX.Element {
 	// Replay handler
 	const [isReplayLoading, setIsReplayLoading] = useState(false);
 	const handleReplay = async () => {
-		const taskId = chatStore.activeTaskId as string;
 		setIsReplayLoading(true);
-		const question =
-			chatStore.tasks[taskId].messages[0].content;
-		await chatStore.replay(taskId, question, 0.1);
+		await replayActiveTask(chatStore, projectStore, navigate);
 		setIsReplayLoading(false);
 	};
 

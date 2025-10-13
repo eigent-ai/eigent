@@ -36,6 +36,7 @@ import AlertDialog from "../ui/alertDialog";
 import { proxyFetchGet, proxyFetchDelete, proxyFetchPost } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { share } from "@/lib/share";
+import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
@@ -150,14 +151,7 @@ export default function HistorySidebar() {
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		/**
-		 * TODO(history): For now all replaying is appending to the same instance
-		 * of task_id (to be renamed projectId). Later we need to filter task_id from
-		 * /api/chat/histories by project_id then feed it here.
-		 */
-		const taskIdsList = [projectId];
-		projectStore.replayProject(taskIdsList, question, projectId, historyId);
-		navigate({ pathname: "/" });
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
 	const handleDelete = (id: string) => {

@@ -177,6 +177,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 old_task_result = str(camel_task.result)
                 
                 # Extract task content from the new task data immediately
+                # Don't return question field for new_tasks
                 new_task_content = item.data.get('content', '')
                 
                 # Update camel_task to the new task right away

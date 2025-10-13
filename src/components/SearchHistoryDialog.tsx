@@ -31,6 +31,7 @@ import { useNavigate } from "react-router-dom";
 import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { replayProject } from "@/lib";
 
 export function SearchHistoryDialog() {
 	const {t} = useTranslation()
@@ -60,14 +61,7 @@ export function SearchHistoryDialog() {
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		/**
-		 * TODO(history): For now all replaying is appending to the same instance
-		 * of task_id (to be renamed projectId). Later we need to filter task_id from
-		 * /api/chat/histories by project_id then feed it here.
-		 */
-		const taskIdsList = [projectId];
-		projectStore.replayProject(taskIdsList, question, projectId, historyId);
-		navigate({ pathname: "/" });
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
 	useEffect(() => {
