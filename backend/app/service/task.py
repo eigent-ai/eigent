@@ -39,6 +39,7 @@ class Action(str, Enum):
     budget_not_enough = "budget_not_enough"  # backend -> user
     add_task = "add_task"  # user -> backend
     remove_task = "remove_task"  # user -> backend
+    skip_task = "skip_task"  # user -> backend
 
 
 class ActionImproveData(BaseModel):
@@ -191,6 +192,11 @@ class ActionRemoveTaskData(BaseModel):
     project_id: str
 
 
+class ActionSkipTaskData(BaseModel):
+    action: Literal[Action.skip_task] = Action.skip_task
+    project_id: str
+
+
 ActionData = (
     ActionImproveData
     | ActionStartData
@@ -216,6 +222,7 @@ ActionData = (
     | ActionBudgetNotEnough
     | ActionAddTaskData
     | ActionRemoveTaskData
+    | ActionSkipTaskData
 )
 
 

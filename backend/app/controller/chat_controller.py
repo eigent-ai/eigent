@@ -19,6 +19,7 @@ from app.service.task import (
     ActionSupplementData,
     ActionAddTaskData,
     ActionRemoveTaskData,
+    ActionSkipTaskData,
     get_or_create_task_lock,
     get_task_lock,
 )
@@ -161,3 +162,23 @@ def remove_task(project_id: str, task_id: str):
     except Exception as e:
         chat_logger.error(f"Error removing task {task_id} for project_id: {project_id}: {e}")
         raise UserException(code.error, f"Failed to remove task: {str(e)}")
+
+
+@router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
+@traceroot.trace()
+def skip_task(project_id: str):
+    """Skip a task in the workforce"""
+    chat_logger.info(f"Skipping task in workforce for project_id: {project_id}")
+    task_lock = get_task_lock(project_id)
+    
+    try:
+        # Queue the skip task action
+        skip_task_action = ActionSkipTaskData(project_id=project_id)
+        asyncio.run(task_lock.put_queue(skip_task_action))
+
+        chat_logger.info(f"Task skip request queued for project_id: {project_id}")
+        return Response(status_code=201)
+            
+    except Exception as e:
+        chat_logger.error(f"Error skipping task for project_id: {project_id}: {e}")
+        raise UserException(code.error, f"Failed to skip task: {str(e)}")

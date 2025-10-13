@@ -148,6 +148,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "task_id": item.task_id
                 }
                 yield sse_json("remove_task", returnData)
+            elif item.action == Action.skip_task:
+                if workforce is not None and item.project_id == options.project_id:
+                    if workforce._state.name == 'PAUSED':
+                        # Resume paused workforce to skip the task
+                        logger.info(f"[CHAT] Resuming paused workforce to skip task")
+                        workforce.resume()
+                    workforce.skip_gracefully()
             elif item.action == Action.start:
                 if workforce is not None and workforce._state.name == 'PAUSED':
                     # Resume paused workforce - subtasks should already be loaded

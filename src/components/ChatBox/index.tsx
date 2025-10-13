@@ -396,11 +396,11 @@ export default function ChatBox(): JSX.Element {
 		setIsPauseResumeLoading(true);
 		
 		try {
-			// Stop the current task
-			await fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
-				action: 'stop',
+			// Skip the current task
+			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
+				project_id: projectStore.activeProjectId
 			});
-			
+
 			// Update task status to finished
 			chatStore.setStatus(taskId, 'finished');
 			chatStore.setIsPending(taskId, false);
