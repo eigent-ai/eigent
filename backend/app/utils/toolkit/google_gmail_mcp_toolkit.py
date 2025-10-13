@@ -1,3 +1,10 @@
+"""
+DEPRECATED: This MCP-based Gmail toolkit is no longer used.
+Use GoogleGmailNativeToolkit instead for Gmail integration.
+
+This file is kept for reference only and is not imported anywhere in the codebase.
+"""
+
 from camel.toolkits import BaseToolkit, FunctionTool, MCPToolkit
 from app.component.environment import env, env_or_fail
 from app.component.command import bun
@@ -6,6 +13,11 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
 class GoogleGmailMCPToolkit(BaseToolkit, AbstractToolkit):
+    """
+    DEPRECATED: Use GoogleGmailNativeToolkit instead.
+    
+    This MCP-based implementation is no longer integrated into the agent system.
+    """
     agent_name: str = Agents.social_medium_agent
 
     def __init__(

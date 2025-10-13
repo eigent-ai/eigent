@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.10.16"
 
 [[package]]
@@ -240,7 +240,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.76a13" },
+    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=gmail-toolkit" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
@@ -325,7 +325,7 @@ wheels = [
 [[package]]
 name = "camel-ai"
 version = "0.2.76a13"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/camel-ai/camel.git?rev=gmail-toolkit#f82aa26bfce5eb4132bfeb3d919850cfaccf1cee" }
 dependencies = [
     { name = "colorama" },
     { name = "docstring-parser" },
@@ -338,10 +338,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
     { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/7c/0145edf0307e360557917de28691eb0c41b36b017a28c6b67e58a729a6da/camel_ai-0.2.76a13.tar.gz", hash = "sha256:487570c36a39a333ae8000783babd5a82350a829aaa8aa2ae712470b596cafe1", size = 950278, upload-time = "2025-10-06T06:09:46.064Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/46/9886106669491737631178830bce79bd7bf63391db4d2200f645089dd9df/camel_ai-0.2.76a13-py3-none-any.whl", hash = "sha256:b860412e4a5b5fc31b0cc3d4b1eeefcd02382d9a5aced252856a1eff0285a97b", size = 1400549, upload-time = "2025-10-06T06:09:43.291Z" },
 ]
 
 [package.optional-dependencies]

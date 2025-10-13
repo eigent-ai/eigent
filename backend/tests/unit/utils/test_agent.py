@@ -673,7 +673,8 @@ class TestAgentFactoryFunctions:
              patch('app.utils.agent.LinkedInToolkit') as mock_linkedin_toolkit, \
              patch('app.utils.agent.RedditToolkit') as mock_reddit_toolkit, \
              patch('app.utils.agent.NotionMCPToolkit') as mock_notion_mcp_toolkit, \
-             patch('app.utils.agent.GoogleGmailMCPToolkit') as mock_gmail_toolkit, \
+             # patch('app.utils.agent.GoogleGmailMCPToolkit') as mock_gmail_mcp_toolkit, \  # Deprecated - MCP version
+             patch('app.utils.agent.GoogleGmailNativeToolkit') as mock_gmail_toolkit, \
              patch('app.utils.agent.GoogleCalendarToolkit') as mock_calendar_toolkit, \
              patch('app.utils.agent.HumanToolkit') as mock_human_toolkit, \
              patch('app.utils.agent.TerminalToolkit') as mock_terminal_toolkit, \
@@ -685,7 +686,8 @@ class TestAgentFactoryFunctions:
             mock_linkedin_toolkit.get_can_use_tools.return_value = []
             mock_reddit_toolkit.get_can_use_tools.return_value = []
             mock_notion_mcp_toolkit.get_can_use_tools = AsyncMock(return_value=[])
-            mock_gmail_toolkit.get_can_use_tools = AsyncMock(return_value=[])
+            # mock_gmail_mcp_toolkit.get_can_use_tools = AsyncMock(return_value=[])  # Deprecated - MCP version
+            mock_gmail_toolkit.get_can_use_tools.return_value = []  # Native toolkit (not async)
             mock_calendar_toolkit.get_can_use_tools.return_value = []
             mock_human_toolkit.get_can_use_tools.return_value = []
             mock_terminal_toolkit.return_value.get_tools.return_value = []
