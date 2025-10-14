@@ -559,6 +559,21 @@ export class FileReader {
 			return [];
 		}
 	}
+
+	public deleteTaskFiles(email: string, taskId: string): { success: boolean; path: string } {
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+		const userHome = app.getPath('home');
+		const dirPath = path.join(userHome, "eigent", safeEmail, `taskId_${taskId}`);
+		try {
+			if (fs.existsSync(dirPath)) {
+				fs.rmSync(dirPath, { recursive: true, force: true });
+			}
+			return { success: true, path: dirPath };
+		} catch (err) {
+			console.error("Delete task files failed:", dirPath, err);
+			return { success: false, path: dirPath };
+		}
+	}
 	public getLogFolder(email: string): string {
 
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
