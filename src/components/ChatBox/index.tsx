@@ -580,32 +580,6 @@ export default function ChatBox(): JSX.Element {
 		});
 	}, [chatStore, getAllChatStoresMemoized]);
 
-	// Helper function to get chatStore states
-	const getChatStoreStates = (chatStores: any) => {
-		const result: any = {};
-		for (const [chatId, chatStore] of Object.entries(chatStores)) {
-			result[chatId] = chatStore && typeof (chatStore as any).getState === 'function' 
-				? (chatStore as any).getState() 
-				: chatStore;
-		}
-		return result;
-	};
-
-	// Get all projects and properly structure them with chatStore states
-	const allProjects = projectStore.getAllProjects();
-	const projectsWithChatStoreStates = allProjects.reduce((acc: any, project: any) => {
-		acc[project.id] = {
-			...project,
-			chatStores: getChatStoreStates(project.chatStores || {})
-		};
-		return acc;
-	}, {});
-
-	console.debug("[Store]: ", {
-		activeProjectId: projectStore.activeProjectId,
-		projects: projectsWithChatStoreStates
-	})
-
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
 			{hasAnyMessages ? (
