@@ -563,7 +563,7 @@ export class FileReader {
 	public deleteTaskFiles(email: string, taskId: string): { success: boolean; path: string } {
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
 		const userHome = app.getPath('home');
-		const dirPath = path.join(userHome, "eigent", safeEmail, `taskId_${taskId}`);
+		const dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
 		try {
 			if (fs.existsSync(dirPath)) {
 				fs.rmSync(dirPath, { recursive: true, force: true });

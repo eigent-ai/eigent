@@ -177,13 +177,13 @@ export default function HistorySidebar() {
 			const res = await proxyFetchDelete(`/api/chat/history/${curHistoryId}`);
 			console.log(res);
 			// also delete local files for this task if available (via Electron IPC)
-			const  email = getAuthStore()
+			const  {email} = getAuthStore()
 			const history = historyTasks.find((item) => item.id === curHistoryId);
 			if (history?.task_id && (window as any).ipcRenderer) {
 				try {
 					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id);
-				} catch (e) {
-					console.warn("Local file cleanup failed:", e);
+				} catch (error) {
+					console.warn("Local file cleanup failed:", error);
 				}
 			}
 		} catch (error) {
