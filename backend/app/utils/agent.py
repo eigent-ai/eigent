@@ -751,6 +751,8 @@ def search_agent(options: Chat):
         ],
     )
 
+    # Save reference before registering for toolkits_to_register_agent
+    web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.task_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
@@ -899,6 +901,7 @@ Your approach depends on available search tools:
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
         ],
+        toolkits_to_register_agent=[web_toolkit_for_agent_registration],
     )
 
 
