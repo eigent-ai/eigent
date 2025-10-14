@@ -1,0 +1,36 @@
+.word-carousel {
+  position: relative;
+  display: inline-block;
+  background: var(--word-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  white-space: nowrap;
+  animation: gradient-sweep var(--sweep-duration, 2200ms) linear infinite;
+  will-change: background-position, opacity;
+}
+
+.word-carousel.is-fading {
+  transition: opacity 220ms ease;
+  opacity: 0.35;
+}
+
+/* run once, left-to-right */
+.word-carousel.sweep-once {
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes gradient-sweep {
+  0% {
+    background-size: 200% 100%;
+    background-position: 0% 50%;
+  }
+  100% {
+    background-size: 200% 100%;
+    background-position: 100% 50%;
+  }
+}
+
+

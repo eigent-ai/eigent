@@ -40,26 +40,26 @@ export function GlobalSearch() {
 			>
 				<Search className="w-4 h-4 text-text-secondary"></Search>
 				<span className="text-text-secondary font-inter text-[10px] leading-4">
-					{t("task-hub.search-for-a-task-or-document")}
+					{t("dashboard.search-for-a-task-or-document")}
 				</span>
 			</div>
 			<CommandDialog open={open} onOpenChange={setOpen}>
-				<DialogTitle className="sr-only">{t("task-hub.search")}</DialogTitle>
+				<DialogTitle className="sr-only">{t("dashboard.search")}</DialogTitle>
 				<CommandInput placeholder="Type a command or search..." />
 				<CommandList>
-					<CommandEmpty>{t("task-hub.no-results")}</CommandEmpty>
+					<CommandEmpty>{t("dashboard.no-results")}</CommandEmpty>
 					<CommandGroup heading="Today">
 						<CommandItem>
 							<Calendar />
-							<span>{t("task-hub.calendar")}</span>
+							<span>{t("dashboard.calendar")}</span>
 						</CommandItem>
 						<CommandItem>
 							<Smile />
-							<span>{t("task-hub.search-emoji")}</span>
+							<span>{t("dashboard.search-emoji")}</span>
 						</CommandItem>
 						<CommandItem>
 							<Calculator />
-							<span>{t("task-hub.calculator")}</span>
+							<span>{t("dashboard.calculator")}</span>
 						</CommandItem>
 					</CommandGroup>
 					<CommandSeparator />

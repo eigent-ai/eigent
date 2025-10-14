@@ -14,5 +14,10 @@
 	"search-for-a-task-or-document": "タスクまたはドキュメントを検索",
 	"calendar": "カレンダー",
 	"search-emoji": "絵文字を検索",
-	"calculator": "計算機"
+	"calculator": "計算機",
+	"developer-agent": "開発者エージェント",
+	"search-agent": "検索エージェント",
+	"document-agent": "ドキュメントエージェント",
+	"multi-modal-agent": "マルチモーダルエージェント",
+	"social-media-agent": "ソーシャルメディアエージェント"
 }

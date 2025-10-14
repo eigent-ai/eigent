@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "../ui/button";
+import { useTranslation } from "react-i18next";
 
 interface TaskItemProps {
 	taskInfo: {
@@ -27,6 +28,7 @@ export function TaskItem({
 	onUpdate,
 	onDelete,
 }: TaskItemProps) {
+	const { t } = useTranslation();
 	const [isFocus, setIsFocus] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const handleFocus = (e: React.MouseEvent<any>, isFocus: boolean) => {
@@ -75,7 +77,7 @@ export function TaskItem({
 				>
 					<Textarea
 						ref={textareaRef}
-						placeholder="Add new task"
+						placeholder={t("layout.add-new-task")}
 						className={`${
 							isFocus && "w-[calc(100%-52px)]"
 						} rounded-none p-0 bg-transparent text-xs leading-[20px] min-h-2 border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 resize-none overflow-hidden`}

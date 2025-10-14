@@ -4,7 +4,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Settings2, Check } from "lucide-react";
 import {
 	proxyFetchGet,
 	proxyFetchPost,
@@ -18,6 +18,16 @@ import { MCPEnvDialog } from "./MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
 import { useTranslation } from "react-i18next";
+import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+	Select,
+	SelectTrigger,
+	SelectValue,
+	SelectContent,
+	SelectItem,
+	SelectItemWithButton,
+} from "@/components/ui/select";
+import * as SelectPrimitive from "@radix-ui/react-select";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -31,10 +41,29 @@ interface IntegrationListProps {
 	items: IntegrationItem[];
 	installedKeys?: string[];
 	oauth?: OAuth;
+	// optional select beside each item for importing options
+	showSelect?: boolean; // default hidden
+	selectPlaceholder?: string; // placeholder text
+	selectContent?: React.ReactNode; // custom content for SelectContent (e.g., list of <SelectItem />)
+	onSelectChange?: (value: string, item: IntegrationItem) => void; // callback when select changes
+  // button group options
+  showConfigButton?: boolean; // whether to show the config button (default: true)
+  showInstallButton?: boolean; // whether to show the install/uninstall button (default: true)
+  onConfigClick?: (item: IntegrationItem) => void; // optional external handler to open a popup
+  // status dot icon (ellipse) visibility
+  showStatusDot?: boolean; // default: true
 }
 
 export default function IntegrationList({
 	items,
+	showSelect = false,
+	selectPlaceholder = "Select...",
+	selectContent,
+  onSelectChange,
+  showConfigButton = true,
+  showInstallButton = true,
+  onConfigClick,
+  showStatusDot = true,
 }: IntegrationListProps) {
 	const { t } = useTranslation();
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
@@ -267,6 +296,30 @@ export default function IntegrationList({
 		setActiveMcp(null);
 	};
 
+  const handleOpenConfig = useCallback((item: IntegrationItem) => {
+    // if external handler provided by parent, use it
+    if (onConfigClick) {
+      onConfigClick(item);
+      return;
+    }
+    // default behavior: if item has env vars, open built-in MCP config dialog
+    if (item?.env_vars && item.env_vars.length > 0) {
+      const mcp = {
+        name: item.name,
+        key: item.key,
+        install_command: {
+          env: {} as any,
+        },
+        id: -1,
+      };
+      item.env_vars.forEach((key) => {
+        (mcp.install_command.env as any)[key] = "";
+      });
+      setActiveMcp(mcp);
+      setShowEnvConfig(true);
+    }
+  }, [onConfigClick]);
+
 	// uninstall logic
 	const handleUninstall = useCallback(
 		async (item: IntegrationItem) => {
@@ -305,7 +358,7 @@ export default function IntegrationList({
 	);
 
 	return (
-		<div className="space-y-3">
+		<div className="flex flex-col gap-md py-2">
 			<MCPEnvDialog
 				showEnvConfig={showEnvConfig}
 				onClose={onClose}
@@ -317,23 +370,26 @@ export default function IntegrationList({
 				return (
 					<div
 						key={item.key}
-						className="p-4 bg-surface-secondary rounded-2xl flex items-center justify-between"
+						className="px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col items-center justify-between"
 					>
-						<div className="flex items-center gap-xs">
-							<img
-								src={ellipseIcon}
-								alt="icon"
-								className="w-3 h-3 mr-2"
-								style={{
-									filter: isInstalled
-										? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
-										: "none",
-								}}
-							/>
-							<div className="text-base leading-snug font-bold text-text-action">
+						<div className="flex flex-row w-full items-center gap-xs">
+							<div className="flex flex-row w-full items-center gap-xs">
+									{showStatusDot && (
+											<img
+													src={ellipseIcon}
+													alt="icon"
+													className="w-3 h-3 mr-2"
+													style={{
+															filter: isInstalled
+																	? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
+																	: "none",
+													}}
+											/>
+									)}
+							 <div className="text-label-lg font-bold text-text-heading">
 								{item.name}
-							</div>
-							<div className="flex items-center">
+							 </div>
+							 <div className="flex items-center">
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<CircleAlert className="w-4 h-4 text-icon-secondary" />
@@ -342,35 +398,87 @@ export default function IntegrationList({
 										<div>{item.desc}</div>
 									</TooltipContent>
 								</Tooltip>
+							 </div>
+						  </div>
+            <div className="flex flex-row items-center gap-md">
+            {showConfigButton && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleOpenConfig(item);
+                }}
+              >
+									<Settings2 className="w-4 h-4" />
+								{t("setting.setting")}
+              </Button>
+            )}
+            {showInstallButton && (
+              <Button
+                type="button"
+                disabled={[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name)}
+                variant={[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name) ? "ghost" : (isInstalled ? "outline" : "primary")}
+                size="sm"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return isInstalled ? handleUninstall(item) : handleInstall(item);
+                }}
+              >
+                {[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name)
+                  ? t("setting.coming-soon")
+                  : isInstalled
+                  ? t("setting.uninstall")
+                  : t("setting.install")}
+              </Button>
+            )}
+            </div>
+					</div>
+					
+					{showSelect && (
+						<div className="flex flex-row w-full items-center gap-md mt-6 pt-6 border-b-0 border-x-0 border-solid border-border-secondary">
+						<div className="flex flex-row w-full items-center justify-between gap-md">
+							<div className="text-body-md text-text-body"> Default {item.name}</div>
+						  	<div className="flex-1 max-w-[300px]">
+								<Select onValueChange={(v) => onSelectChange?.(v, item)}>
+							  <SelectTrigger size="default">
+							  	 <SelectValue placeholder={selectPlaceholder} />
+						  		</SelectTrigger>
+						  		<SelectContent className="z-100">
+										{selectContent ?? (
+											<>
+												<SelectItem value="more">More integrations</SelectItem>
+											</>
+										)}
+						  		</SelectContent>
+						  	</Select>
 							</div>
 						</div>
-						<Button
-							disabled={[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)}
-							variant={isInstalled ? "secondary" : "primary"}
-							size="sm"
-							onClick={() =>
-								isInstalled ? handleUninstall(item) : handleInstall(item)
-							}
-						>
-							{[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)
-								? t("setting.coming-soon")
-								: isInstalled
-								? t("setting.uninstall")
-								: t("setting.install")}
-						</Button>
+						</div>
+					)}
 					</div>
+					
 				);
 			})}
 		</div>

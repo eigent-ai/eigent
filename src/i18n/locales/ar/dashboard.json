@@ -14,5 +14,10 @@
 	"search-for-a-task-or-document": "ابحث عن مهمة أو مستند",
 	"calendar": "تقويم",
 	"search-emoji": "بحث إيموجي",
-	"calculator": "آلة حاسبة"
+	"calculator": "آلة حاسبة",
+	"developer-agent": "وكيل المطور",
+	"search-agent": "وكيل البحث",
+	"document-agent": "وكيل المستندات",
+	"multi-modal-agent": "وكيل متعدد الوسائط",
+	"social-media-agent": "وكيل وسائل التواصل الاجتماعي"
 }

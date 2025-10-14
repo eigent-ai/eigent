@@ -14,5 +14,10 @@
 	"search-for-a-task-or-document": "Nach einer Aufgabe oder einem Dokument suchen",
 	"calendar": "Kalender",
 	"search-emoji": "Emoji suchen",
-	"calculator": "Taschenrechner"
+	"calculator": "Taschenrechner",
+	"developer-agent": "Entwickler-Agent",
+	"search-agent": "Such-Agent",
+	"document-agent": "Dokument-Agent",
+	"multi-modal-agent": "Multi-Modal-Agent",
+	"social-media-agent": "Social-Media-Agent"
 }

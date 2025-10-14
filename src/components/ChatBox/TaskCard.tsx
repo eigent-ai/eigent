@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { TaskState, TaskStateType } from "../TaskState";
+import { useTranslation } from "react-i18next";
 
 interface TaskCardProps {
 	taskInfo: any[];
@@ -48,6 +49,7 @@ export function TaskCard({
 	onDeleteTask,
 	clickable = true,
 }: TaskCardProps) {
+	const { t } = useTranslation();
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
@@ -172,7 +174,7 @@ export function TaskCard({
 					<div className="text-sm font-bold leading-13 mb-2.5 px-sm">
 						{summaryTask
 							? summaryTask.split("|")[0].replace(/"/g, "")
-							: "New Task"}
+							: t("layout.new-task")}
 					</div>
 
 					<div className={`flex items-center justify-between gap-2 px-sm`}>

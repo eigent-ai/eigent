@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { proxyFetchGet, proxyFetchPost } from "@/api/http";
+import { useTranslation } from "react-i18next";
 
 interface ConfigItem {
 	name: string;
@@ -10,6 +11,7 @@ interface ConfigItem {
 }
 
 export default function SettingAPI() {
+	const { t } = useTranslation();
 	const [items, setItems] = useState<ConfigItem[]>([]);
 	const [envValues, setEnvValues] = useState<Record<string, string>>({});
 	const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -42,7 +44,7 @@ export default function SettingAPI() {
 	const handleVerify = async (configGroup: string, env: string) => {
 		const value = envValues[env] || "";
 		if (!value.trim()) {
-			setErrors((prev) => ({ ...prev, [env]: "env should not empty" }));
+			setErrors((prev) => ({ ...prev, [env]: t("layout.env-should-not-empty") }));
 			return;
 		} else {
 			setErrors((prev) => ({ ...prev, [env]: "" }));
@@ -88,7 +90,7 @@ export default function SettingAPI() {
 											disabled={loading[env]}
 										>
 											<span className="text-sm leading-13 text-text-inverse-primary">
-												{loading[env] ? "..." : "Verify"}
+												{loading[env] ? t("layout.loading") : t("layout.verify")}
 											</span>
 											<Circle className="w-4 h-4 text-icon-inverse-primary" />
 										</Button>

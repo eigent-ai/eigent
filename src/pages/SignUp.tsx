@@ -6,7 +6,6 @@ import loginGif from "@/assets/login.gif";
 import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 import github2 from "@/assets/github2.svg";
 import google from "@/assets/google.svg";
@@ -110,7 +109,7 @@ export default function SignUp() {
 				};
 				data.error.map((item: any) => {
 					errors[item.loc.at(-1) as keyof typeof errors] = item.msg.replace(
-						"Value error,",
+						t("layout.value-error"),
 						""
 					);
 				});
@@ -236,83 +235,72 @@ export default function SignUp() {
 				<img src={loginGif} className=" rounded-3xl h-full object-cover" />
 			</div>
 			<div className="h-full flex-1 flex flex-col items-center justify-center">
-				<div className="flex-1 flex flex-col items-center justify-center">
-					<div className="w-80">
-						<div className="h-[46px] relative text-[#27272A] font-inter text-[36px] font-bold leading-[46px]">
-							{t("layout.sign-up")}
-							<span 
-								onClick={() => navigate("/login")}
-								className="absolute bottom-0 right-0 text-[#27272A] font-inter text-[13px] font-normal leading-5 cursor-pointer"
-							>
-								{t("layout.login")}
-							</span>
+				<div className="flex-1 flex flex-col w-80 items-center justify-center">
+						<div className="flex self-stretch items-end justify-between mb-4">
+							  <div className="text-text-heading text-heading-lg font-bold ">
+								  {t("layout.sign-up")}
+								</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => navigate("/login")}
+								>
+									{t("layout.login")}
+								</Button>
 						</div>
-						{HAS_STACK_KEYS && <div className="w-full pt-6">
-							<Button
-								variant="primary"
-								size="lg"
-								onClick={() => handleReloadBtn("google")}
-								className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
-								disabled={isLoading}
-							>
-								<img src={google} className="w-5 h-5" />
-								<span className="ml-2">{t("layout.continue-with-google-sign-up")}</span>
-							</Button>
-							<Button
-								variant="primary"
-								size="lg"
-								onClick={() => handleReloadBtn("github")}
-								className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
-								disabled={isLoading}
-							>
-								<img src={github2} className="w-5 h-5" />
-								<span className="ml-2">{t("layout.continue-with-github-sign-up")}</span>
-							</Button>
-							</div>}
-						{HAS_STACK_KEYS && <div className="mt-2 w-full text-[#222] text-center font-inter text-[15px] font-medium leading-[22px] mb-6">
-							{t("layout.or")}
-						</div>}
-						<div className="w-full">
+						{HAS_STACK_KEYS && (
+							<div className="w-full pt-6">
+								<Button
+									variant="primary"
+									size="lg"
+									onClick={() => handleReloadBtn("google")}
+									className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
+									disabled={isLoading}
+								>
+									<img src={google} className="w-5 h-5" />
+									<span className="ml-2">{t("layout.continue-with-google-sign-up")}</span>
+								</Button>
+								<Button
+									variant="primary"
+									size="lg"
+									onClick={() => handleReloadBtn("github")}
+									className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
+									disabled={isLoading}
+								>
+									<img src={github2} className="w-5 h-5" />
+									<span className="ml-2">{t("layout.continue-with-github-sign-up")}</span>
+								</Button>
+							</div>
+						)}
+						{HAS_STACK_KEYS && (
+							<div className="mt-2 w-full text-[#222] text-center font-inter text-[15px]  font-medium leading-[22px] mb-6">
+								{t("layout.or")}
+							</div>
+						)}
+						<div className="flex flex-col gap-4 w-full">
 							{generalError && (
-								<p className="text-red-500 text-sm mt-0.5 mb-4">{t("layout.general-error")}</p>
+								<p className="text-text-cuation text-label-md mt-1 mb-4">
+									{generalError}
+								</p>
 							)}
-							<div className="w-full mb-4 relative">
-								<Label htmlFor="email" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-									{t("layout.email")}
-								</Label>
-								<div className="relative">
+							<div className="flex flex-col gap-4 w-full mb-4 relative">
 									<Input
 										id="email"
 										type="email"
+										size="default"
+										title={t("layout.email")}
 										placeholder={t("layout.enter-your-email")}
 										required
 										value={formData.email}
 										onChange={(e) => handleInputChange("email", e.target.value)}
-										className={`rounded border border-[#CCC] bg-white shadow-none text-[13px] text-input-text-focus font-normal ${errors.email ? "border-red-500" : ""}`}
+										state={errors.email ? "error" : undefined}
+										note={errors.email}
 									/>
-								</div>
-								{errors.email && (
-									<p className="text-red-500 text-sm mt-0.5">{t("layout.errors.email")}</p>
-								)}
-							</div>
-							<div className="w-full mb-4 relative">
-								<div className="flex items-center">
-									<Label htmlFor="password" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-										{t("layout.password")}
-									</Label>
-								</div>
 
-								<div className="relative">
-									<div
-										className="cursor-pointer w-6 h-6 absolute top-0 bottom-0 m-auto right-1.5"
-										onClick={() => {
-											setHidePassword(!hidePassword);
-										}}
-									>
-										<img src={hidePassword ? eye : eyeOff} />
-									</div>
 									<Input
 										id="password"
+										title={t("layout.password")}
+										size="default"
 										type={hidePassword ? "password" : "text"}
 										required
 										placeholder={t("layout.enter-your-password")}
@@ -320,57 +308,47 @@ export default function SignUp() {
 										onChange={(e) =>
 											handleInputChange("password", e.target.value)
 										}
-										className={`rounded border border-[#CCC] bg-white shadow-none text-[13px] text-input-text-focus font-normal pr-9 ${errors.password ? "border-red-500" : ""}`}
+										state={errors.password ? "error" : undefined}
+										note={errors.password}
+										backIcon={<img src={hidePassword ? eye : eyeOff} />}
+										onBackIconClick={() => setHidePassword(!hidePassword)}
 									/>
-								</div>
-								{errors.password && (
-									<p className="text-red-500 text-sm mt-0.5">
-										{errors.password}
-									</p>
-								)}
-							</div>
-							<div className="w-full mb-4 relative">
-								<Label htmlFor="invite_code" className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5">
-									 {t("layout.invitation-code-optional")}
-								</Label>
-								<div className="relative">
+
 									<Input
 										id="invite_code"
+										title={t("layout.invitation-code-optional")}
+										size="default"
 										type="text"
 										placeholder={t("layout.enter-your-invite-code")}
-										required
 										value={formData.invite_code}
 										onChange={(e) =>
 											handleInputChange("invite_code", e.target.value)
 										}
-										className={`rounded border border-[#CCC] bg-white shadow-none text-[13px] text-input-text-focus font-normal ${errors.invite_code ? "border-red-500" : ""}`}
+										state={errors.invite_code ? "error" : undefined}
+										note={errors.invite_code}
 									/>
-								</div>
-								{errors.invite_code && (
-									<p className="text-red-500 text-sm mt-0.5">
-										{errors.invite_code}
-									</p>
-								)}
 							</div>
 						</div>
 						<Button
 							onClick={handleRegister}
-							size="lg"
-							variant="ghost"
+							size="md"
+							variant="primary"
 							type="submit"
-							className="w-full rounded-[24px] mt-4 bg-white-100% text-[#222] text-center transition-all duration-300 ease-in-out font-inter text-[15px] font-bold leading-[22px] hover:bg-white-80%"
+							className="w-full rounded-full"
 							disabled={isLoading}
 						>
 							<span className="flex-1">
 								{isLoading ? t("layout.signing-up") : t("layout.sign-up")}
 							</span>
 						</Button>
-					</div>
 				</div>
-
-				<div className="text-text-body text-xs font-medium leading-tight">
+				<Button 
+				  variant="ghost"
+					size="xs"
+					onClick={() => window.open("https://www.eigent.ai/privacy-policy", "_blank", "noopener,noreferrer")}
+				>
 					{t("layout.privacy-policy")}
-				</div>
+				</Button>
 			</div>
 		</div>
 	);

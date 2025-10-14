@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { MCPConfigForm, MCPUserItem } from "./types";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 interface MCPConfigDialogProps {
@@ -19,82 +21,79 @@ interface MCPConfigDialogProps {
 export default function MCPConfigDialog({ open, form, mcp, onChange, onSave, onClose, loading, errorMsg, onSwitchStatus }: MCPConfigDialogProps) {
   const [showEnvValues, setShowEnvValues] = useState<Record<string, boolean>>({});
   const { t } = useTranslation();
-  if (!open || !form || !mcp) return null;
+  const formRef = useRef<HTMLFormElement | null>(null);
+  if (!form || !mcp) return null;
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center ">
-      <div className="bg-white-100% rounded-lg shadow-lg p-6 min-w-[340px] max-w-[90vw] w-[480px] relative">
-        <div className="flex items-center justify-between mb-2">
-          <div className="font-bold">{t("setting.edit-mcp-config")}</div>
-          <Switch
-            checked={mcp.status === 1}
-            disabled={loading}
-            onCheckedChange={onSwitchStatus}
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent size="md" showCloseButton onClose={onClose}>
+        <DialogHeader title={t("setting.edit-mcp-config")} />
+        <form ref={formRef} onSubmit={onSave} className="flex flex-col gap-4 p-md">
+          <Input
+            title={t("setting.name")}
+            value={form.mcp_name}
+            onChange={e => onChange({ ...form, mcp_name: e.target.value })}
+            disabled
+            readOnly
+            placeholder={t("setting.name") as string}
           />
-        </div>
-        <form onSubmit={onSave} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("setting.name")}</label>
-            <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.mcp_name} onChange={e => onChange({ ...form, mcp_name: e.target.value })} disabled readOnly />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("setting.description")}</label>
-            <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.mcp_desc} onChange={e => onChange({ ...form, mcp_desc: e.target.value })} disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("setting.command")}</label>
-            <input autoComplete="off" className="w-full border rounded px-3 py-2 text-sm" value={form.command} onChange={e => onChange({ ...form, command: e.target.value })} disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("setting.args-one-per-line")}</label>
-            <textarea
-              autoComplete="off"
-              className="w-full border rounded px-3 py-2 text-sm"
-              rows={Math.max(3, (form.argsArr && form.argsArr.length > 0 ? form.argsArr.length : 3))}
+          <Input
+            title={t("setting.description")}
+            value={form.mcp_desc}
+            onChange={e => onChange({ ...form, mcp_desc: e.target.value })}
+            disabled={loading}
+            placeholder={t("setting.description") as string}
+          />
+          <Input
+            title={t("setting.command")}
+            value={form.command}
+            onChange={e => onChange({ ...form, command: e.target.value })}
+            disabled={loading}
+            placeholder={t("setting.command") as string}
+          />
+
+          <Textarea
+              variant="enhanced"
+              title={t("setting.args-one-per-line")}
               value={Array.isArray(form.argsArr) ? form.argsArr.join('\n') : ''}
               onChange={e => onChange({ ...form, argsArr: e.target.value.split(/\r?\n/) })}
               disabled={loading}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Env (key-value)</label>
+              placeholder={t("setting.args-one-per-line") as string}
+              rows={Math.max(3, (form.argsArr && form.argsArr.length > 0 ? form.argsArr.length : 3))}
+          />
+
+          <div className="block text-label-sm font-normal mb-1">Env (key-value)</div>
             {Object.entries(form.env).map(([k, v], idx) => (
-              <div className="flex gap-2 mb-1" key={k + idx}>
-                <input autoComplete="off" className="flex-1 border rounded px-2 py-1 text-xs" placeholder="Key" value={k} readOnly />
-                <div className="relative flex-1">
-                  <input 
-                    autoComplete="off" 
-                    className="w-full border rounded px-2 py-1 pr-8 text-xs" 
-                    placeholder="Value" 
-                    type={showEnvValues[k] ? "text" : "password"}
-                    value={String(v)} 
-                    onChange={e => {
-                      const newEnv = { ...form.env };
-                      newEnv[k] = e.target.value;
-                      onChange({ ...form, env: newEnv });
-                    }} 
-                    disabled={loading} 
-                  />
-                  <span
-                    className="absolute inset-y-0 right-1 flex items-center cursor-pointer text-gray-500"
-                    onClick={() => setShowEnvValues(prev => ({ ...prev, [k]: !prev[k] }))}
-                  >
-                    {showEnvValues[k] ? (
-                      <Eye className="w-3 h-3" />
-                    ) : (
-                      <EyeOff className="w-3 h-3" />
-                    )}
-                  </span>
-                </div>
+              <div className="mb-2" key={k + idx}>
+                <Input
+                  title={k}
+                  type={showEnvValues[k] ? "text" : "password"}
+                  value={String(v)}
+                  onChange={e => {
+                    const newEnv = { ...form.env };
+                    newEnv[k] = e.target.value;
+                    onChange({ ...form, env: newEnv });
+                  }}
+                  disabled={loading}
+                  backIcon={showEnvValues[k] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                  onBackIconClick={() => setShowEnvValues(prev => ({ ...prev, [k]: !prev[k] }))}
+                  size="default"
+                  placeholder="Value"
+                />
               </div>
             ))}
-          </div>
-          {errorMsg && <div className="text-red-500 text-xs mb-2">{errorMsg}</div>}
-          <div className="flex justify-end mt-4 gap-2">
-            <Button size="md" type="button" variant="outline" onClick={onClose} disabled={loading}>{t("setting.cancel")}</Button>
-            <Button size="md" type="submit" disabled={loading}>{t("setting.save")}</Button>
-          </div>
+          {errorMsg && <div className="text-text-cuation text-label-md mb-2">{errorMsg}</div>}
         </form>
-      </div>
-    </div>
+        <DialogFooter
+          showCancelButton
+          cancelButtonText={t("setting.cancel")}
+          onCancel={onClose}
+          cancelButtonVariant="ghost"
+          showConfirmButton
+          confirmButtonText={t("setting.save")}
+          onConfirm={() => formRef.current?.requestSubmit()}
+          confirmButtonVariant="primary"
+        />
+      </DialogContent>
+    </Dialog>
   );
 } 
