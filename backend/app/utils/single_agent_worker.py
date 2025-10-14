@@ -2,11 +2,13 @@ import datetime
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
 from camel.societies.workforce.single_agent_worker import SingleAgentWorker as BaseSingleAgentWorker
 from camel.tasks.task import Task, TaskState, is_task_result_insufficient
+from loguru import logger
 
 from app.utils.agent import ListenChatAgent
 from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
 from colorama import Fore
 from camel.societies.workforce.utils import TaskResult
+from camel.utils.context_utils import ContextUtility
 
 
 class SingleAgentWorker(BaseSingleAgentWorker):
@@ -19,6 +21,8 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         pool_max_size: int = 10,
         auto_scale_pool: bool = True,
         use_structured_output_handler: bool = True,
+        context_utility: ContextUtility | None = None,
+        enable_workflow_memory: bool = False,
     ) -> None:
         super().__init__(
             description=description,
@@ -28,6 +32,8 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             pool_max_size=pool_max_size,
             auto_scale_pool=auto_scale_pool,
             use_structured_output_handler=use_structured_output_handler,
+            context_utility=context_utility,
+            enable_workflow_memory=enable_workflow_memory,
         )
         self.worker = worker  # change type hint
 
@@ -130,8 +136,28 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 usage_info = response.info.get("usage") or response.info.get("token_usage")
             total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
 
+            # collect conversation from working agent to
+            # accumulator for workflow memory
+            # Only transfer memory if workflow memory is enabled
+            if self.enable_workflow_memory:
+                accumulator = self._get_conversation_accumulator()
+
+                # transfer all memory records from working agent to accumulator
+                try:
+                    # retrieve all context records from the working agent
+                    work_records = worker_agent.memory.retrieve()
+
+                    # write these records to the accumulator's memory
+                    memory_records = [record.memory_record for record in work_records]
+                    accumulator.memory.write_records(memory_records)
+
+                    logger.debug(f"Transferred {len(memory_records)} memory records to accumulator")
+
+                except Exception as e:
+                    logger.warning(f"Failed to transfer conversation to accumulator: {e}")
+
         except Exception as e:
-            print(f"{Fore.RED}Error processing task {task.id}: {type(e).__name__}: {e}{Fore.RESET}")
+            logger.error(f"Error processing task {task.id}: {type(e).__name__}: {e}")
             # Store error information in task result
             task.result = f"{type(e).__name__}: {e!s}"
             return TaskState.FAILED
@@ -172,9 +198,12 @@ class SingleAgentWorker(BaseSingleAgentWorker):
 
         print(f"======\n{Fore.GREEN}Response from {self}:{Fore.RESET}")
 
+        logger.info(f"Response from {self}:")
+
         if not self.use_structured_output_handler:
             # Handle native structured output parsing
             if task_result is None:
+                logger.error("Error in worker step execution: Invalid task result")
                 print(f"{Fore.RED}Error in worker step execution: Invalid task result{Fore.RESET}")
                 task_result = TaskResult(
                     content="Failed to generate valid task result.",
@@ -186,12 +215,17 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             f"\n{color}{task_result.content}{Fore.RESET}\n======",  # type: ignore[union-attr]
         )
 
+        if task_result.failed:  # type: ignore[union-attr]
+            logger.error(f"{task_result.content}")  # type: ignore[union-attr]
+        else:
+            logger.info(f"{task_result.content}")  # type: ignore[union-attr]
+
         task.result = task_result.content  # type: ignore[union-attr]
 
         if task_result.failed:  # type: ignore[union-attr]
             return TaskState.FAILED
 
         if is_task_result_insufficient(task):
-            print(f"{Fore.RED}Task {task.id}: Content validation failed - task marked as failed{Fore.RESET}")
+            logger.warning(f"Task {task.id}: Content validation failed - task marked as failed")
             return TaskState.FAILED
         return TaskState.DONE
