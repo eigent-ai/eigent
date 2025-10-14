@@ -159,6 +159,9 @@
 	"connection-test-failed": "Тест соединения не удался.",
 	"configuration-saved-successfully": "Конфигурация успешно сохранена!",
 	"failed-to-save-configuration": "Не удалось сохранить конфигурацию.",
-	"recommended": "Рекомендуется"
+  "recommended": "Рекомендуется",
+  "reset": "Сброс",
+  "reset-success": "Сброс выполнен успешно!",
+  "reset-failed": "Сбой сброса!"
 }
 

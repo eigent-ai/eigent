@@ -20,6 +20,7 @@ import {
 	proxyFetchPost,
 	proxyFetchGet,
 	proxyFetchPut,
+	proxyFetchDelete,
 	fetchPost,
 } from "@/api/http";
 import {
@@ -499,6 +500,61 @@ const [errors, setErrors] = useState<
 		}
 	};
 
+	const handleLocalReset = async () => {
+		try {
+			if (localProviderId !== undefined) {
+				await proxyFetchDelete(`/api/provider/${localProviderId}`);
+			}
+			setLocalEndpoint("");
+			setLocalType("");
+			setLocalPrefer(false);
+			setLocalProviderId(undefined);
+			setLocalEnabled(true);
+			setActiveModelIdx(null);
+			toast.success(t("setting.reset-success"));
+		} catch (e) {
+			toast.error(t("setting.reset-failed"));
+		}
+	};
+	const handleDelete = async (idx: number) => {
+		try {
+			const { provider_id } = form[idx];
+			if (provider_id) {
+				await proxyFetchDelete(`/api/provider/${provider_id}`);
+			}
+			// reset single form entry to default empty values
+			setForm((prev) =>
+				prev.map((fi, i) => {
+					if (i !== idx) return fi;
+					const item = items[i];
+					return {
+						apiKey: "",
+						apiHost: "",
+						is_valid: false,
+						model_type: "",
+						externalConfig: item.externalConfig
+							? item.externalConfig.map((ec) => ({ ...ec, value: "" }))
+							: undefined,
+						provider_id: undefined,
+						prefer: false,
+					};
+				})
+			);
+			setErrors((prev) =>
+				prev.map((er, i) => (i === idx ? { apiKey: "", apiHost: "", model_type: "" } as any : er))
+			);
+			if (activeModelIdx === idx) {
+				setActiveModelIdx(null);
+				setLocalEnabled(true);
+			}
+			toast.success(t("setting.reset-success"));
+		} catch (e) {
+			toast.error(t("setting.reset-failed"));
+		}
+	};
+
+// removed bulk reset; only single-provider delete is supported
+
 	const checkHasSearchKey = async () => {
 		const configsRes = await proxyFetchGet("/api/configs");
 		const configs = Array.isArray(configsRes) ? configsRes : [];
@@ -562,7 +618,7 @@ const [errors, setErrors] = useState<
 							<Button
 								variant="ghost"
 								size="sm"
-								className="!text-text-success"
+								className="!text-text-label"
 								onClick={() => {
 									// not selected -> select cloud prefer
 									setLocalPrefer(false);
@@ -692,21 +748,21 @@ const [errors, setErrors] = useState<
 									{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
 								</span>
 						</div>
-						<Button
-							variant="ghost"
-							size="md"
-							onClick={(e) => {
-								e.preventDefault();
-								e.stopPropagation();
-								setCollapsed((c) => !c);
-							}}
-						>
-							{collapsed ? (
-								<ChevronDown className="w-4 h-4" />
-							) : (
-								<ChevronUp className="w-4 h-4" />
-							)}
-						</Button>
+					<Button
+						variant="ghost"
+						size="md"
+						onClick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							setCollapsed((c) => !c);
+						}}
+					>
+						{collapsed ? (
+							<ChevronDown className="w-4 h-4" />
+						) : (
+							<ChevronUp className="w-4 h-4" />
+						)}
+					</Button>
 				</div>
 
 				{/*  model list */}
@@ -749,7 +805,7 @@ const [errors, setErrors] = useState<
 											size="sm"
 											disabled={!canSwitch || loading === idx}
 											onClick={() => handleVerify(idx)}
-											className={canSwitch ? "!text-text-success" : ""}
+											className={canSwitch ? "!text-text-label" : ""}
 										>
 											{!canSwitch ? "Not Configured" : "Set as Default"}
 										</Button>
@@ -907,8 +963,9 @@ const [errors, setErrors] = useState<
 											</div>
 										))}
 								</div>
-								{/* Action Nutton */}
-								<div className="flex justify-end mt-6 px-6 py-4 border-b-0 border-x-0 border-solid border-border-secondary">
+						{/* Action Button */}
+								<div className="flex justify-end mt-6 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
+							    <Button variant="ghost" size="sm" className="!text-text-label" onClick={() => handleDelete(idx)}>{t("setting.reset")}</Button>
 									<Button
 										variant="primary"
 										size="sm"
@@ -997,7 +1054,8 @@ const [errors, setErrors] = useState<
 							disabled={!localEnabled}
 						/>
 				</div>
-				<div className="flex justify-end mt-2 px-6 py-4 border-b-0 border-x-0 border-solid border-border-secondary">
+				<div className="flex justify-end mt-2 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
+					<Button variant="ghost" size="sm" className="!text-text-label" onClick={handleLocalReset}>{t("setting.reset")}</Button>
 					<Button
 						onClick={handleLocalVerify}
 						disabled={!localEnabled || localVerifying}

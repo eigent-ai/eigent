@@ -159,6 +159,10 @@
 	"connection-test-failed": "Connection test failed.",
 	"configuration-saved-successfully": "Configuration saved successfully!",
 	"failed-to-save-configuration": "Failed to save configuration.",
-	"recommended": "Recommended"
+	"recommended": "Recommended",
+	"reset": "Reset",
+	"reset-success": "Reset successfully!",
+	"reset-failed": "Reset failed!"
 	}
+
 

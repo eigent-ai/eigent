@@ -159,5 +159,8 @@
 	"connection-test-failed": "연결 테스트 실패.",
 	"configuration-saved-successfully": "구성이 성공적으로 저장되었습니다!",
 	"failed-to-save-configuration": "구성 저장에 실패했습니다.",
-	"recommended": "추천"
+  "recommended": "추천",
+  "reset": "초기화",
+  "reset-success": "초기화 완료!",
+  "reset-failed": "초기화 실패!"
 }

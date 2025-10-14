@@ -159,6 +159,9 @@
 	"connection-test-failed": "Test di connessione fallito.",
 	"configuration-saved-successfully": "Configurazione salvata con successo!",
 	"failed-to-save-configuration": "Impossibile salvare la configurazione.",
-	"recommended": "Consigliato"
+  "recommended": "Consigliato",
+  "reset": "Reimposta",
+  "reset-success": "Reimpostazione riuscita!",
+  "reset-failed": "Reimpostazione non riuscita!"
 }
 

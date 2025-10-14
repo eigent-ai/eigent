@@ -159,5 +159,8 @@
 	"connection-test-failed": "فشل اختبار الاتصال.",
 	"configuration-saved-successfully": "تم حفظ التكوين بنجاح!",
 	"failed-to-save-configuration": "فشل في حفظ التكوين.",
-	"recommended": "موصى به"
+	"recommended": "موصى به",
+	"reset": "إعادة تعيين",
+	"reset-success": "تمت إعادة التعيين بنجاح!",
+	"reset-failed": "فشل إعادة التعيين!"
 }

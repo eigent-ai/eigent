@@ -159,5 +159,8 @@
 	"connection-test-failed": "連線測試失敗。",
 	"configuration-saved-successfully": "設定儲存成功！",
 	"failed-to-save-configuration": "儲存設定失敗。",
-	"recommended": "推薦"
+  "recommended": "推薦",
+  "reset": "重設",
+  "reset-success": "重設成功！",
+  "reset-failed": "重設失敗！"
 }

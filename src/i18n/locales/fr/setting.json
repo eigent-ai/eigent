@@ -135,6 +135,9 @@
 	"connection-test-failed": "Test de connexion échoué.",
 	"configuration-saved-successfully": "Configuration enregistrée avec succès !",
 	"failed-to-save-configuration": "Échec de l'enregistrement de la configuration.",
-	"recommended": "Recommandé"
+  "recommended": "Recommandé",
+  "reset": "Réinitialiser",
+  "reset-success": "Réinitialisation réussie !",
+  "reset-failed": "Échec de la réinitialisation !"
 }
 
