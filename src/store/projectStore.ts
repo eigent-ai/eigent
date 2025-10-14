@@ -74,6 +74,9 @@ interface ProjectStore {
 	//History ID
 	setHistoryId: (projectId: string, historyId: string) => void;
 	getHistoryId: (projectId: string | null) => string | null;
+
+	// Helper methods
+	getPreviousTaskSummaries: (projectId: string, count: number) => string[];
 }
 
 
@@ -273,7 +276,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	 * @param projectId project id to append a new chatStore to
 	 * @param taskId the taskId that will be used to initialize the new taskId
 	 * @param chatName [optional] used to give a chatName
-	 * @returns {taskId, chatStore} | null
+	 * @returns {taskId, chatStore, summaries} | null
 	 */
 	appendInitChatStore: (projectId: string, customTaskId?:string, chatName?: string) => {
 		const { projects, createChatStore, getChatStore, setActiveChatStore, getProjectTotalTokens } = get();
@@ -312,6 +315,22 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
 		// Accumulate project tokens
 		newChatStore.getState().addTokens(newTaskId, totalProjectTokens);
+
+		// Chain Summaries of previous tasks
+		const { getPreviousTaskSummaries } = get();
+		const max_summaries = 3;
+		const previousSummaries = getPreviousTaskSummaries(projectId, max_summaries);
+		let summaries = null
+		if (previousSummaries.length > 0) {
+			// You can use these summaries to provide context for the new task
+			console.log(`[ProjectStore] Found ${previousSummaries.length} previous task summaries for context:`, previousSummaries);
+			summaries = `Last ${max_summaries} Task Summary --- `+previousSummaries.join('\n\n')
+
+			//Chain the previous memories to next chatStore
+			//TODO(summary): update frontend to not render summary task
+			// when task state is running
+			newChatStore.getState().setSummaryTask(newTaskId, summaries);
+		}
 
 		//Set the initTask as the active taskId
 		newChatStore.getState().setActiveTaskId(newTaskId);
@@ -818,6 +837,37 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 		
 		return project.metadata?.historyId || null;
+	},
+
+	getPreviousTaskSummaries: (projectId: string, count: number) => {
+		const { projects } = get();
+		const project = projects[projectId];
+		
+		if (!project) {
+			console.warn(`Project ${projectId} not found for getting previous task summaries`);
+			return [];
+		}
+		
+		const allSummaries: string[] = [];
+		
+		// Iterate through all chat stores in the project
+		Object.values(project.chatStores).forEach(chatStore => {
+			if (chatStore && chatStore.getState) {
+				const chatState = chatStore.getState();
+				// Get all tasks and their summaries
+				Object.values(chatState.tasks).forEach(task => {
+					if (task && task.summaryTask && task.summaryTask.trim() !== '') {
+						// Only include tasks that are finished and have a summary
+						if (task.status === 'finished') {
+							allSummaries.push(task.summaryTask);
+						}
+					}
+				});
+			}
+		});
+		
+		// Return the last 'count' summaries (most recent first)
+		return allSummaries.slice(-count).reverse();
 	}
 }));
 
