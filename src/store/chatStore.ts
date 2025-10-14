@@ -887,7 +887,7 @@ const chatStore = create<ChatStore>()(
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
 							// Upload files sequentially to avoid overwhelming the server
 							const uploadResults = await Promise.allSettled(
-								res.map(async (file: any) => {
+								res.filter((file: any) => !file.isFolder).map(async (file: any) => {
 									try {
 										// Read file content using Electron API
 										const result = await window.ipcRenderer.invoke('read-file', file.path);

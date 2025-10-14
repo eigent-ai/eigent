@@ -377,8 +377,14 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         return await super().browser_click(ref=ref)
 
     @listen_toolkit(BaseHybridBrowserToolkit.browser_type)
-    async def browser_type(self, *, ref: str, text: str) -> Dict[str, Any]:
-        return await super().browser_type(ref=ref, text=text)
+    async def browser_type(
+        self,
+        *,
+        ref: Optional[str] = None,
+        text: Optional[str] = None,
+        inputs: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
+        return await super().browser_type(ref=ref, text=text, inputs=inputs)
 
     @listen_toolkit(BaseHybridBrowserToolkit.browser_select)
     async def browser_select(self, *, ref: str, value: str) -> Dict[str, Any]:
