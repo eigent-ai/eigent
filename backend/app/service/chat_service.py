@@ -102,6 +102,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
                         )
+                    # Load previous memories
+                    workforce.load_workflow_memories(
+                        max_files_to_load=3
+                    )
+                    
                     summary_task_agent = task_summary_agent(options)
                     task_lock.status = Status.confirmed
                     question = question + options.summary_prompt
@@ -194,6 +199,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 
                 # Now trigger end of previous task using stored result
                 yield sse_json("end", old_task_result)
+                
+                # Load previous memories
+                workforce.load_workflow_memories(
+                    max_files_to_load=3
+                )
+                
                 # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
                 # Trigger Queue Removal
@@ -290,6 +301,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     final_result = str(camel_task.result or "")
                 yield sse_json("end", final_result)
                 if workforce is not None:
+                    # Save memories at the end of the task
+                    workforce.save_workflow_memories()
                     workforce.stop_gracefully()
                 break
             elif item.action == Action.supplement:
