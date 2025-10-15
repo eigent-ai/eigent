@@ -55,9 +55,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     question_agent = question_confirm_agent(options)
     camel_task = None
     workforce = None
+    last_completed_task_result = ""  # Track the last completed task result
     while True:
         if await request.is_disconnected():
-            logger.warning(f"Client disconnected for task {options.task_id}")
+            logger.warning(f"Client disconnected for project {options.project_id}")
             if workforce is not None:
                 if workforce._running:
                     workforce.stop()
@@ -95,7 +96,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if confirm is not True:
                     yield confirm
                 else:
-                    yield sse_json("confirmed", "")
+                    yield sse_json("confirmed", {"question": question})
                     (workforce, mcp) = await construct_workforce(options)
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
@@ -104,6 +105,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     summary_task_agent = task_summary_agent(options)
                     task_lock.status = Status.confirmed
                     question = question + options.summary_prompt
+                    # Keep the task id consistent
                     camel_task = Task(content=question, id=options.task_id)
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
@@ -124,12 +126,113 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 sub_tasks = update_sub_tasks(sub_tasks, update_tasks)
                 add_sub_tasks(camel_task, item.data.task)
                 yield to_sub_tasks(camel_task, summary_task_content)
+            elif item.action == Action.add_task:
+                assert camel_task is not None
+                # Add task to the workforce queue
+                workforce.add_task(
+                    item.content,
+                    item.task_id,
+                    item.additional_info
+                )
+
+                returnData = {
+                    "project_id": item.project_id,
+                    "task_id": item.task_id or (len(camel_task.subtasks) + 1)
+                }
+                yield sse_json("add_task", returnData)
+            elif item.action == Action.remove_task:
+                assert camel_task is not None
+                workforce.remove_task(item.task_id)
+                returnData = {
+                    "project_id": item.project_id,
+                    "task_id": item.task_id
+                }
+                yield sse_json("remove_task", returnData)
+            elif item.action == Action.skip_task:
+                if workforce is not None and item.project_id == options.project_id:
+                    if workforce._state.name == 'PAUSED':
+                        # Resume paused workforce to skip the task
+                        logger.info(f"[CHAT] Resuming paused workforce to skip task")
+                        workforce.resume()
+                    workforce.skip_gracefully()
             elif item.action == Action.start:
+                if workforce is not None and workforce._state.name == 'PAUSED':
+                    # Resume paused workforce - subtasks should already be loaded
+                    logger.info(f"[CHAT] Resuming paused workforce with existing subtasks")
+                    workforce.resume()
+                    continue
+                
                 task_lock.status = Status.processing
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
+                # Track completed task results for the end event
+                if item.data.get('state') == 'DONE' and item.data.get('result'):
+                    last_completed_task_result = item.data.get('result', '')
                 yield sse_json("task_state", item.data)
+            elif item.action == Action.new_task_state:
+                assert camel_task is not None
+                
+                # Store the old task result before updating camel_task
+                old_task_result = str(camel_task.result)
+                
+                # Extract task content from the new task data immediately
+                # Don't return question field for new_tasks
+                new_task_content = item.data.get('content', '')
+                
+                # Update camel_task to the new task right away
+                if new_task_content:
+                    import time
+                    # Generate unique task ID 
+                    task_id = item.data.get('task_id', f"{int(time.time() * 1000)}-multi")
+                    # Create and assign new task immediately
+                    new_camel_task = Task(content=new_task_content, id=task_id)
+                    # Preserve additional_info from the previous task if it exists
+                    if hasattr(camel_task, 'additional_info') and camel_task.additional_info:
+                        new_camel_task.additional_info = camel_task.additional_info
+                    camel_task = new_camel_task
+                
+                # Now trigger end of previous task using stored result
+                yield sse_json("end", old_task_result)
+                # Always yield new_task_state first - this is not optional
+                yield sse_json("new_task_state", item.data)
+                # Trigger Queue Removal
+                yield sse_json("remove_task", {"task_id": item.data.get("task_id")})
+                
+                # Then handle multi-turn processing
+                if workforce is not None and new_task_content:
+                    logger.info(f"[CHAT] MULTI-TURN: Processing new task {item.data.get('task_id')}")
+                    task_lock.status = Status.confirming
+                    workforce.pause()
+                    
+                    try:
+                        yield sse_json("confirmed", "")
+                        task_lock.status = Status.confirmed
+                        
+                        # Use existing workforce to decompose (without creating new one)
+                        # Append to _pending_tasks
+                        new_sub_tasks = await workforce.handle_decompose_append_task(
+                            camel_task,  # Use the updated camel_task
+                            reset=False  # Keep existing agents and context
+                        )
+                        
+                        # Generate summary using existing agents
+                        summary_task_agent_instance = task_summary_agent(options)
+                        new_summary_content = await summary_task(summary_task_agent_instance, camel_task)
+                        
+                        # Send the extracted events
+                        yield to_sub_tasks(camel_task, new_summary_content)
+                        
+                        # Update the context with new task data
+                        sub_tasks = new_sub_tasks
+                        summary_task_content = new_summary_content
+                        
+                        logger.info(f"[CHAT] Multi-turn task decomposed into {len(sub_tasks)} subtasks")
+                        
+                    except Exception as e:
+                        logger.error(f"[CHAT] Error processing multi-turn task: {e}")
+                        # Continue with existing context if decomposition fails
+                        yield sse_json("error", {"message": f"Failed to process task: {str(e)}"})
             elif item.action == Action.create_agent:
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
@@ -180,7 +283,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.end:
                 assert camel_task is not None
                 task_lock.status = Status.done
-                yield sse_json("end", str(camel_task.result))
+                # Get the final result from multiple sources in priority order:
+                final_result = ""
+                if last_completed_task_result:
+                    final_result = last_completed_task_result
+                else:
+                    final_result = str(camel_task.result or "")
+                yield sse_json("end", final_result)
                 if workforce is not None:
                     workforce.stop_gracefully()
                 break
@@ -339,8 +448,8 @@ async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent
             [
                 *(
                     ToolkitMessageIntegration(
-                        message_handler=HumanToolkit(options.task_id, key).send_message_to_user
-                    ).register_toolkits(NoteTakingToolkit(options.task_id, working_directory=working_directory))
+                        message_handler=HumanToolkit(options.project_id, key).send_message_to_user
+                    ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
                 ).get_tools()
             ],
         )
@@ -373,11 +482,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         """,
         options,
         [
-            *HumanToolkit.get_can_use_tools(options.task_id, Agents.new_worker_agent),
+            *HumanToolkit.get_can_use_tools(options.project_id, Agents.new_worker_agent),
             *(
                 ToolkitMessageIntegration(
-                    message_handler=HumanToolkit(options.task_id, Agents.new_worker_agent).send_message_to_user
-                ).register_toolkits(NoteTakingToolkit(options.task_id, working_directory=working_directory))
+                    message_handler=HumanToolkit(options.project_id, Agents.new_worker_agent).send_message_to_user
+                ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
             ).get_tools(),
         ],
     )
@@ -402,7 +511,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         model_platform_enum = None
 
     workforce = Workforce(
-        options.task_id,
+        options.project_id,
         "A workforce",
         graceful_shutdown_timeout=3,  # 30 seconds for debugging
         share_memory=False,
@@ -484,7 +593,7 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     working_directory = options.file_save_path()
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.task_id)]
+    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:
         tool_names.append(titleize(item))
     if data.mcp_tools is not None:

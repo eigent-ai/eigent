@@ -25,6 +25,7 @@ McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 class Chat(BaseModel):
     task_id: str
+    project_id: str
     question: str
     email: str
     attaches: list[str] = []
@@ -105,6 +106,18 @@ class NewAgent(BaseModel):
     mcp_tools: McpServers | None
     env_path: str | None = None
 
+
+class AddTaskRequest(BaseModel):
+    content: str
+    project_id: str | None = None
+    task_id: str | None = None
+    additional_info: dict | None = None
+    insert_position: int = -1
+    is_independent: bool = False
+
+
+class RemoveTaskRequest(BaseModel):
+    task_id: str
 
 def sse_json(step: str, data):
     res_format = {"step": step, "data": data}

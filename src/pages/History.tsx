@@ -44,12 +44,19 @@ import { generateUniqueId } from "@/lib";
 import { SearchHistoryDialog } from "@/components/SearchHistoryDialog";
 import { Tag } from "@/components/ui/tag";
 import { share } from "@/lib/share";
+import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
 	const {t} = useTranslation()
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { history_type, setHistoryType } = useGlobalStore();
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -169,20 +176,22 @@ export default function Home() {
 		share(taskId);
 	};
 
-	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(taskId, question, 0);
-		navigate({ pathname: "/" });
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
-			// if there is a record, display the result
-			chatStore.setActiveTaskId(taskId);
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
+			// if there is record, show result
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
+			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
 
@@ -197,7 +206,7 @@ export default function Home() {
 		} else {
 			chatStore.setTaskTime(taskId, Date.now());
 		}
-		fetchPut(`/task/${taskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: type,
 		});
 		if (type === "pause") {
@@ -209,16 +218,8 @@ export default function Home() {
 
 	// create task
 	const createChat = () => {
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			console.log(chatStore.tasks[taskId].messages.length);
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate(`/`);
-			return;
-		}
-		chatStore.create();
+		//Handles refocusing id & non duplicate logic internally
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 
@@ -549,7 +550,11 @@ export default function Home() {
 						{historyTasks.map((task) => {
 							return (
 								<div
-									onClick={() => handleSetActive(task.task_id, task.question)}
+									/**
+									 * TODO(history): Update to use project_id field 
+									 * after update instead.
+									 */
+									onClick={() => handleSetActive(task.task_id, task.question, task.id)}
 									key={task.task_id}
 									className={`${
 										chatStore.activeTaskId === task.task_id
@@ -591,7 +596,11 @@ export default function Home() {
 							return (
 								<div
 									onClick={() => {
-										handleSetActive(task.task_id, task.question);
+										/**
+										 * TODO(history): Update to use project_id field 
+										 * after update instead.
+										 */
+										handleSetActive(task.task_id, task.question, task.id);
 									}}
 									key={task.task_id}
 									className={`${

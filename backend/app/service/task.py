@@ -16,6 +16,7 @@ class Action(str, Enum):
     improve = "improve"  # user -> backend
     update_task = "update_task"  # user -> backend
     task_state = "task_state"  # backend -> user
+    new_task_state = "new_task_state"  # backend -> user
     start = "start"  # user -> backend
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
@@ -36,6 +37,9 @@ class Action(str, Enum):
     resume = "resume"  # user -> backend  user take control
     new_agent = "new_agent"  # user -> backend
     budget_not_enough = "budget_not_enough"  # backend -> user
+    add_task = "add_task"  # user -> backend
+    remove_task = "remove_task"  # user -> backend
+    skip_task = "skip_task"  # user -> backend
 
 
 class ActionImproveData(BaseModel):
@@ -54,6 +58,10 @@ class ActionUpdateTaskData(BaseModel):
 
 class ActionTaskStateData(BaseModel):
     action: Literal[Action.task_state] = Action.task_state
+    data: dict[Literal["task_id", "content", "state", "result", "failure_count"], str | int]
+
+class ActionNewTaskStateData(BaseModel):
+    action: Literal[Action.new_task_state] = Action.new_task_state
     data: dict[Literal["task_id", "content", "state", "result", "failure_count"], str | int]
 
 
@@ -169,6 +177,26 @@ class ActionBudgetNotEnough(BaseModel):
     action: Literal[Action.budget_not_enough] = Action.budget_not_enough
 
 
+class ActionAddTaskData(BaseModel):
+    action: Literal[Action.add_task] = Action.add_task
+    content: str
+    project_id: str | None = None
+    task_id: str | None = None
+    additional_info: dict | None = None
+    insert_position: int = -1
+
+
+class ActionRemoveTaskData(BaseModel):
+    action: Literal[Action.remove_task] = Action.remove_task
+    task_id: str
+    project_id: str
+
+
+class ActionSkipTaskData(BaseModel):
+    action: Literal[Action.skip_task] = Action.skip_task
+    project_id: str
+
+
 ActionData = (
     ActionImproveData
     | ActionStartData
@@ -192,6 +220,9 @@ ActionData = (
     | ActionTakeControl
     | ActionNewAgent
     | ActionBudgetNotEnough
+    | ActionAddTaskData
+    | ActionRemoveTaskData
+    | ActionSkipTaskData
 )
 
 
@@ -286,6 +317,13 @@ def create_task_lock(id: str) -> TaskLock:
     #     _cleanup_task = asyncio.create_task(_periodic_cleanup())
 
     return task_locks[id]
+
+
+def get_or_create_task_lock(id: str) -> TaskLock:
+    """Get existing task lock or create a new one if it doesn't exist"""
+    if id in task_locks:
+        return task_locks[id]
+    return create_task_lock(id)
 
 
 async def delete_task_lock(id: str):

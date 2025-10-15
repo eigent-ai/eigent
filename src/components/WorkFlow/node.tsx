@@ -35,6 +35,7 @@ import {
 	PopoverTrigger,
 } from "../ui/popover";
 import { AddWorker } from "@/components/AddWorker";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface NodeProps {
 	id: string;
@@ -99,7 +100,12 @@ export function Node({ id, data }: NodeProps) {
 		}
 	}, [selectedState, data.agent?.tasks]);
 
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();

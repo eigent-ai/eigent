@@ -89,6 +89,7 @@ declare global {
 	interface AgentMessage {
 		step: string;
 		data: {
+			project_id?:string;
 			failure_count?: number;
 			tokens?: number;
 			sub_tasks?: TaskInfo[];

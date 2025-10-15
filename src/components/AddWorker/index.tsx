@@ -23,10 +23,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useRef } from "react";
 import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
-import { useChatStore } from "@/store/chatStore";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { TooltipSimple } from "../ui/tooltip";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface EnvValue {
 	value: string;
@@ -58,8 +58,13 @@ export function AddWorker({
 }) {
 	const { t } = useTranslation();
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const activeTaskId = useChatStore((state) => state.activeTaskId);
-	const tasks = useChatStore((state) => state.tasks);
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	const activeProjectId = projectStore.activeProjectId;
+	const activeTaskId = chatStore.activeTaskId;
+	const tasks = chatStore.tasks;
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -254,7 +259,7 @@ export function AddWorker({
 			};
 			setWorkerList([...workerList, worker]);
 		} else {
-			fetchPost(`/task/${activeTaskId}/add-agent`, {
+			fetchPost(`/task/${activeProjectId}/add-agent`, {
 				name: workerName,
 				description: workerDescription,
 				tools: localTool,

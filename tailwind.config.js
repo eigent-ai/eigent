@@ -199,6 +199,9 @@ module.exports = {
 
 				input: {
 					"bg-default": "var(--input-bg-default)",
+					"bg-spliting": "var(--input-bg-spliting)",
+					"bg-confirm": "var(--input-bg-confirm)",
+					"bg-input": "var(--input-bg-input)",
 					"border-default": "var(--input-border-default)",
 					"border-hover": "var(--input-border-hover)",
 					"border-focus": "var(--input-border-focus)",
@@ -542,6 +545,8 @@ module.exports = {
 			},
 			boxShadow: {
 				"history-item": "0px 3px 4px -1px rgba(0, 0, 0, 0.10)",
+				perfect: "var(--shadow-perfect)",
+				"blur-effect": "var(--shadow-blur-effect)",
 			},
 			spacing: {
 				xs: "var(--spacing-xs, 4px)",

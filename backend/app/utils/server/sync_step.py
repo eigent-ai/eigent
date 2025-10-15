@@ -28,7 +28,9 @@ def sync_step(func):
                     send_to_api(
                         sync_url,
                         {
-                            "task_id": chat.task_id,
+                            # TODO: revert to task_id to support multi-task project replay
+                            # "task_id": chat.task_id,
+                            "task_id": chat.project_id,
                             "step": json_data["step"],
                             "data": json_data["data"],
                         },
