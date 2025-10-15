@@ -232,6 +232,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     except Exception as e:
                         logger.error(f"[CHAT] Error processing multi-turn task: {e}")
                         # Continue with existing context if decomposition fails
+                        yield sse_json("error", {"message": f"Failed to process task: {str(e)}"})
             elif item.action == Action.create_agent:
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
