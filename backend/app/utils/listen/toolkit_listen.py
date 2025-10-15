@@ -28,20 +28,23 @@ def _safe_put_queue(task_lock, data):
     except RuntimeError:
         # No running event loop, we need to handle this differently
         try:
-            # Try to find an existing event loop in the current thread
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Schedule the coroutine in the existing running loop
-                future = asyncio.run_coroutine_threadsafe(
-                    task_lock.put_queue(data),
-                    loop
-                )
-                # Log but don't wait for the result
-                logger.debug(f"[listen_toolkit] Scheduled put_queue in existing event loop")
-            else:
-                # Create a new event loop just for this operation
-                logger.debug(f"[listen_toolkit] Creating new event loop for put_queue")
-                asyncio.run(task_lock.put_queue(data))
+            # Create a new event loop in a separate thread to avoid conflicts
+            def run_in_thread():
+                try:
+                    # Create a new event loop for this thread
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        new_loop.run_until_complete(task_lock.put_queue(data))
+                        logger.debug(f"[listen_toolkit] Successfully sent data to queue using new event loop")
+                    finally:
+                        new_loop.close()
+                except Exception as e:
+                    logger.error(f"[listen_toolkit] Failed to send data in thread: {e}")
+
+            # Run in a separate thread to avoid blocking
+            thread = threading.Thread(target=run_in_thread, daemon=True)
+            thread.start()
         except Exception as e:
             logger.error(f"[listen_toolkit] Failed to send data to queue: {e}")
 
@@ -77,9 +80,13 @@ def listen_toolkit(
                         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
                         args_str = f"{args_str}, {kwargs_str}" if args_str else kwargs_str
 
+                # Truncate args_str if too long
+                MAX_ARGS_LENGTH = 500
+                if len(args_str) > MAX_ARGS_LENGTH:
+                    args_str = args_str[:MAX_ARGS_LENGTH] + f"... (truncated, total length: {len(args_str)} chars)"
+
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                logger.info(f"[listen_toolkit] {toolkit_name}.{method_name} called with args: {args_str}")
                 activate_data = ActionActivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
@@ -108,7 +115,13 @@ def listen_toolkit(
                             res_msg = json.dumps(res, ensure_ascii=False)
                         except TypeError:
                             # Handle cases where res contains non-serializable objects (like coroutines)
-                            res_msg = str(res)
+                            res_str = str(res)
+                            # Truncate very long outputs to avoid flooding logs
+                            MAX_LENGTH = 500
+                            if len(res_str) > MAX_LENGTH:
+                                res_msg = res_str[:MAX_LENGTH] + f"... (truncated, total length: {len(res_str)} chars)"
+                            else:
+                                res_msg = res_str
                     else:
                         res_msg = str(error)
 
@@ -152,9 +165,13 @@ def listen_toolkit(
                         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
                         args_str = f"{args_str}, {kwargs_str}" if args_str else kwargs_str
 
+                # Truncate args_str if too long
+                MAX_ARGS_LENGTH = 500
+                if len(args_str) > MAX_ARGS_LENGTH:
+                    args_str = args_str[:MAX_ARGS_LENGTH] + f"... (truncated, total length: {len(args_str)} chars)"
+
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                logger.info(f"[listen_toolkit] {toolkit_name}.{method_name} called with args: {args_str}")
                 activate_data = ActionActivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
@@ -190,7 +207,13 @@ def listen_toolkit(
                             res_msg = json.dumps(res, ensure_ascii=False)
                         except TypeError:
                             # Handle cases where res contains non-serializable objects (like coroutines)
-                            res_msg = str(res)
+                            res_str = str(res)
+                            # Truncate very long outputs to avoid flooding logs
+                            MAX_LENGTH = 500
+                            if len(res_str) > MAX_LENGTH:
+                                res_msg = res_str[:MAX_LENGTH] + f"... (truncated, total length: {len(res_str)} chars)"
+                            else:
+                                res_msg = res_str
                     else:
                         res_msg = str(error)
 
@@ -203,7 +226,6 @@ def listen_toolkit(
                         "message": res_msg,
                     },
                 )
-                logger.debug(f"[listen_toolkit sync] Sending deactivate data: {deactivate_data.model_dump()}")
                 _safe_put_queue(task_lock, deactivate_data)
                 if error is not None:
                     raise error
@@ -228,7 +250,6 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
             agent_name: str = Agents.document_agent
     """
     def class_decorator(cls: Type[T]) -> Type[T]:
-        logger.debug(f"[auto_listen_toolkit] Decorating class: {cls.__name__} with base: {base_toolkit_class.__name__}")
 
         base_methods = {}
         for name in dir(base_toolkit_class):
@@ -236,11 +257,9 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
                 attr = getattr(base_toolkit_class, name)
                 if callable(attr):
                     base_methods[name] = attr
-                    logger.debug(f"[auto_listen_toolkit] Found base method: {name}")
 
         for method_name, base_method in base_methods.items():
             if method_name in cls.__dict__:
-                logger.debug(f"[auto_listen_toolkit] Skipping {method_name} - already defined in {cls.__name__}")
                 continue
                 
             sig = signature(base_method)
@@ -263,7 +282,6 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
             decorated_method = listen_toolkit(base_method)(wrapper)
             
             setattr(cls, method_name, decorated_method)
-            logger.info(f"[auto_listen_toolkit] Added wrapped method: {method_name} to {cls.__name__}")
 
         return cls
     

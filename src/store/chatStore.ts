@@ -725,7 +725,7 @@ const chatStore = create<ChatStore>()(
 
 						if (taskIndex !== -1) {
 							const { toolkit_name, method_name } = agentMessages.data;
-							if (toolkit_name && method_name) {
+							if (toolkit_name && method_name && assigneeAgentIndex !== -1) {
 
 								const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
 								const message = filterMessage(agentMessages)
@@ -737,7 +737,7 @@ const chatStore = create<ChatStore>()(
 										message: message.data.message as string,
 										toolkitStatus: "running" as AgentStatus,
 									}
-									if (assigneeAgentIndex !== -1 && task) {
+									if (task) {
 										task.toolkits ??= []
 										task.toolkits.push({ ...toolkit });
 										task.status = "running";
@@ -885,9 +885,12 @@ const chatStore = create<ChatStore>()(
 							taskId as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
+							// Filter out directories, only upload actual files
+							const files = res.filter((file: any) => !file.isFolder);
+
 							// Upload files sequentially to avoid overwhelming the server
 							const uploadResults = await Promise.allSettled(
-								res.map(async (file: any) => {
+								files.map(async (file: any) => {
 									try {
 										// Read file content using Electron API
 										const result = await window.ipcRenderer.invoke('read-file', file.path);

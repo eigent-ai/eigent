@@ -602,6 +602,13 @@ function registerIpcHandlers() {
         return { success: false, error: 'File does not exist' };
       }
 
+      // Check if it's a directory
+      const stats = await fsp.stat(filePath);
+      if (stats.isDirectory()) {
+        log.error('Path is a directory, not a file:', filePath);
+        return { success: false, error: 'EISDIR: illegal operation on a directory, read' };
+      }
+
       // Read file content
       const fileContent = await fsp.readFile(filePath);
       log.info('File read successfully:', filePath);
