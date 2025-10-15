@@ -4,7 +4,7 @@ from typing import Optional
 from enum import IntEnum
 from sqlalchemy_utils import ChoiceType
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ChatStatus(IntEnum):
@@ -16,6 +16,7 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
     id: int = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     task_id: str = Field(index=True, unique=True)
+    project_id: str = Field(index=True, unique=True, nullable=True)
     question: str
     language: str
     model_platform: str
@@ -34,6 +35,7 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
 
 class ChatHistoryIn(BaseModel):
     task_id: str
+    project_id: str | None = None
     user_id: int | None = None
     question: str
     language: str
@@ -54,6 +56,7 @@ class ChatHistoryIn(BaseModel):
 class ChatHistoryOut(BaseModel):
     id: int
     task_id: str
+    project_id: str | None = None
     question: str
     language: str
     model_platform: str
@@ -68,9 +71,17 @@ class ChatHistoryOut(BaseModel):
     tokens: int
     status: int
 
+    @model_validator(mode="after")
+    def fill_project_id_from_task_id(self):
+        """fill by task_id when project_id is None"""
+        if self.project_id is None:
+            self.project_id = self.task_id
+        return self
+
 
 class ChatHistoryUpdate(BaseModel):
     project_name: str | None = None
     summary: str | None = None
     tokens: int | None = None
     status: int | None = None
+    project_id: str | None = None
