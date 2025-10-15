@@ -560,20 +560,27 @@ export class FileReader {
 		}
 	}
 
-	public deleteTaskFiles(email: string, taskId: string): { success: boolean; path: string } {
+	public deleteTaskFiles(email: string, taskId: string): {
+		success: boolean;
+		path: { dirPath: string; logPath: string }
+	}
+	{
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
 		const userHome = app.getPath('home');
 		const dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
+		const logPath = path.join(userHome, ".eigent", safeEmail, `task_${taskId}`);
 		try {
-			if (fs.existsSync(dirPath)) {
+			if (fs.existsSync(dirPath)&&fs.existsSync(logPath)) {
 				fs.rmSync(dirPath, { recursive: true, force: true });
+				fs.rmSync(logPath, { recursive: true, force: true });
 			}
-			return { success: true, path: dirPath };
+			return { success: true, path: { dirPath, logPath } };
 		} catch (err) {
 			console.error("Delete task files failed:", dirPath, err);
-			return { success: false, path: dirPath };
+			return { success: false, path: { dirPath, logPath } };
 		}
 	}
+
 	public getLogFolder(email: string): string {
 
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
