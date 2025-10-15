@@ -271,7 +271,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 	/**
 	 * 
 	 * @param projectId project id to append a new chatStore to
-	 * @param taskId the taskId that will be used to initialize the new taskId
+	 * @param customTaskId the taskId that will be used to initialize the new taskId
 	 * @param chatName [optional] used to give a chatName
 	 * @returns {taskId, chatStore} | null
 	 */
