@@ -78,18 +78,29 @@ export default function IntegrationList({
 
 	// items or configs change, recalculate installed
 	useEffect(() => {
-		// remove duplicates by config_group
-		const groupSet = new Set<string>();
-		configs.forEach((c: any) => {
-			if (c.config_group) groupSet.add(c.config_group.toLowerCase());
-		});
-		// construct installed map
+		// For Google Calendar, check for allowed env keys
+		// For other integrations, check by config_group
 		const map: { [key: string]: boolean } = {};
+		
 		items.forEach((item) => {
-			if (groupSet.has(item.key.toLowerCase())) {
-				map[item.key] = true;
+			if (item.key === "Google Calendar") {
+				// Only mark installed when refresh token is present (auth completed)
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken;
+			} else {
+				// For other integrations, use config_group presence
+				const hasConfig = configs.some(
+					(c: any) => c.config_group?.toLowerCase() === item.key.toLowerCase()
+				);
+				map[item.key] = hasConfig;
 			}
 		});
+		
 		setInstalled(map);
 	}, [items, configs]);
 
@@ -100,23 +111,35 @@ export default function IntegrationList({
 		value: string
 	) => {
 		const configPayload = {
-			config_group: capitalizeFirstLetter(provider),
+			// Keep exact group name to satisfy backend whitelist
+			config_group: provider,
 			config_name: envVarKey,
 			config_value: value,
 		};
 		
-		// Check if config already exists
-		const existingConfig = configs.find(
-			(c: any) => c.config_name === envVarKey && 
-			c.config_group?.toLowerCase() === provider.toLowerCase()
-		);
+		// Fetch latest configs to avoid stale state when deciding POST/PUT
+		let latestConfigs: any[] = Array.isArray(configs) ? configs : [];
+		try {
+			const fresh = await proxyFetchGet("/api/configs");
+			if (Array.isArray(fresh)) latestConfigs = fresh;
+		} catch {}
+		
+		// Backend uniqueness is by config_name for a user
+		let existingConfig = latestConfigs.find((c: any) => c.config_name === envVarKey);
 		
 		if (existingConfig) {
-			// Update existing config
 			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
 		} else {
-			// Create new config
-			await proxyFetchPost("/api/configs", configPayload);
+			const res = await proxyFetchPost("/api/configs", configPayload);
+			if (res && res.detail && (res.detail as string).toLowerCase().includes("already exists")) {
+				try {
+					const again = await proxyFetchGet("/api/configs");
+					const found = Array.isArray(again) ? again.find((c: any) => c.config_name === envVarKey) : null;
+					if (found) {
+						await proxyFetchPut(`/api/configs/${found.id}`, configPayload);
+					}
+				} catch {}
+			}
 		}
 		
 		if (window.electronAPI?.envWrite) {
@@ -215,6 +238,7 @@ export default function IntegrationList({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [items, oauth]);
 
+
 	// install/uninstall
 	const handleInstall = useCallback(
 		async (item: IntegrationItem) => {
@@ -237,21 +261,22 @@ export default function IntegrationList({
 				return;
 			}
 
-		if (item.key === "Google Calendar") {
-			let mcp = {
-				name: "Google Calendar",
-				key: "Google Calendar",
-				install_command: {
-					env: {} as any,
-				},
-				id: 14,
-			};
-			item.env_vars.map((key) => {
-				mcp.install_command.env[key] = "";
-			});
-			onShowEnvConfig?.(mcp);
-			return;
-		}
+	if (item.key === "Google Calendar") {
+		// Always prompt env dialog first instead of jumping to authorization
+		let mcp = {
+			name: "Google Calendar",
+			key: "Google Calendar",
+			install_command: {
+				env: {} as any,
+			},
+			id: 14,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		onShowEnvConfig?.(mcp);
+		return;
+	}
 		if (installed[item.key]) return;
 		await item.onInstall();
 		// refresh configs after install to update installed state indicator
@@ -333,6 +358,7 @@ export default function IntegrationList({
 			></MCPEnvDialog>
 			{items.map((item) => {
 				const isInstalled = !!installed[item.key];
+				
 				return (
 					<div
 						key={item.key}
