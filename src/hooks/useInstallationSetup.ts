@@ -38,10 +38,16 @@ export const useInstallationSetup = () => {
         // Once user is in 'done' state (main app), don't check again
         // This prevents unexpected navigation away from the main app
         if (initState !== 'done') {
-          // If tools ARE installed and we're in carousel state, go to done
-          if (result.success && initState === "carousel" && result.isInstalled) {
-            console.log('[useInstallationSetup] Tools installed but initState is carousel, setting to done');
-            setInitState("done");
+          if (result.success) {
+            if (result.isInstalled && initState === "carousel") {
+              // If tools ARE installed and we're in carousel state, go to done
+              console.log('[useInstallationSetup] Tools installed but initState is carousel, setting to done');
+              setInitState("done");
+            } else if (!result.isInstalled && initState === "permissions") {
+              // If tools are NOT installed and we're in permissions state, set to carousel
+              console.log('[useInstallationSetup] Tools not installed and initState is permissions, setting to carousel');
+              setInitState("carousel");
+            }
           }
         }
       } catch (error) {
