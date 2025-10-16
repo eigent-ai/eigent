@@ -5,6 +5,7 @@ from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
+from app.utils.cookie_manager import CookieManager
 import os
 import uuid
 
@@ -525,4 +526,177 @@ app.on('window-all-closed', () => {
         raise HTTPException(
             status_code=500,
             detail=f"Failed to open browser: {str(e)}"
+        )
+
+
+@router.get("/browser/cookies", name="list cookie domains")
+async def list_cookie_domains(search: str = None):
+    """
+    列出所有有cookies的网站域名
+
+    Args:
+        search: 可选的搜索关键词，用于过滤域名
+
+    Returns:
+        域名列表，包含域名、cookie数量和最后访问时间
+    """
+    try:
+        # Use the same user data directory as the login browser
+        user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
+        user_data_dir = os.path.join(user_data_base, "profile_user_login")
+
+        if not os.path.exists(user_data_dir):
+            return {
+                "success": True,
+                "domains": [],
+                "message": "No browser profile found. Please login first using /browser/login."
+            }
+
+        cookie_manager = CookieManager(user_data_dir)
+
+        if search:
+            domains = cookie_manager.search_cookies(search)
+        else:
+            domains = cookie_manager.get_cookie_domains()
+
+        return {
+            "success": True,
+            "domains": domains,
+            "total": len(domains),
+            "user_data_dir": user_data_dir
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to list cookie domains: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list cookies: {str(e)}"
+        )
+
+
+@router.get("/browser/cookies/{domain}", name="get domain cookies")
+async def get_domain_cookies(domain: str):
+    """
+    获取指定域名的cookies详情
+
+    Args:
+        domain: 域名（如 linkedin.com）
+
+    Returns:
+        该域名的所有cookies
+    """
+    try:
+        user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
+        user_data_dir = os.path.join(user_data_base, "profile_user_login")
+
+        if not os.path.exists(user_data_dir):
+            raise HTTPException(
+                status_code=404,
+                detail="No browser profile found. Please login first using /browser/login."
+            )
+
+        cookie_manager = CookieManager(user_data_dir)
+        cookies = cookie_manager.get_cookies_for_domain(domain)
+
+        return {
+            "success": True,
+            "domain": domain,
+            "cookies": cookies,
+            "count": len(cookies)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get cookies for domain {domain}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get cookies: {str(e)}"
+        )
+
+
+@router.delete("/browser/cookies/{domain}", name="delete domain cookies")
+async def delete_domain_cookies(domain: str):
+    """
+    删除指定域名的所有cookies
+
+    Args:
+        domain: 域名（如 linkedin.com）
+
+    Returns:
+        删除结果
+    """
+    try:
+        user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
+        user_data_dir = os.path.join(user_data_base, "profile_user_login")
+
+        if not os.path.exists(user_data_dir):
+            raise HTTPException(
+                status_code=404,
+                detail="No browser profile found. Please login first using /browser/login."
+            )
+
+        cookie_manager = CookieManager(user_data_dir)
+        success = cookie_manager.delete_cookies_for_domain(domain)
+
+        if success:
+            return {
+                "success": True,
+                "message": f"Successfully deleted cookies for domain: {domain}"
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to delete cookies for domain: {domain}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete cookies for domain {domain}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete cookies: {str(e)}"
+        )
+
+
+@router.delete("/browser/cookies", name="delete all cookies")
+async def delete_all_cookies():
+    """
+    删除所有cookies
+
+    Returns:
+        删除结果
+    """
+    try:
+        user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
+        user_data_dir = os.path.join(user_data_base, "profile_user_login")
+
+        if not os.path.exists(user_data_dir):
+            raise HTTPException(
+                status_code=404,
+                detail="No browser profile found."
+            )
+
+        cookie_manager = CookieManager(user_data_dir)
+        success = cookie_manager.delete_all_cookies()
+
+        if success:
+            return {
+                "success": True,
+                "message": "Successfully deleted all cookies"
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete all cookies"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete all cookies: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete cookies: {str(e)}"
         )

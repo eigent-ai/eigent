@@ -14,6 +14,7 @@ import { useChatStore } from "@/store/chatStore";
 import { LocaleEnum, switchLanguage } from "@/i18n";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import CookieManager from "./components/CookieManager";
 
 import {
 	Select,
@@ -217,6 +218,7 @@ export default function SettingGeneral() {
 					</Button>
 				</div>
 			</div>
+			<CookieManager />
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
 				<div className="text-base font-bold leading-12 text-text-primary">
 					{t("setting.language")}

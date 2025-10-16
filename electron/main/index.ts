@@ -48,15 +48,24 @@ const logPath = log.transports.file.getFile().path;
 // Profile initialization promise
 let profileInitPromise: Promise<void>;
 
+// Store profile paths for cleanup
+let browserProfilePaths: {
+  sourceProfile: string;
+  targetProfile: string;
+} | null = null;
+
 // Set remote debugging port and profile
 profileInitPromise = findAvailablePort(browser_port).then(async port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
-  
+
   // Set user data dir for browser profile persistence using port as index
   const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
   const sourceProfile = path.join(browserProfilesBase, 'profile_user_login');
   const targetProfile = path.join(browserProfilesBase, `profile_${port}`);
+
+  // Store paths for cleanup
+  browserProfilePaths = { sourceProfile, targetProfile };
   
   // Ensure profile_user_login exists (create empty if not)
   if (!fs.existsSync(sourceProfile)) {
@@ -1397,12 +1406,61 @@ app.on('activate', () => {
 });
 
 // ==================== app exit event ====================
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
+
+  // Sync browser profile back to profile_user_login
+  if (browserProfilePaths) {
+    const { sourceProfile, targetProfile } = browserProfilePaths;
+    try {
+      log.info('[PROFILE SYNC] Syncing browser profile from target back to source...');
+      log.info('[PROFILE SYNC] Source:', sourceProfile);
+      log.info('[PROFILE SYNC] Target:', targetProfile);
+
+      // Check if target profile exists and has data
+      if (fs.existsSync(targetProfile)) {
+        const partitionPath = path.join(targetProfile, 'Partitions', 'user_login');
+
+        if (fs.existsSync(partitionPath)) {
+          // Ensure source profile directories exist
+          const sourcePartitionPath = path.join(sourceProfile, 'Partitions', 'user_login');
+          if (!fs.existsSync(sourcePartitionPath)) {
+            fs.mkdirSync(sourcePartitionPath, { recursive: true });
+          }
+
+          // Copy Partitions directory back to source (this contains login data)
+          const sourcePartitionsDir = path.join(sourceProfile, 'Partitions');
+          const targetPartitionsDir = path.join(targetProfile, 'Partitions');
+
+          if (fs.existsSync(targetPartitionsDir)) {
+            // Remove old source partitions and replace with new
+            if (fs.existsSync(sourcePartitionsDir)) {
+              fs.rmSync(sourcePartitionsDir, { recursive: true, force: true });
+            }
+
+            // Copy new partitions
+            fs.cpSync(targetPartitionsDir, sourcePartitionsDir, { recursive: true });
+            log.info('[PROFILE SYNC] Successfully synced browser profile back to source');
+
+            // Log partition size for verification
+            const files = fs.readdirSync(sourcePartitionPath);
+            log.info(`[PROFILE SYNC] Source partition now contains ${files.length} files`);
+            if (files.includes('Cookies')) {
+              const cookieStat = fs.statSync(path.join(sourcePartitionPath, 'Cookies'));
+              log.info(`[PROFILE SYNC] Cookies file size: ${cookieStat.size} bytes`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      log.error('[PROFILE SYNC] Failed to sync profile:', error);
+    }
+  }
+
   if (win) {
     win.destroy();
   }
-  cleanupPythonProcess();
+  await cleanupPythonProcess();
 });
 

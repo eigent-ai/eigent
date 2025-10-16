@@ -128,6 +128,25 @@
 	"opening-browser": "Opening Browser...",
 	"browser-opened-successfully": "Browser opened successfully. Please log in to your accounts.",
 	"failed-to-open-browser": "Failed to open browser. Please try again.",
-	"restart-to-apply": "Restart to Apply"
+	"restart-to-apply": "Restart to Apply",
+
+	"cookie-manager": "Cookie Manager",
+	"cookie-manager-description": "Manage cookies saved from your browser sessions. Delete cookies for specific sites or all at once.",
+	"refresh": "Refresh",
+	"delete-all": "Delete All",
+	"search-domains": "Search domains...",
+	"loading-cookies": "Loading cookies...",
+	"no-cookies-found": "No cookies found",
+	"no-matching-domains": "No matching domains",
+	"login-to-save-cookies": "Use the browser login feature above to save cookies from your accounts.",
+	"cookies-count": "{{count}} cookies",
+	"last-access": "Last access",
+	"deleting": "Deleting...",
+	"cookies-deleted-successfully": "Successfully deleted cookies for {{domain}}",
+	"failed-to-load-cookies": "Failed to load cookies. Please try again.",
+	"failed-to-delete-cookies": "Failed to delete cookies. Please try again.",
+	"confirm-delete-all-cookies": "Are you sure you want to delete all cookies? This action cannot be undone.",
+	"all-cookies-deleted": "All cookies have been deleted successfully.",
+	"cookie-delete-warning": "Note: Deleting cookies will log you out of the associated websites. You may need to restart the browser to see changes take effect."
 	}
 
