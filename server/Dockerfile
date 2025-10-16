@@ -15,6 +15,10 @@ ENV UV_PYTHON_INSTALL_MIRROR=https://registry.npmmirror.com/-/binary/python-buil
 ARG database_url
 ENV database_url=$database_url
 
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files first
 COPY pyproject.toml uv.lock ./
