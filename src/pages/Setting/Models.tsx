@@ -622,6 +622,8 @@ export default function SettingModels() {
 											? t("setting.gpt-4.1")
 											: cloud_model_type === "claude-sonnet-4-5"
 											? t("setting.claude-sonnet-4-5")
+											: cloud_model_type === "claude-sonnet-4-20250514"
+											? t("setting.claude-sonnet-4")
 											: cloud_model_type === "claude-3-5-haiku-20241022"
 											? t("setting.claude-3.5-haiku")
 											: cloud_model_type === "gpt-5"
