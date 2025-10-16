@@ -293,6 +293,22 @@ export default function Workflow({
 		};
 	}, [getViewport, setViewport, isEditMode]);
 
+	const [isAnimating, setIsAnimating] = useState(false);
+	const moveViewport = (dx: number) => {
+		if (isAnimating) return;
+		const viewport = getViewport();
+		setIsAnimating(true);
+		setViewport(
+			{ x: viewport.x + dx, y: viewport.y, zoom: viewport.zoom },
+			{
+				duration: 500,
+			}
+		);
+		setTimeout(() => {
+			setIsAnimating(false);
+		}, 500);
+	};
+
 	const handleShare = async (taskId: string) => {
 		share(taskId);
 	};
@@ -343,12 +359,7 @@ export default function Workflow({
 							variant="ghost"
 							size="icon"
 							onClick={() => {
-								const viewport = getViewport();
-								const newX = Math.min(0, viewport.x + 200);
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
+								moveViewport(200);
 							}}
 						>
 							<ChevronLeft className="w-4 h-4 text-icon-primary" />
@@ -356,14 +367,7 @@ export default function Workflow({
 						<Button
 							variant="ghost"
 							size="icon"
-							onClick={() => {
-								const viewport = getViewport();
-								const newX = viewport.x - 200;
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
-							}}
+							onClick={() => moveViewport(-200)}
 						>
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>
