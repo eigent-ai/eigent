@@ -46,6 +46,10 @@ const mockImplementation = {
     if (url.includes('/api/configs')) {
       return Promise.resolve([])
     }
+    // Mock snapshots - return empty array to prevent the error
+    if (url.includes('/api/chat/snapshots')) {
+      return Promise.resolve([])
+    }
     return Promise.resolve({})
   }),
   uploadFile: vi.fn(),
@@ -55,3 +59,6 @@ const mockImplementation = {
 // Mock both relative and alias paths
 vi.mock('../../src/api/http', () => mockImplementation)
 vi.mock('@/api/http', () => mockImplementation)
+
+// Export the mocked functions for use in tests
+export const { proxyFetchGet, proxyFetchPost, fetchPost } = mockImplementation
