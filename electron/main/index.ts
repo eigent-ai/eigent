@@ -814,6 +814,11 @@ function registerIpcHandlers() {
     return manager.getFileList(email, taskId);
   });
 
+  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.deleteTaskFiles(email, taskId);
+  });
+
   ipcMain.handle('get-log-folder', async (_, email: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     return manager.getLogFolder(email);
