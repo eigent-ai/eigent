@@ -68,6 +68,8 @@ from app.service.task import (
 )
 from app.service.task import set_process_task
 
+NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
+
 
 class ListenChatAgent(ChatAgent):
     @traceroot.trace()
@@ -515,7 +517,7 @@ def agent_model(
 def question_confirm_agent(options: Chat):
     return agent_model(
         "question_confirm_agent",
-        f"You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action. The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.",
+        f"You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action. The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.",
         options,
     )
 
@@ -577,7 +579,7 @@ and generation.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -772,7 +774,7 @@ comprehensive and well-documented information.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -935,7 +937,7 @@ to be embedded in your work.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -1167,7 +1169,7 @@ presentations, and other documents.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -1290,7 +1292,7 @@ use plain text formatting instead.
 
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 
 Your integrated toolkits enable you to:
 
