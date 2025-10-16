@@ -658,6 +658,9 @@ export default function SettingModels() {
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
 									</SelectItem>
+									<SelectItem value="claude-sonnet-4-20250514">
+										Claude Sonnet 4
+									</SelectItem>
 									<SelectItem value="claude-3-5-haiku-20241022">
 										Claude 3.5 Haiku
 									</SelectItem>
