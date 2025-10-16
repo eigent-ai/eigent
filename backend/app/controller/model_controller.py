@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from app.component.model_validation import create_agent
 from camel.types import ModelType
 from app.component.error_format import normalize_error_to_openai_format
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("model_controller")
 

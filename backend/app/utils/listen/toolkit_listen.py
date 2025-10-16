@@ -10,7 +10,7 @@ from app.service.task import (
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("toolkit_listen")
 

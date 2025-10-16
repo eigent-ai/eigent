@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("tool_controller")
 router = APIRouter(tags=["task"])

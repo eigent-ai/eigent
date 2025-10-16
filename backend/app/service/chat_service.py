@@ -39,7 +39,7 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("chat_service")
 
@@ -58,8 +58,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     question_agent = question_confirm_agent(options)
     camel_task = None
     workforce = None
-    logger.info(f"Starting step_solve for task_id: {options.task_id}, user: {options.email}")
-    logger.debug(f"Step solve options: {options.model_dump_json()}")
+    logger.info(f"Starting step_solve for task_id: {options.task_id}")
+    logger.debug(f"Step solve options: task_id={options.task_id}, model_platform={options.model_platform}")
     while True:
         if await request.is_disconnected():
             logger.warning(f"Client disconnected for task {options.task_id}")

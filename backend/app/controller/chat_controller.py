@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
-import traceroot
+from utils import traceroot_wrapper as traceroot
 from app.component import code
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
@@ -38,7 +38,6 @@ async def post(data: Chat, request: Request):
     set_user_env_path(data.env_path)
     load_dotenv(dotenv_path=data.env_path)
 
-    chat_logger.debug(f"start chat: {data.model_dump_json()}")
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)

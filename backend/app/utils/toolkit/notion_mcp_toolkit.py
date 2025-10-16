@@ -4,7 +4,7 @@ from camel.toolkits import FunctionTool
 from app.component.environment import env
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from camel.toolkits.mcp_toolkit import MCPToolkit
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("notion_mcp_toolkit")
 

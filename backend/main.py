@@ -7,16 +7,16 @@ import atexit
 from dotenv import load_dotenv
 
 # 1) Load env and init traceroot BEFORE importing modules that get a logger
-load_dotenv()
-import traceroot
-from traceroot.integrations.fastapi import connect_fastapi
+from utils import traceroot_wrapper as traceroot
 from app import api
-traceroot.init()
-connect_fastapi(api)
+
+# Only initialize traceroot if enabled
+if traceroot.is_enabled():
+    from traceroot.integrations.fastapi import connect_fastapi
+    connect_fastapi(api)
 
 # 2) Now safe to import modules that use traceroot.get_logger() at import-time
 from app.component.environment import auto_include_routers, env
-
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
 

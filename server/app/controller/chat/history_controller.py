@@ -6,7 +6,7 @@ from fastapi_babel import _
 from sqlmodel import Session, select, desc
 from app.component.auth import Auth, auth_must
 from app.component.database import session
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("server_chat_history")
 
@@ -16,38 +16,59 @@ router = APIRouter(prefix="/chat", tags=["Chat History"])
 @router.post("/history", name="save chat history", response_model=ChatHistoryOut)
 @traceroot.trace()
 def create_chat_history(data: ChatHistoryIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
-    logger.info(f"Creating chat history for user {auth.user.id}, task_id: {data.task_id}")
-    data.user_id = auth.user.id
-    chat_history = ChatHistory(**data.model_dump())
-    session.add(chat_history)
-    session.commit()
-    session.refresh(chat_history)
-    logger.info(f"Chat history created: {chat_history.id}")
-    return chat_history
+    """Save new chat history."""
+    user_id = auth.user.id
+    
+    try:
+        data.user_id = user_id
+        chat_history = ChatHistory(**data.model_dump())
+        session.add(chat_history)
+        session.commit()
+        session.refresh(chat_history)
+        logger.info("Chat history created", extra={"user_id": user_id, "history_id": chat_history.id, "task_id": data.task_id})
+        return chat_history
+    except Exception as e:
+        session.rollback()
+        logger.error("Chat history creation failed", extra={"user_id": user_id, "task_id": data.task_id, "error": str(e)}, exc_info=True)
+        raise
 
 
 @router.get("/histories", name="get chat history")
 @traceroot.trace()
 def list_chat_history(session: Session = Depends(session), auth: Auth = Depends(auth_must)) -> Page[ChatHistoryOut]:
-    logger.info(f"Listing chat histories for user {auth.user.id}")
-    stmt = select(ChatHistory).where(ChatHistory.user_id == auth.user.id).order_by(desc(ChatHistory.created_at))
+    """List chat histories for current user."""
+    user_id = auth.user.id
+    stmt = select(ChatHistory).where(ChatHistory.user_id == user_id).order_by(desc(ChatHistory.created_at))
     result = paginate(session, stmt)
-    logger.debug(f"Found {result.total if hasattr(result, 'total') else 'N/A'} chat histories")
+    total = result.total if hasattr(result, 'total') else 0
+    logger.debug("Chat histories listed", extra={"user_id": user_id, "total": total})
     return result
 
 
 @router.delete("/history/{history_id}", name="delete chat history")
 @traceroot.trace()
-def delete_chat_history(history_id: str, session: Session = Depends(session)):
-    logger.info(f"Deleting chat history: {history_id}")
+def delete_chat_history(history_id: str, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
+    """Delete chat history."""
+    user_id = auth.user.id
     history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id)).first()
+    
     if not history:
-        logger.warning(f"Chat history not found: {history_id}")
+        logger.warning("Chat history not found for deletion", extra={"user_id": user_id, "history_id": history_id})
         raise HTTPException(status_code=404, detail="Chat History not found")
-    session.delete(history)
-    session.commit()
-    logger.info(f"Chat history deleted: {history_id}")
-    return Response(status_code=204)
+    
+    if history.user_id != user_id:
+        logger.warning("Unauthorized deletion attempt", extra={"user_id": user_id, "history_id": history_id, "owner_id": history.user_id})
+        raise HTTPException(status_code=403, detail="You are not allowed to delete this chat history")
+    
+    try:
+        session.delete(history)
+        session.commit()
+        logger.info("Chat history deleted", extra={"user_id": user_id, "history_id": history_id})
+        return Response(status_code=204)
+    except Exception as e:
+        session.rollback()
+        logger.error("Chat history deletion failed", extra={"user_id": user_id, "history_id": history_id, "error": str(e)}, exc_info=True)
+        raise
 
 
 @router.put("/history/{history_id}", name="update chat history", response_model=ChatHistoryOut)
@@ -55,18 +76,25 @@ def delete_chat_history(history_id: str, session: Session = Depends(session)):
 def update_chat_history(
     history_id: int, data: ChatHistoryUpdate, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
-    logger.info(f"Updating chat history: {history_id} for user {auth.user.id}")
+    """Update chat history."""
+    user_id = auth.user.id
     history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id)).first()
+    
     if not history:
-        logger.warning(f"Chat history not found: {history_id}")
+        logger.warning("Chat history not found for update", extra={"user_id": user_id, "history_id": history_id})
         raise HTTPException(status_code=404, detail="Chat History not found")
-    if history.user_id != auth.user.id:
-        logger.warning(f"Unauthorized update attempt on history {history_id} by user {auth.user.id}")
+    
+    if history.user_id != user_id:
+        logger.warning("Unauthorized update attempt", extra={"user_id": user_id, "history_id": history_id, "owner_id": history.user_id})
         raise HTTPException(status_code=403, detail="You are not allowed to update this chat history")
-    update_data = data.model_dump(exclude_unset=True)
-    logger.debug(f"Update data: {list(update_data.keys())}")
-    history.update_fields(update_data)
-    history.save(session)
-    session.refresh(history)
-    logger.info(f"Chat history updated: {history_id}")
-    return history
+    
+    try:
+        update_data = data.model_dump(exclude_unset=True)
+        history.update_fields(update_data)
+        history.save(session)
+        session.refresh(history)
+        logger.info("Chat history updated", extra={"user_id": user_id, "history_id": history_id, "fields_updated": list(update_data.keys())})
+        return history
+    except Exception as e:
+        logger.error("Chat history update failed", extra={"user_id": user_id, "history_id": history_id, "error": str(e)}, exc_info=True)
+        raise

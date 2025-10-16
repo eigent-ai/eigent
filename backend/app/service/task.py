@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 import weakref
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("task_service")
 

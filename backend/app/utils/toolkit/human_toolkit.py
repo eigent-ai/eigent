@@ -5,7 +5,7 @@ from app.service.task import Action, ActionAskData, ActionNoticeData, get_task_l
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
-import traceroot 
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("human_toolkit")
 

@@ -1,14 +1,13 @@
 import os
-from dotenv import load_dotenv
-import traceroot
+from utils import traceroot_wrapper as traceroot
 from app import api
 from app.component.environment import auto_include_routers, env
 from fastapi.staticfiles import StaticFiles
 
-load_dotenv()
-traceroot.init()
-from traceroot.integrations.fastapi import connect_fastapi
-connect_fastapi(api)
+# Only initialize traceroot if enabled
+if traceroot.is_enabled():
+    from traceroot.integrations.fastapi import connect_fastapi
+    connect_fastapi(api)
 
 logger = traceroot.get_logger("server_main")
 

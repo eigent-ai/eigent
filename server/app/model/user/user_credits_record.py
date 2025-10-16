@@ -8,7 +8,7 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 from datetime import date, datetime, timedelta
 from app.model.user.key import ModelType
 from app.component.database import session_make
-import traceroot
+from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("user_credits_record")
 
