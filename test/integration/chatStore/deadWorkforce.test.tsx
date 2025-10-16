@@ -391,4 +391,247 @@ describe('Integration Test: Case 2 - same session new chat', () => {
       expect(task).toBeDefined()
     })
   })
+
+  //TODO: Don't let new startTask untill newChatStore appended
+  it("Parallel startTask calls with separate chatStores (startTask -> wait for append -> startTask)", async () => {
+    const { result, rerender } = renderHook(() => useChatStoreAdapter())
+    
+    let sseCallCount = 0
+    let firstTaskChatStore: any = null
+    let secondTaskChatStore: any = null
+    
+    // Setup SSE events for the first task
+    const firstTaskEventSequence = createSSESequence([
+      {
+        event: {
+          step: 'to_sub_tasks',
+          data: {
+            summary_task: 'First Task|Build a calculator app',
+            sub_tasks: [
+              { id: 'first-1', content: 'Create calculator UI', status: '' },
+              { id: 'first-2', content: 'Implement calc logic', status: '' },
+            ],
+          },
+        },
+        delay: 100
+      },
+      {
+        event: {
+          step: "end", 
+          data: "--- First Task Result ---\nCalculator app completed successfully!"
+        },
+        delay: 300
+      }
+    ])
+
+    // Setup SSE events for the second task
+    const secondTaskEventSequence = createSSESequence([
+      {
+        event: {
+          step: 'to_sub_tasks',
+          data: {
+            summary_task: 'Second Task|Build a todo app',
+            sub_tasks: [
+              { id: 'second-1', content: 'Create todo UI', status: '' },
+              { id: 'second-2', content: 'Implement todo logic', status: '' },
+            ],
+          },
+        },
+        delay: 100
+      },
+      {
+        event: {
+          step: "end", 
+          data: "--- Second Task Result ---\nTodo app completed successfully!"
+        },
+        delay: 300
+      }
+    ])
+
+    // Mock SSE to handle sequential calls with different events
+    mockFetchEventSource.mockImplementation(async (url: string, options: any) => {
+      sseCallCount++
+      console.log(`SSE Call #${sseCallCount} initiated`)
+      
+      if (sseCallCount === 1) {
+        // First task gets first event sequence
+        console.log('Processing first task events')
+        if (options.onmessage) {
+          await firstTaskEventSequence(options.onmessage)
+        }
+      } else if (sseCallCount === 2) {
+        // Second task gets second event sequence
+        console.log('Processing second task events')
+        if (options.onmessage) {
+          await secondTaskEventSequence(options.onmessage)
+        }
+      }
+    })
+
+    // Get initial chatStore reference
+    const { chatStore: initialChatStore, projectStore } = result.current
+    const initialChatStoreRef = initialChatStore
+    const initiatorTaskId = initialChatStore.activeTaskId
+
+    // Step 1: Start first task
+    await act(async () => {
+      const userMessage1 = 'Build a calculator app'
+      await initialChatStore.startTask(initiatorTaskId, undefined, undefined, undefined, userMessage1)
+      rerender()
+    })
+
+    // Verify first task started and chatStore was created
+    await waitFor(() => {
+      rerender()
+      const { chatStore: currentChatStore, projectStore } = result.current
+      
+      // Should have 2 chatStores: initial + first task
+      const allChatStores = projectStore.getAllChatStores(projectStore.activeProjectId)
+      expect(allChatStores).toHaveLength(2)
+      
+      // Current chatStore should be different from initial (new one created)
+      expect(currentChatStore).not.toBe(initialChatStoreRef)
+      firstTaskChatStore = currentChatStore
+      
+      // Verify first task details
+      const activeTaskId = currentChatStore.activeTaskId
+      const activeTask = currentChatStore.tasks[activeTaskId]
+      expect(activeTask).toBeDefined()
+      expect(activeTask.hasMessages).toBe(true)
+      expect(activeTask.messages[0].content).toBe('Build a calculator app')
+      
+    }, { timeout: 1000 })
+
+    // Wait for first task SSE events to process (summary_task)
+    await waitFor(() => {
+      rerender()
+      const { chatStore: currentChatStore } = result.current
+      const activeTaskId = currentChatStore.activeTaskId
+      const activeTask = currentChatStore.tasks[activeTaskId]
+      
+      // Check that SSE events have been processed
+      expect(activeTask.summaryTask).toBe('First Task|Build a calculator app')
+      expect(activeTask.taskInfo).toHaveLength(3) // main task + 2 subtasks
+      expect(activeTask.taskRunning).toHaveLength(3)
+      
+      console.log("First task SSE events processed")
+    }, { timeout: 1500 })
+
+    // Wait for first task to complete
+    await waitFor(() => {
+      rerender()
+      const { chatStore: currentChatStore } = result.current
+      const activeTaskId = currentChatStore.activeTaskId
+      const activeTask = currentChatStore.tasks[activeTaskId]
+      
+      expect(activeTask.status).toBe("finished")
+      
+      console.log("First task completed")
+    }, { timeout: 2000 })
+
+    // Step 2: Wait for project append to complete before starting second task
+    await waitFor(() => {
+      rerender()
+      const { projectStore } = result.current
+      
+      // Ensure the project has been properly updated with the appended first chatStore
+      const allChatStores = projectStore.getAllChatStores(projectStore.activeProjectId)
+      expect(allChatStores).toHaveLength(2)
+      
+      // Verify the active chatStore is properly set and ready for next task
+      const activeChatStore = projectStore.getActiveChatStore(projectStore.activeProjectId)
+      expect(activeChatStore).toBeDefined()
+      expect(activeChatStore.getState()?.activeTaskId).toBeDefined()
+      
+      console.log("Project append completed, ready for second task")
+    }, { timeout: 1000 })
+
+    // Step 3: Start second task on the same chatStore
+    await act(async () => {
+      rerender()
+      const { chatStore: currentChatStore } = result.current
+      const currentInitiatorTaskId = currentChatStore.activeTaskId
+      
+      const userMessage2 = 'Build a todo app'
+      await currentChatStore.startTask(currentInitiatorTaskId, undefined, undefined, undefined, userMessage2)
+      rerender()
+    })
+
+    // Verify second task started and new chatStore was created
+    await waitFor(() => {
+      rerender()
+      const { chatStore: currentChatStore, projectStore } = result.current
+      
+      // Should now have 3 chatStores: initial + first task + second task
+      const allChatStores = projectStore.getAllChatStores(projectStore.activeProjectId)
+      expect(allChatStores).toHaveLength(3)
+      
+      // Current chatStore should be different from first task chatStore
+      expect(currentChatStore).not.toBe(firstTaskChatStore)
+      secondTaskChatStore = currentChatStore
+      
+      // Verify second task details
+      const activeTaskId = currentChatStore.activeTaskId
+      const activeTask = currentChatStore.tasks[activeTaskId]
+      expect(activeTask).toBeDefined()
+      expect(activeTask.hasMessages).toBe(true)
+      expect(activeTask.messages[0].content).toBe('Build a todo app')
+      
+    }, { timeout: 1000 })
+
+    // Wait for second task SSE events to process (summary_task)
+    await waitFor(() => {
+      rerender()
+      const { chatStore: currentChatStore } = result.current
+      const activeTaskId = currentChatStore.activeTaskId
+      const activeTask = currentChatStore.tasks[activeTaskId]
+      
+      // Check that SSE events have been processed
+      expect(activeTask.summaryTask).toBe('Second Task|Build a todo app')
+      expect(activeTask.taskInfo).toHaveLength(3) // main task + 2 subtasks
+      expect(activeTask.taskRunning).toHaveLength(3)
+      
+      console.log("Second task SSE events processed")
+    }, { timeout: 1500 })
+
+    // Wait for second task to complete
+    await waitFor(() => {
+      rerender()
+      const { chatStore: currentChatStore } = result.current
+      const activeTaskId = currentChatStore.activeTaskId
+      const activeTask = currentChatStore.tasks[activeTaskId]
+      
+      expect(activeTask.status).toBe("finished")
+      
+      console.log("Second task completed")
+    }, { timeout: 2000 })
+
+    // Final verification: Both chatStores should have separate states
+    const { projectStore: finalProjectStore } = result.current
+    const allFinalChatStores = finalProjectStore.getAllChatStores(finalProjectStore.activeProjectId)
+    
+    // Verify we have 3 separate chatStores with their own states
+    expect(allFinalChatStores).toHaveLength(3)
+    expect(sseCallCount).toBe(2) // Two separate SSE calls
+    
+    // Verify each chatStore has its own task with different content
+    expect(firstTaskChatStore).not.toBe(secondTaskChatStore)
+    
+    // Get the current state of chatStores from the project store to verify final states
+    const [initialChatStoreFromProject, firstChatStoreFromProject, secondChatStoreFromProject] = allFinalChatStores
+    
+    // Verify first chatStore state (should be the second in the array after initial)
+    const firstTaskId = firstChatStoreFromProject.chatStore.getState().activeTaskId
+    const firstTask = firstChatStoreFromProject.chatStore.getState().tasks[firstTaskId]
+    expect(firstTask.messages[0].content).toBe('Build a calculator app')
+    expect(firstTask.summaryTask).toBe('First Task|Build a calculator app')
+    
+    // Verify second chatStore state (should be the third in the array)
+    const secondTaskId = secondChatStoreFromProject.chatStore.getState().activeTaskId
+    const secondTask = secondChatStoreFromProject.chatStore.getState().tasks[secondTaskId]
+    expect(secondTask.messages[0].content).toBe('Build a todo app')
+    expect(secondTask.summaryTask).toBe('Second Task|Build a todo app')
+    
+    console.log('Sequential startTask test with separate chatStores completed successfully')
+  })
 })
