@@ -238,12 +238,37 @@ def listen_toolkit(
 
 T = TypeVar('T')
 
+# Methods that should not be wrapped by auto_listen_toolkit
+# These are utility/helper methods that don't perform actual tool operations
+EXCLUDED_METHODS = {
+    'get_tools',           # Tool enumeration
+    'get_can_use_tools',   # Tool filtering
+    'toolkit_name',        # Metadata getter
+    'run_mcp_server',      # MCP server initialization
+    'model_dump',          # Pydantic model serialization
+    'model_dump_json',     # Pydantic model serialization
+    'dict',                # Pydantic legacy dict method
+    'json',                # Pydantic legacy json method
+    'copy',                # Object copying
+    'update',              # Object update
+}
+
 
 def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type[T]]:
     """
     Class decorator that automatically wraps all public methods from the base toolkit
     with the @listen_toolkit decorator.
-    
+
+    Excluded methods (not wrapped):
+    - get_tools, get_can_use_tools: Tool enumeration/filtering
+    - toolkit_name: Metadata getter
+    - run_mcp_server: MCP server initialization
+    - Pydantic serialization methods: model_dump, model_dump_json, dict, json
+    - Object utility methods: copy, update
+
+    These methods are typically called during initialization or for metadata,
+    and should not trigger activate/deactivate events.
+
     Usage:
         @auto_listen_toolkit(BaseNoteTakingToolkit)
         class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
@@ -253,7 +278,8 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
 
         base_methods = {}
         for name in dir(base_toolkit_class):
-            if not name.startswith('_'):
+            # Skip private methods and excluded helper methods
+            if not name.startswith('_') and name not in EXCLUDED_METHODS:
                 attr = getattr(base_toolkit_class, name)
                 if callable(attr):
                     base_methods[name] = attr
