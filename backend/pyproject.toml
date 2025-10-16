@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.10.16"
 dependencies = [
-    "camel-ai[eigent]==0.2.76a13",
+    "camel-ai[eigent] @ git+https://github.com/camel-ai/camel.git@8f4d073c49f494ec8801c5f5874fd3dec014f0dc",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",

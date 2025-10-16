@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
+from app.utils.toolkit.google_gmail_native_toolkit import GoogleGmailNativeToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
 
 
@@ -58,7 +59,7 @@ async def install_tool(tool: str):
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to install {tool}: {str(e)}"
-            )
+            ) 
     elif tool == "google_calendar":
         try:
             # Try to initialize toolkit - will succeed if credentials exist
@@ -95,10 +96,46 @@ async def install_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to install {tool}: {str(e)}"
             )
+    elif tool == "google_gmail":
+        try:
+            # Try to initialize toolkit - will succeed if credentials exist
+            try:
+                toolkit = GoogleGmailNativeToolkit("install_auth")
+                tools = [tool_func.func.__name__ for tool_func in toolkit.get_tools()]
+                logger.info(f"Successfully initialized Google Gmail toolkit with {len(tools)} tools")
+                
+                return {
+                    "success": True,
+                    "tools": tools,
+                    "message": f"Successfully installed {tool} toolkit",
+                    "count": len(tools),
+                    "toolkit_name": "GoogleGmailNativeToolkit"
+                }
+            except ValueError as auth_error:
+                # No credentials - need authorization
+                logger.info(f"No credentials found, starting authorization: {auth_error}")
+                
+                # Start background authorization in a new thread
+                logger.info("Starting background Google Gmail authorization")
+                GoogleGmailNativeToolkit.start_background_auth("install_auth")
+                
+                return {
+                    "success": False,
+                    "status": "authorizing",
+                    "message": "Authorization required. Browser should open automatically. Complete authorization and try installing again.",
+                    "toolkit_name": "GoogleGmailNativeToolkit",
+                    "requires_auth": True
+                }
+        except Exception as e:
+            logger.error(f"Failed to install {tool} toolkit: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to install {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'google_gmail']"
         )
 
 
@@ -124,6 +161,13 @@ async def list_available_tools():
                 "display_name": "Google Calendar",
                 "description": "Google Calendar integration for managing events and schedules",
                 "toolkit_class": "GoogleCalendarToolkit",
+                "requires_auth": True
+            },
+            {
+                "name": "google_gmail",
+                "display_name": "Google Gmail",
+                "description": "Gmail integration for sending, receiving, and managing emails",
+                "toolkit_class": "GoogleGmailNativeToolkit",
                 "requires_auth": True
             }
         ]

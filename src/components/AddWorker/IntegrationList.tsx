@@ -92,6 +92,15 @@ export default function IntegrationList({
 						c.config_value && String(c.config_value).length > 0
 				);
 				map[item.key] = hasRefreshToken;
+			} else if (item.key === "Google Gmail") {
+				// Only mark installed when refresh token is present (auth completed)
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google gmail" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken;
 			} else {
 				// For other integrations, use config_group presence
 				const hasConfig = configs.some(
@@ -277,6 +286,23 @@ export default function IntegrationList({
 		onShowEnvConfig?.(mcp);
 		return;
 	}
+
+	if (item.key === "Google Gmail") {
+		// Always prompt env dialog first instead of jumping to authorization
+		let mcp = {
+			name: "Google Gmail",
+			key: "Google Gmail",
+			install_command: {
+				env: {} as any,
+			},
+			id: 15,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		onShowEnvConfig?.(mcp);
+		return;
+	}
 		if (installed[item.key]) return;
 		await item.onInstall();
 		// refresh configs after install to update installed state indicator
@@ -304,9 +330,17 @@ export default function IntegrationList({
             }
         }
 
+        // After saving env vars, trigger installation/instantiation for Google Gmail
+        if (mcp.key === "Google Gmail") {
+            const gmailItem = items.find(item => item.key === "Google Gmail");
+            if (gmailItem && gmailItem.onInstall) {
+                await gmailItem.onInstall();
+            }
+        }
+
         await fetchInstalled();
-        // Don't call addOption here for Google Calendar, as it's already called in onInstall
-        if (mcp.key !== "Google Calendar") {
+        // Don't call addOption here for Google Calendar or Gmail, as it's already called in onInstall
+        if (mcp.key !== "Google Calendar" && mcp.key !== "Google Gmail") {
             addOption(mcp, true);
         }
         onClose();

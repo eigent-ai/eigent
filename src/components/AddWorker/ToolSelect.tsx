@@ -155,6 +155,64 @@ const ToolSelect = forwardRef<
 							return null; // Return null on error
 						}
 					};
+                } else if (key.toLowerCase() === 'google gmail') {
+					onInstall = async () => {
+						try {
+					const response = await fetchPost("/install/tool/google_gmail");
+					if (response.success) {
+						// Check if config exists first to avoid 400 error
+						const existingConfigs = await proxyFetchGet("/api/configs");
+						const existing = Array.isArray(existingConfigs)
+							? existingConfigs.find((c: any) =>
+								c.config_group?.toLowerCase() === "google gmail" &&
+								c.config_name === "GOOGLE_REFRESH_TOKEN"
+							)
+							: null;
+						
+						const configPayload = {
+							config_group: "Google Gmail",
+							config_name: "GOOGLE_REFRESH_TOKEN",
+							config_value: "exists",
+						};
+						
+						if (existing) {
+							await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+						} else {
+							await proxyFetchPost("/api/configs", configPayload);
+						}
+						
+						console.log("Google Gmail installed successfully");
+								// After successful installation, add to selected tools
+								const gmailItem = {
+									id: 0, // Use 0 for integration items
+									key: key,
+									name: key,
+									description: "Google Gmail integration for managing emails and contacts",
+									toolkit: "google_gmail_native_toolkit", // Add the toolkit name
+									isLocal: true
+								};
+								addOption(gmailItem, true);
+                            } else if (response.status === "authorizing") {
+								// Authorization in progress - browser should have opened
+								console.log("Google Gmail authorization in progress. Please complete in browser.");
+								console.log(response.message);
+								// Don't throw error - this is expected behavior
+							} else {
+								// Real error
+								console.error("Failed to install Google Gmail:", response.error || "Unknown error");
+								throw new Error(response.error || "Failed to install Google Gmail");
+							}
+							// Return the response so IntegrationList can check the status
+							return response;
+						} catch (error: any) {
+							// Only throw if it's a real error, not authorization in progress
+							if (!error.message?.includes("authorization")) {
+								console.error("Failed to install Google Gmail:", error.message);
+								throw error;
+							}
+							return null; // Return null on error
+						}
+					};
 						} else {
 							onInstall = () =>
 								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
@@ -174,6 +232,8 @@ const ToolSelect = forwardRef<
 									? "Notion workspace integration for reading and managing Notion pages"
 									: key.toLowerCase() === 'google calendar'
 									? "Google Calendar integration for managing events and schedules"
+									: key.toLowerCase() === 'google gmail'
+									? "Google Gmail integration for managing emails and contacts"
 									: "",
 							onInstall,
 						};
@@ -345,6 +405,56 @@ const ToolSelect = forwardRef<
 				}
 			} catch (error: any) {
 				console.error("Failed to install Google Calendar:", error.message);
+			}
+		}
+		
+		// Trigger instantiation for Google Gmail
+		if (activeMcp.key === "Google Gmail") {
+			try {
+				const response = await fetchPost("/install/tool/google_gmail");
+				
+				if (response.success) {
+					// Mark as successfully installed by writing refresh token marker
+					const existingConfigs = await proxyFetchGet("/api/configs");
+					const existing = Array.isArray(existingConfigs)
+						? existingConfigs.find((c: any) =>
+							c.config_group?.toLowerCase() === "google gmail" &&
+							c.config_name === "GOOGLE_REFRESH_TOKEN"
+						)
+						: null;
+					
+					const configPayload = {
+						config_group: "Google Gmail",
+						config_name: "GOOGLE_REFRESH_TOKEN",
+						config_value: "exists",
+					};
+					
+					if (existing) {
+						await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+					} else {
+						await proxyFetchPost("/api/configs", configPayload);
+					}
+					
+					// Refresh integrations to update install status
+					fetchIntegrationsData();
+					
+					const selectedItem = {
+						id: activeMcp.id,
+						key: activeMcp.key,
+						name: activeMcp.name,
+						description: "Google Gmail integration for managing emails and contacts",
+						toolkit: "google_gmail_native_toolkit",
+						isLocal: true
+					};
+					addOption(selectedItem, true);
+				} else if (response.status === "authorizing") {
+					// Authorization in progress - browser should have opened
+					console.log("Google Gmail authorization in progress. Please complete in browser and try installing again.");
+				} else {
+					console.error("Failed to install Google Gmail:", response.error || "Unknown error");
+				}
+			} catch (error: any) {
+				console.error("Failed to install Google Gmail:", error.message);
 			}
 		}
 			return;
