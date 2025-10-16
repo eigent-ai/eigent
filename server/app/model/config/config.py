@@ -120,6 +120,14 @@ class ConfigInfo:
             ],
             "toolkit": "google_calendar_toolkit",
         },
+        ConfigGroup.GOOGLE_GMAIL.value: {
+            "env_vars": [
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+                "GOOGLE_REFRESH_TOKEN",
+            ],
+            "toolkit": "google_gmail_native_toolkit",
+        },
         ConfigGroup.GOOGLE_DRIVE_MCP.value: {
             "env_vars": [],
             "toolkit": "google_drive_mcp_toolkit",
@@ -139,14 +147,6 @@ class ConfigInfo:
         ConfigGroup.PPTX.value: {
             "env_vars": [],
             "toolkit": "pptx_toolkit",
-        },
-        ConfigGroup.REDDIT.value: {
-            "env_vars": [
-                "REDDIT_CLIENT_ID",
-                "REDDIT_CLIENT_SECRET",
-                "REDDIT_USER_AGENT",
-            ],
-            "toolkit": "reddit_toolkit",
         },
     }
 

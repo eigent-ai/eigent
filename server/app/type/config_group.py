@@ -20,6 +20,7 @@ class ConfigGroup(str, Enum):
     FILE_WRITE = "File Write"
     GITHUB = "Github"
     GOOGLE_CALENDAR = "Google Calendar"
+    GOOGLE_GMAIL = "Google Gmail"
     GOOGLE_DRIVE_MCP = "Google Drive MCP"
     GOOGLE_GMAIL_MCP = "Google Gmail MCP"
     IMAGE_ANALYSIS = "Image Analysis"

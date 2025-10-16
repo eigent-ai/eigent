@@ -24,7 +24,7 @@ from app.utils.toolkit.excel_toolkit import ExcelToolkit
 from app.utils.toolkit.file_write_toolkit import FileToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
-from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
+from app.utils.toolkit.google_gmail_native_toolkit import GoogleGmailNativeToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
 from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
@@ -67,6 +67,8 @@ from app.service.task import (
     get_task_lock,
 )
 from app.service.task import set_process_task
+
+NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
 
 
 class ListenChatAgent(ChatAgent):
@@ -515,7 +517,7 @@ def agent_model(
 def question_confirm_agent(options: Chat):
     return agent_model(
         "question_confirm_agent",
-        f"You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action. The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.",
+        f"You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action. The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.",
         options,
     )
 
@@ -577,7 +579,7 @@ and generation.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -772,7 +774,7 @@ comprehensive and well-documented information.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -935,7 +937,7 @@ to be embedded in your work.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -1167,7 +1169,7 @@ presentations, and other documents.
 - **System**: {platform.system()} ({platform.machine()})
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
@@ -1262,7 +1264,7 @@ async def social_medium_agent(options: Chat):
         *RedditToolkit.get_can_use_tools(options.task_id),
         *await NotionMCPToolkit.get_can_use_tools(options.task_id),
         # *SlackToolkit.get_can_use_tools(options.task_id),
-        *await GoogleGmailMCPToolkit.get_can_use_tools(options.task_id, options.get_bun_env()),
+        *GoogleGmailNativeToolkit.get_can_use_tools(options.task_id),
         *GoogleCalendarToolkit.get_can_use_tools(options.task_id),
         *HumanToolkit.get_can_use_tools(options.task_id, Agents.social_medium_agent),
         *TerminalToolkit(options.task_id, agent_name=Agents.social_medium_agent, clone_current_env=False).get_tools(),
@@ -1290,7 +1292,7 @@ use plain text formatting instead.
 
 - **Working Directory**: `{working_directory}`. All local file operations must 
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
-The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
+The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 
 Your integrated toolkits enable you to:
 
@@ -1357,7 +1359,7 @@ operations.
             LinkedInToolkit.toolkit_name(),
             RedditToolkit.toolkit_name(),
             NotionMCPToolkit.toolkit_name(),
-            GoogleGmailMCPToolkit.toolkit_name(),
+            GoogleGmailNativeToolkit.toolkit_name(),
             GoogleCalendarToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
@@ -1437,7 +1439,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "github_toolkit": GithubToolkit,
         "google_calendar_toolkit": GoogleCalendarToolkit,
         "google_drive_mcp_toolkit": GoogleDriveMCPToolkit,
-        "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
+        "google_gmail_native_toolkit": GoogleGmailNativeToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "mcp_search_toolkit": McpSearchToolkit,

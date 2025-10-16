@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.10.16"
 
 [[package]]
@@ -123,6 +123,15 @@ wheels = [
 ]
 
 [[package]]
+name = "astor"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/21/75b771132fee241dfe601d39ade629548a9626d1d39f333fde31bc46febe/astor-0.8.1.tar.gz", hash = "sha256:6a6effda93f4e1ce9f618779b2dd1d9d84f1e32812c23a29b3fff6fd7f63fa5e", size = 35090, upload-time = "2019-12-10T01:50:35.51Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/88/97eef84f48fa04fbd6750e62dcceafba6c63c81b7ac1420856c8dcc0a3f9/astor-0.8.1-py2.py3-none-any.whl", hash = "sha256:070a54e890cefb5b3739d19f30f5a5ec840ffc9c50ffa7d23cc9fc1a38ebbfc5", size = 27488, upload-time = "2019-12-10T01:50:33.628Z" },
+]
+
+[[package]]
 name = "async-timeout"
 version = "5.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -240,7 +249,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.76a13" },
+    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=8f4d073c49f494ec8801c5f5874fd3dec014f0dc" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
@@ -324,9 +333,10 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.76a13"
-source = { registry = "https://pypi.org/simple" }
+version = "0.2.77"
+source = { git = "https://github.com/camel-ai/camel.git?rev=8f4d073c49f494ec8801c5f5874fd3dec014f0dc#8f4d073c49f494ec8801c5f5874fd3dec014f0dc" }
 dependencies = [
+    { name = "astor" },
     { name = "colorama" },
     { name = "docstring-parser" },
     { name = "httpx" },
@@ -338,10 +348,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
     { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/7c/0145edf0307e360557917de28691eb0c41b36b017a28c6b67e58a729a6da/camel_ai-0.2.76a13.tar.gz", hash = "sha256:487570c36a39a333ae8000783babd5a82350a829aaa8aa2ae712470b596cafe1", size = 950278, upload-time = "2025-10-06T06:09:46.064Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/46/9886106669491737631178830bce79bd7bf63391db4d2200f645089dd9df/camel_ai-0.2.76a13-py3-none-any.whl", hash = "sha256:b860412e4a5b5fc31b0cc3d4b1eeefcd02382d9a5aced252856a1eff0285a97b", size = 1400549, upload-time = "2025-10-06T06:09:43.291Z" },
 ]
 
 [package.optional-dependencies]

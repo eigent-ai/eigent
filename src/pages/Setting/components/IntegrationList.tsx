@@ -8,6 +8,7 @@ import { CircleAlert } from "lucide-react";
 import {
 	proxyFetchGet,
 	proxyFetchPost,
+	proxyFetchPut,
 	proxyFetchDelete,
 } from "@/api/http";
 
@@ -76,16 +77,33 @@ export default function IntegrationList({
 
 	// items or configs change, recalculate installed
 	useEffect(() => {
-		// remove duplicates by config_group
-		const groupSet = new Set<string>();
-		configs.forEach((c: any) => {
-			if (c.config_group) groupSet.add(c.config_group.toLowerCase());
-		});
 		// construct installed map
 		const map: { [key: string]: boolean } = {};
 		items.forEach((item) => {
-			if (groupSet.has(item.key.toLowerCase())) {
-				map[item.key] = true;
+			if (item.key === "Google Calendar") {
+				// Only mark installed after refresh token exists
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken;
+			} else if (item.key === "Google Gmail") {
+				// Only mark installed after refresh token exists
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google gmail" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken;
+			} else {
+				// For other integrations, use presence of any config in the group
+				const hasConfig = configs.some(
+					(c: any) => c.config_group?.toLowerCase() === item.key.toLowerCase()
+				);
+				map[item.key] = hasConfig;
 			}
 		});
 		setInstalled(map);
@@ -98,11 +116,38 @@ export default function IntegrationList({
 		value: string
 	) => {
 		const configPayload = {
-			config_group: capitalizeFirstLetter(provider),
+			// Use exact group name, do not transform case to avoid whitelist mismatch
+			config_group: provider,
 			config_name: envVarKey,
 			config_value: value,
 		};
-		await proxyFetchPost("/api/configs", configPayload);
+		
+		// Fetch latest configs to avoid stale state when deciding POST/PUT
+		let latestConfigs: any[] = Array.isArray(configs) ? configs : [];
+		try {
+			const fresh = await proxyFetchGet("/api/configs");
+			if (Array.isArray(fresh)) latestConfigs = fresh;
+		} catch {}
+		
+		// Check if config already exists (by name, regardless of group - backend uniqueness is by name)
+		let existingConfig = latestConfigs.find((c: any) => c.config_name === envVarKey);
+		
+		if (existingConfig) {
+			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+		} else {
+			const res = await proxyFetchPost("/api/configs", configPayload);
+			// If backend says it already exists (race), switch to PUT
+			if (res && res.detail && (res.detail as string).toLowerCase().includes("already exists")) {
+				try {
+					const again = await proxyFetchGet("/api/configs");
+					const found = Array.isArray(again) ? again.find((c: any) => c.config_name === envVarKey) : null;
+					if (found) {
+						await proxyFetchPut(`/api/configs/${found.id}`, configPayload);
+					}
+				} catch {}
+			}
+		}
+		
 		if (window.electronAPI?.envWrite) {
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
@@ -228,38 +273,74 @@ export default function IntegrationList({
 				return;
 			}
 
-			if (item.key === "Google Calendar") {
-				let mcp = {
-					name: "Google Calendar",
-					key: "Google Calendar",
-					install_command: {
-						env: {} as any,
-					},
-					id: 14,
-				};
-				item.env_vars.map((key) => {
-					mcp.install_command.env[key] = "";
-				});
-				setActiveMcp(mcp);
-				setShowEnvConfig(true);
-				return;
-			}
+	if (item.key === "Google Calendar") {
+		let mcp = {
+			name: "Google Calendar",
+			key: "Google Calendar",
+			install_command: {
+				env: {} as any,
+			},
+			id: 14,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		setActiveMcp(mcp);
+		setShowEnvConfig(true);
+		return;
+	}
 
-			if (installed[item.key]) return;
-			await item.onInstall();
+	if (item.key === "Google Gmail") {
+		let mcp = {
+			name: "Google Gmail",
+			key: "Google Gmail",
+			install_command: {
+				env: {} as any,
+			},
+			id: 15,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		setActiveMcp(mcp);
+		setShowEnvConfig(true);
+		return;
+	}
+
+	if (installed[item.key]) return;
+	await item.onInstall();
 		},
 		[installed]
 	);
 
 	const onConnect = async (mcp: any) => {
-		console.log(mcp);
+		// Refresh configs first to get latest state
+		await fetchInstalled();
+		
+		// Save all environment variables
 		await Promise.all(
 			Object.keys(mcp.install_command.env).map((key) => {
 				return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
 			})
 		);
 
-		fetchInstalled();
+		// After saving env vars, trigger installation/instantiation for Google Calendar
+		if (mcp.key === "Google Calendar") {
+			const calendarItem = items.find(item => item.key === "Google Calendar");
+			if (calendarItem && calendarItem.onInstall) {
+				await calendarItem.onInstall();
+			}
+		}
+
+		// After saving env vars, trigger installation/instantiation for Google Gmail
+		if (mcp.key === "Google Gmail") {
+			const gmailItem = items.find(item => item.key === "Google Gmail");
+			if (gmailItem && gmailItem.onInstall) {
+				await gmailItem.onInstall();
+			}
+		}
+
+		await fetchInstalled();
 		onClose();
 	};
 	const onClose = () => {
