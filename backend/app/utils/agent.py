@@ -131,11 +131,6 @@ class ListenChatAgent(ChatAgent):
 
     process_task_id: str = ""
 
-    def _get_full_tool_schemas(self) -> List[Dict[str, Any]]:
-        """Return deep copies of tool schemas to prevent downstream mutation."""
-        schemas = super()._get_full_tool_schemas()
-        return copy.deepcopy(schemas)
-
     @traceroot.trace()
     def step(
         self,

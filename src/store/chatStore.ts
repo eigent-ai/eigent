@@ -235,7 +235,9 @@ const chatStore = create<ChatStore>()(
 				apiModel = {
 					api_key: res.value,
 					model_type: cloud_model_type,
-					model_platform: cloud_model_type.includes('gpt') ? 'openai' : 'gemini',
+					model_platform: cloud_model_type.includes('gpt') ? 'openai' : 
+									cloud_model_type.includes('claude') ? 'anthropic' :
+									cloud_model_type.includes('gemini') ? 'gemini' : 'openai-compatible-model',
 					api_url: res.api_url,
 					extra_params: {}
 				}
