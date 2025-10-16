@@ -51,6 +51,13 @@ findAvailablePort(browser_port).then(port => {
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 });
 
+// Memory optimization settings
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
+app.commandLine.appendSwitch('max_old_space_size', '4096');
+app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
+app.commandLine.appendSwitch('renderer-process-limit', '8');
+
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
@@ -929,8 +936,8 @@ async function createWindow() {
   fileReader = new FileReader(win);
   webViewManager = new WebViewManager(win);
 
-  // create multiple webviews
-  for (let i = 1; i <= 8; i++) {
+  // create initial webviews (reduced from 8 to 3)
+  for (let i = 1; i <= 3; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
 
@@ -1204,14 +1211,24 @@ const cleanupPythonProcess = async () => {
       const pid = python_process.pid;
       log.info('Cleaning up Python process', { pid });
 
+      // Remove all listeners to prevent memory leaks
+      python_process.removeAllListeners();
+
       await new Promise<void>((resolve) => {
-        kill(pid, 'SIGINT', (err) => {
+        kill(pid, 'SIGTERM', (err) => {
           if (err) {
-            log.error('Failed to clean up process tree:', err);
+            log.error('Failed to clean up process tree with SIGTERM:', err);
+            // Try SIGKILL as fallback
+            kill(pid, 'SIGKILL', (killErr) => {
+              if (killErr) {
+                log.error('Failed to force kill process tree:', killErr);
+              }
+              resolve();
+            });
           } else {
             log.info('Successfully cleaned up Python process tree');
+            resolve();
           }
-          resolve();
         });
       });
     }
@@ -1231,17 +1248,38 @@ const cleanupPythonProcess = async () => {
       }
     }
 
+    // Clean up any temporary files in userData
+    try {
+      const tempFiles = ['backend.lock', 'uv_installing.lock'];
+      for (const file of tempFiles) {
+        const filePath = path.join(userData, file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (error) {
+      log.error('Error cleaning up temp files:', error);
+    }
+
     python_process = null;
   } catch (error) {
     log.error('Error occurred while cleaning up process:', error);
   }
 };
 
-// brefore close
+// before close
 const handleBeforeClose = () => {
+    let isQuitting = false;
+    
+    app.on('before-quit', () => {
+      isQuitting = true;
+    });
+    
     win?.on("close", (event) => {
-      event.preventDefault();
-      win?.webContents.send("before-close");
+      if (!isQuitting) {
+        event.preventDefault();
+        win?.webContents.send("before-close");
+      }
     })
 }
 
@@ -1296,8 +1334,15 @@ app.whenReady().then(() => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-  webViewManager = null;
+  
+  // Clean up WebView manager
+  if (webViewManager) {
+    webViewManager.destroy();
+    webViewManager = null;
+  }
+  
   win = null;
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -1317,12 +1362,44 @@ app.on('activate', () => {
 });
 
 // ==================== app exit event ====================
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
-  if (win) {
-    win.destroy();
+  
+  // Prevent default quit to ensure cleanup completes
+  event.preventDefault();
+  
+  try {
+    // Clean up resources
+    if (webViewManager) {
+      webViewManager.destroy();
+      webViewManager = null;
+    }
+    
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+      win = null;
+    }
+    
+    // Wait for Python process cleanup
+    await cleanupPythonProcess();
+    
+    // Clean up file reader if exists
+    if (fileReader) {
+      fileReader = null;
+    }
+    
+    // Clear any remaining timeouts/intervals
+    if (global.gc) {
+      global.gc();
+    }
+    
+    log.info('All cleanup completed, exiting...');
+  } catch (error) {
+    log.error('Error during cleanup:', error);
+  } finally {
+    // Force quit after cleanup
+    app.exit(0);
   }
-  cleanupPythonProcess();
 });
 
