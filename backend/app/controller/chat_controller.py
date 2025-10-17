@@ -3,7 +3,7 @@ import os
 import re
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from utils import traceroot_wrapper as traceroot
 from app.component import code
@@ -31,13 +31,12 @@ chat_logger = traceroot.get_logger('chat_controller')
 @router.post("/chat", name="start chat")
 @traceroot.trace()
 async def post(data: Chat, request: Request):
-    chat_logger.info(f"Starting new chat session for task_id: {data.task_id}, user: {data.email}")
+    chat_logger.info("Chat session started", extra={"task_id": data.task_id})
     task_lock = create_task_lock(data.task_id)
     
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
     load_dotenv(dotenv_path=data.env_path)
-
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
@@ -45,8 +44,8 @@ async def post(data: Chat, request: Request):
     os.environ["OPENAI_API_BASE_URL"] = data.api_url or "https://api.openai.com/v1"
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
-    email = re.sub(r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]).strip(".")
-    camel_log = Path.home() / ".eigent" / email / ("task_" + data.task_id) / "camel_logs"
+    email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]).strip(".")
+    camel_log = Path.home() / ".eigent" / email_sanitized / ("task_" + data.task_id) / "camel_logs"
     camel_log.mkdir(parents=True, exist_ok=True)
 
     os.environ["CAMEL_LOG_DIR"] = str(camel_log)
@@ -54,31 +53,32 @@ async def post(data: Chat, request: Request):
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
     
-    chat_logger.info(f"Chat session initialized, starting streaming response for task_id: {data.task_id}")
+    chat_logger.debug("Chat environment configured", extra={"task_id": data.task_id, "log_dir": str(camel_log)})
     return StreamingResponse(step_solve(data, request, task_lock), media_type="text/event-stream")
+   
 
 
 @router.post("/chat/{id}", name="improve chat")
 @traceroot.trace()
 def improve(id: str, data: SupplementChat):
-    chat_logger.info(f"Improving chat for task_id: {id} with question: {data.question}")
+    chat_logger.info("Chat improvement requested", extra={"id": id, "question_length": len(data.question)})
     task_lock = get_task_lock(id)
     if task_lock.status == Status.done:
         raise UserException(code.error, "Task was done")
     asyncio.run(task_lock.put_queue(ActionImproveData(data=data.question)))
-    chat_logger.info(f"Improvement request queued for task_id: {id}")
+    chat_logger.debug("Improvement request queued", extra={"id": id})
     return Response(status_code=201)
 
 
 @router.put("/chat/{id}", name="supplement task")
 @traceroot.trace()
 def supplement(id: str, data: SupplementChat):
-    chat_logger.info(f"Supplementing task_id: {id} with additional data")
+    chat_logger.info("Chat supplement requested", extra={"id": id})
     task_lock = get_task_lock(id)
     if task_lock.status != Status.done:
         raise UserException(code.error, "Please wait task done")
     asyncio.run(task_lock.put_queue(ActionSupplementData(data=data)))
-    chat_logger.info(f"Supplement data queued for task_id: {id}")
+    chat_logger.debug("Supplement data queued", extra={"id": id})
     return Response(status_code=201)
 
 
@@ -89,17 +89,19 @@ def stop(id: str):
     chat_logger.warning(f"Stopping chat session for task_id: {id}")
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
-    chat_logger.info(f"Stop signal sent for task_id: {id}")
+    chat_logger.info("Chat stop signal sent", extra={"id": id})
     return Response(status_code=204)
 
 
 @router.post("/chat/{id}/human-reply")
 @traceroot.trace()
 def human_reply(id: str, data: HumanReply):
-    chat_logger.info(f"Human reply received for task_id: {id}, agent: {data.agent}")
+      
+    chat_logger.info("Human reply received", extra={"id":id, "reply_length": len(data.reply)})
+    
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_human_input(data.agent, data.reply))
-    chat_logger.info(f"Human reply processed for task_id: {id}")
+    chat_logger.debug("Human reply processed", extra={"id": id})
     return Response(status_code=201)
 
 

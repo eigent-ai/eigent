@@ -250,7 +250,7 @@ requires-dist = [
     { name = "pydantic-i18n", specifier = ">=0.4.5" },
     { name = "pydash", specifier = ">=8.0.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "traceroot", specifier = ">=0.0.5a2" },
+    { name = "traceroot", specifier = ">=0.0.7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.2" },
 ]
 
@@ -2513,7 +2513,7 @@ wheels = [
 
 [[package]]
 name = "traceroot"
-version = "0.0.5"
+version = "0.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -2534,9 +2534,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "watchtower" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/5e/8ade61cadecf69b4fa49205640a7424880bc25b5e9615159ba8cf4aff2bf/traceroot-0.0.5.tar.gz", hash = "sha256:0924d9b524a9e59d64c4eec4c812018f2d7583558de17001294ace96874381c0", size = 28066, upload-time = "2025-08-24T03:29:04.966Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/c0/9f047cc761a9f98a2e7a9a8fef4c01ea1eeb7b2383fe1f3ad82d24ac98b3/traceroot-0.0.7.tar.gz", hash = "sha256:7792def0bb466977318f0126756c02e8950a1c208bcec7a8efed1e05e02b189d", size = 25710, upload-time = "2025-10-16T06:17:39.587Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/d4/2777d7c3d0e36b3b2d9f903151991f3e1c21f190788c0e5f537fd762ae34/traceroot-0.0.5-py3-none-any.whl", hash = "sha256:ec27afb4ac33df3109c4c436f3bdfc47e30e2f1ce5eb90ba2215cfebe19e6b2e", size = 24324, upload-time = "2025-08-24T03:29:03.446Z" },
+    { url = "https://files.pythonhosted.org/packages/45/59/8593afb3615fb0c2e0cf6888dc49d9ae05d365c76ee053f43a36519f889c/traceroot-0.0.7-py3-none-any.whl", hash = "sha256:2a20a8e2dfa6b10e1f96bc98d5b84dc40c14c01d47098f86068393ece99a2862", size = 24026, upload-time = "2025-10-16T06:17:38.573Z" },
 ]
 
 [[package]]

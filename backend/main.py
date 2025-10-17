@@ -4,8 +4,6 @@ import signal
 import asyncio
 import atexit
 
-from dotenv import load_dotenv
-
 # 1) Load env and init traceroot BEFORE importing modules that get a logger
 from utils import traceroot_wrapper as traceroot
 from app import api

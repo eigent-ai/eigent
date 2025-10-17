@@ -16,7 +16,7 @@ dependencies = [
     "inflection>=0.5.1",
     "aiofiles>=24.1.0",
     "openai>=1.99.3,<2",
-    "traceroot>=0.0.5a2",
+    "traceroot>=0.0.7",
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
 ]

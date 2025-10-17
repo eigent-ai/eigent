@@ -4,7 +4,9 @@ import logging
 import traceroot
 from dotenv import load_dotenv  
 
-load_dotenv()
+env_path = Path(__file__).resolve().parents[2] / '.env'
+
+load_dotenv(env_path)
 
 if traceroot.init():
     from traceroot.logger import get_logger as _get_traceroot_logger
