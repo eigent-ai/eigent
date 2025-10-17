@@ -587,7 +587,7 @@ export default function Home() {
 												variant="primary"
 												className="text-xs leading-17 font-medium text-nowrap"
 											>
-												# Token {task.tokens || 0}
+												# Token {task?.tokens || 0}
 											</Tag>
 										</div>
 									</div>
@@ -645,7 +645,7 @@ export default function Home() {
 										variant="primary"
 										className="text-xs leading-17 font-medium text-nowrap"
 									>
-										# Token {task.tokens || 0}
+										# Token {task?.tokens || 0}
 									</Tag>
 
 									<Popover>
@@ -667,7 +667,7 @@ export default function Home() {
 														className="w-full"
 														onClick={(e) => {
 															e.stopPropagation();
-															handleShare(task.task_id);
+															handleShare(task?.task_id);
 														}}
 													>
 														<Share size={16} />
@@ -682,7 +682,7 @@ export default function Home() {
 														className="w-full"
 														onClick={(e) => {
 															e.stopPropagation();
-															handleDelete(task.id);
+															handleDelete(task?.id);
 														}}
 													>
 														<Trash2
