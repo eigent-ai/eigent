@@ -449,7 +449,7 @@ class ListenChatAgent(ChatAgent):
 
         # Clone tools and collect toolkits that need registration
         cloned_tools, toolkits_to_register = self._clone_tools()
-
+        
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
             agent_name=self.agent_name,
@@ -465,7 +465,6 @@ class ListenChatAgent(ChatAgent):
             response_terminators=self.response_terminators,
             scheduling_strategy=self.model_backend.scheduling_strategy.__name__,
             max_iteration=self.max_iteration,
-            agent_id=self.agent_id,
             stop_event=self.stop_event,
             tool_execution_timeout=self.tool_execution_timeout,
             mask_tool_output=self.mask_tool_output,
