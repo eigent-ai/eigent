@@ -49,7 +49,7 @@ export const MarkDown = memo(
 		}, [content, speed, enableTypewriter, onTyping]);
 
 		return (
-			<div className="max-w-none">
+			<div className="max-w-none markdown-container">
 				<ReactMarkdown
 					remarkPlugins={[remarkGfm]}
 					components={{
@@ -83,13 +83,13 @@ export const MarkDown = memo(
 								{children}
 							</ul>
 						),
-						ol: ({ children }) => (
-							<ol
-								className={`list-decimal list-inside text-[13px] text-primary mb-2 ${olPadding}`}
-							>
-								{children}
-							</ol>
-						),
+						// ol: ({ children }) => (
+						// 	<ol
+						// 		className={`list-decimal list-inside text-[13px] text-primary mb-2 ${olPadding}`}
+						// 	>
+						// 		{children}
+						// 	</ol>
+						// ),
 						li: ({ children }) => (
 							<li className="mb-1 list-inside">{children}</li>
 						),

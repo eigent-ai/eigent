@@ -48,7 +48,7 @@ export const MarkDown = ({
 		return text.replace(/\\n/g, "  \n "); // add two spaces before \n, so ReactMarkdown will recognize it as a line break
 	};
 	return (
-		<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto">
+		<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto markdown-container">
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
 				components={{
@@ -81,13 +81,13 @@ export const MarkDown = ({
 							{children}
 						</ul>
 					),
-					ol: ({ children }) => (
-						<ol
-							className={`list-decimal list-inside text-xs text-primary mb-1 ${olPadding}`}
-						>
-							{children}
-						</ol>
-					),
+					// ol: ({ children }) => (
+					// 	<ol
+					// 		className={`list-decimal list-inside text-xs text-primary mb-1 ${olPadding}`}
+					// 	>
+					// 		{children}
+					// 	</ol>
+					// ),
 					li: ({ children }) => (
 						<li className="mb-1 list-inside break-all">{children}</li>
 					),
