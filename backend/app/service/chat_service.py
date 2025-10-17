@@ -438,12 +438,12 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         "generate new images from text prompts.",
         multi_modaler,
     )
-    # workforce.add_single_agent_worker(
-    #     "Social Media Agent: A social media management assistant for "
-    #     "handling tasks related to WhatsApp, Twitter, LinkedIn, Reddit, "
-    #     "Notion, Slack, and other social platforms.",
-    #     await social_medium_agent(options),
-    # )
+    workforce.add_single_agent_worker(
+        "Social Media Agent: A social media management assistant for "
+        "handling tasks related to WhatsApp, Twitter, LinkedIn, Reddit, "
+        "Notion, Slack, and other social platforms.",
+        await social_medium_agent(options),
+    )
     mcp = await mcp_agent(options)
     # workforce.add_single_agent_worker(
     #     "MCP Agent: A Model Context Protocol agent that provides access "

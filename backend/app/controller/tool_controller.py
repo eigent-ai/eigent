@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
-
+from app.utils.toolkit.google_gmail_native_toolkit import GoogleGmailNativeToolkit
 
 router = APIRouter(tags=["task"])
 
@@ -80,10 +80,32 @@ async def install_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to install {tool}: {str(e)}"
             )
+    elif tool == "gmail":
+        try:
+            # Use a dummy task_id for installation, as this is just for pre-authentication
+            toolkit = GoogleGmailNativeToolkit("install_auth")
+
+            # Get available tools to verify connection
+            tools = [tool_func.func.__name__ for tool_func in toolkit.get_tools()]
+            logger.info(f"Successfully pre-instantiated {tool} toolkit with {len(tools)} tools")
+
+            return {
+                "success": True,
+                "tools": tools,
+                "message": f"Successfully installed {tool} toolkit",
+                "count": len(tools),
+                "toolkit_name": "GoogleGmailNativeToolkit"
+            }
+        except Exception as e:
+            logger.error(f"Failed to install {tool} toolkit: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to install {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'gmail']"
         )
 
 
@@ -109,6 +131,13 @@ async def list_available_tools():
                 "display_name": "Google Calendar",
                 "description": "Google Calendar integration for managing events and schedules",
                 "toolkit_class": "GoogleCalendarToolkit",
+                "requires_auth": True
+            },
+            {
+                "name": "gmail",
+                "display_name": "Gmail",
+                "description": "Gmail integration for sending, reading, and managing emails",
+                "toolkit_class": "GoogleGmailNativeToolkit",
                 "requires_auth": True
             }
         ]

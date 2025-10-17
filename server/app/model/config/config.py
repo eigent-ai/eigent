@@ -120,6 +120,13 @@ class ConfigInfo:
             ],
             "toolkit": "google_calendar_toolkit",
         },
+        ConfigGroup.GMAIL.value: {
+            "env_vars": [
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+            ],
+            "toolkit": "google_gmail_native_toolkit",
+        },
         ConfigGroup.GOOGLE_DRIVE_MCP.value: {
             "env_vars": [],
             "toolkit": "google_drive_mcp_toolkit",

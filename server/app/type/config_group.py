@@ -21,7 +21,8 @@ class ConfigGroup(str, Enum):
     GITHUB = "Github"
     GOOGLE_CALENDAR = "Google Calendar"
     GOOGLE_DRIVE_MCP = "Google Drive MCP"
-    GOOGLE_GMAIL_MCP = "Google Gmail MCP"
+    # GOOGLE_GMAIL_MCP = "Google Gmail MCP"  # Deprecated - use GMAIL instead
+    GMAIL = "Gmail"
     IMAGE_ANALYSIS = "Image Analysis"
     MCP_SEARCH = "MCP Search"
     PPTX = "PPTX"

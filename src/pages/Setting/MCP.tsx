@@ -102,6 +102,29 @@ export default function SettingMCP() {
 				</>
 			),
 		},
+	{
+		key: "Gmail",
+		name: "Gmail",
+		env_vars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+		desc: (
+			<>
+				{t("setting.environmental-variables-required")}: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+				<br />
+				<span className="block mt-1 text-sm">
+					Use your Google Cloud OAuth 2.0 Client ID and Secret. Create at {""}
+					<a
+						onClick={() => {
+							window.location.href = "https://console.cloud.google.com/apis/credentials";
+						}}
+						className="underline text-blue-500"
+					>
+						Google Cloud Console
+					</a>
+				</span>
+			</>
+		),
+		onInstall: () => {}, // Empty function - actual handling is in IntegrationList.tsx
+	},	
 	]);
 
 	// get integrations

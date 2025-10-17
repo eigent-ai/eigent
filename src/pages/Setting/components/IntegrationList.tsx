@@ -9,6 +9,7 @@ import {
 	proxyFetchGet,
 	proxyFetchPost,
 	proxyFetchDelete,
+	fetchPost,
 } from "@/api/http";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
@@ -18,6 +19,7 @@ import { MCPEnvDialog } from "./MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -102,8 +104,21 @@ export default function IntegrationList({
 			config_name: envVarKey,
 			config_value: value,
 		};
-		await proxyFetchPost("/api/configs", configPayload);
+		console.log("📤 Sending config to API:", configPayload);
+		const response = await proxyFetchPost("/api/configs", configPayload);
+		console.log("📥 API response:", response);
+		
+		// Check for errors
+		if (response && response.error) {
+			console.error("❌ API ERROR DETAILS:", response.error);
+			console.error("❌ Full error object:", JSON.stringify(response.error, null, 2));
+		}
+		if (response && response.code === 100) {
+			console.error("❌ API returned error code 100");
+		}
+		
 		if (window.electronAPI?.envWrite) {
+			console.log("💻 Writing to electron env:", { key: envVarKey, value });
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
 	};
@@ -228,38 +243,80 @@ export default function IntegrationList({
 				return;
 			}
 
-			if (item.key === "Google Calendar") {
-				let mcp = {
-					name: "Google Calendar",
-					key: "Google Calendar",
-					install_command: {
-						env: {} as any,
-					},
-					id: 14,
-				};
-				item.env_vars.map((key) => {
-					mcp.install_command.env[key] = "";
-				});
-				setActiveMcp(mcp);
-				setShowEnvConfig(true);
-				return;
-			}
+		if (item.key === "Google Calendar") {
+			let mcp = {
+				name: "Google Calendar",
+				key: "Google Calendar",
+				install_command: {
+					env: {} as any,
+				},
+				id: 14,
+			};
+			item.env_vars.map((key) => {
+				mcp.install_command.env[key] = "";
+			});
+			setActiveMcp(mcp);
+			setShowEnvConfig(true);
+			return;
+		}
 
-			if (installed[item.key]) return;
+		if (item.key === "Gmail") {
+			let mcp = {
+				name: "Gmail",
+				key: "Gmail",
+				install_command: {
+					env: {} as any,
+				},
+				id: 15,
+			};
+			item.env_vars.map((key) => {
+				mcp.install_command.env[key] = "";
+			});
+			setActiveMcp(mcp);
+			setShowEnvConfig(true);
+			return;
+		}
+
+		if (installed[item.key]) return;
 			await item.onInstall();
 		},
 		[installed]
 	);
 
 	const onConnect = async (mcp: any) => {
-		console.log(mcp);
+		console.log("🔌 onConnect called with MCP:", mcp);
+		console.log("🔑 Env values to save:", mcp.install_command.env);
+		
 		await Promise.all(
 			Object.keys(mcp.install_command.env).map((key) => {
+				console.log(`💾 Saving ${key}:`, mcp.install_command.env[key]);
 				return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
 			})
 		);
+		console.log("✅ All env values saved");
 
+		// Trigger OAuth flow for Gmail
+		if (mcp.key && mcp.key === "Gmail") {
+			console.log("🔐 Triggering Gmail installation...");
+			try {
+				const response = await fetchPost("/install/tool/gmail");
+				if (response.success) {
+					console.log("✅ Gmail toolkit installed successfully!");
+					toast.success("Gmail toolkit installed successfully!");
+					setInstalled((prev) => ({ ...prev, [mcp.key]: true }));
+				} else {
+					console.error("❌ Installation failed:", response.error);
+					toast.error("Gmail installation failed: " + (response.error || "Unknown error"));
+				}
+			} catch (error: any) {
+				console.error("❌ Installation error:", error);
+				toast.error("Failed to install Gmail: " + error.message);
+			}
+		}
+
+		console.log("🔄 Fetching installed integrations...");
 		fetchInstalled();
+		console.log("🚪 Closing dialog");
 		onClose();
 	};
 	const onClose = () => {
