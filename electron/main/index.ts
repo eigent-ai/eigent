@@ -118,6 +118,13 @@ profileInitPromise = findAvailablePort(browser_port).then(async port => {
   log.info(`[PROJECT BROWSER STARTING] User data directory: ${targetProfile}`);
 });
 
+// Memory optimization settings
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
+app.commandLine.appendSwitch('max_old_space_size', '4096');
+app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
+app.commandLine.appendSwitch('renderer-process-limit', '8');
+
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
@@ -684,6 +691,13 @@ function registerIpcHandlers() {
         return { success: false, error: 'File does not exist' };
       }
 
+      // Check if it's a directory
+      const stats = await fsp.stat(filePath);
+      if (stats.isDirectory()) {
+        log.error('Path is a directory, not a file:', filePath);
+        return { success: false, error: 'Path is a directory, not a file' };
+      }
+
       // Read file content
       const fileContent = await fsp.readFile(filePath);
       log.info('File read successfully:', filePath);
@@ -882,6 +896,11 @@ function registerIpcHandlers() {
     return manager.getFileList(email, taskId);
   });
 
+  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.deleteTaskFiles(email, taskId);
+  });
+
   ipcMain.handle('get-log-folder', async (_, email: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     return manager.getLogFolder(email);
@@ -1008,9 +1027,8 @@ async function createWindow() {
   fileReader = new FileReader(win);
   webViewManager = new WebViewManager(win, browser_port);
 
-  // create multiple webviews
-  log.info(`[PROJECT BROWSER] Creating WebViews with partition: persist:user_login`);
-  for (let i = 1; i <= 8; i++) {
+  // create initial webviews (reduced from 8 to 3)
+  for (let i = 1; i <= 3; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
   log.info('[PROJECT BROWSER] WebViewManager initialized with webviews');
@@ -1285,14 +1303,24 @@ const cleanupPythonProcess = async () => {
       const pid = python_process.pid;
       log.info('Cleaning up Python process', { pid });
 
+      // Remove all listeners to prevent memory leaks
+      python_process.removeAllListeners();
+
       await new Promise<void>((resolve) => {
-        kill(pid, 'SIGINT', (err) => {
+        kill(pid, 'SIGTERM', (err) => {
           if (err) {
-            log.error('Failed to clean up process tree:', err);
+            log.error('Failed to clean up process tree with SIGTERM:', err);
+            // Try SIGKILL as fallback
+            kill(pid, 'SIGKILL', (killErr) => {
+              if (killErr) {
+                log.error('Failed to force kill process tree:', killErr);
+              }
+              resolve();
+            });
           } else {
             log.info('Successfully cleaned up Python process tree');
+            resolve();
           }
-          resolve();
         });
       });
     }
@@ -1312,17 +1340,38 @@ const cleanupPythonProcess = async () => {
       }
     }
 
+    // Clean up any temporary files in userData
+    try {
+      const tempFiles = ['backend.lock', 'uv_installing.lock'];
+      for (const file of tempFiles) {
+        const filePath = path.join(userData, file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (error) {
+      log.error('Error cleaning up temp files:', error);
+    }
+
     python_process = null;
   } catch (error) {
     log.error('Error occurred while cleaning up process:', error);
   }
 };
 
-// brefore close
+// before close
 const handleBeforeClose = () => {
+    let isQuitting = false;
+    
+    app.on('before-quit', () => {
+      isQuitting = true;
+    });
+    
     win?.on("close", (event) => {
-      event.preventDefault();
-      win?.webContents.send("before-close");
+      if (!isQuitting) {
+        event.preventDefault();
+        win?.webContents.send("before-close");
+      }
     })
 }
 
@@ -1385,8 +1434,15 @@ app.whenReady().then(async () => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-  webViewManager = null;
+  
+  // Clean up WebView manager
+  if (webViewManager) {
+    webViewManager.destroy();
+    webViewManager = null;
+  }
+  
   win = null;
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -1410,57 +1466,88 @@ app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
 
-  // Sync browser profile back to profile_user_login
-  if (browserProfilePaths) {
-    const { sourceProfile, targetProfile } = browserProfilePaths;
-    try {
-      log.info('[PROFILE SYNC] Syncing browser profile from target back to source...');
-      log.info('[PROFILE SYNC] Source:', sourceProfile);
-      log.info('[PROFILE SYNC] Target:', targetProfile);
+  // Prevent default quit to ensure cleanup completes
+  event.preventDefault();
 
-      // Check if target profile exists and has data
-      if (fs.existsSync(targetProfile)) {
-        const partitionPath = path.join(targetProfile, 'Partitions', 'user_login');
+  try {
+    // Sync browser profile back to profile_user_login
+    if (browserProfilePaths) {
+      const { sourceProfile, targetProfile } = browserProfilePaths;
+      try {
+        log.info('[PROFILE SYNC] Syncing browser profile from target back to source...');
+        log.info('[PROFILE SYNC] Source:', sourceProfile);
+        log.info('[PROFILE SYNC] Target:', targetProfile);
 
-        if (fs.existsSync(partitionPath)) {
-          // Ensure source profile directories exist
-          const sourcePartitionPath = path.join(sourceProfile, 'Partitions', 'user_login');
-          if (!fs.existsSync(sourcePartitionPath)) {
-            fs.mkdirSync(sourcePartitionPath, { recursive: true });
-          }
+        // Check if target profile exists and has data
+        if (fs.existsSync(targetProfile)) {
+          const partitionPath = path.join(targetProfile, 'Partitions', 'user_login');
 
-          // Copy Partitions directory back to source (this contains login data)
-          const sourcePartitionsDir = path.join(sourceProfile, 'Partitions');
-          const targetPartitionsDir = path.join(targetProfile, 'Partitions');
-
-          if (fs.existsSync(targetPartitionsDir)) {
-            // Remove old source partitions and replace with new
-            if (fs.existsSync(sourcePartitionsDir)) {
-              fs.rmSync(sourcePartitionsDir, { recursive: true, force: true });
+          if (fs.existsSync(partitionPath)) {
+            // Ensure source profile directories exist
+            const sourcePartitionPath = path.join(sourceProfile, 'Partitions', 'user_login');
+            if (!fs.existsSync(sourcePartitionPath)) {
+              fs.mkdirSync(sourcePartitionPath, { recursive: true });
             }
 
-            // Copy new partitions
-            fs.cpSync(targetPartitionsDir, sourcePartitionsDir, { recursive: true });
-            log.info('[PROFILE SYNC] Successfully synced browser profile back to source');
+            // Copy Partitions directory back to source (this contains login data)
+            const sourcePartitionsDir = path.join(sourceProfile, 'Partitions');
+            const targetPartitionsDir = path.join(targetProfile, 'Partitions');
 
-            // Log partition size for verification
-            const files = fs.readdirSync(sourcePartitionPath);
-            log.info(`[PROFILE SYNC] Source partition now contains ${files.length} files`);
-            if (files.includes('Cookies')) {
-              const cookieStat = fs.statSync(path.join(sourcePartitionPath, 'Cookies'));
-              log.info(`[PROFILE SYNC] Cookies file size: ${cookieStat.size} bytes`);
+            if (fs.existsSync(targetPartitionsDir)) {
+              // Remove old source partitions and replace with new
+              if (fs.existsSync(sourcePartitionsDir)) {
+                fs.rmSync(sourcePartitionsDir, { recursive: true, force: true });
+              }
+
+              // Copy new partitions
+              fs.cpSync(targetPartitionsDir, sourcePartitionsDir, { recursive: true });
+              log.info('[PROFILE SYNC] Successfully synced browser profile back to source');
+
+              // Log partition size for verification
+              const files = fs.readdirSync(sourcePartitionPath);
+              log.info(`[PROFILE SYNC] Source partition now contains ${files.length} files`);
+              if (files.includes('Cookies')) {
+                const cookieStat = fs.statSync(path.join(sourcePartitionPath, 'Cookies'));
+                log.info(`[PROFILE SYNC] Cookies file size: ${cookieStat.size} bytes`);
+              }
             }
           }
         }
+      } catch (error) {
+        log.error('[PROFILE SYNC] Failed to sync profile:', error);
       }
-    } catch (error) {
-      log.error('[PROFILE SYNC] Failed to sync profile:', error);
     }
-  }
 
-  if (win) {
-    win.destroy();
+    // Clean up resources
+    if (webViewManager) {
+      webViewManager.destroy();
+      webViewManager = null;
+    }
+
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+      win = null;
+    }
+
+    // Wait for Python process cleanup
+    await cleanupPythonProcess();
+
+    // Clean up file reader if exists
+    if (fileReader) {
+      fileReader = null;
+    }
+
+    // Clear any remaining timeouts/intervals
+    if (global.gc) {
+      global.gc();
+    }
+
+    log.info('All cleanup completed, exiting...');
+  } catch (error) {
+    log.error('Error during cleanup:', error);
+  } finally {
+    // Force quit after cleanup
+    app.exit(0);
   }
-  await cleanupPythonProcess();
 });
 

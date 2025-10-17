@@ -28,20 +28,22 @@ def _safe_put_queue(task_lock, data):
     except RuntimeError:
         # No running event loop, we need to handle this differently
         try:
-            # Try to find an existing event loop in the current thread
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Schedule the coroutine in the existing running loop
-                future = asyncio.run_coroutine_threadsafe(
-                    task_lock.put_queue(data),
-                    loop
-                )
-                # Log but don't wait for the result
-                logger.debug(f"[listen_toolkit] Scheduled put_queue in existing event loop")
-            else:
-                # Create a new event loop just for this operation
-                logger.debug(f"[listen_toolkit] Creating new event loop for put_queue")
-                asyncio.run(task_lock.put_queue(data))
+            # Create a new event loop in a separate thread to avoid conflicts
+            def run_in_thread():
+                try:
+                    # Create a new event loop for this thread
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        new_loop.run_until_complete(task_lock.put_queue(data))
+                    finally:
+                        new_loop.close()
+                except Exception as e:
+                    logger.error(f"[listen_toolkit] Failed to send data in thread: {e}")
+
+            # Run in a separate thread to avoid blocking
+            thread = threading.Thread(target=run_in_thread, daemon=True)
+            thread.start()
         except Exception as e:
             logger.error(f"[listen_toolkit] Failed to send data to queue: {e}")
 
@@ -77,9 +79,13 @@ def listen_toolkit(
                         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
                         args_str = f"{args_str}, {kwargs_str}" if args_str else kwargs_str
 
+                # Truncate args_str if too long
+                MAX_ARGS_LENGTH = 500
+                if len(args_str) > MAX_ARGS_LENGTH:
+                    args_str = args_str[:MAX_ARGS_LENGTH] + f"... (truncated, total length: {len(args_str)} chars)"
+
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                logger.info(f"[listen_toolkit] {toolkit_name}.{method_name} called with args: {args_str}")
                 activate_data = ActionActivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
@@ -89,7 +95,6 @@ def listen_toolkit(
                         "message": args_str,
                     },
                 )
-                logger.debug(f"[listen_toolkit] Sending activate data: {activate_data.model_dump()}")
                 await task_lock.put_queue(activate_data)
                 error = None
                 res = None
@@ -108,7 +113,13 @@ def listen_toolkit(
                             res_msg = json.dumps(res, ensure_ascii=False)
                         except TypeError:
                             # Handle cases where res contains non-serializable objects (like coroutines)
-                            res_msg = str(res)
+                            res_str = str(res)
+                            # Truncate very long outputs to avoid flooding logs
+                            MAX_LENGTH = 500
+                            if len(res_str) > MAX_LENGTH:
+                                res_msg = res_str[:MAX_LENGTH] + f"... (truncated, total length: {len(res_str)} chars)"
+                            else:
+                                res_msg = res_str
                     else:
                         res_msg = str(error)
 
@@ -121,7 +132,6 @@ def listen_toolkit(
                         "message": res_msg,
                     },
                 )
-                logger.debug(f"[listen_toolkit] Sending deactivate data: {deactivate_data.model_dump()}")
                 await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
@@ -152,9 +162,13 @@ def listen_toolkit(
                         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
                         args_str = f"{args_str}, {kwargs_str}" if args_str else kwargs_str
 
+                # Truncate args_str if too long
+                MAX_ARGS_LENGTH = 500
+                if len(args_str) > MAX_ARGS_LENGTH:
+                    args_str = args_str[:MAX_ARGS_LENGTH] + f"... (truncated, total length: {len(args_str)} chars)"
+
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                logger.info(f"[listen_toolkit] {toolkit_name}.{method_name} called with args: {args_str}")
                 activate_data = ActionActivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
@@ -164,12 +178,10 @@ def listen_toolkit(
                         "message": args_str,
                     },
                 )
-                logger.debug(f"[listen_toolkit sync] Sending activate data: {activate_data.model_dump()}")
                 _safe_put_queue(task_lock, activate_data)
                 error = None
                 res = None
                 try:
-                    logger.debug(f"Executing toolkit method: {toolkit_name}.{method_name} for agent '{toolkit.agent_name}'")
                     res = func(*args, **kwargs)
                     # Safety check: if the result is a coroutine, we need to await it
                     if asyncio.iscoroutine(res):
@@ -190,7 +202,13 @@ def listen_toolkit(
                             res_msg = json.dumps(res, ensure_ascii=False)
                         except TypeError:
                             # Handle cases where res contains non-serializable objects (like coroutines)
-                            res_msg = str(res)
+                            res_str = str(res)
+                            # Truncate very long outputs to avoid flooding logs
+                            MAX_LENGTH = 500
+                            if len(res_str) > MAX_LENGTH:
+                                res_msg = res_str[:MAX_LENGTH] + f"... (truncated, total length: {len(res_str)} chars)"
+                            else:
+                                res_msg = res_str
                     else:
                         res_msg = str(error)
 
@@ -203,7 +221,6 @@ def listen_toolkit(
                         "message": res_msg,
                     },
                 )
-                logger.debug(f"[listen_toolkit sync] Sending deactivate data: {deactivate_data.model_dump()}")
                 _safe_put_queue(task_lock, deactivate_data)
                 if error is not None:
                     raise error
@@ -216,12 +233,37 @@ def listen_toolkit(
 
 T = TypeVar('T')
 
+# Methods that should not be wrapped by auto_listen_toolkit
+# These are utility/helper methods that don't perform actual tool operations
+EXCLUDED_METHODS = {
+    'get_tools',           # Tool enumeration
+    'get_can_use_tools',   # Tool filtering
+    'toolkit_name',        # Metadata getter
+    'run_mcp_server',      # MCP server initialization
+    'model_dump',          # Pydantic model serialization
+    'model_dump_json',     # Pydantic model serialization
+    'dict',                # Pydantic legacy dict method
+    'json',                # Pydantic legacy json method
+    'copy',                # Object copying
+    'update',              # Object update
+}
+
 
 def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type[T]]:
     """
     Class decorator that automatically wraps all public methods from the base toolkit
     with the @listen_toolkit decorator.
-    
+
+    Excluded methods (not wrapped):
+    - get_tools, get_can_use_tools: Tool enumeration/filtering
+    - toolkit_name: Metadata getter
+    - run_mcp_server: MCP server initialization
+    - Pydantic serialization methods: model_dump, model_dump_json, dict, json
+    - Object utility methods: copy, update
+
+    These methods are typically called during initialization or for metadata,
+    and should not trigger activate/deactivate events.
+
     Usage:
         @auto_listen_toolkit(BaseNoteTakingToolkit)
         class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
@@ -231,11 +273,11 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
 
         base_methods = {}
         for name in dir(base_toolkit_class):
-            if not name.startswith('_'):
+            # Skip private methods and excluded helper methods
+            if not name.startswith('_') and name not in EXCLUDED_METHODS:
                 attr = getattr(base_toolkit_class, name)
                 if callable(attr):
                     base_methods[name] = attr
-                    logger.debug(f"[auto_listen_toolkit] Found base method: {name}")
 
         for method_name, base_method in base_methods.items():
             if method_name in cls.__dict__:
