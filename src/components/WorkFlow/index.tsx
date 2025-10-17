@@ -36,7 +36,7 @@ export default function Workflow({
 }: {
 	taskAssigning: Agent[];
 }) {
-	const {t} = useTranslation();
+	const { t } = useTranslation();
 	const chatStore = useChatStore();
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
@@ -245,7 +245,7 @@ export default function Workflow({
 						},
 						position: isEditMode
 							? node.position
-							: { x: index * (342+20) + 8, y: 16 },
+							: { x: index * (342 + 20) + 8, y: 16 },
 					};
 				} else {
 					return {
@@ -259,7 +259,7 @@ export default function Workflow({
 							isEditMode: isEditMode,
 							workerInfo: agent?.workerInfo,
 						},
-						position: { x: index * (342+20) + 8, y: 16 },
+						position: { x: index * (342 + 20) + 8, y: 16 },
 						type: "node",
 					};
 				}
@@ -292,6 +292,22 @@ export default function Workflow({
 			container.removeEventListener("wheel", onWheel);
 		};
 	}, [getViewport, setViewport, isEditMode]);
+
+	const [isAnimating, setIsAnimating] = useState(false);
+	const moveViewport = (dx: number) => {
+		if (isAnimating) return;
+		const viewport = getViewport();
+		setIsAnimating(true);
+		setViewport(
+			{ x: viewport.x + dx, y: viewport.y, zoom: viewport.zoom },
+			{
+				duration: 500,
+			}
+		);
+		setTimeout(() => {
+			setIsAnimating(false);
+		}, 500);
+	};
 
 	const handleShare = async (taskId: string) => {
 		share(taskId);
@@ -343,12 +359,7 @@ export default function Workflow({
 							variant="ghost"
 							size="icon"
 							onClick={() => {
-								const viewport = getViewport();
-								const newX = Math.min(0, viewport.x + 200);
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
+								moveViewport(200);
 							}}
 						>
 							<ChevronLeft className="w-4 h-4 text-icon-primary" />
@@ -356,14 +367,7 @@ export default function Workflow({
 						<Button
 							variant="ghost"
 							size="icon"
-							onClick={() => {
-								const viewport = getViewport();
-								const newX = viewport.x - 200;
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
-							}}
+							onClick={() => moveViewport(-200)}
 						>
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>
@@ -400,6 +404,10 @@ export default function Workflow({
 					nodesDraggable={isEditMode}
 					panOnScrollMode={PanOnScrollMode.Horizontal}
 					onMove={(event, viewport) => {
+						const current = getViewport();
+						if (viewport.zoom !== current.zoom) {
+							setViewport({ ...viewport, zoom: current.zoom });
+						}
 						if (isEditMode) {
 							setLastViewport(viewport);
 						}
