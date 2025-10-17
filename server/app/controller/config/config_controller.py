@@ -85,7 +85,7 @@ async def create_config(config: ConfigCreate, session: Session = Depends(session
     except Exception as e:
         session.rollback()
         logger.error("Config creation failed", extra={"user_id": user_id, "config_name": config.config_name, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/configs/{config_id}", name="update config", response_model=ConfigOut)
@@ -131,7 +131,7 @@ async def update_config(
     except Exception as e:
         session.rollback()
         logger.error("Config update failed", extra={"user_id": user_id, "config_id": config_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/configs/{config_id}", name="delete config")
@@ -153,7 +153,7 @@ async def delete_config(config_id: int, session: Session = Depends(session), aut
     except Exception as e:
         session.rollback()
         logger.error("Config deletion failed", extra={"user_id": user_id, "config_id": config_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/config/info", name="get config info")

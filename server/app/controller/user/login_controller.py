@@ -51,7 +51,7 @@ async def by_stack_auth(
         info = await StackAuth.user_info(token)
     except Exception as e:
         logger.error("Stack auth failed", extra={"type": type, "error": str(e)}, exc_info=True)
-        raise HTTPException(500, detail=_(f"{e}"))
+        raise HTTPException(500, detail=_("Authentication failed"))
     
     user = User.by(User.stack_id == stack_id, s=session).one_or_none()
 

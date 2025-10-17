@@ -127,7 +127,7 @@ async def create_mcp_user(mcp_user: McpUserIn, session: Session = Depends(sessio
     except Exception as e:
         session.rollback()
         logger.error("MCP user creation failed", extra={"user_id": user_id, "mcp_id": mcp_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/mcp/users/{id}", name="update mcp user")
@@ -157,7 +157,7 @@ async def update_mcp_user(
         return model
     except Exception as e:
         logger.error("MCP user update failed", extra={"user_id": user_id, "mcp_user_id": id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/mcp/users/{mcp_user_id}", name="delete mcp user")
@@ -178,4 +178,4 @@ async def delete_mcp_user(mcp_user_id: int, session: Session = Depends(session),
     except Exception as e:
         session.rollback()
         logger.error("MCP user deletion failed", extra={"user_id": user_id, "mcp_user_id": mcp_user_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")

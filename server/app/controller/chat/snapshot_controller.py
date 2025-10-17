@@ -74,7 +74,7 @@ async def create_chat_snapshot(
     except Exception as e:
         session.rollback()
         logger.error("Snapshot creation failed", extra={"user_id": user_id, "api_task_id": snapshot.api_task_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/snapshots/{snapshot_id}", name="update chat snapshot", response_model=ChatSnapshot)
@@ -109,7 +109,7 @@ async def update_chat_snapshot(
     except Exception as e:
         session.rollback()
         logger.error("Snapshot update failed", extra={"user_id": user_id, "snapshot_id": snapshot_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/snapshots/{snapshot_id}", name="delete chat snapshot")
@@ -135,4 +135,4 @@ async def delete_chat_snapshot(snapshot_id: int, session: Session = Depends(sess
     except Exception as e:
         session.rollback()
         logger.error("Snapshot deletion failed", extra={"user_id": user_id, "snapshot_id": snapshot_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -110,7 +110,7 @@ async def create_chat_step(step: ChatStepIn, session: Session = Depends(session)
     except Exception as e:
         session.rollback()
         logger.error("Chat step creation failed", extra={"task_id": step.task_id, "step_type": step.step, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/steps/{step_id}", name="update chat step", response_model=ChatStepOut)
@@ -138,7 +138,7 @@ async def update_chat_step(
     except Exception as e:
         session.rollback()
         logger.error("Chat step update failed", extra={"user_id": user_id, "step_id": step_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/steps/{step_id}", name="delete chat step")
@@ -160,4 +160,4 @@ async def delete_chat_step(step_id: int, session: Session = Depends(session), au
     except Exception as e:
         session.rollback()
         logger.error("Chat step deletion failed", extra={"user_id": user_id, "step_id": step_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -63,7 +63,7 @@ async def post(data: ProviderIn, session: Session = Depends(session), auth: Auth
         return model
     except Exception as e:
         logger.error("Provider creation failed", extra={"user_id": user_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/provider/{id}", name="update provider", response_model=ProviderOut)
@@ -91,7 +91,7 @@ async def put(id: int, data: ProviderIn, session: Session = Depends(session), au
         return model
     except Exception as e:
         logger.error("Provider update failed", extra={"user_id": user_id, "provider_id": id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/provider/{id}", name="delete provider")
@@ -112,7 +112,7 @@ async def delete(id: int, session: Session = Depends(session), auth: Auth = Depe
         return Response(status_code=204)
     except Exception as e:
         logger.error("Provider deletion failed", extra={"user_id": user_id, "provider_id": id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/provider/prefer", name="set provider prefer")
@@ -137,4 +137,4 @@ async def set_prefer(data: ProviderPreferIn, session: Session = Depends(session)
     except SQLAlchemyError as e:
         session.rollback()
         logger.error("Failed to set preferred provider", extra={"user_id": user_id, "provider_id": provider_id, "error": str(e)}, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from exa_py import Exa
 from app.component.auth import key_must
 from app.component.environment import env_not_empty
@@ -79,10 +79,10 @@ def exa_search(search: ExaSearch, key: Key = Depends(key_must)):
 
     except ValueError as e:
         logger.warning("Exa search validation error", extra={"error": str(e)})
-        return {"error": f"Exa search failed: {e!s}"}
+        raise HTTPException(status_code=500, detail="Internal server error")
     except Exception as e:
         logger.error("Exa search failed", extra={"query": search.query, "error": str(e)}, exc_info=True)
-        return {"error": f"Exa search failed: {e!s}"}
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/google")
@@ -187,10 +187,10 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
         else:
             error_info = data.get("error", {})
             logger.error("Google search API error", extra={"query": query, "api_error": error_info})
-            responses.append({"error": f"Google search failed - API response: {error_info}"})
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     except Exception as e:
         logger.error("Google search failed", extra={"query": query, "search_type": search_type, "error": str(e)}, exc_info=True)
-        responses.append({"error": f"google search failed: {e!s}"})
+        raise HTTPException(status_code=500, detail="Internal server error")
     
     return responses

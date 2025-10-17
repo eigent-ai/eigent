@@ -104,4 +104,4 @@ def create_share_link(data: ChatShareIn):
         return {"share_token": share_token}
     except Exception as e:
         logger.error("Share link creation failed", extra={"task_id": data.task_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")

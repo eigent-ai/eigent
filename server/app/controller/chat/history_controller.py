@@ -30,7 +30,7 @@ def create_chat_history(data: ChatHistoryIn, session: Session = Depends(session)
     except Exception as e:
         session.rollback()
         logger.error("Chat history creation failed", extra={"user_id": user_id, "task_id": data.task_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/histories", name="get chat history")
@@ -68,7 +68,7 @@ def delete_chat_history(history_id: str, session: Session = Depends(session), au
     except Exception as e:
         session.rollback()
         logger.error("Chat history deletion failed", extra={"user_id": user_id, "history_id": history_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/history/{history_id}", name="update chat history", response_model=ChatHistoryOut)
@@ -97,4 +97,4 @@ def update_chat_history(
         return history
     except Exception as e:
         logger.error("Chat history update failed", extra={"user_id": user_id, "history_id": history_id, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -173,7 +173,7 @@ async def install(mcp_id: int, session: Session = Depends(session), auth: Auth =
         return mcp_user
     except Exception as e:
         logger.error("MCP installation failed", extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key, "error": str(e)}, exc_info=True)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/mcp/import/{mcp_type}", name="mcp import")
@@ -259,4 +259,4 @@ async def import_mcp(
             return mcp_user
         except Exception as e:
             logger.error("Remote MCP import failed", extra={"user_id": user_id, "server_name": data.server_name, "error": str(e)}, exc_info=True)
-            raise
+            raise HTTPException(status_code=500, detail="Internal server error")

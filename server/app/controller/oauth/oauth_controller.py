@@ -32,7 +32,7 @@ def oauth_login(app: str, request: Request, state: Optional[str] = None):
         raise
     except Exception as e:
         logger.error("OAuth login failed", extra={"provider": app, "error": str(e)}, exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="OAuth login failed")
 
 
 @router.get("/{app}/callback", name="OAuth Callback")
@@ -78,4 +78,4 @@ def fetch_token(app: str, request: Request, data: OauthCallbackPayload):
         return JSONResponse(token_data)
     except Exception as e:
         logger.error("OAuth token fetch failed", extra={"provider": app, "error": str(e)}, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
