@@ -14,7 +14,7 @@
   "type": "module",
   "scripts": {
     "compile-babel": "cd backend && uv run pybabel compile -d lang",
-    "dev": "npm run compile-babel && vite",
+    "dev": "vite",
     "build": "npm run compile-babel && tsc && vite build &&  electron-builder -- --publish always",
     "build:mac": "npm run compile-babel && tsc && vite build && electron-builder --mac",
     "build:win": "npm run compile-babel && tsc && vite build && electron-builder --win",
