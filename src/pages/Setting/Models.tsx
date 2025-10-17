@@ -622,6 +622,8 @@ export default function SettingModels() {
 											? t("setting.gpt-4.1")
 											: cloud_model_type === "claude-sonnet-4-5"
 											? t("setting.claude-sonnet-4-5")
+											: cloud_model_type === "claude-sonnet-4-20250514"
+											? t("setting.claude-sonnet-4")
 											: cloud_model_type === "claude-3-5-haiku-20241022"
 											? t("setting.claude-3.5-haiku")
 											: cloud_model_type === "gpt-5"
@@ -657,6 +659,9 @@ export default function SettingModels() {
 									<SelectItem value="gpt-5-nano">GPT-5 nano</SelectItem>
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
+									</SelectItem>
+									<SelectItem value="claude-sonnet-4-20250514">
+										Claude Sonnet 4
 									</SelectItem>
 									<SelectItem value="claude-3-5-haiku-20241022">
 										Claude 3.5 Haiku
