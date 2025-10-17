@@ -4,11 +4,12 @@ from camel.toolkits import PPTXToolkit as BasePPTXToolkit
 
 from app.component.environment import env
 from app.service.task import ActionWriteFileData, Agents, get_task_lock
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
 
 
+@auto_listen_toolkit(BasePPTXToolkit)
 class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
     agent_name: str = Agents.document_agent
 
