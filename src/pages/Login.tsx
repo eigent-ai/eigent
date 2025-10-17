@@ -277,6 +277,7 @@ export default function Login() {
 										onChange={(e) => handleInputChange("email", e.target.value)}
 										state={errors.email ? "error" : undefined}
 										note={errors.email}
+									onEnter={handleLogin}
 									/>
 
 									<Input
@@ -294,6 +295,7 @@ export default function Login() {
 										note={errors.password}
 										backIcon={<img src={hidePassword ? eye : eyeOff} />}
 										onBackIconClick={() => setHidePassword(!hidePassword)}
+									onEnter={handleLogin}
 									/>
 							</div>
 						</div>

@@ -19,6 +19,7 @@ type BaseInputProps = Omit<React.ComponentProps<"input">, "size"> & {
   backIcon?: React.ReactNode
   onBackIconClick?: () => void
   trailingButton?: React.ReactNode
+  onEnter?: () => void
 }
 
 const sizeClasses: Record<InputSize, string> = {
@@ -92,10 +93,12 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       trailingButton,
       disabled,
       placeholder,
+      onEnter,
       ...props
     },
     ref
   ) => {
+    const { onKeyDown, ...inputProps } = props
     const stateCls = resolveStateClasses(disabled ? "disabled" : state)
     const hasLeft = Boolean(leadingIcon)
     const hasRight = Boolean(backIcon) || Boolean(trailingButton)
@@ -142,7 +145,13 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
               hasRight ? "pr-9" : "pr-3",
               className
             )}
-            {...props}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                onEnter?.()
+              }
+              onKeyDown?.(e)
+            }}
+            {...inputProps}
           />
 
           {backIcon ? (

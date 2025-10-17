@@ -292,10 +292,11 @@ function HeaderWin() {
 									<Button
 										onClick={exportLog}
 										variant="ghost"
-										size="icon"
-										className="no-drag leading-tight"
+										size="xs"
+										className="no-drag"
 									>
 										<FileDown className="w-4 h-4" />
+										{t("layout.report-bug")}
 									</Button>
 								</TooltipSimple>
 							</>
@@ -304,7 +305,7 @@ function HeaderWin() {
 							<Button
 								onClick={getReferFriendsLink}
 								variant="ghost"
-								size="icon"
+								size="xs"
 								className="no-drag"
 							>
 								<img
@@ -312,6 +313,7 @@ function HeaderWin() {
 									alt="gift-icon"
 									className="w-4 h-4"
 								/>
+								{t("layout.refer-friends")}
 							</Button>
 						</TooltipSimple>
 						{chatStore.activeTaskId &&
@@ -338,10 +340,11 @@ function HeaderWin() {
 								<Button
 									onClick={() => setEndDialogOpen(true)}
 									variant="outline"
-									size="icon"
+									size="xs"
 									className="no-drag !text-text-cuation w-10 justify-center"
 								>
 									<Power />
+									{t("layout.end-project")}
 								</Button>
 							</TooltipSimple>
 						)}

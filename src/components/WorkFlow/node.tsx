@@ -374,7 +374,7 @@ export function Node({ id, data }: NodeProps) {
 													<Button
 														variant="ghost"
 														size="sm"
-														className="w-full justify-start gap-2 bg-specialty-menutabs-default group  hover:bg-surface-cuation text-text-primary hover:text-text-cuation-default"
+														className="w-full justify-start gap-2"
 														onClick={(e) => {
 															e.stopPropagation();
 															const newWorkerList = workerList.filter(

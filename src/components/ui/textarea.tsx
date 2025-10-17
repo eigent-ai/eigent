@@ -21,6 +21,7 @@ type BaseTextareaProps = Omit<React.ComponentProps<"textarea">, "size"> & {
   backIcon?: React.ReactNode
   onBackIconClick?: () => void
   trailingButton?: React.ReactNode
+  onEnter?: () => void
 }
 
 const sizeClasses: Record<TextareaSize, string> = {
@@ -95,10 +96,12 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
       disabled,
       placeholder,
       style,
+      onEnter,
       ...props
     },
     ref
   ) => {
+    const { onKeyDown, ...textareaProps } = props
     // Original "none" variant - keep the original styling
     if (variant === "none") {
       return (
@@ -111,7 +114,16 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             )}
             style={{ paddingRight: "4px", ...(style as React.CSSProperties) }}
             ref={ref}
-            {...props}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                if (onEnter) {
+                  e.preventDefault()
+                  onEnter()
+                }
+              }
+              onKeyDown?.(e)
+            }}
+            {...textareaProps}
           />
           <style>{`
             /* Firefox */
@@ -177,7 +189,16 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                 className
               )}
               style={{ paddingRight: "4px", ...(style as React.CSSProperties) }}
-              {...props}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  if (onEnter) {
+                    e.preventDefault()
+                    onEnter()
+                  }
+                }
+                onKeyDown?.(e)
+              }}
+              {...textareaProps}
             />
 
             {backIcon ? (
