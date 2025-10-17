@@ -36,7 +36,6 @@ def _safe_put_queue(task_lock, data):
                     asyncio.set_event_loop(new_loop)
                     try:
                         new_loop.run_until_complete(task_lock.put_queue(data))
-                        logger.debug(f"[listen_toolkit] Successfully sent data to queue using new event loop")
                     finally:
                         new_loop.close()
                 except Exception as e:
@@ -96,7 +95,6 @@ def listen_toolkit(
                         "message": args_str,
                     },
                 )
-                logger.debug(f"[listen_toolkit] Sending activate data: {activate_data.model_dump()}")
                 await task_lock.put_queue(activate_data)
                 error = None
                 res = None
@@ -134,7 +132,6 @@ def listen_toolkit(
                         "message": res_msg,
                     },
                 )
-                logger.debug(f"[listen_toolkit] Sending deactivate data: {deactivate_data.model_dump()}")
                 await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
@@ -181,12 +178,10 @@ def listen_toolkit(
                         "message": args_str,
                     },
                 )
-                logger.debug(f"[listen_toolkit sync] Sending activate data: {activate_data.model_dump()}")
                 _safe_put_queue(task_lock, activate_data)
                 error = None
                 res = None
                 try:
-                    logger.debug(f"Executing toolkit method: {toolkit_name}.{method_name} for agent '{toolkit.agent_name}'")
                     res = func(*args, **kwargs)
                     # Safety check: if the result is a coroutine, we need to await it
                     if asyncio.iscoroutine(res):

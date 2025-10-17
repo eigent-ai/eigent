@@ -45,8 +45,13 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                             future.set_result(response)
                             logger.debug(f"Processed response for message {message_id}")
                     else:
-                        # Log unexpected messages
-                        logger.warning(f"Received unexpected message: {response}")
+                        message_summary = {
+                            "id": response.get("id"),
+                            "success": response.get("success"),
+                            "has_result": "result" in response,
+                            "result_type": type(response.get("result")).__name__ if "result" in response else None
+                        }
+                        logger.debug(f"Received unexpected message: {message_summary}")
 
                 except asyncio.CancelledError:
                     disconnect_reason = "Receive loop cancelled"
