@@ -269,10 +269,8 @@ export class WebViewManager {
 
       if (!webViewInfo.view.webContents.isDestroyed()) {
         webViewInfo.view.webContents.removeAllListeners()
-        webViewInfo.view.webContents.session.clearCache()
-        webViewInfo.view.webContents.session.clearStorageData({
-          storages: ['cookies', 'localstorage', 'websql', 'indexdb', 'serviceworkers', 'cachestorage']
-        })
+        // REMOVED: clearCache() and clearStorageData() to prevent clearing main window's storage
+        // since all webviews share session.defaultSession with the main window
       }
 
       // remove webview from parent container
