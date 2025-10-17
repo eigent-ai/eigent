@@ -817,7 +817,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
 - **CRITICAL URL POLICY**: You are STRICTLY FORBIDDEN from inventing,
     guessing, or constructing URLs yourself. You MUST only use URLs from
     trusted sources:
-    1. URLs returned by search tools (like `search_google` or `search_exa`)
+    1. URLs returned by search tools (`search_google`)
     2. URLs found on webpages you have visited through browser tools
     3. URLs provided by the user in their request
     Fabricating or guessing URLs is considered a critical error and must
@@ -863,8 +863,6 @@ Your approach depends on available search tools:
   sites using `browser_type` and submit with `browser_enter`
 - **Extract URLs from results**: Only use URLs that appear in the search
   results on these websites
-- **Alternative Search**: If available, use `search_exa` for additional
-  results
 
 **Common Browser Operations (both scenarios):**
 - **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
@@ -933,10 +931,10 @@ async def document_agent(options: Chat):
         *terminal_toolkit.get_tools(),
         *await GoogleDriveMCPToolkit.get_can_use_tools(options.task_id, options.get_bun_env()),
     ]
-    if env("EXA_API_KEY") or options.is_cloud():
-        search_toolkit = SearchToolkit(options.task_id, Agents.document_agent).search_exa
-        search_toolkit = message_integration.register_functions([search_toolkit])
-        tools.extend(search_toolkit)
+    # if env("EXA_API_KEY") or options.is_cloud():
+    #     search_toolkit = SearchToolkit(options.task_id, Agents.document_agent).search_exa
+    #     search_toolkit = message_integration.register_functions([search_toolkit])
+    #     tools.extend(search_toolkit)
     system_message = f"""
 <role>
 You are a Documentation Specialist, responsible for creating, modifying, and 
@@ -1165,10 +1163,10 @@ def multi_modal_agent(options: Chat):
         audio_analysis_toolkit = message_integration.register_toolkits(audio_analysis_toolkit)
         tools.extend(audio_analysis_toolkit.get_tools())
 
-    if env("EXA_API_KEY") or options.is_cloud():
-        search_toolkit = SearchToolkit(options.task_id, Agents.multi_modal_agent).search_exa
-        search_toolkit = message_integration.register_functions([search_toolkit])
-        tools.extend(search_toolkit)
+    # if env("EXA_API_KEY") or options.is_cloud():
+    #     search_toolkit = SearchToolkit(options.task_id, Agents.multi_modal_agent).search_exa
+    #     search_toolkit = message_integration.register_functions([search_toolkit])
+    #     tools.extend(search_toolkit)
 
     system_message = f"""
 <role>
@@ -1297,8 +1295,8 @@ async def social_medium_agent(options: Chat):
         # *DiscordToolkit(options.task_id).get_tools(),  # Not supported temporarily
         # *GoogleSuiteToolkit(options.task_id).get_tools(),  # Not supported temporarily
     ]
-    if env("EXA_API_KEY") or options.is_cloud():
-        tools.append(FunctionTool(SearchToolkit(options.task_id, Agents.social_medium_agent).search_exa))
+    # if env("EXA_API_KEY") or options.is_cloud():
+    #     tools.append(FunctionTool(SearchToolkit(options.task_id, Agents.social_medium_agent).search_exa))
     return agent_model(
         Agents.social_medium_agent,
         BaseMessage.make_assistant_message(

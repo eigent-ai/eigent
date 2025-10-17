@@ -181,73 +181,73 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     # def search_bing(self, query: str) -> dict[str, Any]:
     #     return super().search_bing(query)
 
-    @listen_toolkit(BaseSearchToolkit.search_exa, lambda _, query, *args, **kwargs: f"{query}, {args}, {kwargs}")
-    def search_exa(
-        self,
-        query: str,
-        search_type: Literal["auto", "neural", "keyword"] = "auto",
-        category: None
-        | Literal[
-            "company",
-            "research paper",
-            "news",
-            "pdf",
-            "github",
-            "tweet",
-            "personal site",
-            "linkedin profile",
-            "financial report",
-        ] = None,
-        include_text: List[str] | None = None,
-        exclude_text: List[str] | None = None,
-        use_autoprompt: bool = True,
-        text: bool = False,
-    ) -> Dict[str, Any]:
-        if env("EXA_API_KEY"):
-            res = super().search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
-            return res
-        else:
-            return self.cloud_search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
-
-    def cloud_search_exa(
-        self,
-        query: str,
-        search_type: Literal["auto", "neural", "keyword"] = "auto",
-        category: None
-        | Literal[
-            "company",
-            "research paper",
-            "news",
-            "pdf",
-            "github",
-            "tweet",
-            "personal site",
-            "linkedin profile",
-            "financial report",
-        ] = None,
-        include_text: List[str] | None = None,
-        exclude_text: List[str] | None = None,
-        use_autoprompt: bool = True,
-        text: bool = False,
-    ):
-        url = env_not_empty("SERVER_URL")
-        logger.debug(f">>>>>>>>>>>>>>>>{url}<<<<")
-        res = httpx.post(
-            url + "/proxy/exa",
-            json={
-                "query": query,
-                "search_type": search_type,
-                "category": category,
-                "include_text": include_text,
-                "exclude_text": exclude_text,
-                "use_autoprompt": use_autoprompt,
-                "text": text,
-            },
-            headers={"api-key": env_not_empty("cloud_api_key")},
-        )
-        logger.debug(">>>>>>>>>>>>>>>>>")
-        logger.debug(res)
-        return res.json()
+    # @listen_toolkit(BaseSearchToolkit.search_exa, lambda _, query, *args, **kwargs: f"{query}, {args}, {kwargs}")
+    # def search_exa(
+    #     self,
+    #     query: str,
+    #     search_type: Literal["auto", "neural", "keyword"] = "auto",
+    #     category: None
+    #     | Literal[
+    #         "company",
+    #         "research paper",
+    #         "news",
+    #         "pdf",
+    #         "github",
+    #         "tweet",
+    #         "personal site",
+    #         "linkedin profile",
+    #         "financial report",
+    #     ] = None,
+    #     include_text: List[str] | None = None,
+    #     exclude_text: List[str] | None = None,
+    #     use_autoprompt: bool = True,
+    #     text: bool = False,
+    # ) -> Dict[str, Any]:
+    #     if env("EXA_API_KEY"):
+    #         res = super().search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
+    #         return res
+    #     else:
+    #         return self.cloud_search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
+    #
+    # def cloud_search_exa(
+    #     self,
+    #     query: str,
+    #     search_type: Literal["auto", "neural", "keyword"] = "auto",
+    #     category: None
+    #     | Literal[
+    #         "company",
+    #         "research paper",
+    #         "news",
+    #         "pdf",
+    #         "github",
+    #         "tweet",
+    #         "personal site",
+    #         "linkedin profile",
+    #         "financial report",
+    #     ] = None,
+    #     include_text: List[str] | None = None,
+    #     exclude_text: List[str] | None = None,
+    #     use_autoprompt: bool = True,
+    #     text: bool = False,
+    # ):
+    #     url = env_not_empty("SERVER_URL")
+    #     logger.debug(f">>>>>>>>>>>>>>>>{url}<<<<")
+    #     res = httpx.post(
+    #         url + "/proxy/exa",
+    #         json={
+    #             "query": query,
+    #             "search_type": search_type,
+    #             "category": category,
+    #             "include_text": include_text,
+    #             "exclude_text": exclude_text,
+    #             "use_autoprompt": use_autoprompt,
+    #             "text": text,
+    #         },
+    #         headers={"api-key": env_not_empty("cloud_api_key")},
+    #     )
+    #     logger.debug(">>>>>>>>>>>>>>>>>")
+    #     logger.debug(res)
+    #     return res.json()
 
     # @listen_toolkit(
     #     BaseSearchToolkit.search_alibaba_tongxiao,
@@ -307,12 +307,12 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # if env("BOCHA_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_bocha))
 
-        if env("EXA_API_KEY") or env("cloud_api_key"):
-            tools.append(FunctionTool(search_toolkit.search_exa))
+        # if env("EXA_API_KEY") or env("cloud_api_key"):
+        #     tools.append(FunctionTool(search_toolkit.search_exa))
 
         # if env("TONGXIAO_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_alibaba_tongxiao))
         return tools
 
-    def get_tools(self) -> List[FunctionTool]:
-        return [FunctionTool(self.search_exa)]
+    # def get_tools(self) -> List[FunctionTool]:
+    #     return [FunctionTool(self.search_exa)]
