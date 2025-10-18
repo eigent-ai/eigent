@@ -271,7 +271,7 @@ export class WebViewManager {
         webViewInfo.view.webContents.removeAllListeners()
         webViewInfo.view.webContents.session.clearCache()
         webViewInfo.view.webContents.session.clearStorageData({
-          storages: ['cookies', 'localstorage', 'websql', 'indexdb', 'serviceworkers', 'cachestorage']
+          storages: ['cookies', 'websql', 'indexdb', 'serviceworkers', 'cachestorage']
         })
       }
 
