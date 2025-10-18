@@ -40,6 +40,66 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
+import os
+
+
+def collect_previous_task_context(working_directory: str, previous_task_content: str, previous_task_result: str, previous_summary: str = "") -> str:
+    """
+    Collect context from previous task including content, result, summary, and generated files.
+
+    Args:
+        working_directory: The working directory to scan for generated files
+        previous_task_content: The content of the previous task
+        previous_task_result: The result/output of the previous task
+        previous_summary: The summary of the previous task
+
+    Returns:
+        Formatted context string to prepend to new task
+    """
+    context_parts = []
+
+    # Add previous task information
+    context_parts.append("=== CONTEXT FROM PREVIOUS TASK ===\n")
+
+    # Add previous task content
+    if previous_task_content:
+        context_parts.append(f"Previous Task:\n{previous_task_content}\n")
+
+    # Add previous task summary
+    if previous_summary:
+        context_parts.append(f"Previous Task Summary:\n{previous_summary}\n")
+
+    # Add previous task result
+    if previous_task_result:
+        context_parts.append(f"Previous Task Result:\n{previous_task_result}\n")
+
+    # Collect generated files from working directory
+    try:
+        if os.path.exists(working_directory):
+            generated_files = []
+            for root, dirs, files in os.walk(working_directory):
+                # Skip hidden directories and common cache directories
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+
+                for file in files:
+                    # Skip hidden files and common temporary files
+                    if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                        file_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(file_path, working_directory)
+                        generated_files.append(relative_path)
+
+            if generated_files:
+                context_parts.append("Generated Files from Previous Task:")
+                for file_path in sorted(generated_files):
+                    context_parts.append(f"  - {file_path}")
+                context_parts.append("")
+    except Exception as e:
+        logger.warning(f"Failed to collect generated files: {e}")
+
+    context_parts.append("=== END OF PREVIOUS TASK CONTEXT ===\n")
+    context_parts.append("=== NEW TASK ===\n")
+
+    return "\n".join(context_parts)
 
 
 @sync_step
@@ -128,6 +188,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield to_sub_tasks(camel_task, summary_task_content)
             elif item.action == Action.add_task:
                 assert camel_task is not None
+                if workforce is None:
+                    logger.error(f"Cannot add task: workforce not initialized for project {options.project_id}")
+                    yield sse_json("error", {"message": "Workforce not initialized. Please start the task first."})
+                    continue
+
                 # Add task to the workforce queue
                 workforce.add_task(
                     item.content,
@@ -142,6 +207,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("add_task", returnData)
             elif item.action == Action.remove_task:
                 assert camel_task is not None
+                if workforce is None:
+                    logger.error(f"Cannot remove task: workforce not initialized for project {options.project_id}")
+                    yield sse_json("error", {"message": "Workforce not initialized. Please start the task first."})
+                    continue
+
                 workforce.remove_task(item.task_id)
                 returnData = {
                     "project_id": item.project_id,
@@ -172,21 +242,38 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
                 assert camel_task is not None
-                
-                # Store the old task result before updating camel_task
+
+                # Store the old task information before updating camel_task
+                old_task_content = camel_task.content
                 old_task_result = str(camel_task.result)
-                
+                old_task_summary = summary_task_content if 'summary_task_content' in locals() else ""
+
                 # Extract task content from the new task data immediately
                 # Don't return question field for new_tasks
                 new_task_content = item.data.get('content', '')
-                
+
+                # Collect context from previous task and prepend to new task
+                if new_task_content:
+                    working_directory = options.file_save_path()
+                    previous_context = collect_previous_task_context(
+                        working_directory=working_directory,
+                        previous_task_content=old_task_content,
+                        previous_task_result=old_task_result,
+                        previous_summary=old_task_summary
+                    )
+                    # Prepend context to new task content
+                    new_task_content_with_context = previous_context + new_task_content
+                    logger.info(f"[CHAT] Added previous task context ({len(previous_context)} chars) to new task")
+                else:
+                    new_task_content_with_context = new_task_content
+
                 # Update camel_task to the new task right away
                 if new_task_content:
                     import time
-                    # Generate unique task ID 
+                    # Generate unique task ID
                     task_id = item.data.get('task_id', f"{int(time.time() * 1000)}-multi")
-                    # Create and assign new task immediately
-                    new_camel_task = Task(content=new_task_content, id=task_id)
+                    # Create and assign new task immediately with context
+                    new_camel_task = Task(content=new_task_content_with_context, id=task_id)
                     # Preserve additional_info from the previous task if it exists
                     if hasattr(camel_task, 'additional_info') and camel_task.additional_info:
                         new_camel_task.additional_info = camel_task.additional_info
@@ -204,9 +291,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"[CHAT] MULTI-TURN: Processing new task {item.data.get('task_id')}")
                     task_lock.status = Status.confirming
                     workforce.pause()
-                    
+
                     try:
-                        yield sse_json("confirmed", "")
+                        yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
                         
                         # Use existing workforce to decompose (without creating new one)
