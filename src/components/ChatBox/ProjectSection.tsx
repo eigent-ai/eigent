@@ -14,7 +14,7 @@ interface ProjectSectionProps {
   isPauseResumeLoading: boolean;
 }
 
-export const ProjectSection: React.FC<ProjectSectionProps> = ({
+export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionProps>(({
   chatId,
   chatStore,
   activeQueryId,
@@ -22,22 +22,23 @@ export const ProjectSection: React.FC<ProjectSectionProps> = ({
   onPauseResume,
   onSkip,
   isPauseResumeLoading
-}) => {
+}, ref) => {
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
-  
+
   if (!activeTaskId || !chatState.tasks[activeTaskId]) {
     return null;
   }
 
   const task = chatState.tasks[activeTaskId];
   const messages = task.messages || [];
-  
+
   // Group messages by query cycles and show in chronological order (oldest first)
   const queryGroups = groupMessagesByQuery(messages);
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
@@ -71,7 +72,10 @@ export const ProjectSection: React.FC<ProjectSectionProps> = ({
       )}
     </motion.div>
   );
-};
+});
+
+// Add display name for better debugging
+ProjectSection.displayName = 'ProjectSection';
 
 // Helper function to group messages by query cycles
 function groupMessagesByQuery(messages: any[]) {

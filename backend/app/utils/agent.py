@@ -476,7 +476,7 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for task: {options.task_id}")
+    traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}")
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(data={"agent_name": agent_name, "agent_id": agent_id, "tools": tool_names or []})
@@ -532,7 +532,7 @@ def task_summary_agent(options: Chat):
 @traceroot.trace()
 async def developer_agent(options: Chat):
     working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating developer agent for task: {options.task_id} in directory: {working_directory}")
+    traceroot_logger.info(f"Creating developer agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.developer_agent).send_message_to_user
     )
@@ -703,7 +703,7 @@ these tips to maximize your effectiveness:
 @traceroot.trace()
 def search_agent(options: Chat):
     working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating search agent for task: {options.task_id} in directory: {working_directory}")
+    traceroot_logger.info(f"Creating search agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
@@ -883,7 +883,7 @@ Your approach depends on available search tools:
 @traceroot.trace()
 async def document_agent(options: Chat):
     working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating document agent for task: {options.task_id} in directory: {working_directory}")
+    traceroot_logger.info(f"Creating document agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.task_agent).send_message_to_user
     )
@@ -1084,7 +1084,7 @@ supported formats including advanced spreadsheet functionality.
 @traceroot.trace()
 def multi_modal_agent(options: Chat):
     working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating multi-modal agent for task: {options.task_id} in directory: {working_directory}")
+    traceroot_logger.info(f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.multi_modal_agent).send_message_to_user
     )
@@ -1254,7 +1254,7 @@ async def social_medium_agent(options: Chat):
     include toolkits: WhatsApp, Twitter, LinkedIn, Reddit, Notion, Slack, Discord and Google Suite.
     """
     working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating social medium agent for task: {options.task_id} in directory: {working_directory}")
+    traceroot_logger.info(f"Creating social medium agent for project: {options.project_id} in directory: {working_directory}")
     tools = [
         *WhatsAppToolkit.get_can_use_tools(options.project_id),
         *TwitterToolkit.get_can_use_tools(options.project_id),
@@ -1369,7 +1369,7 @@ operations.
 @traceroot.trace()
 async def mcp_agent(options: Chat):
     traceroot_logger.info(
-        f"Creating MCP agent for task: {options.task_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
+        f"Creating MCP agent for project: {options.project_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
     tools = [
         # *HumanToolkit.get_can_use_tools(options.project_id, Agents.mcp_agent),

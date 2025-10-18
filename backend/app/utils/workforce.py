@@ -86,7 +86,6 @@ class Workforce(BaseWorkforce):
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        self._pending_tasks.append(task)
 
         # Decompose the task into subtasks first
         subtasks_result = self._decompose_task(task)
@@ -218,6 +217,13 @@ class Workforce(BaseWorkforce):
         # DEBUG ▶ Task completed
         logger.debug(f"[WF] DONE  {task.id}")
         task_lock = get_task_lock(self.api_task_id)
+
+        # Log task completion with result details
+        is_main_task = self._task and task.id == self._task.id
+        task_type = "MAIN TASK" if is_main_task else "SUB-TASK"
+        logger.info(f"[TASK-RESULT] {task_type} COMPLETED: {task.id}")
+        logger.info(f"[TASK-RESULT] Content: {task.content[:200]}..." if len(task.content) > 200 else f"[TASK-RESULT] Content: {task.content}")
+        logger.info(f"[TASK-RESULT] Result: {task.result[:500]}..." if task.result and len(str(task.result)) > 500 else f"[TASK-RESULT] Result: {task.result}")
 
         task_data = {
             "task_id": task.id,

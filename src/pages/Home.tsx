@@ -28,9 +28,20 @@ export default function Home() {
 	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
-	window.ipcRenderer?.on("webview-show", (_event, id: string) => {
-		setActiveWebviewId(id);
-	});
+	// Add webview-show listener in useEffect with cleanup
+	useEffect(() => {
+		const handleWebviewShow = (_event: any, id: string) => {
+			setActiveWebviewId(id);
+		};
+
+		window.ipcRenderer?.on("webview-show", handleWebviewShow);
+
+		// Cleanup: remove listener on unmount
+		return () => {
+			window.ipcRenderer?.off("webview-show", handleWebviewShow);
+		};
+	}, []); // Empty dependency array means this only runs once
+
 	useEffect(() => {
 		let taskAssigning = [
 			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||

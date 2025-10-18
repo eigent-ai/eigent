@@ -200,7 +200,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
-    log.info('Starting new task')
+    log.info('Getting browser port')
     return browser_port
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
