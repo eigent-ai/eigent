@@ -86,7 +86,6 @@ class Workforce(BaseWorkforce):
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        self._pending_tasks.append(task)
 
         # Decompose the task into subtasks first
         subtasks_result = self._decompose_task(task)

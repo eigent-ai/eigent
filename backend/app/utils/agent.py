@@ -323,6 +323,17 @@ class ListenChatAgent(ChatAgent):
                 else:
                     result = raw_result
                     mask_flag = False
+                # Prepare result message with truncation
+                if isinstance(result, str):
+                    result_msg = result
+                else:
+                    result_str = repr(result)
+                    MAX_RESULT_LENGTH = 500
+                    if len(result_str) > MAX_RESULT_LENGTH:
+                        result_msg = result_str[:MAX_RESULT_LENGTH] + f"... (truncated, total length: {len(result_str)} chars)"
+                    else:
+                        result_msg = result_str
+
                 asyncio.create_task(
                     task_lock.put_queue(
                         ActionDeactivateToolkitData(
@@ -331,7 +342,7 @@ class ListenChatAgent(ChatAgent):
                                 "process_task_id": self.process_task_id,
                                 "toolkit_name": toolkit_name,
                                 "method_name": func_name,
-                                "message": result if isinstance(result, str) else repr(result),
+                                "message": result_msg,
                             },
                         )
                     )
@@ -407,6 +418,17 @@ class ListenChatAgent(ChatAgent):
                 traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}")
                 traceback.print_exc()
 
+            # Prepare result message with truncation
+            if isinstance(result, str):
+                result_msg = result
+            else:
+                result_str = repr(result)
+                MAX_RESULT_LENGTH = 500
+                if len(result_str) > MAX_RESULT_LENGTH:
+                    result_msg = result_str[:MAX_RESULT_LENGTH] + f"... (truncated, total length: {len(result_str)} chars)"
+                else:
+                    result_msg = result_str
+
             await task_lock.put_queue(
                 ActionDeactivateToolkitData(
                     data={
@@ -414,7 +436,7 @@ class ListenChatAgent(ChatAgent):
                         "process_task_id": self.process_task_id,
                         "toolkit_name": toolkit_name,
                         "method_name": func_name,
-                        "message": result if isinstance(result, str) else repr(result),
+                        "message": result_msg,
                     },
                 )
             )
@@ -427,7 +449,7 @@ class ListenChatAgent(ChatAgent):
 
         # Clone tools and collect toolkits that need registration
         cloned_tools, toolkits_to_register = self._clone_tools()
-
+        
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
             agent_name=self.agent_name,
@@ -443,7 +465,6 @@ class ListenChatAgent(ChatAgent):
             response_terminators=self.response_terminators,
             scheduling_strategy=self.model_backend.scheduling_strategy.__name__,
             max_iteration=self.max_iteration,
-            agent_id=self.agent_id,
             stop_event=self.stop_event,
             tool_execution_timeout=self.tool_execution_timeout,
             mask_tool_output=self.mask_tool_output,

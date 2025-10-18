@@ -39,6 +39,7 @@ import { share } from "@/lib/share";
 import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import {getAuthStore} from "@/store/authStore";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
@@ -171,6 +172,16 @@ export default function HistorySidebar() {
 		try {
 			const res = await proxyFetchDelete(`/api/chat/history/${curHistoryId}`);
 			console.log(res);
+			// also delete local files for this task if available (via Electron IPC)
+			const  {email} = getAuthStore()
+			const history = historyTasks.find((item) => item.id === curHistoryId);
+			if (history?.task_id && (window as any).ipcRenderer) {
+				try {
+					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id);
+				} catch (error) {
+					console.warn("Local file cleanup failed:", error);
+				}
+			}
 		} catch (error) {
 			console.error("Failed to delete history task:", error);
 		}
