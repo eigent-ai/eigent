@@ -109,28 +109,22 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
     """Build context information for workforce"""
     context = ""
 
-    # Add conversation history
+    # Add conversation history (includes complete task results)
     if task_lock.conversation_history:
         context = "=== CONVERSATION HISTORY ===\n"
 
-        # Include all conversations
+        # Include all conversations - task_result entries already contain full context
         for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
-                # Simplify task result display
-                context += f"[Previous Task Completed]\n"
+                # Use the complete task context stored in conversation_history
+                context += entry['content'] + "\n"
             else:
                 context += f"{entry['role']}: {entry['content']}\n"
 
         context += "\n"
 
-    # Add previous task's detailed result
-    if task_lock.last_task_result:
-        context += collect_previous_task_context(
-            working_directory=options.file_save_path(),
-            previous_task_content="",
-            previous_task_result=task_lock.last_task_result,
-            previous_summary=task_lock.last_task_summary
-        )
+    logger.info(f"[MODEL-CONTEXT] Built context for workforce, total length: {len(context)} chars")
+    logger.info(f"[MODEL-CONTEXT] Context preview: {context[:500]}..." if len(context) > 500 else f"[MODEL-CONTEXT] Context: {context}")
 
     return context
 
@@ -225,16 +219,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Save user question to history
                 task_lock.add_conversation('user', question)
 
-                # Use unified question_confirm for all cases
-                if len(options.attaches) == 0 and (task_lock.last_task_result or len(question) < 12):
-                    # For short questions or questions with context, use agent to confirm
-                    logger.info(f"[CONTEXT] Using question_confirm with context available: {bool(task_lock.last_task_result)}")
+                # Simplified logic: attachments mean workforce, otherwise let agent decide
+                if len(options.attaches) > 0:
+                    # Questions with attachments always need workforce
+                    confirm = True
+                    logger.info(f"[CONTEXT] Question has attachments, treating as complex task requiring workforce")
+                else:
+                    # No attachments - let agent decide based on question content and context
+                    logger.info(f"[CONTEXT] No attachments, using question_confirm to determine task type")
                     confirm = await question_confirm(question_agent, question, task_lock)
                     logger.info(f"[CONTEXT] Question confirmation result: {type(confirm)}")
-                else:
-                    # Long questions with attachments are always complex tasks
-                    confirm = True
-                    logger.info(f"[CONTEXT] Long question with attachments, treating as complex task")
 
                 if confirm is not True:
                     logger.info(f"[CONTEXT] Question not confirmed as complex task, returning simple response")
@@ -277,6 +271,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     if context_for_task:
                         question_with_context += "\n=== CURRENT TASK ===\n"
                     question_with_context += question + options.summary_prompt
+
+                    logger.info(f"[MODEL-CONTEXT] Task content length: {len(question_with_context)} chars")
+                    logger.info(f"[MODEL-CONTEXT] Full task content to workforce:")
+                    logger.info(f"[MODEL-CONTEXT] {question_with_context[:1000]}..." if len(question_with_context) > 1000 else f"[MODEL-CONTEXT] {question_with_context}")
 
                     # Keep the task id consistent
                     camel_task = Task(content=question_with_context, id=options.task_id)
@@ -418,23 +416,42 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 old_task_result = str(camel_task.result)
                 old_task_summary = summary_task_content if 'summary_task_content' in locals() else ""
 
+                # Save old task to conversation_history (for multi-turn intermediate tasks)
+                # Extract actual task content (remove context prefix)
+                old_task_content_clean = old_task_content
+                if "=== CURRENT TASK ===" in old_task_content_clean:
+                    old_task_content_clean = old_task_content_clean.split("=== CURRENT TASK ===")[-1].strip()
+
+                # Generate and save old task context
+                old_task_context = collect_previous_task_context(
+                    working_directory=options.file_save_path(),
+                    previous_task_content=old_task_content_clean,
+                    previous_task_result=old_task_result,
+                    previous_summary=old_task_summary
+                )
+                task_lock.add_conversation('task_result', old_task_context)
+                logger.info(f"[CONTEXT] Saved intermediate task result to conversation_history")
+
                 # Extract task content from the new task data immediately
                 # Don't return question field for new_tasks
                 new_task_content = item.data.get('content', '')
                 logger.info(f"[TRACE] New task content: {new_task_content[:100]}...")
 
-                # Collect context from previous task and prepend to new task
+                # Get context from conversation_history (includes all previous tasks)
                 if new_task_content:
-                    working_directory = options.file_save_path()
-                    previous_context = collect_previous_task_context(
-                        working_directory=working_directory,
-                        previous_task_content=old_task_content,
-                        previous_task_result=old_task_result,
-                        previous_summary=old_task_summary
-                    )
+                    # Read the last task_result from conversation_history
+                    previous_context = ""
+                    for entry in reversed(task_lock.conversation_history):
+                        if entry['role'] == 'task_result':
+                            previous_context = entry['content']
+                            break
+
                     # Prepend context to new task content
-                    new_task_content_with_context = previous_context + new_task_content
-                    logger.info(f"[CHAT] Added previous task context ({len(previous_context)} chars) to new task")
+                    new_task_content_with_context = previous_context + new_task_content if previous_context else new_task_content
+                    logger.info(f"[CHAT] Added previous task context from conversation_history ({len(previous_context)} chars) to new task")
+                    logger.info(f"[MODEL-CONTEXT] Multi-turn task content length: {len(new_task_content_with_context)} chars")
+                    logger.info(f"[MODEL-CONTEXT] Full multi-turn task content:")
+                    logger.info(f"[MODEL-CONTEXT] {new_task_content_with_context[:1000]}..." if len(new_task_content_with_context) > 1000 else f"[MODEL-CONTEXT] {new_task_content_with_context}")
                 else:
                     new_task_content_with_context = new_task_content
 
@@ -449,14 +466,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     if hasattr(camel_task, 'additional_info') and camel_task.additional_info:
                         new_camel_task.additional_info = camel_task.additional_info
                     camel_task = new_camel_task
-                
+
                 # Now trigger end of previous task using stored result
                 yield sse_json("end", old_task_result)
                 # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
                 # Trigger Queue Removal
                 yield sse_json("remove_task", {"task_id": item.data.get("task_id")})
-                
+
                 # Then handle multi-turn processing
                 if workforce is not None and new_task_content:
                     logger.info(f"[TRACE] === MULTI-TURN PROCESSING STARTED ===")
@@ -468,22 +485,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"[TRACE] Workforce paused, state: {workforce._state if hasattr(workforce, '_state') else 'unknown'}")
 
                     try:
-                        # Check if this is a simple query using context-aware confirmation
-                        if len(new_task_content) < 12:
-                            logger.info(f"[TRACE] Short multi-turn question detected, checking with question_agent")
-                            # Pass task_lock to use context in multi-turn scenarios
-                            multi_turn_confirm = await question_confirm(question_agent, new_task_content, task_lock)
-                            logger.info(f"[TRACE] Multi-turn question confirmation result: {multi_turn_confirm}")
+                        # Always check if this is a simple query using context-aware confirmation
+                        logger.info(f"[TRACE] Multi-turn question detected, checking with question_agent")
+                        # Pass task_lock to use context in multi-turn scenarios
+                        multi_turn_confirm = await question_confirm(question_agent, new_task_content, task_lock)
+                        logger.info(f"[TRACE] Multi-turn question confirmation result: {multi_turn_confirm}")
 
-                            if multi_turn_confirm is not True:
-                                logger.info(f"[TRACE] Multi-turn question identified as simple query, not decomposing")
-                                # Still need to send appropriate responses
-                                yield sse_json("confirmed", {"question": new_task_content})
-                                yield multi_turn_confirm
-                                logger.info(f"[TRACE] Resuming workforce after simple query response")
-                                workforce.resume()
-                                logger.info(f"[TRACE] !!! IMPORTANT: Continuing to next iteration after simple query - this skips further processing !!!")
-                                continue  # This continues the main while loop, waiting for next action
+                        if multi_turn_confirm is not True:
+                            logger.info(f"[TRACE] Multi-turn question identified as simple query, not decomposing")
+                            # Still need to send appropriate responses
+                            yield sse_json("confirmed", {"question": new_task_content})
+                            yield multi_turn_confirm
+                            logger.info(f"[TRACE] Resuming workforce after simple query response")
+                            workforce.resume()
+                            logger.info(f"[TRACE] !!! IMPORTANT: Continuing to next iteration after simple query - this skips further processing !!!")
+                            continue  # This continues the main while loop, waiting for next action
 
                         logger.info(f"[TRACE] Proceeding with multi-turn task decomposition")
                         yield sse_json("confirmed", {"question": new_task_content})
@@ -513,7 +529,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         summary_task_content = new_summary_content
 
                         logger.info(f"[TRACE] Multi-turn task decomposed successfully into {len(sub_tasks)} subtasks")
-                        
+
                     except Exception as e:
                         logger.error(f"[TRACE] Error processing multi-turn task: {e}")
                         import traceback
@@ -814,6 +830,9 @@ Note: If you can answer using the conversation history or previous results, prov
 """
 
     logger.info(f"[CONTEXT] Prompt has context: {bool(context_prompt)}")
+    logger.info(f"[MODEL-CONTEXT] question_confirm full prompt length: {len(full_prompt)} chars")
+    logger.info(f"[MODEL-CONTEXT] Full prompt to model:")
+    logger.info(f"[MODEL-CONTEXT] {full_prompt[:1000]}..." if len(full_prompt) > 1000 else f"[MODEL-CONTEXT] {full_prompt}")
 
     # Execute agent
     resp = agent.step(full_prompt)
@@ -845,6 +864,9 @@ Do not include any other text or formatting.
 """
     logger.info(f"[TASK-SUMMARY] Requesting summary for task: {task.id}")
     logger.info(f"[TASK-SUMMARY] Task content for summary: {task.content[:200]}..." if len(task.content) > 200 else f"[TASK-SUMMARY] Task content for summary: {task.content}")
+    logger.info(f"[MODEL-CONTEXT] summary_task prompt length: {len(prompt)} chars")
+    logger.info(f"[MODEL-CONTEXT] Summary prompt to model:")
+    logger.info(f"[MODEL-CONTEXT] {prompt[:800]}..." if len(prompt) > 800 else f"[MODEL-CONTEXT] {prompt}")
 
     res = agent.step(prompt)
     summary = res.msgs[0].content
