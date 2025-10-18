@@ -192,20 +192,49 @@ export default function ChatBox(): JSX.Element {
 					return;
 				}
 
-				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
-					// If the task has not started yet (pending status), start it normally
-					if (chatStore.tasks[_taskId as string].status === "pending") {
+				// Check if we should continue the conversation or start a new task
+				const hasMessages = chatStore.tasks[_taskId as string].messages.length > 0;
+				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
+				const hasWaitComfirm = chatStore.tasks[_taskId as string]?.hasWaitComfirm;
+
+				// Continue conversation if:
+				// 1. Has wait confirm (simple query response)
+				// 2. Task is finished (complex task completed)
+				// 3. Has any messages but pending (ongoing conversation)
+				const shouldContinueConversation = hasWaitComfirm || isFinished || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
+
+				if (shouldContinueConversation) {
+					// Check if this is the very first message and task hasn't started
+					const hasSimpleResponse = chatStore.tasks[_taskId as string].messages.some(
+						m => m.step === "wait_confirm"
+					);
+					const hasComplexTask = chatStore.tasks[_taskId as string].messages.some(
+						m => m.step === "to_sub_tasks"
+					);
+
+					// Only start a new task if: pending, no messages processed yet
+					if (chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished) {
 						setMessage("");
 						// Pass the message content to startTask instead of adding it to current chatStore
 						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
 						chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
 						// keep hasWaitComfirm as true so that follow-up improves work as usual
 					} else {
-						// Task already started and is waiting for user confirmation – use improve API
+						// Continue conversation: simple response, complex task, or finished task
+						console.log("[Multi-turn] Continuing conversation with improve API");
 						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
 						});
 						chatStore.setIsPending(_taskId, true);
+						// Add the user message to show it in UI
+						chatStore.addMessages(_taskId, {
+							id: generateUniqueId(),
+							role: "user",
+							content: tempMessageContent,
+							attaches: JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
+						});
+						chatStore.setAttaches(_taskId, []);
+						setMessage("");
 					}
 				} else {
 					if (!privacy) {

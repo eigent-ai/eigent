@@ -1,4 +1,5 @@
 from typing_extensions import Any, Literal, TypedDict
+from typing import List, Dict, Optional
 from pydantic import BaseModel
 from app.exception.exception import ProgramException
 from app.model.chat import McpServers, Status, SupplementChat, Chat, UpdateData
@@ -252,6 +253,16 @@ class TaskLock:
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
 
+    # Context management fields
+    conversation_history: List[Dict[str, str]]
+    """Store conversation history for context"""
+    last_task_result: str
+    """Store the last task execution result"""
+    last_task_summary: str
+    """Store the last task summary"""
+    question_agent: Optional[Any]
+    """Persistent question confirmation agent"""
+
     def __init__(self, id: str, queue: asyncio.Queue, human_input: dict) -> None:
         self.id = id
         self.queue = queue
@@ -259,6 +270,12 @@ class TaskLock:
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.background_tasks = set()
+
+        # Initialize context management fields
+        self.conversation_history = []
+        self.last_task_result = ""
+        self.last_task_summary = ""
+        self.question_agent = None
 
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
@@ -292,6 +309,28 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+
+    def add_conversation(self, role: str, content: str):
+        """Add a conversation entry to history"""
+        self.conversation_history.append({
+            'role': role,
+            'content': content,
+            'timestamp': datetime.now().isoformat()
+        })
+
+        # Limit history length to prevent memory issues
+        if len(self.conversation_history) > 20:
+            self.conversation_history = self.conversation_history[-20:]
+
+    def get_recent_context(self, max_entries: int = 10) -> str:
+        """Get recent conversation context as a formatted string"""
+        if not self.conversation_history:
+            return ""
+
+        context = "=== Recent Conversation ===\n"
+        for entry in self.conversation_history[-max_entries:]:
+            context += f"{entry['role']}: {entry['content'][:200]}\n"
+        return context
 
 
 task_locks = dict[str, TaskLock]()

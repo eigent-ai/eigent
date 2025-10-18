@@ -70,10 +70,26 @@ async def post(data: Chat, request: Request):
 def improve(id: str, data: SupplementChat):
     chat_logger.info(f"Improving chat for task_id: {id} with question: {data.question}")
     task_lock = get_task_lock(id)
+
+    # Allow continuing conversation even after task is done
+    # This supports multi-turn conversation after complex task completion
     if task_lock.status == Status.done:
-        raise UserException(code.error, "Task was done")
+        chat_logger.info(f"[CONTEXT] Task {id} was done, restarting for context-aware conversation")
+        # Reset status to allow processing new messages
+        task_lock.status = Status.confirming
+        # Clear any existing background tasks since workforce was stopped
+        if hasattr(task_lock, 'background_tasks'):
+            task_lock.background_tasks.clear()
+        # Note: conversation_history and last_task_result are preserved
+
+        # Log context preservation
+        if hasattr(task_lock, 'conversation_history'):
+            chat_logger.info(f"[CONTEXT] Preserved {len(task_lock.conversation_history)} conversation entries")
+        if hasattr(task_lock, 'last_task_result'):
+            chat_logger.info(f"[CONTEXT] Preserved task result: {len(task_lock.last_task_result)} chars")
+
     asyncio.run(task_lock.put_queue(ActionImproveData(data=data.question)))
-    chat_logger.info(f"Improvement request queued for task_id: {id}")
+    chat_logger.info(f"Improvement request queued with preserved context")
     return Response(status_code=201)
 
 

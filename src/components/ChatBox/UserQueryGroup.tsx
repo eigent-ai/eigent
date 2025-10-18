@@ -35,7 +35,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const [isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
-  const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
+
+  // Only show task if this query group has a task message
+  // This prevents all query groups from showing the same task
+  const task = queryGroup.taskMessage && activeTaskId ? chatState.tasks[activeTaskId] : null;
 
   // Set up intersection observer for this query group
   useEffect(() => {
