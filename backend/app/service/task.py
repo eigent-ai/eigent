@@ -318,18 +318,15 @@ class TaskLock:
             'timestamp': datetime.now().isoformat()
         })
 
-        # Limit history length to prevent memory issues
-        if len(self.conversation_history) > 20:
-            self.conversation_history = self.conversation_history[-20:]
-
-    def get_recent_context(self, max_entries: int = 10) -> str:
+    def get_recent_context(self, max_entries: int = None) -> str:
         """Get recent conversation context as a formatted string"""
         if not self.conversation_history:
             return ""
 
         context = "=== Recent Conversation ===\n"
-        for entry in self.conversation_history[-max_entries:]:
-            context += f"{entry['role']}: {entry['content'][:200]}\n"
+        history_to_use = self.conversation_history if max_entries is None else self.conversation_history[-max_entries:]
+        for entry in history_to_use:
+            context += f"{entry['role']}: {entry['content']}\n"
         return context
 
 

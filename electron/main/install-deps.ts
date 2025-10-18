@@ -358,6 +358,29 @@ export async function installDependencies(version: string): Promise<PromiseRetur
           return true; // Not an error if the toolkit isn't installed
         }
 
+        // Check if npm dependencies are already installed
+        const npmMarkerPath = path.join(toolkitPath, '.npm_dependencies_installed');
+        const nodeModulesPath = path.join(toolkitPath, 'node_modules');
+        const distPath = path.join(toolkitPath, 'dist');
+
+        // Check if marker exists and verify version
+        if (fs.existsSync(npmMarkerPath) && fs.existsSync(nodeModulesPath) && fs.existsSync(distPath)) {
+          try {
+            const markerContent = JSON.parse(fs.readFileSync(npmMarkerPath, 'utf-8'));
+            if (markerContent.version === version) {
+              log.info('[DEPS INSTALL] hybrid_browser_toolkit npm dependencies already installed for current version, skipping...');
+              return true;
+            } else {
+              log.info('[DEPS INSTALL] npm dependencies installed for different version, will reinstall...');
+              // Clean up old installation
+              fs.unlinkSync(npmMarkerPath);
+            }
+          } catch (error) {
+            log.warn('[DEPS INSTALL] Could not read npm marker file, will reinstall...', error);
+            // If we can't read the marker, assume we need to reinstall
+          }
+        }
+
         log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit npm dependencies...');
         safeMainWindowSend('install-dependencies-log', {
           type: 'stdout',
@@ -515,6 +538,13 @@ export async function installDependencies(version: string): Promise<PromiseRetur
           // Non-critical, continue
         }
 
+        // Create marker file to indicate npm dependencies are installed
+        fs.writeFileSync(npmMarkerPath, JSON.stringify({
+          installedAt: new Date().toISOString(),
+          version: version
+        }));
+        log.info('[DEPS INSTALL] Created npm dependencies marker file');
+
         log.info('[DEPS INSTALL] hybrid_browser_toolkit dependencies installed successfully');
         return true;
       } catch (error) {
@@ -541,6 +571,32 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
     // Set Installing Lock Files
     InstallLogs.setLockPath();
+
+    // Clean up npm dependencies marker when reinstalling Python deps
+    // This ensures npm deps are reinstalled when Python environment changes
+    try {
+      let sitePackagesPath: string | null = null;
+      const libPath = path.join(venvPath, 'lib');
+
+      if (fs.existsSync(libPath)) {
+        const libContents = fs.readdirSync(libPath);
+        const pythonDir = libContents.find(name => name.startsWith('python'));
+        if (pythonDir) {
+          sitePackagesPath = path.join(libPath, pythonDir, 'site-packages');
+        }
+      }
+
+      if (sitePackagesPath) {
+        const npmMarkerPath = path.join(sitePackagesPath, 'camel', 'toolkits', 'hybrid_browser_toolkit', 'ts', '.npm_dependencies_installed');
+        if (fs.existsSync(npmMarkerPath)) {
+          fs.unlinkSync(npmMarkerPath);
+          log.info('[DEPS INSTALL] Removed npm dependencies marker for fresh installation');
+        }
+      }
+    } catch (error) {
+      log.warn('[DEPS INSTALL] Could not clean npm marker file:', error);
+      // Non-critical, continue
+    }
 
     // try default install
     const installSuccess = await runInstall([], version)

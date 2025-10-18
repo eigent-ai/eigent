@@ -56,6 +56,9 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
     Returns:
         Formatted context string to prepend to new task
     """
+    logger.info(f"[CONTEXT-BUILD] Building context from previous task")
+    logger.info(f"[CONTEXT-BUILD] Previous summary: {previous_summary}")
+
     context_parts = []
 
     # Add previous task information
@@ -110,13 +113,13 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
     if task_lock.conversation_history:
         context = "=== CONVERSATION HISTORY ===\n"
 
-        # Only include recent conversations to avoid overly long context
-        for entry in task_lock.conversation_history[-10:]:
+        # Include all conversations
+        for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
                 # Simplify task result display
                 context += f"[Previous Task Completed]\n"
             else:
-                context += f"{entry['role']}: {entry['content'][:200]}\n"
+                context += f"{entry['role']}: {entry['content']}\n"
 
         context += "\n"
 
@@ -222,20 +225,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Save user question to history
                 task_lock.add_conversation('user', question)
 
-                # For questions that might reference previous context, always use context-aware confirmation
-                # This allows the agent to determine if it can answer from context
-                if len(options.attaches) == 0 and task_lock.last_task_result:
-                    # If there's previous task result, let agent decide based on context
-                    logger.info(f"[CONTEXT] Previous task result exists, using context-aware confirmation...")
-                    confirm = await question_confirm_with_context(question_agent, question, task_lock)
-                    logger.info(f"[CONTEXT] Question confirmation result: {type(confirm)}")
-                elif len(question) < 12 and len(options.attaches) == 0:
-                    logger.info(f"[CONTEXT] Short question detected, confirming with context-aware agent...")
-                    confirm = await question_confirm_with_context(question_agent, question, task_lock)
+                # Use unified question_confirm for all cases
+                if len(options.attaches) == 0 and (task_lock.last_task_result or len(question) < 12):
+                    # For short questions or questions with context, use agent to confirm
+                    logger.info(f"[CONTEXT] Using question_confirm with context available: {bool(task_lock.last_task_result)}")
+                    confirm = await question_confirm(question_agent, question, task_lock)
                     logger.info(f"[CONTEXT] Question confirmation result: {type(confirm)}")
                 else:
+                    # Long questions with attachments are always complex tasks
                     confirm = True
-                    logger.info(f"[CONTEXT] Long question with no context or has attachments, treating as complex task")
+                    logger.info(f"[CONTEXT] Long question with attachments, treating as complex task")
 
                 if confirm is not True:
                     logger.info(f"[CONTEXT] Question not confirmed as complex task, returning simple response")
@@ -288,36 +287,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"[TRACE] Starting task decomposition for task: {options.task_id}")
                     sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
                     logger.info(f"[TRACE] Task decomposed into {len(sub_tasks)} subtasks")
+
+                    # Generate task summary
+                    logger.info(f"[TASK-SUMMARY] Generating task summary for task: {options.task_id}")
                     summary_task_content = await summary_task(summary_task_agent, camel_task)
+                    logger.info(f"[TASK-SUMMARY] Task summary generated: {summary_task_content}")
 
                     # Save task summary for future reference
                     task_lock.last_task_summary = summary_task_content
-                    logger.info(f"[CONTEXT] Saved task summary for future context")
+                    logger.info(f"[TASK-SUMMARY] Task summary saved to task_lock for future context")
 
                     logger.info(f"[TRACE] Sending subtasks to frontend")
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
                     # tracer.save("trace.json")
 
-                    # Auto-start workforce in specific scenarios
-                    should_auto_start = False
-
-                    # If this is a follow-up question with context, auto-start
-                    if task_lock.last_task_result and len(sub_tasks) <= 2:
-                        logger.info(f"[CONTEXT] Auto-starting workforce for context-based follow-up task")
-                        should_auto_start = True
-
-                    # If debug mode is on, auto-start
+                    # Only auto-start in debug mode
                     if env("debug") == "on":
-                        logger.info(f"[CONTEXT] Auto-starting workforce in debug mode")
-                        should_auto_start = True
-
-                    if should_auto_start:
+                        logger.info(f"[DEBUG] Auto-starting workforce in debug mode")
                         task_lock.status = Status.processing
                         task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                         task_lock.add_background_task(task)
                     else:
-                        logger.info(f"[CONTEXT] Waiting for manual start command from frontend")
+                        logger.info(f"[CONTEXT] Waiting for user to start task from frontend")
 
             elif item.action == Action.update_task:
                 assert camel_task is not None
@@ -394,13 +386,31 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
                 # Track completed task results for the end event
-                if item.data.get('state') == 'DONE' and item.data.get('result'):
-                    last_completed_task_result = item.data.get('result', '')
-                    logger.info(f"[CONTEXT] Task completed with result: {last_completed_task_result[:100]}...")
+                task_id = item.data.get('task_id', 'unknown')
+                task_state = item.data.get('state', 'unknown')
+                task_result = item.data.get('result', '')
+
+                logger.info(f"[TASK-STATE] Received task state update for {task_id}: {task_state}")
+
+                if task_state == 'DONE' and task_result:
+                    last_completed_task_result = task_result
+                    logger.info(f"[TASK-STATE] Task {task_id} DONE with result: {task_result[:500]}..." if len(task_result) > 500 else f"[TASK-STATE] Task {task_id} DONE with result: {task_result}")
+                    logger.info(f"[TASK-STATE] Updating last_completed_task_result to this result")
+
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
                 logger.info(f"[TRACE] === NEW_TASK_STATE action received ===")
                 logger.info(f"[TRACE] Task data: {item.data}")
+
+                # Log new task state details
+                new_task_id = item.data.get('task_id', 'unknown')
+                new_task_state = item.data.get('state', 'unknown')
+                new_task_result = item.data.get('result', '')
+
+                logger.info(f"[NEW-TASK-STATE] Task {new_task_id}: {new_task_state}")
+                if new_task_state == 'DONE' and new_task_result:
+                    logger.info(f"[NEW-TASK-STATE] Task {new_task_id} result: {new_task_result[:500]}..." if len(new_task_result) > 500 else f"[NEW-TASK-STATE] Task {new_task_id} result: {new_task_result}")
+
                 assert camel_task is not None
 
                 # Store the old task information before updating camel_task
@@ -458,10 +468,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"[TRACE] Workforce paused, state: {workforce._state if hasattr(workforce, '_state') else 'unknown'}")
 
                     try:
-                        # Check if this is a simple query
+                        # Check if this is a simple query using context-aware confirmation
                         if len(new_task_content) < 12:
                             logger.info(f"[TRACE] Short multi-turn question detected, checking with question_agent")
-                            multi_turn_confirm = await question_confirm(question_agent, new_task_content)
+                            # Pass task_lock to use context in multi-turn scenarios
+                            multi_turn_confirm = await question_confirm(question_agent, new_task_content, task_lock)
                             logger.info(f"[TRACE] Multi-turn question confirmation result: {multi_turn_confirm}")
 
                             if multi_turn_confirm is not True:
@@ -488,9 +499,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(f"[TRACE] Decomposition complete, got {len(new_sub_tasks)} subtasks")
 
                         # Generate summary using existing agents
+                        logger.info(f"[TASK-SUMMARY] Generating summary for multi-turn task")
                         summary_task_agent_instance = task_summary_agent(options)
                         new_summary_content = await summary_task(summary_task_agent_instance, camel_task)
-                        logger.info(f"[TRACE] Summary generated for multi-turn task")
+                        logger.info(f"[TASK-SUMMARY] Multi-turn task summary generated: {new_summary_content}")
 
                         # Send the extracted events
                         logger.info(f"[TRACE] Sending subtasks to frontend for multi-turn task")
@@ -579,12 +591,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 assert camel_task is not None
                 task_lock.status = Status.done
 
-                # Get the final result from multiple sources in priority order:
-                final_result = ""
-                if last_completed_task_result:
-                    final_result = last_completed_task_result
-                else:
-                    final_result = str(camel_task.result or "")
+                # Log main task and available results
+                logger.info(f"[FINAL-RESULT] Main task ID: {camel_task.id}")
+                logger.info(f"[FINAL-RESULT] Main task content: {camel_task.content[:200]}..." if len(camel_task.content) > 200 else f"[FINAL-RESULT] Main task content: {camel_task.content}")
+                logger.info(f"[FINAL-RESULT] Main task result (camel_task.result): {camel_task.result}")
+                logger.info(f"[FINAL-RESULT] Task summary: {task_lock.last_task_summary}")
+                logger.info(f"[FINAL-RESULT] Last completed sub-task result: {last_completed_task_result[:500]}..." if last_completed_task_result and len(last_completed_task_result) > 500 else f"[FINAL-RESULT] Last completed sub-task result: {last_completed_task_result}")
+
+                # Get the final result from the main task
+                final_result = str(camel_task.result or "")
+                logger.info(f"[FINAL-RESULT] Using camel_task.result as final result")
+
+                logger.info(f"[FINAL-RESULT] Final result selected: {final_result[:500]}..." if len(final_result) > 500 else f"[FINAL-RESULT] Final result selected: {final_result}")
 
                 # ========== Save task result to task_lock ==========
                 task_lock.last_task_result = final_result
@@ -748,28 +766,58 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
-async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal[True]:
-    logger.info(f"[TRACE] === question_confirm called ===")
-    logger.info(f"[TRACE] Original prompt: {prompt[:100]}...")
+async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock = None) -> str | Literal[True]:
+    """
+    Unified question confirmation that can work with or without context.
 
-    prompt = f"""
-> **Your Role:** You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action.
->
-> **Your Process:**
->
-> 1.  **Analyze the User's Query:** Carefully examine the user's request: `{prompt}`.
->
-> 2.  **Categorize the Query:**
->     * **Simple Query:** Is this a simple greeting, a question that can be answered directly, or a conversational interaction (e.g., "hello", "thank you")?
->     * **Complex Task:** Is this a request that requires a series of steps, code execution, or interaction with tools to complete?
->
-> 3.  **Execute Your Decision:**
->     * **For a Simple Query:** Provide a direct and helpful response.
->     * **For a Complex Task:** Your *only* response should be "yes". This will trigger a specialized workforce to handle the task. Do not include any other text, punctuation, or pleasantries.
-        """
-    resp = agent.step(prompt)
+    Args:
+        agent: The agent to perform the confirmation
+        prompt: The user's question/query
+        task_lock: Optional TaskLock containing conversation history and previous results
+
+    Returns:
+        Either the answer for simple queries or True for complex tasks
+    """
+    logger.info(f"[CONTEXT] === question_confirm ===")
+
+    # Build context if available
+    context_prompt = ""
+
+    if task_lock and task_lock.conversation_history:
+        logger.info(f"[CONTEXT] Including conversation history: {len(task_lock.conversation_history)} entries")
+        context_prompt = "=== Previous Conversation ===\n"
+
+        for entry in task_lock.conversation_history:
+            role = entry['role']
+            content = entry['content']
+
+            if role == 'task_result':
+                # Include full task result context
+                context_prompt += f"[Task Completed]:\n{content}\n"
+            else:
+                context_prompt += f"{role.capitalize()}: {content}\n"
+
+        context_prompt += "\n"
+
+    if task_lock and task_lock.last_task_result:
+        logger.info(f"[CONTEXT] Including last task result")
+        context_prompt += f"=== Last Task Result ===\n{task_lock.last_task_result}\n\n"
+
+    # Build unified prompt
+    full_prompt = f"""{context_prompt}User Query: {prompt}
+
+Determine if this is:
+- A simple question/greeting that can be answered directly → Provide a direct response
+- A complex task requiring tools, code execution, or multiple steps → Respond with only "yes"
+
+Note: If you can answer using the conversation history or previous results, provide the answer directly.
+"""
+
+    logger.info(f"[CONTEXT] Prompt has context: {bool(context_prompt)}")
+
+    # Execute agent
+    resp = agent.step(full_prompt)
     logger.info(f"[TRACE] Agent response: {resp.msgs[0].content[:200]}...")
-    logger.info(f"[TRACE] Full chat history: {agent.chat_history}")
 
     is_complex = resp.msgs[0].content.lower() == "yes"
     logger.info(f"[TRACE] Is complex task? {is_complex}")
@@ -779,69 +827,6 @@ async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal
         return sse_json("wait_confirm", {"content": resp.msgs[0].content})
     else:
         logger.info(f"[TRACE] Confirmed as complex task")
-        return True
-
-
-async def question_confirm_with_context(agent: ListenChatAgent, prompt: str, task_lock: TaskLock) -> str | Literal[True]:
-    """Question confirmation with conversation context"""
-    logger.info(f"[CONTEXT] === question_confirm with context ===")
-    logger.info(f"[CONTEXT] History length: {len(task_lock.conversation_history)}")
-    logger.info(f"[CONTEXT] Has previous task result: {bool(task_lock.last_task_result)}")
-
-    # Build context prompt
-    context_prompt = ""
-
-    # Add conversation history (last 10 entries)
-    if task_lock.conversation_history:
-        context_prompt = "=== Previous Conversation ===\n"
-        recent_history = task_lock.conversation_history[-10:]
-
-        for entry in recent_history:
-            role = entry['role']
-            content = entry['content']
-
-            if role == 'task_result':
-                # Special handling for task results - show summary only
-                context_prompt += f"[Task Completed]: {content[:200]}...\n"
-            else:
-                # Limit content length to avoid too long context
-                context_prompt += f"{role.capitalize()}: {content[:200]}\n"
-
-        context_prompt += "\n"
-
-    # Add last task result if available
-    if task_lock.last_task_result:
-        context_prompt += f"=== Last Task Result ===\n{task_lock.last_task_result[:500]}...\n\n"
-
-    # Combine full prompt
-    full_prompt = f"""{context_prompt}
-=== Current Query ===
-User: {prompt}
-
-> **Your Role:** You are a highly capable agent with memory of previous conversations.
->
-> **Instructions:**
-> 1. Consider the conversation history and any previous task results
-> 2. Analyze if the current query is:
->    - A simple question that can be answered directly (including referencing previous results)
->    - A complex task requiring multiple steps or tool usage
-> 3. Decision:
->    - For simple queries: Provide a helpful response (you may reference previous context)
->    - For complex tasks: Respond with only "yes"
->
-> **Important:** If the user asks about something from a previous task, and you can answer based on the context provided, treat it as a simple query.
-    """
-
-    # Execute agent
-    resp = agent.step(full_prompt)
-
-    is_complex = resp.msgs[0].content.lower() == "yes"
-
-    if not is_complex:
-        logger.info(f"[CONTEXT] Simple query, providing direct response")
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content})
-    else:
-        logger.info(f"[CONTEXT] Complex task confirmed")
         return True
 
 
@@ -858,9 +843,21 @@ Your instructions are:
 Example format: "Task Name|This is the summary of the task."
 Do not include any other text or formatting.
 """
+    logger.info(f"[TASK-SUMMARY] Requesting summary for task: {task.id}")
+    logger.info(f"[TASK-SUMMARY] Task content for summary: {task.content[:200]}..." if len(task.content) > 200 else f"[TASK-SUMMARY] Task content for summary: {task.content}")
+
     res = agent.step(prompt)
-    logger.info(f"summary_task: {res.msgs[0].content}")
-    return res.msgs[0].content
+    summary = res.msgs[0].content
+
+    logger.info(f"[TASK-SUMMARY] Agent response: {summary}")
+
+    # Parse the summary to show title and subtitle separately
+    if '|' in summary:
+        parts = summary.split('|', 1)
+        logger.info(f"[TASK-SUMMARY] Task Name: {parts[0].strip()}")
+        logger.info(f"[TASK-SUMMARY] Task Summary: {parts[1].strip() if len(parts) > 1 else 'N/A'}")
+
+    return summary
 
 
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
