@@ -88,7 +88,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     assert isinstance(item, ActionImproveData)
                     question = item.data
                 if len(question) < 12 and len(options.attaches) == 0:
-                    confirm = await question_confirm(question_agent, question)
+                    try:
+                        confirm = await asyncio.wait_for(
+                            question_confirm(question_agent, question), timeout=8
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(f"question_confirm timeout for task {options.task_id}")
+                        # Notify frontend to avoid appearing stuck and remain in simple-answer path
+                        yield sse_json(
+                            "notice",
+                            {"notice": "Quick classification timed out. Responding directly."},
+                        )
+                        confirm = sse_json(
+                            "wait_confirm",
+                            {"content": "Classification timed out. Please confirm or try again."},
+                        )
                 else:
                     confirm = True
 
@@ -109,7 +123,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
                     sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
-                    summary_task_content = await summary_task(summary_task_agent, camel_task)
+                    try:
+                        summary_task_content = await asyncio.wait_for(
+                            summary_task(summary_task_agent, camel_task), timeout=10
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(f"summary_task timeout for task {options.task_id}")
+                        # Fallback to a minimal summary to unblock UI
+                        fallback_name = "Task"
+                        content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                        if content_preview is None:
+                            content_preview = ""
+                        fallback_summary = (
+                            (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                        )
+                        summary_task_content = f"{fallback_name}|{fallback_summary}"
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
                     # tracer.save("trace.json")
