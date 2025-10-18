@@ -824,7 +824,7 @@ Note: If you can answer using the conversation history or previous results, prov
 
     if not is_complex:
         logger.info(f"[TRACE] Returning simple query response")
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content})
+        return sse_json("wait_confirm", {"content": resp.msgs[0].content, "question": prompt})
     else:
         logger.info(f"[TRACE] Confirmed as complex task")
         return True
