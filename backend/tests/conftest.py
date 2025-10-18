@@ -145,14 +145,21 @@ def mock_model_backend():
 @pytest.fixture
 def mock_camel_agent():
     """Mock CAMEL agent for testing."""
-    agent = AsyncMock()
+    agent = MagicMock()  # Use MagicMock instead of AsyncMock
     agent.role_name = "test_agent"
     agent.agent_id = "test_agent_123"
     
-    # Make step method async and return proper structure
-    agent.step = AsyncMock()
-    agent.step.return_value.msgs = [MagicMock()]
-    agent.step.return_value.msgs[0].content = "Test agent response"
+    # Make step method return proper structure with both .msg and .msgs[0]
+    mock_response = MagicMock()
+    mock_message = MagicMock()
+    mock_message.content = "Test agent response"
+    mock_message.parsed = None
+    
+    mock_response.msg = mock_message
+    mock_response.msgs = [mock_message]  # msgs[0] should point to the same content
+    mock_response.info = {"usage": {"total_tokens": 50}}
+    
+    agent.step.return_value = mock_response
     
     agent.astep = AsyncMock()
     agent.astep.return_value.msg.content = "Test async agent response"
@@ -288,6 +295,7 @@ def sample_chat_data():
     """Sample chat data for testing."""
     return {
         "task_id": "test_task_123",
+        "project_id": "test_project_456",
         "email": "test@example.com",
         "question": "Create a simple Python script",
         "attaches": [],
