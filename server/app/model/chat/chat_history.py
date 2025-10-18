@@ -16,7 +16,7 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
     id: int = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     task_id: str = Field(index=True, unique=True)
-    project_id: str = Field(index=True, unique=True, nullable=True)
+    project_id: str = Field(index=True, unique=False, nullable=True)
     question: str
     language: str
     model_platform: str
