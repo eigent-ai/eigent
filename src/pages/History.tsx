@@ -34,11 +34,7 @@ import {
 	PopoverTrigger,
 	PopoverClose,
 } from "@/components/ui/popover";
-import {
-	fetchPut,
-	proxyFetchDelete,
-	proxyFetchGet,
-} from "@/api/http";
+import { fetchPut, proxyFetchDelete, proxyFetchGet } from "@/api/http";
 import AlertDialog from "@/components/ui/alertDialog";
 import { generateUniqueId } from "@/lib";
 import { SearchHistoryDialog } from "@/components/SearchHistoryDialog";
@@ -47,9 +43,10 @@ import { share } from "@/lib/share";
 import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import {getAuthStore} from "@/store/authStore";
 
 export default function Home() {
-	const {t} = useTranslation()
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
@@ -167,6 +164,20 @@ export default function Home() {
 		try {
 			const res = await proxyFetchDelete(`/api/chat/history/${curHistoryId}`);
 			console.log(res);
+			// also delete local files for this task if available (via Electron IPC)
+			const { email } = getAuthStore();
+			const history = historyTasks.find((item) => item.id === curHistoryId);
+			if (history?.task_id && (window as any).ipcRenderer) {
+				try {
+					await (window as any).ipcRenderer.invoke(
+						"delete-task-files",
+						email,
+						history.task_id
+					);
+				} catch (error) {
+					console.warn("Local file cleanup failed:", error);
+				}
+			}
 		} catch (error) {
 			console.error("Failed to delete history task:", error);
 		}
@@ -250,7 +261,9 @@ export default function Home() {
 			/>
 			<div>
 				<div className="px-6 py-4 flex justify-between items-center">
-					<div className="text-2xl font-bold leading-4">{t("task-hub.ongoing-tasks")}</div>
+					<div className="text-2xl font-bold leading-4">
+						{t("task-hub.ongoing-tasks")}
+					</div>
 
 					<div className="flex items-center gap-md">
 						<SearchHistoryDialog />
@@ -397,7 +410,10 @@ export default function Home() {
 									<div className=" flex-1 text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
 										<Tooltip>
 											<TooltipTrigger asChild>
-												<span> {task.summaryTask || t("task-hub.new-project")}</span>
+												<span>
+													{" "}
+													{task.summaryTask || t("task-hub.new-project")}
+												</span>
 											</TooltipTrigger>
 											<TooltipContent>
 												<p> {task.summaryTask || t("task-hub.new-project")}</p>
@@ -618,7 +634,8 @@ export default function Home() {
 											<TooltipTrigger asChild>
 												<span>
 													{" "}
-													{task?.question.split("|")[0] || t("task-hub.new-project")}
+													{task?.question.split("|")[0] ||
+														t("task-hub.new-project")}
 												</span>
 											</TooltipTrigger>
 											<TooltipContent
@@ -627,7 +644,8 @@ export default function Home() {
 											>
 												<div>
 													{" "}
-													{task?.question.split("|")[0] || t("task-hub.new-project")}
+													{task?.question.split("|")[0] ||
+														t("task-hub.new-project")}
 												</div>
 											</TooltipContent>
 										</Tooltip>
