@@ -233,7 +233,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const { tasks } = get()
 			let historyId: string | null = projectStore.getHistoryId(project_id);
 			let snapshots: any = [];
-			let skipFirstConfirmOnReplay = true;
+			let skipFirstConfirm = true;
 
 			// replay or share request
 			if (type) {
@@ -407,87 +407,69 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						social_medium_agent: "Social Media Agent",
 					};
 
-					//Create new chatStore for replay
-					//TODO(history): Remove when per task replay is implemented
-					// waiting for implementing project_id to backend
-					if(type === "replay" && agentMessages.step === "confirmed" 
-						&& !skipFirstConfirmOnReplay) {
-						const { question } = agentMessages.data;
-						/**
-						 * For Tasks where appended to existing project by
-						 * reusing same projectId. Need to create new chatStore
-						 * as it has been skipped earlier in startTask.
-						 */
-						if(type && project_id && question) {
-							const newChatResult = projectStore.appendInitChatStore(project_id);
-
-							if (newChatResult) {
-								// Update both the variables and the locked references
-								newTaskId = newChatResult.taskId;
-								targetChatStore = newChatResult.chatStore;
-								updateLockedReferences(newChatResult.chatStore, newChatResult.taskId);
-								
-								targetChatStore.getState().setIsPending(newTaskId, false);
-								
-								targetChatStore.getState().setDelayTime(newTaskId, delayTime as number);
-								targetChatStore.getState().setType(newTaskId, "replay");
-								
-								//From handleSend if message is given
-								// Add the message to the new chatStore if provided
-								if (question) {
-									targetChatStore.getState().addMessages(newTaskId, {
-										id: generateUniqueId(),
-										role: "user",
-										content: question,
-										attaches: messageAttaches || [],
-									});
-								}
-							}
-						}
-					}
-					//Enable it for the rest of current SSE session
-					skipFirstConfirmOnReplay = false;
 
 					/**
 					 * Persistent workforce instance, new chat
 					 * If confirmed -> subtasks -> confirmed (use a new chatStore)
-					 * In the case when current is a new chatStore such as after @event new_task_state:
-					 * > It won't re-trigger append when @event confirmed as it doesn't have @event to_sub_tasks
+					 * handle cases for @event new_task_state and @function startTask
 					 */
 					let currentTaskId = getCurrentTaskId();
 					const previousChatStore = getCurrentChatStore()
-					if(agentMessages.step === "confirmed" &&
-						previousChatStore.tasks[currentTaskId]?.messages?.some(m => m.step === "to_sub_tasks")) {
-						if(projectStore.activeProjectId) {
-							const initResult = projectStore.appendInitChatStore(projectStore.activeProjectId);
-							if(initResult) {
-								const {taskId: newTaskId, chatStore: newChatStore} = initResult;
-
+					if(agentMessages.step === "confirmed") {
+						const { question } = agentMessages.data;
+						const shouldCreateNewChat = project_id && (question || messageContent);
+						
+						//All except first confirmed event to reuse the existing chatStore
+						if(shouldCreateNewChat && !skipFirstConfirm) {
 								/**
-								 * Get Last user message
-								 * @todo TODO: Internalize the message function when Continuing conversation with improve API
-								 * Just like @function chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
-								 * Instead of manually removing the message if its a new workforce is needed
-								 */
-								const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
-								if(lastMessage?.id) {
-									previousChatStore.removeMessage(currentTaskId, lastMessage.id);
-								}
+								 * For Tasks where appended to existing project by
+								 * reusing same projectId. Need to create new chatStore
+								 * as it has been skipped earlier in startTask.
+								*/
+								const newChatResult = projectStore.appendInitChatStore(project_id || projectStore.activeProjectId!);
+								
+								if (newChatResult) {
+										const { taskId: newTaskId, chatStore: newChatStore } = newChatResult;
+										
+										// Update references for both scenarios
+										updateLockedReferences(newChatStore, newTaskId);
+										newChatStore.getState().setIsPending(newTaskId, false);
+										
+										if(type === "replay") {
+												newChatStore.getState().setDelayTime(newTaskId, delayTime as number);
+												newChatStore.getState().setType(newTaskId, "replay");
+										}
 
-								newChatStore?.getState().setIsPending(newTaskId, true);
-								if(lastMessage) {
-									newChatStore?.getState().addMessages(newTaskId, {
-										id: generateUniqueId(),
-										role: "user",
-										content: lastMessage.content ?? "",
-										attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || [])],
-									});
-								}
+										const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
+										if(lastMessage?.role === "user" && lastMessage?.id) {
+											previousChatStore.removeMessage(currentTaskId, lastMessage.id);
+										}
+										
+										//Trick: by the time the question is retrieved from event, 
+										//the last message from previous chatStore is at display
+										newChatStore.getState().addMessages(newTaskId, {
+												id: generateUniqueId(),
+												role: "user",
+												content: question || messageContent as string,
+												//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
+												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches, messageAttaches) || []],
+										});
+										console.log("[NEW CHATSTORE] Created for ", project_id);
 
-								updateLockedReferences(newChatStore, newTaskId);
-								console.log("[NEW CHATSTORE] In current workforce instance");
-							}
+										//Handle Original cases - with new chatStore
+										newChatStore.getState().setHasWaitComfirm(currentTaskId, false);
+										newChatStore.getState().setStatus(currentTaskId, 'pending');
+								}
+						} else {
+							//NOTE: Triggered only with first "confirmed" in the project
+							//Handle Original cases - with old chatStore
+							previousChatStore.setStatus(currentTaskId, 'pending');
+							previousChatStore.setHasWaitComfirm(currentTaskId, false);
 						}
+
+						//Enable it for the rest of current SSE session
+						skipFirstConfirm = false;
+						return
 					}
 
 					const { 
@@ -656,12 +638,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						})
 						return;
 					}
-					if (agentMessages.step === "confirmed") {
-						//Reset is status to pending
-						setStatus(currentTaskId, 'pending')
-						setHasWaitComfirm(currentTaskId, false)
-						return
-					}
 					// Task State
 					if (agentMessages.step === "task_state") {
 						const { state, task_id, result, failure_count } = agentMessages.data;
@@ -716,27 +692,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setTaskAssigning(currentTaskId, taskAssigning)
 						return;
 					}
-					// New Task State from queue
+					/**  New Task State from queue
+					 * @deprecated
+					 * Side effect handled on top of the message handler
+					 */
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
-						if (!task_id || !content || !project_id) return;
-
-						const storeResult = projectStore.appendInitChatStore(project_id, task_id);
-						if (!storeResult) return;
-						
-						const {chatStore: newChatStore} = storeResult;
-						updateLockedReferences(newChatStore, task_id);
-						
-						// Customize the initialTask data
-						newChatStore.getState().addMessages(task_id, {
-							id: generateUniqueId(),
-							role: "user",
-							content: content,
-						});
-						newChatStore.getState().setHasMessages(task_id, true);
-						newChatStore.getState().setTaskTime(task_id, Date.now());
-						
-						console.log(`Created new chat instance for task: ${task_id} with content: ${content}`);
+						//new chatStore logic is handled along side "confirmed" event
+						console.log(`Recieved new task: ${task_id} with content: ${content}`);
 						return;
 					}
 
