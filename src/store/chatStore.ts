@@ -608,6 +608,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "confirmed") {
+						//Reset is status to pending
+						setStatus(currentTaskId, 'pending')
 						setHasWaitComfirm(currentTaskId, false)
 						return
 					}

@@ -451,7 +451,7 @@ export default function ChatBox(): JSX.Element {
 	const handleEditQuery = () => {
 		const taskId = chatStore.activeTaskId as string;
 		fetchDelete(`/chat/${taskId}`);
-		const messageIndex = chatStore.tasks[taskId].messages.findIndex(
+		const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
 			(item) => item.step === "to_sub_tasks"
 		);
 		const question = chatStore.tasks[taskId].messages[messageIndex - 2].content;
@@ -487,8 +487,11 @@ export default function ChatBox(): JSX.Element {
 
 		// Determine if we're in the "splitting in progress" phase (skeleton visible)
 		// Equivalent to the skeleton condition used in the JSX below
-		const toSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
-		const isSkeletonPhase = ((!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl);
+		const toSubTasksMessage = task.messages.find((m) => (m.step === "to_sub_tasks" && !m.isConfirm));
+		const isSkeletonPhase = (
+			task.status !== 'finished' &&
+			(!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || 
+			(task.isTakeControl && (!toSubTasksMessage || !toSubTasksMessage.isConfirm)));
 		if (isSkeletonPhase) {
 			return "splitting";
 		}
@@ -633,7 +636,12 @@ export default function ChatBox(): JSX.Element {
 						})) || []}
 						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
 						subtitle={getBottomBoxState() === 'confirm' 
-							? chatStore.tasks[chatStore.activeTaskId]?.messages?.[0]?.content 
+							? (() => {
+								// Find the last message where role is "user"
+								const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+								const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
+								return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
+							})()
 							: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
 							onStartTask={() => handleConfirmTask()}
 							onEdit={handleEditQuery}
