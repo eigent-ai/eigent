@@ -466,11 +466,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					const currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
 					if (agentMessages.step === "to_sub_tasks") {
+						// Check if this is a multi-turn scenario after task completion
+						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
+						// Reset status for multi-turn complex tasks to allow splitting panel to show
+						if (isMultiTurnAfterCompletion) {
+							setStatus(currentTaskId, 'pending');
+						}
 
 						const messages = [...tasks[currentTaskId].messages]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
-						if (toSubTaskIndex === -1) {
+						// For multi-turn scenarios, always create a new to_sub_tasks message
+						// even if one already exists from a previous task
+						if (toSubTaskIndex === -1 || isMultiTurnAfterCompletion) {
 							// 30 seconds auto confirm
 							setTimeout(() => {
 								const currentStore = getCurrentChatStore();
@@ -480,7 +488,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								const isConfirm = message?.isConfirm || false;
 								const isTakeControl =
 									tasks[currentId].isTakeControl;
-								
+
 								if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
 									handleConfirmTask(project_id, currentId, type);
 								}
@@ -494,6 +502,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								step: 'notice_card',
 							};
 							addMessages(currentTaskId, newNoticeMessage)
+							const shouldAutoConfirm = !!type && !isMultiTurnAfterCompletion;
+
 							const newMessage: Message = {
 								id: generateUniqueId(),
 								role: "agent",
@@ -501,7 +511,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								step: agentMessages.step,
 								taskType: type ? 2 : 1,
 								showType: "list",
-								isConfirm: type ? true : false // share and replay, skip to_sub_tasks
+								// Don't auto-confirm for multi-turn complex tasks - show workforce splitting panel
+								isConfirm: shouldAutoConfirm
 							};
 							addMessages(currentTaskId, newMessage)
 							const newTaskInfo = {

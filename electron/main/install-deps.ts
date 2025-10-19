@@ -648,6 +648,24 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 let dependencyInstallationDetected = false;
 let installationNotificationSent = false;
 export function detectInstallationLogs(msg:string) {
+  // CRITICAL FIX: Use file system to check if installation is complete
+  // Don't rely on module variables as they can be reset during hot reload
+
+  // Check if dependencies are already installed
+  const isAlreadyInstalled = fs.existsSync(installedLockPath);
+
+  // If installed lock file exists, dependencies are already installed
+  // Skip all detection to avoid false positives
+  if (isAlreadyInstalled) {
+    // Dependencies are already installed, skip detection entirely
+    return;
+  }
+
+  // Also skip if notification was already sent (in current session)
+  if (installationNotificationSent) {
+    return;
+  }
+
   // Check for UV dependency installation patterns
   const installPatterns = [
       "Resolved", // UV resolving dependencies
@@ -661,18 +679,18 @@ export function detectInstallationLogs(msg:string) {
       "× No solution found when resolving dependencies", // Dependency resolution issues
       "Audited" // UV auditing dependencies
   ];
-  
+
   // Detect if UV is installing dependencies
-  if (!dependencyInstallationDetected && installPatterns.some(pattern => 
+  if (!dependencyInstallationDetected && installPatterns.some(pattern =>
       msg.includes(pattern) && !msg.includes("Uvicorn running on")
   )) {
       dependencyInstallationDetected = true;
       log.info('[BACKEND STARTUP] UV dependency installation detected during uvicorn startup');
-      
+
       // Create installing lock file to maintain consistency with install-deps.ts
       InstallLogs.setLockPath();
       log.info('[BACKEND STARTUP] Created uv_installing.lock file');
-      
+
       // Notify frontend that installation has started (only once)
       if (!installationNotificationSent) {
           installationNotificationSent = true;

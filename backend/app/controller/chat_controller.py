@@ -74,7 +74,6 @@ def improve(id: str, data: SupplementChat):
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
     if task_lock.status == Status.done:
-        chat_logger.info(f"[CONTEXT] Task {id} was done, restarting for context-aware conversation")
         # Reset status to allow processing new messages
         task_lock.status = Status.confirming
         # Clear any existing background tasks since workforce was stopped

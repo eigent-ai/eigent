@@ -354,7 +354,9 @@ export default function ChatBox(): JSX.Element {
 	const [loading, setLoading] = useState(false);
 	const handleConfirmTask = async (taskId?: string) => {
 		const _taskId = taskId || chatStore.activeTaskId;
-		if (!_taskId || !projectStore.activeProjectId) return;
+		if (!_taskId || !projectStore.activeProjectId) {
+			return;
+		}
 		setLoading(true);
 		await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
 		setLoading(false);

@@ -56,8 +56,6 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
     Returns:
         Formatted context string to prepend to new task
     """
-    logger.info(f"[CONTEXT-BUILD] Building context from previous task")
-    logger.info(f"[CONTEXT-BUILD] Previous summary: {previous_summary}")
 
     context_parts = []
 
@@ -123,8 +121,6 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
         context += "\n"
 
-    logger.info(f"[MODEL-CONTEXT] Built context for workforce, total length: {len(context)} chars")
-    logger.info(f"[MODEL-CONTEXT] Context preview: {context[:500]}..." if len(context) > 500 else f"[MODEL-CONTEXT] Context: {context}")
 
     return context
 
@@ -154,9 +150,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Create or reuse persistent question_agent
     if task_lock.question_agent is None:
         task_lock.question_agent = question_confirm_agent(options)
-        logger.info(f"[CONTEXT] Created new persistent question_agent for project {options.project_id}")
     else:
-        logger.info(f"[CONTEXT] Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
+        pass
 
     question_agent = task_lock.question_agent
 
@@ -167,12 +162,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
 
-    logger.info(f"[TRACE] === STARTING MAIN LOOP for project {options.project_id} ===")
-    logger.info(f"[CONTEXT] Starting with {len(task_lock.conversation_history)} previous conversations")
 
     while True:
         loop_iteration += 1
-        logger.info(f"[TRACE] Main loop iteration {loop_iteration}, waiting for action...")
 
         if await request.is_disconnected():
             logger.warning(f"Client disconnected for project {options.project_id}")
@@ -187,19 +179,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 logger.error(f"Error deleting task lock on disconnect: {e}")
             break
         try:
-            logger.info(f"[TRACE] Waiting for queue item...")
             item = await task_lock.get_queue()
-            logger.info(f"[TRACE] Received action: {item.action}, project_id: {options.project_id}")
-            if hasattr(item, 'data'):
-                logger.info(f"[TRACE] Action data preview: {str(item.data)[:200]}")
-            # logger.info(f"item: {dump_class(item)}")
         except Exception as e:
             logger.error(f"Error getting item from queue: {e}")
             # Continue waiting instead of breaking on queue error
             continue
 
         try:
-            logger.info(f"[TRACE] Processing action: {item.action}, start_event_loop={start_event_loop}")
             if item.action == Action.improve or start_event_loop:
                 # from viztracer import VizTracer
 
@@ -207,14 +193,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # tracer.start()
                 if start_event_loop is True:
                     question = options.question
-                    logger.info(f"[TRACE] Starting event loop with initial question: {question[:100]}...")
                     start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data
-                    logger.info(f"[TRACE] Processing improve action with question: {question[:100]}...")
 
-                logger.info(f"[TRACE] Question length: {len(question)}, Attaches: {len(options.attaches)}")
 
                 # Save user question to history
                 task_lock.add_conversation('user', question)
@@ -223,16 +206,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if len(options.attaches) > 0:
                     # Questions with attachments always need workforce
                     confirm = True
-                    logger.info(f"[CONTEXT] Question has attachments, treating as complex task requiring workforce")
                 else:
                     # No attachments - let agent decide based on question content and context
-                    logger.info(f"[CONTEXT] No attachments, using question_confirm to determine task type")
                     confirm = await question_confirm(question_agent, question, task_lock)
-                    logger.info(f"[CONTEXT] Question confirmation result: {type(confirm)}")
 
                 if confirm is not True:
-                    logger.info(f"[CONTEXT] Question not confirmed as complex task, returning simple response")
-                    logger.info(f"[TRACE] SSE Response being sent: {confirm}")
 
                     # Extract and save assistant response to history
                     try:
@@ -240,25 +218,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         response_data = json.loads(confirm.split("data: ")[1].strip())
                         response_content = response_data['data']['content']
                         task_lock.add_conversation('assistant', response_content)
-                        logger.info(f"[CONTEXT] Simple response saved to history, now has {len(task_lock.conversation_history)} entries")
                     except Exception as e:
                         logger.error(f"[CONTEXT] Failed to save response to history: {e}")
 
                     yield confirm
-                    logger.info(f"[TRACE] Simple response sent, continuing main loop to wait for next action...")
-                    logger.info(f"[TRACE] Current state after simple response - workforce: {workforce is not None}, camel_task: {camel_task is not None}")
-                    logger.info(f"[TRACE] Waiting for next action (should be Action.improve for next question)...")
                     # After sending simple response, continue waiting for next action
                 else:
-                    logger.info(f"[CONTEXT] Task confirmed as complex, preparing workforce with context")
                     yield sse_json("confirmed", {"question": question})
 
                     # ========== Prepare context for workforce ==========
                     context_for_task = build_context_for_workforce(task_lock, options)
-                    logger.info(f"[CONTEXT] Built context for workforce: {len(context_for_task)} chars")
 
                     (workforce, mcp) = await construct_workforce(options)
-                    logger.info(f"[TRACE] Workforce created, initial state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
@@ -272,30 +243,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         question_with_context += "\n=== CURRENT TASK ===\n"
                     question_with_context += question + options.summary_prompt
 
-                    logger.info(f"[MODEL-CONTEXT] Task content length: {len(question_with_context)} chars")
-                    logger.info(f"[MODEL-CONTEXT] Full task content to workforce:")
-                    logger.info(f"[MODEL-CONTEXT] {question_with_context[:1000]}..." if len(question_with_context) > 1000 else f"[MODEL-CONTEXT] {question_with_context}")
 
                     # Keep the task id consistent
                     camel_task = Task(content=question_with_context, id=options.task_id)
-                    logger.info(f"[CONTEXT] Created task with context: {options.task_id}")
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    logger.info(f"[TRACE] Starting task decomposition for task: {options.task_id}")
                     sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
-                    logger.info(f"[TRACE] Task decomposed into {len(sub_tasks)} subtasks")
 
                     # Generate task summary
-                    logger.info(f"[TASK-SUMMARY] Generating task summary for task: {options.task_id}")
                     summary_task_content = await summary_task(summary_task_agent, camel_task)
-                    logger.info(f"[TASK-SUMMARY] Task summary generated: {summary_task_content}")
 
                     # Save task summary for future reference
                     task_lock.last_task_summary = summary_task_content
-                    logger.info(f"[TASK-SUMMARY] Task summary saved to task_lock for future context")
 
-                    logger.info(f"[TRACE] Sending subtasks to frontend")
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
                     # tracer.save("trace.json")
@@ -306,8 +267,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         task_lock.status = Status.processing
                         task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                         task_lock.add_background_task(task)
-                    else:
-                        logger.info(f"[CONTEXT] Waiting for user to start task from frontend")
 
             elif item.action == Action.update_task:
                 assert camel_task is not None
@@ -316,15 +275,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 add_sub_tasks(camel_task, item.data.task)
                 yield to_sub_tasks(camel_task, summary_task_content)
             elif item.action == Action.add_task:
-                logger.info(f"[TRACE] === ADD_TASK action received ===")
-                logger.info(f"[TRACE] Task content: {item.content[:100] if hasattr(item, 'content') else 'N/A'}")
-                logger.info(f"[TRACE] Task ID: {item.task_id if hasattr(item, 'task_id') else 'N/A'}")
 
                 # Check if this might be a misrouted second question
                 if camel_task is None and workforce is None:
-                    logger.warning(f"[TRACE] ADD_TASK received but no active task/workforce - this might be the second question!")
-                    logger.warning(f"[TRACE] The frontend might be sending the second question as ADD_TASK instead of IMPROVE")
-                    logger.warning(f"[TRACE] Content being added: {item.content if hasattr(item, 'content') else 'N/A'}")
                     continue
 
                 assert camel_task is not None
@@ -362,23 +315,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None and item.project_id == options.project_id:
                     if workforce._state.name == 'PAUSED':
                         # Resume paused workforce to skip the task
-                        logger.info(f"[CHAT] Resuming paused workforce to skip task")
                         workforce.resume()
                     workforce.skip_gracefully()
             elif item.action == Action.start:
-                logger.info(f"[TRACE] === START action received ===")
                 if workforce is not None:
-                    logger.info(f"[TRACE] Workforce state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                     if workforce._state.name == 'PAUSED':
                         # Resume paused workforce - subtasks should already be loaded
-                        logger.info(f"[TRACE] Resuming paused workforce with existing subtasks")
                         workforce.resume()
                         continue
                 else:
-                    logger.info(f"[TRACE] Workforce is None, cannot start")
                     continue
 
-                logger.info(f"[TRACE] Starting workforce with {len(sub_tasks)} subtasks")
                 task_lock.status = Status.processing
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
@@ -388,26 +335,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_state = item.data.get('state', 'unknown')
                 task_result = item.data.get('result', '')
 
-                logger.info(f"[TASK-STATE] Received task state update for {task_id}: {task_state}")
 
                 if task_state == 'DONE' and task_result:
                     last_completed_task_result = task_result
-                    logger.info(f"[TASK-STATE] Task {task_id} DONE with result: {task_result[:500]}..." if len(task_result) > 500 else f"[TASK-STATE] Task {task_id} DONE with result: {task_result}")
-                    logger.info(f"[TASK-STATE] Updating last_completed_task_result to this result")
 
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
-                logger.info(f"[TRACE] === NEW_TASK_STATE action received ===")
-                logger.info(f"[TRACE] Task data: {item.data}")
 
                 # Log new task state details
                 new_task_id = item.data.get('task_id', 'unknown')
                 new_task_state = item.data.get('state', 'unknown')
                 new_task_result = item.data.get('result', '')
 
-                logger.info(f"[NEW-TASK-STATE] Task {new_task_id}: {new_task_state}")
-                if new_task_state == 'DONE' and new_task_result:
-                    logger.info(f"[NEW-TASK-STATE] Task {new_task_id} result: {new_task_result[:500]}..." if len(new_task_result) > 500 else f"[NEW-TASK-STATE] Task {new_task_id} result: {new_task_result}")
 
                 assert camel_task is not None
 
@@ -430,12 +369,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     previous_summary=old_task_summary
                 )
                 task_lock.add_conversation('task_result', old_task_context)
-                logger.info(f"[CONTEXT] Saved intermediate task result to conversation_history")
 
                 # Extract task content from the new task data immediately
                 # Don't return question field for new_tasks
                 new_task_content = item.data.get('content', '')
-                logger.info(f"[TRACE] New task content: {new_task_content[:100]}...")
 
                 # Get context from conversation_history (includes all previous tasks)
                 if new_task_content:
@@ -448,10 +385,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     # Prepend context to new task content
                     new_task_content_with_context = previous_context + new_task_content if previous_context else new_task_content
-                    logger.info(f"[CHAT] Added previous task context from conversation_history ({len(previous_context)} chars) to new task")
-                    logger.info(f"[MODEL-CONTEXT] Multi-turn task content length: {len(new_task_content_with_context)} chars")
-                    logger.info(f"[MODEL-CONTEXT] Full multi-turn task content:")
-                    logger.info(f"[MODEL-CONTEXT] {new_task_content_with_context[:1000]}..." if len(new_task_content_with_context) > 1000 else f"[MODEL-CONTEXT] {new_task_content_with_context}")
                 else:
                     new_task_content_with_context = new_task_content
 
@@ -476,80 +409,56 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # Then handle multi-turn processing
                 if workforce is not None and new_task_content:
-                    logger.info(f"[TRACE] === MULTI-TURN PROCESSING STARTED ===")
-                    logger.info(f"[TRACE] Multi-turn task ID: {item.data.get('task_id')}")
-                    logger.info(f"[TRACE] Multi-turn content length: {len(new_task_content)}")
-                    logger.info(f"[TRACE] Workforce state before pause: {workforce._state if hasattr(workforce, '_state') else 'unknown'}")
                     task_lock.status = Status.confirming
                     workforce.pause()
-                    logger.info(f"[TRACE] Workforce paused, state: {workforce._state if hasattr(workforce, '_state') else 'unknown'}")
 
                     try:
-                        # Always check if this is a simple query using context-aware confirmation
-                        logger.info(f"[TRACE] Multi-turn question detected, checking with question_agent")
-                        # Pass task_lock to use context in multi-turn scenarios
                         multi_turn_confirm = await question_confirm(question_agent, new_task_content, task_lock)
-                        logger.info(f"[TRACE] Multi-turn question confirmation result: {multi_turn_confirm}")
 
                         if multi_turn_confirm is not True:
-                            logger.info(f"[TRACE] Multi-turn question identified as simple query, not decomposing")
                             # Still need to send appropriate responses
                             yield sse_json("confirmed", {"question": new_task_content})
                             yield multi_turn_confirm
-                            logger.info(f"[TRACE] Resuming workforce after simple query response")
                             workforce.resume()
-                            logger.info(f"[TRACE] !!! IMPORTANT: Continuing to next iteration after simple query - this skips further processing !!!")
                             continue  # This continues the main while loop, waiting for next action
 
-                        logger.info(f"[TRACE] Proceeding with multi-turn task decomposition")
                         yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
 
                         # Use existing workforce to decompose (without creating new one)
                         # Append to _pending_tasks
-                        logger.info(f"[TRACE] Calling workforce.handle_decompose_append_task with reset=False")
                         new_sub_tasks = await workforce.handle_decompose_append_task(
                             camel_task,  # Use the updated camel_task
                             reset=False  # Keep existing agents and context
                         )
-                        logger.info(f"[TRACE] Decomposition complete, got {len(new_sub_tasks)} subtasks")
 
                         # Generate summary using existing agents
-                        logger.info(f"[TASK-SUMMARY] Generating summary for multi-turn task")
                         summary_task_agent_instance = task_summary_agent(options)
                         new_summary_content = await summary_task(summary_task_agent_instance, camel_task)
-                        logger.info(f"[TASK-SUMMARY] Multi-turn task summary generated: {new_summary_content}")
 
                         # Send the extracted events
-                        logger.info(f"[TRACE] Sending subtasks to frontend for multi-turn task")
                         yield to_sub_tasks(camel_task, new_summary_content)
 
                         # Update the context with new task data
                         sub_tasks = new_sub_tasks
                         summary_task_content = new_summary_content
 
-                        logger.info(f"[TRACE] Multi-turn task decomposed successfully into {len(sub_tasks)} subtasks")
 
                     except Exception as e:
-                        logger.error(f"[TRACE] Error processing multi-turn task: {e}")
                         import traceback
                         logger.error(f"[TRACE] Traceback: {traceback.format_exc()}")
                         # Continue with existing context if decomposition fails
                         yield sse_json("error", {"message": f"Failed to process task: {str(e)}"})
                 else:
-                    logger.warning(f"[TRACE] Multi-turn processing skipped: workforce={workforce is not None}, new_task_content_exists={bool(new_task_content)}")
                     if workforce is None:
                         logger.warning(f"[TRACE] Workforce is None - this might be the issue")
                     if not new_task_content:
                         logger.warning(f"[TRACE] No new task content provided")
             elif item.action == Action.create_agent:
-                logger.info(f"[TRACE] Processing create_agent action")
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
-                logger.info(f"[TRACE] Processing activate_agent action")
                 yield sse_json("activate_agent", item.data)
             elif item.action == Action.deactivate_agent:
-                logger.info(f"[TRACE] Processing deactivate_agent action")
                 yield sse_json("deactivate_agent", dict(item.data))
             elif item.action == Action.assign_task:
                 yield sse_json("assign_task", item.data)
@@ -580,21 +489,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     {"output": item.data, "process_task_id": item.process_task_id},
                 )
             elif item.action == Action.pause:
-                logger.info(f"[TRACE] === PAUSE action received ===")
                 if workforce is not None:
-                    logger.info(f"[TRACE] Pausing workforce, current state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                     workforce.pause()
-                    logger.info(f"[TRACE] Workforce paused, new state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                 else:
-                    logger.info(f"[TRACE] Workforce is None, cannot pause")
+                    pass
             elif item.action == Action.resume:
-                logger.info(f"[TRACE] === RESUME action received ===")
                 if workforce is not None:
-                    logger.info(f"[TRACE] Resuming workforce, current state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                     workforce.resume()
-                    logger.info(f"[TRACE] Workforce resumed, new state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                 else:
-                    logger.info(f"[TRACE] Workforce is None, cannot resume")
+                    pass
             elif item.action == Action.new_agent:
                 if workforce is not None:
                     workforce.pause()
@@ -603,22 +506,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                     workforce.resume()
             elif item.action == Action.end:
-                logger.info(f"[CONTEXT] === END action received, saving context ===")
                 assert camel_task is not None
                 task_lock.status = Status.done
 
                 # Log main task and available results
-                logger.info(f"[FINAL-RESULT] Main task ID: {camel_task.id}")
-                logger.info(f"[FINAL-RESULT] Main task content: {camel_task.content[:200]}..." if len(camel_task.content) > 200 else f"[FINAL-RESULT] Main task content: {camel_task.content}")
-                logger.info(f"[FINAL-RESULT] Main task result (camel_task.result): {camel_task.result}")
-                logger.info(f"[FINAL-RESULT] Task summary: {task_lock.last_task_summary}")
-                logger.info(f"[FINAL-RESULT] Last completed sub-task result: {last_completed_task_result[:500]}..." if last_completed_task_result and len(last_completed_task_result) > 500 else f"[FINAL-RESULT] Last completed sub-task result: {last_completed_task_result}")
 
                 # Get the final result from the main task
                 final_result = str(camel_task.result or "")
-                logger.info(f"[FINAL-RESULT] Using camel_task.result as final result")
 
-                logger.info(f"[FINAL-RESULT] Final result selected: {final_result[:500]}..." if len(final_result) > 500 else f"[FINAL-RESULT] Final result selected: {final_result}")
 
                 # ========== Save task result to task_lock ==========
                 task_lock.last_task_result = final_result
@@ -639,36 +534,26 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Save task result to conversation history (special type)
                 task_lock.add_conversation('task_result', full_task_context)
 
-                logger.info(f"[CONTEXT] Task context saved: {len(full_task_context)} chars")
-                logger.info(f"[CONTEXT] Conversation history now has {len(task_lock.conversation_history)} entries")
 
-                logger.info(f"[TRACE] Sending end signal with result: {final_result[:100]}...")
                 yield sse_json("end", final_result)
 
                 if workforce is not None:
-                    logger.info(f"[TRACE] Stopping workforce gracefully")
                     workforce.stop_gracefully()
-                    logger.info(f"[TRACE] Workforce stopped")
                     # Reset workforce to None after stopping
                     workforce = None
                 else:
-                    logger.warning(f"[TRACE] Workforce is None at end action")
+                    pass
 
                 # Reset camel_task to None for next task
                 camel_task = None
 
                 # Continue the loop to wait for next message instead of breaking
-                logger.info(f"[CONTEXT] Task ended, continuing main loop to wait for next action...")
-                logger.info(f"[CONTEXT] Context preserved for next conversation")
                 # Don't break here - continue waiting for next action
             elif item.action == Action.supplement:
-                logger.info(f"[TRACE] === SUPPLEMENT action received ===")
-                logger.info(f"[TRACE] Supplement question: {item.data.question[:100] if hasattr(item.data, 'question') else 'N/A'}")
 
                 # Check if this might be a misrouted second question
                 if camel_task is None:
-                    logger.warning(f"[TRACE] SUPPLEMENT received but camel_task is None - this might be a misrouted second question!")
-                    logger.warning(f"[TRACE] The frontend might be sending the second question as SUPPLEMENT instead of IMPROVE")
+                    pass
                 else:
                     assert camel_task is not None
                     task_lock.status = Status.processing
@@ -685,24 +570,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                 yield sse_json(Action.budget_not_enough, {"message": "budget not enouth"})
             elif item.action == Action.stop:
-                logger.info(f"[TRACE] === STOP action received ===")
                 if workforce is not None:
-                    logger.info(f"[TRACE] Workforce exists, state: {workforce._state.name if hasattr(workforce, '_state') else 'unknown'}")
                     if workforce._running:
-                        logger.info(f"[TRACE] Workforce is running, stopping it")
                         workforce.stop()
-                    logger.info(f"[TRACE] Stopping workforce gracefully")
                     workforce.stop_gracefully()
                 else:
-                    logger.warning(f"[TRACE] Workforce is None at stop action")
-                logger.info(f"[TRACE] Deleting task lock")
+                    pass
                 await delete_task_lock(task_lock.id)
-                logger.info(f"[TRACE] Breaking main loop")
                 break
             else:
-                logger.warning(f"[TRACE] Unknown/Unhandled action: {item.action}")
-                logger.warning(f"[TRACE] Current state - workforce: {workforce is not None}, camel_task: {camel_task is not None}")
-                logger.warning(f"[TRACE] Full item data: {dump_class(item) if 'dump_class' in locals() else str(item)}")
+                pass
         except ModelProcessingError as e:
             if "Budget has been exceeded" in str(e):
                 # workforce decompose task don't use ListenAgent, this need return sse
@@ -794,13 +671,11 @@ async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskL
     Returns:
         Either the answer for simple queries or True for complex tasks
     """
-    logger.info(f"[CONTEXT] === question_confirm ===")
 
     # Build context if available
     context_prompt = ""
 
     if task_lock and task_lock.conversation_history:
-        logger.info(f"[CONTEXT] Including conversation history: {len(task_lock.conversation_history)} entries")
         context_prompt = "=== Previous Conversation ===\n"
 
         for entry in task_lock.conversation_history:
@@ -816,7 +691,6 @@ async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskL
         context_prompt += "\n"
 
     if task_lock and task_lock.last_task_result:
-        logger.info(f"[CONTEXT] Including last task result")
         context_prompt += f"=== Last Task Result ===\n{task_lock.last_task_result}\n\n"
 
     # Build unified prompt
@@ -829,23 +703,15 @@ Determine if this is:
 Note: If you can answer using the conversation history or previous results, provide the answer directly.
 """
 
-    logger.info(f"[CONTEXT] Prompt has context: {bool(context_prompt)}")
-    logger.info(f"[MODEL-CONTEXT] question_confirm full prompt length: {len(full_prompt)} chars")
-    logger.info(f"[MODEL-CONTEXT] Full prompt to model:")
-    logger.info(f"[MODEL-CONTEXT] {full_prompt[:1000]}..." if len(full_prompt) > 1000 else f"[MODEL-CONTEXT] {full_prompt}")
 
     # Execute agent
     resp = agent.step(full_prompt)
-    logger.info(f"[TRACE] Agent response: {resp.msgs[0].content[:200]}...")
 
     is_complex = resp.msgs[0].content.lower() == "yes"
-    logger.info(f"[TRACE] Is complex task? {is_complex}")
 
     if not is_complex:
-        logger.info(f"[TRACE] Returning simple query response")
         return sse_json("wait_confirm", {"content": resp.msgs[0].content})
     else:
-        logger.info(f"[TRACE] Confirmed as complex task")
         return True
 
 
@@ -862,22 +728,14 @@ Your instructions are:
 Example format: "Task Name|This is the summary of the task."
 Do not include any other text or formatting.
 """
-    logger.info(f"[TASK-SUMMARY] Requesting summary for task: {task.id}")
-    logger.info(f"[TASK-SUMMARY] Task content for summary: {task.content[:200]}..." if len(task.content) > 200 else f"[TASK-SUMMARY] Task content for summary: {task.content}")
-    logger.info(f"[MODEL-CONTEXT] summary_task prompt length: {len(prompt)} chars")
-    logger.info(f"[MODEL-CONTEXT] Summary prompt to model:")
-    logger.info(f"[MODEL-CONTEXT] {prompt[:800]}..." if len(prompt) > 800 else f"[MODEL-CONTEXT] {prompt}")
 
     res = agent.step(prompt)
     summary = res.msgs[0].content
 
-    logger.info(f"[TASK-SUMMARY] Agent response: {summary}")
 
     # Parse the summary to show title and subtitle separately
     if '|' in summary:
         parts = summary.split('|', 1)
-        logger.info(f"[TASK-SUMMARY] Task Name: {parts[0].strip()}")
-        logger.info(f"[TASK-SUMMARY] Task Summary: {parts[1].strip() if len(parts) > 1 else 'N/A'}")
 
     return summary
 

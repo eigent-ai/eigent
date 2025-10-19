@@ -88,7 +88,10 @@ function groupMessagesByQuery(messages: any[]) {
 
   let currentGroup: any = null;
 
-  messages.forEach((message) => {
+  // Track which to_sub_tasks we've already processed to avoid duplicates
+  const processedTaskMessages = new Set();
+
+  messages.forEach((message, index) => {
     if (message.role === 'user') {
       // Start a new query group
       if (currentGroup) {
@@ -100,9 +103,54 @@ function groupMessagesByQuery(messages: any[]) {
         otherMessages: []
       };
     } else if (message.step === 'to_sub_tasks') {
-      // Task planning message
-      if (currentGroup) {
+      // Task planning message - each should get its own panel
+
+      // Skip if we've already processed this to_sub_tasks
+      if (processedTaskMessages.has(message.id)) {
+        return;
+      }
+      processedTaskMessages.add(message.id);
+
+      // Check if any existing group already has this exact taskMessage
+      const existingGroupWithTask = groups.find(g => g.taskMessage && g.taskMessage.id === message.id);
+      if (existingGroupWithTask) {
+        return;
+      }
+
+      // If current group doesn't have a task and doesn't already have this task, assign to it
+      if (currentGroup && !currentGroup.taskMessage) {
         currentGroup.taskMessage = message;
+      } else {
+        // Need a new group for this task
+        if (currentGroup) {
+          groups.push(currentGroup);
+        }
+
+        // Find the most recent user message that doesn't have a task yet
+        let correspondingUserMessage = null;
+
+        // Look backwards through messages for unassigned user message
+        for (let i = index - 1; i >= 0; i--) {
+          if (messages[i].role === 'user') {
+            // Check if this user message already has a task in existing groups
+            const alreadyHasTask = groups.some(g =>
+              g.userMessage && g.userMessage.id === messages[i].id && g.taskMessage
+            );
+
+            if (!alreadyHasTask) {
+              correspondingUserMessage = messages[i];
+              break;
+            }
+          }
+        }
+
+        // Create new group for this to_sub_tasks
+        currentGroup = {
+          queryId: correspondingUserMessage ? correspondingUserMessage.id : `task-${message.id}`,
+          userMessage: correspondingUserMessage,
+          taskMessage: message,
+          otherMessages: []
+        };
       }
     } else {
       // Other messages (assistant responses, etc.)

@@ -29,10 +29,8 @@ export const useInstallationSetup = () => {
 
     const checkToolInstalled = async () => {
       try {
-        console.log('[useInstallationSetup] Checking tool installation status...');
         const result = await window.ipcRenderer.invoke("check-tool-installed");
 
-        console.log('[useInstallationSetup] Tool check result:', result, 'initState:', initState);
 
         // Only perform tool check during setup phase (permissions or carousel)
         // Once user is in 'done' state (main app), don't check again
@@ -40,7 +38,6 @@ export const useInstallationSetup = () => {
         if (initState !== 'done') {
           // If tools ARE installed and we're in carousel state, go to done
           if (result.success && initState === "carousel" && result.isInstalled) {
-            console.log('[useInstallationSetup] Tools installed but initState is carousel, setting to done');
             setInitState("done");
           }
         }
@@ -53,10 +50,8 @@ export const useInstallationSetup = () => {
       try {
         // Also check if installation is currently in progress
         const installationStatus = await window.electronAPI.getInstallationStatus();
-        console.log('[useInstallationSetup] Installation status check:', installationStatus);
 
         if (installationStatus.success && installationStatus.isInstalling) {
-          console.log('[useInstallationSetup] Installation in progress, starting frontend state');
           startInstallation();
         }
       } catch (err) {
@@ -85,7 +80,6 @@ export const useInstallationSetup = () => {
     };
 
     const handleInstallComplete = (data: { success: boolean; code?: number; error?: string }) => {
-      console.log('[useInstallationSetup] Install complete event received:', data);
       
       if (data.success) {
         setSuccess();
@@ -100,7 +94,6 @@ export const useInstallationSetup = () => {
     window.electronAPI.onInstallDependenciesLog(handleInstallLog);
     window.electronAPI.onInstallDependenciesComplete(handleInstallComplete);
 
-    console.log('[useInstallationSetup] Installation listeners registered');
 
     // Cleanup listeners on unmount
     return () => {
