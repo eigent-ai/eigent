@@ -442,8 +442,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					//Enable it for the rest of current SSE session
 					skipFirstConfirmOnReplay = false;
 
-					//Persistent workforce instance, new chat
-					//If confirmed -> subtasks -> confirmed (use a new chatStore)
+					/**
+					 * Persistent workforce instance, new chat
+					 * If confirmed -> subtasks -> confirmed (use a new chatStore)
+					 * In the case when current is a new chatStore such as after @event new_task_state:
+					 * > It won't re-trigger append when @event confirmed as it doesn't have @event to_sub_tasks
+					 */
 					let currentTaskId = getCurrentTaskId();
 					const previousChatStore = getCurrentChatStore()
 					if(agentMessages.step === "confirmed" && 
