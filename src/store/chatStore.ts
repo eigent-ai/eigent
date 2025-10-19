@@ -7,6 +7,7 @@ import { getAuthStore, useWorkerList } from './authStore';
 import { useProjectStore } from './projectStore';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
+import { toast } from 'sonner';
 
 
 interface Task {
@@ -40,6 +41,7 @@ interface Task {
 	snapshotsTemp: any[];
 	isTakeControl: boolean;
 	isTaskEdit: boolean;
+	isContextExceeded?: boolean;
 }
 
 export interface ChatStore {
@@ -1038,6 +1040,37 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						uploadLog(currentTaskId, type)
 						return
 					}
+
+
+				if (agentMessages.step === "context_too_long") {
+					console.error('Context too long:', agentMessages.data)
+					const currentLength = agentMessages.data.current_length || 0;
+					const maxLength = agentMessages.data.max_length || 100000;
+					
+					// Show toast notification
+					toast.dismiss();
+					toast.error(
+						<div className="flex flex-col gap-2">
+							<div className="font-semibold">⚠️ Context Limit Exceeded</div>
+							<div className="text-sm">
+								The conversation history is too long ({currentLength.toLocaleString()} / {maxLength.toLocaleString()} characters).
+							</div>
+							<div className="text-sm font-medium mt-1">
+								Please create a new project to continue your work.
+							</div>
+						</div>,
+						{
+							duration: Infinity,
+							closeButton: true,
+							important: true,
+						}
+					);
+					
+					// Set status to pause to prevent further actions
+					setStatus(currentTaskId, 'pause');
+					uploadLog(currentTaskId, type)
+					return
+				}
 
 					if (agentMessages.step === "error") {
 						console.error('Model error:', agentMessages.data)

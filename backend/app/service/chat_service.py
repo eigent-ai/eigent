@@ -103,6 +103,28 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
     return "\n".join(context_parts)
 
 
+def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100000) -> tuple[bool, int]:
+    """
+    Check if conversation history exceeds maximum length
+
+    Returns:
+        tuple: (is_exceeded, total_length)
+    """
+    if not hasattr(task_lock, 'conversation_history') or not task_lock.conversation_history:
+        return False, 0
+
+    total_length = 0
+    for entry in task_lock.conversation_history:
+        total_length += len(entry.get('content', ''))
+
+    is_exceeded = total_length > max_length
+
+    if is_exceeded:
+        logger.warning(f"Conversation history length {total_length} exceeds maximum {max_length}")
+
+    return is_exceeded, total_length
+
+
 def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
     """Build context information for workforce"""
     context = ""
@@ -136,8 +158,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
     start_event_loop = True
 
-    # ========== Initialize context management ==========
-    # Initialize context fields if they don't exist
     if not hasattr(task_lock, 'conversation_history'):
         task_lock.conversation_history = []
     if not hasattr(task_lock, 'last_task_result'):
@@ -150,8 +170,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Create or reuse persistent question_agent
     if task_lock.question_agent is None:
         task_lock.question_agent = question_confirm_agent(options)
+        logger.info(f"Created new persistent question_agent for project {options.project_id}")
     else:
-        pass
+        logger.info(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
 
     question_agent = task_lock.question_agent
 
@@ -201,6 +222,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # Save user question to history
                 task_lock.add_conversation('user', question)
+
+                # Check conversation history length before processing
+                is_exceeded, total_length = check_conversation_history_length(task_lock)
+                if is_exceeded:
+                    logger.error(f"Conversation history too long ({total_length} chars) for project {options.project_id}")
+                    yield sse_json("context_too_long", {
+                        "message": "The conversation history is too long. Please create a new project to continue.",
+                        "current_length": total_length,
+                        "max_length": 100000
+                    })
+                    continue
 
                 # Simplified logic: attachments mean workforce, otherwise let agent decide
                 if len(options.attaches) > 0:
@@ -318,6 +350,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         workforce.resume()
                     workforce.skip_gracefully()
             elif item.action == Action.start:
+                # Check conversation history length before starting task
+                is_exceeded, total_length = check_conversation_history_length(task_lock)
+                if is_exceeded:
+                    logger.error(f"Cannot start task: conversation history too long ({total_length} chars) for project {options.project_id}")
+                    yield sse_json("context_too_long", {
+                        "message": "The conversation history is too long. Please create a new project to continue.",
+                        "current_length": total_length,
+                        "max_length": 100000
+                    })
+                    continue
+
                 if workforce is not None:
                     if workforce._state.name == 'PAUSED':
                         # Resume paused workforce - subtasks should already be loaded
@@ -491,13 +534,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.pause:
                 if workforce is not None:
                     workforce.pause()
+                    logger.info(f"Workforce paused for project {options.project_id}")
                 else:
-                    pass
+                    logger.warning(f"Cannot pause: workforce is None for project {options.project_id}")
             elif item.action == Action.resume:
                 if workforce is not None:
                     workforce.resume()
+                    logger.info(f"Workforce resumed for project {options.project_id}")
                 else:
-                    pass
+                    logger.warning(f"Cannot resume: workforce is None for project {options.project_id}")
             elif item.action == Action.new_agent:
                 if workforce is not None:
                     workforce.pause()
@@ -539,10 +584,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 if workforce is not None:
                     workforce.stop_gracefully()
+                    logger.info(f"Workforce stopped gracefully for project {options.project_id}")
                     # Reset workforce to None after stopping
                     workforce = None
                 else:
-                    pass
+                    logger.warning(f"Workforce already None at end action for project {options.project_id}")
 
                 # Reset camel_task to None for next task
                 camel_task = None
@@ -553,7 +599,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # Check if this might be a misrouted second question
                 if camel_task is None:
-                    pass
+                    logger.warning(f"SUPPLEMENT action received but camel_task is None for project {options.project_id}")
                 else:
                     assert camel_task is not None
                     task_lock.status = Status.processing
@@ -574,12 +620,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     if workforce._running:
                         workforce.stop()
                     workforce.stop_gracefully()
+                    logger.info(f"Workforce stopped for project {options.project_id}")
                 else:
-                    pass
+                    logger.warning(f"Workforce is None at stop action for project {options.project_id}")
                 await delete_task_lock(task_lock.id)
                 break
             else:
-                pass
+                logger.warning(f"Unknown action: {item.action}")
         except ModelProcessingError as e:
             if "Budget has been exceeded" in str(e):
                 # workforce decompose task don't use ListenAgent, this need return sse
