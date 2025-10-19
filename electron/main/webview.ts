@@ -20,6 +20,9 @@ export class WebViewManager {
   private webViews = new Map<string, WebViewInfo>()
   private win: BrowserWindow | null = null
   private size: Size = { x: 0, y: 0, width: 0, height: 0 }
+  private maxInactiveWebviews = 5
+  private lastCleanupTime = Date.now()
+  
   constructor(window: BrowserWindow) {
     this.win = window
   }
@@ -61,8 +64,17 @@ export class WebViewManager {
       }
       const view = new WebContentsView({
         webPreferences: {
+          // Use a separate session partition for webviews to isolate storage from main window
+          // This ensures clearing webview storage won't affect main window's auth data
+          partition: 'persist:agent-webview',
           nodeIntegration: false,
           contextIsolation: true,
+          backgroundThrottling: true,
+          offscreen: false,
+          sandbox: true,
+          disableBlinkFeatures: 'Accelerated2dCanvas',
+          enableBlinkFeatures: 'IdleDetection',
+          autoplayPolicy: 'document-user-activation-required',
         },
       })
       view.webContents.on('did-finish-load', () => {
@@ -119,13 +131,22 @@ export class WebViewManager {
         webViewInfo.view.setBounds({ x: -1919, y: -1079, width: 1920, height: 1080 })
         const activeSize = this.getActiveWebview().length
         const allSize = Array.from(this.webViews.values()).length
-        if (allSize - activeSize <= 3) {
+        const inactiveSize = allSize - activeSize
+        
+        // Clean up inactive webviews if too many
+        if (inactiveSize > this.maxInactiveWebviews && Date.now() - this.lastCleanupTime > 30000) {
+          this.cleanupInactiveWebviews()
+          this.lastCleanupTime = Date.now()
+        }
+        
+        // Create new webviews if needed
+        if (inactiveSize <= 2) {
           const existingKeys = Array.from(this.webViews.keys()).map(Number).filter(n => !isNaN(n))
           const maxId = existingKeys.length > 0 ? Math.max(...existingKeys) : 0
           const startId = maxId + 1
 
-          // Create webviews sequentially to avoid race conditions
-          for (let i = 0; i < 3; i++) {
+          // Create only 2 new webviews to reduce memory usage
+          for (let i = 0; i < 2; i++) {
             const nextId = (startId + i).toString()
             this.createWebview(nextId, 'about:blank?use=0')
           }
@@ -190,6 +211,10 @@ export class WebViewManager {
     let newId = Number(id)
     webViewInfo.view.setBounds({ x: -9999 + newId * 100, y: -9999 + newId * 100, width: 100, height: 100 })
     webViewInfo.isShow = false
+    
+    if (webViewInfo.view.webContents && !webViewInfo.view.webContents.isDestroyed()) {
+      webViewInfo.view.webContents.setBackgroundThrottling(true)
+    }
 
     return { success: true }
   }
@@ -198,19 +223,36 @@ export class WebViewManager {
       let newId = Number(webview.id)
       webview.view.setBounds({ x: -9999 + newId * 100, y: -9999 + newId * 100, width: 100, height: 100 })
       webview.isShow = false
+      
+      if (webview.view.webContents && !webview.view.webContents.isDestroyed()) {
+        webview.view.webContents.setBackgroundThrottling(true)
+      }
     })
   }
 
-  public showWebview(id: string) {
-    const webViewInfo = this.webViews.get(id)
+  public async showWebview(id: string) {
+    let webViewInfo = this.webViews.get(id)
+    
+    // If webview doesn't exist, create it
     if (!webViewInfo) {
-      return { success: false, error: `Webview with id ${id} not found` }
+      console.log(`Webview ${id} not found, creating new one`)
+      const createResult = await this.createWebview(id, 'about:blank?use=0')
+      if (!createResult.success) {
+        return { success: false, error: `Failed to create webview ${id}` }
+      }
+      webViewInfo = this.webViews.get(id)!
     }
+    
     const currentUrl = webViewInfo.view.webContents.getURL();
     this.win?.webContents.send("url-updated", currentUrl);
     webViewInfo.isShow = true
     this.changeViewSize(id, this.size)
     console.log("showWebview", id, this.size)
+    
+    if (webViewInfo.view.webContents && !webViewInfo.view.webContents.isDestroyed()) {
+      webViewInfo.view.webContents.setBackgroundThrottling(false)
+    }
+    
     if (this.win && !this.win.isDestroyed()) {
       this.win.webContents.send('webview-show', id)
     }
@@ -226,6 +268,15 @@ export class WebViewManager {
       const webViewInfo = this.webViews.get(id)
       if (!webViewInfo) {
         return { success: false, error: `Webview with id ${id} not found` }
+      }
+
+      if (!webViewInfo.view.webContents.isDestroyed()) {
+        webViewInfo.view.webContents.removeAllListeners()
+        // Now safe to clear all storage since webviews use separate partition
+        webViewInfo.view.webContents.session.clearCache()
+        webViewInfo.view.webContents.session.clearStorageData({
+          storages: ['cookies', 'localstorage', 'websql', 'indexdb', 'serviceworkers', 'cachestorage']
+        })
       }
 
       // remove webview from parent container
@@ -253,6 +304,19 @@ export class WebViewManager {
       this.destroyWebview(id)
     })
     this.webViews.clear()
+  }
+  
+  private cleanupInactiveWebviews() {
+    const inactiveWebviews = Array.from(this.webViews.entries())
+      .filter(([id, info]) => !info.isActive && !info.isShow && info.currentUrl === 'about:blank?use=0')
+      .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+    
+    const toRemove = inactiveWebviews.slice(this.maxInactiveWebviews)
+    
+    toRemove.forEach(([id, _]) => {
+      console.log(`Cleaning up inactive webview: ${id}`)
+      this.destroyWebview(id)
+    })
   }
 }
 
