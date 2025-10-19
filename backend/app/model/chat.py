@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 from typing import Literal
 from loguru import logger
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from camel.types import ModelType, RoleType
 
 
@@ -18,6 +18,16 @@ class Status(str, Enum):
 class ChatHistory(BaseModel):
     role: RoleType
     content: str
+
+
+class QuestionAnalysisResult(BaseModel):
+    type: Literal["simple", "complex"] = Field(
+        description="Whether this is a simple question or complex task"
+    )
+    answer: str | None = Field(
+        default=None,
+        description="Direct answer for simple questions. None for complex tasks."
+    )
 
 
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]

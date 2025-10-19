@@ -450,34 +450,37 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					 */
 					let currentTaskId = getCurrentTaskId();
 					const previousChatStore = getCurrentChatStore()
-					if(agentMessages.step === "confirmed" && 
-						previousChatStore.tasks[currentTaskId].messages.some(m => m.step === "to_sub_tasks")) {
-						//Create a newChatStore as we are not touching startTask
-						const initResult = projectStore.appendInitChatStore(projectStore.activeProjectId!);
-						if(initResult) {
-							const {taskId: newTaskId, chatStore: newChatStore} = initResult;
+					if(agentMessages.step === "confirmed" &&
+						previousChatStore.tasks[currentTaskId]?.messages?.some(m => m.step === "to_sub_tasks")) {
+						if(projectStore.activeProjectId) {
+							const initResult = projectStore.appendInitChatStore(projectStore.activeProjectId);
+							if(initResult) {
+								const {taskId: newTaskId, chatStore: newChatStore} = initResult;
 
-							/**
-							 * Get Last user message
-							 * @todo TODO: Internalize the message function when Continuing conversation with improve API
-							 * Just like @function chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
-							 * Instead of manually removing the message if its a new workforce is needed
-							 */
-							const lastMessage = previousChatStore.tasks[currentTaskId].messages.at(-1);
-							previousChatStore.removeMessage(currentTaskId, lastMessage?.id!);
+								/**
+								 * Get Last user message
+								 * @todo TODO: Internalize the message function when Continuing conversation with improve API
+								 * Just like @function chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
+								 * Instead of manually removing the message if its a new workforce is needed
+								 */
+								const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
+								if(lastMessage?.id) {
+									previousChatStore.removeMessage(currentTaskId, lastMessage.id);
+								}
 
-							newChatStore?.getState().setIsPending(newTaskId, true);
-							// Add the user message to show it in UI
-							newChatStore?.getState().addMessages(newTaskId, {
-								id: generateUniqueId(),
-								role: "user",
-								content: lastMessage?.content ?? "",
-								//Use previous chatStore's attaches
-								attaches: JSON.parse(JSON.stringify(previousChatStore.tasks[currentTaskId]?.attaches)) || [],
-							});
+								newChatStore?.getState().setIsPending(newTaskId, true);
+								if(lastMessage) {
+									newChatStore?.getState().addMessages(newTaskId, {
+										id: generateUniqueId(),
+										role: "user",
+										content: lastMessage.content ?? "",
+										attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || [])],
+									});
+								}
 
-							updateLockedReferences(newChatStore, newTaskId);
-							console.log("[NEW CHATSTORE] In current workforce instance");
+								updateLockedReferences(newChatStore, newTaskId);
+								console.log("[NEW CHATSTORE] In current workforce instance");
+							}
 						}
 					}
 
@@ -1513,18 +1516,23 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}))
 		},
 		removeMessage(taskId, messageId) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						messages: state.tasks[taskId].messages.filter(
-							(message) => message.id !== messageId
-						),
+			set((state) => {
+				if (!state.tasks[taskId]) {
+					return state;
+				}
+				return {
+					...state,
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...state.tasks[taskId],
+							messages: state.tasks[taskId].messages.filter(
+								(message) => message.id !== messageId
+							),
+						},
 					},
-				},
-			}))
+				};
+			})
 		},
 		setCotList(taskId, cotList) {
 			set((state) => ({

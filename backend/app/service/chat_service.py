@@ -20,7 +20,7 @@ from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.workforce import Workforce
 from loguru import logger
-from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
+from app.model.chat import Chat, NewAgent, QuestionAnalysisResult, Status, sse_json, TaskContent
 from camel.tasks import Task
 from app.utils.agent import (
     ListenChatAgent,
@@ -708,7 +708,7 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
 
 async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock = None) -> str | Literal[True]:
     """
-    Unified question confirmation that can work with or without context.
+    Unified question confirmation using structured output.
 
     Args:
         agent: The agent to perform the confirmation
@@ -719,46 +719,57 @@ async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskL
         Either the answer for simple queries or True for complex tasks
     """
 
-    # Build context if available
     context_prompt = ""
-
     if task_lock and task_lock.conversation_history:
         context_prompt = "=== Previous Conversation ===\n"
-
         for entry in task_lock.conversation_history:
             role = entry['role']
             content = entry['content']
-
             if role == 'task_result':
-                # Include full task result context
                 context_prompt += f"[Task Completed]:\n{content}\n"
             else:
                 context_prompt += f"{role.capitalize()}: {content}\n"
-
         context_prompt += "\n"
-
     if task_lock and task_lock.last_task_result:
         context_prompt += f"=== Last Task Result ===\n{task_lock.last_task_result}\n\n"
-
-    # Build unified prompt
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
-Determine if this is:
-- A simple question/greeting that can be answered directly → Provide a direct response
-- A complex task requiring tools, code execution, or multiple steps → Respond with only "yes"
+Analyze if this is a simple question or complex task:
 
-Note: If you can answer using the conversation history or previous results, provide the answer directly.
-"""
+**Simple question**: Can be answered directly using knowledge or conversation history
+- Examples: greetings, fact queries, clarifications about previous results
+- Response: Provide a direct, helpful answer
 
+**Complex task**: Requires tools, code execution, file operations, or multi-step planning
+- Examples: "create a file", "search for", "implement feature X"
+- Response: Indicate this is complex
 
-    # Execute agent
-    resp = agent.step(full_prompt)
+Based on the user query, determine the type and provide appropriate response."""
 
-    is_complex = resp.msgs[0].content.lower() == "yes"
+    try:
+        resp = agent.step(full_prompt, response_format=QuestionAnalysisResult)
 
-    if not is_complex:
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content, "question": prompt})
-    else:
+        if not resp or not resp.msgs or len(resp.msgs) == 0:
+            return True
+
+        result = resp.msgs[0].parsed
+
+        if not result:
+            content = resp.msgs[0].content
+            if not content:
+                return True
+            normalized = content.strip().lower()
+            if normalized in ["yes", "complex"]:
+                return True
+            return sse_json("wait_confirm", {"content": content, "question": prompt})
+
+        if result.type == "simple" and result.answer:
+            return sse_json("wait_confirm", {"content": result.answer, "question": prompt})
+        else:
+            return True
+
+    except Exception as e:
+        logger.error(f"Error in question_confirm: {e}")
         return True
 
 
