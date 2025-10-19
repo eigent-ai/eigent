@@ -213,7 +213,9 @@ export default function ChatBox(): JSX.Element {
 					);
 
 					// Only start a new task if: pending, no messages processed yet
-					if (chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished) {
+					// OR while or after replaying a project
+					if ((chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished) 
+						|| chatStore.tasks[_taskId].type === "replay") {
 						setMessage("");
 						// Pass the message content to startTask instead of adding it to current chatStore
 						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];

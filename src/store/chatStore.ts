@@ -429,6 +429,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								
 								targetChatStore.getState().setIsPending(newTaskId, false);
 								
+								targetChatStore.getState().setDelayTime(newTaskId, delayTime as number);
+								targetChatStore.getState().setType(newTaskId, "replay");
+								
 								//From handleSend if message is given
 								// Add the message to the new chatStore if provided
 								if (question) {

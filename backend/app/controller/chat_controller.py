@@ -61,6 +61,9 @@ async def post(data: Chat, request: Request):
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
     
+    # Put initial action in queue to start processing
+    await task_lock.put_queue(ActionImproveData(data=data.question))
+    
     chat_logger.info(f"Chat session initialized, starting streaming response for project_id: {data.project_id}")
     return StreamingResponse(step_solve(data, request, task_lock), media_type="text/event-stream")
 
