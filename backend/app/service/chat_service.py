@@ -757,7 +757,7 @@ Note: If you can answer using the conversation history or previous results, prov
     is_complex = resp.msgs[0].content.lower() == "yes"
 
     if not is_complex:
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content})
+        return sse_json("wait_confirm", {"content": resp.msgs[0].content, "question": prompt})
     else:
         return True
 
