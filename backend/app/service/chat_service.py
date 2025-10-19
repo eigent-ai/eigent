@@ -43,6 +43,39 @@ from camel.models import ModelProcessingError
 import os
 
 
+def format_task_context(task_data: dict) -> str:
+    """Format structured task data into a readable context string."""
+    context_parts = []
+
+    if task_data.get('task_content'):
+        context_parts.append(f"Previous Task: {task_data['task_content']}")
+
+    if task_data.get('task_result'):
+        context_parts.append(f"Previous Task Result: {task_data['task_result']}")
+
+    working_directory = task_data.get('working_directory')
+    if working_directory:
+        try:
+            if os.path.exists(working_directory):
+                generated_files = []
+                for root, dirs, files in os.walk(working_directory):
+                    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                    for file in files:
+                        if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                            file_path = os.path.join(root, file)
+                            absolute_path = os.path.abspath(file_path)
+                            generated_files.append(absolute_path)
+
+                if generated_files:
+                    context_parts.append("Generated Files from Previous Task:")
+                    for file_path in sorted(generated_files):
+                        context_parts.append(f"  - {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to collect generated files: {e}")
+
+    return "\n".join(context_parts)
+
+
 def collect_previous_task_context(working_directory: str, previous_task_content: str, previous_task_result: str, previous_summary: str = "") -> str:
     """
     Collect context from previous task including content, result, summary, and generated files.
@@ -79,15 +112,12 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
         if os.path.exists(working_directory):
             generated_files = []
             for root, dirs, files in os.walk(working_directory):
-                # Skip hidden directories and common cache directories
                 dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
-
                 for file in files:
-                    # Skip hidden files and common temporary files
                     if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
                         file_path = os.path.join(root, file)
-                        relative_path = os.path.relpath(file_path, working_directory)
-                        generated_files.append(relative_path)
+                        absolute_path = os.path.abspath(file_path)
+                        generated_files.append(absolute_path)
 
             if generated_files:
                 context_parts.append("Generated Files from Previous Task:")
@@ -98,7 +128,6 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
         logger.warning(f"Failed to collect generated files: {e}")
 
     context_parts.append("=== END OF PREVIOUS TASK CONTEXT ===\n")
-    context_parts.append("=== NEW TASK ===\n")
 
     return "\n".join(context_parts)
 
@@ -126,23 +155,23 @@ def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100
 
 
 def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
-    """Build context information for workforce"""
+    """Build context information for workforce."""
     context = ""
 
-    # Add conversation history (includes complete task results)
     if task_lock.conversation_history:
         context = "=== CONVERSATION HISTORY ===\n"
 
-        # Include all conversations - task_result entries already contain full context
         for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
-                # Use the complete task context stored in conversation_history
-                context += entry['content'] + "\n"
-            else:
-                context += f"{entry['role']}: {entry['content']}\n"
+                if isinstance(entry['content'], dict):
+                    formatted_context = format_task_context(entry['content'])
+                    context += formatted_context + "\n\n"
+                else:
+                    context += entry['content'] + "\n"
+            elif entry['role'] == 'assistant':
+                context += f"Assistant: {entry['content']}\n\n"
 
         context += "\n"
-
 
     return context
 
@@ -162,10 +191,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         task_lock.conversation_history = []
     if not hasattr(task_lock, 'last_task_result'):
         task_lock.last_task_result = ""
-    if not hasattr(task_lock, 'last_task_summary'):
-        task_lock.last_task_summary = ""
     if not hasattr(task_lock, 'question_agent'):
         task_lock.question_agent = None
+    if not hasattr(task_lock, 'summary_generated'):
+        task_lock.summary_generated = False
 
     # Create or reuse persistent question_agent
     if task_lock.question_agent is None:
@@ -219,11 +248,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     assert isinstance(item, ActionImproveData)
                     question = item.data
 
-
-                # Save user question to history
-                task_lock.add_conversation('user', question)
-
-                # Check conversation history length before processing
                 is_exceeded, total_length = check_conversation_history_length(task_lock)
                 if is_exceeded:
                     logger.error(f"Conversation history too long ({total_length} chars) for project {options.project_id}")
@@ -235,6 +259,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     continue
 
                 # Simplified logic: attachments mean workforce, otherwise let agent decide
+                confirm: str | Literal[True]
                 if len(options.attaches) > 0:
                     # Questions with attachments always need workforce
                     confirm = True
@@ -243,8 +268,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     confirm = await question_confirm(question_agent, question, task_lock)
 
                 if confirm is not True:
-
-                    # Extract and save assistant response to history
+                    # confirm is str here (simple answer from agent)
                     try:
                         import json
                         response_data = json.loads(confirm.split("data: ")[1].strip())
@@ -254,40 +278,40 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.error(f"[CONTEXT] Failed to save response to history: {e}")
 
                     yield confirm
-                    # After sending simple response, continue waiting for next action
                 else:
                     yield sse_json("confirmed", {"question": question})
 
-                    # ========== Prepare context for workforce ==========
-                    context_for_task = build_context_for_workforce(task_lock, options)
+                    context_for_coordinator = build_context_for_workforce(task_lock, options)
 
                     (workforce, mcp) = await construct_workforce(options)
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
                         )
-                    summary_task_agent = task_summary_agent(options)
                     task_lock.status = Status.confirmed
 
-                    # Add context to task content
-                    question_with_context = context_for_task
-                    if context_for_task:
-                        question_with_context += "\n=== CURRENT TASK ===\n"
-                    question_with_context += question + options.summary_prompt
-
-
-                    # Keep the task id consistent
-                    camel_task = Task(content=question_with_context, id=options.task_id)
+                    clean_task_content = question + options.summary_prompt
+                    camel_task = Task(content=clean_task_content, id=options.task_id)
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
+                    sub_tasks = await asyncio.to_thread(
+                        workforce.eigent_make_sub_tasks,
+                        camel_task,
+                        context_for_coordinator
+                    )
 
-                    # Generate task summary
-                    summary_task_content = await summary_task(summary_task_agent, camel_task)
-
-                    # Save task summary for future reference
-                    task_lock.last_task_summary = summary_task_content
+                    if not task_lock.summary_generated:
+                        summary_task_agent = task_summary_agent(options)
+                        summary_task_content = await summary_task(summary_task_agent, camel_task)
+                        task_lock.summary_generated = True
+                        logger.info(f"Generated summary for first task in project {options.project_id}")
+                    else:
+                        if len(question) > 100:
+                            summary_task_content = f"Task|{question[:97]}..."
+                        else:
+                            summary_task_content = f"Task|{question}"
+                        logger.info(f"Skipped summary generation for subsequent task in project {options.project_id}")
 
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
@@ -393,52 +417,25 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 assert camel_task is not None
 
-                # Store the old task information before updating camel_task
-                old_task_content = camel_task.content
-                old_task_result = str(camel_task.result)
-                old_task_summary = summary_task_content if 'summary_task_content' in locals() else ""
+                old_task_content: str = camel_task.content
+                old_task_result: str = await get_task_result_with_optional_summary(camel_task, options)
 
-                # Save old task to conversation_history (for multi-turn intermediate tasks)
-                # Extract actual task content (remove context prefix)
-                old_task_content_clean = old_task_content
+                old_task_content_clean: str = old_task_content
                 if "=== CURRENT TASK ===" in old_task_content_clean:
                     old_task_content_clean = old_task_content_clean.split("=== CURRENT TASK ===")[-1].strip()
 
-                # Generate and save old task context
-                old_task_context = collect_previous_task_context(
-                    working_directory=options.file_save_path(),
-                    previous_task_content=old_task_content_clean,
-                    previous_task_result=old_task_result,
-                    previous_summary=old_task_summary
-                )
-                task_lock.add_conversation('task_result', old_task_context)
+                task_lock.add_conversation('task_result', {
+                    'task_content': old_task_content_clean,
+                    'task_result': old_task_result,
+                    'working_directory': options.file_save_path()
+                })
 
-                # Extract task content from the new task data immediately
-                # Don't return question field for new_tasks
                 new_task_content = item.data.get('content', '')
 
-                # Get context from conversation_history (includes all previous tasks)
-                if new_task_content:
-                    # Read the last task_result from conversation_history
-                    previous_context = ""
-                    for entry in reversed(task_lock.conversation_history):
-                        if entry['role'] == 'task_result':
-                            previous_context = entry['content']
-                            break
-
-                    # Prepend context to new task content
-                    new_task_content_with_context = previous_context + new_task_content if previous_context else new_task_content
-                else:
-                    new_task_content_with_context = new_task_content
-
-                # Update camel_task to the new task right away
                 if new_task_content:
                     import time
-                    # Generate unique task ID
                     task_id = item.data.get('task_id', f"{int(time.time() * 1000)}-multi")
-                    # Create and assign new task immediately with context
-                    new_camel_task = Task(content=new_task_content_with_context, id=task_id)
-                    # Preserve additional_info from the previous task if it exists
+                    new_camel_task = Task(content=new_task_content, id=task_id)
                     if hasattr(camel_task, 'additional_info') and camel_task.additional_info:
                         new_camel_task.additional_info = camel_task.additional_info
                     camel_task = new_camel_task
@@ -468,16 +465,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
 
-                        # Use existing workforce to decompose (without creating new one)
-                        # Append to _pending_tasks
+                        context_for_multi_turn = build_context_for_workforce(task_lock, options)
+
                         new_sub_tasks = await workforce.handle_decompose_append_task(
-                            camel_task,  # Use the updated camel_task
-                            reset=False  # Keep existing agents and context
+                            camel_task,
+                            reset=False,
+                            coordinator_context=context_for_multi_turn
                         )
 
-                        # Generate summary using existing agents
-                        summary_task_agent_instance = task_summary_agent(options)
-                        new_summary_content = await summary_task(summary_task_agent_instance, camel_task)
+                        task_content_for_summary = new_task_content
+                        if len(task_content_for_summary) > 100:
+                            new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
+                        else:
+                            new_summary_content = f"Follow-up Task|{task_content_for_summary}"
 
                         # Send the extracted events
                         yield to_sub_tasks(camel_task, new_summary_content)
@@ -553,31 +553,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.end:
                 assert camel_task is not None
                 task_lock.status = Status.done
+                final_result: str = await get_task_result_with_optional_summary(camel_task, options)
 
-                # Log main task and available results
-
-                # Get the final result from the main task
-                final_result = str(camel_task.result or "")
-
-
-                # ========== Save task result to task_lock ==========
                 task_lock.last_task_result = final_result
 
-                # Extract actual task content (remove context prefix)
-                task_content = camel_task.content
+                task_content: str = camel_task.content
                 if "=== CURRENT TASK ===" in task_content:
                     task_content = task_content.split("=== CURRENT TASK ===")[-1].strip()
 
-                # Collect full task context
-                full_task_context = collect_previous_task_context(
-                    working_directory=options.file_save_path(),
-                    previous_task_content=task_content,
-                    previous_task_result=final_result,
-                    previous_summary=task_lock.last_task_summary
-                )
-
-                # Save task result to conversation history (special type)
-                task_lock.add_conversation('task_result', full_task_context)
+                task_lock.add_conversation('task_result', {
+                    'task_content': task_content,
+                    'task_result': final_result,
+                    'working_directory': options.file_save_path()
+                })
 
 
                 yield sse_json("end", final_result)
@@ -585,16 +573,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None:
                     workforce.stop_gracefully()
                     logger.info(f"Workforce stopped gracefully for project {options.project_id}")
-                    # Reset workforce to None after stopping
                     workforce = None
                 else:
                     logger.warning(f"Workforce already None at end action for project {options.project_id}")
 
-                # Reset camel_task to None for next task
                 camel_task = None
 
-                # Continue the loop to wait for next message instead of breaking
-                # Don't break here - continue waiting for next action
+                if question_agent is not None:
+                    question_agent.reset()
+                    logger.info(f"Reset question_agent for project {options.project_id}")
             elif item.action == Action.supplement:
 
                 # Check if this might be a misrouted second question
@@ -609,8 +596,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             id=f"{camel_task.id}.{len(camel_task.subtasks)}",
                         )
                     )
-                    task = asyncio.create_task(workforce.eigent_start(camel_task.subtasks))
-                    task_lock.add_background_task(task)
+                    if workforce is not None:
+                        task = asyncio.create_task(workforce.eigent_start(camel_task.subtasks))
+                        task_lock.add_background_task(task)
             elif item.action == Action.budget_not_enough:
                 if workforce is not None:
                     workforce.pause()
@@ -706,32 +694,23 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
-async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock = None) -> str | Literal[True]:
-    """
-    Unified question confirmation using structured output.
-
-    Args:
-        agent: The agent to perform the confirmation
-        prompt: The user's question/query
-        task_lock: Optional TaskLock containing conversation history and previous results
-
-    Returns:
-        Either the answer for simple queries or True for complex tasks
-    """
+async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None) -> str | Literal[True]:
+    """Unified question confirmation using structured output."""
 
     context_prompt = ""
     if task_lock and task_lock.conversation_history:
         context_prompt = "=== Previous Conversation ===\n"
         for entry in task_lock.conversation_history:
-            role = entry['role']
-            content = entry['content']
-            if role == 'task_result':
-                context_prompt += f"[Task Completed]:\n{content}\n"
-            else:
-                context_prompt += f"{role.capitalize()}: {content}\n"
+            if entry['role'] == 'task_result':
+                if isinstance(entry['content'], dict):
+                    formatted_context = format_task_context(entry['content'])
+                    context_prompt += f"\n{formatted_context}\n"
+                else:
+                    context_prompt += f"{entry['content']}\n"
+            elif entry['role'] == 'assistant':
+                context_prompt += f"Assistant: {entry['content']}\n"
         context_prompt += "\n"
-    if task_lock and task_lock.last_task_result:
-        context_prompt += f"=== Last Task Result ===\n{task_lock.last_task_result}\n\n"
+
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
 Analyze if this is a simple question or complex task:
@@ -796,6 +775,84 @@ Do not include any other text or formatting.
         parts = summary.split('|', 1)
 
     return summary
+
+
+async def summary_subtasks_result(agent: ListenChatAgent, task: Task) -> str:
+    """
+    Summarize the aggregated results from all subtasks into a concise summary.
+
+    Args:
+        agent: The summary agent to use
+        task: The main task containing subtasks and their aggregated results
+
+    Returns:
+        A concise summary of all subtask results
+    """
+    subtasks_info = ""
+    for i, subtask in enumerate(task.subtasks, 1):
+        subtasks_info += f"\n**Subtask {i}**\n"
+        subtasks_info += f"Description: {subtask.content}\n"
+        subtasks_info += f"Result: {subtask.result or 'No result'}\n"
+        subtasks_info += "---\n"
+
+    prompt = f"""You are a professional summarizer. Summarize the results of the following subtasks.
+
+Main Task: {task.content}
+
+Subtasks (with descriptions and results):
+---
+{subtasks_info}
+---
+
+Instructions:
+1. Provide a concise summary of what was accomplished
+2. Highlight key findings or outputs from each subtask
+3. Mention any important files created or actions taken
+4. Use bullet points or sections for clarity
+5. DO NOT repeat the task name in your summary - go straight to the results
+6. Keep it professional but conversational
+
+Summary:
+"""
+
+    res = agent.step(prompt)
+    summary = res.msgs[0].content
+
+    logger.info(f"Generated subtasks summary for task {task.id} with {len(task.subtasks)} subtasks")
+
+    return summary
+
+
+async def get_task_result_with_optional_summary(task: Task, options: Chat) -> str:
+    """
+    Get the task result, with LLM summary if there are multiple subtasks.
+
+    Args:
+        task: The task to get result from
+        options: Chat options for creating summary agent
+
+    Returns:
+        The task result (summarized if multiple subtasks, raw otherwise)
+    """
+    result = str(task.result or "")
+
+    if task.subtasks and len(task.subtasks) > 1:
+        logger.info(f"Task {task.id} has {len(task.subtasks)} subtasks, generating summary")
+        try:
+            summary_agent = task_summary_agent(options)
+            summarized_result = await summary_subtasks_result(summary_agent, task)
+            result = summarized_result
+            logger.info(f"Successfully generated summary for task {task.id}")
+        except Exception as e:
+            logger.error(f"Failed to generate summary for task {task.id}: {e}")
+    elif task.subtasks and len(task.subtasks) == 1:
+        logger.info(f"Task {task.id} has only 1 subtask, skipping LLM summary")
+        if result and "--- Subtask" in result and "Result ---" in result:
+            parts = result.split("Result ---", 1)
+            if len(parts) > 1:
+                result = parts[1].strip()
+
+    return result
 
 
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:

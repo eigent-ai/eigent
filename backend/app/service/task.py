@@ -254,14 +254,14 @@ class TaskLock:
     """Track all background tasks for cleanup"""
 
     # Context management fields
-    conversation_history: List[Dict[str, str]]
+    conversation_history: List[Dict[str, Any]]
     """Store conversation history for context"""
     last_task_result: str
     """Store the last task execution result"""
-    last_task_summary: str
-    """Store the last task summary"""
     question_agent: Optional[Any]
     """Persistent question confirmation agent"""
+    summary_generated: bool
+    """Track if summary has been generated for this project"""
 
     def __init__(self, id: str, queue: asyncio.Queue, human_input: dict) -> None:
         self.id = id
@@ -310,7 +310,7 @@ class TaskLock:
                     pass
         self.background_tasks.clear()
 
-    def add_conversation(self, role: str, content: str):
+    def add_conversation(self, role: str, content: str | dict):
         """Add a conversation entry to history"""
         self.conversation_history.append({
             'role': role,

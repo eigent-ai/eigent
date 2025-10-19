@@ -1328,10 +1328,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						else if (agent_summary_end) {
 							console.log('agent_summary_end', agent_summary_end)
 							endMessage = agent_summary_end.summary || ""
-						} else if (endMessage.indexOf('Result ---') !== -1) {
-							endMessage = endMessage.split('Result ---').at(-1) || ""
 						}
-
 
 						console.log('endMessage', endMessage)
 						newMessage = {
