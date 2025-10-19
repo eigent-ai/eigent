@@ -235,7 +235,9 @@ const chatStore = create<ChatStore>()(
 				apiModel = {
 					api_key: res.value,
 					model_type: cloud_model_type,
-					model_platform: cloud_model_type.includes('gpt') ? 'openai' : 'gemini',
+					model_platform: cloud_model_type.includes('gpt') ? 'openai' : 
+									cloud_model_type.includes('claude') ? 'anthropic' :
+									cloud_model_type.includes('gemini') ? 'gemini' : 'openai-compatible-model',
 					api_url: res.api_url,
 					extra_params: {}
 				}
@@ -885,12 +887,9 @@ const chatStore = create<ChatStore>()(
 							taskId as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
-							// Filter out directories, only upload actual files
-							const files = res.filter((file: any) => !file.isFolder);
-
 							// Upload files sequentially to avoid overwhelming the server
 							const uploadResults = await Promise.allSettled(
-								files.map(async (file: any) => {
+								res.filter((file: any) => !file.isFolder).map(async (file: any) => {
 									try {
 										// Read file content using Electron API
 										const result = await window.ipcRenderer.invoke('read-file', file.path);
