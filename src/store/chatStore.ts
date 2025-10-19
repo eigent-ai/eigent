@@ -97,6 +97,7 @@ export interface ChatStore {
 	setSnapshotsTemp: (taskId: string, snapshot: any) => void,
 	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
 	clearTasks: () => void,
+	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
 }
 
 
@@ -463,7 +464,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						create,
 						setTaskTime,
 						setElapsed,
-						setActiveTaskId } = getCurrentChatStore()
+						setActiveTaskId,
+						setIsContextExceeded} = getCurrentChatStore()
 
 					const currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
@@ -1058,13 +1060,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					);
 
 					// Set flag to block input and set status to pause
-					set((state) => {
-						if (state.tasks[currentTaskId]) {
-							state.tasks[currentTaskId].isContextExceeded = true;
-							state.tasks[currentTaskId].status = 'pause';
-						}
-					});
-					uploadLog(currentTaskId, type)
+					setIsContextExceeded(currentTaskId, true);
+					setStatus(currentTaskId, "pause");
+					uploadLog(currentTaskId, type);
 					return
 				}
 
@@ -1984,6 +1982,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				},
 			}))
 		},
+		setIsContextExceeded: (taskId, isContextExceeded) => {
+			set((state) => ({
+				...state,
+				tasks: {
+					...state.tasks,
+					[taskId]: {
+						...state.tasks[taskId],
+						isContextExceeded: isContextExceeded,
+					},
+				},
+			}))
+		}
 	})
 );
 
