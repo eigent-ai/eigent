@@ -294,10 +294,10 @@ export default function ChatBox(): JSX.Element {
 														onTyping={scrollToBottom}
 													/>
 													<div className="flex gap-2 flex-wrap">
-														{item.fileList?.map((file) => {
+														{item.fileList?.map((file, fileIndex) => {
 															return (
 																<div
-																	key={"file-" + file.name}
+																	key={`file-${item.id}-${fileIndex}-${file.name}`}
 																	onClick={() => {
 																		// set selected file
 																		chatStore.setSelectedFile(
@@ -376,10 +376,10 @@ export default function ChatBox(): JSX.Element {
 													onTyping={scrollToBottom}
 												/> */}
 												<div className="flex gap-2 flex-wrap">
-													{item.fileList?.map((file) => {
+													{item.fileList?.map((file, fileIndex) => {
 														return (
 															<div
-																key={"file-" + file.name}
+																key={`file-${item.id}-${fileIndex}-${file.name}`}
 																onClick={() => {
 																	// set selected file
 																	chatStore.setSelectedFile(

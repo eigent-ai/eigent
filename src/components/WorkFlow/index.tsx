@@ -31,6 +31,8 @@ const nodeTypes: NodeTypes = {
 	node: (props: any) => <CustomNodeComponent {...props} />,
 };
 
+const VIEWPORT_ANIMATION_DURATION = 500;
+
 export default function Workflow({
 	taskAssigning,
 }: {
@@ -298,15 +300,17 @@ export default function Workflow({
 		if (isAnimating) return;
 		const viewport = getViewport();
 		setIsAnimating(true);
+		// Prevent scrolling past x=0 (too far right) when moving left
+		const newX = dx > 0 ? Math.min(0, viewport.x + dx) : viewport.x + dx;
 		setViewport(
-			{ x: viewport.x + dx, y: viewport.y, zoom: viewport.zoom },
+			{ x: newX, y: viewport.y, zoom: viewport.zoom },
 			{
-				duration: 500,
+				duration: VIEWPORT_ANIMATION_DURATION,
 			}
 		);
 		setTimeout(() => {
 			setIsAnimating(false);
-		}, 500);
+		}, VIEWPORT_ANIMATION_DURATION);
 	};
 
 	const handleShare = async (taskId: string) => {
@@ -404,10 +408,6 @@ export default function Workflow({
 					nodesDraggable={isEditMode}
 					panOnScrollMode={PanOnScrollMode.Horizontal}
 					onMove={(event, viewport) => {
-						const current = getViewport();
-						if (viewport.zoom !== current.zoom) {
-							setViewport({ ...viewport, zoom: current.zoom });
-						}
 						if (isEditMode) {
 							setLastViewport(viewport);
 						}
