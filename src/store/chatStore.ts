@@ -578,12 +578,26 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "wait_confirm") {
+						const {content, question} = agentMessages.data;
 						setHasWaitComfirm(currentTaskId, true)
 						setIsPending(currentTaskId, false)
+
+						const currentChatStore = getCurrentChatStore();
+						//Make sure to add user Message on replay and avoid duplication of first msg						
+						if(type === "replay" && question && 
+							!(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+							addMessages(currentTaskId, {
+								id: generateUniqueId(),
+								role: "user",
+								content: question as string,
+								step: "wait_confirm",
+								isConfirm: false,
+							})
+						}
 						addMessages(currentTaskId, {
 							id: generateUniqueId(),
 							role: "agent",
-							content: agentMessages.data!.content as string,
+							content: content as string,
 							step: "wait_confirm",
 							isConfirm: false,
 						})
