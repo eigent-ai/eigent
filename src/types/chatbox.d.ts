@@ -112,6 +112,9 @@ declare global {
 			output?: string
 			result?: string
 			tools?: string[];
+			//Context Length
+			current_length?: number;
+			max_length?: number
 		};
 		status?: 'running' | 'filled' | 'completed';
 	}
