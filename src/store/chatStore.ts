@@ -214,6 +214,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							content: messageContent,
 							attaches: messageAttaches || [],
 						});
+						targetChatStore.getState().setHasMessages(newTaskId, true);
 					}
 				}
 			}
