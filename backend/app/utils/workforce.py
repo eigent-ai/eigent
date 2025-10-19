@@ -70,8 +70,15 @@ class Workforce(BaseWorkforce):
             use_structured_output_handler=use_structured_output_handler,
         )
 
-    def eigent_make_sub_tasks(self, task: Task):
-        """split process_task method to eigent_make_sub_tasks and eigent_start method"""
+    def eigent_make_sub_tasks(self, task: Task, coordinator_context: str = ""):
+        """
+        Split process_task method to eigent_make_sub_tasks and eigent_start method.
+
+        Args:
+            task: The main task to decompose
+            coordinator_context: Optional context ONLY for coordinator agent during decomposition.
+                                This context will NOT be passed to subtasks or worker agents.
+        """
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
@@ -87,8 +94,19 @@ class Workforce(BaseWorkforce):
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
 
-        # Decompose the task into subtasks first
-        subtasks_result = self._decompose_task(task)
+        if coordinator_context:
+            original_content = task.content
+            task_with_context = coordinator_context
+            if coordinator_context:
+                task_with_context += "\n=== CURRENT TASK ===\n"
+            task_with_context += original_content
+            task.content = task_with_context
+
+            subtasks_result = self._decompose_task(task)
+
+            task.content = original_content
+        else:
+            subtasks_result = self._decompose_task(task)
 
         # Handle both streaming and non-streaming results
         if isinstance(subtasks_result, Generator):
@@ -118,6 +136,64 @@ class Workforce(BaseWorkforce):
         finally:
             if self._state != WorkforceState.STOPPED:
                 self._state = WorkforceState.IDLE
+
+    async def handle_decompose_append_task(
+        self, task: Task, reset: bool = True, coordinator_context: str = ""
+    ) -> List[Task]:
+        """
+        Override to support coordinator_context parameter.
+        Handle task decomposition and validation, then append to pending tasks.
+
+        Args:
+            task: The task to be processed
+            reset: Should trigger workforce reset (Workforce must not be running)
+            coordinator_context: Optional context ONLY for coordinator during decomposition
+
+        Returns:
+            List[Task]: The decomposed subtasks or the original task
+        """
+        if not validate_task_content(task.content, task.id):
+            task.state = TaskState.FAILED
+            task.result = "Task failed: Invalid or empty content provided"
+            logger.warning(
+                f"Task {task.id} rejected: Invalid or empty content. "
+                f"Content preview: '{task.content}'"
+            )
+            return [task]
+
+        if reset and self._state != WorkforceState.RUNNING:
+            self.reset()
+            logger.info("Workforce reset before handling task.")
+
+        self._task = task
+        task.state = TaskState.FAILED
+
+        if coordinator_context:
+            original_content = task.content
+            task_with_context = coordinator_context
+            if coordinator_context:
+                task_with_context += "\n=== CURRENT TASK ===\n"
+            task_with_context += original_content
+            task.content = task_with_context
+
+            subtasks_result = self._decompose_task(task)
+
+            task.content = original_content
+        else:
+            subtasks_result = self._decompose_task(task)
+
+        if isinstance(subtasks_result, Generator):
+            subtasks = []
+            for new_tasks in subtasks_result:
+                subtasks.extend(new_tasks)
+        else:
+            subtasks = subtasks_result
+
+        if subtasks:
+            self._pending_tasks.extendleft(reversed(subtasks))
+            logger.info(f"Appended {len(subtasks)} subtasks to pending tasks")
+
+        return subtasks if subtasks else [task]
 
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification to the frontend, and send "start execution" notification when the task actually begins execution
