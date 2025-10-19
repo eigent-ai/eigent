@@ -57,6 +57,7 @@ export interface ChatStore {
 	handleConfirmTask: (project_id:string, taskId: string, type?: string) => void;
 	addMessages: (taskId: string, messages: Message) => void;
 	setMessages: (taskId: string, messages: Message[]) => void;
+	removeMessage: (taskId: string, messageId: string) => void;
 	setAttaches: (taskId: string, attaches: File[]) => void;
 	setSummaryTask: (taskId: string, summaryTask: string) => void;
 	setHasWaitComfirm: (taskId: string, hasWaitComfirm: boolean) => void;
@@ -441,6 +442,41 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					//Enable it for the rest of current SSE session
 					skipFirstConfirmOnReplay = false;
 
+					//Persistent workforce instance, new chat
+					//If confirmed -> subtasks -> confirmed (use a new chatStore)
+					let currentTaskId = getCurrentTaskId();
+					const previousChatStore = getCurrentChatStore()
+					if(agentMessages.step === "confirmed" && 
+						previousChatStore.tasks[currentTaskId].messages.some(m => m.step === "to_sub_tasks")) {
+						//Create a newChatStore as we are not touching startTask
+						const initResult = projectStore.appendInitChatStore(projectStore.activeProjectId!);
+						if(initResult) {
+							const {taskId: newTaskId, chatStore: newChatStore} = initResult;
+
+							/**
+							 * Get Last user message
+							 * @todo TODO: Internalize the message function when Continuing conversation with improve API
+							 * Just like @function chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
+							 * Instead of manually removing the message if its a new workforce is needed
+							 */
+							const lastMessage = previousChatStore.tasks[currentTaskId].messages.at(-1);
+							previousChatStore.removeMessage(currentTaskId, lastMessage?.id!);
+
+							newChatStore?.getState().setIsPending(newTaskId, true);
+							// Add the user message to show it in UI
+							newChatStore?.getState().addMessages(newTaskId, {
+								id: generateUniqueId(),
+								role: "user",
+								content: lastMessage?.content ?? "",
+								//Use previous chatStore's attaches
+								attaches: JSON.parse(JSON.stringify(previousChatStore.tasks[currentTaskId]?.attaches)) || [],
+							});
+
+							updateLockedReferences(newChatStore, newTaskId);
+							console.log("[NEW CHATSTORE] In current workforce instance");
+						}
+					}
+
 					const { 
 						setNuwFileNum, 
 						setCotList, 
@@ -467,7 +503,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setActiveTaskId,
 						setIsContextExceeded} = getCurrentChatStore()
 
-					const currentTaskId = getCurrentTaskId();
+					currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
 					if (agentMessages.step === "to_sub_tasks") {
 						// Check if this is a multi-turn scenario after task completion
@@ -1468,6 +1504,20 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						messages: [
 							...messages,
 						],
+					},
+				},
+			}))
+		},
+		removeMessage(taskId, messageId) {
+			set((state) => ({
+				...state,
+				tasks: {
+					...state.tasks,
+					[taskId]: {
+						...state.tasks[taskId],
+						messages: state.tasks[taskId].messages.filter(
+							(message) => message.id !== messageId
+						),
 					},
 				},
 			}))
