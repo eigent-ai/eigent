@@ -536,8 +536,7 @@ export default function HistorySidebar() {
 																		<TooltipTrigger asChild>
 																			<span>
 																				{" "}
-																				{(task?.question &&
-																					task?.question?.split("|")?.[0]) ||
+																				{task?.question?.split("|")?.[0] ||
 																					t("task-hub.new-project")}
 																			</span>
 																		</TooltipTrigger>
