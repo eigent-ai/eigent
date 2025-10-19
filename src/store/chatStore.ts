@@ -1050,24 +1050,20 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					// Show toast notification
 					toast.dismiss();
 					toast.error(
-						<div className="flex flex-col gap-2">
-							<div className="font-semibold">⚠️ Context Limit Exceeded</div>
-							<div className="text-sm">
-								The conversation history is too long ({currentLength.toLocaleString()} / {maxLength.toLocaleString()} characters).
-							</div>
-							<div className="text-sm font-medium mt-1">
-								Please create a new project to continue your work.
-							</div>
-						</div>,
+						`⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new project to continue your work.`,
 						{
 							duration: Infinity,
 							closeButton: true,
-							important: true,
 						}
 					);
-					
-					// Set status to pause to prevent further actions
-					setStatus(currentTaskId, 'pause');
+
+					// Set flag to block input and set status to pause
+					set((state) => {
+						if (state.tasks[currentTaskId]) {
+							state.tasks[currentTaskId].isContextExceeded = true;
+							state.tasks[currentTaskId].status = 'pause';
+						}
+					});
 					uploadLog(currentTaskId, type)
 					return
 				}
