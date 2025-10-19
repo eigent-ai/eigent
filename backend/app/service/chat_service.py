@@ -88,21 +88,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     assert isinstance(item, ActionImproveData)
                     question = item.data
                 if len(question) < 12 and len(options.attaches) == 0:
-                    try:
-                        confirm = await asyncio.wait_for(
-                            question_confirm(question_agent, question), timeout=8
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning(f"question_confirm timeout for task {options.task_id}")
-                        # Notify frontend to avoid appearing stuck and remain in simple-answer path
-                        yield sse_json(
-                            "notice",
-                            {"notice": "Quick classification timed out. Responding directly."},
-                        )
-                        confirm = sse_json(
-                            "wait_confirm",
-                            {"content": "Classification timed out. Please confirm or try again."},
-                        )
+                    messages, confirm = await question_confirm(
+                        question_agent, question, timeout=8.0, task_id=options.task_id
+                    )
+                    for msg in messages:
+                        yield msg
                 else:
                     confirm = True
 
@@ -315,8 +305,27 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
-async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal[True]:
-    prompt = f"""
+async def question_confirm(
+    agent: ListenChatAgent,
+    prompt: str,
+    timeout: float = 8.0,
+    task_id: str = ""
+) -> tuple[list, str | Literal[True]]:
+    """
+    Confirm whether a question requires workforce processing.
+
+    Args:
+        agent: The agent to use for classification
+        prompt: The user's question
+        timeout: Timeout in seconds (default: 8.0)
+        task_id: Task ID for logging
+
+    Returns:
+        Tuple of (messages_to_yield, confirm_result)
+        - messages_to_yield: List of SSE messages to yield (empty if no timeout)
+        - confirm_result: True to proceed with workforce, or sse_json for user confirmation
+    """
+    analysis_prompt = f"""
 > **Your Role:** You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action.
 >
 > **Your Process:**
@@ -331,12 +340,26 @@ async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal
 >     * **For a Simple Query:** Provide a direct and helpful response.
 >     * **For a Complex Task:** Your *only* response should be "yes". This will trigger a specialized workforce to handle the task. Do not include any other text, punctuation, or pleasantries.
         """
-    resp = agent.step(prompt)
-    logger.info(f"resp: {agent.chat_history}")
-    if resp.msgs[0].content.lower() != "yes":
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content})
-    else:
-        return True
+
+    try:
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(agent.step, analysis_prompt),
+            timeout=timeout
+        )
+        logger.info(f"resp: {agent.chat_history}")
+
+        if resp.msgs[0].content.lower() != "yes":
+            return ([], sse_json("wait_confirm", {"content": resp.msgs[0].content}))
+        else:
+            return ([], True)
+
+    except asyncio.TimeoutError:
+        logger.warning(f"question_confirm timeout for task {task_id}")
+        notice = sse_json(
+            "notice",
+            {"notice": "Quick classification timed out. Responding directly."}
+        )
+        return ([notice], True)
 
 
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
