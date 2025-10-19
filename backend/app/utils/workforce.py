@@ -85,7 +85,6 @@ class Workforce(BaseWorkforce):
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        self._pending_tasks.append(task)
 
         # Decompose the task into subtasks first
         subtasks_result = self._decompose_task(task)
@@ -133,7 +132,9 @@ class Workforce(BaseWorkforce):
             # Find task content
             task_obj = get_camel_task(item.task_id, tasks)
             if task_obj is None:
-                logger.warning(f"[WF] WARN: Task {item.task_id} not found in tasks list during ASSIGN phase. This may indicate a task tree inconsistency.")
+                logger.warning(
+                    f"[WF] WARN: Task {item.task_id} not found in tasks list during ASSIGN phase. This may indicate a task tree inconsistency."
+                )
                 content = ""
             else:
                 content = task_obj.content
@@ -179,7 +180,11 @@ class Workforce(BaseWorkforce):
         await super()._post_task(task, assignee_id)
 
     def add_single_agent_worker(
-        self, description: str, worker: ListenChatAgent, pool_max_size: int = DEFAULT_WORKER_POOL_SIZE
+        self,
+        description: str,
+        worker: ListenChatAgent,
+        pool_max_size: int = DEFAULT_WORKER_POOL_SIZE,
+        enable_workflow_memory: bool = False,
     ) -> BaseWorkforce:
         if self._state == WorkforceState.RUNNING:
             raise RuntimeError("Cannot add workers while workforce is running. Pause the workforce first.")
@@ -195,6 +200,8 @@ class Workforce(BaseWorkforce):
             worker=worker,
             pool_max_size=pool_max_size,
             use_structured_output_handler=self.use_structured_output_handler,
+            context_utility=None, # Will be set during save/load operations
+            enable_workflow_memory=enable_workflow_memory,
         )
         self._children.append(worker_node)
 
