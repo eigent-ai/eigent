@@ -16,6 +16,7 @@ import { copyBrowserData } from './copy'
 import { findAvailablePort } from './init'
 import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
+import archiver from 'archiver';
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
@@ -167,6 +168,11 @@ const initializeApp = () => {
 const getBackupLogPath = () => {
   const userDataPath = app.getPath('userData')
   return path.join(userDataPath, 'logs', 'main.log')
+}
+// Get app log path
+const getAppLogPath = () => {
+  const eigentBase = path.join(os.homedir(), '.eigent');
+  return path.join(eigentBase, 'runtime', 'log')
 }
 // Constants define
 const BROWSER_PATHS = {
@@ -323,15 +329,26 @@ function registerIpcHandlers() {
   // ==================== log export handler ====================
   ipcMain.handle('export-log', async () => {
     try {
-      let targetLogPath = logPath;
+      // Always use main.log as the target log file
+      let targetLogPath = getBackupLogPath(); // This returns main.log
+      let appLogPath = getAppLogPath();
+      
+      // Check if main.log exists, if not try the electron-log path
       if (!fs.existsSync(targetLogPath)) {
-        const backupPath = getBackupLogPath();
-        if (fs.existsSync(backupPath)) {
-          targetLogPath = backupPath;
-        } else {
-          return { success: false, error: 'no log file' };
-        }
+        targetLogPath = logPath; // fallback to electron-log path
       }
+      
+      // Check if app log path exists
+      if (!fs.existsSync(appLogPath)) {
+        log.warn('App log path does not exist:', appLogPath);
+        appLogPath = ''; // Set to empty if not exists
+      }
+
+      // Debug log paths
+      log.info('Target log path:', targetLogPath);
+      log.info('App log path:', appLogPath);
+      log.info('Target log exists:', fs.existsSync(targetLogPath));
+      log.info('App log exists:', fs.existsSync(appLogPath));
 
       await fsp.access(targetLogPath, fs.constants.R_OK);
       const stats = await fsp.stat(targetLogPath);
@@ -342,25 +359,78 @@ function registerIpcHandlers() {
       const logContent = await fsp.readFile(targetLogPath, 'utf-8');
 
       // Get app version and system version
-      const appVersion = app.getVersion();
-      const platform = process.platform;
-      const arch = process.arch;
-      const systemVersion = `${platform}-${arch}`;
-      const defaultFileName = `eigent-${appVersion}-${systemVersion}-${Date.now()}.log`;
+        const appVersion = app.getVersion();
+        const platform = process.platform;
+        const arch = process.arch;
+        const systemVersion = `${platform}-${arch}`;
+        const defaultFileName = `eigent-logs-${appVersion}-${systemVersion}-${Date.now()}.zip`;
 
-      // Show save dialog
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        title: 'save log file',
-        defaultPath: defaultFileName,
-        filters: [{ name: 'log file', extensions: ['log', 'txt'] }]
-      });
+        // Show save dialog
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save Log Archive',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP Archive', extensions: ['zip'] }]
+        });
 
-      if (canceled || !filePath) {
-        return { success: false, error: '' };
-      }
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
 
-      await fsp.writeFile(filePath, logContent, 'utf-8');
-      return { success: true, savedPath: filePath };
+        // Create zip archive
+        const output = fs.createWriteStream(filePath);
+        const archive = archiver('zip', {
+          zlib: { level: 9 } // Maximum compression
+        });
+
+        // Handle archive events
+        archive.on('error', (err) => {
+          throw err;
+        });
+
+        archive.on('warning', (err) => {
+          if (err.code === 'ENOENT') {
+            log.warn('Archive warning:', err);
+          } else {
+            throw err;
+          }
+        });
+
+        // Pipe archive data to the file
+        archive.pipe(output);
+
+        // Add the target log file to the root of the zip
+        if (fs.existsSync(targetLogPath)) {
+          const logFileName = path.basename(targetLogPath);
+          archive.file(targetLogPath, { name: logFileName });
+        }
+
+        // Add the app log folder contents to the second level
+        if (appLogPath && fs.existsSync(appLogPath)) {
+          const appLogStats = await fsp.stat(appLogPath);
+          if (appLogStats.isDirectory()) {
+            // Add entire directory to archive with its folder name
+            const folderName = path.basename(appLogPath);
+            archive.directory(appLogPath, folderName);
+          } else if (appLogStats.isFile()) {
+            // Add single file to archive
+            const appLogFileName = path.basename(appLogPath);
+            archive.file(appLogPath, { name: appLogFileName });
+          }
+        }
+
+        // Finalize the archive
+        await archive.finalize();
+
+        // Wait for the output stream to finish
+        await new Promise((resolve, reject) => {
+          output.on('close', () => {
+            log.info(`Archive created successfully. Total bytes: ${archive.pointer()}`);
+            resolve(void 0);
+          });
+          output.on('error', reject);
+        });
+
+        return { success: true, savedPath: filePath };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
