@@ -2,7 +2,7 @@ import asyncio
 from camel.toolkits.base import BaseToolkit
 from camel.toolkits.function_tool import FunctionTool
 from app.service.task import Action, ActionAskData, ActionNoticeData, get_task_lock
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
 from utils import traceroot_wrapper as traceroot
@@ -10,6 +10,7 @@ from utils import traceroot_wrapper as traceroot
 logger = traceroot.get_logger("human_toolkit")
 
 
+@auto_listen_toolkit(BaseToolkit)
 class HumanToolkit(BaseToolkit, AbstractToolkit):
     r"""A class representing a toolkit for human interaction.
     Note:

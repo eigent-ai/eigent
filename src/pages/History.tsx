@@ -565,10 +565,10 @@ export default function Home() {
 						{historyTasks.map((task) => {
 							return (
 								<div
-									onClick={() => handleSetActive(task.task_id, task.question)}
+									onClick={() => handleSetActive(task?.task_id, task?.question)}
 									key={task.task_id}
 									className={`${
-										chatStore.activeTaskId === task.task_id
+										chatStore.activeTaskId === task?.task_id
 											? "!bg-white-100%"
 											: ""
 									} relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center flex-wrap gap-md flex-initial w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] p-6 shadow-history-item border border-solid border-border-disabled`}
@@ -587,7 +587,7 @@ export default function Home() {
 												variant="primary"
 												className="text-xs leading-17 font-medium text-nowrap"
 											>
-												# Token {task.tokens || 0}
+												# Token {task?.tokens || 0}
 											</Tag>
 										</div>
 									</div>
@@ -607,11 +607,11 @@ export default function Home() {
 							return (
 								<div
 									onClick={() => {
-										handleSetActive(task.task_id, task.question);
+										handleSetActive(task?.task_id, task?.question);
 									}}
 									key={task.task_id}
 									className={`${
-										chatStore.activeTaskId === task.task_id
+										chatStore.activeTaskId === task?.task_id
 											? "!bg-white-100%"
 											: ""
 									} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
@@ -625,7 +625,7 @@ export default function Home() {
 											<TooltipTrigger asChild>
 												<span>
 													{" "}
-													{task?.question.split("|")[0] ||
+													{task?.question?.split("|")?.[0] ||
 														t("task-hub.new-project")}
 												</span>
 											</TooltipTrigger>
@@ -635,7 +635,7 @@ export default function Home() {
 											>
 												<div>
 													{" "}
-													{task?.question.split("|")[0] ||
+													{task?.question?.split("|")?.[0] ||
 														t("task-hub.new-project")}
 												</div>
 											</TooltipContent>
@@ -645,7 +645,7 @@ export default function Home() {
 										variant="primary"
 										className="text-xs leading-17 font-medium text-nowrap"
 									>
-										# Token {task.tokens || 0}
+										# Token {task?.tokens || 0}
 									</Tag>
 
 									<Popover>
@@ -667,7 +667,7 @@ export default function Home() {
 														className="w-full"
 														onClick={(e) => {
 															e.stopPropagation();
-															handleShare(task.task_id);
+															handleShare(task?.task_id);
 														}}
 													>
 														<Share size={16} />
@@ -682,7 +682,7 @@ export default function Home() {
 														className="w-full"
 														onClick={(e) => {
 															e.stopPropagation();
-															handleDelete(task.id);
+															handleDelete(task?.id);
 														}}
 													>
 														<Trash2
