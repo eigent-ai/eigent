@@ -151,9 +151,16 @@ function processProtocolUrl(url: string) {
 function processQueuedProtocolUrls() {
   if (protocolUrlQueue.length > 0) {
     log.info('Processing queued protocol URLs:', protocolUrlQueue.length);
+
+    // Verify window is ready before processing
+    if (!win || win.isDestroyed() || !isWindowReady) {
+      log.warn('Window not ready for processing queued URLs, keeping URLs in queue');
+      return;
+    }
+
     const urls = [...protocolUrlQueue];
     protocolUrlQueue = [];
-    
+
     urls.forEach(url => {
       processProtocolUrl(url);
     });
