@@ -8,6 +8,7 @@ from inflection import titleize
 from pydash import chain
 from app.component.debug import dump_class
 from app.component.environment import env
+from app.utils.file_utils import get_working_directory
 from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
@@ -448,7 +449,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_conversation('task_result', {
                     'task_content': old_task_content_clean,
                     'task_result': old_task_result,
-                    'working_directory': env("file_save_path", options.file_save_path())
+                    'working_directory': get_working_directory(options, task_lock)
                 })
 
                 new_task_content = item.data.get('content', '')
@@ -585,7 +586,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_conversation('task_result', {
                     'task_content': task_content,
                     'task_result': final_result,
-                    'working_directory': env("file_save_path", options.file_save_path())
+                    'working_directory': get_working_directory(options, task_lock)
                 })
 
 
@@ -876,8 +877,10 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
     return result
 
 
-async def construct_workforce(options: Chat, task_lock: TaskLock = None) -> tuple[Workforce, ListenChatAgent]:
-    working_directory = env("file_save_path", options.file_save_path()) if task_lock else options.file_save_path()
+async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
+    working_directory = get_working_directory(options)
+    logger.info(f"Using working directory: {working_directory}")
+    
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -1029,7 +1032,7 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
 
 
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
-    working_directory = env("file_save_path", options.file_save_path())
+    working_directory = get_working_directory(options)
     tool_names = []
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:

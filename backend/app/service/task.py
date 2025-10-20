@@ -342,6 +342,11 @@ def get_task_lock(id: str) -> TaskLock:
     return task_locks[id]
 
 
+def get_task_lock_if_exists(id: str) -> TaskLock | None:
+    """Get task lock if it exists, otherwise return None"""
+    return task_locks.get(id)
+
+
 def create_task_lock(id: str) -> TaskLock:
     if id in task_locks:
         raise ProgramException("Task already exists")

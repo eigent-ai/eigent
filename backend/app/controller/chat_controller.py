@@ -114,7 +114,7 @@ def improve(id: str, data: SupplementChat):
                 os.environ["file_save_path"] = str(new_folder_path)
                 chat_logger.info(f"Updated file_save_path to: {new_folder_path}")
                 
-                # Store the new folder path in task_lock for potential cleanup
+                # Store the new folder path in task_lock for potential cleanup and persistence
                 task_lock.new_folder_path = new_folder_path
             else:
                 chat_logger.warning(f"Could not update file_save_path - email: {current_email}, project_id: {id}")
