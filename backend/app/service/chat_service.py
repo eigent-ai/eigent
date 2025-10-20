@@ -43,8 +43,14 @@ from camel.models import ModelProcessingError
 import os
 
 
-def format_task_context(task_data: dict) -> str:
-    """Format structured task data into a readable context string."""
+def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
+    """Format structured task data into a readable context string.
+
+    Args:
+        task_data: Dictionary containing task content, result, and working directory
+        seen_files: Optional set to track already-listed files and avoid duplicates (deprecated, use skip_files instead)
+        skip_files: If True, skip the file listing entirely
+    """
     context_parts = []
 
     if task_data.get('task_content'):
@@ -53,25 +59,32 @@ def format_task_context(task_data: dict) -> str:
     if task_data.get('task_result'):
         context_parts.append(f"Previous Task Result: {task_data['task_result']}")
 
-    working_directory = task_data.get('working_directory')
-    if working_directory:
-        try:
-            if os.path.exists(working_directory):
-                generated_files = []
-                for root, dirs, files in os.walk(working_directory):
-                    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
-                    for file in files:
-                        if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
-                            file_path = os.path.join(root, file)
-                            absolute_path = os.path.abspath(file_path)
-                            generated_files.append(absolute_path)
+    # Skip file listing if requested
+    if not skip_files:
+        working_directory = task_data.get('working_directory')
+        if working_directory:
+            try:
+                if os.path.exists(working_directory):
+                    generated_files = []
+                    for root, dirs, files in os.walk(working_directory):
+                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                        for file in files:
+                            if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                                file_path = os.path.join(root, file)
+                                absolute_path = os.path.abspath(file_path)
 
-                if generated_files:
-                    context_parts.append("Generated Files from Previous Task:")
-                    for file_path in sorted(generated_files):
-                        context_parts.append(f"  - {file_path}")
-        except Exception as e:
-            logger.warning(f"Failed to collect generated files: {e}")
+                                # Only add if not seen before (or if we're not tracking seen files)
+                                if seen_files is None or absolute_path not in seen_files:
+                                    generated_files.append(absolute_path)
+                                    if seen_files is not None:
+                                        seen_files.add(absolute_path)
+
+                    if generated_files:
+                        context_parts.append("Generated Files from Previous Task:")
+                        for file_path in sorted(generated_files):
+                            context_parts.append(f"  - {file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to collect generated files: {e}")
 
     return "\n".join(context_parts)
 
@@ -154,26 +167,65 @@ def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100
     return is_exceeded, total_length
 
 
-def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
-    """Build context information for workforce."""
+def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSATION HISTORY ===") -> str:
+    """Build conversation context from task_lock history with files listed only once at the end.
+
+    Args:
+        task_lock: TaskLock containing conversation history
+        header: Header text for the context section
+
+    Returns:
+        Formatted context string with task history and files listed once at the end
+    """
     context = ""
+    working_directory = None
 
     if task_lock.conversation_history:
-        context = "=== CONVERSATION HISTORY ===\n"
+        context = f"{header}\n"
 
         for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
                 if isinstance(entry['content'], dict):
-                    formatted_context = format_task_context(entry['content'])
+                    # Format without file listing
+                    formatted_context = format_task_context(entry['content'], skip_files=True)
                     context += formatted_context + "\n\n"
+                    # Remember the working directory from the last task
+                    if entry['content'].get('working_directory'):
+                        working_directory = entry['content']['working_directory']
                 else:
                     context += entry['content'] + "\n"
             elif entry['role'] == 'assistant':
                 context += f"Assistant: {entry['content']}\n\n"
 
+        # Add all generated files at the end, only once
+        if working_directory:
+            try:
+                if os.path.exists(working_directory):
+                    generated_files = []
+                    for root, dirs, files in os.walk(working_directory):
+                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                        for file in files:
+                            if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                                file_path = os.path.join(root, file)
+                                absolute_path = os.path.abspath(file_path)
+                                generated_files.append(absolute_path)
+
+                    if generated_files:
+                        context += "Generated Files from Previous Tasks:\n"
+                        for file_path in sorted(generated_files):
+                            context += f"  - {file_path}\n"
+                        context += "\n"
+            except Exception as e:
+                logger.warning(f"Failed to collect generated files: {e}")
+
         context += "\n"
 
     return context
+
+
+def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
+    """Build context information for workforce."""
+    return build_conversation_context(task_lock, header="=== CONVERSATION HISTORY ===")
 
 
 @sync_step
@@ -698,18 +750,8 @@ async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskL
     """Unified question confirmation using structured output."""
 
     context_prompt = ""
-    if task_lock and task_lock.conversation_history:
-        context_prompt = "=== Previous Conversation ===\n"
-        for entry in task_lock.conversation_history:
-            if entry['role'] == 'task_result':
-                if isinstance(entry['content'], dict):
-                    formatted_context = format_task_context(entry['content'])
-                    context_prompt += f"\n{formatted_context}\n"
-                else:
-                    context_prompt += f"{entry['content']}\n"
-            elif entry['role'] == 'assistant':
-                context_prompt += f"Assistant: {entry['content']}\n"
-        context_prompt += "\n"
+    if task_lock:
+        context_prompt = build_conversation_context(task_lock, header="=== Previous Conversation ===")
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
