@@ -832,15 +832,18 @@ export class FileReader {
 				if (stats.isDirectory()) {
 					const taskId = taskDir.replace('task_', '');
 					const taskFiles = this.getFilesRecursive(taskPath, taskPath);
-					
-					// Add task and project context to each file
-					const enrichedFiles = taskFiles.map(file => ({
-						...file,
-						task_id: taskId,
-						project_id: projectId,
-						// Add relative path from project root
-						relativePath: path.relative(projectPath, file.path)
-					}));
+
+					const enrichedFiles = taskFiles.map(file => {
+						const fileDir = path.dirname(file.path);
+						const relativeParentPath = path.relative(projectPath, fileDir);
+
+						return {
+							...file,
+							task_id: taskId,
+							project_id: projectId,
+							relativePath: relativeParentPath === '.' ? '' : relativeParentPath
+						};
+					});
 
 					allFiles.push(...enrichedFiles);
 				}

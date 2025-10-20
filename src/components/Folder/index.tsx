@@ -207,7 +207,6 @@ export default function Folder({ data }: { data?: Agent }) {
 
 	const [isCollapsed, setIsCollapsed] = useState(false);
 
-	// Build tree structure from flat file list
 	const buildFileTree = (files: FileInfo[]): FileTreeNode => {
 		const root: FileTreeNode = {
 			name: "root",
@@ -216,17 +215,20 @@ export default function Folder({ data }: { data?: Agent }) {
 			isFolder: true,
 		};
 
-		// Create a map for quick access
 		const nodeMap = new Map<string, FileTreeNode>();
 		nodeMap.set("", root);
 
-		// Sort files so folders come before files and by path depth
 		const sortedFiles = [...files].sort((a, b) => {
 			const depthA = (a.relativePath || "").split("/").filter(Boolean).length;
 			const depthB = (b.relativePath || "").split("/").filter(Boolean).length;
 			return depthA - depthB;
 		});
+
 		for (const file of sortedFiles) {
+			const fullRelativePath = file.relativePath
+				? `${file.relativePath}/${file.name}`
+				: file.name;
+
 			const parentPath = file.relativePath || "";
 			const parentNode = nodeMap.get(parentPath) || root;
 
@@ -243,10 +245,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			parentNode.children!.push(node);
 
 			if (file.isFolder) {
-				const folderPath = parentPath
-					? `${parentPath}/${file.name}`
-					: file.name;
-				nodeMap.set(folderPath, node);
+				nodeMap.set(fullRelativePath, node);
 			}
 		}
 
