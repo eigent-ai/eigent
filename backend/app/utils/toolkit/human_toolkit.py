@@ -3,12 +3,13 @@ from camel.toolkits.base import BaseToolkit
 from loguru import logger
 from camel.toolkits.function_tool import FunctionTool
 from app.service.task import Action, ActionAskData, ActionNoticeData, get_task_lock
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
 # Rewrite HumanToolkit because the system's user interaction was using console, but in electron we cannot use console. Changed to use SSE response to let frontend show dialog for user interaction
 
 
+@auto_listen_toolkit(BaseToolkit)
 class HumanToolkit(BaseToolkit, AbstractToolkit):
     r"""A class representing a toolkit for human interaction.
     Note:
