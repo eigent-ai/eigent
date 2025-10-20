@@ -29,7 +29,8 @@ function mergeRefs<T>(
       if (typeof ref === 'function') {
         ref(node);
       } else {
-        (ref as React.RefObject<T | null>).current = node;
+        // Cast to MutableRefObject to allow assignment
+        (ref as React.MutableRefObject<T | null>).current = node;
       }
     });
   };
