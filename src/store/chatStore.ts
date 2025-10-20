@@ -47,6 +47,7 @@ interface Task {
 export interface ChatStore {
 	updateCount: number;
 	activeTaskId: string | null;
+	nextTaskId: string | null;
 	tasks: { [key: string]: Task };
 	create: (id?: string, type?: any) => string;
 	removeTask: (taskId: string) => void;
@@ -99,6 +100,7 @@ export interface ChatStore {
 	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
 	clearTasks: () => void,
 	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
+	setNextTaskId: (taskId: string | null) => void;
 }
 
 
@@ -107,6 +109,7 @@ export interface ChatStore {
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
 		activeTaskId: null,
+		nextTaskId: null,
 		tasks: initial?.tasks ?? {},
 		updateCount: 0,
 		create(id?: string, type?: any) {
@@ -426,7 +429,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								 * reusing same projectId. Need to create new chatStore
 								 * as it has been skipped earlier in startTask.
 								*/
-								const newChatResult = projectStore.appendInitChatStore(project_id || projectStore.activeProjectId!);
+								const nextTaskId = previousChatStore.nextTaskId || undefined;
+								const newChatResult = projectStore.appendInitChatStore(project_id || projectStore.activeProjectId!, nextTaskId);
 								
 								if (newChatResult) {
 										const { taskId: newTaskId, chatStore: newChatStore } = newChatResult;
@@ -1168,7 +1172,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						let res = await window.ipcRenderer.invoke(
 							"get-file-list",
 							email,
-							currentTaskId as string
+							currentTaskId,
+							(project_id || projectStore.activeProjectId) as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
 							// Filter out directories, only upload actual files
@@ -1185,7 +1190,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 											const formData = new FormData();
 											const blob = new Blob([result.data], { type: 'application/octet-stream' });
 											formData.append('file', blob, file.name);
-											formData.append('task_id', currentTaskId);
+											//TODO(file): rename endpoint to use project_id
+											formData.append('task_id', (project_id || projectStore.activeProjectId) as string);
 
 											// Upload file
 											await uploadFile('/api/chat/files/upload', formData);
@@ -2025,6 +2031,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						isContextExceeded: isContextExceeded,
 					},
 				},
+			}))
+		},
+		setNextTaskId: (taskId) => {
+			set((state) => ({
+				...state,
+				nextTaskId: taskId,
 			}))
 		}
 	})

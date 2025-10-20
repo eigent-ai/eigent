@@ -156,7 +156,7 @@ function downloadByBrowser(url: string) {
 
 export default function Folder({ data }: { data?: Agent }) {
 	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -299,9 +299,9 @@ export default function Folder({ data }: { data?: Agent }) {
 		const setFileList = async () => {
 			let res = null;
 			res = await window.ipcRenderer.invoke(
-				"get-file-list",
+				"get-project-file-list",
 				authStore.email,
-				chatStore.activeTaskId as string
+				projectStore.activeProjectId as string
 			);
 			let tree: any = null;
 			if (
@@ -311,8 +311,9 @@ export default function Folder({ data }: { data?: Agent }) {
 				tree = buildFileTree(res || []);
 			} else {
 				if (!hasFetchedRemote.current) {
+					//TODO(file): rename endpoint to use project_id
 					res = await proxyFetchGet("/api/chat/files", {
-						task_id: chatStore.activeTaskId as string,
+						task_id: projectStore.activeProjectId as string,
 					});
 					hasFetchedRemote.current = true;
 				}
