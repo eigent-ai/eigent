@@ -22,6 +22,10 @@ export default defineConfig(({ command, mode }) => {
         '@': path.join(__dirname, 'src')
       },
     },
+    optimizeDeps: {
+      exclude: ['@stackframe/react'],
+      force: true,
+    },
     plugins: [
       react(),
       electron({
