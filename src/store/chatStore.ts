@@ -7,6 +7,7 @@ import { getAuthStore, useWorkerList } from './authStore';
 import { useProjectStore } from './projectStore';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
+import { toast } from 'sonner';
 
 
 interface Task {
@@ -40,11 +41,13 @@ interface Task {
 	snapshotsTemp: any[];
 	isTakeControl: boolean;
 	isTaskEdit: boolean;
+	isContextExceeded?: boolean;
 }
 
 export interface ChatStore {
 	updateCount: number;
 	activeTaskId: string | null;
+	nextTaskId: string | null;
 	tasks: { [key: string]: Task };
 	create: (id?: string, type?: any) => string;
 	removeTask: (taskId: string) => void;
@@ -55,6 +58,7 @@ export interface ChatStore {
 	handleConfirmTask: (project_id:string, taskId: string, type?: string) => void;
 	addMessages: (taskId: string, messages: Message) => void;
 	setMessages: (taskId: string, messages: Message[]) => void;
+	removeMessage: (taskId: string, messageId: string) => void;
 	setAttaches: (taskId: string, attaches: File[]) => void;
 	setSummaryTask: (taskId: string, summaryTask: string) => void;
 	setHasWaitComfirm: (taskId: string, hasWaitComfirm: boolean) => void;
@@ -95,6 +99,8 @@ export interface ChatStore {
 	setSnapshotsTemp: (taskId: string, snapshot: any) => void,
 	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
 	clearTasks: () => void,
+	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
+	setNextTaskId: (taskId: string | null) => void;
 }
 
 
@@ -103,6 +109,7 @@ export interface ChatStore {
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
 		activeTaskId: null,
+		nextTaskId: null,
 		tasks: initial?.tasks ?? {},
 		updateCount: 0,
 		create(id?: string, type?: any) {
@@ -229,7 +236,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const { tasks } = get()
 			let historyId: string | null = projectStore.getHistoryId(project_id);
 			let snapshots: any = [];
-			let skipFirstConfirmOnReplay = true;
+			let skipFirstConfirm = true;
 
 			// replay or share request
 			if (type) {
@@ -403,43 +410,71 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						social_medium_agent: "Social Media Agent",
 					};
 
-					//Create new chatStore for replay
-					//TODO(history): Remove when per task replay is implemented
-					// waiting for implementing project_id to backend
-					if(type === "replay" && agentMessages.step === "confirmed" 
-						&& !skipFirstConfirmOnReplay) {
-						const { question } = agentMessages.data;
-						/**
-						 * For Tasks where appended to existing project by
-						 * reusing same projectId. Need to create new chatStore
-						 * as it has been skipped earlier in startTask.
-						 */
-						if(type && project_id && question) {
-							const newChatResult = projectStore.appendInitChatStore(project_id);
 
-							if (newChatResult) {
-								// Update both the variables and the locked references
-								newTaskId = newChatResult.taskId;
-								targetChatStore = newChatResult.chatStore;
-								updateLockedReferences(newChatResult.chatStore, newChatResult.taskId);
+					/**
+					 * Persistent workforce instance, new chat
+					 * If confirmed -> subtasks -> confirmed (use a new chatStore)
+					 * handle cases for @event new_task_state and @function startTask
+					 */
+					let currentTaskId = getCurrentTaskId();
+					const previousChatStore = getCurrentChatStore()
+					if(agentMessages.step === "confirmed") {
+						const { question } = agentMessages.data;
+						const shouldCreateNewChat = project_id && (question || messageContent);
+						
+						//All except first confirmed event to reuse the existing chatStore
+						if(shouldCreateNewChat && !skipFirstConfirm) {
+								/**
+								 * For Tasks where appended to existing project by
+								 * reusing same projectId. Need to create new chatStore
+								 * as it has been skipped earlier in startTask.
+								*/
+								const nextTaskId = previousChatStore.nextTaskId || undefined;
+								const newChatResult = projectStore.appendInitChatStore(project_id || projectStore.activeProjectId!, nextTaskId);
 								
-								targetChatStore.getState().setIsPending(newTaskId, false);
-								
-								//From handleSend if message is given
-								// Add the message to the new chatStore if provided
-								if (question) {
-									targetChatStore.getState().addMessages(newTaskId, {
-										id: generateUniqueId(),
-										role: "user",
-										content: question,
-										attaches: messageAttaches || [],
-									});
+								if (newChatResult) {
+										const { taskId: newTaskId, chatStore: newChatStore } = newChatResult;
+										
+										// Update references for both scenarios
+										updateLockedReferences(newChatStore, newTaskId);
+										newChatStore.getState().setIsPending(newTaskId, false);
+										
+										if(type === "replay") {
+												newChatStore.getState().setDelayTime(newTaskId, delayTime as number);
+												newChatStore.getState().setType(newTaskId, "replay");
+										}
+
+										const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
+										if(lastMessage?.role === "user" && lastMessage?.id) {
+											previousChatStore.removeMessage(currentTaskId, lastMessage.id);
+										}
+										
+										//Trick: by the time the question is retrieved from event, 
+										//the last message from previous chatStore is at display
+										newChatStore.getState().addMessages(newTaskId, {
+												id: generateUniqueId(),
+												role: "user",
+												content: question || messageContent as string,
+												//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
+												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches, messageAttaches) || []],
+										});
+										console.log("[NEW CHATSTORE] Created for ", project_id);
+
+										//Handle Original cases - with new chatStore
+										newChatStore.getState().setHasWaitComfirm(currentTaskId, false);
+										newChatStore.getState().setStatus(currentTaskId, 'pending');
 								}
-							}
+						} else {
+							//NOTE: Triggered only with first "confirmed" in the project
+							//Handle Original cases - with old chatStore
+							previousChatStore.setStatus(currentTaskId, 'pending');
+							previousChatStore.setHasWaitComfirm(currentTaskId, false);
 						}
+
+						//Enable it for the rest of current SSE session
+						skipFirstConfirm = false;
+						return
 					}
-					//Enable it for the rest of current SSE session
-					skipFirstConfirmOnReplay = false;
 
 					const { 
 						setNuwFileNum, 
@@ -464,16 +499,25 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						create,
 						setTaskTime,
 						setElapsed,
-						setActiveTaskId } = getCurrentChatStore()
+						setActiveTaskId,
+						setIsContextExceeded} = getCurrentChatStore()
 
-					const currentTaskId = getCurrentTaskId();
+					currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
 					if (agentMessages.step === "to_sub_tasks") {
+						// Check if this is a multi-turn scenario after task completion
+						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
+						// Reset status for multi-turn complex tasks to allow splitting panel to show
+						if (isMultiTurnAfterCompletion) {
+							setStatus(currentTaskId, 'pending');
+						}
 
 						const messages = [...tasks[currentTaskId].messages]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
-						if (toSubTaskIndex === -1) {
+						// For multi-turn scenarios, always create a new to_sub_tasks message
+						// even if one already exists from a previous task
+						if (toSubTaskIndex === -1 || isMultiTurnAfterCompletion) {
 							// 30 seconds auto confirm
 							setTimeout(() => {
 								const currentStore = getCurrentChatStore();
@@ -483,7 +527,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								const isConfirm = message?.isConfirm || false;
 								const isTakeControl =
 									tasks[currentId].isTakeControl;
-								
+
 								if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
 									handleConfirmTask(project_id, currentId, type);
 								}
@@ -497,6 +541,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								step: 'notice_card',
 							};
 							addMessages(currentTaskId, newNoticeMessage)
+							const shouldAutoConfirm = !!type && !isMultiTurnAfterCompletion;
+
 							const newMessage: Message = {
 								id: generateUniqueId(),
 								role: "agent",
@@ -504,7 +550,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								step: agentMessages.step,
 								taskType: type ? 2 : 1,
 								showType: "list",
-								isConfirm: type ? true : false // share and replay, skip to_sub_tasks
+								// Don't auto-confirm for multi-turn complex tasks - show workforce splitting panel
+								isConfirm: shouldAutoConfirm
 							};
 							addMessages(currentTaskId, newMessage)
 							const newTaskInfo = {
@@ -570,20 +617,30 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "wait_confirm") {
+						const {content, question} = agentMessages.data;
 						setHasWaitComfirm(currentTaskId, true)
 						setIsPending(currentTaskId, false)
+
+						const currentChatStore = getCurrentChatStore();
+						//Make sure to add user Message on replay and avoid duplication of first msg						
+						if(type === "replay" && question && 
+							!(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+							addMessages(currentTaskId, {
+								id: generateUniqueId(),
+								role: "user",
+								content: question as string,
+								step: "wait_confirm",
+								isConfirm: false,
+							})
+						}
 						addMessages(currentTaskId, {
 							id: generateUniqueId(),
 							role: "agent",
-							content: agentMessages.data!.content as string,
+							content: content as string,
 							step: "wait_confirm",
 							isConfirm: false,
 						})
 						return;
-					}
-					if (agentMessages.step === "confirmed") {
-						setHasWaitComfirm(currentTaskId, false)
-						return
 					}
 					// Task State
 					if (agentMessages.step === "task_state") {
@@ -639,27 +696,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setTaskAssigning(currentTaskId, taskAssigning)
 						return;
 					}
-					// New Task State from queue
+					/**  New Task State from queue
+					 * @deprecated
+					 * Side effect handled on top of the message handler
+					 */
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
-						if (!task_id || !content || !project_id) return;
-
-						const storeResult = projectStore.appendInitChatStore(project_id, task_id);
-						if (!storeResult) return;
-						
-						const {chatStore: newChatStore} = storeResult;
-						updateLockedReferences(newChatStore, task_id);
-						
-						// Customize the initialTask data
-						newChatStore.getState().addMessages(task_id, {
-							id: generateUniqueId(),
-							role: "user",
-							content: content,
-						});
-						newChatStore.getState().setHasMessages(task_id, true);
-						newChatStore.getState().setTaskTime(task_id, Date.now());
-						
-						console.log(`Created new chat instance for task: ${task_id} with content: ${content}`);
+						//new chatStore logic is handled along side "confirmed" event
+						console.log(`Recieved new task: ${task_id} with content: ${content}`);
 						return;
 					}
 
@@ -1017,6 +1061,29 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return
 					}
 
+
+				if (agentMessages.step === "context_too_long") {
+					console.error('Context too long:', agentMessages.data)
+					const currentLength = agentMessages.data.current_length || 0;
+					const maxLength = agentMessages.data.max_length || 100000;
+					
+					// Show toast notification
+					toast.dismiss();
+					toast.error(
+						`⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new project to continue your work.`,
+						{
+							duration: Infinity,
+							closeButton: true,
+						}
+					);
+
+					// Set flag to block input and set status to pause
+					setIsContextExceeded(currentTaskId, true);
+					setStatus(currentTaskId, "pause");
+					uploadLog(currentTaskId, type);
+					return
+				}
+
 					if (agentMessages.step === "error") {
 						console.error('Model error:', agentMessages.data)
 						const errorMessage = agentMessages.data.message || 'An error occurred while processing your request';
@@ -1105,7 +1172,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						let res = await window.ipcRenderer.invoke(
 							"get-file-list",
 							email,
-							currentTaskId as string
+							currentTaskId,
+							(project_id || projectStore.activeProjectId) as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
 							// Filter out directories, only upload actual files
@@ -1122,7 +1190,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 											const formData = new FormData();
 											const blob = new Blob([result.data], { type: 'application/octet-stream' });
 											formData.append('file', blob, file.name);
-											formData.append('task_id', currentTaskId);
+											//TODO(file): rename endpoint to use project_id
+											formData.append('task_id', (project_id || projectStore.activeProjectId) as string);
 
 											// Upload file
 											await uploadFile('/api/chat/files/upload', formData);
@@ -1228,10 +1297,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						else if (agent_summary_end) {
 							console.log('agent_summary_end', agent_summary_end)
 							endMessage = agent_summary_end.summary || ""
-						} else if (endMessage.indexOf('Result ---') !== -1) {
-							endMessage = endMessage.split('Result ---').at(-1) || ""
 						}
-
 
 						console.log('endMessage', endMessage)
 						newMessage = {
@@ -1423,6 +1489,25 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					},
 				},
 			}))
+		},
+		removeMessage(taskId, messageId) {
+			set((state) => {
+				if (!state.tasks[taskId]) {
+					return state;
+				}
+				return {
+					...state,
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...state.tasks[taskId],
+							messages: state.tasks[taskId].messages.filter(
+								(message) => message.id !== messageId
+							),
+						},
+					},
+				};
+			})
 		},
 		setCotList(taskId, cotList) {
 			set((state) => ({
@@ -1936,6 +2021,24 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				},
 			}))
 		},
+		setIsContextExceeded: (taskId, isContextExceeded) => {
+			set((state) => ({
+				...state,
+				tasks: {
+					...state.tasks,
+					[taskId]: {
+						...state.tasks[taskId],
+						isContextExceeded: isContextExceeded,
+					},
+				},
+			}))
+		},
+		setNextTaskId: (taskId) => {
+			set((state) => ({
+				...state,
+				nextTaskId: taskId,
+			}))
+		}
 	})
 );
 

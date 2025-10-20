@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 from typing import Literal
 from loguru import logger
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from camel.types import ModelType, RoleType
 
 
@@ -18,6 +18,16 @@ class Status(str, Enum):
 class ChatHistory(BaseModel):
     role: RoleType
     content: str
+
+
+class QuestionAnalysisResult(BaseModel):
+    type: Literal["simple", "complex"] = Field(
+        description="Whether this is a simple question or complex task"
+    )
+    answer: str | None = Field(
+        default=None,
+        description="Direct answer for simple questions. None for complex tasks."
+    )
 
 
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
@@ -73,7 +83,8 @@ class Chat(BaseModel):
 
     def file_save_path(self, path: str | None = None):
         email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(".")
-        save_path = Path.home() / "eigent" / email / ("task_" + self.task_id)
+        # Use project-based structure: project_{project_id}/task_{task_id}
+        save_path = Path.home() / "eigent" / email / f"project_{self.project_id}" / f"task_{self.task_id}"
         if path is not None:
             save_path = save_path / path
         save_path.mkdir(parents=True, exist_ok=True)
@@ -83,6 +94,7 @@ class Chat(BaseModel):
 
 class SupplementChat(BaseModel):
     question: str
+    task_id: str | None = None
 
 
 class HumanReply(BaseModel):

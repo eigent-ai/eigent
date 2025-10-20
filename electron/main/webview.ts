@@ -67,6 +67,7 @@ export class WebViewManager {
           nodeIntegration: false,
           contextIsolation: true,
           backgroundThrottling: true,
+          partition: 'persist:agent-webview',
           offscreen: false,
           sandbox: true,
           disableBlinkFeatures: 'Accelerated2dCanvas',

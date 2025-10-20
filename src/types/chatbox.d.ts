@@ -1,23 +1,6 @@
 // Global type definitions for ChatBox component
 
 declare global {
-	interface TaskInfo {
-		report?: string | undefined;
-		id: string;
-		content: string;
-		status?: string;
-		agent?: Agent;
-		terminal?: string[];
-		fileList?: FileInfo[];
-		toolkits?: {
-			toolkitName: string;
-			toolkitMethods: string;
-			message: string;
-			toolkitStatus?: AgentStatus;
-		}[];
-		failure_count?: number;
-		reAssignTo?:string;
-	}
 	interface FileInfo {
 		name: string;
 		type: string;
@@ -26,8 +9,36 @@ declare global {
 		icon?: React.ElementType;
 		agent_id?: string;
 		task_id?: string;
+		project_id?: string;
 		isFolder?: boolean;
 		relativePath?: string;
+	}
+
+	interface ProjectInfo {
+		id: string;
+		name: string;
+		path: string;
+		taskCount: number;
+		createdAt: Date;
+	}
+
+	interface TaskInfo {
+		report?: string | undefined;
+		id: string;
+		content: string;
+		status?: string;
+		agent?: Agent;
+		terminal?: string[];
+		fileList?: FileInfo[];
+		project_id?: string;
+		toolkits?: {
+			toolkitName: string;
+			toolkitMethods: string;
+			message: string;
+			toolkitStatus?: AgentStatus;
+		}[];
+		failure_count?: number;
+		reAssignTo?:string;
 	}
 
 	interface File {
@@ -112,6 +123,9 @@ declare global {
 			output?: string
 			result?: string
 			tools?: string[];
+			//Context Length
+			current_length?: number;
+			max_length?: number
 		};
 		status?: 'running' | 'filled' | 'completed';
 	}

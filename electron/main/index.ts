@@ -207,7 +207,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
-    log.info('Starting new task')
+    log.info('Getting browser port')
     return browser_port
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
@@ -809,14 +809,40 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('get-file-list', async (_, email: string, taskId: string) => {
+  ipcMain.handle('get-file-list', async (_, email: string, taskId: string, projectId?: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getFileList(email, taskId);
+    return manager.getFileList(email, taskId, projectId);
   });
 
-  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string) => {
+  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string, projectId?: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.deleteTaskFiles(email, taskId);
+    return manager.deleteTaskFiles(email, taskId, projectId);
+  });
+
+  // New project management handlers
+  ipcMain.handle('create-project-structure', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.createProjectStructure(email, projectId);
+  });
+
+  ipcMain.handle('get-project-list', async (_, email: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getProjectList(email);
+  });
+
+  ipcMain.handle('get-tasks-in-project', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getTasksInProject(email, projectId);
+  });
+
+  ipcMain.handle('move-task-to-project', async (_, email: string, taskId: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.moveTaskToProject(email, taskId, projectId);
+  });
+
+  ipcMain.handle('get-project-file-list', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getProjectFileList(email, projectId);
   });
 
   ipcMain.handle('get-log-folder', async (_, email: string) => {

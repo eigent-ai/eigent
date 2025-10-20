@@ -8,6 +8,7 @@ from inflection import titleize
 from pydash import chain
 from app.component.debug import dump_class
 from app.component.environment import env
+from app.utils.file_utils import get_working_directory
 from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
@@ -20,7 +21,7 @@ from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.workforce import Workforce
 from loguru import logger
-from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
+from app.model.chat import Chat, NewAgent, QuestionAnalysisResult, Status, sse_json, TaskContent
 from camel.tasks import Task
 from app.utils.agent import (
     ListenChatAgent,
@@ -40,6 +41,192 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
+import os
+
+
+def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
+    """Format structured task data into a readable context string.
+
+    Args:
+        task_data: Dictionary containing task content, result, and working directory
+        seen_files: Optional set to track already-listed files and avoid duplicates (deprecated, use skip_files instead)
+        skip_files: If True, skip the file listing entirely
+    """
+    context_parts = []
+
+    if task_data.get('task_content'):
+        context_parts.append(f"Previous Task: {task_data['task_content']}")
+
+    if task_data.get('task_result'):
+        context_parts.append(f"Previous Task Result: {task_data['task_result']}")
+
+    # Skip file listing if requested
+    if not skip_files:
+        working_directory = task_data.get('working_directory')
+        if working_directory:
+            try:
+                if os.path.exists(working_directory):
+                    generated_files = []
+                    for root, dirs, files in os.walk(working_directory):
+                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                        for file in files:
+                            if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                                file_path = os.path.join(root, file)
+                                absolute_path = os.path.abspath(file_path)
+
+                                # Only add if not seen before (or if we're not tracking seen files)
+                                if seen_files is None or absolute_path not in seen_files:
+                                    generated_files.append(absolute_path)
+                                    if seen_files is not None:
+                                        seen_files.add(absolute_path)
+
+                    if generated_files:
+                        context_parts.append("Generated Files from Previous Task:")
+                        for file_path in sorted(generated_files):
+                            context_parts.append(f"  - {file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to collect generated files: {e}")
+
+    return "\n".join(context_parts)
+
+
+def collect_previous_task_context(working_directory: str, previous_task_content: str, previous_task_result: str, previous_summary: str = "") -> str:
+    """
+    Collect context from previous task including content, result, summary, and generated files.
+
+    Args:
+        working_directory: The working directory to scan for generated files
+        previous_task_content: The content of the previous task
+        previous_task_result: The result/output of the previous task
+        previous_summary: The summary of the previous task
+
+    Returns:
+        Formatted context string to prepend to new task
+    """
+
+    context_parts = []
+
+    # Add previous task information
+    context_parts.append("=== CONTEXT FROM PREVIOUS TASK ===\n")
+
+    # Add previous task content
+    if previous_task_content:
+        context_parts.append(f"Previous Task:\n{previous_task_content}\n")
+
+    # Add previous task summary
+    if previous_summary:
+        context_parts.append(f"Previous Task Summary:\n{previous_summary}\n")
+
+    # Add previous task result
+    if previous_task_result:
+        context_parts.append(f"Previous Task Result:\n{previous_task_result}\n")
+
+    # Collect generated files from working directory
+    try:
+        if os.path.exists(working_directory):
+            generated_files = []
+            for root, dirs, files in os.walk(working_directory):
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                for file in files:
+                    if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                        file_path = os.path.join(root, file)
+                        absolute_path = os.path.abspath(file_path)
+                        generated_files.append(absolute_path)
+
+            if generated_files:
+                context_parts.append("Generated Files from Previous Task:")
+                for file_path in sorted(generated_files):
+                    context_parts.append(f"  - {file_path}")
+                context_parts.append("")
+    except Exception as e:
+        logger.warning(f"Failed to collect generated files: {e}")
+
+    context_parts.append("=== END OF PREVIOUS TASK CONTEXT ===\n")
+
+    return "\n".join(context_parts)
+
+
+def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100000) -> tuple[bool, int]:
+    """
+    Check if conversation history exceeds maximum length
+
+    Returns:
+        tuple: (is_exceeded, total_length)
+    """
+    if not hasattr(task_lock, 'conversation_history') or not task_lock.conversation_history:
+        return False, 0
+
+    total_length = 0
+    for entry in task_lock.conversation_history:
+        total_length += len(entry.get('content', ''))
+
+    is_exceeded = total_length > max_length
+
+    if is_exceeded:
+        logger.warning(f"Conversation history length {total_length} exceeds maximum {max_length}")
+
+    return is_exceeded, total_length
+
+
+def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSATION HISTORY ===") -> str:
+    """Build conversation context from task_lock history with files listed only once at the end.
+
+    Args:
+        task_lock: TaskLock containing conversation history
+        header: Header text for the context section
+
+    Returns:
+        Formatted context string with task history and files listed once at the end
+    """
+    context = ""
+    working_directory = None
+
+    if task_lock.conversation_history:
+        context = f"{header}\n"
+
+        for entry in task_lock.conversation_history:
+            if entry['role'] == 'task_result':
+                if isinstance(entry['content'], dict):
+                    # Format without file listing
+                    formatted_context = format_task_context(entry['content'], skip_files=True)
+                    context += formatted_context + "\n\n"
+                    # Remember the working directory from the last task
+                    if entry['content'].get('working_directory'):
+                        working_directory = entry['content']['working_directory']
+                else:
+                    context += entry['content'] + "\n"
+            elif entry['role'] == 'assistant':
+                context += f"Assistant: {entry['content']}\n\n"
+
+        # Add all generated files at the end, only once
+        if working_directory:
+            try:
+                if os.path.exists(working_directory):
+                    generated_files = []
+                    for root, dirs, files in os.walk(working_directory):
+                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                        for file in files:
+                            if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                                file_path = os.path.join(root, file)
+                                absolute_path = os.path.abspath(file_path)
+                                generated_files.append(absolute_path)
+
+                    if generated_files:
+                        context += "Generated Files from Previous Tasks:\n"
+                        for file_path in sorted(generated_files):
+                            context += f"  - {file_path}\n"
+                        context += "\n"
+            except Exception as e:
+                logger.warning(f"Failed to collect generated files: {e}")
+
+        context += "\n"
+
+    return context
+
+
+def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
+    """Build context information for workforce."""
+    return build_conversation_context(task_lock, header="=== CONVERSATION HISTORY ===")
 
 
 @sync_step
@@ -52,11 +239,36 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     #         faulthandler.dump_traceback_later(second)
 
     start_event_loop = True
-    question_agent = question_confirm_agent(options)
+
+    if not hasattr(task_lock, 'conversation_history'):
+        task_lock.conversation_history = []
+    if not hasattr(task_lock, 'last_task_result'):
+        task_lock.last_task_result = ""
+    if not hasattr(task_lock, 'question_agent'):
+        task_lock.question_agent = None
+    if not hasattr(task_lock, 'summary_generated'):
+        task_lock.summary_generated = False
+
+    # Create or reuse persistent question_agent
+    if task_lock.question_agent is None:
+        task_lock.question_agent = question_confirm_agent(options)
+        logger.info(f"Created new persistent question_agent for project {options.project_id}")
+    else:
+        logger.info(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
+
+    question_agent = task_lock.question_agent
+
+    # Other variables
     camel_task = None
     workforce = None
     last_completed_task_result = ""  # Track the last completed task result
+    summary_task_content = ""  # Track task summary
+    loop_iteration = 0
+
+
     while True:
+        loop_iteration += 1
+
         if await request.is_disconnected():
             logger.warning(f"Client disconnected for project {options.project_id}")
             if workforce is not None:
@@ -71,10 +283,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             break
         try:
             item = await task_lock.get_queue()
-            # logger.info(f"item: {dump_class(item)}")
         except Exception as e:
             logger.error(f"Error getting item from queue: {e}")
-            break
+            # Continue waiting instead of breaking on queue error
+            continue
 
         try:
             if item.action == Action.improve or start_event_loop:
@@ -88,34 +300,100 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data
-                if len(question) < 12 and len(options.attaches) == 0:
-                    confirm = await question_confirm(question_agent, question)
-                else:
+
+                is_exceeded, total_length = check_conversation_history_length(task_lock)
+                if is_exceeded:
+                    logger.error(f"Conversation history too long ({total_length} chars) for project {options.project_id}")
+                    yield sse_json("context_too_long", {
+                        "message": "The conversation history is too long. Please create a new project to continue.",
+                        "current_length": total_length,
+                        "max_length": 100000
+                    })
+                    continue
+
+                # Simplified logic: attachments mean workforce, otherwise let agent decide
+                confirm: str | Literal[True]
+                if len(options.attaches) > 0:
+                    # Questions with attachments always need workforce
                     confirm = True
+                else:
+                    # No attachments - let agent decide based on question content and context
+                    confirm = await question_confirm(question_agent, question, task_lock)
 
                 if confirm is not True:
+                    # confirm is str here (simple answer from agent)
+                    try:
+                        import json
+                        response_data = json.loads(confirm.split("data: ")[1].strip())
+                        response_content = response_data['data']['content']
+                        task_lock.add_conversation('assistant', response_content)
+                    except Exception as e:
+                        logger.error(f"[CONTEXT] Failed to save response to history: {e}")
+
+                    # Clean up empty folder if it was created for this task
+                    if hasattr(task_lock, 'new_folder_path') and task_lock.new_folder_path:
+                        try:
+                            folder_path = Path(task_lock.new_folder_path)
+                            if folder_path.exists() and folder_path.is_dir():
+                                # Check if folder is empty
+                                if not any(folder_path.iterdir()):
+                                    folder_path.rmdir()
+                                    logger.info(f"Cleaned up empty folder: {folder_path}")
+                                    # Also clean up parent project folder if it becomes empty
+                                    project_folder = folder_path.parent
+                                    if project_folder.exists() and not any(project_folder.iterdir()):
+                                        project_folder.rmdir()
+                                        logger.info(f"Cleaned up empty project folder: {project_folder}")
+                                else:
+                                    logger.info(f"Folder not empty, keeping: {folder_path}")
+                            # Reset the folder path
+                            task_lock.new_folder_path = None
+                        except Exception as e:
+                            logger.error(f"Error cleaning up folder: {e}")
+
                     yield confirm
                 else:
                     yield sse_json("confirmed", {"question": question})
+
+                    context_for_coordinator = build_context_for_workforce(task_lock, options)
+
                     (workforce, mcp) = await construct_workforce(options)
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
                         )
-                    summary_task_agent = task_summary_agent(options)
                     task_lock.status = Status.confirmed
-                    question = question + options.summary_prompt
-                    # Keep the task id consistent
-                    camel_task = Task(content=question, id=options.task_id)
+
+                    clean_task_content = question + options.summary_prompt
+                    camel_task = Task(content=clean_task_content, id=options.task_id)
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    sub_tasks = await asyncio.to_thread(workforce.eigent_make_sub_tasks, camel_task)
-                    summary_task_content = await summary_task(summary_task_agent, camel_task)
+                    sub_tasks = await asyncio.to_thread(
+                        workforce.eigent_make_sub_tasks,
+                        camel_task,
+                        context_for_coordinator
+                    )
+
+                    if not task_lock.summary_generated:
+                        summary_task_agent = task_summary_agent(options)
+                        summary_task_content = await summary_task(summary_task_agent, camel_task)
+                        task_lock.summary_generated = True
+                        logger.info(f"Generated summary for first task in project {options.project_id}")
+                    else:
+                        if len(question) > 100:
+                            summary_task_content = f"Task|{question[:97]}..."
+                        else:
+                            summary_task_content = f"Task|{question}"
+                        logger.info(f"Skipped summary generation for subsequent task in project {options.project_id}")
+
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
                     # tracer.save("trace.json")
+
+                    # Only auto-start in debug mode
                     if env("debug") == "on":
+                        logger.info(f"[DEBUG] Auto-starting workforce in debug mode")
                         task_lock.status = Status.processing
                         task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                         task_lock.add_background_task(task)
@@ -127,7 +405,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 add_sub_tasks(camel_task, item.data.task)
                 yield to_sub_tasks(camel_task, summary_task_content)
             elif item.action == Action.add_task:
+
+                # Check if this might be a misrouted second question
+                if camel_task is None and workforce is None:
+                    continue
+
                 assert camel_task is not None
+                if workforce is None:
+                    logger.error(f"Cannot add task: workforce not initialized for project {options.project_id}")
+                    yield sse_json("error", {"message": "Workforce not initialized. Please start the task first."})
+                    continue
+
                 # Add task to the workforce queue
                 workforce.add_task(
                     item.content,
@@ -142,6 +430,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("add_task", returnData)
             elif item.action == Action.remove_task:
                 assert camel_task is not None
+                if workforce is None:
+                    logger.error(f"Cannot remove task: workforce not initialized for project {options.project_id}")
+                    yield sse_json("error", {"message": "Workforce not initialized. Please start the task first."})
+                    continue
+
                 workforce.remove_task(item.task_id)
                 returnData = {
                     "project_id": item.project_id,
@@ -152,87 +445,132 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None and item.project_id == options.project_id:
                     if workforce._state.name == 'PAUSED':
                         # Resume paused workforce to skip the task
-                        logger.info(f"[CHAT] Resuming paused workforce to skip task")
                         workforce.resume()
                     workforce.skip_gracefully()
             elif item.action == Action.start:
-                if workforce is not None and workforce._state.name == 'PAUSED':
-                    # Resume paused workforce - subtasks should already be loaded
-                    logger.info(f"[CHAT] Resuming paused workforce with existing subtasks")
-                    workforce.resume()
+                # Check conversation history length before starting task
+                is_exceeded, total_length = check_conversation_history_length(task_lock)
+                if is_exceeded:
+                    logger.error(f"Cannot start task: conversation history too long ({total_length} chars) for project {options.project_id}")
+                    yield sse_json("context_too_long", {
+                        "message": "The conversation history is too long. Please create a new project to continue.",
+                        "current_length": total_length,
+                        "max_length": 100000
+                    })
                     continue
-                
+
+                if workforce is not None:
+                    if workforce._state.name == 'PAUSED':
+                        # Resume paused workforce - subtasks should already be loaded
+                        workforce.resume()
+                        continue
+                else:
+                    continue
+
                 task_lock.status = Status.processing
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
                 # Track completed task results for the end event
-                if item.data.get('state') == 'DONE' and item.data.get('result'):
-                    last_completed_task_result = item.data.get('result', '')
+                task_id = item.data.get('task_id', 'unknown')
+                task_state = item.data.get('state', 'unknown')
+                task_result = item.data.get('result', '')
+
+
+                if task_state == 'DONE' and task_result:
+                    last_completed_task_result = task_result
+
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
+
+                # Log new task state details
+                new_task_id = item.data.get('task_id', 'unknown')
+                new_task_state = item.data.get('state', 'unknown')
+                new_task_result = item.data.get('result', '')
+
+
                 assert camel_task is not None
-                
-                # Store the old task result before updating camel_task
-                old_task_result = str(camel_task.result)
-                
-                # Extract task content from the new task data immediately
-                # Don't return question field for new_tasks
+
+                old_task_content: str = camel_task.content
+                old_task_result: str = await get_task_result_with_optional_summary(camel_task, options)
+
+                old_task_content_clean: str = old_task_content
+                if "=== CURRENT TASK ===" in old_task_content_clean:
+                    old_task_content_clean = old_task_content_clean.split("=== CURRENT TASK ===")[-1].strip()
+
+                task_lock.add_conversation('task_result', {
+                    'task_content': old_task_content_clean,
+                    'task_result': old_task_result,
+                    'working_directory': get_working_directory(options, task_lock)
+                })
+
                 new_task_content = item.data.get('content', '')
-                
-                # Update camel_task to the new task right away
+
                 if new_task_content:
                     import time
-                    # Generate unique task ID 
                     task_id = item.data.get('task_id', f"{int(time.time() * 1000)}-multi")
-                    # Create and assign new task immediately
                     new_camel_task = Task(content=new_task_content, id=task_id)
-                    # Preserve additional_info from the previous task if it exists
                     if hasattr(camel_task, 'additional_info') and camel_task.additional_info:
                         new_camel_task.additional_info = camel_task.additional_info
                     camel_task = new_camel_task
-                
+
                 # Now trigger end of previous task using stored result
                 yield sse_json("end", old_task_result)
                 # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
                 # Trigger Queue Removal
                 yield sse_json("remove_task", {"task_id": item.data.get("task_id")})
-                
+
                 # Then handle multi-turn processing
                 if workforce is not None and new_task_content:
-                    logger.info(f"[CHAT] MULTI-TURN: Processing new task {item.data.get('task_id')}")
                     task_lock.status = Status.confirming
                     workforce.pause()
-                    
+
                     try:
-                        yield sse_json("confirmed", "")
+                        multi_turn_confirm = await question_confirm(question_agent, new_task_content, task_lock)
+
+                        if multi_turn_confirm is not True:
+                            # Still need to send appropriate responses
+                            yield sse_json("confirmed", {"question": new_task_content})
+                            yield multi_turn_confirm
+                            workforce.resume()
+                            continue  # This continues the main while loop, waiting for next action
+
+                        yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
-                        
-                        # Use existing workforce to decompose (without creating new one)
-                        # Append to _pending_tasks
+
+                        context_for_multi_turn = build_context_for_workforce(task_lock, options)
+
                         new_sub_tasks = await workforce.handle_decompose_append_task(
-                            camel_task,  # Use the updated camel_task
-                            reset=False  # Keep existing agents and context
+                            camel_task,
+                            reset=False,
+                            coordinator_context=context_for_multi_turn
                         )
-                        
-                        # Generate summary using existing agents
-                        summary_task_agent_instance = task_summary_agent(options)
-                        new_summary_content = await summary_task(summary_task_agent_instance, camel_task)
-                        
+
+                        task_content_for_summary = new_task_content
+                        if len(task_content_for_summary) > 100:
+                            new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
+                        else:
+                            new_summary_content = f"Follow-up Task|{task_content_for_summary}"
+
                         # Send the extracted events
                         yield to_sub_tasks(camel_task, new_summary_content)
-                        
+
                         # Update the context with new task data
                         sub_tasks = new_sub_tasks
                         summary_task_content = new_summary_content
-                        
-                        logger.info(f"[CHAT] Multi-turn task decomposed into {len(sub_tasks)} subtasks")
-                        
+
+
                     except Exception as e:
-                        logger.error(f"[CHAT] Error processing multi-turn task: {e}")
+                        import traceback
+                        logger.error(f"[TRACE] Traceback: {traceback.format_exc()}")
                         # Continue with existing context if decomposition fails
                         yield sse_json("error", {"message": f"Failed to process task: {str(e)}"})
+                else:
+                    if workforce is None:
+                        logger.warning(f"[TRACE] Workforce is None - this might be the issue")
+                    if not new_task_content:
+                        logger.warning(f"[TRACE] No new task content provided")
             elif item.action == Action.create_agent:
                 yield sse_json("create_agent", item.data)
             elif item.action == Action.activate_agent:
@@ -270,9 +608,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.pause:
                 if workforce is not None:
                     workforce.pause()
+                    logger.info(f"Workforce paused for project {options.project_id}")
+                else:
+                    logger.warning(f"Cannot pause: workforce is None for project {options.project_id}")
             elif item.action == Action.resume:
                 if workforce is not None:
                     workforce.resume()
+                    logger.info(f"Workforce resumed for project {options.project_id}")
+                else:
+                    logger.warning(f"Cannot resume: workforce is None for project {options.project_id}")
             elif item.action == Action.new_agent:
                 if workforce is not None:
                     workforce.pause()
@@ -283,27 +627,52 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.end:
                 assert camel_task is not None
                 task_lock.status = Status.done
-                # Get the final result from multiple sources in priority order:
-                final_result = ""
-                if last_completed_task_result:
-                    final_result = last_completed_task_result
-                else:
-                    final_result = str(camel_task.result or "")
+                final_result: str = await get_task_result_with_optional_summary(camel_task, options)
+
+                task_lock.last_task_result = final_result
+
+                task_content: str = camel_task.content
+                if "=== CURRENT TASK ===" in task_content:
+                    task_content = task_content.split("=== CURRENT TASK ===")[-1].strip()
+
+                task_lock.add_conversation('task_result', {
+                    'task_content': task_content,
+                    'task_result': final_result,
+                    'working_directory': get_working_directory(options, task_lock)
+                })
+
+
                 yield sse_json("end", final_result)
+
                 if workforce is not None:
                     workforce.stop_gracefully()
-                break
+                    logger.info(f"Workforce stopped gracefully for project {options.project_id}")
+                    workforce = None
+                else:
+                    logger.warning(f"Workforce already None at end action for project {options.project_id}")
+
+                camel_task = None
+
+                if question_agent is not None:
+                    question_agent.reset()
+                    logger.info(f"Reset question_agent for project {options.project_id}")
             elif item.action == Action.supplement:
-                assert camel_task is not None
-                task_lock.status = Status.processing
-                camel_task.add_subtask(
-                    Task(
-                        content=item.data.question,
-                        id=f"{camel_task.id}.{len(camel_task.subtasks)}",
+
+                # Check if this might be a misrouted second question
+                if camel_task is None:
+                    logger.warning(f"SUPPLEMENT action received but camel_task is None for project {options.project_id}")
+                else:
+                    assert camel_task is not None
+                    task_lock.status = Status.processing
+                    camel_task.add_subtask(
+                        Task(
+                            content=item.data.question,
+                            id=f"{camel_task.id}.{len(camel_task.subtasks)}",
+                        )
                     )
-                )
-                task = asyncio.create_task(workforce.eigent_start(camel_task.subtasks))
-                task_lock.add_background_task(task)
+                    if workforce is not None:
+                        task = asyncio.create_task(workforce.eigent_start(camel_task.subtasks))
+                        task_lock.add_background_task(task)
             elif item.action == Action.budget_not_enough:
                 if workforce is not None:
                     workforce.pause()
@@ -313,6 +682,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     if workforce._running:
                         workforce.stop()
                     workforce.stop_gracefully()
+                    logger.info(f"Workforce stopped for project {options.project_id}")
+                else:
+                    logger.warning(f"Workforce is None at stop action for project {options.project_id}")
                 await delete_task_lock(task_lock.id)
                 break
             else:
@@ -396,27 +768,51 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
-async def question_confirm(agent: ListenChatAgent, prompt: str) -> str | Literal[True]:
-    prompt = f"""
-> **Your Role:** You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action.
->
-> **Your Process:**
->
-> 1.  **Analyze the User's Query:** Carefully examine the user's request: `{prompt}`.
->
-> 2.  **Categorize the Query:**
->     * **Simple Query:** Is this a simple greeting, a question that can be answered directly, or a conversational interaction (e.g., "hello", "thank you")?
->     * **Complex Task:** Is this a request that requires a series of steps, code execution, or interaction with tools to complete?
->
-> 3.  **Execute Your Decision:**
->     * **For a Simple Query:** Provide a direct and helpful response.
->     * **For a Complex Task:** Your *only* response should be "yes". This will trigger a specialized workforce to handle the task. Do not include any other text, punctuation, or pleasantries.
-        """
-    resp = agent.step(prompt)
-    logger.info(f"resp: {agent.chat_history}")
-    if resp.msgs[0].content.lower() != "yes":
-        return sse_json("wait_confirm", {"content": resp.msgs[0].content})
-    else:
+async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None) -> str | Literal[True]:
+    """Unified question confirmation using structured output."""
+
+    context_prompt = ""
+    if task_lock:
+        context_prompt = build_conversation_context(task_lock, header="=== Previous Conversation ===")
+
+    full_prompt = f"""{context_prompt}User Query: {prompt}
+
+Analyze if this is a simple question or complex task:
+
+**Simple question**: Can be answered directly using knowledge or conversation history
+- Examples: greetings, fact queries, clarifications about previous results
+- Response: Provide a direct, helpful answer
+
+**Complex task**: Requires tools, code execution, file operations, or multi-step planning
+- Examples: "create a file", "search for", "implement feature X"
+- Response: Indicate this is complex
+
+Based on the user query, determine the type and provide appropriate response."""
+
+    try:
+        resp = agent.step(full_prompt, response_format=QuestionAnalysisResult)
+
+        if not resp or not resp.msgs or len(resp.msgs) == 0:
+            return True
+
+        result = resp.msgs[0].parsed
+
+        if not result:
+            content = resp.msgs[0].content
+            if not content:
+                return True
+            normalized = content.strip().lower()
+            if normalized in ["yes", "complex"]:
+                return True
+            return sse_json("wait_confirm", {"content": content, "question": prompt})
+
+        if result.type == "simple" and result.answer:
+            return sse_json("wait_confirm", {"content": result.answer, "question": prompt})
+        else:
+            return True
+
+    except Exception as e:
+        logger.error(f"Error in question_confirm: {e}")
         return True
 
 
@@ -433,13 +829,100 @@ Your instructions are:
 Example format: "Task Name|This is the summary of the task."
 Do not include any other text or formatting.
 """
+
     res = agent.step(prompt)
-    logger.info(f"summary_task: {res.msgs[0].content}")
-    return res.msgs[0].content
+    summary = res.msgs[0].content
+
+
+    # Parse the summary to show title and subtitle separately
+    if '|' in summary:
+        parts = summary.split('|', 1)
+
+    return summary
+
+
+async def summary_subtasks_result(agent: ListenChatAgent, task: Task) -> str:
+    """
+    Summarize the aggregated results from all subtasks into a concise summary.
+
+    Args:
+        agent: The summary agent to use
+        task: The main task containing subtasks and their aggregated results
+
+    Returns:
+        A concise summary of all subtask results
+    """
+    subtasks_info = ""
+    for i, subtask in enumerate(task.subtasks, 1):
+        subtasks_info += f"\n**Subtask {i}**\n"
+        subtasks_info += f"Description: {subtask.content}\n"
+        subtasks_info += f"Result: {subtask.result or 'No result'}\n"
+        subtasks_info += "---\n"
+
+    prompt = f"""You are a professional summarizer. Summarize the results of the following subtasks.
+
+Main Task: {task.content}
+
+Subtasks (with descriptions and results):
+---
+{subtasks_info}
+---
+
+Instructions:
+1. Provide a concise summary of what was accomplished
+2. Highlight key findings or outputs from each subtask
+3. Mention any important files created or actions taken
+4. Use bullet points or sections for clarity
+5. DO NOT repeat the task name in your summary - go straight to the results
+6. Keep it professional but conversational
+
+Summary:
+"""
+
+    res = agent.step(prompt)
+    summary = res.msgs[0].content
+
+    logger.info(f"Generated subtasks summary for task {task.id} with {len(task.subtasks)} subtasks")
+
+    return summary
+
+
+async def get_task_result_with_optional_summary(task: Task, options: Chat) -> str:
+    """
+    Get the task result, with LLM summary if there are multiple subtasks.
+
+    Args:
+        task: The task to get result from
+        options: Chat options for creating summary agent
+
+    Returns:
+        The task result (summarized if multiple subtasks, raw otherwise)
+    """
+    result = str(task.result or "")
+
+    if task.subtasks and len(task.subtasks) > 1:
+        logger.info(f"Task {task.id} has {len(task.subtasks)} subtasks, generating summary")
+        try:
+            summary_agent = task_summary_agent(options)
+            summarized_result = await summary_subtasks_result(summary_agent, task)
+            result = summarized_result
+            logger.info(f"Successfully generated summary for task {task.id}")
+        except Exception as e:
+            logger.error(f"Failed to generate summary for task {task.id}: {e}")
+    elif task.subtasks and len(task.subtasks) == 1:
+        logger.info(f"Task {task.id} has only 1 subtask, skipping LLM summary")
+        if result and "--- Subtask" in result and "Result ---" in result:
+            parts = result.split("Result ---", 1)
+            if len(parts) > 1:
+                result = parts[1].strip()
+
+    return result
 
 
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
-    working_directory = options.file_save_path()
+    working_directory = get_working_directory(options)
+    logger.info(f"Using working directory: {working_directory}")
+    
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -591,7 +1074,7 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
 
 
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
-    working_directory = options.file_save_path()
+    working_directory = get_working_directory(options)
     tool_names = []
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:

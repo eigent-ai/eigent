@@ -227,7 +227,7 @@ export default function Workflow({
 	);
 
 	useEffect(() => {
-		console.log("workerList	", workerList);
+		// console.log("workerList	", workerList);
 		setNodes((prev: CustomNode[]) => {
 			if (!taskAssigning) return prev;
 			const base = [...baseWorker, ...workerList].filter(
