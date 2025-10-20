@@ -1,10 +1,12 @@
 import os
 from typing import Any, Dict, List
-from loguru import logger
 from camel.toolkits import FunctionTool
 from app.component.environment import env
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from camel.toolkits.mcp_toolkit import MCPToolkit
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("notion_mcp_toolkit")
 
 def _customize_function_parameters(schema: Dict[str, Any]) -> None:
         r"""Customize function parameters for specific functions.

@@ -20,7 +20,6 @@ from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.workforce import Workforce
-from loguru import logger
 from app.model.chat import Chat, NewAgent, QuestionAnalysisResult, Status, sse_json, TaskContent
 from camel.tasks import Task
 from app.utils.agent import (
@@ -41,7 +40,10 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
+from utils import traceroot_wrapper as traceroot
 import os
+
+logger = traceroot.get_logger("chat_service")
 
 
 def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
@@ -230,6 +232,7 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 
 @sync_step
+@traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # if True:
     #     import faulthandler
@@ -265,6 +268,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
 
+    logger.info("Starting step_solve", extra={"project_id": options.project_id, "task_id": options.task_id})
+    logger.debug("Step solve options", extra={"task_id": options.task_id, "model_platform": options.model_platform})
 
     while True:
         loop_iteration += 1
@@ -284,7 +289,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         try:
             item = await task_lock.get_queue()
         except Exception as e:
-            logger.error(f"Error getting item from queue: {e}")
+            logger.error("Error getting item from queue", extra={"project_id": options.project_id, "task_id": options.task_id, "error": str(e)}, exc_info=True)
             # Continue waiting instead of breaking on queue error
             continue
 
@@ -303,7 +308,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 is_exceeded, total_length = check_conversation_history_length(task_lock)
                 if is_exceeded:
-                    logger.error(f"Conversation history too long ({total_length} chars) for project {options.project_id}")
+                    logger.error("Conversation history too long", extra={"project_id": options.project_id, "current_length": total_length, "max_length": 100000})
                     yield sse_json("context_too_long", {
                         "message": "The conversation history is too long. Please create a new project to continue.",
                         "current_length": total_length,
@@ -377,15 +382,30 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     if not task_lock.summary_generated:
                         summary_task_agent = task_summary_agent(options)
-                        summary_task_content = await summary_task(summary_task_agent, camel_task)
-                        task_lock.summary_generated = True
-                        logger.info(f"Generated summary for first task in project {options.project_id}")
+                        try:
+                            summary_task_content = await asyncio.wait_for(
+                                summary_task(summary_task_agent, camel_task), timeout=10
+                            )
+                            task_lock.summary_generated = True
+                            logger.info("Generated summary for first task", extra={"project_id": options.project_id})
+                        except asyncio.TimeoutError:
+                            logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
+                            # Fallback to a minimal summary to unblock UI
+                            fallback_name = "Task"
+                            content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                            if content_preview is None:
+                                content_preview = ""
+                            fallback_summary = (
+                                (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                            )
+                            summary_task_content = f"{fallback_name}|{fallback_summary}"
+                            task_lock.summary_generated = True
                     else:
                         if len(question) > 100:
                             summary_task_content = f"Task|{question[:97]}..."
                         else:
                             summary_task_content = f"Task|{question}"
-                        logger.info(f"Skipped summary generation for subsequent task in project {options.project_id}")
+                        logger.info("Skipped summary generation for subsequent task", extra={"project_id": options.project_id})
 
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
@@ -691,26 +711,34 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 logger.warning(f"Unknown action: {item.action}")
         except ModelProcessingError as e:
             if "Budget has been exceeded" in str(e):
+                logger.warning(f"Budget exceeded for task {options.task_id}, action: {item.action}")
                 # workforce decompose task don't use ListenAgent, this need return sse
                 if "workforce" in locals() and workforce is not None:
                     workforce.pause()
                 yield sse_json(Action.budget_not_enough, {"message": "budget not enouth"})
             else:
-                logger.error(f"Error processing action {item.action}: {e}")
+                logger.error(f"ModelProcessingError for task {options.task_id}, action {item.action}: {e}", exc_info=True)
                 yield sse_json("error", {"message": str(e)})
                 if "workforce" in locals() and workforce is not None and workforce._running:
                     workforce.stop()
         except Exception as e:
-            logger.error(f"Error processing action {item.action}: {e}")
+            logger.error(f"Unhandled exception for task {options.task_id}, action {item.action}: {e}", exc_info=True)
             yield sse_json("error", {"message": str(e)})
             # Continue processing other items instead of breaking
 
 
+@traceroot.trace()
 async def install_mcp(
     mcp: ListenChatAgent,
     install_mcp: ActionInstallMcpData,
 ):
-    mcp.add_tools(await get_mcp_tools(install_mcp.data))
+    logger.info(f"Installing MCP tools: {list(install_mcp.data.get('mcpServers', {}).keys())}")
+    try:
+        mcp.add_tools(await get_mcp_tools(install_mcp.data))
+        logger.info("MCP tools installed successfully")
+    except Exception as e:
+        logger.error(f"Error installing MCP tools: {e}", exc_info=True)
+        raise
 
 
 def to_sub_tasks(task: Task, summary_task_content: str):
@@ -816,6 +844,7 @@ Based on the user query, determine the type and provide appropriate response."""
         return True
 
 
+@traceroot.trace()
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
     prompt = f"""The user's task is:
 ---
@@ -829,16 +858,15 @@ Your instructions are:
 Example format: "Task Name|This is the summary of the task."
 Do not include any other text or formatting.
 """
-
-    res = agent.step(prompt)
-    summary = res.msgs[0].content
-
-
-    # Parse the summary to show title and subtitle separately
-    if '|' in summary:
-        parts = summary.split('|', 1)
-
-    return summary
+    logger.debug("Generating task summary", extra={"task_id": task.id})
+    try:
+        res = agent.step(prompt)
+        summary = res.msgs[0].content
+        logger.info("Task summary generated", extra={"summary": summary})
+        return summary
+    except Exception as e:
+        logger.error("Error generating task summary", extra={"error": str(e)}, exc_info=True)
+        raise
 
 
 async def summary_subtasks_result(agent: ListenChatAgent, task: Task) -> str:
@@ -919,10 +947,11 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
     return result
 
 
+@traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
+    logger.info("Constructing workforce", extra={"project_id": options.project_id, "task_id": options.task_id})
     working_directory = get_working_directory(options)
-    logger.info(f"Using working directory: {working_directory}")
-    
+    logger.debug("Working directory set", extra={"working_directory": working_directory})
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -1073,7 +1102,10 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
+@traceroot.trace()
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
+    logger.info("Creating new agent", extra={"agent_name": data.name, "project_id": options.project_id, "task_id": options.task_id})
+    logger.debug("New agent data", extra={"agent_data": data.model_dump_json()})
     working_directory = get_working_directory(options)
     tool_names = []
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
@@ -1084,7 +1116,8 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
         for item in data.mcp_tools["mcpServers"].keys():
             tool_names.append(titleize(item))
     for item in tools:
-        logger.debug(f"new agent function tool  ====== {item.func.__name__}")
+        logger.debug(f"Agent {data.name} tool: {item.func.__name__}")
+    logger.info(f"Agent {data.name} created with {len(tools)} tools: {tool_names}")
     # Enhanced system message with platform information
     enhanced_description = f"""{data.description}
 - You are now working in system {platform.system()} with architecture

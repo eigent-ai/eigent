@@ -32,6 +32,8 @@ const nodeTypes: NodeTypes = {
 	node: (props: any) => <CustomNodeComponent {...props} />,
 };
 
+const VIEWPORT_ANIMATION_DURATION = 500;
+
 export default function Workflow({
 	taskAssigning,
 }: {
@@ -43,7 +45,7 @@ export default function Workflow({
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
 	const [nodes, setNodes, onNodesChange] = useNodesState<CustomNode>([]);
@@ -251,7 +253,7 @@ export default function Workflow({
 						},
 						position: isEditMode
 							? node.position
-							: { x: index * (342+20) + 8, y: 16 },
+							: { x: index * (342 + 20) + 8, y: 16 },
 					};
 				} else {
 					return {
@@ -265,7 +267,7 @@ export default function Workflow({
 							isEditMode: isEditMode,
 							workerInfo: agent?.workerInfo,
 						},
-						position: { x: index * (342+20) + 8, y: 16 },
+						position: { x: index * (342 + 20) + 8, y: 16 },
 						type: "node",
 					};
 				}
@@ -298,6 +300,24 @@ export default function Workflow({
 			container.removeEventListener("wheel", onWheel);
 		};
 	}, [getViewport, setViewport, isEditMode]);
+
+	const [isAnimating, setIsAnimating] = useState(false);
+	const moveViewport = (dx: number) => {
+		if (isAnimating) return;
+		const viewport = getViewport();
+		setIsAnimating(true);
+		// Prevent scrolling past x=0 (too far right) when moving left
+		const newX = dx > 0 ? Math.min(0, viewport.x + dx) : viewport.x + dx;
+		setViewport(
+			{ x: newX, y: viewport.y, zoom: viewport.zoom },
+			{
+				duration: VIEWPORT_ANIMATION_DURATION,
+			}
+		);
+		setTimeout(() => {
+			setIsAnimating(false);
+		}, VIEWPORT_ANIMATION_DURATION);
+	};
 
 	const handleShare = async (taskId: string) => {
 		share(taskId);
@@ -349,12 +369,7 @@ export default function Workflow({
 							variant="ghost"
 							size="icon"
 							onClick={() => {
-								const viewport = getViewport();
-								const newX = Math.min(0, viewport.x + 200);
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
+								moveViewport(200);
 							}}
 						>
 							<ChevronLeft className="w-4 h-4 text-icon-primary" />
@@ -362,14 +377,7 @@ export default function Workflow({
 						<Button
 							variant="ghost"
 							size="icon"
-							onClick={() => {
-								const viewport = getViewport();
-								const newX = viewport.x - 200;
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
-							}}
+							onClick={() => moveViewport(-200)}
 						>
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>

@@ -6,7 +6,7 @@ from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
-from app.utils import traceroot_wrapper as traceroot
+from utils import traceroot_wrapper as traceroot
 from camel.agents import ChatAgent
 from camel.agents.chat_agent import StreamingChatAgentResponse, AsyncStreamingChatAgentResponse
 from camel.agents._types import ToolCallRequest
@@ -51,7 +51,6 @@ from camel.types import ModelPlatformType, ModelType
 from camel.toolkits import MCPToolkit, ToolkitMessageIntegration
 import datetime
 from pydantic import BaseModel
-from loguru import logger
 from app.model.chat import Chat, McpServers
 
 # Create traceroot logger for agent tracking
@@ -172,7 +171,6 @@ class ListenChatAgent(ChatAgent):
         except Exception as e:
             res = None
             error_info = e
-            logger.exception(e)
             traceroot_logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
@@ -247,8 +245,7 @@ class ListenChatAgent(ChatAgent):
         except Exception as e:
             res = None
             error_info = e
-            logger.exception(e)
-            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
+            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in async step: {e}", exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
@@ -353,9 +350,7 @@ class ListenChatAgent(ChatAgent):
                 error_msg = f"Error executing tool '{func_name}': {e!s}"
                 result = f"Tool execution failed: {error_msg}"
                 mask_flag = False
-                logger.debug(error_msg)
-                traceroot_logger.error(f"Tool execution failed for {func_name}: {e}")
-                traceback.print_exc()
+                traceroot_logger.error(f"Tool execution failed for {func_name}: {e}", exc_info=True)
 
         return self._record_tool_calling(func_name, args, result, tool_call_id, mask_output=mask_flag)
 
@@ -415,9 +410,7 @@ class ListenChatAgent(ChatAgent):
                 # Capture the error message to prevent framework crash
                 error_msg = f"Error executing async tool '{func_name}': {e!s}"
                 result = {"error": error_msg}
-                logger.warning(error_msg)
-                traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}")
-                traceback.print_exc()
+                traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}", exc_info=True)
 
             # Prepare result message with truncation
             if isinstance(result, str):
@@ -751,6 +744,8 @@ def search_agent(options: Chat):
         ],
     )
 
+    # Save reference before registering for toolkits_to_register_agent
+    web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
@@ -815,7 +810,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
 - **CRITICAL URL POLICY**: You are STRICTLY FORBIDDEN from inventing,
     guessing, or constructing URLs yourself. You MUST only use URLs from
     trusted sources:
-    1. URLs returned by search tools (like `search_google` or `search_exa`)
+    1. URLs returned by search tools (`search_google`)
     2. URLs found on webpages you have visited through browser tools
     3. URLs provided by the user in their request
     Fabricating or guessing URLs is considered a critical error and must
@@ -861,8 +856,6 @@ Your approach depends on available search tools:
   sites using `browser_type` and submit with `browser_enter`
 - **Extract URLs from results**: Only use URLs that appear in the search
   results on these websites
-- **Alternative Search**: If available, use `search_exa` for additional
-  results
 
 **Common Browser Operations (both scenarios):**
 - **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
@@ -899,6 +892,7 @@ Your approach depends on available search tools:
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
         ],
+        toolkits_to_register_agent=[web_toolkit_for_agent_registration],
     )
 
 
@@ -930,10 +924,10 @@ async def document_agent(options: Chat):
         *terminal_toolkit.get_tools(),
         *await GoogleDriveMCPToolkit.get_can_use_tools(options.project_id, options.get_bun_env()),
     ]
-    if env("EXA_API_KEY") or options.is_cloud():
-        search_toolkit = SearchToolkit(options.project_id, Agents.document_agent).search_exa
-        search_toolkit = message_integration.register_functions([search_toolkit])
-        tools.extend(search_toolkit)
+    # if env("EXA_API_KEY") or options.is_cloud():
+    #     search_toolkit = SearchToolkit(options.project_id, Agents.document_agent).search_exa
+    #     search_toolkit = message_integration.register_functions([search_toolkit])
+    #     tools.extend(search_toolkit)
     system_message = f"""
 <role>
 You are a Documentation Specialist, responsible for creating, modifying, and 
@@ -1162,10 +1156,10 @@ def multi_modal_agent(options: Chat):
         audio_analysis_toolkit = message_integration.register_toolkits(audio_analysis_toolkit)
         tools.extend(audio_analysis_toolkit.get_tools())
 
-    if env("EXA_API_KEY") or options.is_cloud():
-        search_toolkit = SearchToolkit(options.project_id, Agents.multi_modal_agent).search_exa
-        search_toolkit = message_integration.register_functions([search_toolkit])
-        tools.extend(search_toolkit)
+    # if env("EXA_API_KEY") or options.is_cloud():
+    #     search_toolkit = SearchToolkit(options.project_id, Agents.multi_modal_agent).search_exa
+    #     search_toolkit = message_integration.register_functions([search_toolkit])
+    #     tools.extend(search_toolkit)
 
     system_message = f"""
 <role>
@@ -1294,8 +1288,8 @@ async def social_medium_agent(options: Chat):
         # *DiscordToolkit(options.project_id).get_tools(),  # Not supported temporarily
         # *GoogleSuiteToolkit(options.project_id).get_tools(),  # Not supported temporarily
     ]
-    if env("EXA_API_KEY") or options.is_cloud():
-        tools.append(FunctionTool(SearchToolkit(options.project_id, Agents.social_medium_agent).search_exa))
+    # if env("EXA_API_KEY") or options.is_cloud():
+    #     tools.append(FunctionTool(SearchToolkit(options.project_id, Agents.social_medium_agent).search_exa))
     return agent_model(
         Agents.social_medium_agent,
         BaseMessage.make_assistant_message(

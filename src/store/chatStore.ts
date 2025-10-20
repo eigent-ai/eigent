@@ -1176,12 +1176,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							(project_id || projectStore.activeProjectId) as string
 						);
 						if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && res.length > 0) {
-							// Filter out directories, only upload actual files
-							const files = res.filter((file: any) => !file.isFolder);
-
 							// Upload files sequentially to avoid overwhelming the server
 							const uploadResults = await Promise.allSettled(
-								files.map(async (file: any) => {
+								res.filter((file: any) => !file.isFolder).map(async (file: any) => {
 									try {
 										// Read file content using Electron API
 										const result = await window.ipcRenderer.invoke('read-file', file.path);

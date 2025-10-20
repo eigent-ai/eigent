@@ -627,9 +627,9 @@ export default function ChatBox(): JSX.Element {
 			{hasAnyMessages ? (
 				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
-					
+
 					{/* New Project Chat Container */}
-					<ProjectChatContainer 
+					<ProjectChatContainer
 						onPauseResume={handlePauseResume}
 						onSkip={handleSkip}
 						isPauseResumeLoading={isPauseResumeLoading}

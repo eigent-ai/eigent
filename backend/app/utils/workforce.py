@@ -9,7 +9,6 @@ from camel.societies.workforce.workforce import (
 from camel.societies.workforce.task_channel import TaskChannel
 from camel.societies.workforce.base import BaseNode
 from camel.societies.workforce.utils import TaskAssignResult
-from loguru import logger
 from camel.tasks.task import Task, TaskState, validate_task_content
 from app.component import code
 from app.exception.exception import UserException
@@ -24,25 +23,10 @@ from app.service.task import (
     get_task_lock,
 )
 from app.utils.single_agent_worker import SingleAgentWorker
+from utils import traceroot_wrapper as traceroot
 
-# === Debug sink === Write detailed dependency debug logs to file (logs/workforce_debug.log)
-# Create a new file every day, keep the logs for the last 7 days, and write asynchronously without blocking the main process
-logger.add(
-    "logs/workforce_debug_{time:YYYY-MM-DD}.log",
-    rotation="00:00",
-    retention="7 days",
-    enqueue=True,
-    level="DEBUG",
-)
-# Independent sink: only collect the "[WF]" debug lines we insert to quickly view the dependency chain
-logger.add(
-    "logs/wf_trace_{time:YYYY-MM-DD-HH}.log",
-    rotation="00:00",
-    retention="7 days",
-    enqueue=True,
-    level="DEBUG",
-    filter=lambda record: record["message"].startswith("[WF]"),
-)
+logger = traceroot.get_logger("workforce")
+
 
 
 class Workforce(BaseWorkforce):
@@ -209,7 +193,9 @@ class Workforce(BaseWorkforce):
             # Find task content
             task_obj = get_camel_task(item.task_id, tasks)
             if task_obj is None:
-                logger.warning(f"[WF] WARN: Task {item.task_id} not found in tasks list during ASSIGN phase. This may indicate a task tree inconsistency.")
+                logger.warning(
+                    f"[WF] WARN: Task {item.task_id} not found in tasks list during ASSIGN phase. This may indicate a task tree inconsistency."
+                )
                 content = ""
             else:
                 content = task_obj.content
@@ -255,7 +241,11 @@ class Workforce(BaseWorkforce):
         await super()._post_task(task, assignee_id)
 
     def add_single_agent_worker(
-        self, description: str, worker: ListenChatAgent, pool_max_size: int = DEFAULT_WORKER_POOL_SIZE
+        self,
+        description: str,
+        worker: ListenChatAgent,
+        pool_max_size: int = DEFAULT_WORKER_POOL_SIZE,
+        enable_workflow_memory: bool = False,
     ) -> BaseWorkforce:
         if self._state == WorkforceState.RUNNING:
             raise RuntimeError("Cannot add workers while workforce is running. Pause the workforce first.")
@@ -271,6 +261,8 @@ class Workforce(BaseWorkforce):
             worker=worker,
             pool_max_size=pool_max_size,
             use_structured_output_handler=self.use_structured_output_handler,
+            context_utility=None, # Will be set during save/load operations
+            enable_workflow_memory=enable_workflow_memory,
         )
         self._children.append(worker_node)
 
