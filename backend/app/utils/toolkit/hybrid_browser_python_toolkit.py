@@ -12,12 +12,14 @@ from camel.toolkits.hybrid_browser_toolkit_py.actions import ActionExecutor
 from camel.toolkits.hybrid_browser_toolkit_py.snapshot import PageSnapshot
 from camel.toolkits.hybrid_browser_toolkit_py.agent import PlaywrightLLMAgent
 from camel.toolkits.function_tool import FunctionTool
-from loguru import logger
 from app.component.environment import env
 from app.exception.exception import ProgramException
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("hybrid_browser_python_toolkit")
 
 
 class BrowserSession(BaseHybridBrowserSession):

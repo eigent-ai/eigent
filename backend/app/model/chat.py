@@ -3,9 +3,11 @@ import json
 from pathlib import Path
 import re
 from typing import Literal
-from loguru import logger
 from pydantic import BaseModel, field_validator
 from camel.types import ModelType, RoleType
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("chat_model")
 
 
 class Status(str, Enum):

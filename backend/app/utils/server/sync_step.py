@@ -3,9 +3,11 @@ import httpx
 import asyncio
 import os
 import json
-from loguru import logger
 from app.service.chat_service import Chat
 from app.component.environment import env
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("sync_step")
 
 
 def sync_step(func):

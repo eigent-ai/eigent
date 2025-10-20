@@ -230,7 +230,7 @@ class InstallLogs {
 
   /**Display filtered logs based on severity */
   displayFilteredLogs(data:String) {
-      if (!data) return;
+      if (!data) return;      
       const msg = data.toString().trimEnd();
       if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
           log.error(`BACKEND: [DEPS INSTALL] ${msg}`);

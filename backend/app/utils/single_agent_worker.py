@@ -2,13 +2,15 @@ import datetime
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
 from camel.societies.workforce.single_agent_worker import SingleAgentWorker as BaseSingleAgentWorker
 from camel.tasks.task import Task, TaskState, is_task_result_insufficient
-from loguru import logger
+from utils import traceroot_wrapper as traceroot
 
 from app.utils.agent import ListenChatAgent
 from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
 from colorama import Fore
 from camel.societies.workforce.utils import TaskResult
 from camel.utils.context_utils import ContextUtility
+
+logger = traceroot.get_logger("single_agent_worker")
 
 
 class SingleAgentWorker(BaseSingleAgentWorker):
@@ -60,6 +62,7 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         worker_agent.process_task_id = task.id  # type: ignore  rewrite line
 
         response_content = ""
+        final_response = None
         try:
             dependency_tasks_info = self._get_dep_tasks_info(dependencies)
             prompt = PROCESS_TASK_PROMPT.format(
@@ -170,6 +173,8 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             task.additional_info = {}
 
         # Create worker attempt details with descriptive keys
+        # Use final_response if available (streaming), otherwise use response
+        response_for_info = final_response if final_response is not None else response
         worker_attempt_details = {
             "agent_id": getattr(worker_agent, "agent_id", worker_agent.role_name),
             "original_worker_id": getattr(self.worker, "agent_id", self.worker.role_name),
@@ -180,11 +185,7 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             f"{getattr(self.worker, 'agent_id', self.worker.role_name)}) "
             f"to process task: {task.content}",
             "response_content": response_content[:50],
-            "tool_calls": str(
-                final_response.info.get("tool_calls")
-                if isinstance(response, AsyncStreamingChatAgentResponse)
-                else response.info.get("tool_calls")
-            )[:50],
+            "tool_calls": str(response_for_info.info.get("tool_calls", []) if response_for_info and hasattr(response_for_info, 'info') else [])[:50],
             "total_tokens": total_tokens,
         }
 
