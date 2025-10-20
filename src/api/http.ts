@@ -170,7 +170,7 @@ async function proxyFetchRequest(
     ...customHeaders,
   }
 
-  console.debug('url', url, token)
+  // console.debug('url', url, token)
   if (!url.includes('http://') && !url.includes('https://') && token) {
     headers['Authorization'] = `Bearer ${token}`
   }
