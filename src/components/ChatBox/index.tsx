@@ -224,8 +224,14 @@ export default function ChatBox(): JSX.Element {
 					} else {
 						// Continue conversation: simple response, complex task, or finished task
 						console.log("[Multi-turn] Continuing conversation with improve API");
+
+						//Generate nextId in case new chatStore is created to sync with the backend beforehand
+						const nextTaskId = generateUniqueId()
+						chatStore.setNextTaskId(nextTaskId);
+
 						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
+							task_id: nextTaskId
 						});
 						chatStore.setIsPending(_taskId, true);
 						// Add the user message to show it in UI

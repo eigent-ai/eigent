@@ -90,6 +90,38 @@ def improve(id: str, data: SupplementChat):
         if hasattr(task_lock, 'last_task_result'):
             chat_logger.info(f"[CONTEXT] Preserved task result: {len(task_lock.last_task_result)} chars")
 
+    # Update file save path if task_id is provided
+    new_folder_path = None
+    if data.task_id:
+        try:
+            # Get current environment values needed to construct new path
+            current_email = None
+            
+            # Extract email from current file_save_path if available
+            current_file_save_path = os.environ.get("file_save_path", "")
+            if current_file_save_path:
+                path_parts = Path(current_file_save_path).parts
+                if len(path_parts) >= 3 and "eigent" in path_parts:
+                    eigent_index = path_parts.index("eigent")
+                    if eigent_index + 1 < len(path_parts):
+                        current_email = path_parts[eigent_index + 1]
+            
+            # If we have the necessary information, update the file_save_path
+            if current_email and id:
+                # Create new path using the existing pattern: email/project_{project_id}/task_{task_id}
+                new_folder_path = Path.home() / "eigent" / current_email / f"project_{id}" / f"task_{data.task_id}"
+                new_folder_path.mkdir(parents=True, exist_ok=True)
+                os.environ["file_save_path"] = str(new_folder_path)
+                chat_logger.info(f"Updated file_save_path to: {new_folder_path}")
+                
+                # Store the new folder path in task_lock for potential cleanup and persistence
+                task_lock.new_folder_path = new_folder_path
+            else:
+                chat_logger.warning(f"Could not update file_save_path - email: {current_email}, project_id: {id}")
+                
+        except Exception as e:
+            chat_logger.error(f"Error updating file path for project_id: {id}, task_id: {data.task_id}: {e}")
+
     asyncio.run(task_lock.put_queue(ActionImproveData(data=data.question)))
     chat_logger.info(f"Improvement request queued with preserved context")
     return Response(status_code=201)

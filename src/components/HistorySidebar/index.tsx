@@ -177,6 +177,8 @@ export default function HistorySidebar() {
 			const history = historyTasks.find((item) => item.id === curHistoryId);
 			if (history?.task_id && (window as any).ipcRenderer) {
 				try {
+					//TODO(file): rename endpoint to use project_id
+					//TODO(history): make sure to sync to projectId when updating endpoint
 					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id);
 				} catch (error) {
 					console.warn("Local file cleanup failed:", error);
