@@ -231,6 +231,7 @@ export default function ChatBox(): JSX.Element {
 
 						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
+							task_id: nextTaskId
 						});
 						chatStore.setIsPending(_taskId, true);
 						// Add the user message to show it in UI

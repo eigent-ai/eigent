@@ -277,6 +277,27 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     except Exception as e:
                         logger.error(f"[CONTEXT] Failed to save response to history: {e}")
 
+                    # Clean up empty folder if it was created for this task
+                    if hasattr(task_lock, 'new_folder_path') and task_lock.new_folder_path:
+                        try:
+                            folder_path = Path(task_lock.new_folder_path)
+                            if folder_path.exists() and folder_path.is_dir():
+                                # Check if folder is empty
+                                if not any(folder_path.iterdir()):
+                                    folder_path.rmdir()
+                                    logger.info(f"Cleaned up empty folder: {folder_path}")
+                                    # Also clean up parent project folder if it becomes empty
+                                    project_folder = folder_path.parent
+                                    if project_folder.exists() and not any(project_folder.iterdir()):
+                                        project_folder.rmdir()
+                                        logger.info(f"Cleaned up empty project folder: {project_folder}")
+                                else:
+                                    logger.info(f"Folder not empty, keeping: {folder_path}")
+                            # Reset the folder path
+                            task_lock.new_folder_path = None
+                        except Exception as e:
+                            logger.error(f"Error cleaning up folder: {e}")
+
                     yield confirm
                 else:
                     yield sse_json("confirmed", {"question": question})
@@ -427,7 +448,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_conversation('task_result', {
                     'task_content': old_task_content_clean,
                     'task_result': old_task_result,
-                    'working_directory': options.file_save_path()
+                    'working_directory': env("file_save_path", options.file_save_path())
                 })
 
                 new_task_content = item.data.get('content', '')
@@ -564,7 +585,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_conversation('task_result', {
                     'task_content': task_content,
                     'task_result': final_result,
-                    'working_directory': options.file_save_path()
+                    'working_directory': env("file_save_path", options.file_save_path())
                 })
 
 
@@ -855,8 +876,8 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
     return result
 
 
-async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
-    working_directory = options.file_save_path()
+async def construct_workforce(options: Chat, task_lock: TaskLock = None) -> tuple[Workforce, ListenChatAgent]:
+    working_directory = env("file_save_path", options.file_save_path()) if task_lock else options.file_save_path()
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -1008,7 +1029,7 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
 
 
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
-    working_directory = options.file_save_path()
+    working_directory = env("file_save_path", options.file_save_path())
     tool_names = []
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:
