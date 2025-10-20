@@ -585,7 +585,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (!agent_name || !agent_id) return;
 
 						// Add agent to taskAssigning
-						if (!['mcp_agent', 'new_worker_agent', 'task_agent', 'task_summary_agent', "coordinator_agent"].includes(agent_name)) {
+						if (!['mcp_agent', 'new_worker_agent', 'task_agent', 'task_summary_agent', "coordinator_agent", "question_confirm_agent"].includes(agent_name)) {
 							// if (agentNameMap[agent_name as keyof typeof agentNameMap]) {
 							const hasAgent = tasks[currentTaskId].taskAssigning.find((agent) => agent.agent_id === agent_id)
 
