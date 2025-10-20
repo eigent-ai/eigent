@@ -40,6 +40,10 @@ let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
 
+// Protocol URL queue for handling URLs before window is ready
+let protocolUrlQueue: string[] = [];
+let isWindowReady = false;
+
 // ==================== path config ====================
 const preload = path.join(__dirname, '../preload/index.mjs');
 const indexHtml = path.join(RENDERER_DIST, 'index.html');
@@ -97,6 +101,19 @@ const setupProtocolHandlers = () => {
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
   log.info('enter handleProtocolUrl', url);
+  
+  // If window is not ready, queue the URL
+  if (!isWindowReady || !win || win.isDestroyed()) {
+    log.info('Window not ready, queuing protocol URL:', url);
+    protocolUrlQueue.push(url);
+    return;
+  }
+
+  processProtocolUrl(url);
+}
+
+// Process a single protocol URL
+function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
   const share_token = urlObj.searchParams.get('share_token');
@@ -127,6 +144,26 @@ function handleProtocolUrl(url: string) {
     }
   } else {
     log.error('window not available');
+  }
+}
+
+// Process all queued protocol URLs
+function processQueuedProtocolUrls() {
+  if (protocolUrlQueue.length > 0) {
+    log.info('Processing queued protocol URLs:', protocolUrlQueue.length);
+
+    // Verify window is ready before processing
+    if (!win || win.isDestroyed() || !isWindowReady) {
+      log.warn('Window not ready for processing queued URLs, keeping URLs in queue');
+      return;
+    }
+
+    const urls = [...protocolUrlQueue];
+    protocolUrlQueue = [];
+
+    urls.forEach(url => {
+      processProtocolUrl(url);
+    });
   }
 }
 
@@ -1114,6 +1151,11 @@ async function createWindow() {
     });
   });
 
+  // Mark window as ready and process any queued protocol URLs
+  isWindowReady = true;
+  log.info('Window is ready, processing queued protocol URLs...');
+  processQueuedProtocolUrls();
+
   // Now check and install dependencies
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
@@ -1346,7 +1388,10 @@ app.on('window-all-closed', () => {
     webViewManager = null;
   }
   
+  // Reset window state
   win = null;
+  isWindowReady = false;
+  protocolUrlQueue = [];
   
   if (process.platform !== 'darwin') {
     app.quit();
@@ -1398,6 +1443,10 @@ app.on('before-quit', async (event) => {
     if (global.gc) {
       global.gc();
     }
+    
+    // Reset protocol handling state
+    isWindowReady = false;
+    protocolUrlQueue = [];
     
     log.info('All cleanup completed, exiting...');
   } catch (error) {
