@@ -1,4 +1,12 @@
 import os
+import sys
+import pathlib
+
+# Add project root to Python path to import shared utils
+_project_root = pathlib.Path(__file__).parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 from utils import traceroot_wrapper as traceroot
 from app import api
 from app.component.environment import auto_include_routers, env

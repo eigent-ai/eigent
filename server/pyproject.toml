@@ -26,7 +26,6 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "convert-case>=1.2.3",
     "python-multipart>=0.0.20",
-    "loguru>=0.7.3",
     "httpx>=0.28.1",
     "pydash>=8.0.5",
     "requests>=2.32.4",
