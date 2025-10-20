@@ -9,7 +9,7 @@ type AnyProps = Record<string, unknown>;
 type DOMMotionProps<T extends HTMLElement = HTMLElement> = Omit<
   HTMLMotionProps<keyof HTMLElementTagNameMap>,
   'ref'
-> & { ref?: React.Ref<T> };
+> & { ref?: React.RefCallback<T> | React.RefObject<T> | React.MutableRefObject<T> | null };
 
 type WithAsChild<Base extends object> =
   | (Base & { asChild: true; children: React.ReactElement })

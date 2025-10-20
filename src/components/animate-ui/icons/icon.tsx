@@ -139,6 +139,7 @@ function AnimateIcon({
   persistOnAnimateEnd = false,
   delay = 0,
   children,
+  ref: _ref,
   ...props
 }: AnimateIconProps) {
   const controls = useAnimation();
@@ -402,9 +403,14 @@ function AnimateIcon({
     },
   );
 
+  // Create a properly typed ref callback to avoid string ref issues
+  const refCallback: React.RefCallback<HTMLElement> = React.useCallback((node: HTMLElement | null) => {
+    inViewRef.current = node;
+  }, [inViewRef]);
+
   const content = asChild ? (
-    <Slot
-      ref={inViewRef as React.Ref<HTMLElement>}
+    <Slot<HTMLElement>
+      ref={refCallback}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onPointerDown={handlePointerDown}
@@ -415,7 +421,7 @@ function AnimateIcon({
     </Slot>
   ) : (
     <motion.span
-      ref={inViewRef as React.Ref<HTMLElement>}
+      ref={refCallback}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onPointerDown={handlePointerDown}
