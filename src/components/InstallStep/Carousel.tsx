@@ -19,6 +19,7 @@ export const CarouselStep: React.FC = () => {
 	const [currentSlide, setCurrentSlide] = useState(0);
 	const [isHovered, setIsHovered] = useState(false);
 	const [api, setApi] = useState<any>(null);
+	const [isCarouselCompleted, setIsCarouselCompleted] = useState(false);
 	const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 	// listen to carousel change
 	useEffect(() => {
@@ -95,85 +96,99 @@ export const CarouselStep: React.FC = () => {
 	}, [currentSlide, api]);
 	return (
 		<div className="flex flex-col gap-lg w-[1120px] max-lg:w-[100%]">
-			<div className="flex flex-col gap-md  ">
-				<div className="text-text-heading font-bold text-4xl leading-5xl">
-					{carouselItems[currentSlide].title}
-				</div>
+			{!isCarouselCompleted ? (
+				<>
+					{/* Carousel content - title and videos */}
+					<div className="flex flex-col gap-md  ">
+						<div className="text-text-heading font-bold text-4xl leading-5xl">
+							{carouselItems[currentSlide].title}
+						</div>
 
-				<Carousel
-					className="min-h-[400px] max-h-[490px] bg-white-100% rounded-3xl p-0 short:max-h-[300px] short:overflow-y-auto scrollbar"
-					onMouseEnter={handleMouseEnter}
-					onMouseLeave={handleMouseLeave}
-					setApi={setApi}
-				>
-					<CarouselContent className="h-full">
-						{carouselItems.map((_, index) => (
-							<CarouselItem key={index} className="h-full">
-								<div className="p-0 h-full">
-									<CardContent className="w-full h-full items-center justify-center p-0">
-										<video
-											ref={(el) => (videoRefs.current[index] = el)}
-											src={carouselItems[index].video}
-											muted
-											playsInline
-											preload="auto"
-											onEnded={() => {
-												if (api) {
-													const currentIndex = api.selectedScrollSnap();
-													if (currentIndex < carouselItems.length - 1) {
-														api.scrollNext();
-													} else {
-														api.scrollTo(0);
-													}
-												}
-											}}
-											className="rounded-3xl w-full h-full object-contain"
-										/>
-									</CardContent>
-								</div>
-							</CarouselItem>
-						))}
-					</CarouselContent>
-				</Carousel>
-			</div>
-			<div className="flex justify-between items-center gap-sm">
-				<div className="flex justify-center items-center gap-6">
-					{carouselItems.map((item, index) => (
-						<div
-							key={index}
-							onMouseEnter={() => handleIndicatorHover(index)}
-							className={`w-[120px] h-1.5 rounded-full cursor-pointer transition-all duration-300 ${
-								index === currentSlide
-									? "bg-fill-fill-secondary"
-									: "bg-white-100% hover:bg-fill-fill-secondary"
-							}`}
-						></div>
-					))}
-				</div>
-				<div className="flex justify-center items-center gap-sm">
-					<Button
-						onClick={() => setInitState("done")}
-						variant="ghost"
-						size="sm"
-					>
-						skip
-					</Button>
-					<Button
-						onClick={() => {
-							if (currentSlide < carouselItems.length - 1) {
-								api?.scrollNext(); // not last page, switch to next page
-							} else {
-								setInitState("done"); // last page, execute done logic
-							}
-						}}
-						variant="primary"
-						size="sm"
-					>
-						<div>Next</div>
-						<ArrowRight size={24} className="text-white-100%" />
-					</Button>
-				</div>
-			</div>
+						<Carousel
+							className="min-h-[400px] max-h-[490px] bg-white-100% rounded-3xl p-0 short:max-h-[300px] short:overflow-y-auto scrollbar"
+							onMouseEnter={handleMouseEnter}
+							onMouseLeave={handleMouseLeave}
+							setApi={setApi}
+						>
+							<CarouselContent className="h-full">
+								{carouselItems.map((_, index) => (
+									<CarouselItem key={index} className="h-full">
+										<div className="p-0 h-full">
+											<CardContent className="w-full h-full items-center justify-center p-0">
+												<video
+													ref={(el) => (videoRefs.current[index] = el)}
+													src={carouselItems[index].video}
+													muted
+													playsInline
+													preload="auto"
+													onEnded={() => {
+														if (api) {
+															const currentIndex = api.selectedScrollSnap();
+															if (currentIndex < carouselItems.length - 1) {
+																api.scrollNext();
+															} else {
+																api.scrollTo(0);
+															}
+														}
+													}}
+													className="rounded-3xl w-full h-full object-contain"
+												/>
+											</CardContent>
+										</div>
+									</CarouselItem>
+								))}
+							</CarouselContent>
+						</Carousel>
+					</div>
+					
+					{/* Carousel controls - indicators and buttons */}
+					<div className="flex justify-between items-center gap-sm">
+						<div className="flex justify-center items-center gap-6">
+							{carouselItems.map((item, index) => (
+								<div
+									key={index}
+									onMouseEnter={() => handleIndicatorHover(index)}
+									className={`w-[120px] h-1.5 rounded-full cursor-pointer transition-all duration-300 ${
+										index === currentSlide
+											? "bg-fill-fill-secondary"
+											: "bg-white-100% hover:bg-fill-fill-secondary"
+									}`}
+								></div>
+							))}
+						</div>
+						<div className="flex justify-center items-center gap-sm">
+							<Button
+								onClick={() => {
+									// Hide carousel and buttons when skip is clicked
+									setIsCarouselCompleted(true);
+								}}
+								variant="ghost"
+								size="sm"
+							>
+								skip
+							</Button>
+							<Button
+								onClick={() => {
+									if (currentSlide < carouselItems.length - 1) {
+										api?.scrollNext(); // not last page, switch to next page
+									} else {
+										// Hide carousel and buttons when next is clicked on last slide
+										setIsCarouselCompleted(true);
+									}
+								}}
+								variant="primary"
+								size="sm"
+							>
+								<div>Next</div>
+								<ArrowRight size={24} className="text-white-100%" />
+							</Button>
+						</div>
+					</div>
+				</>
+			) : (
+				// Empty state when carousel is completed - waiting for installation
+				<div></div>
+			)}
 		</div>
 	);
 };
