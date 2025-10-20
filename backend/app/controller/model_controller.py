@@ -36,9 +36,9 @@ async def validate_model(request: ValidateModelRequest):
     model_type = request.model_type
     has_custom_url = request.url is not None
     has_config = request.model_config_dict is not None
-    
+
     logger.info("Model validation started", extra={"platform": platform, "model_type": model_type, "has_url": has_custom_url, "has_config": has_config})
-    
+
     # API key validation
     if request.api_key is not None and str(request.api_key).strip() == "":
         logger.warning("Model validation failed: empty API key", extra={"platform": platform, "model_type": model_type})
@@ -57,7 +57,7 @@ async def validate_model(request: ValidateModelRequest):
 
     try:
         extra = request.extra_params or {}
-        
+
         logger.debug("Creating agent for validation", extra={"platform": platform, "model_type": model_type})
         agent = create_agent(
             platform,
@@ -67,7 +67,7 @@ async def validate_model(request: ValidateModelRequest):
             model_config_dict=request.model_config_dict,
             **extra,
         )
-        
+
         logger.debug("Agent created, executing test step", extra={"platform": platform, "model_type": model_type})
         response = agent.step(
             input_message="""
@@ -77,7 +77,8 @@ async def validate_model(request: ValidateModelRequest):
             you must call the get_website_content tool only once.
             """
         )
-        
+
+
     except Exception as e:
         # Normalize error to OpenAI-style error structure
         logger.error("Model validation failed", extra={"platform": platform, "model_type": model_type, "error": str(e)}, exc_info=True)
@@ -113,12 +114,7 @@ async def validate_model(request: ValidateModelRequest):
         error_code=None,
         error=None,
     )
-    
-    logger.info("Model validation completed", extra={
-        "platform": platform,
-        "model_type": model_type,
-        "is_valid": is_valid,
-        "is_tool_calls": is_tool_calls
-    })
-    
+
+    logger.info("Model validation completed", extra={"platform": platform, "model_type": model_type, "is_valid": is_valid, "is_tool_calls": is_tool_calls})
+
     return result

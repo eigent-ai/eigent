@@ -170,7 +170,6 @@ class ListenChatAgent(ChatAgent):
         except Exception as e:
             res = None
             error_info = e
-            traceroot_logger.error(str(e), exc_info=True)
             traceroot_logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
@@ -245,8 +244,7 @@ class ListenChatAgent(ChatAgent):
         except Exception as e:
             res = None
             error_info = e
-            logger.exception(e)
-            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
+            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in async step: {e}", exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
@@ -351,9 +349,7 @@ class ListenChatAgent(ChatAgent):
                 error_msg = f"Error executing tool '{func_name}': {e!s}"
                 result = f"Tool execution failed: {error_msg}"
                 mask_flag = False
-                traceroot_logger.debug(error_msg)
-                traceroot_logger.error(f"Tool execution failed for {func_name}: {e}")
-                traceback.print_exc()
+                traceroot_logger.error(f"Tool execution failed for {func_name}: {e}", exc_info=True)
 
         return self._record_tool_calling(func_name, args, result, tool_call_id, mask_output=mask_flag)
 
@@ -413,9 +409,7 @@ class ListenChatAgent(ChatAgent):
                 # Capture the error message to prevent framework crash
                 error_msg = f"Error executing async tool '{func_name}': {e!s}"
                 result = {"error": error_msg}
-                traceroot_logger.warning(error_msg)
-                traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}")
-                traceback.print_exc()
+                traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}", exc_info=True)
 
             # Prepare result message with truncation
             if isinstance(result, str):

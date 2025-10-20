@@ -1,8 +1,14 @@
 import os
+import sys
 import pathlib
 import signal
 import asyncio
 import atexit
+
+# Add project root to Python path to import shared utils
+_project_root = pathlib.Path(__file__).parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 # 1) Load env and init traceroot BEFORE importing modules that get a logger
 from utils import traceroot_wrapper as traceroot
@@ -56,7 +62,6 @@ shutdown_event = asyncio.Event()
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
-    app_logger.info("Starting graceful shutdown...")
     app_logger.info("Starting graceful shutdown process")
 
     from app.service.task import task_locks, _cleanup_task
@@ -81,13 +86,11 @@ async def cleanup_resources():
     if pid_file.exists():
         pid_file.unlink()
 
-    app_logger.info("Graceful shutdown completed")
     app_logger.info("All resources cleaned up successfully")
 
 
 def signal_handler(signum, frame):
     r"""Handle shutdown signals"""
-    app_logger.info(f"Received signal {signum}")
     app_logger.warning(f"Received shutdown signal: {signum}")
     asyncio.create_task(cleanup_resources())
     shutdown_event.set()
@@ -96,8 +99,19 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-# Register cleanup on exit
-atexit.register(lambda: asyncio.run(cleanup_resources()))
+# Register cleanup on exit with safe synchronous wrapper
+def sync_cleanup():
+    """Synchronous cleanup for atexit - handles PID file removal"""
+    try:
+        # Only perform synchronous cleanup tasks
+        pid_file = dir / "run.pid"
+        if pid_file.exists():
+            pid_file.unlink()
+            app_logger.info("PID file removed during shutdown")
+    except Exception as e:
+        app_logger.error(f"Error during atexit cleanup: {e}")
+
+atexit.register(sync_cleanup)
 
 # Log successful initialization
 app_logger.info("Application initialization completed successfully")

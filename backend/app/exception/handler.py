@@ -69,7 +69,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             "client_host": request.client.host if request.client else None,
         }
     )
-    traceback.print_exc()  # output to electron log
 
     return JSONResponse(
         status_code=500,
