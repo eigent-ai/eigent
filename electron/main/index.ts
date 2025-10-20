@@ -545,7 +545,7 @@ function registerIpcHandlers() {
 
   // ==================== window control handler ====================
   ipcMain.on('window-close', (_, data) => {
-    if(data.isForceQuit) {
+    if (data.isForceQuit) {
       return app?.quit()
     }
     return win?.close()
@@ -848,9 +848,9 @@ function registerIpcHandlers() {
   // ==================== dependency install handler ====================
   ipcMain.handle('install-dependencies', async () => {
     try {
-      if(win === null) throw new Error("Window is null");
+      if (win === null) throw new Error("Window is null");
       //Force installation even if versionFile exists
-      const isInstalled = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
+      const isInstalled = await checkAndInstallDepsOnUpdate({ win, forceInstall: true });
       return { success: true, isInstalled };
     } catch (error) {
       return { success: false, error: (error as Error).message };
@@ -869,9 +869,9 @@ function registerIpcHandlers() {
   ipcMain.handle('get-installation-status', async () => {
     try {
       const { isInstalling, hasLockFile } = await getInstallationStatus();
-      return { 
-        success: true, 
-        isInstalling, 
+      return {
+        success: true,
+        isInstalling,
         hasLockFile,
         timestamp: Date.now()
       };
@@ -1115,7 +1115,7 @@ async function createWindow() {
   });
 
   // Now check and install dependencies
-  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
+  let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
     win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
@@ -1186,15 +1186,14 @@ const checkAndStartBackend = async () => {
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
 
-      // Notify frontend installation success
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-      }
-
       python_process = await startBackend((port) => {
         backendPort = port;
         log.info('Backend service started successfully', { port });
       });
+      // Notify frontend installation success
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+      }
 
       python_process?.on('exit', (code, signal) => {
 
@@ -1274,18 +1273,18 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-    let isQuitting = false;
-    
-    app.on('before-quit', () => {
-      isQuitting = true;
-    });
-    
-    win?.on("close", (event) => {
-      if (!isQuitting) {
-        event.preventDefault();
-        win?.webContents.send("before-close");
-      }
-    })
+  let isQuitting = false;
+
+  app.on('before-quit', () => {
+    isQuitting = true;
+  });
+
+  win?.on("close", (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win?.webContents.send("before-close");
+    }
+  })
 }
 
 // ==================== app event handle ====================
@@ -1339,15 +1338,15 @@ app.whenReady().then(() => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-  
+
   // Clean up WebView manager
   if (webViewManager) {
     webViewManager.destroy();
     webViewManager = null;
   }
-  
+
   win = null;
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -1370,35 +1369,35 @@ app.on('activate', () => {
 app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
-  
+
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();
-  
+
   try {
     // Clean up resources
     if (webViewManager) {
       webViewManager.destroy();
       webViewManager = null;
     }
-    
+
     if (win && !win.isDestroyed()) {
       win.destroy();
       win = null;
     }
-    
+
     // Wait for Python process cleanup
     await cleanupPythonProcess();
-    
+
     // Clean up file reader if exists
     if (fileReader) {
       fileReader = null;
     }
-    
+
     // Clear any remaining timeouts/intervals
     if (global.gc) {
       global.gc();
     }
-    
+
     log.info('All cleanup completed, exiting...');
   } catch (error) {
     log.error('Error during cleanup:', error);

@@ -103,14 +103,18 @@ export const Permissions: React.FC = () => {
 				
 				<div className="flex  justify-center items-center gap-sm">
 					<Button
-						onClick={() => setInitState("carousel")}
+						onClick={() => {
+							setInitState("carousel");
+						}}
 						variant="ghost"
 						size="sm"
 					>
 						skip
 					</Button>
 					<Button
-						onClick={() => setInitState("carousel")}
+						onClick={() => {
+							setInitState("carousel");
+						}}
 						variant="primary"
 						size="sm"
 					>
