@@ -16,15 +16,32 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
-	window.ipcRenderer?.on("webview-show", (_event, id: string) => {
-		setActiveWebviewId(id);
-	});
+	// Add webview-show listener in useEffect with cleanup
+	useEffect(() => {
+		const handleWebviewShow = (_event: any, id: string) => {
+			setActiveWebviewId(id);
+		};
+
+		window.ipcRenderer?.on("webview-show", handleWebviewShow);
+
+		// Cleanup: remove listener on unmount
+		return () => {
+			window.ipcRenderer?.off("webview-show", handleWebviewShow);
+		};
+	}, []); // Empty dependency array means this only runs once
+
 	useEffect(() => {
 		let taskAssigning = [
 			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
@@ -138,7 +155,7 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!chatStore.activeTaskId) {
-			chatStore.create();
+			projectStore.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");
@@ -172,25 +189,9 @@ export default function Home() {
 		<div className="h-full">
 			<ReactFlowProvider>
 				<div className="h-full flex flex-col">
-					<div className="flex-1 flex items-center justify-center gap-2 relative">
+						<div className="flex-1 flex items-center justify-center gap-2 relative">
 						<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
-						{/* left transparent area */}
-						<div
-							style={{
-								position: "absolute",
-								left: -8,
-								top: 0,
-								width: "12px",
-								height: "100%",
-								background: "transparent",
-								zIndex: 20,
-								cursor: "pointer",
-							}}
-							onMouseEnter={() => {
-								toggle();
-							}}
-						/>
 						<div
 							className="w-full h-full flex flex-col items-center justify-center transition-all duration-300"
 						>

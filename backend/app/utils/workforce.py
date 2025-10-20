@@ -17,6 +17,7 @@ from app.service.task import (
     Action,
     ActionAssignTaskData,
     ActionEndData,
+    ActionNewTaskStateData,
     ActionTaskStateData,
     get_camel_task,
     get_task_lock,
@@ -53,8 +54,15 @@ class Workforce(BaseWorkforce):
             use_structured_output_handler=use_structured_output_handler,
         )
 
-    def eigent_make_sub_tasks(self, task: Task):
-        """split process_task method to eigent_make_sub_tasks and eigent_start method"""
+    def eigent_make_sub_tasks(self, task: Task, coordinator_context: str = ""):
+        """
+        Split process_task method to eigent_make_sub_tasks and eigent_start method.
+
+        Args:
+            task: The main task to decompose
+            coordinator_context: Optional context ONLY for coordinator agent during decomposition.
+                                This context will NOT be passed to subtasks or worker agents.
+        """
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
@@ -70,8 +78,19 @@ class Workforce(BaseWorkforce):
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
 
-        # Decompose the task into subtasks first
-        subtasks_result = self._decompose_task(task)
+        if coordinator_context:
+            original_content = task.content
+            task_with_context = coordinator_context
+            if coordinator_context:
+                task_with_context += "\n=== CURRENT TASK ===\n"
+            task_with_context += original_content
+            task.content = task_with_context
+
+            subtasks_result = self._decompose_task(task)
+
+            task.content = original_content
+        else:
+            subtasks_result = self._decompose_task(task)
 
         # Handle both streaming and non-streaming results
         if isinstance(subtasks_result, Generator):
@@ -101,6 +120,64 @@ class Workforce(BaseWorkforce):
         finally:
             if self._state != WorkforceState.STOPPED:
                 self._state = WorkforceState.IDLE
+
+    async def handle_decompose_append_task(
+        self, task: Task, reset: bool = True, coordinator_context: str = ""
+    ) -> List[Task]:
+        """
+        Override to support coordinator_context parameter.
+        Handle task decomposition and validation, then append to pending tasks.
+
+        Args:
+            task: The task to be processed
+            reset: Should trigger workforce reset (Workforce must not be running)
+            coordinator_context: Optional context ONLY for coordinator during decomposition
+
+        Returns:
+            List[Task]: The decomposed subtasks or the original task
+        """
+        if not validate_task_content(task.content, task.id):
+            task.state = TaskState.FAILED
+            task.result = "Task failed: Invalid or empty content provided"
+            logger.warning(
+                f"Task {task.id} rejected: Invalid or empty content. "
+                f"Content preview: '{task.content}'"
+            )
+            return [task]
+
+        if reset and self._state != WorkforceState.RUNNING:
+            self.reset()
+            logger.info("Workforce reset before handling task.")
+
+        self._task = task
+        task.state = TaskState.FAILED
+
+        if coordinator_context:
+            original_content = task.content
+            task_with_context = coordinator_context
+            if coordinator_context:
+                task_with_context += "\n=== CURRENT TASK ===\n"
+            task_with_context += original_content
+            task.content = task_with_context
+
+            subtasks_result = self._decompose_task(task)
+
+            task.content = original_content
+        else:
+            subtasks_result = self._decompose_task(task)
+
+        if isinstance(subtasks_result, Generator):
+            subtasks = []
+            for new_tasks in subtasks_result:
+                subtasks.extend(new_tasks)
+        else:
+            subtasks = subtasks_result
+
+        if subtasks:
+            self._pending_tasks.extendleft(reversed(subtasks))
+            logger.info(f"Appended {len(subtasks)} subtasks to pending tasks")
+
+        return subtasks if subtasks else [task]
 
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification to the frontend, and send "start execution" notification when the task actually begins execution
@@ -209,17 +286,33 @@ class Workforce(BaseWorkforce):
         logger.debug(f"[WF] DONE  {task.id}")
         task_lock = get_task_lock(self.api_task_id)
 
-        await task_lock.put_queue(
-            ActionTaskStateData(
-                data={
-                    "task_id": task.id,
-                    "content": task.content,
-                    "state": task.state,
-                    "result": task.result or "",
-                    "failure_count": task.failure_count,
-                },
+        # Log task completion with result details
+        is_main_task = self._task and task.id == self._task.id
+        task_type = "MAIN TASK" if is_main_task else "SUB-TASK"
+        logger.info(f"[TASK-RESULT] {task_type} COMPLETED: {task.id}")
+        logger.info(f"[TASK-RESULT] Content: {task.content[:200]}..." if len(task.content) > 200 else f"[TASK-RESULT] Content: {task.content}")
+        logger.info(f"[TASK-RESULT] Result: {task.result[:500]}..." if task.result and len(str(task.result)) > 500 else f"[TASK-RESULT] Result: {task.result}")
+
+        task_data = {
+            "task_id": task.id,
+            "content": task.content,
+            "state": task.state,
+            "result": task.result or "",
+            "failure_count": task.failure_count,
+        }
+        
+        if self._task_is_new(task_data):
+            await task_lock.put_queue(
+                ActionNewTaskStateData(
+                    data=task_data
+                )
             )
-        )
+        else:
+            await task_lock.put_queue(
+                ActionTaskStateData(
+                    data=task_data
+                )
+            )
 
         return await super()._handle_completed_task(task)
 
@@ -250,6 +343,36 @@ class Workforce(BaseWorkforce):
         )
 
         return result
+
+    def _task_is_new(self, item:dict) -> bool:
+        # Validate the task state data object first
+        assert isinstance(item, dict)
+        task_id = item.get("task_id", "")
+        state = item.get("state", "")
+        result = item.get("result", "")
+        failure_count = item.get("failure_count", 0)
+        
+        # Validate required fields
+        if not task_id:
+            logger.error("Missing task_id in task_state data")
+            return False
+        elif not state:
+            logger.error(f"Missing state in task_state data for task {task_id}")
+            return False
+
+        # Ensure failure_count is an integer
+        try:
+            failure_count = int(failure_count)
+        except (ValueError, TypeError):
+            logger.error(f"Invalid failure_count in task_state data for task {task_id}: {failure_count}")
+            failure_count = 0  # Default to 0 if invalid
+        
+        should_send_new_task_state = (
+            state == "FAILED" or 
+            (failure_count == 0 and result.strip() == "")
+        )
+        
+        return should_send_new_task_state
 
     def stop(self) -> None:
         super().stop()

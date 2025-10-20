@@ -18,6 +18,7 @@ import { MarkDown } from "@/components/ChatBox/MarkDown";
 import { useAuthStore } from "@/store/authStore";
 import { proxyFetchGet } from "@/api/http";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 // Type definitions
 interface FileTreeNode {
@@ -154,7 +155,12 @@ function downloadByBrowser(url: string) {
 }
 
 export default function Folder({ data }: { data?: Agent }) {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const authStore = useAuthStore();
 	const { t } = useTranslation();
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
@@ -201,7 +207,6 @@ export default function Folder({ data }: { data?: Agent }) {
 
 	const [isCollapsed, setIsCollapsed] = useState(false);
 
-	// Build tree structure from flat file list
 	const buildFileTree = (files: FileInfo[]): FileTreeNode => {
 		const root: FileTreeNode = {
 			name: "root",
@@ -210,17 +215,20 @@ export default function Folder({ data }: { data?: Agent }) {
 			isFolder: true,
 		};
 
-		// Create a map for quick access
 		const nodeMap = new Map<string, FileTreeNode>();
 		nodeMap.set("", root);
 
-		// Sort files so folders come before files and by path depth
 		const sortedFiles = [...files].sort((a, b) => {
 			const depthA = (a.relativePath || "").split("/").filter(Boolean).length;
 			const depthB = (b.relativePath || "").split("/").filter(Boolean).length;
 			return depthA - depthB;
 		});
+
 		for (const file of sortedFiles) {
+			const fullRelativePath = file.relativePath
+				? `${file.relativePath}/${file.name}`
+				: file.name;
+
 			const parentPath = file.relativePath || "";
 			const parentNode = nodeMap.get(parentPath) || root;
 
@@ -237,10 +245,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			parentNode.children!.push(node);
 
 			if (file.isFolder) {
-				const folderPath = parentPath
-					? `${parentPath}/${file.name}`
-					: file.name;
-				nodeMap.set(folderPath, node);
+				nodeMap.set(fullRelativePath, node);
 			}
 		}
 
@@ -293,9 +298,9 @@ export default function Folder({ data }: { data?: Agent }) {
 		const setFileList = async () => {
 			let res = null;
 			res = await window.ipcRenderer.invoke(
-				"get-file-list",
+				"get-project-file-list",
 				authStore.email,
-				chatStore.activeTaskId as string
+				projectStore.activeProjectId as string
 			);
 			let tree: any = null;
 			if (
@@ -305,8 +310,9 @@ export default function Folder({ data }: { data?: Agent }) {
 				tree = buildFileTree(res || []);
 			} else {
 				if (!hasFetchedRemote.current) {
+					//TODO(file): rename endpoint to use project_id
 					res = await proxyFetchGet("/api/chat/files", {
-						task_id: chatStore.activeTaskId as string,
+						task_id: projectStore.activeProjectId as string,
 					});
 					hasFetchedRemote.current = true;
 				}

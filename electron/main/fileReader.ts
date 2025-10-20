@@ -541,12 +541,54 @@ export class FileReader {
 		}
 	}
 
-	public getFileList(email: string, taskId: string): FileInfo[] {
+	private findTaskInProjects(userDir: string, taskId: string): string | null {
+		try {
+			if (!fs.existsSync(userDir)) {
+				return null;
+			}
 
+			const entries = fs.readdirSync(userDir);
+			
+			// Look for project directories
+			for (const entry of entries) {
+				if (entry.startsWith('project_')) {
+					const projectDir = path.join(userDir, entry);
+					const taskDir = path.join(projectDir, `task_${taskId}`);
+					
+					if (fs.existsSync(taskDir)) {
+						return taskDir;
+					}
+				}
+			}
+			
+			return null;
+		} catch (err) {
+			console.error("Error finding task in projects:", err);
+			return null;
+		}
+	}
+
+	public getFileList(email: string, taskId: string, projectId?: string): FileInfo[] {
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
-
 		const userHome = app.getPath('home');
-		const dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
+		
+		let dirPath: string;
+		
+		// Check if projectId is provided for new project-based structure
+		if (projectId) {
+			dirPath = path.join(userHome, "eigent", safeEmail, `project_${projectId}`, `task_${taskId}`);
+		} else {
+			// First try project-based structure (scan for existing projects)
+			const userDir = path.join(userHome, "eigent", safeEmail);
+			const projectBasedPath = this.findTaskInProjects(userDir, taskId);
+			
+			if (projectBasedPath) {
+				dirPath = projectBasedPath;
+			} else {
+				// Fallback to legacy direct task structure
+				dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
+			}
+		}
 
 		try {
 			if (!fs.existsSync(dirPath)) {
@@ -560,21 +602,53 @@ export class FileReader {
 		}
 	}
 
-	public deleteTaskFiles(email: string, taskId: string): {
+	public deleteTaskFiles(email: string, taskId: string, projectId?: string): {
 		success: boolean;
 		path: { dirPath: string; logPath: string }
 	}
 	{
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
 		const userHome = app.getPath('home');
-		const dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
-		const logPath = path.join(userHome, ".eigent", safeEmail, `task_${taskId}`);
-		try {
-			if (fs.existsSync(dirPath)&&fs.existsSync(logPath)) {
-				fs.rmSync(dirPath, { recursive: true, force: true });
-				fs.rmSync(logPath, { recursive: true, force: true });
+		
+		let dirPath: string;
+		let logPath: string;
+		
+		// Check if projectId is provided for new project-based structure
+		if (projectId) {
+			dirPath = path.join(userHome, "eigent", safeEmail, `project_${projectId}`, `task_${taskId}`);
+			logPath = path.join(userHome, ".eigent", safeEmail, `project_${projectId}`, `task_${taskId}`);
+		} else {
+			// First try project-based structure
+			const userDir = path.join(userHome, "eigent", safeEmail);
+			const projectBasedPath = this.findTaskInProjects(userDir, taskId);
+			
+			if (projectBasedPath) {
+				dirPath = projectBasedPath;
+				// Extract project from path to construct log path
+				const projectMatch = projectBasedPath.match(/project_([^\\\/]+)/);
+				if (projectMatch) {
+					logPath = path.join(userHome, ".eigent", safeEmail, projectMatch[0], `task_${taskId}`);
+				} else {
+					logPath = path.join(userHome, ".eigent", safeEmail, `task_${taskId}`);
+				}
+			} else {
+				// Fallback to legacy direct task structure
+				dirPath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
+				logPath = path.join(userHome, ".eigent", safeEmail, `task_${taskId}`);
 			}
-			return { success: true, path: { dirPath, logPath } };
+		}
+
+		try {
+			let success = false;
+			if (fs.existsSync(dirPath)) {
+				fs.rmSync(dirPath, { recursive: true, force: true });
+				success = true;
+			}
+			if (fs.existsSync(logPath)) {
+				fs.rmSync(logPath, { recursive: true, force: true });
+				success = true;
+			}
+			return { success, path: { dirPath, logPath } };
 		} catch (err) {
 			console.error("Delete task files failed:", dirPath, err);
 			return { success: false, path: { dirPath, logPath } };
@@ -582,9 +656,7 @@ export class FileReader {
 	}
 
 	public getLogFolder(email: string): string {
-
 		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
-
 		const userHome = app.getPath('home');
 		const dirPath = path.join(userHome, "eigent", safeEmail);
 
@@ -597,6 +669,206 @@ export class FileReader {
 		} catch (err) {
 			console.error("Load file failed:", err);
 			return '';
+		}
+	}
+
+	public createProjectStructure(email: string, projectId: string): { success: boolean; path: string } {
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+		const userHome = app.getPath('home');
+		const projectPath = path.join(userHome, "eigent", safeEmail, `project_${projectId}`);
+
+		try {
+			if (!fs.existsSync(projectPath)) {
+				fs.mkdirSync(projectPath, { recursive: true });
+			}
+			return { success: true, path: projectPath };
+		} catch (err) {
+			console.error("Create project structure failed:", err);
+			return { success: false, path: projectPath };
+		}
+	}
+
+	public getProjectList(email: string): Array<{ id: string; name: string; path: string; taskCount: number; createdAt: Date }> {
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+		const userHome = app.getPath('home');
+		const userDir = path.join(userHome, "eigent", safeEmail);
+
+		try {
+			if (!fs.existsSync(userDir)) {
+				return [];
+			}
+
+			const entries = fs.readdirSync(userDir);
+			const projects: Array<{ id: string; name: string; path: string; taskCount: number; createdAt: Date }> = [];
+
+			for (const entry of entries) {
+				if (entry.startsWith('project_')) {
+					const projectPath = path.join(userDir, entry);
+					const stats = fs.statSync(projectPath);
+					
+					if (stats.isDirectory()) {
+						const projectId = entry.replace('project_', '');
+						
+						// Count tasks in this project
+						const taskCount = this.countTasksInProject(projectPath);
+						
+						projects.push({
+							id: projectId,
+							name: `Project ${projectId}`,
+							path: projectPath,
+							taskCount,
+							createdAt: stats.birthtime
+						});
+					}
+				}
+			}
+
+			return projects.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+		} catch (err) {
+			console.error("Get project list failed:", err);
+			return [];
+		}
+	}
+
+	public getTasksInProject(email: string, projectId: string): Array<{ id: string; name: string; path: string; createdAt: Date }> {
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+		const userHome = app.getPath('home');
+		const projectPath = path.join(userHome, "eigent", safeEmail, `project_${projectId}`);
+
+		try {
+			if (!fs.existsSync(projectPath)) {
+				return [];
+			}
+
+			const entries = fs.readdirSync(projectPath);
+			const tasks: Array<{ id: string; name: string; path: string; createdAt: Date }> = [];
+
+			for (const entry of entries) {
+				if (entry.startsWith('task_')) {
+					const taskPath = path.join(projectPath, entry);
+					const stats = fs.statSync(taskPath);
+					
+					if (stats.isDirectory()) {
+						const taskId = entry.replace('task_', '');
+						
+						tasks.push({
+							id: taskId,
+							name: `Task ${taskId}`,
+							path: taskPath,
+							createdAt: stats.birthtime
+						});
+					}
+				}
+			}
+
+			return tasks.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+		} catch (err) {
+			console.error("Get tasks in project failed:", err);
+			return [];
+		}
+	}
+
+	public moveTaskToProject(email: string, taskId: string, projectId: string): { success: boolean; message: string } {
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+		const userHome = app.getPath('home');
+		
+		// Source path (legacy structure)
+		const sourcePath = path.join(userHome, "eigent", safeEmail, `task_${taskId}`);
+		const sourceLogPath = path.join(userHome, ".eigent", safeEmail, `task_${taskId}`);
+		
+		// Destination paths (project structure)
+		const projectPath = path.join(userHome, "eigent", safeEmail, `project_${projectId}`);
+		const destPath = path.join(projectPath, `task_${taskId}`);
+		const destLogPath = path.join(userHome, ".eigent", safeEmail, `project_${projectId}`, `task_${taskId}`);
+
+		try {
+			// Create project structure if it doesn't exist
+			if (!fs.existsSync(projectPath)) {
+				fs.mkdirSync(projectPath, { recursive: true });
+			}
+
+			// Create destination log directory
+			const destLogDir = path.dirname(destLogPath);
+			if (!fs.existsSync(destLogDir)) {
+				fs.mkdirSync(destLogDir, { recursive: true });
+			}
+
+			// Move task files
+			if (fs.existsSync(sourcePath)) {
+				fs.renameSync(sourcePath, destPath);
+			}
+
+			// Move log files
+			if (fs.existsSync(sourceLogPath)) {
+				fs.renameSync(sourceLogPath, destLogPath);
+			}
+
+			return { success: true, message: `Task ${taskId} moved to project ${projectId}` };
+		} catch (err) {
+			console.error("Move task to project failed:", err);
+			return { success: false, message: `Failed to move task: ${err}` };
+		}
+	}
+
+	public getProjectFileList(email: string, projectId: string): FileInfo[] {
+		const safeEmail = email.split('@')[0].replace(/[\\/*?:"<>|\s]/g, "_").replace(/^\.+|\.+$/g, "");
+		const userHome = app.getPath('home');
+		const projectPath = path.join(userHome, "eigent", safeEmail, `project_${projectId}`);
+
+		try {
+			if (!fs.existsSync(projectPath)) {
+				return [];
+			}
+
+			const allFiles: FileInfo[] = [];
+			const taskDirs = fs.readdirSync(projectPath);
+
+			for (const taskDir of taskDirs) {
+				if (!taskDir.startsWith('task_')) continue;
+
+				const taskPath = path.join(projectPath, taskDir);
+				const stats = fs.statSync(taskPath);
+				
+				if (stats.isDirectory()) {
+					const taskId = taskDir.replace('task_', '');
+					const taskFiles = this.getFilesRecursive(taskPath, taskPath);
+
+					const enrichedFiles = taskFiles.map(file => {
+						const fileDir = path.dirname(file.path);
+						const relativeParentPath = path.relative(projectPath, fileDir);
+
+						return {
+							...file,
+							task_id: taskId,
+							project_id: projectId,
+							relativePath: relativeParentPath === '.' ? '' : relativeParentPath
+						};
+					});
+
+					allFiles.push(...enrichedFiles);
+				}
+			}
+
+			return allFiles.sort((a, b) => {
+				// Sort by task_id first, then by file path
+				if (a.task_id !== b.task_id) {
+					return a.task_id!.localeCompare(b.task_id!);
+				}
+				return a.path.localeCompare(b.path);
+			});
+		} catch (err) {
+			console.error("Get project file list failed:", err);
+			return [];
+		}
+	}
+
+	private countTasksInProject(projectPath: string): number {
+		try {
+			const entries = fs.readdirSync(projectPath);
+			return entries.filter(entry => entry.startsWith('task_')).length;
+		} catch (err) {
+			console.error("Count tasks in project failed:", err);
+			return 0;
 		}
 	}
 }

@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import SearchInput from "./SearchInput";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "@/store/chatStore";
 import { useGlobalStore } from "@/store/globalStore";
 import folderIcon from "@/assets/Folder-1.svg";
@@ -36,20 +36,29 @@ import AlertDialog from "../ui/alertDialog";
 import { proxyFetchGet, proxyFetchDelete, proxyFetchPost } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { share } from "@/lib/share";
+import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {getAuthStore} from "@/store/authStore";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
 	const { isOpen, close } = useSidebarStore();
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const getTokens = chatStore.getTokens;
 	const { history_type, toggleHistoryType } = useGlobalStore();
 	const [searchValue, setSearchValue] = useState("");
 	const [historyOpen, setHistoryOpen] = useState(true);
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+	const [anchorStyle, setAnchorStyle] = useState<{ left: number; top: number } | null>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
 	const [curHistoryId, setCurHistoryId] = useState("");
 
 	const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,21 +77,9 @@ export default function HistorySidebar() {
 
 	const createChat = () => {
 		close();
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			console.log(chatStore.tasks[taskId].messages.length);
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate(`/`);
-			return;
-		}
-		if (
-			chatStore.tasks[chatStore.activeTaskId as string] &&
-			chatStore.tasks[chatStore.activeTaskId as string].messages.length === 0
-		) {
-		}
-		chatStore.create();
+		//Create a new project
+		//Handles refocusing id & non duplicate logic internally
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 
@@ -153,10 +150,9 @@ export default function HistorySidebar() {
 		fetchHistoryTasks();
 	}, [chatStore.updateCount]);
 
-	const handleReplay = async (taskId: string, question: string) => {
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		chatStore.replay(taskId, question, 0);
-		navigate({ pathname: "/" });
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
 	const handleDelete = (id: string) => {
@@ -181,6 +177,8 @@ export default function HistorySidebar() {
 			const history = historyTasks.find((item) => item.id === curHistoryId);
 			if (history?.task_id && (window as any).ipcRenderer) {
 				try {
+					//TODO(file): rename endpoint to use project_id
+					//TODO(history): make sure to sync to projectId when updating endpoint
 					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id);
 				} catch (error) {
 					console.warn("Local file cleanup failed:", error);
@@ -196,18 +194,30 @@ export default function HistorySidebar() {
 		share(taskId);
 	};
 
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
 			// if there is record, show result
-			chatStore.setActiveTaskId(taskId);
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
 			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
+
+	useEffect(() => {
+		if (isOpen) {
+			const btn = document.getElementById("active-task-title-btn");
+			if (btn) {
+				const rect = btn.getBoundingClientRect();
+				setAnchorStyle({ left: rect.left, top: rect.bottom + 6 });
+			}
+		}
+	}, [isOpen]);
 
 	return (
 		<AnimatePresence>
@@ -231,14 +241,19 @@ export default function HistorySidebar() {
 						className="fixed inset-0 bg-transparent z-40 "
 						onClick={close}
 					/>
-					{/* sideBar */}
+					{/* dropdown-style history panel under title bar */}
 					<motion.div
-						initial={{ x: "-100%" }}
-						animate={{ x: 0 }}
-						exit={{ x: "-100%" }}
-						transition={{ type: "spring", damping: 25, stiffness: 200 }}
+						initial={{ y: -8, opacity: 0 }}
+						animate={{ y: 0, opacity: 1 }}
+						exit={{ y: -8, opacity: 0 }}
+						transition={{ type: "spring", damping: 22, stiffness: 220 }}
 						onMouseLeave={close}
-						className="backdrop-blur-xl flex flex-col fixed left-0 bottom-2 pb-4 top-[40px] h-full w-[324px] bg-bg-surface-tertiary rounded-xl p-sm z-50 perfect-shadow"
+						ref={panelRef}
+						className="backdrop-blur-xl flex flex-col fixed w-[360px] max-h-[70vh] bg-bg-surface-tertiary rounded-xl p-sm z-50 perfect-shadow overflow-hidden"
+						style={{
+							left: anchorStyle ? anchorStyle.left : 0,
+							top: anchorStyle ? anchorStyle.top : 40,
+						}}
 					>
 						<div className="flex items-center justify-between px-sm">
 							<Button
@@ -267,7 +282,7 @@ export default function HistorySidebar() {
 							{/* Search */}
 							<SearchInput value={searchValue} onChange={handleSearch} />
 						</div>
-						<div className="mb-4 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+						<div className="mb-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
 							<div className="px-sm flex flex-col  gap-2">
 								{/* new Project */}
 								<div
@@ -469,10 +484,7 @@ export default function HistorySidebar() {
 															return (
 																<div
 																	onClick={() =>
-																		handleSetActive(
-																			task?.task_id,
-																			task?.question
-																		)
+																		handleSetActive(task.task_id, task.question, task.id)
 																	}
 																	key={task.task_id}
 																	className={`${
@@ -513,14 +525,11 @@ export default function HistorySidebar() {
 														return (
 															<div
 																onClick={() => {
-																	handleSetActive(
-																		task?.task_id,
-																		task?.question
-																	);
+																	handleSetActive(task.task_id, task.question, task.id);
 																}}
 																key={task.task_id}
 																className={`${
-																	chatStore.activeTaskId === task?.task_id
+																	chatStore.activeTaskId === task.task_id
 																		? "!bg-white-100%"
 																		: ""
 																} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}

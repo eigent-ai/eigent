@@ -18,6 +18,7 @@ from camel.terminators import ResponseTerminator
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types.agents import ToolCallingRecord
 from app.component.environment import env
+from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.utils.toolkit.excel_toolkit import ExcelToolkit
@@ -488,9 +489,9 @@ def agent_model(
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
 ):
-    task_lock = get_task_lock(options.task_id)
+    task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for task: {options.task_id}")
+    traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}")
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(data={"agent_name": agent_name, "agent_id": agent_id, "tools": tool_names or []})
@@ -498,7 +499,7 @@ def agent_model(
     )
 
     return ListenChatAgent(
-        options.task_id,
+        options.project_id,
         agent_name,
         system_message,
         model=ModelFactory.create(
@@ -507,7 +508,7 @@ def agent_model(
             api_key=options.api_key,
             url=options.api_url,
             model_config_dict={
-                "user": str(options.task_id),
+                "user": str(options.project_id),
             }
             if options.is_cloud()
             else None,
@@ -545,24 +546,24 @@ def task_summary_agent(options: Chat):
 
 @traceroot.trace()
 async def developer_agent(options: Chat):
-    working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating developer agent for task: {options.task_id} in directory: {working_directory}")
+    working_directory = get_working_directory(options)
+    traceroot_logger.info(f"Creating developer agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.task_id, Agents.developer_agent).send_message_to_user
+        message_handler=HumanToolkit(options.project_id, Agents.developer_agent).send_message_to_user
     )
     note_toolkit = NoteTakingToolkit(
-        api_task_id=options.task_id, agent_name=Agents.developer_agent, working_directory=working_directory
+        api_task_id=options.project_id, agent_name=Agents.developer_agent, working_directory=working_directory
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.task_id)
+    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
     web_deploy_toolkit = message_integration.register_toolkits(web_deploy_toolkit)
-    screenshot_toolkit = ScreenshotToolkit(options.task_id, working_directory=working_directory)
+    screenshot_toolkit = ScreenshotToolkit(options.project_id, working_directory=working_directory)
     screenshot_toolkit = message_integration.register_toolkits(screenshot_toolkit)
 
-    terminal_toolkit = TerminalToolkit(options.task_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
+    terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
     tools = [
-        *HumanToolkit.get_can_use_tools(options.task_id, Agents.developer_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.developer_agent),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
@@ -716,14 +717,14 @@ these tips to maximize your effectiveness:
 
 @traceroot.trace()
 def search_agent(options: Chat):
-    working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating search agent for task: {options.task_id} in directory: {working_directory}")
+    working_directory = get_working_directory(options)
+    traceroot_logger.info(f"Creating search agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.task_id, Agents.search_agent).send_message_to_user
+        message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
     web_toolkit_custom = HybridBrowserToolkit(
-        options.task_id,
+        options.project_id,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
@@ -746,11 +747,11 @@ def search_agent(options: Chat):
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
-    terminal_toolkit = TerminalToolkit(options.task_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
+    terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
-    note_toolkit = NoteTakingToolkit(options.task_id, Agents.search_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    search_tools = SearchToolkit.get_can_use_tools(options.task_id)
+    search_tools = SearchToolkit.get_can_use_tools(options.project_id)
     # Only register search tools if any are available
     if search_tools:
         search_tools = message_integration.register_functions(search_tools)
@@ -758,7 +759,7 @@ def search_agent(options: Chat):
         search_tools = []
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.task_id, Agents.search_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.search_agent),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
@@ -897,34 +898,34 @@ Your approach depends on available search tools:
 
 @traceroot.trace()
 async def document_agent(options: Chat):
-    working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating document agent for task: {options.task_id} in directory: {working_directory}")
+    working_directory = get_working_directory(options)
+    traceroot_logger.info(f"Creating document agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.task_id, Agents.task_agent).send_message_to_user
+        message_handler=HumanToolkit(options.project_id, Agents.task_agent).send_message_to_user
     )
-    file_write_toolkit = FileToolkit(options.task_id, working_directory=working_directory)
-    pptx_toolkit = PPTXToolkit(options.task_id, working_directory=working_directory)
+    file_write_toolkit = FileToolkit(options.project_id, working_directory=working_directory)
+    pptx_toolkit = PPTXToolkit(options.project_id, working_directory=working_directory)
     pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
-    mark_it_down_toolkit = MarkItDownToolkit(options.task_id)
+    mark_it_down_toolkit = MarkItDownToolkit(options.project_id)
     mark_it_down_toolkit = message_integration.register_toolkits(mark_it_down_toolkit)
-    excel_toolkit = ExcelToolkit(options.task_id, working_directory=working_directory)
+    excel_toolkit = ExcelToolkit(options.project_id, working_directory=working_directory)
     excel_toolkit = message_integration.register_toolkits(excel_toolkit)
-    note_toolkit = NoteTakingToolkit(options.task_id, Agents.document_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(options.project_id, Agents.document_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    terminal_toolkit = TerminalToolkit(options.task_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
+    terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.task_id, Agents.document_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.document_agent),
         *mark_it_down_toolkit.get_tools(),
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
-        *await GoogleDriveMCPToolkit.get_can_use_tools(options.task_id, options.get_bun_env()),
+        *await GoogleDriveMCPToolkit.get_can_use_tools(options.project_id, options.get_bun_env()),
     ]
     # if env("EXA_API_KEY") or options.is_cloud():
-    #     search_toolkit = SearchToolkit(options.task_id, Agents.document_agent).search_exa
+    #     search_toolkit = SearchToolkit(options.project_id, Agents.document_agent).search_exa
     #     search_toolkit = message_integration.register_functions([search_toolkit])
     #     tools.extend(search_toolkit)
     system_message = f"""
@@ -1098,32 +1099,32 @@ supported formats including advanced spreadsheet functionality.
 
 @traceroot.trace()
 def multi_modal_agent(options: Chat):
-    working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating multi-modal agent for task: {options.task_id} in directory: {working_directory}")
+    working_directory = get_working_directory(options)
+    traceroot_logger.info(f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.task_id, Agents.multi_modal_agent).send_message_to_user
+        message_handler=HumanToolkit(options.project_id, Agents.multi_modal_agent).send_message_to_user
     )
-    video_download_toolkit = VideoDownloaderToolkit(options.task_id, working_directory=working_directory)
+    video_download_toolkit = VideoDownloaderToolkit(options.project_id, working_directory=working_directory)
     video_download_toolkit = message_integration.register_toolkits(video_download_toolkit)
-    image_analysis_toolkit = ImageAnalysisToolkit(options.task_id)
+    image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
     image_analysis_toolkit = message_integration.register_toolkits(image_analysis_toolkit)
 
     terminal_toolkit = TerminalToolkit(
-        options.task_id, agent_name=Agents.multi_modal_agent, safe_mode=True, clone_current_env=False
+        options.project_id, agent_name=Agents.multi_modal_agent, safe_mode=True, clone_current_env=False
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
-    note_toolkit = NoteTakingToolkit(options.task_id, Agents.multi_modal_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(options.project_id, Agents.multi_modal_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.task_id, Agents.multi_modal_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.multi_modal_agent),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
     ]
     if options.is_cloud():
         open_ai_image_toolkit = OpenAIImageToolkit(  # todo check llm has this model
-            options.task_id,
+            options.project_id,
             model="dall-e-3",
             response_format="b64_json",
             size="1024x1024",
@@ -1145,7 +1146,7 @@ def multi_modal_agent(options: Chat):
 
     if model_platform_enum == ModelPlatformType.OPENAI:
         audio_analysis_toolkit = AudioAnalysisToolkit(
-            options.task_id,
+            options.project_id,
             working_directory,
             OpenAIAudioModels(
                 api_key=options.api_key,
@@ -1156,7 +1157,7 @@ def multi_modal_agent(options: Chat):
         tools.extend(audio_analysis_toolkit.get_tools())
 
     # if env("EXA_API_KEY") or options.is_cloud():
-    #     search_toolkit = SearchToolkit(options.task_id, Agents.multi_modal_agent).search_exa
+    #     search_toolkit = SearchToolkit(options.project_id, Agents.multi_modal_agent).search_exa
     #     search_toolkit = message_integration.register_functions([search_toolkit])
     #     tools.extend(search_toolkit)
 
@@ -1268,27 +1269,27 @@ async def social_medium_agent(options: Chat):
     Agent to handling tasks related to social media:
     include toolkits: WhatsApp, Twitter, LinkedIn, Reddit, Notion, Slack, Discord and Google Suite.
     """
-    working_directory = options.file_save_path()
-    traceroot_logger.info(f"Creating social medium agent for task: {options.task_id} in directory: {working_directory}")
+    working_directory = get_working_directory(options)
+    traceroot_logger.info(f"Creating social medium agent for project: {options.project_id} in directory: {working_directory}")
     tools = [
-        *WhatsAppToolkit.get_can_use_tools(options.task_id),
-        *TwitterToolkit.get_can_use_tools(options.task_id),
-        *LinkedInToolkit.get_can_use_tools(options.task_id),
-        *RedditToolkit.get_can_use_tools(options.task_id),
-        *await NotionMCPToolkit.get_can_use_tools(options.task_id),
-        # *SlackToolkit.get_can_use_tools(options.task_id),
-        *await GoogleGmailMCPToolkit.get_can_use_tools(options.task_id, options.get_bun_env()),
-        *GoogleCalendarToolkit.get_can_use_tools(options.task_id),
-        *HumanToolkit.get_can_use_tools(options.task_id, Agents.social_medium_agent),
-        *TerminalToolkit(options.task_id, agent_name=Agents.social_medium_agent, clone_current_env=False).get_tools(),
+        *WhatsAppToolkit.get_can_use_tools(options.project_id),
+        *TwitterToolkit.get_can_use_tools(options.project_id),
+        *LinkedInToolkit.get_can_use_tools(options.project_id),
+        *RedditToolkit.get_can_use_tools(options.project_id),
+        *await NotionMCPToolkit.get_can_use_tools(options.project_id),
+        # *SlackToolkit.get_can_use_tools(options.project_id),
+        *await GoogleGmailMCPToolkit.get_can_use_tools(options.project_id, options.get_bun_env()),
+        *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.social_medium_agent),
+        *TerminalToolkit(options.project_id, agent_name=Agents.social_medium_agent, clone_current_env=False).get_tools(),
         *NoteTakingToolkit(
-            options.task_id, Agents.social_medium_agent, working_directory=working_directory
+            options.project_id, Agents.social_medium_agent, working_directory=working_directory
         ).get_tools(),
-        # *DiscordToolkit(options.task_id).get_tools(),  # Not supported temporarily
-        # *GoogleSuiteToolkit(options.task_id).get_tools(),  # Not supported temporarily
+        # *DiscordToolkit(options.project_id).get_tools(),  # Not supported temporarily
+        # *GoogleSuiteToolkit(options.project_id).get_tools(),  # Not supported temporarily
     ]
     # if env("EXA_API_KEY") or options.is_cloud():
-    #     tools.append(FunctionTool(SearchToolkit(options.task_id, Agents.social_medium_agent).search_exa))
+    #     tools.append(FunctionTool(SearchToolkit(options.project_id, Agents.social_medium_agent).search_exa))
     return agent_model(
         Agents.social_medium_agent,
         BaseMessage.make_assistant_message(
@@ -1384,16 +1385,16 @@ operations.
 @traceroot.trace()
 async def mcp_agent(options: Chat):
     traceroot_logger.info(
-        f"Creating MCP agent for task: {options.task_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
+        f"Creating MCP agent for project: {options.project_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
     tools = [
-        # *HumanToolkit.get_can_use_tools(options.task_id, Agents.mcp_agent),
-        *McpSearchToolkit(options.task_id).get_tools(),
+        # *HumanToolkit.get_can_use_tools(options.project_id, Agents.mcp_agent),
+        *McpSearchToolkit(options.project_id).get_tools(),
     ]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
-            traceroot_logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.task_id}")
+            traceroot_logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}")
             if mcp_tools:
                 tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in mcp_tools]
                 traceroot_logger.debug(f"MCP tools: {tool_names}")
@@ -1401,9 +1402,9 @@ async def mcp_agent(options: Chat):
         except Exception as e:
             traceroot_logger.debug(repr(e))
 
-    task_lock = get_task_lock(options.task_id)
+    task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.task_id}")
+    traceroot_logger.info(f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.project_id}")
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(
@@ -1416,7 +1417,7 @@ async def mcp_agent(options: Chat):
         )
     )
     return ListenChatAgent(
-        options.task_id,
+        options.project_id,
         Agents.mcp_agent,
         system_message="You are a helpful assistant that can help users search mcp servers. The found mcp services will be returned to the user, and you will ask the user via ask_human_via_gui whether they want to install these mcp services.",
         model=ModelFactory.create(
@@ -1425,7 +1426,7 @@ async def mcp_agent(options: Chat):
             api_key=options.api_key,
             url=options.api_url,
             model_config_dict={
-                "user": str(options.task_id),
+                "user": str(options.project_id),
             }
             if options.is_cloud()
             else None,

@@ -15,9 +15,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";
 import { Badge } from "../ui/badge";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export function WorkSpaceMenu() {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const workerList = useWorkerList();
 	const baseWorker: Agent[] = [
 		{
@@ -150,7 +156,7 @@ export function WorkSpaceMenu() {
 			taskAssigning.map((item) => {
 				if (item.type === "search_agent") {
 					item.activeWebviewIds?.map((webview, index) => {
-						console.log("@@@@@@", webview);
+						// console.log("@@@@@@", webview);
 						if (webview.id === id) {
 							webviews.push({ ...webview, agent_id: item.agent_id, index });
 						}
