@@ -6,7 +6,6 @@ from typing import Any, Callable, Type, TypeVar
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from loguru import logger
 from app.service.task import (
     ActionActivateToolkitData,
     ActionDeactivateToolkitData,
@@ -14,6 +13,9 @@ from app.service.task import (
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("toolkit_listen")
 
 
 def _safe_put_queue(task_lock, data):
@@ -183,12 +185,13 @@ def listen_toolkit(
                 res = None
                 try:
                     res = func(*args, **kwargs)
-                    # Safety check: if the result is a coroutine, we need to await it
+                    # Safety check: if the result is a coroutine, this is a programming error
                     if asyncio.iscoroutine(res):
-                        import warnings
-
-                        warnings.warn(f"Async function {func.__name__} was incorrectly called synchronously")
-                        res = asyncio.run(res)
+                        error_msg = f"Async function {func.__name__} was incorrectly called in sync context. This is a bug - the function should be marked as async or should not return a coroutine."
+                        logger.error(f"[listen_toolkit] {error_msg}")
+                        # Cannot safely await in sync context - close the coroutine to prevent warnings
+                        res.close()
+                        raise TypeError(error_msg)
                 except Exception as e:
                     error = e
 

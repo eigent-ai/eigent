@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.10.16"
 
 [[package]]
@@ -228,7 +228,6 @@ dependencies = [
     { name = "fastapi-babel" },
     { name = "httpx", extra = ["socks"] },
     { name = "inflection" },
-    { name = "loguru" },
     { name = "nodejs-wheel" },
     { name = "numpy" },
     { name = "openai" },
@@ -254,14 +253,13 @@ requires-dist = [
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "inflection", specifier = ">=0.5.1" },
-    { name = "loguru", specifier = ">=0.7.3" },
     { name = "nodejs-wheel", specifier = ">=22.18.0" },
     { name = "numpy", specifier = ">=1.23.0,<2.0.0" },
     { name = "openai", specifier = ">=1.99.3,<2" },
     { name = "pydantic-i18n", specifier = ">=0.4.5" },
     { name = "pydash", specifier = ">=8.0.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "traceroot", specifier = ">=0.0.5a2" },
+    { name = "traceroot", specifier = ">=0.0.7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.2" },
 ]
 
@@ -1161,19 +1159,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/74/a633ee74eb36c44aa6d1095e7cc5569bebf04342ee146178e2d36600708b/jsonschema_specifications-2025.9.1.tar.gz", hash = "sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d", size = 32855, upload-time = "2025-09-08T01:34:59.186Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl", hash = "sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe", size = 18437, upload-time = "2025-09-08T01:34:57.871Z" },
-]
-
-[[package]]
-name = "loguru"
-version = "0.7.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c", size = 61595, upload-time = "2024-12-06T11:20:54.538Z" },
 ]
 
 [[package]]
@@ -2538,7 +2523,7 @@ wheels = [
 
 [[package]]
 name = "traceroot"
-version = "0.0.5"
+version = "0.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -2559,9 +2544,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "watchtower" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/5e/8ade61cadecf69b4fa49205640a7424880bc25b5e9615159ba8cf4aff2bf/traceroot-0.0.5.tar.gz", hash = "sha256:0924d9b524a9e59d64c4eec4c812018f2d7583558de17001294ace96874381c0", size = 28066, upload-time = "2025-08-24T03:29:04.966Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/c0/9f047cc761a9f98a2e7a9a8fef4c01ea1eeb7b2383fe1f3ad82d24ac98b3/traceroot-0.0.7.tar.gz", hash = "sha256:7792def0bb466977318f0126756c02e8950a1c208bcec7a8efed1e05e02b189d", size = 25710, upload-time = "2025-10-16T06:17:39.587Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/d4/2777d7c3d0e36b3b2d9f903151991f3e1c21f190788c0e5f537fd762ae34/traceroot-0.0.5-py3-none-any.whl", hash = "sha256:ec27afb4ac33df3109c4c436f3bdfc47e30e2f1ce5eb90ba2215cfebe19e6b2e", size = 24324, upload-time = "2025-08-24T03:29:03.446Z" },
+    { url = "https://files.pythonhosted.org/packages/45/59/8593afb3615fb0c2e0cf6888dc49d9ae05d365c76ee053f43a36519f889c/traceroot-0.0.7-py3-none-any.whl", hash = "sha256:2a20a8e2dfa6b10e1f96bc98d5b84dc40c14c01d47098f86068393ece99a2862", size = 24026, upload-time = "2025-10-16T06:17:38.573Z" },
 ]
 
 [[package]]
@@ -2743,15 +2728,6 @@ dependencies = [
     { name = "requests" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/67/35/25e68fbc99e672127cc6fbb14b8ec1ba3dfef035bf1e4c90f78f24a80b7d/wikipedia-1.4.0.tar.gz", hash = "sha256:db0fad1829fdd441b1852306e9856398204dc0786d2996dd2e0c8bb8e26133b2", size = 27748, upload-time = "2014-11-15T15:59:49.808Z" }
-
-[[package]]
-name = "win32-setctime"
-version = "1.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/705086c9d734d3b663af0e9bb3d4de6578d08f46b1b101c2442fd9aecaa2/win32_setctime-1.2.0.tar.gz", hash = "sha256:ae1fdf948f5640aae05c511ade119313fb6a30d7eabe25fef9764dca5873c4c0", size = 4867, upload-time = "2024-12-07T15:28:28.314Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/07/c6fe3ad3e685340704d314d765b7912993bcb8dc198f0e7a89382d37974b/win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390", size = 4083, upload-time = "2024-12-07T15:28:26.465Z" },
-]
 
 [[package]]
 name = "wrapt"

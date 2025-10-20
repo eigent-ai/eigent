@@ -84,12 +84,15 @@ describe('useInstallationSetup Hook', () => {
     })
 
     it('should set initState to carousel if tool is not installed', async () => {
+      // Set initial state to permissions (as would happen on fresh startup)
+      mockAuthStore.initState = 'permissions'
+
       // Mock tool not installed
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
         isInstalled: false
       })
-      
+
       renderHook(() => useInstallationSetup())
 
       await vi.waitFor(() => {
@@ -197,7 +200,10 @@ describe('useInstallationSetup Hook', () => {
   describe('Test Scenarios Integration', () => {
     it('should handle fresh installation scenario', async () => {
       TestScenarios.freshInstall(electronAPI)
-      
+
+      // Set initial state to permissions (as would happen on fresh startup)
+      mockAuthStore.initState = 'permissions'
+
       // Mock tool not installed
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,

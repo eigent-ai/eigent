@@ -9,7 +9,6 @@ from camel.societies.workforce.workforce import (
 from camel.societies.workforce.task_channel import TaskChannel
 from camel.societies.workforce.base import BaseNode
 from camel.societies.workforce.utils import TaskAssignResult
-from loguru import logger
 from camel.tasks.task import Task, TaskState, validate_task_content
 from app.component import code
 from app.exception.exception import UserException
@@ -23,25 +22,10 @@ from app.service.task import (
     get_task_lock,
 )
 from app.utils.single_agent_worker import SingleAgentWorker
+from utils import traceroot_wrapper as traceroot
 
-# === Debug sink === Write detailed dependency debug logs to file (logs/workforce_debug.log)
-# Create a new file every day, keep the logs for the last 7 days, and write asynchronously without blocking the main process
-logger.add(
-    "logs/workforce_debug_{time:YYYY-MM-DD}.log",
-    rotation="00:00",
-    retention="7 days",
-    enqueue=True,
-    level="DEBUG",
-)
-# Independent sink: only collect the "[WF]" debug lines we insert to quickly view the dependency chain
-logger.add(
-    "logs/wf_trace_{time:YYYY-MM-DD-HH}.log",
-    rotation="00:00",
-    retention="7 days",
-    enqueue=True,
-    level="DEBUG",
-    filter=lambda record: record["message"].startswith("[WF]"),
-)
+logger = traceroot.get_logger("workforce")
+
 
 
 class Workforce(BaseWorkforce):
