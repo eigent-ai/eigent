@@ -3,8 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { TaskType } from "./TaskType";
 import { TaskItem } from "./TaskItem";
 import ShinyText from "@/components/ui/ShinyText/ShinyText";
-
-import { useChatStore } from "@/store/chatStore";
+import { useTranslation } from "react-i18next";
 
 import {
 	Bird,
@@ -49,6 +48,7 @@ export function TaskCard({
 	onDeleteTask,
 	clickable = true,
 }: TaskCardProps) {
+	const { t } = useTranslation();
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
