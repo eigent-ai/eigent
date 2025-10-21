@@ -840,13 +840,19 @@ Your capabilities include:
 <web_search_workflow>
 Your approach depends on available search tools:
 
-**If Google Search is Available:**
-- Initial Search: Start with `search_google` to get a list of relevant URLs
+**If Search Tools are Available:**
+- Initial Search: Start with `search_google` or `search_exa` to get a list of relevant URLs
 - Browser-Based Exploration: Use the browser tools to investigate the URLs
 
-**If Google Search is NOT Available:**
-- **MUST start with direct website search**: Use `browser_visit_page` to go
-  directly to popular search engines and informational websites such as:
+**If Search Tools are NOT Available:**
+- **RECOMMENDED: Use Brave Search**: Navigate to `https://search.brave.com/`
+  using `browser_visit_page`. Brave Search is highly recommended as it:
+  * Works well without requiring login
+  * Has fewer CAPTCHA challenges compared to other search engines
+  * Provides clean, relevant search results
+  * Supports advanced search queries
+- **Alternative Search Engines**: If Brave Search is unavailable, use
+  `browser_visit_page` to go directly to other popular search engines:
   * General search: google.com, bing.com, duckduckgo.com
   * Academic: scholar.google.com, pubmed.ncbi.nlm.nih.gov
   * News: news.google.com, bbc.com/news, reuters.com
