@@ -182,7 +182,7 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
         Formatted context string with task history and files listed once at the end
     """
     context = ""
-    working_directory = None
+    working_directories = set()  # Collect all unique working directories
 
     if task_lock.conversation_history:
         context = f"{header}\n"
@@ -193,34 +193,35 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
                     # Format without file listing
                     formatted_context = format_task_context(entry['content'], skip_files=True)
                     context += formatted_context + "\n\n"
-                    # Remember the working directory from the last task
+                    # Collect all working directories from all tasks
                     if entry['content'].get('working_directory'):
-                        working_directory = entry['content']['working_directory']
+                        working_directories.add(entry['content']['working_directory'])
                 else:
                     context += entry['content'] + "\n"
             elif entry['role'] == 'assistant':
                 context += f"Assistant: {entry['content']}\n\n"
 
-        # Add all generated files at the end, only once
-        if working_directory:
-            try:
-                if os.path.exists(working_directory):
-                    generated_files = []
-                    for root, dirs, files in os.walk(working_directory):
-                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
-                        for file in files:
-                            if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
-                                file_path = os.path.join(root, file)
-                                absolute_path = os.path.abspath(file_path)
-                                generated_files.append(absolute_path)
+        # Add all generated files from all working directories at the end, only once
+        if working_directories:
+            all_generated_files = set()  # Use set to avoid duplicates
+            for working_directory in working_directories:
+                try:
+                    if os.path.exists(working_directory):
+                        for root, dirs, files in os.walk(working_directory):
+                            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                            for file in files:
+                                if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                                    file_path = os.path.join(root, file)
+                                    absolute_path = os.path.abspath(file_path)
+                                    all_generated_files.add(absolute_path)
+                except Exception as e:
+                    logger.warning(f"Failed to collect generated files from {working_directory}: {e}")
 
-                    if generated_files:
-                        context += "Generated Files from Previous Tasks:\n"
-                        for file_path in sorted(generated_files):
-                            context += f"  - {file_path}\n"
-                        context += "\n"
-            except Exception as e:
-                logger.warning(f"Failed to collect generated files: {e}")
+            if all_generated_files:
+                context += "Generated Files from Previous Tasks:\n"
+                for file_path in sorted(all_generated_files):
+                    context += f"  - {file_path}\n"
+                context += "\n"
 
         context += "\n"
 
