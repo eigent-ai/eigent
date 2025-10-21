@@ -66,7 +66,7 @@ export class WebViewManager {
         webPreferences: {
           // Use a separate session partition for webviews to isolate storage from main window
           // This ensures clearing webview storage won't affect main window's auth data
-          partition: 'persist:agent-webview',
+          partition: 'persist:user_login',
           nodeIntegration: false,
           contextIsolation: true,
           backgroundThrottling: true,

@@ -1088,10 +1088,10 @@ async function createWindow() {
 
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
-  webViewManager = new WebViewManager(win, browser_port);
+  webViewManager = new WebViewManager(win);
 
   // create multiple webviews
-  log.info(`[PROJECT BROWSER] Creating WebViews with partition: persist:agent-webview`);
+  log.info(`[PROJECT BROWSER] Creating WebViews with partition: persist:user_login`);
   for (let i = 1; i <= 8; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
