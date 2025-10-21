@@ -144,9 +144,12 @@ async def open_browser_login():
         session_id = "user_login"
         cdp_port = 9223
 
-        # Create user data directory for Chrome profiles
-        user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
-        user_data_dir = os.path.join(user_data_base, "profile_user_login")
+        # IMPORTANT: Use dedicated profile for tool_controller browser
+        # This is the SOURCE OF TRUTH for login data
+        # On Eigent startup, this data will be copied to WebView partition (one-way sync)
+        browser_profiles_base = os.path.expanduser("~/.eigent/browser_profiles")
+        user_data_dir = os.path.join(browser_profiles_base, "profile_user_login")
+
         os.makedirs(user_data_dir, exist_ok=True)
 
         logger.info(
@@ -182,7 +185,6 @@ const startUrl = args[2] || 'https://www.google.com';
 
 // This must be called before app.ready
 app.commandLine.appendSwitch('remote-debugging-port', cdpPort);
-app.commandLine.appendSwitch('user-data-dir', userDataDir);
 
 console.log('[ELECTRON BROWSER] Starting with:');
 console.log('  Chrome version:', process.versions.chrome);
@@ -190,11 +192,16 @@ console.log('  User data dir (requested):', userDataDir);
 console.log('  CDP port:', cdpPort);
 console.log('  Start URL:', startUrl);
 
-// Try to set app paths
+// Set app paths - must be done before app.ready
+// Do NOT use commandLine.appendSwitch('user-data-dir') as it conflicts with setPath
 app.setPath('userData', userDataDir);
 app.setPath('sessionData', userDataDir);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const { session } = require('electron');
+  const fs = require('fs');
+  const path = require('path');
+
   // Log actual paths being used
   console.log('[ELECTRON BROWSER] Actual paths:');
   console.log('  app.getPath("userData"):', app.getPath('userData'));
@@ -202,11 +209,81 @@ app.whenReady().then(() => {
   console.log('  app.getPath("cache"):', app.getPath('cache'));
   console.log('  app.getPath("temp"):', app.getPath('temp'));
   console.log('  process.argv:', process.argv);
-  
+
   // Check command line switches
   console.log('[ELECTRON BROWSER] Command line switches:');
   console.log('  user-data-dir:', app.commandLine.getSwitchValue('user-data-dir'));
   console.log('  remote-debugging-port:', app.commandLine.getSwitchValue('remote-debugging-port'));
+
+  // Import cookies from JSON backup if exists
+  const mainAppUserData = process.platform === 'darwin'
+    ? path.join(require('os').homedir(), 'Library/Application Support/eigent')
+    : process.platform === 'win32'
+    ? path.join(process.env.APPDATA, 'eigent')
+    : path.join(require('os').homedir(), '.config/eigent');
+
+  const cookiesJsonPath = path.join(mainAppUserData, 'Partitions', 'user_login', 'cookies_backup.json');
+
+  console.log('[ELECTRON BROWSER] Checking for cookies JSON backup:', cookiesJsonPath);
+
+  if (fs.existsSync(cookiesJsonPath)) {
+    try {
+      const cookiesJson = fs.readFileSync(cookiesJsonPath, 'utf8');
+      const cookies = JSON.parse(cookiesJson);
+      console.log('[ELECTRON BROWSER] Found', cookies.length, 'cookies in backup, importing...');
+
+      // Get session after app is ready
+      const userLoginSession = session.fromPartition('persist:user_login');
+
+      // Import each cookie
+      let imported = 0;
+      for (const cookie of cookies) {
+        try {
+          // Remove read-only properties
+          const cookieToSet = {
+            url: `http${cookie.secure ? 's' : ''}://${cookie.domain.startsWith('.') ? cookie.domain.substring(1) : cookie.domain}${cookie.path}`,
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain,
+            path: cookie.path,
+            secure: cookie.secure,
+            httpOnly: cookie.httpOnly,
+            expirationDate: cookie.expirationDate
+          };
+
+          await userLoginSession.cookies.set(cookieToSet);
+          imported++;
+        } catch (err) {
+          console.error('[ELECTRON BROWSER] Failed to import cookie:', cookie.name, err.message);
+        }
+      }
+
+      console.log('[ELECTRON BROWSER] Successfully imported', imported, 'cookies');
+
+      // Flush to disk immediately
+      await userLoginSession.flushStorageData();
+      console.log('[ELECTRON BROWSER] Cookies flushed to disk');
+    } catch (error) {
+      console.error('[ELECTRON BROWSER] Failed to import cookies from JSON:', error);
+    }
+  } else {
+    console.log('[ELECTRON BROWSER] No cookies backup found');
+  }
+
+  // Log partition session info
+  const userLoginSession = session.fromPartition('persist:user_login');
+  console.log('[ELECTRON BROWSER] Session info:');
+  console.log('  Partition: persist:user_login');
+  console.log('  Session storage path:', userLoginSession.getStoragePath());
+
+  // Check if Cookies file exists
+  const cookiesPath = path.join(app.getPath('userData'), 'Partitions', 'user_login', 'Cookies');
+  console.log('[ELECTRON BROWSER] Cookies path:', cookiesPath);
+  console.log('[ELECTRON BROWSER] Cookies exists:', fs.existsSync(cookiesPath));
+  if (fs.existsSync(cookiesPath)) {
+    const stats = fs.statSync(cookiesPath);
+    console.log('[ELECTRON BROWSER] Cookies file size:', stats.size, 'bytes');
+  }
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -450,19 +527,127 @@ app.whenReady().then(() => {
 </html>`;
 
   win.loadURL('data:text/html;charset=UTF-8,' + encodeURIComponent(html));
-  
+
   // Show window when ready
   win.once('ready-to-show', () => {
     win.show();
+
+    // Log cookies periodically to track changes
+    setInterval(async () => {
+      try {
+        const cookies = await userLoginSession.cookies.get({});
+        console.log('[ELECTRON BROWSER] Current cookies count:', cookies.length);
+        if (cookies.length > 0) {
+          console.log('[ELECTRON BROWSER] Cookie domains:', [...new Set(cookies.map(c => c.domain))]);
+        }
+      } catch (error) {
+        console.error('[ELECTRON BROWSER] Failed to get cookies:', error);
+      }
+    }, 5000); // Check every 5 seconds
   });
   
-  win.on('closed', () => {
+  win.on('closed', async () => {
+    console.log('[ELECTRON BROWSER] Window closed, preparing to quit...');
+
+    // Flush storage data before quitting to ensure cookies are saved
+    try {
+      const { session } = require('electron');
+      const fs = require('fs');
+      const path = require('path');
+      const userLoginSession = session.fromPartition('persist:user_login');
+
+      // Log cookies before flush
+      const cookiesBeforeFlush = await userLoginSession.cookies.get({});
+      console.log('[ELECTRON BROWSER] Cookies count before flush:', cookiesBeforeFlush.length);
+
+      // Flush storage
+      console.log('[ELECTRON BROWSER] Flushing storage data...');
+      await userLoginSession.flushStorageData();
+      console.log('[ELECTRON BROWSER] Storage data flushed successfully');
+
+      // Check cookies file after flush
+      const cookiesPath = path.join(app.getPath('userData'), 'Partitions', 'user_login', 'Cookies');
+      if (fs.existsSync(cookiesPath)) {
+        const stats = fs.statSync(cookiesPath);
+        console.log('[ELECTRON BROWSER] Cookies file size after flush:', stats.size, 'bytes');
+      } else {
+        console.log('[ELECTRON BROWSER] WARNING: Cookies file does not exist after flush!');
+      }
+    } catch (error) {
+      console.error('[ELECTRON BROWSER] Failed to flush storage data:', error);
+    }
     app.quit();
   });
 });
 
+let isQuitting = false;
+
+app.on('before-quit', async (event) => {
+  if (isQuitting) return;
+
+  // Prevent immediate quit to allow storage flush and cookie sync
+  event.preventDefault();
+  isQuitting = true;
+
+  console.log('[ELECTRON BROWSER] before-quit event triggered');
+
+  try {
+    const { session } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+    const userLoginSession = session.fromPartition('persist:user_login');
+
+    // Log cookies before flush
+    const cookiesBeforeQuit = await userLoginSession.cookies.get({});
+    console.log('[ELECTRON BROWSER] Cookies count before quit:', cookiesBeforeQuit.length);
+    if (cookiesBeforeQuit.length > 0) {
+      console.log('[ELECTRON BROWSER] Cookie domains before quit:', [...new Set(cookiesBeforeQuit.map(c => c.domain))]);
+    }
+
+    // Flush storage
+    console.log('[ELECTRON BROWSER] Flushing storage on quit...');
+    await userLoginSession.flushStorageData();
+    console.log('[ELECTRON BROWSER] Storage data flushed on quit');
+
+    // Export cookies as JSON to sync to main app
+    try {
+      const mainAppUserData = process.platform === 'darwin'
+        ? path.join(require('os').homedir(), 'Library/Application Support/eigent')
+        : process.platform === 'win32'
+        ? path.join(process.env.APPDATA, 'eigent')
+        : path.join(require('os').homedir(), '.config/eigent');
+
+      const cookiesJsonPath = path.join(mainAppUserData, 'Partitions', 'user_login', 'cookies_backup.json');
+
+      // Get all cookies
+      const allCookies = await userLoginSession.cookies.get({});
+      console.log('[ELECTRON BROWSER] Exporting', allCookies.length, 'cookies to JSON');
+
+      // Ensure directory exists
+      const cookiesDir = path.dirname(cookiesJsonPath);
+      if (!fs.existsSync(cookiesDir)) {
+        fs.mkdirSync(cookiesDir, { recursive: true });
+      }
+
+      // Save cookies as JSON
+      fs.writeFileSync(cookiesJsonPath, JSON.stringify(allCookies, null, 2));
+      console.log('[ELECTRON BROWSER] Cookies exported to:', cookiesJsonPath);
+    } catch (error) {
+      console.error('[ELECTRON BROWSER] Failed to export cookies:', error);
+    }
+  } catch (error) {
+    console.error('[ELECTRON BROWSER] Failed to sync cookies:', error);
+  } finally {
+    console.log('[ELECTRON BROWSER] Exiting now...');
+    // Force quit after sync
+    app.exit(0);
+  }
+});
+
 app.on('window-all-closed', () => {
-  app.quit();
+  if (!isQuitting) {
+    app.quit();
+  }
 });
 '''
         
@@ -487,13 +672,27 @@ app.on('window-all-closed', () => {
         
         logger.info(f"[PROFILE USER LOGIN] Launching Electron browser with CDP on port {cdp_port}")
         logger.info(f"[PROFILE USER LOGIN] Working directory: {app_dir}")
-        
+        logger.info(f"[PROFILE USER LOGIN] userData path: {user_data_dir}")
+        logger.info(f"[PROFILE USER LOGIN] Electron args: {electron_args}")
+
+        # Start process and capture output in real-time
         process = subprocess.Popen(
             electron_args,
-            cwd=app_dir,  # Run in app directory to use the right Electron version
+            cwd=app_dir,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.STDOUT,  # Redirect stderr to stdout
+            universal_newlines=True,
+            bufsize=1  # Line buffered
         )
+
+        # Create async task to log Electron output
+        async def log_electron_output():
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    logger.info(f"[ELECTRON OUTPUT] {line.strip()}")
+
+        import asyncio
+        asyncio.create_task(log_electron_output())
         
         # Wait a bit for Electron to start
         import asyncio
@@ -533,18 +732,46 @@ app.on('window-all-closed', () => {
 @router.get("/browser/cookies", name="list cookie domains")
 async def list_cookie_domains(search: str = None):
     """
-    列出所有有cookies的网站域名
+    list cookie domains
 
     Args:
-        search: 可选的搜索关键词，用于过滤域名
+        search: url
 
     Returns:
-        域名列表，包含域名、cookie数量和最后访问时间
+       list of cookie domains
     """
     try:
-        # Use the same user data directory as the login browser
+        # Use tool_controller browser's user data directory (source of truth)
         user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
         user_data_dir = os.path.join(user_data_base, "profile_user_login")
+
+        logger.info(f"[COOKIES CHECK] Tool controller user_data_dir: {user_data_dir}")
+        logger.info(f"[COOKIES CHECK] Tool controller user_data_dir exists: {os.path.exists(user_data_dir)}")
+
+        # Check partition path
+        partition_path = os.path.join(user_data_dir, "Partitions", "user_login")
+        logger.info(f"[COOKIES CHECK] partition path: {partition_path}")
+        logger.info(f"[COOKIES CHECK] partition exists: {os.path.exists(partition_path)}")
+
+        # Check cookies file
+        cookies_file = os.path.join(partition_path, "Cookies")
+        logger.info(f"[COOKIES CHECK] cookies file: {cookies_file}")
+        logger.info(f"[COOKIES CHECK] cookies file exists: {os.path.exists(cookies_file)}")
+        if os.path.exists(cookies_file):
+            stat = os.stat(cookies_file)
+            logger.info(f"[COOKIES CHECK] cookies file size: {stat.st_size} bytes")
+
+            # Try to read actual cookie count
+            try:
+                import sqlite3
+                conn = sqlite3.connect(cookies_file)
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM cookies")
+                count = cursor.fetchone()[0]
+                logger.info(f"[COOKIES CHECK] actual cookie count in database: {count}")
+                conn.close()
+            except Exception as e:
+                logger.error(f"[COOKIES CHECK] failed to read cookie count: {e}")
 
         if not os.path.exists(user_data_dir):
             return {
@@ -578,13 +805,13 @@ async def list_cookie_domains(search: str = None):
 @router.get("/browser/cookies/{domain}", name="get domain cookies")
 async def get_domain_cookies(domain: str):
     """
-    获取指定域名的cookies详情
+    get domain cookies
 
     Args:
-        domain: 域名（如 linkedin.com）
+        domain
 
     Returns:
-        该域名的所有cookies
+        cookies
     """
     try:
         user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
@@ -619,13 +846,13 @@ async def get_domain_cookies(domain: str):
 @router.delete("/browser/cookies/{domain}", name="delete domain cookies")
 async def delete_domain_cookies(domain: str):
     """
-    删除指定域名的所有cookies
+    Delete cookies
 
     Args:
-        domain: 域名（如 linkedin.com）
+        domain
 
     Returns:
-        删除结果
+        deleted cookies
     """
     try:
         user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
@@ -664,10 +891,10 @@ async def delete_domain_cookies(domain: str):
 @router.delete("/browser/cookies", name="delete all cookies")
 async def delete_all_cookies():
     """
-    删除所有cookies
+    delete all cookies
 
     Returns:
-        删除结果
+        deleted cookies
     """
     try:
         user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
