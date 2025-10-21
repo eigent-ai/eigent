@@ -118,5 +118,32 @@
 	"search-mcp": "搜索 MCP",
 	"installed": "已安装",
 	"worker-name-cannot-be-empty": "Worker 名称不能为空",
-	"worker-name-already-exists": "Worker 名称已存在"
+	"worker-name-already-exists": "Worker 名称已存在",
+	
+	"browser-login": "浏览器登录",
+	"browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
+	"open-browser-login": "打开浏览器登录",
+	"opening-browser": "正在打开浏览器...",
+	"browser-opened-successfully": "浏览器已成功打开。请登录您的账户。",
+	"failed-to-open-browser": "打开浏览器失败，请重试。",
+	"restart-to-apply": "重启应用",
+
+	"cookie-manager": "Cookie 管理器",
+	"cookie-manager-description": "管理从浏览器会话中保存的 Cookie。可以删除特定网站或全部 Cookie。",
+	"refresh": "刷新",
+	"delete-all": "全部删除",
+	"search-domains": "搜索域名...",
+	"loading-cookies": "正在加载 Cookie...",
+	"no-cookies-found": "未找到 Cookie",
+	"no-matching-domains": "没有匹配的域名",
+	"login-to-save-cookies": "使用上面的浏览器登录功能来保存您账户的 Cookie。",
+	"cookies-count": "{{count}} 个 Cookie",
+	"last-access": "最后访问",
+	"deleting": "删除中...",
+	"cookies-deleted-successfully": "已成功删除 {{domain}} 的 Cookie",
+	"failed-to-load-cookies": "加载 Cookie 失败，请重试。",
+	"failed-to-delete-cookies": "删除 Cookie 失败，请重试。",
+	"confirm-delete-all-cookies": "确定要删除所有 Cookie 吗？此操作无法撤销。",
+	"all-cookies-deleted": "所有 Cookie 已成功删除。",
+	"cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。"
 }
