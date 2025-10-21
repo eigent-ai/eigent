@@ -7,11 +7,12 @@ import { useEffect, useState } from "react";
 import { AnimationJson } from "@/components/AnimationJson";
 import animationData from "@/assets/animation/onboarding_success.json";
 import CloseNoticeDialog from "../Dialog/CloseNotice";
-import { useChatStore } from "@/store/chatStore";
 import { useInstallationUI } from "@/store/installationStore";
 import { useInstallationSetup } from "@/hooks/useInstallationSetup";
 import InstallationErrorDialog from "../InstallStep/InstallationErrorDialog/InstallationErrorDialog";
+import Halo from "../Halo";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+
 const Layout = () => {
 	const { initState, isFirstLaunch, setIsFirstLaunch, setInitState } = useAuthStore();
 	const [noticeOpen, setNoticeOpen] = useState(false);
@@ -80,10 +81,9 @@ const Layout = () => {
 	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (
-		<div className="h-full flex flex-col">
-		
+		<div className="h-full flex flex-col relative overflow-hidden">
 			<TopBar />
-			<div className="flex-1 h-full p-2">
+			<div className="flex-1 h-full min-h-0 overflow-hidden relative">
 				{/* Onboarding animation */}
 				{shouldShowOnboarding && (
 					<AnimationJson
@@ -115,8 +115,9 @@ const Layout = () => {
 					onOpenChange={setNoticeOpen}
 					open={noticeOpen}
 				/>
+				<Halo />
 			</div>
-		</div>
+			</div>
 	);
 };
 

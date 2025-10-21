@@ -2,7 +2,7 @@ import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { proxyFetchGet, proxyFetchPut } from "@/api/http";
 import { Button } from "@/components/ui/button";
-import { FolderSearch } from "lucide-react";
+import { FolderSearch, ChevronDown } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 export default function SettingPrivacy() {
@@ -17,27 +17,23 @@ export default function SettingPrivacy() {
 	];
 	const [settings, setSettings] = useState([
 		{
-			title: "Allow Agent to Take Screenshots",
-			description:
-				"Permit the agent to capture screenshots of your computer screen. This can be used for support, diagnostics, or monitoring purposes. Screenshots may include visible personal information, so please enable with care.",
+			title: t("setting.allow-agent-to-take-screenshots"),
+			description: t("setting.allow-agent-to-take-screenshots-description"),
 			checked: false,
 		},
 		{
-			title: "Allow Agent to Access Local Software",
-			description:
-				"Grant the agent permission to interact with and utilize software installed on your local machine. This may be necessary for troubleshooting, running diagnostics, or performing specific tasks.",
+			title: t("setting.allow-agent-to-access-local-software"),
+			description: t("setting.allow-agent-to-access-local-software-description"),
 			checked: false,
 		},
 		{
-			title: "Allow Agent to Access Your Address",
-			description:
-				"Authorize the agent to view and use your location or address details. This may be required for location-based services or personalized support.",
+			title: t("setting.allow-agent-to-access-your-address"),
+			description: t("setting.allow-agent-to-access-your-address-description"),
 			checked: false,
 		},
 		{
-			title: "Password Storage",
-			description:
-				"Determine how passwords are handled and stored. You can choose to store passwords securely on the device or within the application, or opt out to manually enter them each time. All stored passwords are encrypted.",
+			title: t("setting.password-storage"),
+			description: t("setting.password-storage-description"),
 			checked: false,
 		},
 	]);
@@ -103,6 +99,7 @@ export default function SettingPrivacy() {
 	};
 
 	const [logFolder, setLogFolder] = useState("");
+	const [isHowWeHandleOpen, setIsHowWeHandleOpen] = useState(false);
 	useEffect(() => {
 		window.ipcRenderer.invoke("get-log-folder", email).then((logFolder) => {
 			setLogFolder(logFolder);
@@ -116,9 +113,10 @@ export default function SettingPrivacy() {
 	};
 
 	return (
-		<div className="pr-2">
-			<h2 className="mb-2">{t("setting.data-privacy")}</h2>
-			<p className="mt-2 text-sm">
+		<div className="flex flex-col gap-4 pb-40 ">
+			<div className="px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col gap-2">
+			<div className="text-body-lg font-bold text-text-heading">{t("setting.data-privacy")}</div>
+			<span className="text-body-sm font-normal text-text-body">
 				{t("setting.data-privacy-description")}
 				{" "}
 				<a
@@ -129,32 +127,47 @@ export default function SettingPrivacy() {
 					{t("setting.privacy-policy")}
 				</a>
 				.
-			</p>
-			<h3 className="mb-0 text-sm">{t("setting.how-we-handle-your-data")}</h3>
-			<ol className="pl-5 mt-2 text-sm">
-				<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
-				<ul className="pl-4 mb-2">
+			</span>
+			<Button
+			  variant="ghost"
+				size="sm"
+				className="-ml-2"
+				onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
+				aria-expanded={isHowWeHandleOpen}
+				aria-controls="how-we-handle-your-data"
+			>
+				<span>{t("setting.how-we-handle-your-data")}</span>
+				<ChevronDown
+					className={`w-4 h-4 transition-transform ${isHowWeHandleOpen ? "rotate-0" : "-rotate-90"}`}
+				/>
+			</Button>
+			{isHowWeHandleOpen && (
+				<ol id="how-we-handle-your-data" className="pl-5 text-body-sm text-text-body font-normal mt-2">
+					<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
+					<ul className="pl-4 mb-2">
+						<li>
+							{t("setting.how-we-handle-your-data-line-1-line-1")}
+						</li>
+						<li>
+							{t("setting.how-we-handle-your-data-line-1-line-2")}
+						</li>
+						<li>
+							{t("setting.how-we-handle-your-data-line-1-line-3")}
+						</li>
+					</ul>
 					<li>
-						{t("setting.how-we-handle-your-data-line-1-line-1")}
+						{t("setting.how-we-handle-your-data-line-2")}
 					</li>
 					<li>
-						{t("setting.how-we-handle-your-data-line-1-line-2")}
+						{t("setting.how-we-handle-your-data-line-3")}
 					</li>
 					<li>
-						{t("setting.how-we-handle-your-data-line-1-line-3")}
+						{t("setting.how-we-handle-your-data-line-4")}
 					</li>
-				</ul>
-				<li>
-					{t("setting.how-we-handle-your-data-line-2")}
-				</li>
-				<li>
-					{t("setting.how-we-handle-your-data-line-3")}
-				</li>
-				<li>
-					{t("setting.how-we-handle-your-data-line-4")}
-				</li>
-				<li>{t("setting.how-we-handle-your-data-line-5")}</li>
-			</ol>
+					<li>{t("setting.how-we-handle-your-data-line-5")}</li>
+				</ol>
+			)}
+			</div>
 
 			{/* Privacy controls */}
 			{/* <h2 className="mb-2">Privacy controls</h2>
@@ -171,16 +184,16 @@ export default function SettingPrivacy() {
 				</Button>
 			</div> */}
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl mt-4">
-				<div className="flex gap-md">
-					<div>
-						<div className="text-base font-bold leading-12 text-text-primary">
+				<div className="flex gap-md items-center justify-between">
+					<div className="flex flex-col gap-2">
+						<div className="text-body-md font-bold text-text-heading">
 							{t("setting.enable-privacy-permissions-settings")}
 						</div>
-						<div className="text-sm leading-13">
+						<div className="text-body-sm text-text-body font-normal">
 							{t("setting.enable-privacy-permissions-settings-description")}
 						</div>
 					</div>
-					<div>
+					<div className="flex items-center justify-center">
 						<Switch
 							checked={_privacy}
 							onCheckedChange={() => handleTurnOnAll(!_privacy)}

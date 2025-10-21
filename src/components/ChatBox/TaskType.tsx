@@ -3,19 +3,19 @@ export const TaskType = ({ type }: { type: 1 | 2 | 3 }) => {
 	const { t } = useTranslation();
 	const typeMap = {
 		1: {
-			label: t("chat.task-splitting"),
+			label: t("layout.task-splitting"),
 			textColor: "text-badge-splitting-surface-foreground",
 			bgColor: "bg-badge-splitting-surface",
 			dotColor: "bg-badge-splitting-surface-foreground",
 		},
 		2: {
-			label: t("chat.task-running"),
+			label: t("layout.task-running"),
 			textColor: "text-text-success-primary",
 			bgColor: "bg-bg-fill-success-secondary",
 			dotColor: "bg-text-success-primary",
 		},
 		3: {
-			label: t("chat.task-completed"),
+			label: t("layout.task-completed"),
 			textColor: "text-text-primary",
 			bgColor: "bg-transparent",
 			dotColor: "bg-text-primary",
