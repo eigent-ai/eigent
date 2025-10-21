@@ -14,8 +14,8 @@
   "type": "module",
   "scripts": {
     "compile-babel": "cd backend && uv run pybabel compile -d lang",
-    "clean-cache": "rm -rf node_modules/.vite",
-    "dev": "npm run clean-cache && npm run compile-babel && vite",
+    "clean-cache": "rimraf node_modules/.vite",
+    "dev": "npm run clean-cache && vite",
     "build": "npm run compile-babel && tsc && vite build &&  electron-builder -- --publish always",
     "build:mac": "npm run compile-babel && tsc && vite build && electron-builder --mac",
     "build:win": "npm run compile-babel && tsc && vite build && electron-builder --win",
@@ -114,6 +114,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.7.3",
+    "rimraf": "^6.0.1",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.4.2",
     "vite": "^5.4.11",
