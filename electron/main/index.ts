@@ -54,16 +54,15 @@ let profileInitPromise: Promise<void>;
 
 // Set remote debugging port
 // Storage strategy:
-// 1. Main window uses partition 'persist:main_window' in app userData - for Eigent account auth
-// 2. WebView uses partition 'persist:user_login' in app userData - receives login data from tool_controller
-// 3. tool_controller browser uses ~/.eigent/browser_profiles/profile_user_login - persistent source of truth
-// 4. On startup: Copy tool_controller login data → WebView (one-way, read-only)
-// 5. On shutdown: No sync back (WebView changes are temporary)
+// 1. Main window: partition 'persist:main_window' in app userData → Eigent account (persistent)
+// 2. WebView: partition 'persist:user_login' in app userData → will import cookies from tool_controller via session API
+// 3. tool_controller: ~/.eigent/browser_profiles/profile_user_login → source of truth for login cookies
+// 4. CDP browser: uses separate profile (doesn't share with main app)
 profileInitPromise = findAvailablePort(browser_port).then(async port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 
-  // Create a simple isolated profile for CDP browser only
+  // Create isolated profile for CDP browser only
   const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
   const cdpProfile = path.join(browserProfilesBase, `cdp_profile_${port}`);
 
@@ -75,52 +74,11 @@ profileInitPromise = findAvailablePort(browser_port).then(async port => {
   }
 
   // Set user-data-dir for Chrome DevTools Protocol only
-  // This affects the embedded Chromium browser launched with CDP, not the main Electron app
   app.commandLine.appendSwitch('user-data-dir', cdpProfile);
 
   log.info(`[CDP BROWSER] Chrome DevTools Protocol enabled on port ${port}`);
   log.info(`[CDP BROWSER] CDP profile directory: ${cdpProfile}`);
-
-  // ==================== One-way sync: tool_controller → WebView ====================
-  // Copy login data from tool_controller browser to WebView partition (if exists)
-  const toolControllerProfile = path.join(browserProfilesBase, 'profile_user_login');
-  const appUserData = app.getPath('userData');
-  const webViewPartition = path.join(appUserData, 'Partitions', 'user_login');
-
-  try {
-    // Check if tool_controller has login data
-    const toolControllerPartition = path.join(toolControllerProfile, 'Partitions', 'user_login');
-
-    if (fs.existsSync(toolControllerPartition)) {
-      log.info('[LOGIN SYNC] Found tool_controller login data, copying to WebView partition...');
-      log.info('[LOGIN SYNC] Source:', toolControllerPartition);
-      log.info('[LOGIN SYNC] Target:', webViewPartition);
-
-      // Ensure target directory exists
-      await fsp.mkdir(webViewPartition, { recursive: true });
-
-      // Copy the entire partition (includes Cookies, Local Storage, etc.)
-      await fsp.cp(toolControllerPartition, webViewPartition, {
-        recursive: true,
-        force: true  // Overwrite existing files
-      });
-
-      log.info('[LOGIN SYNC] Successfully copied login data to WebView partition');
-
-      // Log verification
-      const files = await fsp.readdir(webViewPartition);
-      log.info(`[LOGIN SYNC] WebView partition now contains ${files.length} files`);
-      if (files.includes('Cookies')) {
-        const cookieStat = await fsp.stat(path.join(webViewPartition, 'Cookies'));
-        log.info(`[LOGIN SYNC] Cookies file size: ${cookieStat.size} bytes`);
-      }
-    } else {
-      log.info('[LOGIN SYNC] No tool_controller login data found, WebView will start fresh');
-    }
-  } catch (error) {
-    log.error('[LOGIN SYNC] Failed to copy login data:', error);
-    // Non-fatal error, continue startup
-  }
+  log.info(`[STORAGE] Main app userData: ${app.getPath('userData')}`);
 });
 
 // Memory optimization settings
@@ -1090,37 +1048,46 @@ async function createWindow() {
     },
   });
 
-  // ==================== Migrate localStorage from default session to main_window partition ====================
-  try {
-    const defaultLocalStoragePath = path.join(app.getPath('userData'), 'Local Storage', 'leveldb');
-    const partitionLocalStoragePath = path.join(app.getPath('userData'), 'Partitions', 'main_window', 'Local Storage', 'leveldb');
+  // Main window now uses default userData directly with partition 'persist:main_window'
+  // No migration needed - data is already persistent
 
-    // Check if default localStorage exists and partition localStorage doesn't
-    if (fs.existsSync(defaultLocalStoragePath) && !fs.existsSync(partitionLocalStoragePath)) {
-      log.info('[MIGRATION] Migrating localStorage from default session to main_window partition');
-      log.info('[MIGRATION] Source:', defaultLocalStoragePath);
-      log.info('[MIGRATION] Target:', partitionLocalStoragePath);
+  // ==================== Import cookies from tool_controller to WebView BEFORE creating WebViews ====================
+  // Copy partition data files before any session accesses them
+  try {
+    const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
+    const toolControllerProfile = path.join(browserProfilesBase, 'profile_user_login');
+    const toolControllerPartitionPath = path.join(toolControllerProfile, 'Partitions', 'user_login');
+
+    if (fs.existsSync(toolControllerPartitionPath)) {
+      log.info('[COOKIE SYNC] Found tool_controller partition, copying to WebView partition...');
+
+      const targetPartitionPath = path.join(app.getPath('userData'), 'Partitions', 'user_login');
+      log.info('[COOKIE SYNC] From:', toolControllerPartitionPath);
+      log.info('[COOKIE SYNC] To:', targetPartitionPath);
 
       // Ensure target directory exists
-      const targetDir = path.dirname(partitionLocalStoragePath);
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
+      if (!fs.existsSync(path.dirname(targetPartitionPath))) {
+        fs.mkdirSync(path.dirname(targetPartitionPath), { recursive: true });
       }
 
-      // Copy the entire leveldb directory
-      fs.cpSync(defaultLocalStoragePath, partitionLocalStoragePath, { recursive: true });
-      log.info('[MIGRATION] Successfully migrated localStorage to main_window partition');
+      // Copy the entire partition directory
+      fs.cpSync(toolControllerPartitionPath, targetPartitionPath, {
+        recursive: true,
+        force: true
+      });
+      log.info('[COOKIE SYNC] Successfully copied partition data to WebView');
 
-      // Optionally remove old default localStorage to avoid confusion
-      // fs.rmSync(defaultLocalStoragePath, { recursive: true, force: true });
-      // log.info('[MIGRATION] Removed old default localStorage');
-    } else if (fs.existsSync(partitionLocalStoragePath)) {
-      log.info('[MIGRATION] Partition localStorage already exists, skipping migration');
+      // Verify cookies were copied
+      const targetCookies = path.join(targetPartitionPath, 'Cookies');
+      if (fs.existsSync(targetCookies)) {
+        const stats = fs.statSync(targetCookies);
+        log.info(`[COOKIE SYNC] Cookies file size: ${stats.size} bytes`);
+      }
     } else {
-      log.info('[MIGRATION] No default localStorage found, skipping migration');
+      log.info('[COOKIE SYNC] No tool_controller partition found, WebView will start fresh');
     }
   } catch (error) {
-    log.error('[MIGRATION] Failed to migrate localStorage:', error);
+    log.error('[COOKIE SYNC] Failed to sync partition data:', error);
   }
 
   // ==================== initialize manager ====================
