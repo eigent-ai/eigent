@@ -40,13 +40,20 @@ import { generateUniqueId } from "@/lib";
 import { SearchHistoryDialog } from "@/components/SearchHistoryDialog";
 import { Tag } from "@/components/ui/tag";
 import { share } from "@/lib/share";
+import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {getAuthStore} from "@/store/authStore";
 
 export default function Home() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { history_type, setHistoryType } = useGlobalStore();
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -162,6 +169,8 @@ export default function Home() {
 			const history = historyTasks.find((item) => item.id === curHistoryId);
 			if (history?.task_id && (window as any).ipcRenderer) {
 				try {
+					//TODO(file): rename endpoint to use project_id
+					//TODO(history): make sure to sync to projectId when updating endpoint
 					await (window as any).ipcRenderer.invoke(
 						"delete-task-files",
 						email,
@@ -180,20 +189,22 @@ export default function Home() {
 		share(taskId);
 	};
 
-	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(taskId, question, 0);
-		navigate({ pathname: "/" });
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
-			// if there is a record, display the result
-			chatStore.setActiveTaskId(taskId);
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
+			// if there is record, show result
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
+			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
 
@@ -208,7 +219,7 @@ export default function Home() {
 		} else {
 			chatStore.setTaskTime(taskId, Date.now());
 		}
-		fetchPut(`/task/${taskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: type,
 		});
 		if (type === "pause") {
@@ -220,16 +231,8 @@ export default function Home() {
 
 	// create task
 	const createChat = () => {
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			console.log(chatStore.tasks[taskId].messages.length);
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate(`/`);
-			return;
-		}
-		chatStore.create();
+		//Handles refocusing id & non duplicate logic internally
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 
@@ -565,10 +568,11 @@ export default function Home() {
 						{historyTasks.map((task) => {
 							return (
 								<div
-									onClick={() => handleSetActive(task.task_id, task.question)}
+									onClick={() => handleSetActive(task.task_id, task.question, task.id)}
+
 									key={task.task_id}
 									className={`${
-										chatStore.activeTaskId === task.task_id
+										chatStore.activeTaskId === task?.task_id
 											? "!bg-white-100%"
 											: ""
 									} relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl flex justify-between items-center flex-wrap gap-md flex-initial w-[calc(33%-48px)] min-w-[300px] max-w-[500px] h-[180px] p-6 shadow-history-item border border-solid border-border-disabled`}
@@ -587,7 +591,7 @@ export default function Home() {
 												variant="primary"
 												className="text-xs leading-17 font-medium text-nowrap"
 											>
-												# Token {task.tokens || 0}
+												# Token {task?.tokens || 0}
 											</Tag>
 										</div>
 									</div>
@@ -607,11 +611,11 @@ export default function Home() {
 							return (
 								<div
 									onClick={() => {
-										handleSetActive(task.task_id, task.question);
+										handleSetActive(task.task_id, task.question, task.id);
 									}}
 									key={task.task_id}
 									className={`${
-										chatStore.activeTaskId === task.task_id
+										chatStore.activeTaskId === task?.task_id
 											? "!bg-white-100%"
 											: ""
 									} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
@@ -625,7 +629,7 @@ export default function Home() {
 											<TooltipTrigger asChild>
 												<span>
 													{" "}
-													{task?.question.split("|")[0] ||
+													{task?.question?.split("|")?.[0] ||
 														t("task-hub.new-project")}
 												</span>
 											</TooltipTrigger>
@@ -635,7 +639,7 @@ export default function Home() {
 											>
 												<div>
 													{" "}
-													{task?.question.split("|")[0] ||
+													{task?.question?.split("|")?.[0] ||
 														t("task-hub.new-project")}
 												</div>
 											</TooltipContent>
@@ -645,7 +649,7 @@ export default function Home() {
 										variant="primary"
 										className="text-xs leading-17 font-medium text-nowrap"
 									>
-										# Token {task.tokens || 0}
+										# Token {task?.tokens || 0}
 									</Tag>
 
 									<Popover>
@@ -667,7 +671,7 @@ export default function Home() {
 														className="w-full"
 														onClick={(e) => {
 															e.stopPropagation();
-															handleShare(task.task_id);
+															handleShare(task?.task_id);
 														}}
 													>
 														<Share size={16} />
@@ -682,7 +686,7 @@ export default function Home() {
 														className="w-full"
 														onClick={(e) => {
 															e.stopPropagation();
-															handleDelete(task.id);
+															handleDelete(task?.id);
 														}}
 													>
 														<Trash2
