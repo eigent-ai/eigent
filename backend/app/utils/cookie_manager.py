@@ -14,14 +14,23 @@ class CookieManager:
 
     def __init__(self, user_data_dir: str):
         self.user_data_dir = user_data_dir
-        self.cookies_db_path = os.path.join(user_data_dir, "Cookies")
 
-        if not os.path.exists(self.cookies_db_path):
-            alt_path = os.path.join(user_data_dir, "Network", "Cookies")
-            if os.path.exists(alt_path):
-                self.cookies_db_path = alt_path
-            else:
-                logger.warning(f"Cookies database not found at {self.cookies_db_path}")
+        # Check for cookies in partition directory first (for persist:user_login)
+        partition_cookies_path = os.path.join(user_data_dir, "Partitions", "user_login", "Cookies")
+
+        if os.path.exists(partition_cookies_path):
+            self.cookies_db_path = partition_cookies_path
+            logger.info(f"Using partition cookies at: {partition_cookies_path}")
+        else:
+            # Fallback to default location
+            self.cookies_db_path = os.path.join(user_data_dir, "Cookies")
+
+            if not os.path.exists(self.cookies_db_path):
+                alt_path = os.path.join(user_data_dir, "Network", "Cookies")
+                if os.path.exists(alt_path):
+                    self.cookies_db_path = alt_path
+                else:
+                    logger.warning(f"Cookies database not found at {self.cookies_db_path} or {partition_cookies_path}")
 
     def _get_cookies_connection(self) -> Optional[sqlite3.Connection]:
         """Get database connection using a temporary copy to avoid locks"""

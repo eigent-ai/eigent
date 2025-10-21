@@ -52,74 +52,75 @@ const logPath = log.transports.file.getFile().path;
 // Profile initialization promise
 let profileInitPromise: Promise<void>;
 
-// Store profile paths for cleanup
-let browserProfilePaths: {
-  sourceProfile: string;
-  targetProfile: string;
-} | null = null;
-
-// Set remote debugging port and profile
+// Set remote debugging port
+// Storage strategy:
+// 1. Main window uses partition 'persist:main_window' in app userData - for Eigent account auth
+// 2. WebView uses partition 'persist:user_login' in app userData - receives login data from tool_controller
+// 3. tool_controller browser uses ~/.eigent/browser_profiles/profile_user_login - persistent source of truth
+// 4. On startup: Copy tool_controller login data → WebView (one-way, read-only)
+// 5. On shutdown: No sync back (WebView changes are temporary)
 profileInitPromise = findAvailablePort(browser_port).then(async port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 
-  // Set user data dir for browser profile persistence using port as index
+  // Create a simple isolated profile for CDP browser only
   const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
-  const sourceProfile = path.join(browserProfilesBase, 'profile_user_login');
-  const targetProfile = path.join(browserProfilesBase, `profile_${port}`);
+  const cdpProfile = path.join(browserProfilesBase, `cdp_profile_${port}`);
 
-  // Store paths for cleanup
-  browserProfilePaths = { sourceProfile, targetProfile };
-  
-  // Ensure profile_user_login exists (create empty if not)
-  if (!fs.existsSync(sourceProfile)) {
-    await fsp.mkdir(sourceProfile, { recursive: true });
-    log.info(`[PROJECT BROWSER] Created empty profile_user_login directory at ${sourceProfile}`);
-  }
-  
-  // Always copy/update profile_{port} from profile_user_login
   try {
-    // Remove existing target profile to ensure fresh copy
-    if (fs.existsSync(targetProfile)) {
-      log.info(`[PROJECT BROWSER] Removing existing profile at ${targetProfile} for update`);
-      await fsp.rm(targetProfile, { recursive: true, force: true });
-    }
-    
-    // Copy from source profile
-    log.info(`[PROJECT BROWSER] Copying user profile from ${sourceProfile} to ${targetProfile}`);
-    await fsp.cp(sourceProfile, targetProfile, { recursive: true });
-    log.info(`[PROJECT BROWSER] Successfully copied user profile to ${targetProfile}`);
-    
-    // Verify the copy
-    const partitionPath = path.join(targetProfile, 'Partitions', 'user_login');
-    if (fs.existsSync(partitionPath)) {
-      const files = await fsp.readdir(partitionPath);
-      log.info(`[PROJECT BROWSER] Partition contains ${files.length} files`);
+    await fsp.mkdir(cdpProfile, { recursive: true });
+    log.info(`[CDP BROWSER] Created CDP profile directory at ${cdpProfile}`);
+  } catch (error) {
+    log.error(`[CDP BROWSER] Failed to create directory: ${error}`);
+  }
+
+  // Set user-data-dir for Chrome DevTools Protocol only
+  // This affects the embedded Chromium browser launched with CDP, not the main Electron app
+  app.commandLine.appendSwitch('user-data-dir', cdpProfile);
+
+  log.info(`[CDP BROWSER] Chrome DevTools Protocol enabled on port ${port}`);
+  log.info(`[CDP BROWSER] CDP profile directory: ${cdpProfile}`);
+
+  // ==================== One-way sync: tool_controller → WebView ====================
+  // Copy login data from tool_controller browser to WebView partition (if exists)
+  const toolControllerProfile = path.join(browserProfilesBase, 'profile_user_login');
+  const appUserData = app.getPath('userData');
+  const webViewPartition = path.join(appUserData, 'Partitions', 'user_login');
+
+  try {
+    // Check if tool_controller has login data
+    const toolControllerPartition = path.join(toolControllerProfile, 'Partitions', 'user_login');
+
+    if (fs.existsSync(toolControllerPartition)) {
+      log.info('[LOGIN SYNC] Found tool_controller login data, copying to WebView partition...');
+      log.info('[LOGIN SYNC] Source:', toolControllerPartition);
+      log.info('[LOGIN SYNC] Target:', webViewPartition);
+
+      // Ensure target directory exists
+      await fsp.mkdir(webViewPartition, { recursive: true });
+
+      // Copy the entire partition (includes Cookies, Local Storage, etc.)
+      await fsp.cp(toolControllerPartition, webViewPartition, {
+        recursive: true,
+        force: true  // Overwrite existing files
+      });
+
+      log.info('[LOGIN SYNC] Successfully copied login data to WebView partition');
+
+      // Log verification
+      const files = await fsp.readdir(webViewPartition);
+      log.info(`[LOGIN SYNC] WebView partition now contains ${files.length} files`);
       if (files.includes('Cookies')) {
-        const cookieStat = await fsp.stat(path.join(partitionPath, 'Cookies'));
-        log.info(`[PROJECT BROWSER] Cookies file size: ${cookieStat.size} bytes`);
+        const cookieStat = await fsp.stat(path.join(webViewPartition, 'Cookies'));
+        log.info(`[LOGIN SYNC] Cookies file size: ${cookieStat.size} bytes`);
       }
+    } else {
+      log.info('[LOGIN SYNC] No tool_controller login data found, WebView will start fresh');
     }
   } catch (error) {
-    log.error(`[PROJECT BROWSER] Failed to copy profile: ${error}`);
-    // Create empty directory if copy fails
-    try {
-      await fsp.mkdir(targetProfile, { recursive: true });
-      log.info(`[PROJECT BROWSER] Created empty profile directory as fallback`);
-    } catch (mkdirError) {
-      log.error(`[PROJECT BROWSER] Failed to create directory: ${mkdirError}`);
-    }
+    log.error('[LOGIN SYNC] Failed to copy login data:', error);
+    // Non-fatal error, continue startup
   }
-  
-  // IMPORTANT: Set user-data-dir before app is ready
-  app.commandLine.appendSwitch('user-data-dir', targetProfile);
-  
-  // Also set Electron's paths
-  app.setPath('userData', targetProfile);
-  app.setPath('sessionData', targetProfile);
-  
-  log.info(`[PROJECT BROWSER STARTING] Chrome DevTools Protocol enabled on port ${port}`);
-  log.info(`[PROJECT BROWSER STARTING] User data directory: ${targetProfile}`);
 });
 
 // Memory optimization settings
@@ -1077,6 +1078,9 @@ async function createWindow() {
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     roundedCorners: true,
     webPreferences: {
+      // Use a dedicated partition for main window to isolate from webviews
+      // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
+      partition: 'persist:main_window',
       webSecurity: false,
       preload,
       nodeIntegration: true,
@@ -1085,6 +1089,39 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // ==================== Migrate localStorage from default session to main_window partition ====================
+  try {
+    const defaultLocalStoragePath = path.join(app.getPath('userData'), 'Local Storage', 'leveldb');
+    const partitionLocalStoragePath = path.join(app.getPath('userData'), 'Partitions', 'main_window', 'Local Storage', 'leveldb');
+
+    // Check if default localStorage exists and partition localStorage doesn't
+    if (fs.existsSync(defaultLocalStoragePath) && !fs.existsSync(partitionLocalStoragePath)) {
+      log.info('[MIGRATION] Migrating localStorage from default session to main_window partition');
+      log.info('[MIGRATION] Source:', defaultLocalStoragePath);
+      log.info('[MIGRATION] Target:', partitionLocalStoragePath);
+
+      // Ensure target directory exists
+      const targetDir = path.dirname(partitionLocalStoragePath);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      // Copy the entire leveldb directory
+      fs.cpSync(defaultLocalStoragePath, partitionLocalStoragePath, { recursive: true });
+      log.info('[MIGRATION] Successfully migrated localStorage to main_window partition');
+
+      // Optionally remove old default localStorage to avoid confusion
+      // fs.rmSync(defaultLocalStoragePath, { recursive: true, force: true });
+      // log.info('[MIGRATION] Removed old default localStorage');
+    } else if (fs.existsSync(partitionLocalStoragePath)) {
+      log.info('[MIGRATION] Partition localStorage already exists, skipping migration');
+    } else {
+      log.info('[MIGRATION] No default localStorage found, skipping migration');
+    }
+  } catch (error) {
+    log.error('[MIGRATION] Failed to migrate localStorage:', error);
+  }
 
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
@@ -1148,7 +1185,9 @@ async function createWindow() {
     log.info('Installation needed - clearing auth storage to force carousel state');
 
     // Clear the persisted auth storage file to force fresh initialization with carousel
-    const localStoragePath = path.join(app.getPath('userData'), 'Local Storage');
+    // Main window uses partition 'persist:main_window', so data is in Partitions/main_window
+    const partitionPath = path.join(app.getPath('userData'), 'Partitions', 'main_window');
+    const localStoragePath = path.join(partitionPath, 'Local Storage');
     const leveldbPath = path.join(localStoragePath, 'leveldb');
 
     try {
@@ -1214,8 +1253,10 @@ async function createWindow() {
         (function() {
           try {
             const authStorage = localStorage.getItem('auth-storage');
+            console.log('[ELECTRON DEBUG] Current auth-storage:', authStorage);
             if (authStorage) {
               const parsed = JSON.parse(authStorage);
+              console.log('[ELECTRON DEBUG] Parsed state:', parsed.state);
               if (parsed.state && parsed.state.initState !== 'done') {
                 console.log('[ELECTRON] Updating initState from', parsed.state.initState, 'to done');
                 // Only update the initState field, preserve all other data
@@ -1229,7 +1270,11 @@ async function createWindow() {
                 localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
                 console.log('[ELECTRON] initState updated to done, reloading page...');
                 return true; // Signal that we need to reload
+              } else {
+                console.log('[ELECTRON DEBUG] initState already done or state missing');
               }
+            } else {
+              console.log('[ELECTRON DEBUG] No auth-storage found in localStorage');
             }
             return false; // No reload needed
           } catch (e) {
@@ -1542,53 +1587,8 @@ app.on('before-quit', async (event) => {
   event.preventDefault();
 
   try {
-    // Sync browser profile back to profile_user_login
-    if (browserProfilePaths) {
-      const { sourceProfile, targetProfile } = browserProfilePaths;
-      try {
-        log.info('[PROFILE SYNC] Syncing browser profile from target back to source...');
-        log.info('[PROFILE SYNC] Source:', sourceProfile);
-        log.info('[PROFILE SYNC] Target:', targetProfile);
-
-        // Check if target profile exists and has data
-        if (fs.existsSync(targetProfile)) {
-          const partitionPath = path.join(targetProfile, 'Partitions', 'user_login');
-
-          if (fs.existsSync(partitionPath)) {
-            // Ensure source profile directories exist
-            const sourcePartitionPath = path.join(sourceProfile, 'Partitions', 'user_login');
-            if (!fs.existsSync(sourcePartitionPath)) {
-              fs.mkdirSync(sourcePartitionPath, { recursive: true });
-            }
-
-            // Copy Partitions directory back to source (this contains login data)
-            const sourcePartitionsDir = path.join(sourceProfile, 'Partitions');
-            const targetPartitionsDir = path.join(targetProfile, 'Partitions');
-
-            if (fs.existsSync(targetPartitionsDir)) {
-              // Remove old source partitions and replace with new
-              if (fs.existsSync(sourcePartitionsDir)) {
-                fs.rmSync(sourcePartitionsDir, { recursive: true, force: true });
-              }
-
-              // Copy new partitions
-              fs.cpSync(targetPartitionsDir, sourcePartitionsDir, { recursive: true });
-              log.info('[PROFILE SYNC] Successfully synced browser profile back to source');
-
-              // Log partition size for verification
-              const files = fs.readdirSync(sourcePartitionPath);
-              log.info(`[PROFILE SYNC] Source partition now contains ${files.length} files`);
-              if (files.includes('Cookies')) {
-                const cookieStat = fs.statSync(path.join(sourcePartitionPath, 'Cookies'));
-                log.info(`[PROFILE SYNC] Cookies file size: ${cookieStat.size} bytes`);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        log.error('[PROFILE SYNC] Failed to sync profile:', error);
-      }
-    }
+    // NOTE: Profile sync removed - we now use app userData directly for all partitions
+    // No need to sync between different profile directories
 
     // Clean up resources
     if (webViewManager) {
