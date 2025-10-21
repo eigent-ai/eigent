@@ -17,9 +17,15 @@ import {
 import { Button } from "../ui/button";
 import { fetchPut } from "@/api/http";
 import { TaskState } from "../TaskState";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function Home() {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +101,7 @@ export default function Home() {
 	const [isTakeControl, setIsTakeControl] = useState(false);
 	const handleTakeControl = (id: string) => {
 		console.log("handleTakeControl", id);
-		fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: "pause",
 		});
 
@@ -109,8 +115,9 @@ export default function Home() {
 
 	// listen to webview container size
 	useEffect(() => {
-		if (!chatStore.activeTaskId) {
-			chatStore.create();
+		if (!projectStore.activeProjectId) {
+			projectStore.createProject("new project");
+			console.warn("No active projectId found in WorkSpace, creating a new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");
@@ -157,7 +164,7 @@ export default function Home() {
 				<div className="p-1 rounded-full bg-transparent border border-solid border-border-primary">
 					<Button
 						onClick={() => {
-							fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+							fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 								action: "resume",
 							});
 							setIsTakeControl(false);

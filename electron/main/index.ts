@@ -40,6 +40,10 @@ let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
 
+// Protocol URL queue for handling URLs before window is ready
+let protocolUrlQueue: string[] = [];
+let isWindowReady = false;
+
 // ==================== path config ====================
 const preload = path.join(__dirname, '../preload/index.mjs');
 const indexHtml = path.join(RENDERER_DIST, 'index.html');
@@ -50,6 +54,13 @@ findAvailablePort(browser_port).then(port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 });
+
+// Memory optimization settings
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
+app.commandLine.appendSwitch('max_old_space_size', '4096');
+app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
+app.commandLine.appendSwitch('renderer-process-limit', '8');
 
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
@@ -90,6 +101,19 @@ const setupProtocolHandlers = () => {
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
   log.info('enter handleProtocolUrl', url);
+  
+  // If window is not ready, queue the URL
+  if (!isWindowReady || !win || win.isDestroyed()) {
+    log.info('Window not ready, queuing protocol URL:', url);
+    protocolUrlQueue.push(url);
+    return;
+  }
+
+  processProtocolUrl(url);
+}
+
+// Process a single protocol URL
+function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
   const share_token = urlObj.searchParams.get('share_token');
@@ -120,6 +144,26 @@ function handleProtocolUrl(url: string) {
     }
   } else {
     log.error('window not available');
+  }
+}
+
+// Process all queued protocol URLs
+function processQueuedProtocolUrls() {
+  if (protocolUrlQueue.length > 0) {
+    log.info('Processing queued protocol URLs:', protocolUrlQueue.length);
+
+    // Verify window is ready before processing
+    if (!win || win.isDestroyed() || !isWindowReady) {
+      log.warn('Window not ready for processing queued URLs, keeping URLs in queue');
+      return;
+    }
+
+    const urls = [...protocolUrlQueue];
+    protocolUrlQueue = [];
+
+    urls.forEach(url => {
+      processProtocolUrl(url);
+    });
   }
 }
 
@@ -200,7 +244,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
-    log.info('Starting new task')
+    log.info('Getting browser port')
     return browser_port
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
@@ -602,6 +646,13 @@ function registerIpcHandlers() {
         return { success: false, error: 'File does not exist' };
       }
 
+      // Check if it's a directory
+      const stats = await fsp.stat(filePath);
+      if (stats.isDirectory()) {
+        log.error('Path is a directory, not a file:', filePath);
+        return { success: false, error: 'Path is a directory, not a file' };
+      }
+
       // Read file content
       const fileContent = await fsp.readFile(filePath);
       log.info('File read successfully:', filePath);
@@ -795,9 +846,40 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('get-file-list', async (_, email: string, taskId: string) => {
+  ipcMain.handle('get-file-list', async (_, email: string, taskId: string, projectId?: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getFileList(email, taskId);
+    return manager.getFileList(email, taskId, projectId);
+  });
+
+  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string, projectId?: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.deleteTaskFiles(email, taskId, projectId);
+  });
+
+  // New project management handlers
+  ipcMain.handle('create-project-structure', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.createProjectStructure(email, projectId);
+  });
+
+  ipcMain.handle('get-project-list', async (_, email: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getProjectList(email);
+  });
+
+  ipcMain.handle('get-tasks-in-project', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getTasksInProject(email, projectId);
+  });
+
+  ipcMain.handle('move-task-to-project', async (_, email: string, taskId: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.moveTaskToProject(email, taskId, projectId);
+  });
+
+  ipcMain.handle('get-project-file-list', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getProjectFileList(email, projectId);
   });
 
   ipcMain.handle('get-log-folder', async (_, email: string) => {
@@ -922,8 +1004,8 @@ async function createWindow() {
   fileReader = new FileReader(win);
   webViewManager = new WebViewManager(win);
 
-  // create multiple webviews
-  for (let i = 1; i <= 8; i++) {
+  // create initial webviews (reduced from 8 to 3)
+  for (let i = 1; i <= 3; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
 
@@ -1095,6 +1177,11 @@ async function createWindow() {
     });
   });
 
+  // Mark window as ready and process any queued protocol URLs
+  isWindowReady = true;
+  log.info('Window is ready, processing queued protocol URLs...');
+  processQueuedProtocolUrls();
+
   // Now check and install dependencies
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
@@ -1197,14 +1284,24 @@ const cleanupPythonProcess = async () => {
       const pid = python_process.pid;
       log.info('Cleaning up Python process', { pid });
 
+      // Remove all listeners to prevent memory leaks
+      python_process.removeAllListeners();
+
       await new Promise<void>((resolve) => {
-        kill(pid, 'SIGINT', (err) => {
+        kill(pid, 'SIGTERM', (err) => {
           if (err) {
-            log.error('Failed to clean up process tree:', err);
+            log.error('Failed to clean up process tree with SIGTERM:', err);
+            // Try SIGKILL as fallback
+            kill(pid, 'SIGKILL', (killErr) => {
+              if (killErr) {
+                log.error('Failed to force kill process tree:', killErr);
+              }
+              resolve();
+            });
           } else {
             log.info('Successfully cleaned up Python process tree');
+            resolve();
           }
-          resolve();
         });
       });
     }
@@ -1224,17 +1321,38 @@ const cleanupPythonProcess = async () => {
       }
     }
 
+    // Clean up any temporary files in userData
+    try {
+      const tempFiles = ['backend.lock', 'uv_installing.lock'];
+      for (const file of tempFiles) {
+        const filePath = path.join(userData, file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (error) {
+      log.error('Error cleaning up temp files:', error);
+    }
+
     python_process = null;
   } catch (error) {
     log.error('Error occurred while cleaning up process:', error);
   }
 };
 
-// brefore close
+// before close
 const handleBeforeClose = () => {
+    let isQuitting = false;
+    
+    app.on('before-quit', () => {
+      isQuitting = true;
+    });
+    
     win?.on("close", (event) => {
-      event.preventDefault();
-      win?.webContents.send("before-close");
+      if (!isQuitting) {
+        event.preventDefault();
+        win?.webContents.send("before-close");
+      }
     })
 }
 
@@ -1289,8 +1407,18 @@ app.whenReady().then(() => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-  webViewManager = null;
+  
+  // Clean up WebView manager
+  if (webViewManager) {
+    webViewManager.destroy();
+    webViewManager = null;
+  }
+  
+  // Reset window state
   win = null;
+  isWindowReady = false;
+  protocolUrlQueue = [];
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -1310,12 +1438,48 @@ app.on('activate', () => {
 });
 
 // ==================== app exit event ====================
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
-  if (win) {
-    win.destroy();
+  
+  // Prevent default quit to ensure cleanup completes
+  event.preventDefault();
+  
+  try {
+    // Clean up resources
+    if (webViewManager) {
+      webViewManager.destroy();
+      webViewManager = null;
+    }
+    
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+      win = null;
+    }
+    
+    // Wait for Python process cleanup
+    await cleanupPythonProcess();
+    
+    // Clean up file reader if exists
+    if (fileReader) {
+      fileReader = null;
+    }
+    
+    // Clear any remaining timeouts/intervals
+    if (global.gc) {
+      global.gc();
+    }
+    
+    // Reset protocol handling state
+    isWindowReady = false;
+    protocolUrlQueue = [];
+    
+    log.info('All cleanup completed, exiting...');
+  } catch (error) {
+    log.error('Error during cleanup:', error);
+  } finally {
+    // Force quit after cleanup
+    app.exit(0);
   }
-  cleanupPythonProcess();
 });
 

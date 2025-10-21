@@ -20,12 +20,28 @@ import SideBar from "@/components/SideBar";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
-	window.ipcRenderer?.on("webview-show", (_event, id: string) => {
-		setActiveWebviewId(id);
-	});
+	// Add webview-show listener in useEffect with cleanup
+	useEffect(() => {
+		const handleWebviewShow = (_event: any, id: string) => {
+			setActiveWebviewId(id);
+		};
+
+		window.ipcRenderer?.on("webview-show", handleWebviewShow);
+
+		// Cleanup: remove listener on unmount
+		return () => {
+			window.ipcRenderer?.off("webview-show", handleWebviewShow);
+		};
+	}, []); // Empty dependency array means this only runs once
+
 	useEffect(() => {
 		let taskAssigning = [
 			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
@@ -139,7 +155,7 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!chatStore.activeTaskId) {
-			chatStore.create();
+			projectStore.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");

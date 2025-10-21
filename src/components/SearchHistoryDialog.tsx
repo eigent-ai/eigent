@@ -30,28 +30,40 @@ import { useChatStore } from "@/store/chatStore";
 import { useNavigate } from "react-router-dom";
 import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { replayProject } from "@/lib";
 
 export function SearchHistoryDialog() {
 	const {t} = useTranslation()
 	const [open, setOpen] = useState(false);
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const navigate = useNavigate();
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
-			// if there is a record, show the result
-			chatStore.setActiveTaskId(taskId);
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
+			// if there is record, show result
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
+			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
-	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(taskId, question, 0);
-		navigate({ pathname: "/" });
+
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
+		close();
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
+
 	useEffect(() => {
 		const fetchHistoryTasks = async () => {
 			try {
@@ -87,7 +99,11 @@ export function SearchHistoryDialog() {
 							<CommandItem
 								key={task.id}
 								className="cursor-pointer"
-								onSelect={() => handleSetActive(task.task_id, task.question)}
+								/**
+								 * TODO(history): Update to use project_id field 
+								 * after update instead.
+								 */
+								onSelect={() => handleSetActive(task.task_id, task.question, task.id)}
 							>
 								<ScanFace />
 								<div className="overflow-hidden text-ellipsis whitespace-nowrap">

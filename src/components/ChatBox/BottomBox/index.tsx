@@ -1,11 +1,13 @@
 import { Inputbox, InputboxProps, FileAttachment } from "./InputBox";
-import { BoxHeader, QueuedMessage, SubTask } from "./BoxHeader";
+import { BoxHeaderSplitting, BoxHeaderConfirm } from "./BoxHeader";
+import { QueuedBox, QueuedMessage } from "./QueuedBox";
 import { BoxAction } from "./BoxAction";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Rocket } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useEffect, useRef, useState } from "react";
 
-export type BottomBoxState = "input" | "queuing" | "splitting" | "confirm" | "running" | "finished";
+export type BottomBoxState = "input" | "splitting" | "confirm" | "running" | "finished";
 
 interface BottomBoxProps {
 	// General state
@@ -15,10 +17,8 @@ interface BottomBoxProps {
 	queuedMessages?: QueuedMessage[];
 	onRemoveQueuedMessage?: (id: string) => void;
 	
-	// Subtask-related props (confirm/splitting state)
-	subTasks?: SubTask[];
-	onRemoveSubTask?: (id: string) => void;
-	subtitle?: string;
+    // Subtask-related props (confirm/splitting state)
+    subtitle?: string;
 	
 	// Action buttons
 	onStartTask?: () => void;
@@ -49,8 +49,6 @@ export default function BottomBox({
 	state,
 	queuedMessages = [],
 	onRemoveQueuedMessage,
-	subTasks = [],
-	onRemoveSubTask,
 	subtitle,
 	onStartTask,
 	onEdit,
@@ -65,59 +63,57 @@ export default function BottomBox({
 	inputProps,
 	loading,
 }: BottomBoxProps) {
-	const { t } = useTranslation();
-	
-	// Decide which header to show, if any
-	let headerState: "queuing" | "splitting" | "confirm" | null = null;
-	if (state === "confirm") headerState = "confirm";
-	else if (state === "splitting") headerState = "splitting";
-	else if (state === "queuing") headerState = "queuing";
-	else if (state === "running" && queuedMessages.length > 0) headerState = "queuing";
+    const { t } = useTranslation();
 
-	// Determine background based on state
-	let backgroundClass = "bg-input-bg-default"; // default/initial state
-	if (state === "splitting") {
-		backgroundClass = "bg-input-bg-spliting";
-	} else if (state === "confirm") {
-		backgroundClass = "bg-input-bg-confirm";
-	}
+    // Background color reflects current state only
+    let backgroundClass = "bg-input-bg-default";
+    if (state === "splitting") backgroundClass = "bg-input-bg-spliting";
+    else if (state === "confirm") backgroundClass = "bg-input-bg-confirm";
 
 	return (
-		<div className={`flex flex-col gap-2 w-full p-2 rounded-xl ${backgroundClass} overflow-hidden z-50`}>
-			{/* BoxHeader (conditionally visible by state) */}
-			{headerState && (
-				<BoxHeader
-					state={headerState}
-					subtitle={subtitle}
-					title={headerState === "confirm" ? "Confirm Subtasks" : undefined}
-					queuedMessages={headerState === "queuing" ? queuedMessages : []}
-					onRemoveQueuedMessage={headerState === "queuing" ? onRemoveQueuedMessage : undefined}
-					subTasks={headerState === "confirm" ? subTasks : []}
-					onRemoveSubTask={headerState === "confirm" ? onRemoveSubTask : undefined}
-					onStartTask={headerState === "confirm" || headerState === "queuing" ? onStartTask : undefined}
-					onEdit={headerState === "confirm" ? onEdit : undefined}
-				/>
+		<div className="flex flex-col w-full overflow-hidden relative z-50">
+			{/* QueuedBox overlay (should not affect BoxMain layout) */}
+			{queuedMessages.length > 0 && (
+				<div className="px-2 z-50 pointer-events-auto">
+					<QueuedBox
+							queuedMessages={queuedMessages}
+							onRemoveQueuedMessage={onRemoveQueuedMessage}
+						/>
+				</div>
 			)}
+			{/* BoxMain */}
+			<div className={`flex flex-col gap-2 w-full p-2 rounded-lg ${backgroundClass} overflow-hidden`}>
+				{/* BoxHeader variants */}
+				{state === "splitting" && (
+						<BoxHeaderSplitting />
+				)}
+				{state === "confirm" && (
+						<BoxHeaderConfirm
+								subtitle={subtitle}
+								onStartTask={onStartTask}
+								onEdit={onEdit}
+						/>
+				)}
 
-			{/* Inputbox (always visible) */}
-			<Inputbox
-		   {...inputProps} />
+				{/* Inputbox (always visible) */}
+				<Inputbox {...inputProps} />
 
-			{/* BoxAction (visible after initial input, when task has started) */}
-			{state !== "input" && (
-				<BoxAction
-					tokens={tokens}
-					taskTime={taskTime}
-					status={taskStatus}
-					disabled={replayDisabled}
-					loading={replayLoading}
-					onReplay={onReplay}
-					onPauseResume={onPauseResume}
-					pauseResumeLoading={pauseResumeLoading}
-				/>
-			)}
+				{/* BoxAction (visible after initial input, when task has started) */}
+				{state !== "input" && (
+					<BoxAction
+						tokens={tokens}
+						taskTime={taskTime}
+						status={taskStatus}
+						disabled={replayDisabled}
+						loading={replayLoading}
+						onReplay={onReplay}
+						onPauseResume={onPauseResume}
+						pauseResumeLoading={pauseResumeLoading}
+					/>
+				)}
+			</div>
 		</div>
 	);
 }
 
-export { type FileAttachment, type QueuedMessage, type SubTask };
+export { type FileAttachment, type QueuedMessage };

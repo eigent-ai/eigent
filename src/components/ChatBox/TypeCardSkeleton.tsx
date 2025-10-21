@@ -12,7 +12,7 @@ export const TypeCardSkeleton = ({
 	const { t } = useTranslation();
 	return (
 		<div>
-			<div className="w-full h-auto flex flex-col gap-2 py-sm transition-all duration-300 ">
+			<div className="w-full h-auto flex flex-col gap-2 px-2 py-sm transition-all duration-300 ">
 				<div className="w-full h-auto bg-task-surface backdrop-blur-[5px] rounded-xl py-sm relative overflow-hidden">
 					<div className="absolute top-0 left-0 w-full bg-transparent">
 						<Progress value={100} className="h-[2px] w-full" />

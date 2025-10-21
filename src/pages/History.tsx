@@ -26,7 +26,7 @@ import WordCarousel from "@/components/ui/WordCarousel";
 
 
 export default function Home() {
-	const {t} = useTranslation()
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const chatStore = useChatStore();
 	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">("projects");
@@ -62,16 +62,8 @@ export default function Home() {
 
 	// create task
 	const createChat = () => {
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			console.log(chatStore.tasks[taskId].messages.length);
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate(`/`);
-			return;
-		}
-		chatStore.create();
+		//Handles refocusing id & non duplicate logic internally
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 

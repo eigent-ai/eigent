@@ -1,24 +1,26 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { fetchPost, proxyFetchPut, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
-import BottomBox, { type FileAttachment } from "./BottomBox";
-import { TaskCard } from "./TaskCard";
-import { MessageCard } from "./MessageCard";
-import { TypeCardSkeleton } from "./TypeCardSkeleton";
-import { FloatingAction } from "./FloatingAction";
-import { FileText, TriangleAlert } from "lucide-react";
+import BottomBox from "./BottomBox";
+import { ProjectChatContainer } from "./ProjectChatContainer";
+import { TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
-import { useChatStore } from "@/store/chatStore";
 import { proxyFetchGet } from "@/api/http";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { NoticeCard } from "./NoticeCard";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import { TaskStateType } from "../TaskState";
 import { toast } from "sonner";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { replayActiveTask } from "@/lib";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
-	const chatStore = useChatStore();
+
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { t } = useTranslation();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -96,42 +98,41 @@ export default function ChatBox(): JSX.Element {
 		chatStore.setHasMessages(_taskId as string, true);
 		if (!_taskId) return;
 
-		// Multi-turn support: Check if task is running or planning (splitting)
+		// Multi-turn support: Check if task is running or planning (splitting/confirm)
 		const task = chatStore.tasks[_taskId];
-		const isTaskBusy = task.status === 'running' || 
-						  task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm);
-		
-		if (isTaskBusy && !task.activeAsk) {
-			// Queue the message instead of sending immediately
-			const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-			chatStore.addQueuedMessage(_taskId, tempMessageContent, currentAttaches);
-			chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
-			setMessage("");
-			if (textareaRef.current) textareaRef.current.style.height = "60px";
-			toast.success(t("layout.message-queued"), {
-				closeButton: true,
-			});
-			return;
-		}
-		
-		chatStore.addMessages(_taskId, {
-			id: generateUniqueId(),
-			role: "user",
-			content: tempMessageContent,
-			attaches:
-				JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
-		});
-		setMessage("");
+		const isTaskBusy = (
+			// running or paused counts as busy
+			// TODO: Bug where when replay end hasMessages = false & status = running
+			(task.status === 'running' && !task.hasMessages) || task.status === 'pause' ||
+			// splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+			((!task.messages.find(m => m.step === 'to_sub_tasks') && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl) ||
+			// explicit confirm wait while task is pending but card not confirmed yet
+			(!!task.messages.find(m => m.step === 'to_sub_tasks' && !m.isConfirm) && task.status === 'pending')
+		);
 
-		setTimeout(() => {
-			scrollToBottom();
-		}, 200);
+		console.log(`Current task is ${isTaskBusy} with ${task}`);
+		
 		if (textareaRef.current) textareaRef.current.style.height = "60px";
 		try {
 			if (chatStore.tasks[_taskId].activeAsk) {
+				chatStore.addMessages(_taskId, {
+					id: generateUniqueId(),
+					role: "user",
+					content: tempMessageContent,
+					attaches:
+						JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
+				});
+				setMessage("");
+		
+				// Scroll to bottom after adding user message
+				setTimeout(() => {
+					scrollToBottom();
+				}, 200);
+
 				chatStore.setIsPending(_taskId, true);
 
-				await fetchPost(`/chat/${_taskId}/human-reply`, {
+				await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
 					agent: chatStore.tasks[_taskId].activeAsk,
 					reply: tempMessageContent,
 				});
@@ -150,18 +151,98 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
-				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
-					// If the task has not started yet (pending status), start it normally
-					if (chatStore.tasks[_taskId as string].status === "pending") {
-						chatStore.setIsPending(_taskId, true);
-						chatStore.startTask(_taskId);
+				// If current task is busy (splitting/confirm/running), queue the new message instead of sending immediately
+				if (isTaskBusy) {
+					const project_id = projectStore.activeProjectId;
+					// Queue the message locally; do not send to backend yet.
+					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
+					const new_task_id = projectStore.addQueuedMessage(
+						project_id as string,
+						tempMessageContent,
+						currentAttaches
+					);
+					if(!new_task_id) {
+						console.error("Error queueing message as no task id is returned")
+						return;
+					}
+					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
+					setMessage("");
+					if (textareaRef.current) textareaRef.current.style.height = "60px";
+					toast.success("Task queued. It will be processed when the current task finishes.", {
+						closeButton: true,
+					});
+
+					//Send the task as soon as possible
+					//Workforce internal queue handles it
+					try {
+						await fetchPost(`/chat/${project_id}/add-task`, {
+							content: tempMessageContent,
+							project_id: project_id,
+							task_id: new_task_id,
+							additional_info: {
+								agent: chatStore.tasks[_taskId].activeAsk,
+								reply: tempMessageContent,
+								timestamp: Date.now()
+							}
+						});
+					} catch (error) {
+						console.error(`Removing Message "${tempMessageContent}..." due to ${error}`)
+						projectStore.removeQueuedMessage(project_id as string, new_task_id);
+					}
+					return;
+				}
+
+				// Check if we should continue the conversation or start a new task
+				const hasMessages = chatStore.tasks[_taskId as string].messages.length > 0;
+				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
+				const hasWaitComfirm = chatStore.tasks[_taskId as string]?.hasWaitComfirm;
+
+				// Continue conversation if:
+				// 1. Has wait confirm (simple query response)
+				// 2. Task is finished (complex task completed)
+				// 3. Has any messages but pending (ongoing conversation)
+				const shouldContinueConversation = hasWaitComfirm || isFinished || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
+
+				if (shouldContinueConversation) {
+					// Check if this is the very first message and task hasn't started
+					const hasSimpleResponse = chatStore.tasks[_taskId as string].messages.some(
+						m => m.step === "wait_confirm"
+					);
+					const hasComplexTask = chatStore.tasks[_taskId as string].messages.some(
+						m => m.step === "to_sub_tasks"
+					);
+
+					// Only start a new task if: pending, no messages processed yet
+					// OR while or after replaying a project
+					if ((chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished) 
+						|| chatStore.tasks[_taskId].type === "replay") {
+						setMessage("");
+						// Pass the message content to startTask instead of adding it to current chatStore
+						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
+						chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
 						// keep hasWaitComfirm as true so that follow-up improves work as usual
 					} else {
-						// Task already started and is waiting for user confirmation – use improve API
-						fetchPost(`/chat/${_taskId}`, {
+						// Continue conversation: simple response, complex task, or finished task
+						console.log("[Multi-turn] Continuing conversation with improve API");
+
+						//Generate nextId in case new chatStore is created to sync with the backend beforehand
+						const nextTaskId = generateUniqueId()
+						chatStore.setNextTaskId(nextTaskId);
+
+						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
+							task_id: nextTaskId
 						});
 						chatStore.setIsPending(_taskId, true);
+						// Add the user message to show it in UI
+						chatStore.addMessages(_taskId, {
+							id: generateUniqueId(),
+							role: "user",
+							content: tempMessageContent,
+							attaches: JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
+						});
+						chatStore.setAttaches(_taskId, []);
+						setMessage("");
 					}
 				} else {
 					if (!privacy) {
@@ -180,8 +261,15 @@ export default function ChatBox(): JSX.Element {
 						proxyFetchPut("/api/user/privacy", requestData);
 						setPrivacy(true);
 					}
-					chatStore.setIsPending(_taskId, true);
-					chatStore.startTask(_taskId);
+					
+					setTimeout(() => {
+						scrollToBottom();
+					}, 200);
+					
+					// For the very first message, add it to the current chatStore first, then call startTask
+					const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
+					setMessage("");
+					chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
 					chatStore.setHasWaitComfirm(_taskId as string, true);
 				}
 			}
@@ -196,8 +284,16 @@ export default function ChatBox(): JSX.Element {
 		}
 	}, [share_token]);
 
+	useEffect(() => {
+		console.log("ChatStore Data: ", chatStore);
+	}, []);
+
 	const handleSendShare = async (token: string) => {
 		if (!token) return;
+		if (!projectStore.activeProjectId) {
+			console.warn("Can't send share due to no active projectId");
+			return;
+		}
 		let _token: string = token.split("__")[0];
 		let taskId: string = token.split("__")[1];
 		chatStore.create(taskId, "share");
@@ -211,7 +307,7 @@ export default function ChatBox(): JSX.Element {
 			});
 			chatStore.startTask(taskId, "share", _token, 0.1);
 			chatStore.setActiveTaskId(taskId);
-			chatStore.handleConfirmTask(taskId, "share");
+			chatStore.handleConfirmTask(projectStore.activeProjectId, taskId, "share");
 		}
 	};
 
@@ -266,9 +362,11 @@ export default function ChatBox(): JSX.Element {
 	const [loading, setLoading] = useState(false);
 	const handleConfirmTask = async (taskId?: string) => {
 		const _taskId = taskId || chatStore.activeTaskId;
-		if (!_taskId) return;
+		if (!_taskId || !projectStore.activeProjectId) {
+			return;
+		}
 		setLoading(true);
-		await chatStore.handleConfirmTask(_taskId);
+		await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
 		setLoading(false);
 	};
 
@@ -298,11 +396,8 @@ export default function ChatBox(): JSX.Element {
 	// Replay handler
 	const [isReplayLoading, setIsReplayLoading] = useState(false);
 	const handleReplay = async () => {
-		const taskId = chatStore.activeTaskId as string;
 		setIsReplayLoading(true);
-		const question =
-			chatStore.tasks[taskId].messages[0].content;
-		await chatStore.replay(taskId, question, 0.1);
+		await replayActiveTask(chatStore, projectStore, navigate);
 		setIsReplayLoading(false);
 	};
 
@@ -326,7 +421,7 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setStatus(taskId, 'running');
 		}
 		
-		fetchPut(`/task/${taskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: type,
 		});
 		setIsPauseResumeLoading(false);
@@ -338,21 +433,21 @@ export default function ChatBox(): JSX.Element {
 		setIsPauseResumeLoading(true);
 		
 		try {
-			// Stop the current task
-			await fetchPut(`/task/${taskId}/take-control`, {
-				action: 'stop',
+			// Skip the current task
+			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
+				project_id: projectStore.activeProjectId
 			});
-			
+
 			// Update task status to finished
 			chatStore.setStatus(taskId, 'finished');
 			chatStore.setIsPending(taskId, false);
 			
-			toast.success(t("layout.task-skipped-successfully"), {
+			toast.success("Task skipped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
 			console.error("Failed to skip task:", error);
-			toast.error(t("layout.failed-to-skip-task"), {
+			toast.error("Failed to skip task", {
 				closeButton: true,
 			});
 		} finally {
@@ -364,7 +459,7 @@ export default function ChatBox(): JSX.Element {
 	const handleEditQuery = () => {
 		const taskId = chatStore.activeTaskId as string;
 		fetchDelete(`/chat/${taskId}`);
-		const messageIndex = chatStore.tasks[taskId].messages.findIndex(
+		const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
 			(item) => item.step === "to_sub_tasks"
 		);
 		const question = chatStore.tasks[taskId].messages[messageIndex - 2].content;
@@ -394,16 +489,17 @@ export default function ChatBox(): JSX.Element {
 	const getBottomBoxState = () => {
 		if (!chatStore.activeTaskId) return "input";
 		const task = chatStore.tasks[chatStore.activeTaskId];
+		const activeProject = projectStore.getProjectById(projectStore.activeProjectId || '');
 
-		// Check for queued messages
-		if (task.queuedMessages && task.queuedMessages.length > 0) {
-			return "queuing";
-		}
+		// Queued messages no longer change BottomBox state; QueuedBox renders independently
 
 		// Determine if we're in the "splitting in progress" phase (skeleton visible)
 		// Equivalent to the skeleton condition used in the JSX below
-		const toSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
-		const isSkeletonPhase = ((!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl);
+		const toSubTasksMessage = task.messages.find((m) => (m.step === "to_sub_tasks" && !m.isConfirm));
+		const isSkeletonPhase = (
+			task.status !== 'finished' &&
+			(!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || 
+			(task.isTakeControl && (!toSubTasksMessage || !toSubTasksMessage.isConfirm)));
 		if (isSkeletonPhase) {
 			return "splitting";
 		}
@@ -462,270 +558,98 @@ export default function ChatBox(): JSX.Element {
 		message, // depend on message
 	]);
 
+	const handleRemoveTaskQueue = async (task_id: string) => {
+		const project_id = projectStore.activeProjectId;
+		if (!project_id) {
+			console.error("No active project ID found");
+			return;
+		}
+		
+		// Store the original message before removal for potential restoration
+		const project = projectStore.getProjectById(project_id);
+		const originalMessage = project?.queuedMessages?.find(m => m.task_id === task_id);
+		
+		if (!originalMessage) {
+			console.error(`Message with task_id ${task_id} not found`);
+			return;
+		}
+		
+		// Create a copy of the original message for restoration
+		const messageBackup = {
+			task_id: originalMessage.task_id,
+			content: originalMessage.content,
+			timestamp: originalMessage.timestamp,
+			attaches: [...originalMessage.attaches]
+		};
+		
+		try {
+			//Optimistic Removal
+			projectStore.removeQueuedMessage(project_id, task_id);
+			
+			await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
+				project_id: project_id,
+				task_id: task_id
+			});
+		} catch (error) {
+			// Revert the optimistic removal by restoring the original message
+			projectStore.restoreQueuedMessage(project_id, messageBackup);
+			console.error(`Can't remove ${task_id} due to ${error}`)
+		}
+	}
+	const getAllChatStoresMemoized = useMemo(() => {
+		const project_id = projectStore.activeProjectId;
+		if(!project_id) return [];
+
+		return projectStore.getAllChatStores(project_id);
+	}, [projectStore, projectStore.activeProjectId, chatStore])
+
+	// Check if any chat store in the project has messages
+	const hasAnyMessages = useMemo(() => {
+		// First check current active chat store
+		if (chatStore.activeTaskId && 
+			(chatStore.tasks[chatStore.activeTaskId].messages.length > 0 || 
+			 chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages)) {
+			return true;
+		}
+
+		// Then check all other chat stores in the project
+		return getAllChatStoresMemoized.some(({chatStore: store}) => {
+			const state = store.getState();
+			return state.activeTaskId && 
+				   state.tasks[state.activeTaskId] && 
+				   (state.tasks[state.activeTaskId].messages.length > 0 || 
+					state.tasks[state.activeTaskId].hasMessages);
+		});
+	}, [chatStore, getAllChatStoresMemoized]);
+
 	return (
-		<div className="w-full h-full flex flex-1 flex-col items-center justify-center">
-			{/* <PrivacyDialog
-				open={privacyDialogOpen}
-				onOpenChange={setPrivacyDialogOpen}
-			/> */}
-			{(chatStore.activeTaskId &&
-				chatStore.tasks[chatStore.activeTaskId].messages.length > 0) ||
-			chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ? (
-				<div className="w-full h-full flex flex-col border border-solid border-border-disabled rounded-2xl relative shadow-blur-effect overflow-hidden blur-bg bg-bg-surface-secondary">
-					<div
-						ref={scrollContainerRef}
-						className="flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar pl-2 gap-2 pt-2"
-					>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId].messages.map(
-								(item, index) => {
-									if (item.content.length > 0) {
-										// Use specialized component for agent summaries
-										if (item.step === "end") {
-											return (
-												<div
-													key={"end-" + item.id}
-													className="flex flex-col gap-4"
-												>
-													<MessageCard
-														typewriter={
-															chatStore.tasks[chatStore.activeTaskId as string]
-																.type !== "replay" ||
-															(chatStore.tasks[chatStore.activeTaskId as string]
-																.type === "replay" &&
-																chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].delayTime !== 0)
-														}
-														id={item.id}
-														key={item.id}
-														role={item.role}
-														content={item.content}
-														onTyping={scrollToBottom}
-													/>
-													<div className="flex gap-2 flex-wrap">
-														{item.fileList?.map((file) => {
-															return (
-																<div
-																	key={"file-" + file.name}
-																	onClick={() => {
-																		// set selected file
-																		chatStore.setSelectedFile(
-																			chatStore.activeTaskId as string,
-																			file
-																		);
-																		// open DocumentWorkSpace
-																		chatStore.setActiveWorkSpace(
-																			chatStore.activeTaskId as string,
-																			"documentWorkSpace"
-																		);
-																	}}
-																	className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
-																>
-																	<FileText
-																		size={24}
-																		className="flex-shrink-0"
-																	/>
-																	<div className="flex flex-col">
-																		<div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
-																			{file.name.split(".")[0]}
-																		</div>
-																		<div className="font-medium leading-29 text-xs text-text-body">
-																			{file.type}
-																		</div>
-																	</div>
-																</div>
-															);
-														})}
-													</div>
-												</div>
-											);
-										} else if (item.content === "skip") {
-											return (
-												<MessageCard
-													id={item.id}
-													key={item.id}
-													role={item.role}
-													content={t("layout.no-reply-received-task-continue")}
-													onTyping={scrollToBottom}
-												/>
-											);
-										} else {
-											return (
-												<MessageCard
-													typewriter={
-														chatStore.tasks[chatStore.activeTaskId as string]
-															.type !== "replay" ||
-														(chatStore.tasks[chatStore.activeTaskId as string]
-															.type === "replay" &&
-															chatStore.tasks[chatStore.activeTaskId as string]
-																.delayTime !== 0)
-													}
-													id={item.id}
-													key={item.id}
-													role={item.role}
-													content={item.content}
-													onTyping={scrollToBottom}
-													attaches={item.attaches}
-												/>
-											);
-										}
-									} else if (item.step === "end" && item.content === "") {
-										return (
-											<div
-												key={"end-" + item.id}
-												className="flex flex-col gap-4"
-											>
-												{/* <MessageCard
-													id={item.id}
-													content={
-														"Task complete! If you have any further questions or need additional information, feel free to ask again."
-													}
-													className="!px-0 !py-1"
-													role={item.role}
-													onTyping={scrollToBottom}
-												/> */}
-												<div className="flex gap-2 flex-wrap">
-													{item.fileList?.map((file) => {
-														return (
-															<div
-																key={"file-" + file.name}
-																onClick={() => {
-																	// set selected file
-																	chatStore.setSelectedFile(
-																		chatStore.activeTaskId as string,
-																		file
-																	);
-																	chatStore.setActiveWorkSpace(
-																		chatStore.activeTaskId as string,
-																		"documentWorkSpace"
-																	);
-																}}
-																className="flex items-center gap-2 bg-message-fill-default rounded-sm  px-2 py-1 w-[140px] "
-															>
-																<FileText size={24} className="flex-shrink-0" />
-																<div className="flex flex-col">
-																	<div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
-																		{file.name.split(".")[0]}
-																	</div>
-																	<div className="font-medium leading-29 text-xs text-text-body">
-																		{file.type}
-																	</div>
-																</div>
-															</div>
-														);
-													})}
-												</div>
-											</div>
-										);
-									}
-									if (
-										item.step === "notice_card" &&
-										!chatStore.tasks[chatStore.activeTaskId as string]
-											.isTakeControl &&
-										chatStore.tasks[chatStore.activeTaskId as string].cotList
-											.length > 0
-									) {
-										return <NoticeCard key={"notice-" + item.id} />;
-									}
-									if (
-										item.step === "to_sub_tasks" &&
-										!chatStore.tasks[chatStore.activeTaskId as string]
-											.isTakeControl
-									) {
-										if (!chatStore.activeTaskId) return <> </>;
-										return (
-											<TaskCard
-												key={"task-" + item.id}
-												taskInfo={
-													chatStore.tasks[chatStore.activeTaskId].taskInfo || []
-												}
-												taskType={item.taskType || 1}
-												taskAssigning={
-													chatStore.tasks[chatStore.activeTaskId]
-														.taskAssigning || []
-												}
-												taskRunning={
-													chatStore.tasks[chatStore.activeTaskId].taskRunning ||
-													[]
-												}
-												progressValue={
-													chatStore.tasks[chatStore.activeTaskId].progressValue
-												}
-												summaryTask={
-													chatStore.tasks[chatStore.activeTaskId].summaryTask ||
-													""
-												}
-												onAddTask={() => {
-													chatStore.setIsTaskEdit(
-														chatStore.activeTaskId as string,
-														true
-													);
-													chatStore.addTaskInfo();
-												}}
-												onUpdateTask={(taskIndex, content) => {
-													chatStore.setIsTaskEdit(
-														chatStore.activeTaskId as string,
-														true
-													);
-													chatStore.updateTaskInfo(taskIndex, content);
-												}}
-												onDeleteTask={(taskIndex) => {
-													chatStore.setIsTaskEdit(
-														chatStore.activeTaskId as string,
-														true
-													);
-													chatStore.deleteTaskInfo(taskIndex);
-												}}
-												clickable={true}
-											/>
-										);
-									}
-								}
-							)}
-						{/* Skeleton  */}
-						{((!hasSubTask &&
-							!chatStore.tasks[chatStore.activeTaskId as string]
-								?.hasWaitComfirm &&
-							chatStore.tasks[chatStore.activeTaskId as string]?.messages
-								.length > 0) ||
-							chatStore.tasks[chatStore.activeTaskId as string]
-								.isTakeControl) && (
-							<TypeCardSkeleton
-								isTakeControl={
-									chatStore.tasks[chatStore.activeTaskId as string]
-										.isTakeControl
-								}
-							/>
-						)}
-						
-						{/* Floating Action Button for Pause/Resume/Skip */}
-						{chatStore.activeTaskId && (
-							<FloatingAction
-								status={chatStore.tasks[chatStore.activeTaskId]?.status}
-								onPause={handlePauseResume}
-								onResume={handlePauseResume}
-								onSkip={handleSkip}
-								loading={isPauseResumeLoading}
-							/>
-						)}
-					</div>
+		<div className="w-full h-full flex flex-col items-center justify-center">
+			{hasAnyMessages ? (
+				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
+
+					{/* New Project Chat Container */}
+					<ProjectChatContainer
+						onPauseResume={handlePauseResume}
+						onSkip={handleSkip}
+						isPauseResumeLoading={isPauseResumeLoading}
+					/>
 					{chatStore.activeTaskId && (
-					<BottomBox
+						<BottomBox
 						state={getBottomBoxState()}
-							queuedMessages={chatStore.tasks[chatStore.activeTaskId]?.queuedMessages?.map(m => ({
-								id: m.id,
-								content: m.content,
-								timestamp: m.timestamp
-							})) || []}
-							onRemoveQueuedMessage={(id) => chatStore.removeQueuedMessage(chatStore.activeTaskId as string, id)}
-							subTasks={chatStore.tasks[chatStore.activeTaskId]?.taskInfo?.map(t => ({
-								id: t.id || generateUniqueId(),
-								content: t.content,
-								status: 'pending' as const
-							})) || []}
+						queuedMessages={projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
+							id: m.task_id,
+							content: m.content,
+							timestamp: m.timestamp
+						})) || []}
+						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
 						subtitle={getBottomBoxState() === 'confirm' 
-							? chatStore.tasks[chatStore.activeTaskId]?.messages?.[0]?.content 
+							? (() => {
+								// Find the last message where role is "user"
+								const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+								const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
+								return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
+							})()
 							: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
 							onStartTask={() => handleConfirmTask()}
 							onEdit={handleEditQuery}
@@ -748,8 +672,8 @@ export default function ChatBox(): JSX.Element {
 								})) || [],
 								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 								onAddFile: handleFileSelect,
-									placeholder: t("layout.ask-placeholder"),
-								disabled: !privacy || useCloudModelInDev,
+								placeholder: t("chat.ask-placeholder"),
+								disabled: !privacy || useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded,
 								textareaRef: textareaRef,
 								allowDragDrop: true,
 								privacy: privacy,
@@ -759,8 +683,9 @@ export default function ChatBox(): JSX.Element {
 					)}
 				</div>
 			) : (
-				<div className="w-full h-full flex border border-solid border-border-disabled rounded-2xl bg-input-bg-default items-center relative shadow-blur-effect overflow-hidden">
-					<div className="absolute rounded-2xl blur-bg pointer-events-none"></div>
+				// Init ChatBox
+				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled py-2 border-solid  relative overflow-hidden">
+					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-body-lg text-text-heading text-center font-bold">
@@ -784,8 +709,8 @@ export default function ChatBox(): JSX.Element {
 									})) || [],
 									onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 									onAddFile: handleFileSelect,
-									placeholder: t("layout.ask-placeholder"),
-									disabled: useCloudModelInDev,
+									placeholder: t("chat.ask-placeholder"),
+									disabled: useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded,
 									textareaRef: textareaRef,
 									allowDragDrop: false,
 									privacy: true,

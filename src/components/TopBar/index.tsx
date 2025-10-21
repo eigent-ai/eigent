@@ -38,7 +38,12 @@ function HeaderWin() {
 	const [platform, setPlatform] = useState<string>("");
 	const navigate = useNavigate();
 	const location = useLocation();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
@@ -97,15 +102,8 @@ function HeaderWin() {
 
 	// create new project handler reused by plus icon and label
 	const createNewProject = () => {
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate("/");
-			return;
-		}
-		chatStore.create();
+		//Handles refocusing id & nonduplicate internally
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 

@@ -22,6 +22,10 @@ export default defineConfig(({ command, mode }) => {
         '@': path.join(__dirname, 'src')
       },
     },
+    optimizeDeps: {
+      exclude: ['@stackframe/react'],
+      force: true,
+    },
     plugins: [
       react(),
       electron({
@@ -67,22 +71,25 @@ export default defineConfig(({ command, mode }) => {
         renderer: {},
       }),
     ],
-    server: process.env.VSCODE_DEBUG && (() => {
-      const url = new URL(pkg.debug.env.VITE_DEV_SERVER_URL)
-      return {
-        host: url.hostname,
-        port: +url.port,
-        proxy: {
-          '/api': {
-            target: env.VITE_PROXY_URL,
-            changeOrigin: true,
-            // rewrite: path => path.replace(/^\/api/, ''),
+    server: {
+      open: false,
+      ...(process.env.VSCODE_DEBUG && (() => {
+        const url = new URL(pkg.debug.env.VITE_DEV_SERVER_URL)
+        return {
+          host: url.hostname,
+          port: +url.port,
+          proxy: {
+            '/api': {
+              target: env.VITE_PROXY_URL,
+              changeOrigin: true,
+              // rewrite: path => path.replace(/^\/api/, ''),
+            },
           },
-        },
-      }
-    })(),
-    clearScreen: false,
+        }
+      })()),
+      clearScreen: false,
 
+    }
   }
 })
 

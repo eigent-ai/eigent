@@ -36,13 +36,21 @@ import AlertDialog from "../ui/alertDialog";
 import { proxyFetchGet, proxyFetchDelete, proxyFetchPost } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { share } from "@/lib/share";
+import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import {getAuthStore} from "@/store/authStore";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
 	const { isOpen, close } = useSidebarStore();
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const getTokens = chatStore.getTokens;
 	const { history_type, toggleHistoryType } = useGlobalStore();
 	const [searchValue, setSearchValue] = useState("");
@@ -69,21 +77,9 @@ export default function HistorySidebar() {
 
 	const createChat = () => {
 		close();
-		const taskId = Object.keys(chatStore.tasks).find((taskId) => {
-			console.log(chatStore.tasks[taskId].messages.length);
-			return chatStore.tasks[taskId].messages.length === 0;
-		});
-		if (taskId) {
-			chatStore.setActiveTaskId(taskId);
-			navigate(`/`);
-			return;
-		}
-		if (
-			chatStore.tasks[chatStore.activeTaskId as string] &&
-			chatStore.tasks[chatStore.activeTaskId as string].messages.length === 0
-		) {
-		}
-		chatStore.create();
+		//Create a new project
+		//Handles refocusing id & non duplicate logic internally
+		projectStore.createProject("new project");
 		navigate("/");
 	};
 
@@ -154,10 +150,9 @@ export default function HistorySidebar() {
 		fetchHistoryTasks();
 	}, [chatStore.updateCount]);
 
-	const handleReplay = async (taskId: string, question: string) => {
+	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		chatStore.replay(taskId, question, 0);
-		navigate({ pathname: "/" });
+		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
 	const handleDelete = (id: string) => {
@@ -177,6 +172,18 @@ export default function HistorySidebar() {
 		try {
 			const res = await proxyFetchDelete(`/api/chat/history/${curHistoryId}`);
 			console.log(res);
+			// also delete local files for this task if available (via Electron IPC)
+			const  {email} = getAuthStore()
+			const history = historyTasks.find((item) => item.id === curHistoryId);
+			if (history?.task_id && (window as any).ipcRenderer) {
+				try {
+					//TODO(file): rename endpoint to use project_id
+					//TODO(history): make sure to sync to projectId when updating endpoint
+					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id);
+				} catch (error) {
+					console.warn("Local file cleanup failed:", error);
+				}
+			}
 		} catch (error) {
 			console.error("Failed to delete history task:", error);
 		}
@@ -187,16 +194,18 @@ export default function HistorySidebar() {
 		share(taskId);
 	};
 
-	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
+	const handleSetActive = (projectId: string, question: string, historyId: string) => {
+		const project = projectStore.getProjectById(projectId);
+		//If project exists
+		if (project) {
 			// if there is record, show result
-			chatStore.setActiveTaskId(taskId);
+			projectStore.setHistoryId(projectId, historyId);
+			projectStore.setActiveProject(projectId)
 			navigate(`/`);
 			close();
 		} else {
 			// if there is no record, execute replay
-			handleReplay(taskId, question);
+			handleReplay(projectId, question, historyId);
 		}
 	};
 
@@ -455,7 +464,7 @@ export default function HistorySidebar() {
 											<div className="flex justify-start items-center flex-wrap gap-2 ">
 													{historyTasks
 														.filter((task) =>
-															task.question
+															task?.question
 																?.toLowerCase()
 																.includes(searchValue.toLowerCase())
 														)
@@ -463,11 +472,11 @@ export default function HistorySidebar() {
 															return (
 																<div
 																	onClick={() =>
-																		handleSetActive(task.task_id, task.question)
+																		handleSetActive(task.task_id, task.question, task.id)
 																	}
 																	key={task.task_id}
 																	className={`${
-																		chatStore.activeTaskId === task.task_id
+																		chatStore.activeTaskId === task?.task_id
 																			? "!bg-white-100%"
 																			: ""
 																	} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl w-[316px] h-[180px] p-6 shadow-history-item`}
