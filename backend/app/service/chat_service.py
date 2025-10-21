@@ -190,10 +190,8 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
         for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
                 if isinstance(entry['content'], dict):
-                    # Format without file listing
                     formatted_context = format_task_context(entry['content'], skip_files=True)
                     context += formatted_context + "\n\n"
-                    # Collect all working directories from all tasks
                     if entry['content'].get('working_directory'):
                         working_directories.add(entry['content']['working_directory'])
                 else:
@@ -201,7 +199,6 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
             elif entry['role'] == 'assistant':
                 context += f"Assistant: {entry['content']}\n\n"
 
-        # Add all generated files from all working directories at the end, only once
         if working_directories:
             all_generated_files = set()  # Use set to avoid duplicates
             for working_directory in working_directories:
