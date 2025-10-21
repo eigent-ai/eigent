@@ -11,6 +11,9 @@ import {
 	XCircle,
 	Power,
 	ChevronDown,
+	ChevronLeft,
+	House,
+	Share,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -19,13 +22,15 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
 import giftIcon from "@/assets/gift.svg";
+import giftwhiteIcon from "@/assets/gift-white.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
+import { share } from "@/lib/share";
+import { TooltipSimple } from "@/components/ui/tooltip";
  
-import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -82,16 +87,16 @@ function HeaderWin() {
 			const response = await window.electronAPI.exportLog();
 
 			if (!response.success) {
-				alert("Export cancelled:" + response.error);
+				alert(t("layout.export-cancelled") + response.error);
 				return;
 			}
 			if (response.savedPath) {
 				window.location.href =
 					"https://github.com/eigent-ai/eigent/issues/new/choose";
-				alert("log saved:" + response.savedPath);
+				alert(t("layout.log-saved") + response.savedPath);
 			}
 		} catch (e: any) {
-			alert("export error:" + e.message);
+			alert(t("layout.export-error") + e.message);
 		}
 	};
 
@@ -111,7 +116,7 @@ function HeaderWin() {
 				chatStore.activeTaskId as string
 			].summaryTask.split("|")[0];
 		}
-		return t("chat.new-project");
+		return t("layout.new-project");
 	}, [
 		chatStore.activeTaskId,
 		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
@@ -123,20 +128,20 @@ function HeaderWin() {
 			if (res?.invite_code) {
 				const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
 				await navigator.clipboard.writeText(inviteLink);
-				toast.success("Invitation link copied!");
+				toast.success(t("layout.invitation-link-copied"));
 			} else {
-				toast.error("Failed to get invite code");
+				toast.error(t("layout.failed-to-get-invite-code"));
 			}
 		} catch (error) {
 			console.error("Failed to get referral link:", error);
-			toast.error("Failed to get invitation link");
+			toast.error(t("layout.failed-to-get-invitation-link"));
 		}
 	};
 
 	const handleEndProject = async () => {
 		const taskId = chatStore.activeTaskId;
 		if (!taskId) {
-			toast.error("No active project to end");
+			toast.error(t("layout.no-active-project-to-end"));
 			return;
 		}
 
@@ -145,21 +150,21 @@ function HeaderWin() {
 			
 			// Stop the task if it's running
 			if (task && task.status === 'running') {
-				await fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+				await fetchPut(`/task/${taskId}/take-control`, {
 					action: 'stop',
 				});
 			}
 
 			// Delete task from backend if it exists
 			try {
-				await fetchDelete(`/chat/${projectStore.activeProjectId}`);
+				await fetchDelete(`/chat/${taskId}`);
 			} catch (error) {
 				console.log("Task may not exist on backend:", error);
 			}
 
 			// Delete from history
 			try {
-				await proxyFetchDelete(`/api/chat/history/${projectStore.activeProjectId}`);
+				await proxyFetchDelete(`/api/chat/history/${taskId}`);
 			} catch (error) {
 				console.log("Task may not exist in history:", error);
 			}
@@ -174,12 +179,12 @@ function HeaderWin() {
 			// Navigate to home
 			navigate("/");
 
-			toast.success("Project ended successfully", {
+			toast.success(t("layout.project-ended-successfully"), {
 				closeButton: true,
 			});
 		} catch (error) {
 			console.error("Failed to end project:", error);
-			toast.error("Failed to end project", {
+			toast.error(t("layout.failed-to-end-project"), {
 				closeButton: true,
 			});
 		} finally {
@@ -187,9 +192,13 @@ function HeaderWin() {
 		}
 	};
 
+	const handleShare = async (taskId: string) => {
+		share(taskId);
+	};
+
 	return (
 		<div
-			className="flex !h-9 items-center justify-between pl-2 py-1 z-50"
+			className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 "
 			id="titlebar"
 			ref={titlebarRef}
 		>
@@ -199,44 +208,57 @@ function HeaderWin() {
 					platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
 				} flex items-center justify-center no-drag`}
 			>
-				{platform !== "darwin" && <span>Eigent</span>}
+				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
 			</div>
 
 			{/* center */}
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
-					<div className="flex-1 pt-1 pr-sm flex justify-start items-end">
-						<Button
-							onClick={() => navigate("/history")}
-							variant="ghost"
-							size="icon"
-							className="no-drag p-0 h-6 w-6"
-						>
-							<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-						</Button>
+					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
+					<Button
+						onClick={() => navigate("/history")}
+						variant="ghost"
+						size="icon"
+						className="no-drag p-0 h-6 w-6"
+					>
+						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
+					</Button>
 					</div>
 					{location.pathname !== "/history" && (
-						<div className="flex items-center">
+						<div className="flex items-center mr-1">
+						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
+							<Button
+								 variant="ghost"
+								 size="icon"
+								 className="no-drag"
+								 onClick={() => navigate("/history")}
+									>
+									<House className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
 						<Button
 							 variant="ghost"
 							 size="icon"
 							 className="no-drag"
 							 onClick={createNewProject}
 									>
+								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
 									<Plus className="w-4 h-4" />
+								</TooltipSimple>
 						</Button>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
 						<>
-							{activeTaskTitle === t("chat.new-project") ? (
-								<Button 
-								  variant="ghost" 
-									className="font-bold text-base no-drag truncate" 
-								  onClick={toggle}
-								  size="sm"
-								  >
-									{t("chat.new-project")}
+							{activeTaskTitle === t("layout.new-project") ? (
+									<Button 
+										id="active-task-title-btn"
+										variant="ghost" 
+											className="font-bold text-base no-drag truncate" 
+										onClick={toggle}
+										size="sm"
+										>
+									{t("layout.new-project")}
 									<ChevronDown />
 								</Button>
 							) : (
@@ -260,47 +282,78 @@ function HeaderWin() {
 					<div
 						className={`${
 							platform === "darwin" && "pr-2"
+						} flex h-full items-center space-x-1 z-50 relative no-drag gap-1`}
+					>
+						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+							<>
+								<TooltipSimple content={t("layout.report-bug")} side="bottom" align="center">
+									<Button
+										onClick={exportLog}
+										variant="ghost"
+										size="xs"
+										className="no-drag"
+									>
+										<FileDown className="w-4 h-4" />
+										{t("layout.report-bug")}
+									</Button>
+								</TooltipSimple>
+							</>
+						)}
+						<TooltipSimple content={t("layout.refer-friends")} side="bottom" align="center">
+							<Button
+								onClick={getReferFriendsLink}
+								variant="ghost"
+								size="xs"
+								className="no-drag"
+							>
+								<img
+									src={giftIcon}
+									alt="gift-icon"
+									className="w-4 h-4"
+								/>
+								{t("layout.refer-friends")}
+							</Button>
+						</TooltipSimple>
+						{chatStore.activeTaskId &&
+							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
+								<Button
+									onClick={() => handleShare(chatStore.activeTaskId as string)}
+									variant="primary"
+									size="xs"
+									className="no-drag !text-button-fill-information-foreground"
+								>
+									{t("layout.share")}
+								</Button>
+							</TooltipSimple>
+						)}
+						{chatStore.activeTaskId &&
+							chatStore.tasks[chatStore.activeTaskId as string] &&
+							(
+								chatStore.tasks[chatStore.activeTaskId as string].messages.length > 0 ||
+								chatStore.tasks[chatStore.activeTaskId as string].hasMessages ||
+								chatStore.tasks[chatStore.activeTaskId as string].status !== 'pending'
+							) && (
+							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
+								<Button
+									onClick={() => setEndDialogOpen(true)}
+									variant="outline"
+									size="xs"
+									className="no-drag !text-text-cuation w-10 justify-center"
+								>
+									<Power />
+									{t("layout.end-project")}
+								</Button>
+							</TooltipSimple>
+						)}
+					</div>
+				)}
+				{location.pathname === "/history" && (
+					<div
+						className={`${
+							platform === "darwin" && "pr-2"
 						} flex h-full items-center space-x-1 z-50 relative no-drag`}
 					>
-						<Button
-							onClick={exportLog}
-							variant="ghost"
-							size="xs"
-							className="mr-2 no-drag leading-tight"
-						>
-							<FileDown className="w-4 h-4" />
-							{t("layout.report-bug")}
-						</Button>
-						<Button
-							onClick={getReferFriendsLink}
-							variant="ghost"
-							size="xs"
-							className="no-drag"
-						>
-							<img
-								src={giftIcon}
-								alt="gift-icon"
-								className="w-4 h-4"
-							/>
-							{t("layout.refer-friends")}
-						</Button>
-						<Button
-							onClick={() => setEndDialogOpen(true)}
-							variant="ghost"
-							size="xs"
-							className="no-drag leading-tight text-text-cuation"
-						>
-							<Power />
-							End Project
-						</Button>
-						<Button
-							onClick={() => navigate("/setting")}
-							variant="ghost"
-							size="icon"
-							className="no-drag"
-						>
-							<Settings className="w-4 h-4" />
-						</Button>
 					</div>
 				)}
 			</div>

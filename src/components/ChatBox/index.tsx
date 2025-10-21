@@ -688,11 +688,11 @@ export default function ChatBox(): JSX.Element {
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
-							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">
-								{t("chat.welcome-to-eigent")}
+							<div className="text-body-lg text-text-heading text-center font-bold">
+								{t("layout.welcome-to-eigent")}
 							</div>
-							<div className="text-lg leading-7 text-zinc-500 text-center mb-5">
-								{t("chat.how-can-i-help-you")}
+							<div className="text-body-lg leading-7 text-text-label text-center mb-5">
+								{t("layout.how-can-i-help-you")}
 							</div>
 						</div>
 
@@ -753,23 +753,23 @@ export default function ChatBox(): JSX.Element {
 											className="text-icon-information"
 										/>
 										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
-											{t("chat.by-messaging-eigent")}{" "}
+											{t("layout.by-messaging-eigent")}{" "}
 											<a
 												href="https://www.eigent.ai/terms-of-use"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												{t("chat.terms-of-use")}
+												{t("layout.terms-of-use")}
 											</a>{" "}
-											{t("chat.and")}{" "}
+											{t("layout.and")}{" "}
 											<a
 												href="https://www.eigent.ai/privacy-policy"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												{t("chat.privacy-policy")}
+												{t("layout.privacy-policy")}
 											</a>
 											.
 										</span>
@@ -780,25 +780,25 @@ export default function ChatBox(): JSX.Element {
 									<div className="mr-2 flex flex-col items-center gap-2">
 										{[
 											{
-												label: t("chat.palm-springs-tennis-trip-planner"),
+												label: t("layout.palm-springs-tennis-trip-planner"),
 												message: t(
-													"chat.palm-springs-tennis-trip-planner-message"
+													"layout.palm-springs-tennis-trip-planner-message"
 												),
 											},
 											{
 												label: t(
-													"chat.bank-transfer-csv-analysis-and-visualization"
+													"layout.bank-transfer-csv-analysis"
 												),
 												message: t(
-													"chat.bank-transfer-csv-analysis-and-visualization-message"
+													"layout.bank-transfer-csv-analysis-message"
 												),
 											},
 											{
 												label: t(
-													"chat.find-duplicate-files-in-downloads-folder"
+													"layout.find-duplicate-files"
 												),
 												message: t(
-													"chat.find-duplicate-files-in-downloads-folder-message"
+													"layout.find-duplicate-files-message"
 												),
 											},
 										].map(({ label, message }) => (

@@ -38,16 +38,16 @@ export default function ConfirmModal({
 						initial={{ opacity: 0, scale: 0.9, y: 20 }}
 						animate={{ opacity: 1, scale: 1, y: 0 }}
 						exit={{ opacity: 0, scale: 0.9, y: 20 }}
-						className="fixed max-w-md alert-dialog-wrapper rounded-xl backdrop-blur-xl  shadow-lg"
+						className="fixed max-w-md alert-dialog-wrapper rounded-xl backdrop-blur-xl  shadow-perfect"
 					>
 						<div className="p-6">
-							<h3 className="text-lg font-bold text-text-primary mb-2">
+							<span className="text-body-lg font-bold text-text-primary mb-2">
 								{title}
-							</h3>
-							<p className="text-text-secondary mb-6">{message}</p>
+							</span>
+							<p className="text-label-md text-text-label mb-6">{message}</p>
 
 							<div className="flex justify-end gap-3">
-								<Button variant="outline" onClick={onClose}>
+								<Button variant="ghost" onClick={onClose}>
 									{cancelText}
 								</Button>
 								<Button

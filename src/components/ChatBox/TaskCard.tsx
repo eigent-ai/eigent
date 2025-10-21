@@ -49,6 +49,7 @@ export function TaskCard({
 	onDeleteTask,
 	clickable = true,
 }: TaskCardProps) {
+	const { t } = useTranslation();
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");

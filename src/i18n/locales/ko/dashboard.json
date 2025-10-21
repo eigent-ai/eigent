@@ -14,5 +14,10 @@
 	"search-for-a-task-or-document": "작업 또는 문서를 검색하세요",
 	"calendar": "달력",
 	"search-emoji": "이모지 검색",
-	"calculator": "계산기"
+	"calculator": "계산기",
+	"developer-agent": "개발자 에이전트",
+	"search-agent": "검색 에이전트",
+	"document-agent": "문서 에이전트",
+	"multi-modal-agent": "멀티모달 에이전트",
+	"social-media-agent": "소셜미디어 에이전트"
 }
