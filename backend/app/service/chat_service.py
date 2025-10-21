@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 from pathlib import Path
 import platform
 from typing import Literal
@@ -829,11 +830,22 @@ Based on the user query, determine the type and provide appropriate response."""
             content = resp.msgs[0].content
             if not content:
                 return True
-            normalized = content.strip().lower()
-            if normalized in ["yes", "complex"]:
-                return True
-            return sse_json("wait_confirm", {"content": content, "question": prompt})
-
+            content_stripped = content.strip()
+            if content_stripped.startswith('{') and content_stripped.endswith('}'):
+                try:
+                    parsed_json = json.loads(content_stripped)
+                    result = QuestionAnalysisResult(**parsed_json)
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"Failed to parse JSON from content: {e}")
+                    normalized = content.strip().lower()
+                    if normalized in ["yes", "complex"]:
+                        return True
+                    return sse_json("wait_confirm", {"content": content, "question": prompt})
+            else:
+                normalized = content.strip().lower()
+                if normalized in ["yes", "complex"]:
+                    return True
+                return sse_json("wait_confirm", {"content": content, "question": prompt})
         if result.type == "simple" and result.answer:
             return sse_json("wait_confirm", {"content": result.answer, "question": prompt})
         else:
