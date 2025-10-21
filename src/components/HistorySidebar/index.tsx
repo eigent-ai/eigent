@@ -517,7 +517,7 @@ export default function HistorySidebar() {
 													return (
 														<div
 															onClick={() => {
-																handleSetActive(task.task_id, task.question);
+																handleSetActive(task.task_id, task.question, task.id);
 															}}
 															key={task.task_id}
 															className={`${

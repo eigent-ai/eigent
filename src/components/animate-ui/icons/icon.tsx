@@ -139,6 +139,7 @@ function AnimateIcon({
   persistOnAnimateEnd = false,
   delay = 0,
   children,
+  ref: _unusedRef,
   ...props
 }: AnimateIconProps) {
   const controls = useAnimation();
