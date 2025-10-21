@@ -1,5 +1,5 @@
-import { useChatStore } from "@/store/chatStore";
 import { useState, useEffect } from "react";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	CodeXml,
@@ -46,7 +46,10 @@ import AlertDialog from "@/components/ui/alertDialog";
 export default function Project() {
 	const {t} = useTranslation()
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
 	const { history_type, setHistoryType } = useGlobalStore();
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);

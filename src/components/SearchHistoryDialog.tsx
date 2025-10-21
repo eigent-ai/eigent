@@ -26,7 +26,6 @@ import { Button } from "./ui/button";
 import { DialogTitle } from "./ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { proxyFetchGet } from "@/api/http";
-import { useChatStore } from "@/store/chatStore";
 import { useNavigate } from "react-router-dom";
 import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";

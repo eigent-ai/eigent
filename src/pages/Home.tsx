@@ -2,7 +2,7 @@ import ChatBox from "@/components/ChatBox";
 import Workflow from "@/components/WorkFlow";
 import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
-import { useChatStore } from "@/store/chatStore";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";

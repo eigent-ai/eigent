@@ -19,8 +19,8 @@ import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useChatStore } from "@/store/chatStore";
 import { useSidebarStore } from "@/store/sidebarStore";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import giftIcon from "@/assets/gift.svg";
 import giftwhiteIcon from "@/assets/gift-white.svg";
 import { getAuthStore } from "@/store/authStore";
@@ -339,7 +339,7 @@ function HeaderWin() {
 									onClick={() => setEndDialogOpen(true)}
 									variant="outline"
 									size="xs"
-									className="no-drag !text-text-cuation w-10 justify-center"
+									className="no-drag !text-text-cuation justify-center"
 								>
 									<Power />
 									{t("layout.end-project")}

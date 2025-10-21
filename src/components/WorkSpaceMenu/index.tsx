@@ -10,16 +10,19 @@ import {
 	Bird,
 	LayoutGrid,
 } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";
 import { Badge } from "../ui/badge";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export function WorkSpaceMenu() {
 	const { t } = useTranslation();
-	const chatStore = useChatStore();
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
 	const workerList = useWorkerList();
 	const baseWorker: Agent[] = [
 		{

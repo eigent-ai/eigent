@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import SearchInput from "./SearchInput";
 import { useEffect, useRef, useState } from "react";
-import { useChatStore } from "@/store/chatStore";
 import { useGlobalStore } from "@/store/globalStore";
 import folderIcon from "@/assets/Folder-1.svg";
 import { Progress } from "@/components/ui/progress";

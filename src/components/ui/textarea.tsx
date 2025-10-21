@@ -35,7 +35,7 @@ function resolveStateClasses(state: TextareaState | undefined) {
       container: "opacity-50 cursor-not-allowed",
       field:
         "border-input-border-default bg-input-bg-default text-input-text-default",
-      placeholder: "placeholder-input-label-default",
+      placeholder: "text-input-label-default",
     }
   }
   if (state === "hover") {
@@ -43,7 +43,7 @@ function resolveStateClasses(state: TextareaState | undefined) {
       container: "",
       field:
         "border-input-border-hover bg-input-bg-default text-input-text-default",
-      placeholder: "placeholder-input-label-default",
+      placeholder: "text-input-label-default",
     }
   }
   if (state === "input") {
@@ -51,7 +51,7 @@ function resolveStateClasses(state: TextareaState | undefined) {
       container: "",
       field:
         "border-input-border-focus bg-input-bg-input text-input-text-focus",
-      placeholder: "placeholder-input-label-default",
+      placeholder: "text-input-label-default",
     }
   }
   if (state === "error") {
@@ -59,7 +59,7 @@ function resolveStateClasses(state: TextareaState | undefined) {
       container: "",
       field:
         "border-input-border-cuation bg-input-bg-default text-text-body",
-      placeholder: "placeholder-input-label-default",
+      placeholder: "text-input-label-default",
     }
   }
   if (state === "success") {
@@ -67,14 +67,14 @@ function resolveStateClasses(state: TextareaState | undefined) {
       container: "",
       field:
         "border-input-border-success bg-input-bg-confirm text-text-body",
-      placeholder: "placeholder-input-label-default",
+      placeholder: "text-input-label-default",
     }
   }
   return {
     container: "",
     field:
       "border-input-border-default bg-input-bg-default text-input-text-default",
-    placeholder: "placeholder-input-label-default/10",
+    placeholder: "text-input-label-default/10",
   }
 }
 
@@ -109,11 +109,13 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <textarea
             data-scrollbar="ui-textarea"
             className={cn(
-              "flex min-h-[60px] w-full rounded-md border border-input bg-transparent pl-3 pr-3 py-2 text-base shadow-sm placeholder:text-input-text-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm [scrollbar-gutter:stable]",
+              "flex min-h-[60px] w-full rounded-md border border-input bg-transparent pl-3 pr-3 py-2 text-body-md shadow-sm placeholder:text-text-label/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [scrollbar-gutter:stable]",
               className
             )}
             style={{ paddingRight: "4px", ...(style as React.CSSProperties) }}
             ref={ref}
+            disabled={disabled}
+            placeholder={placeholder}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 if (onEnter) {

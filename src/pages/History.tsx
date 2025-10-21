@@ -1,5 +1,5 @@
-import { useChatStore } from "@/store/chatStore";
 import { useEffect, useRef, useState } from "react";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,10 @@ import WordCarousel from "@/components/ui/WordCarousel";
 export default function Home() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
-	const chatStore = useChatStore();
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore || !projectStore) {
+		return <div>Loading...</div>;
+	}
 	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">("projects");
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);

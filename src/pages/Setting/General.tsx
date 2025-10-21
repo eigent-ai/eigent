@@ -10,7 +10,6 @@ import { useNavigate } from "react-router-dom";
 import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
-import { useChatStore } from "@/store/chatStore";
 import { LocaleEnum, switchLanguage } from "@/i18n";
 import { useTranslation } from "react-i18next";
 

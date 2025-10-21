@@ -493,13 +493,18 @@ export default function ChatBox(): JSX.Element {
 
 		// Queued messages no longer change BottomBox state; QueuedBox renders independently
 
-		// Determine if we're in the "splitting in progress" phase (skeleton visible)
-		// Equivalent to the skeleton condition used in the JSX below
+		// Check for any to_sub_tasks message (confirmed or not)
+		const anyToSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
 		const toSubTasksMessage = task.messages.find((m) => (m.step === "to_sub_tasks" && !m.isConfirm));
+		
+		// Determine if we're in the "splitting in progress" phase (skeleton visible)
+		// Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
 		const isSkeletonPhase = (
 			task.status !== 'finished' &&
-			(!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || 
-			(task.isTakeControl && (!toSubTasksMessage || !toSubTasksMessage.isConfirm)));
+			!anyToSubTasksMessage && 
+			!task.hasWaitComfirm && 
+			task.messages.length > 0) || 
+			(task.isTakeControl && !anyToSubTasksMessage);
 		if (isSkeletonPhase) {
 			return "splitting";
 		}
