@@ -290,6 +290,10 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						onInstall,
 					};
 				});
+				console.log("API response:", res);
+				console.log("Generated list:", list);
+				console.log("Essential integrations:", essentialIntegrations);
+				
 				setIntegrations(
 					list.filter(
 						(item) => !essentialIntegrations.find((i) => i.key === item.key)

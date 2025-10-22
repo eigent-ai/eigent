@@ -88,22 +88,6 @@ class OAuthStateManager:
                     state.completed_at = datetime.now()
                 logger.info(f"Updated {provider} OAuth status to {status}")
     
-    def cleanup_old_states(self, max_age_seconds: int = 3600):
-        """Clean up old completed states"""
-        with self._lock:
-            now = datetime.now()
-            to_remove = []
-            for provider, state in self._states.items():
-                if state.completed_at:
-                    age = (now - state.completed_at).total_seconds()
-                    if age > max_age_seconds:
-                        to_remove.append(provider)
-            
-            for provider in to_remove:
-                del self._states[provider]
-                logger.debug(f"Cleaned up old OAuth state for {provider}")
-
-
 # Global instance
 oauth_state_manager = OAuthStateManager()
 
