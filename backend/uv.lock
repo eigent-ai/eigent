@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.10.16"
 
 [[package]]
@@ -248,7 +248,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.78" },
+    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=test_tool_cache" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
@@ -331,8 +331,8 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.78"
-source = { registry = "https://pypi.org/simple" }
+version = "0.2.79a0"
+source = { git = "https://github.com/camel-ai/camel.git?rev=test_tool_cache#e9529ed3445ce384eaa67c7d466114e0173f7cf9" }
 dependencies = [
     { name = "astor" },
     { name = "colorama" },
@@ -346,10 +346,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
     { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/2b/cd5181bfd0ebcf567a088ee5c1e3768b132ba4b1489ee19d5fb0bd679586/camel_ai-0.2.78.tar.gz", hash = "sha256:24745da225da7da96dcd85f72d143c6104569c17f14280c369d7e82b86851284", size = 964632, upload-time = "2025-10-15T17:20:54.181Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/81/0cfb1c0d9da589665e2eb4471887967e70bba428638c37fb4f6a78baf300/camel_ai-0.2.78-py3-none-any.whl", hash = "sha256:356624da13dfe0c55ef43dc509c18ce029f67fe3997966495a4ce9be931078d5", size = 1415578, upload-time = "2025-10-15T17:20:51.727Z" },
 ]
 
 [package.optional-dependencies]
