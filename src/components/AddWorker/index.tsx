@@ -32,6 +32,7 @@ interface EnvValue {
 	value: string;
 	required: boolean;
 	tip: string;
+	error?: string;
 }
 
 interface McpItem {
@@ -95,6 +96,10 @@ export function AddWorker({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
+				// GOOGLE_REFRESH_TOKEN is not required (will be obtained via OAuth)
+				if (key === 'GOOGLE_REFRESH_TOKEN') {
+					initialValues[key].required = false;
+				}
 			}
 			setEnvValues(initialValues);
 		}
@@ -107,12 +112,40 @@ export function AddWorker({
 				value,
 				required: prev[key]?.required || true,
 				tip: prev[key]?.tip || "",
+				error: "", // Clear error when user types
 			},
 		}));
 	};
 
+	const validateRequiredFields = () => {
+		let hasErrors = false;
+		const updatedEnvValues = { ...envValues };
+
+		Object.keys(envValues).forEach((key) => {
+			const field = envValues[key];
+			if (field?.required && (!field.value || field.value.trim() === "")) {
+				updatedEnvValues[key] = {
+					...field,
+					error: `${key} is required`,
+				};
+				hasErrors = true;
+			}
+		});
+
+		if (hasErrors) {
+			setEnvValues(updatedEnvValues);
+		}
+
+		return !hasErrors;
+	};
+
 	const handleConfigureMcpEnvSetting = async () => {
 		if (!activeMcp) return;
+
+		// Validate required fields first
+		if (!validateRequiredFields()) {
+			return;
+		}
 
 		// switch back to tool selection interface, ensure ToolSelect component is visible
 		setShowEnvConfig(false);
@@ -365,16 +398,17 @@ export function AddWorker({
 										(key) => (
 											<div key={key}>
 												<div className="text-text-body text-sm leading-normal font-bold">
-													{key}*
+													{key}{envValues[key]?.required ? '*' : ''}
 												</div>
 												<Input
 													placeholder=""
 													className="h-7 rounded-sm border border-solid border-input-border-default bg-input-bg-default !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
 													value={envValues[key]?.value || ""}
 													onChange={(e) => updateEnvValue(key, e.target.value)}
+													state={envValues[key]?.error ? "error" : "default"}
 												/>
-												<div className="text-input-label-default text-xs leading-normal">
-													{envValues[key]?.tip}
+												<div className={`text-xs leading-normal ${envValues[key]?.error ? 'text-red-500' : 'text-input-label-default'}`}>
+													{envValues[key]?.error || envValues[key]?.tip}
 												</div>
 											</div>
 										)

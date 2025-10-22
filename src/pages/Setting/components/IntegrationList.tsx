@@ -10,6 +10,7 @@ import {
 	proxyFetchPost,
 	proxyFetchPut,
 	proxyFetchDelete,
+	fetchDelete,
 } from "@/api/http";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
@@ -396,6 +397,24 @@ export default function IntegrationList({
 					// ignore error
 				}
 			}
+			
+			// Clean up authentication tokens for Google Calendar and Notion
+			if (item.key === "Google Calendar") {
+				try {
+					await fetchDelete("/uninstall/tool/google_calendar");
+					console.log("Cleaned up Google Calendar authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Google Calendar tokens:", e);
+				}
+			} else if (item.key === "Notion") {
+				try {
+					await fetchDelete("/uninstall/tool/notion");
+					console.log("Cleaned up Notion authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Notion tokens:", e);
+				}
+			}
+			
 			// after deletion, refresh configs
 			setConfigs((prev) =>
 				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)

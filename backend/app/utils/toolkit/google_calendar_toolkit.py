@@ -7,8 +7,11 @@ from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
+from utils import traceroot_wrapper as traceroot
+
 from camel.toolkits import GoogleCalendarToolkit as BaseGoogleCalendarToolkit
-from loguru import logger
+
+logger = traceroot.get_logger("main")
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
@@ -19,7 +22,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
     def __init__(self, api_task_id: str, timeout: float | None = None):
         self.api_task_id = api_task_id
         self._token_path = (
-            os.environ.get("GOOGLE_CALENDAR_TOKEN_PATH")
+            env("GOOGLE_CALENDAR_TOKEN_PATH")
             or os.path.join(
                 os.path.expanduser("~"),
                 ".eigent",
@@ -32,7 +35,14 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
 
     @classmethod
     def get_can_use_tools(cls, api_task_id: str):
-        if env("GOOGLE_CLIENT_ID") and env("GOOGLE_CLIENT_SECRET"):
+        from dotenv import load_dotenv
+        
+        # Force reload environment variables
+        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        if os.path.exists(default_env_path):
+            load_dotenv(dotenv_path=default_env_path, override=True)
+        
+        if os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"):
             return cls(api_task_id).get_tools()
         else:
             return []
@@ -58,6 +68,12 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
         from google.auth.transport.requests import Request
+        from dotenv import load_dotenv
+
+        # Force reload environment variables from default .env file
+        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        if os.path.exists(default_env_path):
+            load_dotenv(dotenv_path=default_env_path, override=True)
 
         creds = None
 
@@ -76,7 +92,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
             client_id = os.environ.get("GOOGLE_CLIENT_ID")
             client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
             refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
-            token_uri = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
+            token_uri = os.environ.get("GOOGLE_TOKEN_URI") or "https://oauth2.googleapis.com/token"
             
             if refresh_token and client_id and client_secret:
                 logger.info("Creating credentials from environment variables")
@@ -128,6 +144,13 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
         from google_auth_oauthlib.flow import InstalledAppFlow
         from wsgiref import simple_server
         import socket
+        from dotenv import load_dotenv
+        
+        # Force reload environment variables from default .env file
+        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        if os.path.exists(default_env_path):
+            logger.info(f"Reloading environment variables from {default_env_path}")
+            load_dotenv(dotenv_path=default_env_path, override=True)
         
         # Check if there's an existing authorization and force stop it
         old_state = oauth_state_manager.get_state("google_calendar")
@@ -151,9 +174,15 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
                 state.status = "authorizing"
                 oauth_state_manager.update_status("google_calendar", "authorizing")
                 
+                # Reload environment variables in this thread
+                from dotenv import load_dotenv
+                default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+                if os.path.exists(default_env_path):
+                    load_dotenv(dotenv_path=default_env_path, override=True)
+                
                 client_id = os.environ.get("GOOGLE_CLIENT_ID")
                 client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-                token_uri = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
+                token_uri = os.environ.get("GOOGLE_TOKEN_URI") or "https://oauth2.googleapis.com/token"
                 
                 logger.info(f"Google Calendar auth - client_id present: {bool(client_id)}, client_secret present: {bool(client_secret)}")
                 
@@ -171,7 +200,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
                         "redirect_uris": ["http://localhost"],
                     }
                 }
-                
+                print("calendar client_config", client_config)
                 flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
                 
                 # Check for cancellation before starting
