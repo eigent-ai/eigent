@@ -97,6 +97,7 @@
 	"are-you-sure-you-want-to-delete": "Are you sure you want to delete this task? This action cannot be undone.",
 	"share": "Share",
 	"home": "Home",
+	"back": "Back",
 	"developer-agent": "Developer Agent",
 	"search-agent": "Search Agent",
 	"document-agent": "Document Agent",
