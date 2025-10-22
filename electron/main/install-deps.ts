@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, cleanupOldVenvs, isBinaryExists, runInstallScript } from './utils/process'
 import { spawn } from 'child_process'
 import { safeMainWindowSend } from './utils/safeWebContentsSend'
+import os from 'node:os'
 
 const userData = app.getPath('userData');
 const versionFile = path.join(userData, 'version.txt');
@@ -57,6 +58,13 @@ Promise<PromiseReturnType> => {
 
   return new Promise(async (resolve, reject) => {
     try {
+      // Clean up cache in production environment BEFORE any checks
+      // This ensures users always get fresh dependencies in production
+      if (app.isPackaged) {
+        log.info('[CACHE CLEANUP] Production environment detected, cleaning cache before dependency check...');
+        cleanupCacheInProduction();
+      }
+
       const versionExists:boolean = checkInstallOperations.getSavedVersion();
 
       // Check if command tools are installed
@@ -277,6 +285,34 @@ class InstallLogs {
     if (fs.existsSync(installingLockPath)) {
         fs.unlinkSync(installingLockPath);
     }
+  }
+}
+
+/**
+ * Clean up cache directory
+ * This ensures users get fresh dependencies
+ * Note: Only call this in production environment (caller should check app.isPackaged)
+ */
+function cleanupCacheInProduction(): void {
+  try {
+    const cacheBaseDir = path.join(os.homedir(), '.eigent', 'cache');
+
+    if (!fs.existsSync(cacheBaseDir)) {
+      log.info('[CACHE CLEANUP] Cache directory does not exist, nothing to clean');
+      return;
+    }
+
+    log.info('[CACHE CLEANUP] Cleaning cache directory:', cacheBaseDir);
+
+    fs.rmSync(cacheBaseDir, { recursive: true, force: true });
+
+    log.info('[CACHE CLEANUP] Cache directory cleaned successfully');
+
+    fs.mkdirSync(cacheBaseDir, { recursive: true });
+    log.info('[CACHE CLEANUP] Empty cache directory recreated');
+
+  } catch (error) {
+    log.error('[CACHE CLEANUP] Failed to clean cache directory:', error);
   }
 }
 
