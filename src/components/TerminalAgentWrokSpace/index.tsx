@@ -1,4 +1,3 @@
-import { useChatStore } from "@/store/chatStore";
 import { useEffect, useState, useRef } from "react";
 import {
 	ArrowDown,
@@ -18,9 +17,15 @@ import { Button } from "../ui/button";
 import { fetchPut } from "@/api/http";
 import Terminal from "@/components/Terminal";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function TerminalAgentWrokSpace() {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { t } = useTranslation();
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -97,7 +102,7 @@ export default function TerminalAgentWrokSpace() {
 	const [isTakeControl, setIsTakeControl] = useState(false);
 	const handleTakeControl = (id: string) => {
 		console.log("handleTakeControl", id);
-		fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: "pause",
 		});
 		setIsTakeControl(true);
@@ -111,7 +116,7 @@ export default function TerminalAgentWrokSpace() {
 						size="sm"
 						variant="success"
 						onClick={() => {
-							fetchPut(`/task/${chatStore.activeTaskId}/take-control`, {
+							fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 								action: "resume",
 							});
 							setIsTakeControl(false);

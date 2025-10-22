@@ -230,10 +230,8 @@ class InstallLogs {
 
   /**Display filtered logs based on severity */
   displayFilteredLogs(data:String) {
-      if (!data) return;
+      if (!data) return;      
       const msg = data.toString().trimEnd();
-      //Detect if uv sync is run
-      detectInstallationLogs(msg);
       if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
           log.error(`BACKEND: [DEPS INSTALL] ${msg}`);
           safeMainWindowSend('install-dependencies-log', { type: 'stderr', data: data.toString() });
@@ -356,6 +354,29 @@ export async function installDependencies(version: string): Promise<PromiseRetur
         if (!fs.existsSync(toolkitPath)) {
           log.warn('[DEPS INSTALL] hybrid_browser_toolkit ts directory not found at ' + toolkitPath + ', skipping npm install');
           return true; // Not an error if the toolkit isn't installed
+        }
+
+        // Check if npm dependencies are already installed
+        const npmMarkerPath = path.join(toolkitPath, '.npm_dependencies_installed');
+        const nodeModulesPath = path.join(toolkitPath, 'node_modules');
+        const distPath = path.join(toolkitPath, 'dist');
+
+        // Check if marker exists and verify version
+        if (fs.existsSync(npmMarkerPath) && fs.existsSync(nodeModulesPath) && fs.existsSync(distPath)) {
+          try {
+            const markerContent = JSON.parse(fs.readFileSync(npmMarkerPath, 'utf-8'));
+            if (markerContent.version === version) {
+              log.info('[DEPS INSTALL] hybrid_browser_toolkit npm dependencies already installed for current version, skipping...');
+              return true;
+            } else {
+              log.info('[DEPS INSTALL] npm dependencies installed for different version, will reinstall...');
+              // Clean up old installation
+              fs.unlinkSync(npmMarkerPath);
+            }
+          } catch (error) {
+            log.warn('[DEPS INSTALL] Could not read npm marker file, will reinstall...', error);
+            // If we can't read the marker, assume we need to reinstall
+          }
         }
 
         log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit npm dependencies...');
@@ -515,6 +536,13 @@ export async function installDependencies(version: string): Promise<PromiseRetur
           // Non-critical, continue
         }
 
+        // Create marker file to indicate npm dependencies are installed
+        fs.writeFileSync(npmMarkerPath, JSON.stringify({
+          installedAt: new Date().toISOString(),
+          version: version
+        }));
+        log.info('[DEPS INSTALL] Created npm dependencies marker file');
+
         log.info('[DEPS INSTALL] hybrid_browser_toolkit dependencies installed successfully');
         return true;
       } catch (error) {
@@ -541,6 +569,32 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
     // Set Installing Lock Files
     InstallLogs.setLockPath();
+
+    // Clean up npm dependencies marker when reinstalling Python deps
+    // This ensures npm deps are reinstalled when Python environment changes
+    try {
+      let sitePackagesPath: string | null = null;
+      const libPath = path.join(venvPath, 'lib');
+
+      if (fs.existsSync(libPath)) {
+        const libContents = fs.readdirSync(libPath);
+        const pythonDir = libContents.find(name => name.startsWith('python'));
+        if (pythonDir) {
+          sitePackagesPath = path.join(libPath, pythonDir, 'site-packages');
+        }
+      }
+
+      if (sitePackagesPath) {
+        const npmMarkerPath = path.join(sitePackagesPath, 'camel', 'toolkits', 'hybrid_browser_toolkit', 'ts', '.npm_dependencies_installed');
+        if (fs.existsSync(npmMarkerPath)) {
+          fs.unlinkSync(npmMarkerPath);
+          log.info('[DEPS INSTALL] Removed npm dependencies marker for fresh installation');
+        }
+      }
+    } catch (error) {
+      log.warn('[DEPS INSTALL] Could not clean npm marker file:', error);
+      // Non-critical, continue
+    }
 
     // try default install
     const installSuccess = await runInstall([], version)
@@ -592,6 +646,24 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 let dependencyInstallationDetected = false;
 let installationNotificationSent = false;
 export function detectInstallationLogs(msg:string) {
+  // CRITICAL FIX: Use file system to check if installation is complete
+  // Don't rely on module variables as they can be reset during hot reload
+
+  // Check if dependencies are already installed
+  const isAlreadyInstalled = fs.existsSync(installedLockPath);
+
+  // If installed lock file exists, dependencies are already installed
+  // Skip all detection to avoid false positives
+  if (isAlreadyInstalled) {
+    // Dependencies are already installed, skip detection entirely
+    return;
+  }
+
+  // Also skip if notification was already sent (in current session)
+  if (installationNotificationSent) {
+    return;
+  }
+
   // Check for UV dependency installation patterns
   const installPatterns = [
       "Resolved", // UV resolving dependencies
@@ -605,18 +677,18 @@ export function detectInstallationLogs(msg:string) {
       "× No solution found when resolving dependencies", // Dependency resolution issues
       "Audited" // UV auditing dependencies
   ];
-  
+
   // Detect if UV is installing dependencies
-  if (!dependencyInstallationDetected && installPatterns.some(pattern => 
+  if (!dependencyInstallationDetected && installPatterns.some(pattern =>
       msg.includes(pattern) && !msg.includes("Uvicorn running on")
   )) {
       dependencyInstallationDetected = true;
       log.info('[BACKEND STARTUP] UV dependency installation detected during uvicorn startup');
-      
+
       // Create installing lock file to maintain consistency with install-deps.ts
       InstallLogs.setLockPath();
       log.info('[BACKEND STARTUP] Created uv_installing.lock file');
-      
+
       // Notify frontend that installation has started (only once)
       if (!installationNotificationSent) {
           installationNotificationSent = true;

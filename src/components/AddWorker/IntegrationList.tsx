@@ -429,10 +429,10 @@ export default function IntegrationList({
 									"Reddit",
 									"Github",
 								].includes(item.name)
-									? t("setting.coming-soon")
+									? t("layout.coming-soon")
 									: isInstalled
-									? t("setting.uninstall")
-									: t("setting.install")}
+									? t("layout.uninstall")
+									: t("layout.install")}
 							</Button>
 						)}
 					</div>

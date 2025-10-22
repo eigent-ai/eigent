@@ -3,8 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { TaskType } from "./TaskType";
 import { TaskItem } from "./TaskItem";
 import ShinyText from "@/components/ui/ShinyText/ShinyText";
-
-import { useChatStore } from "@/store/chatStore";
+import { useTranslation } from "react-i18next";
 
 import {
 	Bird,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { TaskState, TaskStateType } from "../TaskState";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface TaskCardProps {
 	taskInfo: any[];
@@ -48,10 +48,17 @@ export function TaskCard({
 	onDeleteTask,
 	clickable = true,
 }: TaskCardProps) {
+	const { t } = useTranslation();
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
-	const chatStore = useChatStore();
+
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 
 	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
 	const [filterTasks, setFilterTasks] = useState<any[]>([]);
@@ -164,7 +171,7 @@ export function TaskCard({
 
 	return (
 		<div>
-			<div className="w-full h-auto flex flex-col gap-2 py-sm transition-all duration-300">
+			<div className="w-full h-auto flex flex-col gap-2 transition-all duration-300">
 				<div className="w-full h-auto bg-task-surface backdrop-blur-[5px] rounded-xl py-sm relative overflow-hidden">
 					<div className="absolute top-0 left-0 w-full bg-transparent">
 						<Progress value={progressValue} className="h-[2px] w-full" />
@@ -172,120 +179,123 @@ export function TaskCard({
 					<div className="text-sm font-bold leading-13 mb-2.5 px-sm">
 						{summaryTask
 							? summaryTask.split("|")[0].replace(/"/g, "")
-							: "New Task"}
+							: "Thinking hard..."}
 					</div>
 
-					<div className={`flex items-center justify-between gap-2 px-sm`}>
-						<div className="flex items-center gap-2 ">
-							{taskType === 1 && (
-								<TaskState
-									all={taskInfo.filter((task) => task.content !== "").length || 0}
-									done={
-										taskInfo.filter(
-											(task) =>
-												task.content !== "" && task.status === "completed"
-										).length || 0
-									}
-									progress={
-										taskInfo.filter(
-											(task) =>
-												task.content !== "" &&
-												task.status !== "completed" &&
-												task.status !== "failed" &&
-												task.status !== "skipped" &&
-												task.status !== "waiting" &&
-												task.status !== ""
-										).length || 0
-									}
-									skipped={
-										taskInfo.filter(
-											(task) =>
-												task.content !== "" &&
-												(task.status === "skipped" ||
-													task.status === "waiting" ||
-													task.status === "")
-										).length || 0
-									}
-									failed={
-										taskInfo.filter(
-											(task) => task.content !== "" && task.status === "failed"
-										).length || 0
-									}
-									forceVisible={true}
-									clickable={clickable}
-								/>
-							)}
-							{taskType !== 1 && (
-								<TaskState
-									all={taskRunning?.length || 0}
-									done={
-										taskRunning?.filter((task) => task.status === "completed")
-											.length || 0
-									}
-									progress={
-										taskRunning?.filter(
-											(task) =>
-												task.status !== "completed" &&
-												task.status !== "failed" &&
-												task.status !== "skipped" &&
-												task.status !== "waiting" &&
-												task.status !== ""
-										).length || 0
-									}
-									skipped={
-										taskRunning?.filter(
-											(task) =>
-												task.status === "skipped" ||
-												task.status === "waiting" ||
-												task.status === ""
-										).length || 0
-									}
-									failed={
-										taskRunning?.filter((task) => task.status === "failed")
-											.length || 0
-									}
-									forceVisible={true}
-									selectedState={selectedState}
-									onStateChange={setSelectedState}
-									clickable={clickable}
-								/>
-							)}
-						</div>
-
-						<div className="transition-all duration-300 ease-in-out">
-							{taskType === 1 && (
-								<Button variant="ghost" size="icon" onClick={onAddTask}>
-									<Plus size={16} />
-								</Button>
-							)}
-							{taskType === 2 && (
-								<div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-300">
-									{(isExpanded || isAllTaskFinished) && (
-										<div className="text-text-tertiary text-xs font-medium leading-17">
-											{taskRunning?.filter(
+					{summaryTask && (
+						<div className={`flex items-center justify-between gap-2 px-sm`}>
+							<div className="flex items-center gap-2 ">
+								{taskType === 1 && (
+									<TaskState
+										all={taskInfo.filter((task) => task.content !== "").length || 0}
+										done={
+											taskInfo.filter(
 												(task) =>
-													task.status === "completed" ||
-													task.status === "failed"
-											).length || 0}
-											/{taskRunning?.length || 0}
-										</div>
-									)}
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => setIsExpanded(!isExpanded)}
-									>
-										<ChevronDown
-											size={16}
-											className={`transition-transform duration-300 ${
-												isExpanded ? "rotate-180" : ""
-											}`}
-										/>
+													task.content !== "" && task.status === "completed"
+											).length || 0
+										}
+										progress={
+											taskInfo.filter(
+												(task) =>
+													task.content !== "" &&
+													task.status !== "completed" &&
+													task.status !== "failed" &&
+													task.status !== "skipped" &&
+													task.status !== "waiting" &&
+													task.status !== ""
+											).length || 0
+										}
+										skipped={
+											taskInfo.filter(
+												(task) =>
+													task.content !== "" &&
+													(task.status === "skipped" ||
+														task.status === "waiting" ||
+														task.status === "")
+											).length || 0
+										}
+										failed={
+											taskInfo.filter(
+												(task) => task.content !== "" && task.status === "failed"
+											).length || 0
+										}
+										forceVisible={true}
+										clickable={clickable}
+									/>
+								)}
+								{taskType !== 1 && (
+									<TaskState
+										all={taskRunning?.length || 0}
+										done={
+											taskRunning?.filter((task) => task.status === "completed")
+												.length || 0
+										}
+										progress={
+											taskRunning?.filter(
+												(task) =>
+													task.status !== "completed" &&
+													task.status !== "failed" &&
+													task.status !== "skipped" &&
+													task.status !== "waiting" &&
+													task.status !== ""
+											).length || 0
+										}
+										skipped={
+											taskRunning?.filter(
+												(task) =>
+													task.status === "skipped" ||
+													task.status === "waiting" ||
+													task.status === ""
+											).length || 0
+										}
+										failed={
+											taskRunning?.filter((task) => task.status === "failed")
+												.length || 0
+										}
+										forceVisible={true}
+										selectedState={selectedState}
+										onStateChange={setSelectedState}
+										clickable={clickable}
+									/>
+								)}
+							</div>
+
+							<div className="transition-all duration-300 ease-in-out">
+								{taskType === 1 && (
+									<Button variant="ghost" size="icon" onClick={onAddTask}>
+										<Plus size={16} />
 									</Button>
-								</div>
-							)}
+								)}
+								{taskType === 2 && (
+									<div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-300">
+										{(isExpanded || isAllTaskFinished) && (
+											<div className="text-text-tertiary text-xs font-medium leading-17">
+												{taskRunning?.filter(
+													(task) =>
+														task.status === "completed" ||
+														task.status === "failed"
+												).length || 0}
+												/{taskRunning?.length || 0}
+											</div>
+										)}
+										<Button
+											variant="ghost"
+											size="icon"
+											onClick={() => setIsExpanded(!isExpanded)}
+										>
+											<ChevronDown
+												size={16}
+												className={`transition-transform duration-300 ${
+													isExpanded ? "rotate-180" : ""
+												}`}
+											/>
+										</Button>
+									</div>
+								)}
+							</div>
 						</div>
-					</div>
+					)}
+					
 					<div className="relative">
 						{taskType === 1 && (
 							<div className="mt-sm flex flex-col px-sm animate-in fade-in-0 slide-in-from-bottom-4 duration-500 ease-out">

@@ -1,8 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from app.component.model_validation import create_agent
 from camel.types import ModelType
 from app.component.error_format import normalize_error_to_openai_format
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("model_controller")
 
 
 router = APIRouter(tags=["model"])
@@ -26,33 +29,46 @@ class ValidateModelResponse(BaseModel):
 
 
 @router.post("/model/validate")
+@traceroot.trace()
 async def validate_model(request: ValidateModelRequest):
-    try:
-        # API key validation
-        if request.api_key is not None and str(request.api_key).strip() == "":
-            return ValidateModelResponse(
-                is_valid=False,
-                is_tool_calls=False,
-                message="Invalid key. Validation failed.",
-                error_code="invalid_api_key",
-                error={
-                    "message": "Invalid key. Validation failed.",
+    """Validate model configuration and tool call support."""
+    platform = request.model_platform
+    model_type = request.model_type
+    has_custom_url = request.url is not None
+    has_config = request.model_config_dict is not None
+
+    logger.info("Model validation started", extra={"platform": platform, "model_type": model_type, "has_url": has_custom_url, "has_config": has_config})
+
+    # API key validation
+    if request.api_key is not None and str(request.api_key).strip() == "":
+        logger.warning("Model validation failed: empty API key", extra={"platform": platform, "model_type": model_type})
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Invalid key. Validation failed.",
+                "error_code": "invalid_api_key",
+                "error": {
                     "type": "invalid_request_error",
                     "param": None,
                     "code": "invalid_api_key",
                 },
-            )
+            }
+        )
 
+    try:
         extra = request.extra_params or {}
 
+        logger.debug("Creating agent for validation", extra={"platform": platform, "model_type": model_type})
         agent = create_agent(
-            request.model_platform,
-            request.model_type,
+            platform,
+            model_type,
             api_key=request.api_key,
             url=request.url,
             model_config_dict=request.model_config_dict,
             **extra,
         )
+
+        logger.debug("Agent created, executing test step", extra={"platform": platform, "model_type": model_type})
         response = agent.step(
             input_message="""
             Get the content of https://www.camel-ai.org,
@@ -61,17 +77,23 @@ async def validate_model(request: ValidateModelRequest):
             you must call the get_website_content tool only once.
             """
         )
+
+
     except Exception as e:
         # Normalize error to OpenAI-style error structure
+        logger.error("Model validation failed", extra={"platform": platform, "model_type": model_type, "error": str(e)}, exc_info=True)
         message, error_code, error_obj = normalize_error_to_openai_format(e)
 
-        return ValidateModelResponse(
-            is_valid=False,
-            is_tool_calls=False,
-            message=message,
-            error_code=error_code,
-            error=error_obj,
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": message,
+                "error_code": error_code,
+                "error": error_obj,
+            }
         )
+    
+    # Check validation results
     is_valid = bool(response)
     is_tool_calls = False
 
@@ -83,7 +105,7 @@ async def validate_model(request: ValidateModelRequest):
                 == "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
             )
 
-    return ValidateModelResponse(
+    result = ValidateModelResponse(
         is_valid=is_valid,
         is_tool_calls=is_tool_calls,
         message="Validation Success"
@@ -92,3 +114,7 @@ async def validate_model(request: ValidateModelRequest):
         error_code=None,
         error=None,
     )
+
+    logger.info("Model validation completed", extra={"platform": platform, "model_type": model_type, "is_valid": is_valid, "is_tool_calls": is_tool_calls})
+
+    return result

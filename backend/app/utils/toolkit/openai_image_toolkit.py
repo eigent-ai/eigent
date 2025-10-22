@@ -3,11 +3,12 @@ from camel.toolkits import OpenAIImageToolkit as BaseOpenAIImageToolkit
 
 from app.component.environment import env
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from typing import Literal, Optional, Union, List
 
 
+@auto_listen_toolkit(BaseOpenAIImageToolkit)
 class OpenAIImageToolkit(BaseOpenAIImageToolkit, AbstractToolkit):
     agent_name: str = Agents.multi_modal_agent
 

@@ -21,7 +21,6 @@ import {
 import { Button } from "@/components/ui/button";
 import Folder from "../Folder";
 import Terminal from "../Terminal";
-import { useChatStore } from "@/store/chatStore";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import ShinyText from "../ui/ShinyText/ShinyText";
 import { MarkDown } from "./MarkDown";
@@ -35,6 +34,7 @@ import {
 	PopoverTrigger,
 } from "../ui/popover";
 import { AddWorker } from "@/components/AddWorker";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface NodeProps {
 	id: string;
@@ -99,7 +99,12 @@ export function Node({ id, data }: NodeProps) {
 		}
 	}, [selectedState, data.agent?.tasks]);
 
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();
@@ -374,7 +379,7 @@ export function Node({ id, data }: NodeProps) {
 													<Button
 														variant="ghost"
 														size="sm"
-														className="w-full justify-start gap-2 bg-specialty-menutabs-default group  hover:bg-surface-cuation text-text-primary hover:text-text-cuation-default"
+														className="w-full justify-start gap-2"
 														onClick={(e) => {
 															e.stopPropagation();
 															const newWorkerList = workerList.filter(
