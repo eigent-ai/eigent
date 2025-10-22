@@ -166,7 +166,15 @@ class CookieManager:
             cursor.execute(delete_query, (domain, f'%.{domain}'))
             deleted_count = cursor.rowcount
             conn.commit()
+
+            # IMPORTANT: Execute VACUUM to remove deleted data and compact database
+            # This prevents recovery from WAL files
+            cursor.execute("VACUUM")
+            conn.commit()
             conn.close()
+
+            # Also remove WAL and SHM files to ensure clean state
+            self._cleanup_wal_files()
 
             logger.info(f"Deleted {deleted_count} cookies for domain {domain}")
             return True
@@ -174,6 +182,20 @@ class CookieManager:
         except Exception as e:
             logger.error(f"Error deleting cookies for domain {domain}: {e}")
             return False
+
+    def _cleanup_wal_files(self):
+        """Remove SQLite WAL and SHM files"""
+        try:
+            wal_path = self.cookies_db_path + '-wal'
+            shm_path = self.cookies_db_path + '-shm'
+            journal_path = self.cookies_db_path + '-journal'
+
+            for path in [wal_path, shm_path, journal_path]:
+                if os.path.exists(path):
+                    os.remove(path)
+                    logger.info(f"Removed temporary file: {path}")
+        except Exception as e:
+            logger.warning(f"Error cleaning up WAL files: {e}")
 
     def delete_all_cookies(self) -> bool:
         """Delete all cookies"""
@@ -187,7 +209,15 @@ class CookieManager:
             cursor.execute("DELETE FROM cookies")
             deleted_count = cursor.rowcount
             conn.commit()
+
+            # IMPORTANT: Execute VACUUM to remove deleted data and compact database
+            # This prevents recovery from WAL files
+            cursor.execute("VACUUM")
+            conn.commit()
             conn.close()
+
+            # Also remove WAL and SHM files to ensure clean state
+            self._cleanup_wal_files()
 
             logger.info(f"Deleted all {deleted_count} cookies")
             return True

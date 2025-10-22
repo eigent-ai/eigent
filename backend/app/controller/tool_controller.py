@@ -215,61 +215,6 @@ app.whenReady().then(async () => {
   console.log('  user-data-dir:', app.commandLine.getSwitchValue('user-data-dir'));
   console.log('  remote-debugging-port:', app.commandLine.getSwitchValue('remote-debugging-port'));
 
-  // Import cookies from JSON backup if exists
-  const mainAppUserData = process.platform === 'darwin'
-    ? path.join(require('os').homedir(), 'Library/Application Support/eigent')
-    : process.platform === 'win32'
-    ? path.join(process.env.APPDATA, 'eigent')
-    : path.join(require('os').homedir(), '.config/eigent');
-
-  const cookiesJsonPath = path.join(mainAppUserData, 'Partitions', 'user_login', 'cookies_backup.json');
-
-  console.log('[ELECTRON BROWSER] Checking for cookies JSON backup:', cookiesJsonPath);
-
-  if (fs.existsSync(cookiesJsonPath)) {
-    try {
-      const cookiesJson = fs.readFileSync(cookiesJsonPath, 'utf8');
-      const cookies = JSON.parse(cookiesJson);
-      console.log('[ELECTRON BROWSER] Found', cookies.length, 'cookies in backup, importing...');
-
-      // Get session after app is ready
-      const userLoginSession = session.fromPartition('persist:user_login');
-
-      // Import each cookie
-      let imported = 0;
-      for (const cookie of cookies) {
-        try {
-          // Remove read-only properties
-          const cookieToSet = {
-            url: `http${cookie.secure ? 's' : ''}://${cookie.domain.startsWith('.') ? cookie.domain.substring(1) : cookie.domain}${cookie.path}`,
-            name: cookie.name,
-            value: cookie.value,
-            domain: cookie.domain,
-            path: cookie.path,
-            secure: cookie.secure,
-            httpOnly: cookie.httpOnly,
-            expirationDate: cookie.expirationDate
-          };
-
-          await userLoginSession.cookies.set(cookieToSet);
-          imported++;
-        } catch (err) {
-          console.error('[ELECTRON BROWSER] Failed to import cookie:', cookie.name, err.message);
-        }
-      }
-
-      console.log('[ELECTRON BROWSER] Successfully imported', imported, 'cookies');
-
-      // Flush to disk immediately
-      await userLoginSession.flushStorageData();
-      console.log('[ELECTRON BROWSER] Cookies flushed to disk');
-    } catch (error) {
-      console.error('[ELECTRON BROWSER] Failed to import cookies from JSON:', error);
-    }
-  } else {
-    console.log('[ELECTRON BROWSER] No cookies backup found');
-  }
-
   // Log partition session info
   const userLoginSession = session.fromPartition('persist:user_login');
   console.log('[ELECTRON BROWSER] Session info:');
@@ -608,33 +553,6 @@ app.on('before-quit', async (event) => {
     console.log('[ELECTRON BROWSER] Flushing storage on quit...');
     await userLoginSession.flushStorageData();
     console.log('[ELECTRON BROWSER] Storage data flushed on quit');
-
-    // Export cookies as JSON to sync to main app
-    try {
-      const mainAppUserData = process.platform === 'darwin'
-        ? path.join(require('os').homedir(), 'Library/Application Support/eigent')
-        : process.platform === 'win32'
-        ? path.join(process.env.APPDATA, 'eigent')
-        : path.join(require('os').homedir(), '.config/eigent');
-
-      const cookiesJsonPath = path.join(mainAppUserData, 'Partitions', 'user_login', 'cookies_backup.json');
-
-      // Get all cookies
-      const allCookies = await userLoginSession.cookies.get({});
-      console.log('[ELECTRON BROWSER] Exporting', allCookies.length, 'cookies to JSON');
-
-      // Ensure directory exists
-      const cookiesDir = path.dirname(cookiesJsonPath);
-      if (!fs.existsSync(cookiesDir)) {
-        fs.mkdirSync(cookiesDir, { recursive: true });
-      }
-
-      // Save cookies as JSON
-      fs.writeFileSync(cookiesJsonPath, JSON.stringify(allCookies, null, 2));
-      console.log('[ELECTRON BROWSER] Cookies exported to:', cookiesJsonPath);
-    } catch (error) {
-      console.error('[ELECTRON BROWSER] Failed to export cookies:', error);
-    }
   } catch (error) {
     console.error('[ELECTRON BROWSER] Failed to sync cookies:', error);
   } finally {
