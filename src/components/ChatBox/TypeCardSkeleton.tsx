@@ -2,12 +2,14 @@ import { ChevronDown, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TaskType } from "./TaskType";
 import { Progress } from "@/components/ui/progress";
+import { useTranslation } from "react-i18next";
 
 export const TypeCardSkeleton = ({
 	isTakeControl,
 }: {
 	isTakeControl: boolean;
 }) => {
+	const { t } = useTranslation();
 	return (
 		<div>
 			<div className="w-full h-auto flex flex-col gap-2 px-2 py-sm transition-all duration-300 ">
@@ -41,7 +43,7 @@ export const TypeCardSkeleton = ({
 						<div className="transition-all duration-300 ease-in-out">
 							<div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-right-2 duration-300">
 								<div className="text-text-tertiary text-xs font-medium leading-17">
-									-/-
+									{t("layout.tasks")}
 								</div>
 								<Button variant="ghost" size="icon">
 									<ChevronDown

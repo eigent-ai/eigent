@@ -4,7 +4,6 @@ import { TaskType } from "./TaskType";
 import { TaskItem } from "./TaskItem";
 import ShinyText from "@/components/ui/ShinyText/ShinyText";
 
-import { useChatStore } from "@/store/chatStore";
 
 import { ChevronDown, SquareCode } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";

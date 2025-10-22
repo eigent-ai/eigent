@@ -292,6 +292,27 @@ code {
   background: rgba(0, 0, 0, 0.05);
 }
 
+.scrollbar-always-visible {
+  scrollbar-gutter: stable;
+}
+
+.scrollbar-always-visible::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-always-visible::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.8);
+  border-radius: 3px;
+}
+
+.scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 1);
+}
+
+.scrollbar-always-visible::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 
 .terminal-scrollbar::-webkit-scrollbar {
   width: 8px;
@@ -379,14 +400,14 @@ code {
 }
 
 .alert-dialog {
-  z-index: 900;
-
+  z-index: 9998;
+  pointer-events: auto;
 }
 
 .alert-dialog-wrapper {
   width: 450px;
-  height: 220px;
-  z-index: 910;
+  height: auto;
+  z-index: 9999;
   top: calc(50vh - 110px);
   left: calc(50vw - 225px);
   background: rgba(255, 255, 255, 0.8);
