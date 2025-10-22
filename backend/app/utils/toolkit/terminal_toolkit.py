@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from camel.toolkits.terminal_toolkit import TerminalToolkit as BaseTerminalToolkit
 from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.component.environment import env
@@ -55,16 +56,33 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     def _update_terminal_output(self, output: str):
         task_lock = get_task_lock(self.api_task_id)
-        # This method will be called during init. At that time, the process_task_id parameter does not exist, so it is set to be empty default
         process_task_id = process_task.get("")
-        task = asyncio.create_task(
-            task_lock.put_queue(
-                ActionTerminalData(
-                    action=Action.terminal,
-                    process_task_id=process_task_id,
-                    data=output,
-                )
+
+        # Create the coroutine
+        coro = task_lock.put_queue(
+            ActionTerminalData(
+                action=Action.terminal,
+                process_task_id=process_task_id,
+                data=output,
             )
         )
-        if hasattr(task_lock, "add_background_task"):
-            task_lock.add_background_task(task)
+
+        # Try to get the current event loop, if none exists, create a new one in a thread
+        try:
+            loop = asyncio.get_running_loop()
+            # If we're in an async context, schedule the coroutine
+            task = loop.create_task(coro)
+            if hasattr(task_lock, "add_background_task"):
+                task_lock.add_background_task(task)
+        except RuntimeError:
+            # No event loop running, schedule it in a new thread
+            def run_in_thread():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    new_loop.run_until_complete(coro)
+                finally:
+                    new_loop.close()
+
+            thread = threading.Thread(target=run_in_thread, daemon=True)
+            thread.start()
