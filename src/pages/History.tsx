@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { useUser } from "@stackframe/react";
@@ -28,11 +28,20 @@ import WordCarousel from "@/components/ui/WordCarousel";
 export default function Home() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore || !projectStore) {
 		return <div>Loading...</div>;
 	}
-	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">("projects");
+	
+	// Get initial tab from URL parameter, default to "projects"
+	const getInitialTab = () => {
+		const tabFromUrl = searchParams.get('tab');
+		const validTabs = ["projects", "workers", "trigger", "settings", "mcp_tools"];
+		return validTabs.includes(tabFromUrl || "") ? tabFromUrl as typeof activeTab : "projects";
+	};
+	
+	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">(getInitialTab);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const HAS_STACK_KEYS = hasStackKeys();
@@ -70,7 +79,14 @@ export default function Home() {
 		navigate("/");
 	};
 
-  useEffect(() => {}, []);
+  useEffect(() => {
+		// Update active tab when URL parameter changes
+		const tabFromUrl = searchParams.get('tab');
+		const validTabs = ["projects", "workers", "trigger", "settings", "mcp_tools"];
+		if (tabFromUrl && validTabs.includes(tabFromUrl)) {
+			setActiveTab(tabFromUrl as typeof activeTab);
+		}
+	}, [searchParams]);
 
 	return (
 		<div ref={scrollContainerRef} className="h-full overflow-y-auto scrollbar-hide mx-auto">
