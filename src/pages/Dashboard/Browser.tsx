@@ -272,7 +272,7 @@ export default function Browser() {
 						</Button>
 						{cookieDomains.length > 0 && (
 							<Button
-								variant="destructive"
+								variant="warning"
 								size="sm"
 								onClick={handleDeleteAll}
 								disabled={deletingAll}
