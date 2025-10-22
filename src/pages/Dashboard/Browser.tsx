@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Globe, Cookie, Trash2, RefreshCw } from "lucide-react";
+import { Globe, Cookie, Trash2, RefreshCw, RotateCw } from "lucide-react";
 import { fetchPost, fetchGet, fetchDelete } from "@/api/http";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import AlertDialog from "@/components/ui/alertDialog";
 
 interface CookieDomain {
 	domain: string;
@@ -24,6 +25,8 @@ export default function Browser() {
 	const [cookieDomains, setCookieDomains] = useState<CookieDomain[]>([]);
 	const [deletingDomain, setDeletingDomain] = useState<string | null>(null);
 	const [deletingAll, setDeletingAll] = useState(false);
+	const [showRestartDialog, setShowRestartDialog] = useState(false);
+	const [cookiesBeforeBrowser, setCookiesBeforeBrowser] = useState<number>(0);
 
 	// Extract main domain (e.g., "aa.bb.cc" -> "bb.cc", "www.google.com" -> "google.com")
 	const getMainDomain = (domain: string): string => {
@@ -67,6 +70,10 @@ export default function Browser() {
 	const handleBrowserLogin = async () => {
 		setLoginLoading(true);
 		try {
+			// Record current cookie count before opening browser
+			const currentCookieCount = cookieDomains.reduce((sum, item) => sum + item.cookie_count, 0);
+			setCookiesBeforeBrowser(currentCookieCount);
+
 			const response = await fetchPost("/browser/login");
 			if (response) {
 				toast.success("Browser opened successfully for login");
@@ -79,7 +86,19 @@ export default function Browser() {
 						if (!statusResponse || !statusResponse.is_open) {
 							clearInterval(checkInterval);
 							await handleLoadCookies();
-							toast.info("Browser closed, cookies refreshed");
+							// Check if cookies changed
+							const newResponse = await fetchGet("/browser/cookies");
+							if (newResponse && newResponse.success) {
+								const newDomains = newResponse.domains || [];
+								const newCookieCount = newDomains.reduce((sum: number, item: CookieDomain) => sum + item.cookie_count, 0);
+
+								if (newCookieCount !== currentCookieCount) {
+									// Cookies have changed, show restart dialog
+									setShowRestartDialog(true);
+								} else {
+									toast.info("Browser closed, no cookie changes detected");
+								}
+							}
 						}
 					} catch (error) {
 						// Browser might be closed
@@ -132,6 +151,9 @@ export default function Browser() {
 			// Remove from local state
 			const domainsToRemove = new Set(subdomains.map(item => item.domain));
 			setCookieDomains(prev => prev.filter(item => !domainsToRemove.has(item.domain)));
+
+			// Show restart dialog after successful deletion
+			setShowRestartDialog(true);
 		} catch (error: any) {
 			toast.error(error?.message || `Failed to delete cookies for ${mainDomain}`);
 		} finally {
@@ -145,6 +167,9 @@ export default function Browser() {
 			await fetchDelete("/browser/cookies");
 			toast.success("Deleted all cookies");
 			setCookieDomains([]);
+
+			// Show restart dialog after successful deletion
+			setShowRestartDialog(true);
 		} catch (error: any) {
 			toast.error(error?.message || "Failed to delete all cookies");
 		} finally {
@@ -152,8 +177,45 @@ export default function Browser() {
 		}
 	};
 
+	const handleRestartApp = () => {
+		if (window.electronAPI && window.electronAPI.restartApp) {
+			window.electronAPI.restartApp();
+		} else {
+			toast.error("Restart function not available");
+		}
+	};
+
+	const handleConfirmRestart = () => {
+		setShowRestartDialog(false);
+		handleRestartApp();
+	};
+
 	return (
 		<div className="max-w-[900px] h-auto m-auto flex flex-col px-20 pb-40 pt-8">
+			{/* Restart Dialog */}
+			<AlertDialog
+				isOpen={showRestartDialog}
+				onClose={() => setShowRestartDialog(false)}
+				onConfirm={handleConfirmRestart}
+				title="Cookies Updated"
+				message="Cookies have been updated. Would you like to restart the application to use the new cookies?"
+				confirmText="Yes, Restart"
+				cancelText="No, Later"
+			/>
+
+			{/* Title and Restart Button */}
+			<div className="flex items-center justify-between mb-4">
+				<h2 className="text-heading-lg font-bold text-text-heading">Browser Management</h2>
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={handleRestartApp}
+				>
+					<RotateCw className="w-4 h-4" />
+					Restart to Apply Changes
+				</Button>
+			</div>
+
 			<div className="flex flex-col gap-6">
 				{/* Browser Login Card */}
 				<div className="flex flex-col gap-4 p-6 border border-border-secondary rounded-lg bg-bg-surface-primary">
