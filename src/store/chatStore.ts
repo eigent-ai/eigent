@@ -551,7 +551,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								taskType: type ? 2 : 1,
 								showType: "list",
 								// Don't auto-confirm for multi-turn complex tasks - show workforce splitting panel
-								isConfirm: shouldAutoConfirm
+								isConfirm: shouldAutoConfirm,
+								task_id: currentTaskId
 							};
 							addMessages(currentTaskId, newMessage)
 							const newTaskInfo = {
