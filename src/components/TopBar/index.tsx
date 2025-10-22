@@ -330,9 +330,9 @@ function HeaderWin() {
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string] &&
 							(
-								chatStore.tasks[chatStore.activeTaskId as string].messages.length > 0 ||
-								chatStore.tasks[chatStore.activeTaskId as string].hasMessages ||
-								chatStore.tasks[chatStore.activeTaskId as string].status !== 'pending'
+								(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
+								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
+								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
 							) && (
 							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
