@@ -295,7 +295,7 @@ function HeaderWin() {
 					<div
 						className={`${
 							platform === "darwin" && "pr-2"
-						} flex h-full items-center space-x-1 z-50 relative no-drag gap-1`}
+						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
 							<>
@@ -376,7 +376,7 @@ function HeaderWin() {
 					<div
 						className={`${
 							platform === "darwin" && "pr-2"
-						} flex h-full items-center space-x-1 z-50 relative no-drag gap-1`}
+						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 					</div>
 				)}

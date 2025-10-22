@@ -42,6 +42,14 @@ export default function Home() {
 	const { username, email } = useAuthStore();
 	const displayName = stackUser?.displayName ?? stackUser?.primaryEmail ?? username ?? email ?? "";
 
+	// Sync activeTab with URL changes
+	useEffect(() => {
+		const tab = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | null;
+		if (tab) {
+			setActiveTab(tab);
+		}
+	}, [searchParams]);
+
 	const formatWelcomeName = (raw: string): string => {
 		if (!raw) return "";
 		if (/^[^@]+@gmail\.com$/i.test(raw)) {
