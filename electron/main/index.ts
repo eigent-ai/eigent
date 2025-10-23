@@ -1358,6 +1358,39 @@ const setupExternalLinkHandling = () => {
   });
 };
 
+// ==================== health check polling ====================
+const waitForBackendHealth = async (port: number, maxAttempts = 30, intervalMs = 1000): Promise<boolean> => {
+  log.info(`Waiting for backend health check on port ${port}...`);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'healthy') {
+          log.info(`Backend health check passed on attempt ${attempt}/${maxAttempts}`);
+          return true;
+        }
+      }
+    } catch (error) {
+      // Connection refused or other network error - backend not ready yet
+      log.debug(`Health check attempt ${attempt}/${maxAttempts} failed:`, error);
+    }
+
+    // Wait before next attempt
+    if (attempt < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  log.error(`Backend health check failed after ${maxAttempts} attempts`);
+  return false;
+};
+
 // ==================== check and start backend ====================
 const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
@@ -1372,9 +1405,19 @@ const checkAndStartBackend = async () => {
         log.info('Backend service started successfully', { port });
       });
 
-      // Only notify frontend after backend is fully ready
+      // Wait for backend to be actually ready to serve requests
+      if (backendPort) {
+        const isHealthy = await waitForBackendHealth(backendPort);
+
+        if (!isHealthy) {
+          log.error('Backend failed health check - frontend will not be notified as ready');
+          return;
+        }
+      }
+
+      // Only notify frontend after backend passes health check
       if (win && !win.isDestroyed()) {
-        log.info('Backend fully ready, notifying frontend...');
+        log.info('Backend fully ready and healthy, notifying frontend...');
         win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
       }
 

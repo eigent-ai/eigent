@@ -119,27 +119,28 @@ export default function Browser() {
 		}
 	};
 
-	const handleLoadCookies = async (showToast: boolean = true) => {
+	const handleLoadCookies = async (showToast: boolean | React.MouseEvent = true) => {
+		const shouldShowToast = typeof showToast === 'boolean' ? showToast : true;
 		setCookiesLoading(true);
 		try {
 			const response = await fetchGet("/browser/cookies");
 			if (response && response.success) {
 				const domains = response.domains || [];
 				setCookieDomains(domains);
-				if (showToast && domains.length > 0) {
+				if (shouldShowToast && domains.length > 0) {
 					toast.success(`Loaded ${domains.length} cookie domains`);
-				} else if (showToast) {
+				} else if (shouldShowToast) {
 					toast.info(response.message || "No cookies found");
 				}
 			} else {
 				setCookieDomains([]);
-				if (showToast) {
+				if (shouldShowToast) {
 					toast.info("No cookies found");
 				}
 			}
 		} catch (error: any) {
 			// Only show error toast if explicitly requested (user-initiated action)
-			if (showToast) {
+			if (shouldShowToast) {
 				toast.error(error?.message || "Failed to load cookies");
 			}
 			setCookieDomains([]);
@@ -274,7 +275,7 @@ export default function Browser() {
 						<Button
 							variant="primary"
 							size="sm"
-							onClick={() => handleLoadCookies()}
+							onClick={handleLoadCookies}
 							disabled={cookiesLoading}
 						>
 							<RefreshCw className={`w-4 h-4 ${cookiesLoading ? 'animate-spin' : ''}`} />

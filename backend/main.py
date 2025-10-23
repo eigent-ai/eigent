@@ -36,6 +36,12 @@ app_logger.info(f"Loading routers with prefix: '{prefix}'")
 auto_include_routers(api, prefix, "app/controller")
 app_logger.info("All routers loaded successfully")
 
+# Add health check endpoint
+@api.get("/health", tags=["health"])
+async def health_check():
+    """Health check endpoint to verify backend is ready"""
+    return {"status": "healthy", "message": "Backend is ready"}
+
 
 
 dir = pathlib.Path(__file__).parent / "runtime"
