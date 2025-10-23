@@ -214,12 +214,18 @@ export default function ChatBox(): JSX.Element {
 
 					// Only start a new task if: pending, no messages processed yet
 					// OR while or after replaying a project
-					if ((chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished) 
+					if ((chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished)
 						|| chatStore.tasks[_taskId].type === "replay") {
 						setMessage("");
 						// Pass the message content to startTask instead of adding it to current chatStore
 						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
-						chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
+						try {
+							await chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
+						} catch (err: any) {
+							console.error("Failed to start task:", err);
+							toast.error(err?.message || "Failed to start task. Please check your model configuration.");
+							return;
+						}
 						// keep hasWaitComfirm as true so that follow-up improves work as usual
 					} else {
 						// Continue conversation: simple response, complex task, or finished task
@@ -269,8 +275,14 @@ export default function ChatBox(): JSX.Element {
 					// For the very first message, add it to the current chatStore first, then call startTask
 					const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
 					setMessage("");
-					chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
-					chatStore.setHasWaitComfirm(_taskId as string, true);
+					try {
+						await chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
+						chatStore.setHasWaitComfirm(_taskId as string, true);
+					} catch (err: any) {
+						console.error("Failed to start task:", err);
+						toast.error(err?.message || "Failed to start task. Please check your model configuration.");
+						return;
+					}
 				}
 			}
 		} catch (error) {
@@ -305,9 +317,14 @@ export default function ChatBox(): JSX.Element {
 				role: "user",
 				content: res.question.split("|")[0],
 			});
-			chatStore.startTask(taskId, "share", _token, 0.1);
-			chatStore.setActiveTaskId(taskId);
-			chatStore.handleConfirmTask(projectStore.activeProjectId, taskId, "share");
+			try {
+				await chatStore.startTask(taskId, "share", _token, 0.1);
+				chatStore.setActiveTaskId(taskId);
+				chatStore.handleConfirmTask(projectStore.activeProjectId, taskId, "share");
+			} catch (err: any) {
+				console.error("Failed to start shared task:", err);
+				toast.error(err?.message || "Failed to start task. Please check your model configuration.");
+			}
 		}
 	};
 
