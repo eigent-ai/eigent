@@ -224,6 +224,19 @@ function HeaderWin() {
 						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
 					</Button>
 					</div>
+					{location.pathname === "/history" && (
+						<div className="flex items-center mr-1">
+							<Button
+								variant="ghost"
+								size="xs"
+								className="no-drag"
+								onClick={() => navigate("/")}
+							>
+								<ChevronLeft className="w-4 h-4" />
+								{t("layout.back")}
+							</Button>
+						</div>
+					)}
 					{location.pathname !== "/history" && (
 						<div className="flex items-center mr-1">
 						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
@@ -282,7 +295,7 @@ function HeaderWin() {
 					<div
 						className={`${
 							platform === "darwin" && "pr-2"
-						} flex h-full items-center space-x-1 z-50 relative no-drag gap-1`}
+						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
 							<>
@@ -314,6 +327,17 @@ function HeaderWin() {
 								{t("layout.refer-friends")}
 							</Button>
 						</TooltipSimple>
+						<TooltipSimple content={t("layout.settings")} side="bottom" align="center">
+							<Button
+								onClick={() => navigate("/history?tab=settings")}
+								variant="ghost"
+								size="xs"
+								className="no-drag"
+							>
+								<Settings className="w-4 h-4" />
+								{t("layout.settings")}
+							</Button>
+						</TooltipSimple>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
 							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
@@ -330,9 +354,9 @@ function HeaderWin() {
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string] &&
 							(
-								chatStore.tasks[chatStore.activeTaskId as string].messages.length > 0 ||
-								chatStore.tasks[chatStore.activeTaskId as string].hasMessages ||
-								chatStore.tasks[chatStore.activeTaskId as string].status !== 'pending'
+								(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
+								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
+								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
 							) && (
 							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
@@ -352,7 +376,7 @@ function HeaderWin() {
 					<div
 						className={`${
 							platform === "darwin" && "pr-2"
-						} flex h-full items-center space-x-1 z-50 relative no-drag`}
+						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 					</div>
 				)}

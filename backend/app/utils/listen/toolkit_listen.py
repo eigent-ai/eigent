@@ -285,11 +285,17 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
         for method_name, base_method in base_methods.items():
             if method_name in cls.__dict__:
                 continue
-                
+
             sig = signature(base_method)
-            
+
             def create_wrapper(method_name: str, base_method: Callable) -> Callable:
-                if iscoroutinefunction(base_method):
+                # Unwrap decorators to check the actual function
+                unwrapped_method = base_method
+                while hasattr(unwrapped_method, '__wrapped__'):
+                    unwrapped_method = unwrapped_method.__wrapped__
+
+                # Check if the unwrapped method is a coroutine function
+                if iscoroutinefunction(unwrapped_method):
                     async def async_method_wrapper(self, *args, **kwargs):
                         return await getattr(super(cls, self), method_name)(*args, **kwargs)
                     async_method_wrapper.__name__ = method_name
@@ -301,12 +307,12 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
                     sync_method_wrapper.__name__ = method_name
                     sync_method_wrapper.__signature__ = sig
                     return sync_method_wrapper
-            
+
             wrapper = create_wrapper(method_name, base_method)
             decorated_method = listen_toolkit(base_method)(wrapper)
-            
+
             setattr(cls, method_name, decorated_method)
 
         return cls
-    
+
     return class_decorator
