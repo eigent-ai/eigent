@@ -50,5 +50,21 @@
         "http://127.0.0.1:7777/**"
       ]
     },
+    {
+      "name": "Debug Python Backend (Attach)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/backend",
+          "remoteRoot": "."
+        }
+      ],
+      "justMyCode": false
+    }
   ]
 }
