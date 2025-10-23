@@ -1,6 +1,9 @@
 import asyncio
+import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 from camel.toolkits.terminal_toolkit import TerminalToolkit as BaseTerminalToolkit
 from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.component.environment import env
@@ -13,6 +16,8 @@ from app.service.task import process_task
 @auto_listen_toolkit(BaseTerminalToolkit)
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
+    _thread_pool: Optional[ThreadPoolExecutor] = None
+    _thread_local = threading.local()
 
     def __init__(
         self,
@@ -32,6 +37,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             self.agent_name = agent_name
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
+        if TerminalToolkit._thread_pool is None:
+            TerminalToolkit._thread_pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="terminal_toolkit"
+            )
         super().__init__(
             timeout=timeout,
             working_directory=working_directory,
@@ -75,14 +85,38 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             if hasattr(task_lock, "add_background_task"):
                 task_lock.add_background_task(task)
         except RuntimeError:
-            # No event loop running, schedule it in a new thread
-            def run_in_thread():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    new_loop.run_until_complete(coro)
-                finally:
-                    new_loop.close()
+            self._thread_pool.submit(self._run_coro_in_thread, coro,task_lock)
 
-            thread = threading.Thread(target=run_in_thread, daemon=True)
-            thread.start()
+    @staticmethod
+    def _run_coro_in_thread(coro,task_lock):
+        """
+        Execute coro in the thread pool, with each thread bound to a long-term event loop
+        """
+        if not hasattr(TerminalToolkit._thread_local, "loop"):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            TerminalToolkit._thread_local.loop = loop
+        else:
+            loop = TerminalToolkit._thread_local.loop
+
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            TerminalToolkit._thread_local.loop = loop
+
+        try:
+            task = loop.create_task(coro)
+            if hasattr(task_lock, "add_background_task"):
+                task_lock.add_background_task(task)
+            loop.run_until_complete(task)
+        except Exception as e:
+            logging.error(
+                f"Failed to execute coroutine in thread pool: {str(e)}",
+                exc_info=True
+            )
+
+    @classmethod
+    def shutdown(cls):
+        if cls._thread_pool:
+            cls._thread_pool.shutdown(wait=True)
+            cls._thread_pool = None
