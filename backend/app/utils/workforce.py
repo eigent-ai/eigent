@@ -273,7 +273,7 @@ class Workforce(BaseWorkforce):
         # If workforce is paused, start the worker's listening task
         self._start_child_node_when_paused(worker_node.start())
 
-        if self.metrics_logger:
+        if hasattr(self, 'metrics_logger') and self.metrics_logger:
             self.metrics_logger.log_worker_created(
                 worker_id=worker_node.node_id,
                 worker_type="SingleAgentWorker",
@@ -323,7 +323,7 @@ class Workforce(BaseWorkforce):
         result = await super()._handle_failed_task(task)
 
         error_message = ""
-        if self.metrics_logger and hasattr(self.metrics_logger, "log_entries"):
+        if hasattr(self, 'metrics_logger') and self.metrics_logger and hasattr(self.metrics_logger, "log_entries"):
             for entry in reversed(self.metrics_logger.log_entries):
                 if entry.get("event_type") == "task_failed" and entry.get("task_id") == task.id:
                     error_message = entry.get("error_message")
