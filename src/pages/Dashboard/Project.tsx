@@ -379,11 +379,11 @@ export default function Project() {
                   </div>
                   <div
                     className={`px-3 h-full flex gap-sm border-[0px] border-solid ${
-                      task.taskAssigning.length > 0 &&
+                      task.taskAssigning && task.taskAssigning.length > 0 &&
                       "border-x border-white-100%"
                     }`}
                   >
-                    {task.taskAssigning.map((taskAssigning) => (
+                    {task.taskAssigning && task.taskAssigning.map((taskAssigning) => (
                       <div
                         key={taskAssigning.agent_id}
                         aria-label="Toggle bold"

@@ -5,11 +5,11 @@ import remarkGfm from "remark-gfm";
 export const MarkDown = memo(
 	({
 		content,
-		speed = 15,
+		speed = 10,
 		onTyping,
 		enableTypewriter = true, // Whether to enable typewriter effect
-		pTextSize = "text-[13px]",
-		olPadding = "",
+		pTextSize = "text-body-sm",
+		olPadding = "pl-3",
 	}: {
 		content: string;
 		speed?: number;
@@ -49,7 +49,7 @@ export const MarkDown = memo(
 		}, [content, speed, enableTypewriter, onTyping]);
 
 		return (
-			<div className="max-w-none">
+			<div className="max-w-none overflow-hidden">
 				<ReactMarkdown
 					remarkPlugins={[remarkGfm]}
 					components={{
@@ -70,36 +70,42 @@ export const MarkDown = memo(
 						),
 						p: ({ children }) => (
 							<p
-								className={`${pTextSize} font-medium text-primary leading-10 font-inter whitespace-pre-wrap break-words text-wrap`}
-								style={{ margin: 0 }}
+								className={`${pTextSize} font-medium text-text-body leading-10 font-inter whitespace-pre-wrap break-all`}
+								style={{ margin: 0, wordBreak: 'break-all' }}
 							>
 								{children}
 							</p>
 						),
 						ul: ({ children }) => (
 							<ul
-								className={`list-disc list-inside text-[13px] text-primary mb-2 ${olPadding}`}
+								className={`list-disc list-outside text-body-sm text-text-body ml-3 mb-2 ${olPadding}`}
 							>
 								{children}
 							</ul>
 						),
 						ol: ({ children }) => (
 							<ol
-								className={`list-decimal list-inside text-[13px] text-primary mb-2 ${olPadding}`}
+								className={`list-decimal list-outside text-body-sm text-text-body ml-3 mb-2 ${olPadding}`}
 							>
 								{children}
 							</ol>
 						),
 						li: ({ children }) => (
-							<li className="mb-1 list-inside">{children}</li>
+							<li className="my-sm text-body-sm text-text-body">{children}</li>
 						),
 						code: ({ children }) => (
-							<code className="bg-zinc-100 px-1 py-0.5 rounded text-xs font-mono">
+							<code 
+								className="bg-zinc-100 px-1 py-0.5 rounded text-body-sm text-text-body font-mono whitespace-pre-wrap break-all"
+								style={{ wordBreak: 'break-all' }}
+							>
 								{children}
 							</code>
 						),
 						pre: ({ children }) => (
-							<pre className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto">
+							<pre 
+								className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto whitespace-pre-wrap break-all"
+								style={{ wordBreak: 'break-all' }}
+							>
 								{children}
 							</pre>
 						),
@@ -117,7 +123,8 @@ export const MarkDown = memo(
 						a: ({ children, href }) => (
 							<a 
 								href={href} 
-								className=" hover:text-blue-800 underline break-all"
+								className="hover:text-blue-800 underline break-all"
+								style={{ wordBreak: 'break-all' }}
 								target="_blank" 
 								rel="noopener noreferrer"
 							>
