@@ -112,7 +112,7 @@ export const CarouselStep: React.FC = () => {
 								<div className="p-0 h-full">
 									<CardContent className="w-full h-full items-center justify-center p-0">
 										<video
-											ref={(el) => (videoRefs.current[index] = el)}
+											ref={(el) => { videoRefs.current[index] = el; }}
 											src={carouselItems[index].video}
 											muted
 											playsInline

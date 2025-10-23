@@ -10,16 +10,21 @@ interface UseIsInViewOptions {
 function useIsInView<T extends HTMLElement = HTMLElement>(
   ref: React.Ref<T>,
   options: UseIsInViewOptions = {},
-): { ref: React.MutableRefObject<T | null>; isInView: boolean } {
+): { ref: React.RefCallback<T>; isInView: boolean } {
   const { inView, inViewOnce = false, inViewMargin = '0px' } = options;
-  const localRef = React.useRef<T>(null);
+  const localRef = React.useRef<T | null>(null);
   React.useImperativeHandle(ref, () => localRef.current as T);
   const inViewResult = useInView(localRef, {
     once: inViewOnce,
     margin: inViewMargin,
   });
   const isInView = !inView || inViewResult;
-  return { ref: localRef, isInView };
+
+  const refCallback = React.useCallback<React.RefCallback<T>>((node) => {
+    localRef.current = node;
+  }, []);
+
+  return { ref: refCallback, isInView };
 }
 
 export { useIsInView, type UseIsInViewOptions };
