@@ -1,6 +1,8 @@
 import asyncio
+import logging
 import os
-import threading
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from camel.toolkits.terminal_toolkit import TerminalToolkit as BaseTerminalToolkit
 from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.component.environment import env
@@ -8,6 +10,13 @@ from app.service.task import Action, ActionTerminalData, Agents, get_task_lock
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
+
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def get_terminal_executor():
+    return ThreadPoolExecutor(max_workers=3, thread_name_prefix="terminal_output")
 
 
 @auto_listen_toolkit(BaseTerminalToolkit)
@@ -58,7 +67,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         task_lock = get_task_lock(self.api_task_id)
         process_task_id = process_task.get("")
 
-        # Create the coroutine
         coro = task_lock.put_queue(
             ActionTerminalData(
                 action=Action.terminal,
@@ -67,22 +75,25 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
         )
 
-        # Try to get the current event loop, if none exists, create a new one in a thread
         try:
             loop = asyncio.get_running_loop()
-            # If we're in an async context, schedule the coroutine
             task = loop.create_task(coro)
             if hasattr(task_lock, "add_background_task"):
                 task_lock.add_background_task(task)
         except RuntimeError:
-            # No event loop running, schedule it in a new thread
-            def run_in_thread():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    new_loop.run_until_complete(coro)
-                finally:
-                    new_loop.close()
+            executor = get_terminal_executor()
 
-            thread = threading.Thread(target=run_in_thread, daemon=True)
-            thread.start()
+            def send_output():
+                try:
+                    asyncio.run(coro)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to send terminal output: {e}",
+                        exc_info=True,
+                        extra={
+                            "api_task_id": self.api_task_id,
+                            "output_preview": output[:200]
+                        }
+                    )
+
+            executor.submit(send_output)

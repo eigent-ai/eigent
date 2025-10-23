@@ -3,7 +3,7 @@ import threading
 import time
 import pytest
 from app.service.task import task_locks, TaskLock
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit, get_terminal_executor
 
 
 @pytest.mark.unit
@@ -17,7 +17,7 @@ class TestTerminalToolkit:
         if test_api_task_id not in task_locks:
             task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
         toolkit = TerminalToolkit("test_api_task_123")
-        
+
         # This should NOT raise RuntimeError: no running event loop
         # This simulates the exact scenario from the error traceback
         try:
@@ -32,12 +32,12 @@ class TestTerminalToolkit:
 
     def test_multiple_calls_no_runtime_error(self):
         """Test that multiple calls don't raise RuntimeError."""
-        test_api_task_id = "test_api_task_123"
+        test_api_task_id = "test_api_task_456"
 
         if test_api_task_id not in task_locks:
             task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
-        toolkit = TerminalToolkit("test_api_task_123")
-        
+        toolkit = TerminalToolkit("test_api_task_456")
+
         # Make multiple calls - none should raise RuntimeError
         try:
             for i in range(5):
@@ -51,11 +51,11 @@ class TestTerminalToolkit:
 
     def test_thread_safety_no_runtime_error(self):
         """Test thread safety without RuntimeError."""
-        test_api_task_id = "test_api_task_123"
+        test_api_task_id = "test_api_task_789"
 
         if test_api_task_id not in task_locks:
             task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
-        toolkit = TerminalToolkit("test_api_task_123")
+        toolkit = TerminalToolkit("test_api_task_789")
 
         # Create multiple threads that call _write_to_log
         threads = []
@@ -66,27 +66,27 @@ class TestTerminalToolkit:
             )
             threads.append(thread)
             thread.start()
-        
+
         # Wait for all threads to complete
         for thread in threads:
             thread.join()
-        
+
         time.sleep(0.2)  # Give async operations time to complete
-        
+
         # Should not have raised any RuntimeError
 
     def test_async_context_still_works(self):
         """Test that async context still works without RuntimeError."""
-        test_api_task_id = "test_api_task_123"
+        test_api_task_id = "test_api_task_async"
 
         if test_api_task_id not in task_locks:
             task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
-        toolkit = TerminalToolkit("test_api_task_123")
+        toolkit = TerminalToolkit("test_api_task_async")
 
         async def test_async_context():
             toolkit._write_to_log("/tmp/async_test.log", "Async context test")
             await asyncio.sleep(0.1)
-        
+
         # Should work in async context without RuntimeError
         try:
             asyncio.run(test_async_context())
@@ -95,6 +95,11 @@ class TestTerminalToolkit:
                 pytest.fail("RuntimeError: no running event loop should not be raised in async context!")
             else:
                 raise
+
+    def test_thread_pool_reuse(self):
+        executor1 = get_terminal_executor()
+        executor2 = get_terminal_executor()
+        assert executor1 is executor2
 
 
 
