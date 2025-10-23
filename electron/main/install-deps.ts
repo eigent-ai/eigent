@@ -16,13 +16,26 @@ export type PromiseReturnType = {
   success: boolean;
 }
 
+// Global installation lock to prevent concurrent installations
+let isInstalling = false;
+const installQueue: Array<{ resolve: (value: PromiseReturnType) => void, reject: (reason?: any) => void, forceInstall: boolean, win: BrowserWindow | null }> = [];
+
 interface checkInstallProps {
   win:BrowserWindow|null; 
   forceInstall?:boolean
 }
 // Read last run version and install dependencies on update
-export const checkAndInstallDepsOnUpdate = async ({win, forceInstall=false}:checkInstallProps): 
+export const checkAndInstallDepsOnUpdate = async ({win, forceInstall=false}:checkInstallProps):
 Promise<PromiseReturnType> => {
+  // Prevent concurrent installations
+  if (isInstalling) {
+    log.info('[DEPS INSTALL] Installation already in progress, waiting...');
+    return new Promise((resolve, reject) => {
+      installQueue.push({ resolve, reject, forceInstall, win });
+    });
+  }
+
+  isInstalling = true;
   const currentVersion = app.getVersion();
   let savedVersion = '';
   const checkInstallOperations = {
@@ -55,6 +68,22 @@ Promise<PromiseReturnType> => {
       log.info('[DEPS INSTALL] version file updated', { currentVersion });
     }
   }
+
+  const finishInstallation = (result: PromiseReturnType) => {
+    isInstalling = false;
+    // Process queued installation requests
+    if (installQueue.length > 0) {
+      log.info(`[DEPS INSTALL] Processing ${installQueue.length} queued installation requests`);
+      const queued = installQueue.shift();
+      if (queued) {
+        // Re-run installation for queued request
+        checkAndInstallDepsOnUpdate({ win: queued.win, forceInstall: queued.forceInstall })
+          .then(queued.resolve)
+          .catch(queued.reject);
+      }
+    }
+    return result;
+  };
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -95,24 +124,24 @@ Promise<PromiseReturnType> => {
         const result = await installDependencies(currentVersion);
         if (!result.success) {
           log.error(' install dependencies failed');
-          resolve({ message: `Install dependencies failed, msg ${result.message}`, success: false });
+          resolve(finishInstallation({ message: `Install dependencies failed, msg ${result.message}`, success: false }));
           return
         }
 
         // Update version file ONLY after successful installation
         checkInstallOperations.createVersionFile();
 
-        resolve({ message: "Dependencies installed successfully after update", success: true });
+        resolve(finishInstallation({ message: "Dependencies installed successfully after update", success: true }));
         log.info('[DEPS INSTALL] install dependencies complete');
         return
       } else {
         log.info('[DEPS INSTALL] version not changed and tools installed, skip install dependencies', { currentVersion });
-        resolve({ message: "Version not changed and tools installed, skipped installation", success: true });
+        resolve(finishInstallation({ message: "Version not changed and tools installed, skipped installation", success: true }));
         return
       }
     } catch (error) {
       log.error(' check version and install dependencies error:', error);
-      resolve({ message: `Error checking version: ${error}`, success: false });
+      resolve(finishInstallation({ message: `Error checking version: ${error}`, success: false }));
       return
     }
   })
@@ -441,10 +470,19 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
         // Run npm install
         const npmCacheDir = path.join(venvPath, '.npm-cache');
-        if (!fs.existsSync(npmCacheDir)) {
-          fs.mkdirSync(npmCacheDir, { recursive: true });
+
+        // Clean up npm cache and node_modules to ensure fresh installation
+        if (fs.existsSync(npmCacheDir)) {
+          log.info('[DEPS INSTALL] Cleaning npm cache directory...');
+          fs.rmSync(npmCacheDir, { recursive: true, force: true });
         }
-        
+        fs.mkdirSync(npmCacheDir, { recursive: true });
+
+        if (fs.existsSync(nodeModulesPath)) {
+          log.info('[DEPS INSTALL] Cleaning node_modules directory...');
+          fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+        }
+
         const npmInstall = spawn(npmCommand[0], [...npmCommand.slice(1), 'install'], {
           cwd: toolkitPath,
           env: {
@@ -492,6 +530,14 @@ export async function installDependencies(version: string): Promise<PromiseRetur
           type: 'stdout',
           data: 'Building browser toolkit TypeScript...\n'
         });
+
+        // Verify typescript is installed before building
+        const tscPath = path.join(nodeModulesPath, '.bin', 'tsc');
+        if (!fs.existsSync(tscPath)) {
+          log.error('[DEPS INSTALL] TypeScript not found after npm install, cannot build');
+          throw new Error('TypeScript not installed in node_modules');
+        }
+        log.info(`[DEPS INSTALL] TypeScript found at: ${tscPath}`);
 
         const buildArgs = npmCommand[0] === 'npm' ? ['run', 'build'] : [...npmCommand.slice(1), 'run', 'build'];
         const npmBuild = spawn(npmCommand[0], buildArgs, {

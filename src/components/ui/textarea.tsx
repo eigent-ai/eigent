@@ -78,7 +78,7 @@ function resolveStateClasses(state: TextareaState | undefined) {
   }
 }
 
-const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
+const Textarea = React.forwardRef<HTMLTextAreaElement | null, BaseTextareaProps>(
   (
     {
       className,

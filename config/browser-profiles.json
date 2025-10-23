@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "userLogin": {
+      "name": "profile_user_login",
+      "partition": "user_login",
+      "description": "Profile for user login browser"
+    },
+    "project": {
+      "nameTemplate": "profile_{port}",
+      "partitionTemplate": "project_{port}",
+      "description": "Profile for project browser instances"
+    }
+  },
+  "basePath": "~/.eigent/browser_profiles"
+}

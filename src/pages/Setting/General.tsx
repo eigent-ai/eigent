@@ -7,11 +7,13 @@ import dark from "@/assets/dark.png";
 import transparent from "@/assets/transparent.png";
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate } from "react-router-dom";
-import { proxyFetchPut, proxyFetchGet } from "@/api/http";
+import { proxyFetchPut, proxyFetchGet, fetchPost } from "@/api/http";
 import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
+import { useChatStore } from "@/store/chatStore";
 import { LocaleEnum, switchLanguage } from "@/i18n";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import {
 	Select,
@@ -33,9 +35,9 @@ export default function SettingGeneral() {
 	const language = authStore.language;
 	const setLanguage = authStore.setLanguage;
 	const appearance = authStore.appearance;
-	const fullNameRef: RefObject<HTMLInputElement> = createRef();
-	const nickNameRef: RefObject<HTMLInputElement> = createRef();
-	const workDescRef: RefObject<HTMLInputElement> = createRef();
+	const fullNameRef: RefObject<HTMLInputElement | null> = createRef();
+	const nickNameRef: RefObject<HTMLInputElement | null> = createRef();
+	const workDescRef: RefObject<HTMLInputElement | null> = createRef();
 	//Get Chatstore for the active project's task
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
@@ -131,13 +133,12 @@ export default function SettingGeneral() {
 	}, []);
 
 	return (
-		<div className="flex flex-col gap-4 pb-40">
-			<div className="px-6 py-4 flex flex-col w-fullitems-center justify-between gap-2 bg-surface-secondary rounded-2xl">
-			<div className="text-body-lg font-bold text-text-heading">
+		<div className="space-y-8">
+			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
+				<div className="text-base font-bold leading-12 text-text-body">
 					{t("setting.account")}
 				</div>
-				<div className="flex flex-row items-center justify-between gap-2">
-				<div className="text-body-sm text-text-body font-normal">
+				<div className="text-sm leading-13 mb-4">
 					{t("setting.you-are-currently-signed-in-with", {
 						email: authStore.email,
 					})}
@@ -166,10 +167,9 @@ export default function SettingGeneral() {
 						{t("setting.log-out")}
 					</Button>
 				</div>
-				</div>
 			</div>
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-body-lg font-bold text-text-heading">
+				<div className="text-base font-bold leading-12 text-text-primary">
 					{t("setting.language")}
 				</div>
 				<div className="mt-md">
@@ -193,7 +193,7 @@ export default function SettingGeneral() {
 				</div>
 			</div>
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-body-lg font-bold text-text-heading">
+				<div className="text-base font-bold leading-12 text-text-primary">
 					{t("setting.appearance")}
 				</div>
 				<div className="flex items-center gap-md mt-md">

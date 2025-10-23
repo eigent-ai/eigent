@@ -37,7 +37,7 @@ export interface InputboxProps {
 	/** Additional CSS classes */
 	className?: string;
 	/** Ref for textarea */
-	textareaRef?: React.RefObject<HTMLTextAreaElement>;
+	textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
 	/** Allow drag and drop */
 	allowDragDrop?: boolean;
 	/** Privacy mode enabled */
