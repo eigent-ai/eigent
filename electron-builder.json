@@ -6,16 +6,17 @@
   "directories": {
     "output": "release"
   },
-  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__","!server","!docs"],
+  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!backend/**/__pycache__","!server","!docs"],
   "extraResources": [
     {
-      "from": "backend",  
+      "from": "backend",
       "to": "backend",
-      "filter": ["**/*", "!.venv/**/*"]
+      "filter": ["**/*", "!.venv/**/*", "!**/__pycache__/**/*"]
     },
     {
       "from": "utils",
-      "to": "utils"
+      "to": "utils",
+      "filter": ["**/*"]
     }
   ],
   "protocols": [

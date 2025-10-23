@@ -19,6 +19,8 @@ dependencies = [
     "traceroot>=0.0.7",
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
+    "yt-dlp>=2024.12.23",
+    "ffmpeg-python>=0.2.0",
 ]
 
 
