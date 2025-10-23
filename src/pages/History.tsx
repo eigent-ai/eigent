@@ -19,9 +19,11 @@ import Setting from "@/pages/Setting";
 import { cn } from "@/lib/utils";
 import { Hammer } from "@/components/animate-ui/icons/hammer";
 import MCP from "./Setting/MCP";
+import Browser from "./Dashboard/Browser";
 import folderIcon from "@/assets/Folder.svg";
 import SplitText from "@/components/ui/SplitText/SplitText";
 import WordCarousel from "@/components/ui/WordCarousel";
+import { Globe } from "lucide-react";
 
 
 
@@ -33,8 +35,9 @@ export default function Home() {
 	if (!chatStore || !projectStore) {
 		return <div>Loading...</div>;
 	}
-	const tabParam = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | null;
-	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">(tabParam || "projects");
+  const tabParam = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | "browser" | null;
+  const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools" | "browser">(tabParam || "projects");
+
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const HAS_STACK_KEYS = hasStackKeys();
@@ -119,6 +122,7 @@ export default function Home() {
 			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
 			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>{t("layout.projects")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>{t("layout.mcp-tools")}</MenuToggleItem>
+					 <MenuToggleItem size="xs" value="browser" iconAnimateOnHover="default" icon={<Globe/>}>{t("layout.browser")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>{t("layout.settings")}</MenuToggleItem>
 			  	 <MenuToggleItem size="xs" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>{t("layout.workers")}</MenuToggleItem>
 			  	 <MenuToggleItem size="xs" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>{t("layout.triggers")}</MenuToggleItem>
@@ -132,6 +136,7 @@ export default function Home() {
 		  </div>
 	      {activeTab === "projects" && <Project />}
 	      {activeTab === "mcp_tools" && <MCP />}
+	      {activeTab === "browser" && <Browser />}
 	      {activeTab === "trigger" && <Trigger />}
 				{activeTab === "settings" && <Setting />}
 		</div>

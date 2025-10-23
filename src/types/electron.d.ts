@@ -70,6 +70,7 @@ interface ElectronAPI {
     MCP_CONFIG_DIR: string;
     tempEmail: string;
   }>;
+  restartApp: () => Promise<void>;
 }
 
 declare global {
