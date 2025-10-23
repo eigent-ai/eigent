@@ -2,15 +2,24 @@ from fastapi import APIRouter, HTTPException
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from utils import traceroot_wrapper as traceroot
-from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
-    HybridBrowserToolkit as BaseHybridBrowserToolkit,
-)
 from app.utils.cookie_manager import CookieManager
 import os
 import uuid
 
 logger = traceroot.get_logger("tool_controller")
 router = APIRouter(tags=["task"])
+
+# Try to import HybridBrowserToolkit, but don't fail if it's not available
+try:
+    from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
+        HybridBrowserToolkit as BaseHybridBrowserToolkit,
+    )
+    HYBRID_BROWSER_AVAILABLE = True
+    logger.info("HybridBrowserToolkit imported successfully")
+except Exception as e:
+    BaseHybridBrowserToolkit = None
+    HYBRID_BROWSER_AVAILABLE = False
+    logger.warning(f"HybridBrowserToolkit not available: {e}. Browser login functionality will be limited.")
 
 
 @router.post("/install/tool/{tool}", name="install tool")
