@@ -62,9 +62,14 @@ export default function Browser() {
 		})).sort((a, b) => a.mainDomain.localeCompare(b.mainDomain));
 	};
 
-	// Auto-load cookies on component mount
+	// Auto-load cookies on component mount, but wait a bit for backend to be ready
 	useEffect(() => {
-		handleLoadCookies();
+		// Add a small delay to ensure backend is fully ready, and don't show error toast
+		const timer = setTimeout(() => {
+			handleLoadCookies(false); // Silent load on mount
+		}, 500); // 500ms delay
+
+		return () => clearTimeout(timer);
 	}, []);
 
 	const handleBrowserLogin = async () => {
@@ -114,24 +119,29 @@ export default function Browser() {
 		}
 	};
 
-	const handleLoadCookies = async () => {
+	const handleLoadCookies = async (showToast: boolean = true) => {
 		setCookiesLoading(true);
 		try {
 			const response = await fetchGet("/browser/cookies");
 			if (response && response.success) {
 				const domains = response.domains || [];
 				setCookieDomains(domains);
-				if (domains.length > 0) {
+				if (showToast && domains.length > 0) {
 					toast.success(`Loaded ${domains.length} cookie domains`);
-				} else {
+				} else if (showToast) {
 					toast.info(response.message || "No cookies found");
 				}
 			} else {
 				setCookieDomains([]);
-				toast.info("No cookies found");
+				if (showToast) {
+					toast.info("No cookies found");
+				}
 			}
 		} catch (error: any) {
-			toast.error(error?.message || "Failed to load cookies");
+			// Only show error toast if explicitly requested (user-initiated action)
+			if (showToast) {
+				toast.error(error?.message || "Failed to load cookies");
+			}
 			setCookieDomains([]);
 		} finally {
 			setCookiesLoading(false);

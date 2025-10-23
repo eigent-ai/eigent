@@ -1134,10 +1134,15 @@ async function createWindow() {
   const venvPath = getVenvPath(currentVersion);
   const venvExists = fs.existsSync(venvPath);
 
+  // Determine if we need to clear localStorage (only on version change or first install)
+  const shouldClearStorage = !versionExists || savedVersion !== currentVersion;
+
+  // Check if dependencies need to be installed (broader check)
   const needsInstallation = !versionExists || savedVersion !== currentVersion || !uvExists || !bunExists || !installationCompleted || !venvExists;
 
   log.info('Installation check result:', {
     needsInstallation,
+    shouldClearStorage,
     versionExists,
     versionMatch: savedVersion === currentVersion,
     uvExists,
@@ -1147,9 +1152,9 @@ async function createWindow() {
     venvPath
   });
 
-  // Handle localStorage based on installation state
-  if (needsInstallation) {
-    log.info('Installation needed - clearing auth storage to force carousel state');
+  // Handle localStorage based on installation/version state
+  if (shouldClearStorage) {
+    log.info('Version changed or first launch - clearing all auth storage');
 
     // Clear the persisted auth storage file to force fresh initialization with carousel
     // Main window uses partition 'persist:main_window', so data is in Partitions/main_window
@@ -1206,6 +1211,13 @@ async function createWindow() {
         log.error('Failed to inject script:', err);
       });
     });
+  } else if (needsInstallation && !shouldClearStorage) {
+    // Need to install dependencies but keep user auth data
+    // Don't set initState to carousel - let installationStore handle the UI
+    log.info('Dependencies need installation but preserving user auth - keeping initState as done, installation UI will be shown by installationStore');
+
+    // No localStorage modification needed - user data is preserved
+    // The installation screen will be shown by installationStore based on installation progress
   } else {
     // Installation is complete - ensure initState is set to 'done'
     log.info('Installation already complete - ensuring initState is done');
@@ -1354,15 +1366,17 @@ const checkAndStartBackend = async () => {
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
 
-      // Notify frontend installation success
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-      }
-
+      // Start backend and wait for it to be ready before notifying frontend
       python_process = await startBackend((port) => {
         backendPort = port;
         log.info('Backend service started successfully', { port });
       });
+
+      // Only notify frontend after backend is fully ready
+      if (win && !win.isDestroyed()) {
+        log.info('Backend fully ready, notifying frontend...');
+        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+      }
 
       python_process?.on('exit', (code, signal) => {
 
