@@ -274,7 +274,7 @@ export default function Browser() {
 						<Button
 							variant="primary"
 							size="sm"
-							onClick={handleLoadCookies}
+							onClick={() => handleLoadCookies()}
 							disabled={cookiesLoading}
 						>
 							<RefreshCw className={`w-4 h-4 ${cookiesLoading ? 'animate-spin' : ''}`} />
