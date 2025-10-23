@@ -624,8 +624,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						const currentChatStore = getCurrentChatStore();
 						//Make sure to add user Message on replay and avoid duplication of first msg						
-						if(type === "replay" && question && 
-							!(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+						if(question && !(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+							//Replace the optimistic update if existent.
+							const lastMessage = currentChatStore.tasks[currentTaskId]?.messages.at(-1);
+							if(lastMessage?.role === "user" && lastMessage.id && lastMessage.content === question) {
+								currentChatStore.removeMessage(currentTaskId, lastMessage.id)
+							} 
 							addMessages(currentTaskId, {
 								id: generateUniqueId(),
 								role: "user",
