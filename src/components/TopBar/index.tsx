@@ -242,7 +242,6 @@ function HeaderWin() {
 								onClick={() => navigate("/")}
 							>
 								<ChevronLeft className="w-4 h-4" />
-								{t("layout.back")}
 							</Button>
 						</div>
 					)}
