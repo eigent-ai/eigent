@@ -199,7 +199,7 @@ export default function Home() {
 							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
-								]?.taskAssigning.find(
+								]?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
@@ -228,7 +228,7 @@ export default function Home() {
 								)}
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
-								]?.taskAssigning.find(
+								]?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
@@ -253,7 +253,7 @@ export default function Home() {
 								)}
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
-								]?.taskAssigning.find(
+								]?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
@@ -267,7 +267,7 @@ export default function Home() {
 												<Folder
 													data={chatStore.tasks[
 														chatStore.activeTaskId as string
-													]?.taskAssigning.find(
+													]?.taskAssigning?.find(
 														(agent) =>
 															agent.agent_id ===
 															chatStore.tasks[chatStore.activeTaskId as string]

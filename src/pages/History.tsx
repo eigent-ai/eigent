@@ -33,21 +33,22 @@ export default function Home() {
 	if (!chatStore || !projectStore) {
 		return <div>Loading...</div>;
 	}
-	
-	// Get initial tab from URL parameter, default to "projects"
-	const getInitialTab = () => {
-		const tabFromUrl = searchParams.get('tab');
-		const validTabs = ["projects", "workers", "trigger", "settings", "mcp_tools"];
-		return validTabs.includes(tabFromUrl || "") ? tabFromUrl as typeof activeTab : "projects";
-	};
-	
-	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">(getInitialTab);
+	const tabParam = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | null;
+	const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools">(tabParam || "projects");
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const HAS_STACK_KEYS = hasStackKeys();
 	const stackUser = HAS_STACK_KEYS ? useUser({ or: 'anonymous-if-exists' }) : null;
 	const { username, email } = useAuthStore();
 	const displayName = stackUser?.displayName ?? stackUser?.primaryEmail ?? username ?? email ?? "";
+
+	// Sync activeTab with URL changes
+	useEffect(() => {
+		const tab = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | null;
+		if (tab) {
+			setActiveTab(tab);
+		}
+	}, [searchParams]);
 
 	const formatWelcomeName = (raw: string): string => {
 		if (!raw) return "";
