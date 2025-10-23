@@ -12,7 +12,6 @@ import { Node as CustomNodeComponent } from "./node";
 
 import { SquareStack, ChevronLeft, ChevronRight, Share } from "lucide-react";
 import "@xyflow/react/dist/style.css";
-import { useChatStore } from "@/store/chatStore";
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
@@ -382,21 +381,6 @@ export default function Workflow({
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>
 					</div>
-					{chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-						"finished" && (
-						<div className="flex items-center justify-center p-1 rounded-lg border border-solid border-menutabs-border-active bg-menutabs-bg-default">
-							<Button
-								variant="ghost"
-								size="sm"
-								className="bg-button-fill-information text-button-fill-information-foreground hover:bg-button-fill-information-hover active:bg-button-fill-information-active focus:bg-button-fill-information-hover focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer"
-								onClick={() => {
-									handleShare(chatStore.activeTaskId as string);
-								}}
-							>
-								{t("workforce.share")}
-							</Button>
-						</div>
-					)}
 				</div>
 			</div>
 			<div className="h-full w-full">

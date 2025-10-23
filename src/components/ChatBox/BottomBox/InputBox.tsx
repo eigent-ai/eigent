@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Paperclip, ArrowRight, X, Image, FileText, UploadCloud, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 /**
  * File attachment object
@@ -91,7 +92,7 @@ export const Inputbox = ({
 	files = [],
 	onFilesChange,
 	onAddFile,
-	placeholder = "What do you need to achieve today?",
+	placeholder = "Ask Eigent to automate your tasks",
 	disabled = false,
 	className,
 	textareaRef: externalTextareaRef,
@@ -99,6 +100,7 @@ export const Inputbox = ({
 	privacy = true,
 	useCloudModelInDev = false,
 }: InputboxProps) => {
+	const { t } = useTranslation();
 	const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
 	const textareaRef = externalTextareaRef || internalTextareaRef;
 	const [isFocused, setIsFocused] = useState(false);
@@ -250,6 +252,8 @@ export const Inputbox = ({
 			<div className="box-border flex gap-2.5 items-center justify-center pb-2 pt-2.5 px-0 relative w-full">
 				<div className="flex-1 box-border flex gap-2.5 items-center justify-center min-h-px min-w-px mx-2 py-0 relative">
 					<Textarea
+					  variant="none"
+						size="default"
 						ref={textareaRef}
 						value={value}
 						onChange={(e) => handleTextChange(e.target.value)}
@@ -257,12 +261,12 @@ export const Inputbox = ({
 						onFocus={() => setIsFocused(true)}
 						onBlur={() => setIsFocused(false)}
 						disabled={disabled}
-						placeholder={placeholder}
+						placeholder= {t("chat.ask-placeholder")}
 						className={cn(
-							"flex-1 font-['Inter'] font-normal leading-5 text-[13px] resize-none",
+							"flex-1 resize-none",
 							"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
 							"px-0 py-0 min-h-[40px] max-h-[200px]",
-							"scrollbar overflow-auto placeholder:text-input-text-default",
+							"scrollbar overflow-auto",
 							isActive ? "text-input-text-focus" : "text-input-text-default"
 						)}
 						style={{
@@ -394,7 +398,7 @@ export const Inputbox = ({
 					>
 						<Plus
 							size={16}
-							className="text-button-transparent-icon-disabled"
+							className="text-icon-primary"
 						/>
 					</Button>
 				</div>

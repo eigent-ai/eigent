@@ -21,7 +21,7 @@ from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.workforce import Workforce
-from app.model.chat import Chat, NewAgent, QuestionAnalysisResult, Status, sse_json, TaskContent
+from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
 from camel.tasks import Task
 from app.utils.agent import (
     ListenChatAgent,
@@ -182,7 +182,7 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
         Formatted context string with task history and files listed once at the end
     """
     context = ""
-    working_directory = None
+    working_directories = set()  # Collect all unique working directories
 
     if task_lock.conversation_history:
         context = f"{header}\n"
@@ -190,37 +190,35 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
         for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
                 if isinstance(entry['content'], dict):
-                    # Format without file listing
                     formatted_context = format_task_context(entry['content'], skip_files=True)
                     context += formatted_context + "\n\n"
-                    # Remember the working directory from the last task
                     if entry['content'].get('working_directory'):
-                        working_directory = entry['content']['working_directory']
+                        working_directories.add(entry['content']['working_directory'])
                 else:
                     context += entry['content'] + "\n"
             elif entry['role'] == 'assistant':
                 context += f"Assistant: {entry['content']}\n\n"
 
-        # Add all generated files at the end, only once
-        if working_directory:
-            try:
-                if os.path.exists(working_directory):
-                    generated_files = []
-                    for root, dirs, files in os.walk(working_directory):
-                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
-                        for file in files:
-                            if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
-                                file_path = os.path.join(root, file)
-                                absolute_path = os.path.abspath(file_path)
-                                generated_files.append(absolute_path)
+        if working_directories:
+            all_generated_files = set()  # Use set to avoid duplicates
+            for working_directory in working_directories:
+                try:
+                    if os.path.exists(working_directory):
+                        for root, dirs, files in os.walk(working_directory):
+                            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                            for file in files:
+                                if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
+                                    file_path = os.path.join(root, file)
+                                    absolute_path = os.path.abspath(file_path)
+                                    all_generated_files.add(absolute_path)
+                except Exception as e:
+                    logger.warning(f"Failed to collect generated files from {working_directory}: {e}")
 
-                    if generated_files:
-                        context += "Generated Files from Previous Tasks:\n"
-                        for file_path in sorted(generated_files):
-                            context += f"  - {file_path}\n"
-                        context += "\n"
-            except Exception as e:
-                logger.warning(f"Failed to collect generated files: {e}")
+            if all_generated_files:
+                context += "Generated Files from Previous Tasks:\n"
+                for file_path in sorted(all_generated_files):
+                    context += f"  - {file_path}\n"
+                context += "\n"
 
         context += "\n"
 
@@ -318,23 +316,26 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     continue
 
                 # Simplified logic: attachments mean workforce, otherwise let agent decide
-                confirm: str | Literal[True]
+                is_complex_task: bool
                 if len(options.attaches) > 0:
                     # Questions with attachments always need workforce
-                    confirm = True
+                    is_complex_task = True
                 else:
-                    # No attachments - let agent decide based on question content and context
-                    confirm = await question_confirm(question_agent, question, task_lock)
+                    is_complex_task = await question_confirm(question_agent, question, task_lock)
 
-                if confirm is not True:
-                    # confirm is str here (simple answer from agent)
+                if not is_complex_task:
+                    simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {question}\n\nProvide a direct, helpful answer to this simple question."
+
                     try:
-                        import json
-                        response_data = json.loads(confirm.split("data: ")[1].strip())
-                        response_content = response_data['data']['content']
-                        task_lock.add_conversation('assistant', response_content)
+                        simple_resp = question_agent.step(simple_answer_prompt)
+                        answer_content = simple_resp.msgs[0].content if simple_resp and simple_resp.msgs else "I understand your question, but I'm having trouble generating a response right now."
+
+                        task_lock.add_conversation('assistant', answer_content)
+
+                        yield sse_json("wait_confirm", {"content": answer_content, "question": question})
                     except Exception as e:
-                        logger.error(f"[CONTEXT] Failed to save response to history: {e}")
+                        logger.error(f"Error generating simple answer: {e}")
+                        yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": question})
 
                     # Clean up empty folder if it was created for this task
                     if hasattr(task_lock, 'new_folder_path') and task_lock.new_folder_path:
@@ -356,8 +357,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             task_lock.new_folder_path = None
                         except Exception as e:
                             logger.error(f"Error cleaning up folder: {e}")
-
-                    yield confirm
                 else:
                     yield sse_json("confirmed", {"question": question})
 
@@ -548,12 +547,24 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
 
                     try:
-                        multi_turn_confirm = await question_confirm(question_agent, new_task_content, task_lock)
+                        is_multi_turn_complex = await question_confirm(question_agent, new_task_content, task_lock)
 
-                        if multi_turn_confirm is not True:
-                            # Still need to send appropriate responses
-                            yield sse_json("confirmed", {"question": new_task_content})
-                            yield multi_turn_confirm
+                        if not is_multi_turn_complex:
+                            simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {new_task_content}\n\nProvide a direct, helpful answer to this simple question."
+
+                            try:
+                                simple_resp = question_agent.step(simple_answer_prompt)
+                                answer_content = simple_resp.msgs[0].content if simple_resp and simple_resp.msgs else "I understand your question, but I'm having trouble generating a response right now."
+
+                                task_lock.add_conversation('assistant', answer_content)
+
+                                # Send response to user
+                                yield sse_json("confirmed", {"question": new_task_content})
+                                yield sse_json("wait_confirm", {"content": answer_content, "question": new_task_content})
+                            except Exception as e:
+                                logger.error(f"Error generating simple answer in multi-turn: {e}")
+                                yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": new_task_content})
+
                             workforce.resume()
                             continue  # This continues the main while loop, waiting for next action
 
@@ -797,8 +808,8 @@ def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
             )
 
 
-async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None) -> str | Literal[True]:
-    """Unified question confirmation using structured output."""
+async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None) -> bool:
+    """Simple question confirmation - returns True for complex tasks, False for simple questions."""
 
     context_prompt = ""
     if task_lock:
@@ -806,50 +817,37 @@ async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskL
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
-Analyze if this is a simple question or complex task:
+Determine if this user query is a complex task or a simple question.
 
-**Simple question**: Can be answered directly using knowledge or conversation history
-- Examples: greetings, fact queries, clarifications about previous results
-- Response: Provide a direct, helpful answer
+**Complex task** (answer "yes"): Requires tools, code execution, file operations, multi-step planning, or creating/modifying content
+- Examples: "create a file", "search for X", "implement feature Y", "write code", "analyze data", "build something"
 
-**Complex task**: Requires tools, code execution, file operations, or multi-step planning
-- Examples: "create a file", "search for", "implement feature X"
-- Response: Indicate this is complex
+**Simple question** (answer "no"): Can be answered directly with knowledge or conversation history, no action needed
+- Examples: greetings ("hello", "hi"), fact queries ("what is X?"), clarifications ("what did you mean?"), status checks ("how are you?")
 
-Based on the user query, determine the type and provide appropriate response."""
+Answer only "yes" or "no". Do not provide any explanation.
+
+Is this a complex task? (yes/no):"""
 
     try:
-        resp = agent.step(full_prompt, response_format=QuestionAnalysisResult)
+        resp = agent.step(full_prompt)
 
         if not resp or not resp.msgs or len(resp.msgs) == 0:
+            logger.warning("No response from agent, defaulting to complex task")
             return True
 
-        result = resp.msgs[0].parsed
-
-        if not result:
-            content = resp.msgs[0].content
-            if not content:
-                return True
-            content_stripped = content.strip()
-            if content_stripped.startswith('{') and content_stripped.endswith('}'):
-                try:
-                    parsed_json = json.loads(content_stripped)
-                    result = QuestionAnalysisResult(**parsed_json)
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning(f"Failed to parse JSON from content: {e}")
-                    normalized = content.strip().lower()
-                    if normalized in ["yes", "complex"]:
-                        return True
-                    return sse_json("wait_confirm", {"content": content, "question": prompt})
-            else:
-                normalized = content.strip().lower()
-                if normalized in ["yes", "complex"]:
-                    return True
-                return sse_json("wait_confirm", {"content": content, "question": prompt})
-        if result.type == "simple" and result.answer:
-            return sse_json("wait_confirm", {"content": result.answer, "question": prompt})
-        else:
+        content = resp.msgs[0].content
+        if not content:
+            logger.warning("Empty content from agent, defaulting to complex task")
             return True
+
+        normalized = content.strip().lower()
+        is_complex = "yes" in normalized
+
+        logger.info(f"Question confirm result: {'complex task' if is_complex else 'simple question'}",
+                   extra={"response": content, "is_complex": is_complex})
+
+        return is_complex
 
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")

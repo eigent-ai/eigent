@@ -36,9 +36,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
 
-  // Only show task if this query group has a task message
-  // This prevents all query groups from showing the same task
-  const task = queryGroup.taskMessage && activeTaskId ? chatState.tasks[activeTaskId] : null;
+  // Show task if this query group has a task message OR if it's the most recent user query during splitting
+  // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
+  const isLastUserQuery = !queryGroup.taskMessage &&
+    activeTaskId &&
+    chatState.tasks[activeTaskId] &&
+    queryGroup.userMessage &&
+    queryGroup.userMessage.id === chatState.tasks[activeTaskId].messages.filter((m: any) => m.role === 'user').pop()?.id &&
+    // Only show during active phases (not finished)
+    chatState.tasks[activeTaskId].status !== 'finished';
+
+  const task = (queryGroup.taskMessage || isLastUserQuery) && activeTaskId ? chatState.tasks[activeTaskId] : null;
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -177,6 +185,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             >
               <TaskCard
                 key={`task-${activeTaskId}-${queryGroup.queryId}`}
+                chatId={chatId}
                 taskInfo={task?.taskInfo || []}
                 taskType={queryGroup.taskMessage?.taskType || 1}
                 taskAssigning={task?.taskAssigning || []}
