@@ -985,7 +985,7 @@ async function createWindow() {
     transparent: true,
     vibrancy: 'sidebar',
     visualEffectState: 'active',
-    backgroundColor: '#00000000',
+    backgroundColor: '#f5f5f580',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),

@@ -330,7 +330,7 @@ export default function HistorySidebar() {
 																	/>
 																</div>
 																<div className="text-left text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis break-words line-clamp-3">
-																	{task?.messages[0]?.content || t("layout.new-project")}
+																	{task?.messages?.[0]?.content || t("layout.new-project")}
 																</div>
 																<div className="w-full">
 																	<Progress
@@ -430,13 +430,13 @@ export default function HistorySidebar() {
 													<TooltipSimple
 														content={
 															<p>
-																{task?.messages[0]?.content || t("layout.new-project")}
+																{task?.messages?.[0]?.content || t("layout.new-project")}
 															</p>
 														}
 														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
 													>
 														<span>
-															{task?.messages[0]?.content || t("dashboard.new-project")}
+															{task?.messages?.[0]?.content || t("dashboard.new-project")}
 														</span>
 													</TooltipSimple>
 														</div>

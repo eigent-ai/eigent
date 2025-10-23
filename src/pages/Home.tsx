@@ -75,19 +75,18 @@ export default function Home() {
 
 		// capture webview
 		const captureWebview = async () => {
-			if (
-				chatStore.tasks[chatStore.activeTaskId as string].status === "finished"
-			) {
+			const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
+			if (!activeTask || activeTask.status === "finished") {
 				return;
 			}
 			webviews.map((webview) => {
 				window.ipcRenderer
 					.invoke("capture-webview", webview.id)
 					.then((base64: string) => {
-						if (chatStore.tasks[chatStore.activeTaskId as string].type) return;
+						const currentTask = chatStore.tasks[chatStore.activeTaskId as string];
+						if (!currentTask || currentTask.type) return;
 						let taskAssigning = [
-							...chatStore.tasks[chatStore.activeTaskId as string]
-								.taskAssigning,
+							...currentTask.taskAssigning,
 						];
 						const searchAgentIndex = taskAssigning.findIndex(
 							(agent) => agent.agent_id === webview.agent_id
@@ -186,14 +185,12 @@ export default function Home() {
 	};
 
 		return (
-			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-8">
+			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-10 px-2 pb-2">
 				<ReactFlowProvider>
-					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center gap-2 relative overflow-hidden">
+					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center bg-surface-secondary border-solid border-border-tertiary rounded-2xl gap-2 relative overflow-hidden">
 						<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
-							<div className="flex-1 h-full min-w-0 min-h-0 flex items-center justify-center py-2 pl-2 overflow-hidden">
 							 <ChatBox />
-							</div>
 						</ResizablePanel>
 							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
 						<ResizablePanel>

@@ -1,10 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { TaskType } from "./TaskType";
-import { TaskItem } from "./TaskItem";
+import { TaskType } from "../TaskBox/TaskType";
+import { TaskItem } from "../TaskBox/TaskItem";
 import ShinyText from "@/components/ui/ShinyText/ShinyText";
-
-
 import { ChevronDown, SquareCode } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";

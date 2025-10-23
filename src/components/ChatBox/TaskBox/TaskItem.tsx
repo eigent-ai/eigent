@@ -9,7 +9,7 @@ import {
 	X,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { Button } from "../ui/button";
+import { Button } from "../../ui/button";
 import { useTranslation } from "react-i18next";
 
 interface TaskItemProps {

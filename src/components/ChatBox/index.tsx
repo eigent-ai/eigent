@@ -611,10 +611,11 @@ export default function ChatBox(): JSX.Element {
 	// Check if any chat store in the project has messages
 	const hasAnyMessages = useMemo(() => {
 		// First check current active chat store
-		if (chatStore.activeTaskId && 
-			(chatStore.tasks[chatStore.activeTaskId].messages.length > 0 || 
-			 chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages)) {
-			return true;
+		if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
+			const activeTask = chatStore.tasks[chatStore.activeTaskId];
+			if ((activeTask.messages && activeTask.messages.length > 0) || activeTask.hasMessages) {
+				return true;
+			}
 		}
 
 		// Then check all other chat stores in the project
@@ -628,11 +629,9 @@ export default function ChatBox(): JSX.Element {
 	}, [chatStore, getAllChatStoresMemoized]);
 
 	return (
-		<div className="w-full h-full flex flex-col items-center justify-center">
+		<div className="w-full h-full flex-none items-center justify-center">
 			{hasAnyMessages ? (
-				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
-					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
-
+				<div className="w-full h-full flex-1 flex flex-col">
 					{/* New Project Chat Container */}
 					<ProjectChatContainer
 						onPauseResume={handlePauseResume}
@@ -689,8 +688,8 @@ export default function ChatBox(): JSX.Element {
 				</div>
 			) : (
 				// Init ChatBox
-				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled py-2 border-solid  relative overflow-hidden">
-					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
+				<div className="w-full h-[calc(100vh-54px)] flex items-center py-2 relative overflow-hidden">
+					<div className="absolute inset-0 pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-body-lg text-text-heading text-center font-bold">

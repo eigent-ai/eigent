@@ -82,7 +82,7 @@ export default function BottomBox({
 				</div>
 			)}
 			{/* BoxMain */}
-			<div className={`flex flex-col gap-2 w-full p-2 rounded-lg ${backgroundClass} overflow-hidden`}>
+			<div className={`flex flex-col gap-2 w-full p-2 rounded-t-lg ${backgroundClass} overflow-hidden`}>
 				{/* BoxHeader variants */}
 				{state === "splitting" && (
 						<BoxHeaderSplitting />

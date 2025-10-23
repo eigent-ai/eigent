@@ -8,14 +8,7 @@ const Login = lazy(() => import("@/pages/Login"));
 const Signup = lazy(() => import("@/pages/SignUp"));
 const Home = lazy(() => import("@/pages/Home"));
 const History = lazy(() => import("@/pages/History"));
-const Setting = lazy(() => import("@/pages/Setting"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
-const SettingGeneral = lazy(() => import("@/pages/Setting/General"));
-const SettingPrivacy = lazy(() => import("@/pages/Setting/Privacy"));
-const SettingModels = lazy(() => import("@/pages/Setting/Models"));
-const SettingAPI = lazy(() => import("@/pages/Setting/API"));
-const SettingMCP = lazy(() => import("@/pages/Setting/MCP"));
-const MCPMarket = lazy(() => import("@/pages/Setting/MCPMarket"));
 
 // Route guard: Check if user is logged in
 const ProtectedRoute = () => {
@@ -49,16 +42,8 @@ const AppRoutes = () => (
 			<Route element={<Layout />}>
 				<Route path="/" element={<Home />} />
 				<Route path="/history" element={<History />} />
-				<Route path="/setting" element={<Setting />}>
-					{/* Setting sub-routes */}
-					<Route index element={<Navigate to="general" replace />} />
-					<Route path="general" element={<SettingGeneral />} />
-					<Route path="privacy" element={<SettingPrivacy />} />
-					<Route path="models" element={<SettingModels />} />
-					<Route path="api" element={<SettingAPI />} />
-					<Route path="mcp" element={<SettingMCP />} />
-					<Route path="mcp_market" element={<MCPMarket />} />
-				</Route>
+				<Route path="/setting" element={<Navigate to="/history?tab=settings" replace />} />
+				<Route path="/setting/*" element={<Navigate to="/history?tab=settings" replace />} />
 			</Route>
 		</Route>
 		<Route path="*" element={<NotFound />} />
