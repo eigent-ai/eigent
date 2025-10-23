@@ -35,6 +35,7 @@ interface TaskCardProps {
 	onUpdateTask: (taskIndex: number, content: string) => void;
 	onDeleteTask: (taskIndex: number) => void;
 	clickable?: boolean;
+	chatId?: string;
 }
 
 export function TaskCard({
@@ -47,14 +48,15 @@ export function TaskCard({
 	onUpdateTask,
 	onDeleteTask,
 	clickable = true,
+	chatId,
 }: TaskCardProps) {
 	const { t } = useTranslation();
 	const [isExpanded, setIsExpanded] = useState(true);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
 
-	//Get Chatstore for the active project's task
-	const { chatStore } = useChatStoreAdapter();
+	//Get Chatstore and ProjectStore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -329,6 +331,20 @@ export function TaskCard({
 											<div
 												onClick={() => {
 													if (task.agent) {
+														// Switch to the chatStore that owns this task card (for multi-turn conversations)
+														if (chatId && projectStore.activeProjectId) {
+															const activeChatStore = projectStore.getActiveChatStore();
+															const currentChatId = activeChatStore ? Object.keys(projectStore.projects[projectStore.activeProjectId].chatStores).find(
+																id => projectStore.projects[projectStore.activeProjectId].chatStores[id] === activeChatStore
+															) : null;
+															
+															// Only switch if this is a different chat
+															if (currentChatId !== chatId) {
+																projectStore.setActiveChatStore(projectStore.activeProjectId, chatId);
+															}
+														}
+														
+														// Set the active workspace and agent
 														chatStore.setActiveWorkSpace(
 															chatStore.activeTaskId as string,
 															"workflow"
