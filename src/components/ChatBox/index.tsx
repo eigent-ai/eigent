@@ -594,7 +594,7 @@ export default function ChatBox(): JSX.Element {
 			//Call api only when workforce has been run at least once
 			//Note: Replay creates a new chatstore, so no conflicts
 			const task = chatStore.tasks[chatStore.activeTaskId as string];
-			if(task.messages && task.messages.some(m => m.step === 'to_sub_tasks')) {
+			if(task.messages && task.messages.some(m => m.step === 'to_sub_tasks') && task.status === "running") {
 				await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
 					project_id: project_id,
 					task_id: task_id
