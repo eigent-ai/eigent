@@ -404,7 +404,7 @@ function AnimateIcon({
 
   const content = asChild ? (
     <Slot
-      ref={inViewRef as React.RefCallback<HTMLElement>}
+      ref={inViewRef as any}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onPointerDown={handlePointerDown}
@@ -415,7 +415,7 @@ function AnimateIcon({
     </Slot>
   ) : (
     <motion.span
-      ref={inViewRef as React.RefCallback<HTMLSpanElement>}
+      ref={inViewRef as any}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onPointerDown={handlePointerDown}
