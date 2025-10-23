@@ -590,11 +590,16 @@ export default function ChatBox(): JSX.Element {
 		try {
 			//Optimistic Removal
 			projectStore.removeQueuedMessage(project_id, task_id);
-			
-			await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
-				project_id: project_id,
-				task_id: task_id
-			});
+
+			//Call api only when workforce has been run at least once
+			//Note: Replay creates a new chatstore, so no conflicts
+			const task = chatStore.tasks[chatStore.activeTaskId as string];
+			if(task.messages && task.messages.some(m => m.step === 'to_sub_tasks')) {
+				await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
+					project_id: project_id,
+					task_id: task_id
+				});
+			}
 		} catch (error) {
 			// Revert the optimistic removal by restoring the original message
 			projectStore.restoreQueuedMessage(project_id, messageBackup);

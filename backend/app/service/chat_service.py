@@ -449,7 +449,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("add_task", returnData)
             elif item.action == Action.remove_task:
-                assert camel_task is not None
                 if workforce is None:
                     logger.error(f"Cannot remove task: workforce not initialized for project {options.project_id}")
                     yield sse_json("error", {"message": "Workforce not initialized. Please start the task first."})
