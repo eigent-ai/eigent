@@ -7,7 +7,6 @@ import * as net from "net";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
 import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
-import dotenv from 'dotenv'
 
 const execAsync = promisify(exec);
 
@@ -158,17 +157,37 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
 
+    // Read .env file and parse it into an object
+    let envFileContent = {};
     try {
         const envPath = path.join(__dirname, '.env')
+        console.log('envPath', envPath)
         if (fs.existsSync(envPath)) {
-        dotenv.config({ path: envPath })
-    }
+            const envContent = fs.readFileSync(envPath, 'utf-8');
+            console.log('env file content:', envContent);
+            
+            // Parse .env file content into an object
+            envFileContent = envContent
+                .split('\n')
+                .filter(line => line.trim() && !line.startsWith('#')) // Filter empty lines and comments
+                .reduce((acc, line) => {
+                    const [key, ...valueParts] = line.split('=');
+                    if (key && valueParts.length > 0) {
+                        const value = valueParts.join('=').trim();
+                        acc[key.trim()] = value;
+                    }
+                    return acc;
+                }, {} as Record<string, string>);
+            
+            console.log('parsed env file content:', envFileContent);
+        }
     } catch (error) {
-        console.log(error)
+        console.log('error reading .env file:', error)
     }
 
     const env = {
         ...process.env,
+        ...envFileContent, // Merge environment variables from .env file
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         UV_PROJECT_ENVIRONMENT: venvPath,
