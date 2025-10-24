@@ -20,16 +20,16 @@ export function getMainWindow(): BrowserWindow | null {
 export async function checkToolInstalled() {
     return new Promise<PromiseReturnType>(async (resolve, reject) => {
         if (!(await isBinaryExists('uv'))) {
-            resolve({success: false, message: "uv doesn't exist"})
+            resolve({ success: false, message: "uv doesn't exist" })
             return
         }
 
         if (!(await isBinaryExists('bun'))) {
-            resolve({success: false, message: "Bun doesn't exist"})
+            resolve({ success: false, message: "Bun doesn't exist" })
             return
         }
 
-        resolve({success: true, message: "Tools exist already"})
+        resolve({ success: true, message: "Tools exist already" })
     })
 
 }
@@ -165,6 +165,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         npm_config_cache: npmCacheDir,
     }
     console.log('!!!!!!!!!!!!!!!!!!!!!env', env)
+    log.error(`!!!!!!!!!!!!!!!!!!!!!env: ${JSON.stringify(env)}`);
 
     //Redirect output
     const displayFilteredLogs = (data: String) => {
