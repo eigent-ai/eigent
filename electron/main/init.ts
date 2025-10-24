@@ -153,15 +153,18 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     if (setPort) {
         setPort(port);
     }
-
     const npmCacheDir = path.join(venvPath, '.npm-cache');
     if (!fs.existsSync(npmCacheDir)) {
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
-    const envPath = path.join(__dirname, '.env')
 
-    if (fs.existsSync(envPath)) {
+    try {
+        const envPath = path.join(__dirname, '.env')
+        if (fs.existsSync(envPath)) {
         dotenv.config({ path: envPath })
+    }
+    } catch (error) {
+        console.log(error)
     }
 
     const env = {
