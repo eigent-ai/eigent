@@ -157,7 +157,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     if (!fs.existsSync(npmCacheDir)) {
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
-
     const env = {
         ...process.env,
         SERVER_URL: "https://dev.eigent.ai/api",
@@ -165,6 +164,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         UV_PROJECT_ENVIRONMENT: venvPath,
         npm_config_cache: npmCacheDir,
     }
+    console.log('!!!!!!!!!!!!!!!!!!!!!env', env)
 
     //Redirect output
     const displayFilteredLogs = (data: String) => {
