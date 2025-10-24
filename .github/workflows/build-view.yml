@@ -42,6 +42,21 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Generate .env file for build
+        run: |
+          echo "TRACEROOT_TOKEN=${{ secrets.TRACEROOT_TOKEN }}" >> .env
+          echo "TRACEROOT_SERVICE_NAME=${{ secrets.TRACEROOT_SERVICE_NAME }}" >> .env
+          echo "TRACEROOT_GITHUB_OWNER=${{ secrets.TRACEROOT_GITHUB_OWNER }}" >> .env
+          echo "TRACEROOT_GITHUB_REPO_NAME=${{ secrets.TRACEROOT_GITHUB_REPO_NAME }}" >> .env
+          echo "TRACEROOT_GITHUB_COMMIT_HASH=${{ secrets.TRACEROOT_GITHUB_COMMIT_HASH }}" >> .env
+          echo "TRACEROOT_ENABLE_SPAN_CLOUD_EXPORT=${{ secrets.TRACEROOT_ENABLE_SPAN_CLOUD_EXPORT }}" >> .env
+          echo "TRACEROOT_ENABLE_LOG_CLOUD_EXPORT=${{ secrets.TRACEROOT_ENABLE_LOG_CLOUD_EXPORT }}" >> .env
+          echo "TRACEROOT_ENABLE_SPAN_CONSOLE_EXPORT=${{ secrets.TRACEROOT_ENABLE_SPAN_CONSOLE_EXPORT }}" >> .env
+          echo "TRACEROOT_ENABLE_LOG_CONSOLE_EXPORT=${{ secrets.TRACEROOT_ENABLE_LOG_CONSOLE_EXPORT }}" >> .env
+          echo "TRACEROOT_TRACER_VERBOSE=${{ secrets.TRACEROOT_TRACER_VERBOSE }}" >> .env
+          echo "TRACEROOT_LOGGER_VERBOSE=${{ secrets.TRACEROOT_LOGGER_VERBOSE }}" >> .env
+          echo "TRACEROOT_ENABLED=${{ secrets.TRACEROOT_ENABLED }}" >> .env
+          
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
