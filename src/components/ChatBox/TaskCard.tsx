@@ -335,7 +335,7 @@ export function TaskCard({
 														if (chatId && projectStore.activeProjectId) {
 															const activeChatStore = projectStore.getActiveChatStore();
 															const currentChatId = activeChatStore ? Object.keys(projectStore.projects[projectStore.activeProjectId].chatStores).find(
-																id => projectStore.projects[projectStore.activeProjectId].chatStores[id] === activeChatStore
+																id => projectStore.projects[projectStore?.activeProjectId as string]?.chatStores[id] === activeChatStore
 															) : null;
 															
 															// Only switch if this is a different chat
