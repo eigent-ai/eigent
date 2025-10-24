@@ -39,6 +39,7 @@ import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {getAuthStore} from "@/store/authStore";
+import { fetchHistoryTasks } from "@/service/historyApi";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
@@ -69,7 +70,7 @@ export default function HistorySidebar() {
 
 	const toggleOpenHistory = async () => {
 		if (!historyOpen) {
-			await fetchHistoryTasks();
+			await fetchHistoryTasks(setHistoryTasks);
 		}
 		setHistoryOpen(!historyOpen);
 	};
@@ -136,17 +137,8 @@ export default function HistorySidebar() {
 		navigate(`/`);
 	};
 
-	const fetchHistoryTasks = async () => {
-		try {
-			const res = await proxyFetchGet(`/api/chat/histories`);
-			setHistoryTasks(res.items);
-		} catch (error) {
-			console.error("Failed to fetch history tasks:", error);
-		}
-	};
-
 	useEffect(() => {
-		fetchHistoryTasks();
+		fetchHistoryTasks(setHistoryTasks);
 	}, [chatStore.updateCount]);
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {

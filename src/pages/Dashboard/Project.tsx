@@ -41,6 +41,7 @@ import { Tag } from "@/components/ui/tag";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
 import AlertDialog from "@/components/ui/alertDialog";
+import { fetchHistoryTasks } from "@/service/historyApi";
 
 
 export default function Project() {
@@ -202,16 +203,7 @@ export default function Project() {
 
 
 	useEffect(() => {
-		const fetchHistoryTasks = async () => {
-			try {
-				const res = await proxyFetchGet(`/api/chat/histories`);
-				setHistoryTasks(res.items);
-			} catch (error) {
-				console.error("Failed to fetch history tasks:", error);
-			}
-		};
-
-		fetchHistoryTasks();
+		fetchHistoryTasks(setHistoryTasks);
 	}, []);
 
 	// Feature flag to hide table view without deleting code

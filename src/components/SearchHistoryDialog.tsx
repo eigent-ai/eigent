@@ -31,6 +31,7 @@ import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { replayProject } from "@/lib";
+import { fetchHistoryTasks } from "@/service/historyApi";
 
 export function SearchHistoryDialog() {
 	const {t} = useTranslation()
@@ -64,16 +65,7 @@ export function SearchHistoryDialog() {
 	};
 
 	useEffect(() => {
-		const fetchHistoryTasks = async () => {
-			try {
-				const res = await proxyFetchGet(`/api/chat/histories`);
-				setHistoryTasks(res.items);
-			} catch (error) {
-				console.error("Failed to fetch history tasks:", error);
-			}
-		};
-
-		fetchHistoryTasks();
+		fetchHistoryTasks(setHistoryTasks);
 	}, []);
 	return (
 		<>
