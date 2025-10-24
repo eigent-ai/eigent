@@ -7,6 +7,7 @@ import * as net from "net";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
 import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
+import dotenv from 'dotenv'
 
 const execAsync = promisify(exec);
 
@@ -157,6 +158,12 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     if (!fs.existsSync(npmCacheDir)) {
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
+    const envPath = path.join(__dirname, '.env')
+
+    if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath })
+    }
+
     const env = {
         ...process.env,
         SERVER_URL: "https://dev.eigent.ai/api",
