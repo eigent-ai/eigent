@@ -40,6 +40,7 @@ import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {getAuthStore} from "@/store/authStore";
 import { fetchHistoryTasks } from "@/service/historyApi";
+import GroupedHistoryView from "@/components/GroupedHistoryView";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
@@ -497,6 +498,16 @@ export default function HistorySidebar() {
 															);
 														})}
 											</div>
+										) : history_type === "grouped" ? (
+											// Grouped view
+											<GroupedHistoryView
+												searchValue={searchValue}
+												onTaskSelect={handleSetActive}
+												onTaskDelete={handleDelete}
+												onTaskShare={handleShare}
+												activeTaskId={chatStore.activeTaskId}
+												refreshTrigger={chatStore.updateCount}
+											/>
 										) : (
 										    // List
 										*/}

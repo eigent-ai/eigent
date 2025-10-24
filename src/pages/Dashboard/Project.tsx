@@ -42,6 +42,7 @@ import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
 import AlertDialog from "@/components/ui/alertDialog";
 import { fetchHistoryTasks } from "@/service/historyApi";
+import GroupedHistoryView from "@/components/GroupedHistoryView";
 
 
 export default function Project() {
@@ -547,6 +548,16 @@ export default function Project() {
                 </div>
               );
             })}
+          </div>
+        ) : history_type === "grouped" ? (
+          // Grouped view
+          <div className="p-6 pb-40">
+            <GroupedHistoryView
+              onTaskSelect={handleSetActive}
+              onTaskDelete={handleDelete}
+              onTaskShare={handleShare}
+              activeTaskId={chatStore.activeTaskId || undefined}
+            />
           </div>
         ) : (
         // List
