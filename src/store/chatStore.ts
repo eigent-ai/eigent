@@ -315,19 +315,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			} catch (error) {
 				console.log('get-env-path error', error)
 			}
-
-
+			
 			// create history
 			if (!type && !historyId) {
 				const authStore = getAuthStore();
 
 				const obj = {
-					/**
-					 * TODO(history): Currently reusing project_id as the source
-					 * of truth per project. Need to update field
-					 * name after backend update.
-					 */
-					"task_id": project_id,
+					"project_id": project_id,
+					"task_id": newTaskId,
 					"user_id": authStore.user_id,
 					"question": messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
 					"language": systemLanguage,
@@ -460,9 +455,35 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										});
 										console.log("[NEW CHATSTORE] Created for ", project_id);
 
-										//Handle Original cases - with new chatStore
-										newChatStore.getState().setHasWaitComfirm(currentTaskId, false);
-										newChatStore.getState().setStatus(currentTaskId, 'pending');
+										//Create a new history point
+										if (!type) {
+											const authStore = getAuthStore();
+
+											const obj = {
+												"project_id": project_id,
+												"task_id": newTaskId,
+												"user_id": authStore.user_id,
+												"question": messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
+												"language": systemLanguage,
+												"model_platform": apiModel.model_platform,
+												"model_type": apiModel.model_type,
+												"api_url": modelType === 'cloud' ? "cloud" : apiModel.api_url,
+												"max_retries": 3,
+												"file_save_path": "string",
+												"installed_mcp": "string",
+												"status": 1,
+												"tokens": 0
+											}
+											await proxyFetchPost(`/api/chat/history`, obj).then(res => {
+												historyId = res.id;
+
+												/**Save history id for replay reuse purposes.
+												 * TODO(history): Remove historyId handling to support per projectId 
+												 * instead in history api
+												 */
+												if(project_id && historyId) projectStore.setHistoryId(project_id, historyId);
+											})
+										}
 								}
 						} else {
 							//NOTE: Triggered only with first "confirmed" in the project
