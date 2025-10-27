@@ -143,6 +143,18 @@ function createEmptyTokenStore() {
   });
 }
 var cachePromiseByHookId = /* @__PURE__ */ new Map();
+var useReactPromise = typeof import_react2.default.use === "function" ? import_react2.default.use.bind(import_react2.default) : (promise) => {
+  if (!promise || typeof promise !== "object") {
+    return promise;
+  }
+  if (promise.status === "fulfilled") {
+    return promise.value;
+  }
+  if (promise.status === "rejected") {
+    throw promise.reason ?? promise;
+  }
+  throw promise;
+};
 function useAsyncCache(cache, dependencies, caller) {
   (0, import_react.suspendIfSsr)(caller);
   const id = import_react2.default.useId();
@@ -164,7 +176,7 @@ function useAsyncCache(cache, dependencies, caller) {
     getSnapshot,
     () => (0, import_errors.throwErr)(new Error("getServerSnapshot should never be called in useAsyncCache because we restrict to CSR earlier"))
   );
-  const result = import_react2.default.use(promise);
+  const result = useReactPromise(promise);
   if (result.status === "error") {
     const error = result.error;
     if (error instanceof Error && !error.__stackHasConcatenatedStacktraces) {
