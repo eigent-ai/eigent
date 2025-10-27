@@ -1102,6 +1102,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							role: "agent",
 							content: `❌ **Error**: ${errorMessage}`,
 						});
+						console.log(' tasks[currentTaskId].messages', tasks[currentTaskId].messages)
 						uploadLog(currentTaskId, type)
 						return
 					}

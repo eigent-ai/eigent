@@ -172,24 +172,40 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         }
         
         console.log('envPath', envPath)
+        console.log('app.isPackaged', app.isPackaged)
+        console.log('process.resourcesPath', process.resourcesPath)
+        console.log('backendPath', backendPath)
+        
         if (fs.existsSync(envPath)) {
+            console.log('env file exists')
             const envContent = fs.readFileSync(envPath, 'utf-8');
             console.log('env file content:', envContent);
+            console.log('env file content length:', envContent.length);
             
             // Parse .env file content into an object
-            envFileContent = envContent
-                .split('\n')
-                .filter(line => line.trim() && !line.startsWith('#')) // Filter empty lines and comments
+            // Use \r?\n to handle both Windows and Unix line endings
+            const lines = envContent.split(/\r?\n/);
+            console.log('total lines:', lines.length);
+            
+            envFileContent = lines
+                .filter(line => line.trim() && !line.trim().startsWith('#')) // Filter empty lines and comments
                 .reduce((acc, line) => {
-                    const [key, ...valueParts] = line.split('=');
-                    if (key && valueParts.length > 0) {
-                        const value = valueParts.join('=').trim();
-                        acc[key.trim()] = value;
+                    const equalIndex = line.indexOf('=');
+                    if (equalIndex > 0) {
+                        const key = line.substring(0, equalIndex).trim();
+                        const value = line.substring(equalIndex + 1).trim();
+                        if (key && value !== undefined) {
+                            acc[key] = value;
+                            console.log(`parsed: ${key}=${value}`);
+                        }
                     }
                     return acc;
                 }, {} as Record<string, string>);
             
             console.log('parsed env file content:', envFileContent);
+            console.log('parsed env file content keys:', Object.keys(envFileContent));
+        } else {
+            console.log('env file does not exist at path:', envPath)
         }
     } catch (error) {
         console.log('error reading .env file:', error)
