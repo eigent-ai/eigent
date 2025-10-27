@@ -16,6 +16,10 @@
     {
       "from": "utils",
       "to": "utils"
+    },
+    {
+      "from": ".env",
+      "to": "backend/.env"
     }
   ],
   "protocols": [

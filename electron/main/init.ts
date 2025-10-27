@@ -160,7 +160,17 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     // Read .env file and parse it into an object
     let envFileContent = {};
     try {
-        const envPath = path.join(__dirname, '.env')
+        // Try multiple paths for .env file
+        let envPath: string;
+        
+        if (app.isPackaged) {
+            // In packaged app, .env is in resources/backend/.env
+            envPath = path.join(process.resourcesPath || '', 'backend', '.env');
+        } else {
+            // In development, .env is in project root
+            envPath = path.join(backendPath, '..', '.env');
+        }
+        
         console.log('envPath', envPath)
         if (fs.existsSync(envPath)) {
             const envContent = fs.readFileSync(envPath, 'utf-8');
