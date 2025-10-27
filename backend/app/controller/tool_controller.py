@@ -257,15 +257,20 @@ async def uninstall_tool(tool: str):
                 shutil.rmtree(token_dir)
                 logger.info(f"Removed Google Calendar token directory: {token_dir}")
             
-            # Cancel any ongoing OAuth authorization
+            # Clear OAuth state manager cache (this is the key fix!)
+            # This removes the cached credentials from memory
             state = oauth_state_manager.get_state("google_calendar")
-            if state and state.status in ["pending", "authorizing"]:
-                state.cancel()
-                logger.info("Cancelled ongoing Google Calendar authorization")
+            if state:
+                if state.status in ["pending", "authorizing"]:
+                    state.cancel()
+                    logger.info("Cancelled ongoing Google Calendar authorization")
+                # Clear the state completely to remove cached credentials
+                oauth_state_manager._states.pop("google_calendar", None)
+                logger.info("Cleared Google Calendar OAuth state cache")
             
             return {
                 "success": True,
-                "message": f"Successfully uninstalled {tool} and cleaned up authentication data"
+                "message": f"Successfully uninstalled {tool} and cleaned up authentication tokens"
             }
         except Exception as e:
             logger.error(f"Failed to uninstall {tool}: {e}")
