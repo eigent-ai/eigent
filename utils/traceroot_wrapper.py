@@ -42,7 +42,7 @@ if traceroot.init():
     # Log successful initialization
     module_name = _get_module_name()
     _init_logger = _get_traceroot_logger("traceroot_wrapper")
-    _init_logger.info("TraceRoot initialized successfully", extra={"backend": "traceroot", "module": module_name})
+    _init_logger.info("TraceRoot initialized successfully", extra={"backend": "traceroot", "module_name": module_name})
 else:
     # No-op implementations when TraceRoot is not configured
     def trace(*args, **kwargs):
