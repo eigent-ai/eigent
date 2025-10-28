@@ -52,5 +52,9 @@ coverage/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Exception: Keep utils pycache for Electron packaging
+!utils/__pycache__/
+!utils/__pycache__/*.pyc
 *.so
 .Python

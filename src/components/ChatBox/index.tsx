@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { replayActiveTask } from "@/lib";
 
-export default function ChatBox(): JSX.Element {
+export default function ChatBox(): React.JSX.Element {
 	const [message, setMessage] = useState<string>("");
 
 	//Get Chatstore for the active project's task
