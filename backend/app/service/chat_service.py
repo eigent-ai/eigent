@@ -42,9 +42,11 @@ from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
 from utils import traceroot_wrapper as traceroot
+from opentelemetry import trace
 import os
 
 logger = traceroot.get_logger("chat_service")
+tracer = trace.get_tracer(__name__)
 
 
 def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
@@ -231,7 +233,6 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 
 @sync_step
-@traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # if True:
     #     import faulthandler
@@ -321,7 +322,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     # Questions with attachments always need workforce
                     is_complex_task = True
                 else:
-                    is_complex_task = await question_confirm(question_agent, question, task_lock)
+                    with tracer.start_as_current_span("question_confirm", attributes={"question_length": len(question)}):
+                        is_complex_task = await question_confirm(question_agent, question, task_lock)
 
                 if not is_complex_task:
                     simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {question}\n\nProvide a direct, helpful answer to this simple question."
@@ -362,7 +364,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     context_for_coordinator = build_context_for_workforce(task_lock, options)
 
-                    (workforce, mcp) = await construct_workforce(options)
+                    with tracer.start_as_current_span("construct_workforce", attributes={"project_id": options.project_id}):
+                        (workforce, mcp) = await construct_workforce(options)
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
@@ -374,11 +377,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    sub_tasks = await asyncio.to_thread(
-                        workforce.eigent_make_sub_tasks,
-                        camel_task,
-                        context_for_coordinator
-                    )
+                    with tracer.start_as_current_span("task_decomposition", attributes={"task_id": options.task_id, "project_id": options.project_id}):
+                        sub_tasks = await asyncio.to_thread(
+                            workforce.eigent_make_sub_tasks,
+                            camel_task,
+                            context_for_coordinator
+                        )
 
                     if not task_lock.summary_generated:
                         summary_task_agent = task_summary_agent(options)
@@ -547,7 +551,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
 
                     try:
-                        is_multi_turn_complex = await question_confirm(question_agent, new_task_content, task_lock)
+                        with tracer.start_as_current_span("question_confirm_multi_turn", attributes={"question_length": len(new_task_content)}):
+                            is_multi_turn_complex = await question_confirm(question_agent, new_task_content, task_lock)
 
                         if not is_multi_turn_complex:
                             simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {new_task_content}\n\nProvide a direct, helpful answer to this simple question."
@@ -573,11 +578,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
-                        new_sub_tasks = await workforce.handle_decompose_append_task(
-                            camel_task,
-                            reset=False,
-                            coordinator_context=context_for_multi_turn
-                        )
+                        with tracer.start_as_current_span("multi_turn_task_decomposition", attributes={"project_id": options.project_id}):
+                            new_sub_tasks = await workforce.handle_decompose_append_task(
+                                camel_task,
+                                reset=False,
+                                coordinator_context=context_for_multi_turn
+                            )
 
                         task_content_for_summary = new_task_content
                         if len(task_content_for_summary) > 100:

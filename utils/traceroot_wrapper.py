@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Callable
 import logging
+import os
 import traceroot
 from dotenv import load_dotenv
 
@@ -26,7 +27,10 @@ env_path = Path(__file__).resolve().parents[1] / '.env'
 
 load_dotenv(env_path)
 
-if traceroot.init():
+# Check if TraceRoot is enabled via environment variable
+traceroot_enabled = os.getenv('TRACEROOT_ENABLED', 'false').lower() in ('true', '1', 'yes')
+
+if traceroot_enabled and traceroot.init():
     from traceroot.logger import get_logger as _get_traceroot_logger
 
     trace = traceroot.trace
