@@ -4,7 +4,7 @@ import path from 'node:path'
 import os, { homedir } from 'node:os'
 import log from 'electron-log'
 import { update, registerUpdateIpcHandlers } from './update'
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
+import { checkToolInstalled, killProcessOnPort, startBackend, setUserEmail } from './init'
 import { WebViewManager } from './webview'
 import { FileReader } from './fileReader'
 import { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -249,6 +249,12 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  
+  // ==================== user email handler ====================
+  ipcMain.handle('set-user-email', (_, email: string | null) => {
+    log.info('Setting user email:', email);
+    setUserEmail(email);
+  });
   ipcMain.handle('restart-backend', async () => {
     try {
       if (backendPort) {

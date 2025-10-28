@@ -10,6 +10,18 @@ import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
 
 const execAsync = promisify(exec);
 
+let userEmail: string | null = null;
+
+export function setUserEmail(email: string | null) {
+    userEmail = email;
+    log.info('User email set:', email);
+}
+
+export function getUserEmail(): string | null {
+    return userEmail;
+}
+
+
 // helper function to get main window
 export function getMainWindow(): BrowserWindow | null {
     const windows = BrowserWindow.getAllWindows();
@@ -162,7 +174,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     try {
         // Try multiple paths for .env file
         let envPath: string;
-        
+
         if (app.isPackaged) {
             // In packaged app, .env is in resources/backend/.env
             envPath = path.join(process.resourcesPath || '', 'backend', '.env');
@@ -170,15 +182,15 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             // In development, .env is in project root
             envPath = path.join(backendPath, '..', '.env');
         }
-        
+
         if (fs.existsSync(envPath)) {
             const envContent = fs.readFileSync(envPath, 'utf-8');
             log.info('Reading .env file from:', envPath);
-            
+
             // Parse .env file content into an object
             // Use \r?\n to handle both Windows and Unix line endings
             const lines = envContent.split(/\r?\n/);
-            
+
             envFileContent = lines
                 .filter(line => line.trim() && !line.trim().startsWith('#')) // Filter empty lines and comments
                 .reduce((acc, line) => {
@@ -192,12 +204,13 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     }
                     return acc;
                 }, {} as Record<string, string>);
-        
-        } 
+
+        }
     } catch (error) {
         console.log('error reading .env file:', error)
     }
 
+    const email = getUserEmail();
     const env = {
         ...process.env,
         ...envFileContent, // Merge environment variables from .env file
@@ -205,6 +218,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         PYTHONIOENCODING: 'utf-8',
         UV_PROJECT_ENVIRONMENT: venvPath,
         npm_config_cache: npmCacheDir,
+        ...(email ? { TRACEROOT_SERVICE_NAME: email } : {}),
     }
 
     //Redirect output

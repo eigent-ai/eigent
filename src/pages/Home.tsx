@@ -12,20 +12,28 @@ import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
 import { proxyFetchPost } from "@/api/http";
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable"
+	ResizableHandle,
+	ResizablePanel,
+	ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import SideBar from "@/components/SideBar";
+import { useAuthStore } from "@/store/authStore";
 
 export default function Home() {
+	const { email } = useAuthStore();
+	useEffect(() => {
+		if (email) {
+			window.electronAPI.setUserEmail(email);
+			window.ipcRenderer.invoke("restart-backend")
+		}
+	}, [email]);
 	const { toggle } = useSidebarStore();
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
 	// Add webview-show listener in useEffect with cleanup
@@ -59,16 +67,22 @@ export default function Home() {
 		if (taskAssigning.length === 0) {
 			return;
 		}
-		
+
 		if (webviews.length === 0) {
-			const searchAgent = taskAssigning.find(agent => agent.type === 'search_agent');
-			if (searchAgent && searchAgent.activeWebviewIds && searchAgent.activeWebviewIds.length > 0) {
+			const searchAgent = taskAssigning.find(
+				(agent) => agent.type === "search_agent"
+			);
+			if (
+				searchAgent &&
+				searchAgent.activeWebviewIds &&
+				searchAgent.activeWebviewIds.length > 0
+			) {
 				searchAgent.activeWebviewIds.forEach((webview, index) => {
 					webviews.push({ ...webview, agent_id: searchAgent.agent_id, index });
 				});
 			}
 		}
-		
+
 		if (webviews.length === 0) {
 			return;
 		}
@@ -114,7 +128,6 @@ export default function Home() {
 								browser_url: url,
 								image_base64: base64,
 							});
-						
 						}
 						// let list: any = [];
 						// taskAssigning.forEach((item: any) => {
@@ -185,112 +198,116 @@ export default function Home() {
 		}
 	};
 
-		return (
-			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-8">
-				<ReactFlowProvider>
-					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center gap-2 relative overflow-hidden">
-						<ResizablePanelGroup direction="horizontal">
+	return (
+		<div className="h-full min-h-0 flex flex-row overflow-hidden pt-8">
+			<ReactFlowProvider>
+				<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center gap-2 relative overflow-hidden">
+					<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
 							<div className="flex-1 h-full min-w-0 min-h-0 flex items-center justify-center py-2 pl-2 overflow-hidden">
-							 <ChatBox />
+								<ChatBox />
 							</div>
 						</ResizablePanel>
-							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
+						<ResizableHandle
+							withHandle={true}
+							className="custom-resizable-handle"
+						/>
 						<ResizablePanel>
-						{chatStore.tasks[chatStore.activeTaskId as string]
-							?.activeWorkSpace && (
-							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
-									(agent) =>
-										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
-								)?.type === "search_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<SearchAgentWrokSpace />
-									</div>
-								)}
-								{chatStore.tasks[chatStore.activeTaskId as string]
-									?.activeWorkSpace === "workflow" && (
-									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
-											{/*filter blur */}
-											<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
-											<div className="w-full h-full relative z-10">
-												<Workflow
-													taskAssigning={
-														chatStore.tasks[chatStore.activeTaskId as string]
-															?.taskAssigning || []
-													}
-												/>
-											</div>
+							{chatStore.tasks[chatStore.activeTaskId as string]
+								?.activeWorkSpace && (
+								<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
+									{chatStore.tasks[
+										chatStore.activeTaskId as string
+									]?.taskAssigning?.find(
+										(agent) =>
+											agent.agent_id ===
+											chatStore.tasks[chatStore.activeTaskId as string]
+												.activeWorkSpace
+									)?.type === "search_agent" && (
+										<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+											<SearchAgentWrokSpace />
 										</div>
-									</div>
-								)}
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
-									(agent) =>
-										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
-								)?.type === "developer_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
-										{/* <Terminal content={[]} /> */}
-									</div>
-								)}
-								{chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace === "documentWorkSpace" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
-											{/*filter blur */}
-											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
-											<div className="w-full h-full relative z-10">
-												<Folder />
-											</div>
-										</div>
-									</div>
-								)}
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
-									(agent) =>
-										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
-								)?.type === "document_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
-											{/*filter blur */}
-											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
-											<div className="w-full h-full relative z-10">
-												<Folder
-													data={chatStore.tasks[
-														chatStore.activeTaskId as string
-													]?.taskAssigning?.find(
-														(agent) =>
-															agent.agent_id ===
+									)}
+									{chatStore.tasks[chatStore.activeTaskId as string]
+										?.activeWorkSpace === "workflow" && (
+										<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+											<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
+												{/*filter blur */}
+												<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
+												<div className="w-full h-full relative z-10">
+													<Workflow
+														taskAssigning={
 															chatStore.tasks[chatStore.activeTaskId as string]
-																.activeWorkSpace
-													)}
-												/>
+																?.taskAssigning || []
+														}
+													/>
+												</div>
 											</div>
 										</div>
-									</div>
-								)}
-								<BottomBar />
-							</div>
-						)}
-							</ResizablePanel>
-							{/* Fixed sidebar on the right
+									)}
+									{chatStore.tasks[
+										chatStore.activeTaskId as string
+									]?.taskAssigning?.find(
+										(agent) =>
+											agent.agent_id ===
+											chatStore.tasks[chatStore.activeTaskId as string]
+												.activeWorkSpace
+									)?.type === "developer_agent" && (
+										<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+											<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
+											{/* <Terminal content={[]} /> */}
+										</div>
+									)}
+									{chatStore.tasks[chatStore.activeTaskId as string]
+										.activeWorkSpace === "documentWorkSpace" && (
+										<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+											<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+												{/*filter blur */}
+												<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+												<div className="w-full h-full relative z-10">
+													<Folder />
+												</div>
+											</div>
+										</div>
+									)}
+									{chatStore.tasks[
+										chatStore.activeTaskId as string
+									]?.taskAssigning?.find(
+										(agent) =>
+											agent.agent_id ===
+											chatStore.tasks[chatStore.activeTaskId as string]
+												.activeWorkSpace
+									)?.type === "document_agent" && (
+										<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+											<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+												{/*filter blur */}
+												<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+												<div className="w-full h-full relative z-10">
+													<Folder
+														data={chatStore.tasks[
+															chatStore.activeTaskId as string
+														]?.taskAssigning?.find(
+															(agent) =>
+																agent.agent_id ===
+																chatStore.tasks[
+																	chatStore.activeTaskId as string
+																].activeWorkSpace
+														)}
+													/>
+												</div>
+											</div>
+										</div>
+									)}
+									<BottomBar />
+								</div>
+							)}
+						</ResizablePanel>
+						{/* Fixed sidebar on the right
 							<div className="h-full z-30">
 								<SideBar />
 							</div>*/}
-							</ResizablePanelGroup>
-					</div>
+					</ResizablePanelGroup>
+				</div>
 			</ReactFlowProvider>
 			<UpdateElectron />
 		</div>
