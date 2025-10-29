@@ -6,7 +6,7 @@ import path from 'path'
 import * as net from "net";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
-import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
+import { PromiseReturnType } from "./install-deps";
 
 const execAsync = promisify(exec);
 
@@ -170,8 +170,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     const displayFilteredLogs = (data: String) => {
         if (!data) return;
         const msg = data.toString().trimEnd();
-        //Detect if uv sync is run
-        detectInstallationLogs(msg);
 
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
             log.error(`BACKEND: ${msg}`);
