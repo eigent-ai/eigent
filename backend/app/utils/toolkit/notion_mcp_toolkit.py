@@ -1,4 +1,7 @@
 import os
+import json
+import asyncio
+from textwrap import indent
 from typing import Any, Dict, List
 from camel.toolkits import FunctionTool
 from app.component.environment import env
@@ -20,13 +23,14 @@ def _customize_function_parameters(schema: Dict[str, Any]) -> None:
         properties = parameters.get("properties", {})
         required = parameters.get("required", [])
         
+        help_description = "If you need use parent, you can use `notion-search` for the imformation"
         # Modify the notion-create-pages function to make parent optional
-        if function_name == "notion-create-pages":
+        if function_name == "notion-create-pages" or function_name == "notion-create-database":
             required.remove("parent")
             parameters["required"] = required
             if "parent" in properties:
                 # Update the parent parameter description
-                properties["parent"]["description"] = "Optional. " + properties["parent"]["description"]
+                properties["parent"]["description"] = "Optional. " + properties["parent"]["description"] + help_description
 
 class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
 
@@ -58,21 +62,60 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
 
     @classmethod
     async def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
-        tools = []
-        toolkit = cls(api_task_id)
-        try:
-            await toolkit.connect()
-            # Use subclass implementation that inlines upstream processing
-            all_tools = toolkit.get_tools()
-            tool_schema = [
-                item.get_openai_tool_schema() for item in all_tools
-            ]
-            #adjust tool schema
-            for item in tool_schema:
-                _customize_function_parameters(item)
-            for item in all_tools:
-                setattr(item, "_toolkit_name", cls.__name__)
-                tools.append(item)
-        except Exception as e:
-            print(f"Warning: Could not connect to Notion MCP server: {e}")
-        return tools
+        # Retry mechanism for remote MCP connection
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            tools = []
+            toolkit = None
+            
+            try:
+                # Create a fresh toolkit instance for each retry
+                toolkit = cls(api_task_id)
+                logger.info(f"Attempting to connect to Notion MCP server (attempt {attempt + 1}/{max_retries})")
+                
+                await toolkit.connect()
+                
+                # Get tools from the connected toolkit
+                all_tools = toolkit.get_tools()
+                tool_schema = [
+                    item.get_openai_tool_schema() for item in all_tools
+                ]
+                
+                # Adjust tool schema
+                for item in tool_schema:
+                    _customize_function_parameters(item)
+                
+                for item in all_tools:
+                    setattr(item, "_toolkit_name", cls.__name__)
+                    tools.append(item)
+                
+                # Check if we actually got tools
+                if len(tools) == 0:
+                    logger.warning(f"Connected to Notion MCP server but got 0 tools (attempt {attempt + 1}/{max_retries})")
+                    raise Exception("No tools retrieved from Notion MCP server")
+                
+                # Success! Got tools
+                logger.info(f"Successfully connected to Notion MCP server and loaded {len(tools)} tools")
+                
+                # Save tool schema
+                tool_schema = [
+                    item.get_openai_tool_schema() for item in tools
+                ]
+                with open("tool_schema.json", "w") as f:
+                    json.dump(tool_schema, f, indent=4)
+                
+                return tools
+                
+            except Exception as e:
+                logger.warning(f"Failed to connect to Notion MCP server (attempt {attempt + 1}/{max_retries}): {e}")
+                
+                # If not the last attempt, wait and retry
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    # Last attempt failed
+                    logger.error(f"All {max_retries} connection attempts to Notion MCP server failed. Notion tools will not be available for this task.")
+        return []

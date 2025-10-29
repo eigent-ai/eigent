@@ -158,7 +158,12 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 							try {
 								const response = await fetchPost("/install/tool/notion");
 								if (response.success) {
-									toast.success(t("setting.notion-mcp-installed-successfully"));
+									// Check if there's a warning (connection failed but installation marked as complete)
+									if (response.warning) {
+										toast.warning(response.warning, { duration: 5000 });
+									} else {
+										toast.success(t("setting.notion-mcp-installed-successfully"));
+									}
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
 										config_group: "Notion",
@@ -181,7 +186,12 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 							try {
 								const response = await fetchPost("/install/tool/google_calendar");
 								if (response.success) {
-									toast.success(t("setting.google-calendar-installed-successfully"));
+									// Check if there's a warning (connection failed but installation marked as complete)
+									if (response.warning) {
+										toast.warning(response.warning, { duration: 5000 });
+									} else {
+										toast.success(t("setting.google-calendar-installed-successfully"));
+									}
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
 										config_group: "Google Calendar",
