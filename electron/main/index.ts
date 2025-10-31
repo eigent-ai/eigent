@@ -756,6 +756,24 @@ function registerIpcHandlers() {
     let lines = content.split(/\r?\n/);
     lines = updateEnvBlock(lines, { [key]: value });
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
+    
+    // Also write to global .env file for backend process to read
+    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
+    let globalContent = '';
+    try {
+      globalContent = fs.existsSync(GLOBAL_ENV_PATH) ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8') : '';
+    } catch (error) {
+      log.error("global env-write read error:", error);
+    }
+    let globalLines = globalContent.split(/\r?\n/);
+    globalLines = updateEnvBlock(globalLines, { [key]: value });
+    try {
+      fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
+      log.info(`env-write: wrote ${key} to both user and global .env files`);
+    } catch (error) {
+      log.error("global env-write error:", error);
+    }
+    
     return { success: true };
   });
 
@@ -772,6 +790,19 @@ function registerIpcHandlers() {
     lines = removeEnvKey(lines, key);
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
     log.info("env-remove success", ENV_PATH);
+    
+    // Also remove from global .env file
+    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
+    try {
+      let globalContent = fs.existsSync(GLOBAL_ENV_PATH) ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8') : '';
+      let globalLines = globalContent.split(/\r?\n/);
+      globalLines = removeEnvKey(globalLines, key);
+      fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
+      log.info(`env-remove: removed ${key} from both user and global .env files`);
+    } catch (error) {
+      log.error("global env-remove error:", error);
+    }
+    
     return { success: true };
   });
 
