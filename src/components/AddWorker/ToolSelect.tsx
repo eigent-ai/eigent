@@ -72,6 +72,11 @@ const ToolSelect = forwardRef<
 								try {
 									const response = await fetchPost("/install/tool/notion");
 									if (response.success) {
+										// Check if there's a warning (connection failed but installation marked as complete)
+										if (response.warning) {
+											console.warn("Notion MCP connection warning:", response.warning);
+											// Still proceed but log the warning
+										}
 										// Save to config to mark as installed
 										await proxyFetchPost("/api/configs", {
 											config_group: "Notion",
@@ -103,6 +108,11 @@ const ToolSelect = forwardRef<
 								try {
 									const response = await fetchPost("/install/tool/google_calendar");
 									if (response.success) {
+										// Check if there's a warning (connection failed but installation marked as complete)
+										if (response.warning) {
+											console.warn("Google Calendar connection warning:", response.warning);
+											// Still proceed but log the warning
+										}
 										// Save to config to mark as installed
 										await proxyFetchPost("/api/configs", {
 											config_group: "Google Calendar",
