@@ -1,8 +1,15 @@
 from pathlib import Path
 from typing import Callable
 import logging
-import traceroot
 from dotenv import load_dotenv
+
+# Try to import traceroot, but handle gracefully if not available
+try:
+    import traceroot
+    TRACEROOT_AVAILABLE = True
+except ImportError:
+    TRACEROOT_AVAILABLE = False
+    traceroot = None
 
 # Auto-detect module name based on caller's path
 def _get_module_name():
@@ -26,7 +33,7 @@ env_path = Path(__file__).resolve().parents[1] / '.env'
 
 load_dotenv(env_path)
 
-if traceroot.init():
+if TRACEROOT_AVAILABLE and traceroot.init():
     from traceroot.logger import get_logger as _get_traceroot_logger
 
     trace = traceroot.trace
@@ -69,7 +76,10 @@ else:
 
     # Log fallback mode
     _fallback_logger = logging.getLogger("traceroot_wrapper")
-    _fallback_logger.warning("TraceRoot not initialized - using Python logging as fallback")
+    if TRACEROOT_AVAILABLE:
+        _fallback_logger.warning("TraceRoot available but not initialized - using Python logging as fallback")
+    else:
+        _fallback_logger.warning("TraceRoot not available - using Python logging as fallback")
 
 
 __all__ = ['trace', 'get_logger', 'is_enabled']

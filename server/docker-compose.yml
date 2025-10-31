@@ -25,8 +25,8 @@ services:
   # FastAPI Application
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: server/Dockerfile
       args:
         database_url: postgresql://postgres:123456@postgres:5432/eigent
     container_name: eigent_api
