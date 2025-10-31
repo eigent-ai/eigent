@@ -4,7 +4,7 @@ from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("tool_controller")
-router = APIRouter(tags=["task"])
+router = APIRouter(tags=["tool"])
 
 
 @router.post("/install/tool/{tool}", name="install tool")
