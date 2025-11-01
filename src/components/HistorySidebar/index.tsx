@@ -178,7 +178,7 @@ export default function HistorySidebar() {
 				try {
 					//TODO(file): rename endpoint to use project_id
 					//TODO(history): make sure to sync to projectId when updating endpoint
-					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id);
+					await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id,history.project_id ?? undefined);
 				} catch (error) {
 					console.warn("Local file cleanup failed:", error);
 				}
