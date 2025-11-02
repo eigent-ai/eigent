@@ -50,7 +50,7 @@ async def post(data: Chat, request: Request):
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
     email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]).strip(".")
-    camel_log = Path.home() / ".eigent" / email_sanitized / ("project_" + data.project_id) /("task_" + data.task_id) /  "camel_logs"
+    camel_log = Path.home() / ".eigent" / email_sanitized / ("project_" + data.project_id) / ("task_" + data.task_id) / "camel_logs"
     camel_log.mkdir(parents=True, exist_ok=True)
 
     os.environ["CAMEL_LOG_DIR"] = str(camel_log)
