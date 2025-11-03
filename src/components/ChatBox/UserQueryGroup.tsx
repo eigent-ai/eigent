@@ -38,7 +38,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
   // Show task if this query group has a task message OR if it's the most recent user query during splitting
   // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
+  // Exclude human-reply scenarios (when user is replying to an activeAsk)
+  const isHumanReply = queryGroup.userMessage && 
+    activeTaskId &&
+    chatState.tasks[activeTaskId] &&
+    (chatState.tasks[activeTaskId].activeAsk || 
+     // Check if this user message follows an 'ask' message in the message sequence
+     (() => {
+       const messages = chatState.tasks[activeTaskId].messages;
+       const userMessageIndex = messages.findIndex((m: any) => m.id === queryGroup.userMessage.id);
+       if (userMessageIndex > 0) {
+         // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
+         const prevMessage = messages[userMessageIndex - 1];
+         return prevMessage?.role === 'agent' && prevMessage?.step === 'ask';
+       }
+       return false;
+     })());
+  
   const isLastUserQuery = !queryGroup.taskMessage &&
+    !isHumanReply &&
     activeTaskId &&
     chatState.tasks[activeTaskId] &&
     queryGroup.userMessage &&
@@ -131,21 +149,23 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       }}
       className="relative"
     >
-      {/* User Query */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="px-2 py-sm"
-      >
-        <MessageCard
-          id={queryGroup.userMessage.id}
-          role={queryGroup.userMessage.role}
-          content={queryGroup.userMessage.content}
-          onTyping={() => {}}
-          attaches={queryGroup.userMessage.attaches}
-        />
-      </motion.div>
+      {/* User Query (render only if exists) */}
+      {queryGroup.userMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="px-2 py-sm"
+        >
+          <MessageCard
+            id={queryGroup.userMessage.id}
+            role={queryGroup.userMessage.role}
+            content={queryGroup.userMessage.content}
+            onTyping={() => {}}
+            attaches={queryGroup.userMessage.attaches}
+          />
+        </motion.div>
+      )}
 
       {/* Sticky Task Box - Show for each query group that has a task */}
       {task && (
