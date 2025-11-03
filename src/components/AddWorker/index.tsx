@@ -16,7 +16,9 @@ import {
 	RefreshCw,
 	ChevronLeft,
 	ArrowRight,
-	Edit,
+    Edit,
+    Eye,
+    EyeOff,
 } from "lucide-react";
 import ToolSelect from "./ToolSelect";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,6 +70,7 @@ export function AddWorker({
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
+	const [secretVisible, setSecretVisible] = useState<{ [key: string]: boolean }>({});
 	const toolSelectRef = useRef<{
 		installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
 	} | null>(null);
@@ -86,6 +89,7 @@ export function AddWorker({
 		console.log(mcp);
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
+			const initialVisibility: { [key: string]: boolean } = {};
 			for(const key of Object.keys(mcp.install_command.env)) {
 				initialValues[key] = {
 					value: "",
@@ -95,8 +99,10 @@ export function AddWorker({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
+				initialVisibility[key] = false;
 			}
 			setEnvValues(initialValues);
+			setSecretVisible(initialVisibility);
 		}
 	};
 
@@ -142,12 +148,18 @@ export function AddWorker({
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 	};
 
 	const handleShowEnvConfig = (mcp: McpItem) => {
 		setActiveMcp(mcp);
 		initializeEnvValues(mcp);
 		setShowEnvConfig(true);
+	};
+
+	const isSensitiveKey = (key: string) => /token|key|secret|password|id/i.test(key);
+	const toggleSecretVisibility = (key: string) => {
+		setSecretVisible((prev) => ({ ...prev, [key]: !prev[key] }));
 	};
 
 	const handleSelectedToolsChange = (tools: McpItem[]) => {
@@ -364,18 +376,24 @@ export function AddWorker({
 									{Object.keys(activeMcp?.install_command?.env || {}).map(
 										(key) => (
 											<div key={key}>
-												<div className="text-text-body text-sm leading-normal font-bold">
-													{key}*
-												</div>
 												<Input
-													placeholder=""
-													className="h-7 rounded-sm border border-solid border-input-border-default bg-input-bg-default !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
+													size="default"
+													title={key}
+													required
+													placeholder={envValues[key]?.tip || `Enter ${key}`}
+												type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
 													value={envValues[key]?.value || ""}
 													onChange={(e) => updateEnvValue(key, e.target.value)}
+													note={envValues[key]?.tip}
+												backIcon={isSensitiveKey(key) ? (
+													secretVisible[key] ? (
+														<EyeOff size={16} className="text-button-transparent-icon-disabled" />
+													) : (
+														<Eye size={16} className="text-button-transparent-icon-disabled" />
+													)
+												) : undefined}
+												onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
 												/>
-												<div className="text-input-label-default text-xs leading-normal">
-													{envValues[key]?.tip}
-												</div>
 											</div>
 										)
 									)}
@@ -392,7 +410,6 @@ export function AddWorker({
 								cancelButtonVariant="ghost"
 								confirmButtonVariant="primary"
 							>
-								<ArrowRight size={16} />
 							</DialogFooter>
 							{/* hidden but keep rendering ToolSelect component */}
 							<div style={{ display: "none" }}>
