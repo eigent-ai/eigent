@@ -15,6 +15,7 @@ import {
 	House,
 	Share,
 	MoreHorizontal,
+	BookOpen,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -376,6 +377,37 @@ function HeaderWin() {
 							platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
+            <Button
+							variant="outline"
+							size="xs"
+							className="no-drag"
+						>
+							Feedback
+						</Button>      
+						
+						<Button
+							variant="outline"
+							size="xs"
+							className="no-drag"
+						>
+							<img
+								src={giftIcon}
+								alt="gift-icon"
+								className="w-4 h-4"
+							/>
+							{t("layout.refer-friends")}
+						</Button>
+
+						<TooltipSimple content={t("layout.workflow")} side="bottom" align="end">
+							<Button
+								variant="outline"
+								size="icon"
+								className="no-drag"
+							>
+								<BookOpen className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
+						
 					</div>
 				)}
 			</div>

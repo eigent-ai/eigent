@@ -8,8 +8,8 @@ import { useUser } from "@stackframe/react";
 import { hasStackKeys } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
-import Project from "@/pages/Dashboard/Project";
-import Trigger from "@/pages/Dashboard/Trigger";
+import Project from "@/pages/Project";
+import Trigger from "@/pages/Triggers";
 import AlertDialog from "@/components/ui/alertDialog";
 import { Bot } from "@/components/animate-ui/icons/bot";
 import { Settings } from "@/components/animate-ui/icons/settings";
@@ -125,10 +125,9 @@ export default function Home() {
 				<div className="flex items-center gap-2">
 			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
 			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>{t("layout.projects")}</MenuToggleItem>
+					 <MenuToggleItem size="xs" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>}>{t("layout.triggers")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>{t("layout.mcp-tools")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>{t("layout.settings")}</MenuToggleItem>
-			  	 <MenuToggleItem size="xs" value="workers" iconAnimateOnHover="default" icon={<Bot/>} disabled>{t("layout.workers")}</MenuToggleItem>
-			  	 <MenuToggleItem size="xs" value="trigger" iconAnimateOnHover="default" icon={<AlarmClock/>} disabled>{t("layout.triggers")}</MenuToggleItem>
 		  	 </MenuToggleGroup>
 				</div>
 		  	<Button variant="primary" size="sm" onClick={createChat}>
@@ -138,8 +137,8 @@ export default function Home() {
 			</div>
 		  </div>
 	      {activeTab === "projects" && <Project />}
+				{activeTab === "trigger" && <Trigger />}
 	      {activeTab === "mcp_tools" && <MCP />}
-	      {activeTab === "trigger" && <Trigger />}
 				{activeTab === "settings" && <Setting />}
 		</div>
 	);
