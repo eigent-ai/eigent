@@ -69,6 +69,7 @@ export function AddWorker({
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
+	const [isValidating, setIsValidating] = useState(false);
 	const toolSelectRef = useRef<{
 		installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
 	} | null>(null);
@@ -141,29 +142,45 @@ export function AddWorker({
 
 	const handleConfigureMcpEnvSetting = async () => {
 		if (!activeMcp) return;
+		if (isValidating) return;
 
 		// Validate required fields first
 		if (!validateRequiredFields()) {
 			return;
 		}
 
-		// switch back to tool selection interface, ensure ToolSelect component is visible
-		setShowEnvConfig(false);
+		setIsValidating(true);
 
-		// wait for component re-rendering
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		// For Google Calendar, keep dialog open during authorization
+		// For other tools, close dialog immediately
+		if (activeMcp.key !== "Google Calendar") {
+			// switch back to tool selection interface, ensure ToolSelect component is visible
+			setShowEnvConfig(false);
+
+			// wait for component re-rendering
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
 
 		// call ToolSelect's install method
 		if (toolSelectRef.current) {
-			if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar") {
-				await toolSelectRef.current.installMcp(
-					activeMcp.id,
-					{ ...envValues },
-					activeMcp
-				);
-			} else {
-				await toolSelectRef.current.installMcp(activeMcp.id, { ...envValues });
+			try {
+				if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar") {
+					await toolSelectRef.current.installMcp(
+						activeMcp.id,
+						{ ...envValues },
+						activeMcp
+					);
+				} else {
+					await toolSelectRef.current.installMcp(activeMcp.id, { ...envValues });
+				}
+			} finally {
+				setIsValidating(false);
 			}
+		}
+
+		// For Google Calendar, close dialog after installMcp completes
+		if (activeMcp.key === "Google Calendar") {
+			setShowEnvConfig(false);
 		}
 
 		// clean status
@@ -352,7 +369,20 @@ export function AddWorker({
 						</Button>
 					)}
 				</DialogTrigger>
-				<DialogContent size="sm" className="p-0 gap-0">
+				<DialogContent 
+					size="sm" 
+					className="p-0 gap-0"
+					// Prevent closing while validating (OAuth in progress)
+					onInteractOutside={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+					onEscapeKeyDown={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+					onPointerDownOutside={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+				>
 					<DialogHeader
 						title={showEnvConfig ? t("workforce.configure-mcp-server") : t("workforce.add-your-agent")}
 						tooltip={t("layout.configure-your-mcp-worker-node-here")}
@@ -420,7 +450,7 @@ export function AddWorker({
 								showCancelButton={true}
 								showConfirmButton={true}
 								cancelButtonText={t("workforce.cancel")}
-								confirmButtonText={t("layout.connect")}
+								confirmButtonText={isValidating ? "Validating..." : t("layout.connect")}
 								onCancel={handleCloseMcpEnvSetting}
 								onConfirm={handleConfigureMcpEnvSetting}
 								cancelButtonVariant="ghost"

@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CircleAlert, Store, X } from "lucide-react";
-import { proxyFetchGet, proxyFetchPost, proxyFetchPut, fetchPost } from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, proxyFetchPut, fetchPost, fetchGet } from "@/api/http";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
@@ -301,10 +301,12 @@ const ToolSelect = forwardRef<
 			
 		// Trigger instantiation for Google Calendar
 		if (activeMcp.key === "Google Calendar") {
+			console.log("[ToolSelect installMcp] Starting Google Calendar installation");
 			try {
 				const response = await fetchPost("/install/tool/google_calendar");
 				
 				if (response.success) {
+					console.log("[ToolSelect installMcp] Immediate success");
 					// Mark as successfully installed by writing refresh token marker
 					const existingConfigs = await proxyFetchGet("/api/configs");
 					const existing = Array.isArray(existingConfigs)
@@ -340,7 +342,75 @@ const ToolSelect = forwardRef<
 					addOption(selectedItem, true);
 				} else if (response.status === "authorizing") {
 					// Authorization in progress - browser should have opened
-					console.log("Google Calendar authorization in progress. Please complete in browser and try installing again.");
+					console.log("[ToolSelect installMcp] Authorization required, starting polling loop");
+					
+					// WAIT for OAuth status completion instead of using setInterval
+					const start = Date.now();
+					const timeoutMs = 5 * 60 * 1000; // 5 minutes
+					
+					while (Date.now() - start < timeoutMs) {
+						try {
+							const statusResponse = await fetchGet("/oauth/status/google_calendar");
+							console.log("[ToolSelect installMcp] OAuth status:", statusResponse.status);
+							
+							if (statusResponse.status === "success") {
+								console.log("[ToolSelect installMcp] Authorization completed successfully!");
+								
+								// Try installing again now that authorization is complete
+								const retryResponse = await fetchPost("/install/tool/google_calendar");
+								if (retryResponse.success) {
+									// Mark as successfully installed
+									const existingConfigs = await proxyFetchGet("/api/configs");
+									const existing = Array.isArray(existingConfigs)
+										? existingConfigs.find((c: any) =>
+											c.config_group?.toLowerCase() === "google calendar" &&
+											c.config_name === "GOOGLE_REFRESH_TOKEN"
+										)
+										: null;
+									
+									const configPayload = {
+										config_group: "Google Calendar",
+										config_name: "GOOGLE_REFRESH_TOKEN",
+										config_value: "exists",
+									};
+									
+									if (existing) {
+										await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+									} else {
+										await proxyFetchPost("/api/configs", configPayload);
+									}
+									
+									fetchIntegrationsData();
+									
+									const selectedItem = {
+										id: activeMcp.id,
+										key: activeMcp.key,
+										name: activeMcp.name,
+										description: "Google Calendar integration for managing events and schedules",
+										toolkit: "google_calendar_toolkit",
+										isLocal: true
+									};
+									addOption(selectedItem, true);
+								}
+								console.log("[ToolSelect installMcp] Installation complete, returning");
+								return;
+							} else if (statusResponse.status === "failed") {
+								console.error("[ToolSelect installMcp] Authorization failed:", statusResponse.error);
+								return;
+							} else if (statusResponse.status === "cancelled") {
+								console.log("[ToolSelect installMcp] Authorization cancelled");
+								return;
+							}
+						} catch (error) {
+							console.error("[ToolSelect installMcp] Error polling OAuth status:", error);
+						}
+						
+						// Wait before next poll
+						await new Promise((r) => setTimeout(r, 1500));
+					}
+					
+					console.log("[ToolSelect installMcp] Polling timeout");
+					return;
 				} else {
 					console.error("Failed to install Google Calendar:", response.error || "Unknown error");
 				}
