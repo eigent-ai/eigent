@@ -442,11 +442,6 @@ export function AddWorker({
 											}}
 											state={nameError ? "error" : "default"}
 											note={nameError || ""}
-											backIcon={<RefreshCw size={16} className="text-button-transparent-icon-disabled" />}
-											onBackIconClick={() => {
-												// Handle refresh/regenerate logic here
-												console.log("Refresh agent name");
-											}}
 											required
 										/>
 									</div>
