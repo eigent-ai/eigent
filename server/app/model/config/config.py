@@ -124,10 +124,10 @@ class ConfigInfo:
             "env_vars": [],
             "toolkit": "google_drive_mcp_toolkit",
         },
-        # ConfigGroup.GOOGLE_GMAIL_MCP.value: {
-        #     "env_vars": [],
-        #     "toolkit": "google_gmail_mcp_toolkit",
-        # },
+        ConfigGroup.GOOGLE_GMAIL_MCP.value: {
+            "env_vars": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
+            "toolkit": "google_gmail_native_toolkit",
+        },
         ConfigGroup.IMAGE_ANALYSIS.value: {
             "env_vars": [],
             "toolkit": "image_analysis_toolkit",
