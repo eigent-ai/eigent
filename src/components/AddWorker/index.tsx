@@ -329,7 +329,12 @@ export function AddWorker({
 						</Button>
 					)}
 				</DialogTrigger>
-				<DialogContent size="sm" className="p-0 gap-0">
+				<DialogContent 
+					size="sm" 
+					className="p-0 gap-0"
+					onInteractOutside={(e) => e.preventDefault()}
+					onEscapeKeyDown={(e) => e.preventDefault()}
+				>
 					<DialogHeader
 						title={showEnvConfig ? t("workforce.configure-mcp-server") : t("workforce.add-your-agent")}
 						tooltip={t("layout.configure-your-mcp-worker-node-here")}
