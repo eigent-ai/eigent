@@ -145,9 +145,12 @@ function HeaderWin() {
 			return;
 		}
 
+		const projectId = projectStore.activeProjectId;
+		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
+
 		try {
 			const task = chatStore.tasks[taskId];
-			
+
 			// Stop the task if it's running
 			if (task && task.status === 'running') {
 				await fetchPut(`/task/${taskId}/take-control`, {
@@ -163,14 +166,14 @@ function HeaderWin() {
 			}
 
 			// Delete from history using historyId
-			const projectId = projectStore.activeProjectId;
-			const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 			if (historyId) {
 				try {
 					await proxyFetchDelete(`/api/chat/history/${historyId}`);
 				} catch (error) {
 					console.log("History may not exist:", error);
 				}
+			} else {
+				console.warn("No historyId found for project, skipping history deletion");
 			}
 
 			// Remove from local store
