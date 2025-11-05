@@ -162,11 +162,15 @@ function HeaderWin() {
 				console.log("Task may not exist on backend:", error);
 			}
 
-			// Delete from history
-			try {
-				await proxyFetchDelete(`/api/chat/history/${taskId}`);
-			} catch (error) {
-				console.log("Task may not exist in history:", error);
+			// Delete from history using historyId
+			const projectId = projectStore.activeProjectId;
+			const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
+			if (historyId) {
+				try {
+					await proxyFetchDelete(`/api/chat/history/${historyId}`);
+				} catch (error) {
+					console.log("History may not exist:", error);
+				}
 			}
 
 			// Remove from local store
@@ -176,8 +180,8 @@ function HeaderWin() {
 			const newTaskId = chatStore.create();
 			chatStore.setActiveTaskId(newTaskId);
 
-			// Navigate to home
-			navigate("/");
+			// Navigate to home with replace to force refresh
+			navigate("/", { replace: true });
 
 			toast.success(t("layout.project-ended-successfully"), {
 				closeButton: true,
