@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
-	DialogClose,
 	DialogContent,
 	DialogContentSection,
 	DialogFooter,
@@ -11,14 +10,10 @@ import {
 import { Input } from "@/components/ui/input";
 import {
 	Bot,
-	CircleAlert,
 	Plus,
-	RefreshCw,
-	ChevronLeft,
-	ArrowRight,
-    Edit,
-    Eye,
-    EyeOff,
+	Edit,
+	Eye,
+	EyeOff,
 } from "lucide-react";
 import ToolSelect from "./ToolSelect";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +22,6 @@ import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import { TooltipSimple } from "../ui/tooltip";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface EnvValue {
@@ -142,6 +136,7 @@ export function AddWorker({
 		// clean status
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 	};
 
 	const handleCloseMcpEnvSetting = () => {
@@ -173,6 +168,7 @@ export function AddWorker({
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 		setNameError("");
 	};
 
@@ -216,9 +212,11 @@ export function AddWorker({
 			}
 		});
 		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
-		for(const key of Object.keys(mcpLocal.mcpServers)) {
-			if (!mcpList.includes(key)) {
-				delete mcpLocal.mcpServers[key];
+		if (mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object') {
+			for(const key of Object.keys(mcpLocal.mcpServers)) {
+				if (!mcpList.includes(key)) {
+					delete mcpLocal.mcpServers[key];
+				}
 			}
 		}
 		if (edit) {
@@ -381,18 +379,18 @@ export function AddWorker({
 													title={key}
 													required
 													placeholder={envValues[key]?.tip || `Enter ${key}`}
-												type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
+													type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
 													value={envValues[key]?.value || ""}
 													onChange={(e) => updateEnvValue(key, e.target.value)}
 													note={envValues[key]?.tip}
-												backIcon={isSensitiveKey(key) ? (
-													secretVisible[key] ? (
-														<EyeOff size={16} className="text-button-transparent-icon-disabled" />
-													) : (
-														<Eye size={16} className="text-button-transparent-icon-disabled" />
-													)
-												) : undefined}
-												onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
+													backIcon={isSensitiveKey(key) ? (
+														secretVisible[key] ? (
+															<EyeOff size={16} className="text-button-transparent-icon-disabled" />
+														) : (
+															<Eye size={16} className="text-button-transparent-icon-disabled" />
+														)
+													) : undefined}
+													onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
 												/>
 											</div>
 										)
