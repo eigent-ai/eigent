@@ -3,7 +3,7 @@ from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from app.model.chat.chat_history import ChatHistoryOut, ChatHistoryIn, ChatHistory, ChatHistoryUpdate
 from fastapi_babel import _
-from sqlmodel import Session, select, desc, asc, case
+from sqlmodel import Session, select, desc, case
 from app.component.auth import Auth, auth_must
 from app.component.database import session
 from utils import traceroot_wrapper as traceroot
