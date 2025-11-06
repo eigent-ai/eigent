@@ -259,14 +259,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     }
                 });
             }, intervalMs);
-
-            // Clear interval after max attempts
-            setTimeout(() => {
-                if (healthCheckInterval && !started) {
-                    clearInterval(healthCheckInterval);
-                    healthCheckInterval = null;
-                }
-            }, maxAttempts * intervalMs);
         };
 
         node_process.stdout.on('data', (data) => {
