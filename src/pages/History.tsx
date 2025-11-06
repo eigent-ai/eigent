@@ -4,8 +4,6 @@ import { Plus } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
-import { useUser } from "@stackframe/react";
-import { hasStackKeys } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
 import Project from "@/pages/Dashboard/Project";
@@ -40,10 +38,8 @@ export default function Home() {
 
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-	const HAS_STACK_KEYS = hasStackKeys();
-	const stackUser = HAS_STACK_KEYS ? useUser({ or: 'anonymous-if-exists' }) : null;
 	const { username, email } = useAuthStore();
-	const displayName = stackUser?.displayName ?? stackUser?.primaryEmail ?? username ?? email ?? "";
+	const displayName = username ?? email ?? "";
 
 	// Sync activeTab with URL changes
 	useEffect(() => {

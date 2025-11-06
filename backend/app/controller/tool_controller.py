@@ -10,7 +10,7 @@ import os
 import uuid
 
 logger = traceroot.get_logger("tool_controller")
-router = APIRouter(tags=["task"])
+router = APIRouter()
 
 
 @router.post("/install/tool/{tool}", name="install tool")
