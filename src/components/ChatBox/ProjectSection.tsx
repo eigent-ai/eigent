@@ -152,10 +152,18 @@ function groupMessagesByQuery(messages: any[]) {
           otherMessages: []
         };
       }
-    } else {
-      // Other messages (assistant responses, etc.)
+  } else {
+      // Other messages (assistant responses, errors, etc.)
       if (currentGroup) {
         currentGroup.otherMessages.push(message);
+      } else {
+        // If there is no current user group yet (e.g., the first message is from agent/error),
+        // create an anonymous group to ensure the message is rendered.
+        currentGroup = {
+          queryId: `orphan-${message.id}`,
+          userMessage: null,
+          otherMessages: [message]
+        };
       }
     }
   });
