@@ -28,7 +28,7 @@ from app.utils.workforce import Workforce
 from camel.tasks.task import Task
 
 
-router = APIRouter(tags=["chat"])
+router = APIRouter()
 
 # Create traceroot logger for chat controller
 chat_logger = traceroot.get_logger("chat_controller")
