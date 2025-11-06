@@ -99,13 +99,6 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
                 # Success! Got tools
                 logger.info(f"Successfully connected to Notion MCP server and loaded {len(tools)} tools")
                 
-                # Save tool schema
-                tool_schema = [
-                    item.get_openai_tool_schema() for item in tools
-                ]
-                with open("tool_schema.json", "w") as f:
-                    json.dump(tool_schema, f, indent=4)
-                
                 return tools
                 
             except Exception as e:
