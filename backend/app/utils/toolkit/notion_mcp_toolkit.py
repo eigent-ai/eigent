@@ -23,7 +23,7 @@ def _customize_function_parameters(schema: Dict[str, Any]) -> None:
         properties = parameters.get("properties", {})
         required = parameters.get("required", [])
         
-        help_description = "If you need use parent, you can use `notion-search` for the imformation"
+        help_description = "If you need use parent, you can use `notion-search` for the information"
         # Modify the notion-create-pages function to make parent optional
         if function_name == "notion-create-pages" or function_name == "notion-create-database":
             required.remove("parent")
