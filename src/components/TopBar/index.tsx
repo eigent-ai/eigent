@@ -14,6 +14,7 @@ import {
 	ChevronLeft,
 	House,
 	Share,
+	ArrowRight,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -214,51 +215,29 @@ function HeaderWin() {
 			{/* center */}
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
-					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
+					<div className="flex-row items-center flex justify-start items-end">
 					<Button
 						onClick={() => navigate("/history")}
 						variant="ghost"
-						size="icon"
-						className="no-drag p-0 h-6 w-6"
+						size="sm"
+						className="font-bold text-base no-drag truncate"
 					>
-						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
+						<img className="w-6 h-6 mt-1" src={folderIcon} alt="folder-icon" />
+            Dashboard
 					</Button>
+					<span className="text-label-md">/</span>
 					</div>
 					{location.pathname === "/history" && (
-						<div className="flex items-center mr-1">
+						<div className="flex items-center">
 							<Button
 								variant="ghost"
-								size="xs"
-								className="no-drag"
+								size="sm"
+								className="no-drag font-bold text-base"
 								onClick={() => navigate("/")}
 							>
-								<ChevronLeft className="w-4 h-4" />
 								{t("layout.back")}
+								<ArrowRight className="w-4 h-4" />
 							</Button>
-						</div>
-					)}
-					{location.pathname !== "/history" && (
-						<div className="flex items-center mr-1">
-						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
-							<Button
-								 variant="ghost"
-								 size="icon"
-								 className="no-drag"
-								 onClick={() => navigate("/history")}
-									>
-									<House className="w-4 h-4" />
-							</Button>
-						</TooltipSimple>
-						<Button
-							 variant="ghost"
-							 size="icon"
-							 className="no-drag"
-							 onClick={createNewProject}
-									>
-								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-									<Plus className="w-4 h-4" />
-								</TooltipSimple>
-						</Button>
 						</div>
 					)}
 					{location.pathname !== "/history" && (

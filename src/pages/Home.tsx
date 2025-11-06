@@ -4,6 +4,7 @@ import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
 import SearchAgentWrokSpace from "@/components/SearchAgentWrokSpace";
@@ -11,6 +12,7 @@ import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
 import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
 import { proxyFetchPost } from "@/api/http";
+import { replayActiveTask } from "@/lib";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -27,6 +29,17 @@ export default function Home() {
 	}
 	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
+	const [isChatVisible, setIsChatVisible] = useState(true);
+	const [isReplayLoading, setIsReplayLoading] = useState(false);
+	const navigate = useNavigate();
+	const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
+
+	const handleReplay = async () => {
+		if (!chatStore.activeTaskId) return;
+		setIsReplayLoading(true);
+		await replayActiveTask(chatStore, projectStore, navigate);
+		setIsReplayLoading(false);
+	};
 
 	// Add webview-show listener in useEffect with cleanup
 	useEffect(() => {
@@ -158,6 +171,15 @@ export default function Home() {
 			projectStore.createProject("new project");
 		}
 
+		const handleFocusChatbox = () => {
+			setIsChatVisible(true);
+			requestAnimationFrame(() => {
+				window.dispatchEvent(new CustomEvent("focus-chatbox-input"));
+			});
+		};
+
+		window.addEventListener("focus-chatbox", handleFocusChatbox);
+
 		const webviewContainer = document.getElementById("webview-container");
 		if (webviewContainer) {
 			const resizeObserver = new ResizeObserver(() => {
@@ -167,8 +189,13 @@ export default function Home() {
 
 			return () => {
 				resizeObserver.disconnect();
+				window.removeEventListener("focus-chatbox", handleFocusChatbox);
 			};
 		}
+
+		return () => {
+			window.removeEventListener("focus-chatbox", handleFocusChatbox);
+		};
 	}, []);
 
 	const getSize = () => {
@@ -186,20 +213,25 @@ export default function Home() {
 	};
 
 		return (
-			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-8">
+			<div className="w-full h-full min-h-0 flex flex-col overflow-hidden pt-10 px-2">
 				<ReactFlowProvider>
-					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center gap-2 relative overflow-hidden">
-						<ResizablePanelGroup direction="horizontal">
-						<ResizablePanel defaultSize={30} minSize={20}>
-							<div className="flex-1 h-full min-w-0 min-h-0 flex items-center justify-center py-2 pl-2 overflow-hidden">
-							 <ChatBox />
-							</div>
-						</ResizablePanel>
-							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
-						<ResizablePanel>
+					<div className="flex-col w-full h-full min-w-0 min-h-0 flex items-center justify-center gap-2 relative overflow-hidden border-solid border-border-tertiary rounded-2xl bg-surface-secondary bg-blur">
+				<ResizablePanelGroup direction="horizontal" dir="ltr">
+							{isChatVisible && (
+								<>
+									<ResizablePanel defaultSize={30} minSize={20}>
+										<ChatBox />
+									</ResizablePanel>
+									<ResizableHandle
+										withHandle={true}
+										className="custom-resizable-handle"
+									/>
+								</>
+							)}
+							<ResizablePanel>
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							?.activeWorkSpace && (
-							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
+							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300">
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
 								]?.taskAssigning?.find(
@@ -215,7 +247,7 @@ export default function Home() {
 								{chatStore.tasks[chatStore.activeTaskId as string]
 									?.activeWorkSpace === "workflow" && (
 									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
+										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid relative">
 											{/*filter blur */}
 											<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
 											<div className="w-full h-full relative z-10">
@@ -281,7 +313,6 @@ export default function Home() {
 										</div>
 									</div>
 								)}
-								<BottomBar />
 							</div>
 						)}
 							</ResizablePanel>
@@ -291,6 +322,15 @@ export default function Home() {
 							</div>*/}
 							</ResizablePanelGroup>
 					</div>
+					<BottomBar
+						onToggleChat={() => setIsChatVisible((prev) => !prev)}
+						isChatVisible={isChatVisible}
+						tokens={activeTask?.tokens || 0}
+						taskStatus={activeTask?.status}
+						onReplay={handleReplay}
+						replayDisabled={!activeTask}
+						replayLoading={isReplayLoading}
+					/>
 			</ReactFlowProvider>
 			<UpdateElectron />
 		</div>

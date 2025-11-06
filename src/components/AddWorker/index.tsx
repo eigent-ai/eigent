@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import ToolSelect from "./ToolSelect";
 import { Textarea } from "@/components/ui/textarea";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
@@ -72,6 +72,7 @@ export function AddWorker({
 		installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
 	} | null>(null);
 	const { email, setWorkerList } = useAuthStore();
+
 	const workerList = useWorkerList();
 	// save AddWorker form data
 	const [workerName, setWorkerName] = useState("");
@@ -154,7 +155,7 @@ export function AddWorker({
 		setSelectedTools(tools);
 	};
 
-	const resetForm = () => {
+	const resetForm = useCallback(() => {
 		setWorkerName("");
 		setWorkerDescription("");
 		setSelectedTools([]);
@@ -162,7 +163,17 @@ export function AddWorker({
 		setActiveMcp(null);
 		setEnvValues({});
 		setNameError("");
-	};
+	}, []);
+
+	// allow external open via a window event
+	useEffect(() => {
+		const handler = () => {
+			resetForm();
+			setDialogOpen(true);
+		};
+		window.addEventListener("open-add-worker", handler);
+		return () => window.removeEventListener("open-add-worker", handler);
+	}, [resetForm]);
 
 	// tool function
 	const getCategoryIcon = (categoryName?: string) => {
@@ -293,38 +304,12 @@ export function AddWorker({
 	return (
 		<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
 			<form>
-				<DialogTrigger asChild>
-					{edit ? (
-						<Button
-							variant="ghost"
-							size="sm"
-							className="w-full"
-							onClick={(e) => {
-								e.stopPropagation();
-								setDialogOpen(true);
-								setWorkerName(workerInfo?.workerInfo?.name || "");
-								setWorkerDescription(workerInfo?.workerInfo?.description || "");
-								setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
-							}}
-						>
-							<Edit size={16} />
-							{t("workforce.edit")}
-						</Button>
-					) : (
-						<Button onClick={() => setDialogOpen(true)} variant="ghost">
-							<Plus className="w-6 h-6 text-icon-primary" />
-							<span className="text-text-body text-[13px] leading-13 font-bold">
-								{t("workforce.new-worker")}
-							</span>
-						</Button>
-					)}
-				</DialogTrigger>
 				<DialogContent size="sm" className="p-0 gap-0">
 					<DialogHeader
 						title={showEnvConfig ? t("workforce.configure-mcp-server") : t("workforce.add-your-agent")}
 						tooltip={t("layout.configure-your-mcp-worker-node-here")}
 						showTooltip={true}
-						showBackButton={showEnvConfig}
+						showBackButton={showEnvConfig}	
 						onBackClick={handleCloseMcpEnvSetting}
 					/>
 

@@ -69,6 +69,24 @@ export default function ChatBox(): JSX.Element {
 			.catch((err) => console.error("Failed to fetch configs:", err));
 	}, []);
 
+	useEffect(() => {
+		const focusHandler = () => {
+			if (textareaRef.current) {
+				textareaRef.current.focus();
+				textareaRef.current.scrollIntoView({
+					behavior: "smooth",
+					block: "nearest",
+				});
+			}
+		};
+
+		window.addEventListener("focus-chatbox-input", focusHandler);
+
+		return () => {
+			window.removeEventListener("focus-chatbox-input", focusHandler);
+		};
+	}, []);
+
 	// Refresh privacy status when dialog closes
 	// useEffect(() => {
 	// 	if (!privacyDialogOpen) {
@@ -689,8 +707,8 @@ export default function ChatBox(): JSX.Element {
 				</div>
 			) : (
 				// Init ChatBox
-				<div className="w-full h-[calc(100vh-54px)] flex items-center rounded-xl border border-border-disabled py-2 border-solid  relative overflow-hidden">
-					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
+				<div className="w-full h-[calc(100vh-54px)] flex items-center border-y-0 border-l-0 border-r border-border-tertiary py-2 border-solid  relative overflow-hidden">
+					<div className="absolute inset-0 pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
 							<div className="text-body-lg text-text-heading text-center font-bold">

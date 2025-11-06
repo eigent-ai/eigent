@@ -324,7 +324,7 @@ export default function Workflow({
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<div className="flex items-center justify-between w-full ">
+			<div className="flex items-center justify-between w-full py-2 pl-4 pr-2">
 				<div className="text-text-body font-bold text-lg leading-relaxed">
 					{t("workforce.your-ai-workforce")}
 				</div>
@@ -363,7 +363,7 @@ export default function Workflow({
 					>
 						<SquareStack />
 					</Button> */}
-					<div className=" p-1 rounded-lg bg-menutabs-bg-default border border-solid border-menutabs-border-active flex items-center justify-cneter gap-1">
+					<div className="flex items-center justify-cneter gap-1">
 						<Button
 							variant="ghost"
 							size="icon"

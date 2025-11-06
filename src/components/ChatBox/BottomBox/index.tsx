@@ -97,20 +97,6 @@ export default function BottomBox({
 
 				{/* Inputbox (always visible) */}
 				<Inputbox {...inputProps} />
-
-				{/* BoxAction (visible after initial input, when task has started) */}
-				{state !== "input" && (
-					<BoxAction
-						tokens={tokens}
-						taskTime={taskTime}
-						status={taskStatus}
-						disabled={replayDisabled}
-						loading={replayLoading}
-						onReplay={onReplay}
-						onPauseResume={onPauseResume}
-						pauseResumeLoading={pauseResumeLoading}
-					/>
-				)}
 			</div>
 		</div>
 	);

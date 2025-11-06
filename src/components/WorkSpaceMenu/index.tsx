@@ -1,3 +1,5 @@
+"use client";
+
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkerList } from "@/store/authStore";
 import {
@@ -13,9 +15,14 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Rocket, Bot as BotIcon, BookOpenText, ListPlus } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { Button } from "../ui/button";
+
+const MENU_CYCLE_WORDS = ["task", "worker", "trigger"];
 
 export function WorkSpaceMenu() {
 	const { t } = useTranslation();
@@ -24,6 +31,7 @@ export function WorkSpaceMenu() {
 		return <div>Loading...</div>;
 	}
 	const workerList = useWorkerList();
+	const [menuWordIndex, setMenuWordIndex] = useState(0);
 	const baseWorker: Agent[] = [
 		{
 			tasks: [],
@@ -67,6 +75,14 @@ export function WorkSpaceMenu() {
 		},
 	];
 	const [agentList, setAgentList] = useState<Agent[]>([]);
+	const currentMenuWord = MENU_CYCLE_WORDS[menuWordIndex];
+
+	useEffect(() => {
+		const interval = window.setInterval(() => {
+			setMenuWordIndex((prev) => (prev + 1) % MENU_CYCLE_WORDS.length);
+		}, 2200);
+		return () => window.clearInterval(interval);
+	}, []);
 	useEffect(() => {
 		const taskAssigning =
 			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
@@ -298,9 +314,9 @@ export function WorkSpaceMenu() {
 	};
 
 	return (
-		<div className="h-full">
-			<div className="h-full flex items-center flex-start">
-				<div className="flex items-center flex-start gap-1 mr-3">
+		<div className="h-full w-full">
+			<div className="h-full w-full flex items-center">
+				<div className="flex flex-1 items-center justify-end gap-1">
 					{chatStore.activeTaskId && (
 						<ToggleGroup
 							type="single"
@@ -336,72 +352,140 @@ export function WorkSpaceMenu() {
 						</ToggleGroup>
 					)}
 				</div>
-				{/* activeAgent */}
-				<AnimatePresence>
-					{agentList.length > 0 && (
-						<motion.div
-							initial={{ opacity: 0, x: -30 }}
-							animate={{ opacity: 1, x: 0 }}
-							exit={{ opacity: 0, x: -30 }}
-							transition={{ duration: 0.3, ease: "easeInOut" }}
-							className={`px-3 border-[0px] border-solid border-l border-white-100%`}
-						>
-							<ToggleGroup
-								type="single"
-								value={
-									chatStore.tasks[chatStore.activeTaskId as string]
-										.activeWorkSpace as string
-								}
-								onValueChange={onValueChange}
-								className="flex items-center gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"
+				<div className="flex items-center justify-center px-2">
+				<DropdownMenu defaultOpen>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="ghost"
+								size="sm"
+								aria-label="Open add menu"
+								className="gap-2 w-32 bg-white-100% py-2 px-3 rounded-full justify-start"
 							>
-								<AnimatePresence mode="popLayout">
-									{agentList.map((agent) => (
-										<motion.div
-											key={agent.agent_id}
-											initial={{ opacity: 0, scale: 0.8, x: -20 }}
-											animate={{ opacity: 1, scale: 1, x: 0 }}
-											exit={{ opacity: 0, scale: 0.8, x: 20 }}
-											transition={{
-												duration: 0.3,
-												ease: "easeInOut",
-											}}
-											layout
-										>
-											<ToggleGroupItem
-												disabled={
-													![
-														"developer_agent",
-														"search_agent",
-														"document_agent",
-													].includes(agent.type as AgentNameType) ||
-													agent.tasks.length === 0
-												}
-												value={agent.agent_id}
-												aria-label="Toggle bold"
-												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${
-													agent.tasks.length === 0 && "opacity-30"
-												}`}
+								<Plus className="!h-[20px] !w-[20px]" />
+								<span className="text-sm font-medium text-text-body flex items-center gap-1">
+									Add
+									<span className="relative h-[1.2rem] overflow-hidden">
+										<AnimatePresence mode="wait" initial={false}>
+											<motion.span
+												key={currentMenuWord}
+												initial={{ rotateX: -90, opacity: 0 }}
+												animate={{ rotateX: 0, opacity: 1 }}
+												exit={{ rotateX: 90, opacity: 0 }}
+												transition={{ duration: 0.35, ease: "easeInOut" }}
+												className="block origin-bottom"
 											>
-												<Bot className={`!h-6 !w-6 `} />
-												<div className="absolute top-0 right-1">
-													{
-														agentIconMap[
-															agent.type as keyof typeof agentIconMap
-														]
+												{currentMenuWord}
+											</motion.span>
+										</AnimatePresence>
+									</span>
+								</span>
+							</Button>
+						</DropdownMenuTrigger>
+					<DropdownMenuContent
+						align="center"
+							className="bg-dropdown-bg border-dropdown-border rounded-2xl"
+						>
+					<DropdownMenuItem
+						className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer rounded-xl"
+						onClick={() => {
+							(window as any).__eigentShowChatbox?.();
+							window.dispatchEvent(new CustomEvent("focus-chatbox"));
+						}}
+					>
+								<Rocket size={16} className="mr-2 text-icon-information" />
+								<span className="text-sm font-medium text-text-body">Add trigger worker</span>
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer rounded-xl"
+								onClick={() => {
+									window.dispatchEvent(new CustomEvent("open-add-worker"));
+								}}
+							>
+								<BotIcon size={16} className="mr-2 text-icon-success" />
+								<span className="text-sm font-medium text-text-body">Add execution worker</span>
+							</DropdownMenuItem>
+							<DropdownMenuItem className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer rounded-xl">
+								<BookOpenText size={16} className="mr-2 text-icon-primary" />
+								<span className="text-sm font-medium text-text-body">Add knowledge</span>
+							</DropdownMenuItem>
+					<DropdownMenuItem
+						className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer rounded-xl"
+						onClick={() => {
+							(window as any).__eigentShowChatbox?.();
+							window.dispatchEvent(new CustomEvent("focus-chatbox"));
+						}}
+					>
+								<ListPlus size={16} className="mr-2 text-icon-primary" />
+								<span className="text-sm font-medium text-text-body">Add tasks</span>
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+				<div className="flex flex-1 items-center justify-start">
+					<AnimatePresence>
+						{agentList.length > 0 && (
+							<motion.div
+								initial={{ opacity: 0, x: -30 }}
+								animate={{ opacity: 1, x: 0 }}
+								exit={{ opacity: 0, x: -30 }}
+								transition={{ duration: 0.3, ease: "easeInOut" }}
+							>
+								<ToggleGroup
+									type="single"
+									value={
+										chatStore.tasks[chatStore.activeTaskId as string]
+											.activeWorkSpace as string
+									}
+									onValueChange={onValueChange}
+									className="flex items-center gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"
+								>
+									<AnimatePresence mode="popLayout">
+										{agentList.map((agent) => (
+											<motion.div
+												key={agent.agent_id}
+												initial={{ opacity: 0, scale: 0.8, x: -20 }}
+												animate={{ opacity: 1, scale: 1, x: 0 }}
+												exit={{ opacity: 0, scale: 0.8, x: 20 }}
+												transition={{
+													duration: 0.3,
+													ease: "easeInOut",
+												}}
+												layout
+											>
+												<ToggleGroupItem
+													disabled={
+														![
+															"developer_agent",
+															"search_agent",
+															"document_agent",
+														].includes(agent.type as AgentNameType) ||
+														agent.tasks.length === 0
 													}
-												</div>
-											</ToggleGroupItem>
-										</motion.div>
-									))}
-								</AnimatePresence>
-							</ToggleGroup>
-						</motion.div>
-					)}
-				</AnimatePresence>
-				<div className="h-full w-[1px] bg-white-100% mr-3"></div>
-				<AddWorker />
+													value={agent.agent_id}
+													aria-label="Toggle bold"
+													className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${
+														agent.tasks.length === 0 && "opacity-30"
+													}`}
+												>
+													<Bot className={`!h-6 !w-6 `} />
+													<div className="absolute top-0 right-1">
+														{
+															agentIconMap[
+																agent.type as keyof typeof agentIconMap
+															]
+														}
+													</div>
+												</ToggleGroupItem>
+											</motion.div>
+										))}
+									</AnimatePresence>
+								</ToggleGroup>
+							</motion.div>
+						)}
+					</AnimatePresence>
+				</div>
 			</div>
+			<AddWorker />
 		</div>
 	);
 }
