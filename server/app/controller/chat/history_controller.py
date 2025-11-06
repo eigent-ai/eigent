@@ -3,7 +3,7 @@ from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from app.model.chat.chat_history import ChatHistoryOut, ChatHistoryIn, ChatHistory, ChatHistoryUpdate
 from fastapi_babel import _
-from sqlmodel import Session, select, desc
+from sqlmodel import Session, select, desc, case
 from app.component.auth import Auth, auth_must
 from app.component.database import session
 from utils import traceroot_wrapper as traceroot
@@ -38,7 +38,19 @@ def create_chat_history(data: ChatHistoryIn, session: Session = Depends(session)
 def list_chat_history(session: Session = Depends(session), auth: Auth = Depends(auth_must)) -> Page[ChatHistoryOut]:
     """List chat histories for current user."""
     user_id = auth.user.id
-    stmt = select(ChatHistory).where(ChatHistory.user_id == user_id).order_by(desc(ChatHistory.created_at))
+    
+    # Order by created_at descending, but fallback to id descending for old records without timestamps
+    # This ensures newer records with timestamps come first, followed by old records ordered by id
+    stmt = (
+        select(ChatHistory)
+        .where(ChatHistory.user_id == user_id)
+        .order_by(
+            desc(case((ChatHistory.created_at.is_(None), 0), else_=1)),  # Non-null created_at first
+            desc(ChatHistory.created_at),  # Then by created_at descending
+            desc(ChatHistory.id)  # Finally by id descending for records with same/null created_at
+        )
+    )
+    
     result = paginate(session, stmt)
     total = result.total if hasattr(result, 'total') else 0
     logger.debug("Chat histories listed", extra={"user_id": user_id, "total": total})
