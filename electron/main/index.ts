@@ -582,7 +582,6 @@ function registerIpcHandlers() {
 
   // ==================== window control handler ====================
   ipcMain.on('window-close', (_, data) => {
-    console.log('window-close', data);
     if(data.isForceQuit) {
       return app?.quit()
     }

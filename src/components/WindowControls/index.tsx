@@ -45,8 +45,9 @@ export default function WindowControls() {
 				onClick={(e) => {
 					e.stopPropagation();
 					e.preventDefault();
-					// Use forceQuit=true to bypass before-close handler
-					window.electronAPI.closeWindow(true);
+					// Trigger window close - this will go through the before-close handler
+					// which checks if tasks are running and shows confirmation if needed
+					window.electronAPI.closeWindow(false);
 				}}
 				onMouseDown={(e) => {
 					e.stopPropagation();
