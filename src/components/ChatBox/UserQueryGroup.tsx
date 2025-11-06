@@ -154,19 +154,21 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       }}
       className="relative"
     >
-      {/* User Query */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="pl-sm py-sm"
-      >
-        <UserMessageCard
-          id={queryGroup.userMessage.id}
-          content={queryGroup.userMessage.content}
-          attaches={queryGroup.userMessage.attaches}
-        />
-      </motion.div>
+      {/* User Query (render only if exists) */}
+      {queryGroup.userMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="pl-sm py-sm"
+        >
+          <UserMessageCard
+            id={queryGroup.userMessage.id}
+            content={queryGroup.userMessage.content}
+            attaches={queryGroup.userMessage.attaches}
+          />
+        </motion.div>
+      )}
 
       {/* Sticky Task Box - Show only when task exists and NOT in skeleton phase */}
       {task && !isSkeletonPhase && !isHumanReply && (
