@@ -164,9 +164,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         >
           <UserMessageCard
             id={queryGroup.userMessage.id}
-            role={queryGroup.userMessage.role}
             content={queryGroup.userMessage.content}
-            onTyping={() => {}}
             attaches={queryGroup.userMessage.attaches}
           />
         </motion.div>
