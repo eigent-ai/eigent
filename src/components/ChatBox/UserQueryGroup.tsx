@@ -41,10 +41,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // Show task if this query group has a task message OR if it's the most recent user query during splitting
   // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
   // Exclude human-reply scenarios (when user is replying to an activeAsk)
-  const isHumanReply = queryGroup.userMessage &&
+  const isHumanReply = queryGroup.userMessage && 
     activeTaskId &&
     chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk ||
+    (chatState.tasks[activeTaskId].activeAsk || 
      // Check if this user message follows an 'ask' message in the message sequence
      (() => {
        const messages = chatState.tasks[activeTaskId].messages;
@@ -164,7 +164,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         >
           <UserMessageCard
             id={queryGroup.userMessage.id}
+            role={queryGroup.userMessage.role}
             content={queryGroup.userMessage.content}
+            onTyping={() => {}}
             attaches={queryGroup.userMessage.attaches}
           />
         </motion.div>
