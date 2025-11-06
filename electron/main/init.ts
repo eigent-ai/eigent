@@ -4,6 +4,7 @@ import log from 'electron-log'
 import fs from 'fs'
 import path from 'path'
 import * as net from "net";
+import * as http from "http";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
 import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
@@ -195,21 +196,85 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
 
         let started = false;
+        let healthCheckInterval: NodeJS.Timeout | null = null;
         const startTimeout = setTimeout(() => {
             if (!started) {
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
                 node_process.kill();
                 reject(new Error('Backend failed to start within timeout'));
             }
         }, 30000); // 30 second timeout
 
+        // Helper function to poll health endpoint
+        const pollHealthEndpoint = (): void => {
+            let attempts = 0;
+            const maxAttempts = 20; // 5 seconds total (20 * 250ms)
+            const intervalMs = 250;
+
+            healthCheckInterval = setInterval(() => {
+                attempts++;
+                const healthUrl = `http://127.0.0.1:${port}/health`;
+                
+                const req = http.get(healthUrl, { timeout: 1000 }, (res) => {
+                    if (res.statusCode === 200) {
+                        log.info(`Backend health check passed after ${attempts} attempts`);
+                        started = true;
+                        clearTimeout(startTimeout);
+                        if (healthCheckInterval) clearInterval(healthCheckInterval);
+                        resolve(node_process);
+                    } else {
+                        // Non-200 status (e.g., 404), continue polling unless max attempts reached
+                        if (attempts >= maxAttempts) {
+                            log.error(`Backend health check failed after ${attempts} attempts with status ${res.statusCode}`);
+                            started = true;
+                            clearTimeout(startTimeout);
+                            if (healthCheckInterval) clearInterval(healthCheckInterval);
+                            node_process.kill();
+                            reject(new Error(`Backend health check failed: HTTP ${res.statusCode}`));
+                        }
+                    }
+                });
+
+                req.on('error', () => {
+                    // Connection error - backend might not be ready yet, continue polling
+                    if (attempts >= maxAttempts) {
+                        log.error(`Backend health check failed after ${attempts} attempts: unable to connect`);
+                        started = true;
+                        clearTimeout(startTimeout);
+                        if (healthCheckInterval) clearInterval(healthCheckInterval);
+                        node_process.kill();
+                        reject(new Error('Backend health check failed: unable to connect'));
+                    }
+                });
+
+                req.on('timeout', () => {
+                    req.destroy();
+                    if (attempts >= maxAttempts) {
+                        log.error(`Backend health check timed out after ${attempts} attempts`);
+                        started = true;
+                        clearTimeout(startTimeout);
+                        if (healthCheckInterval) clearInterval(healthCheckInterval);
+                        node_process.kill();
+                        reject(new Error('Backend health check timed out'));
+                    }
+                });
+            }, intervalMs);
+
+            // Clear interval after max attempts
+            setTimeout(() => {
+                if (healthCheckInterval && !started) {
+                    clearInterval(healthCheckInterval);
+                    healthCheckInterval = null;
+                }
+            }, maxAttempts * intervalMs);
+        };
 
         node_process.stdout.on('data', (data) => {
             displayFilteredLogs(data);
             // check output content, judge if start success
             if (!started && data.toString().includes("Uvicorn running on")) {
-                started = true;
-                clearTimeout(startTimeout);
-                resolve(node_process);
+                log.info('Uvicorn startup detected, starting health check polling...');
+                pollHealthEndpoint();
             }
         });
 
@@ -217,9 +282,8 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             displayFilteredLogs(data);
 
             if (!started && data.toString().includes("Uvicorn running on")) {
-                started = true;
-                clearTimeout(startTimeout);
-                resolve(node_process);
+                log.info('Uvicorn startup detected (stderr), starting health check polling...');
+                pollHealthEndpoint();
             }
 
             // Check for port binding errors
@@ -227,6 +291,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 data.toString().includes("bind() failed")) {
                 started = true; // Prevent multiple rejections
                 clearTimeout(startTimeout);
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
                 node_process.kill();
                 reject(new Error(`Port ${port} is already in use`));
             }
@@ -234,6 +299,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
         node_process.on('close', (code) => {
             clearTimeout(startTimeout);
+            if (healthCheckInterval) clearInterval(healthCheckInterval);
             if (!started) {
                 reject(new Error(`fastapi exited with code ${code}`));
             }

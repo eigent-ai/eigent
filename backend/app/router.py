@@ -3,7 +3,7 @@ Centralized router registration for the Eigent API.
 All routers are explicitly registered here for better visibility and maintainability.
 """
 from fastapi import FastAPI
-from app.controller import chat_controller, model_controller, task_controller, tool_controller
+from app.controller import chat_controller, model_controller, task_controller, tool_controller, health_controller
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("router")
@@ -23,6 +23,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         prefix: Optional global prefix for all routes (e.g., "/api")
     """
     routers_config = [
+        {
+            "router": health_controller.router,
+            "tags": ["Health"],
+            "description": "Health check endpoint for service readiness"
+        },
         {
             "router": chat_controller.router,
             "tags": ["chat"],
