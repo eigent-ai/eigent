@@ -8,7 +8,7 @@ from utils import traceroot_wrapper as traceroot
 logger = traceroot.get_logger("model_controller")
 
 
-router = APIRouter(tags=["model"])
+router = APIRouter()
 
 
 class ValidateModelRequest(BaseModel):
