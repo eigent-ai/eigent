@@ -76,7 +76,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 		{
 			key: "Search",
 			name: "Search Engine",
-			env_vars: ["GOOGLE_API_KEY", "SEARCH_ENGINE_ID", "EXA_API_KEY"],
+			env_vars: ["GOOGLE_API_KEY", "SEARCH_ENGINE_ID"],
 			desc: (
 				<>
 					{t("setting.environmental-variables-required")}: GOOGLE_API_KEY, SEARCH_ENGINE_ID
@@ -98,16 +98,6 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						>
 							{t("setting.google-custom-search-api")}
 						</a>
-						<br />
-						{t("setting.get-exa-api")}:{" "}
-						<a
-							onClick={() => {
-								window.location.href = "https://exa.ai";
-							}}
-							className="underline text-blue-500"
-						>
-							{t("setting.exa-ai")}
-						</a>
 					</span>
 				</>
 			),
@@ -115,9 +105,8 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	]);
 
 	// default search engine and availability
-	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("");
+	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("google");
 	const [hasGoogleSearch, setHasGoogleSearch] = useState<boolean>(false);
-	const [hasExaSearch, setHasExaSearch] = useState<boolean>(false);
 	const [configs, setConfigs] = useState<any[]>([]);
 
 	useEffect(() => {
@@ -130,17 +119,14 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 			const hasGoogleCseId = !!configs.find(
 				(item: any) => item.config_name === "SEARCH_ENGINE_ID"
 			);
-			const hasExa = !!configs.find(
-				(item: any) => item.config_name === "EXA_API_KEY"
-			);
 			setHasGoogleSearch(hasGoogleApiKey && hasGoogleCseId);
-			setHasExaSearch(hasExa);
 			const defaultEngine = configs.find(
 				(item: any) =>
 					item.config_group?.toLowerCase() === "search" &&
 					item.config_name === "DEFAULT_SEARCH_ENGINE"
 			)?.config_value;
 			if (defaultEngine) setDefaultSearchEngine(defaultEngine);
+			else setDefaultSearchEngine("google"); // Default to Google
 		});
 	}, []);
 
@@ -436,77 +422,44 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	// Generate search engine selection content
 	const generateSearchEngineSelectContent = () => {
 		console.log("Generating search engine select content, configs:", configs);
-		const isCloud = modelType === 'cloud';
-		
-		// Google Search - requires API key and Search Engine ID
+		const isCustom = modelType === 'custom';
+
+		// Google Search - requires API key and Search Engine ID in custom mode
 		const hasGoogleApiKey = configs.some((c: any) => c.config_name === "GOOGLE_API_KEY");
 		const hasGoogleCseId = configs.some((c: any) => c.config_name === "SEARCH_ENGINE_ID");
 		const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
 
-		// Exa Search - requires API key
-		const hasExa = configs.some((c: any) => c.config_name === "EXA_API_KEY");
-
-		// DuckDuckGo - requires API key
-		const hasDuckDuckGo = configs.some((c: any) => c.config_name === "DUCKDUCKGO_API_KEY");
-
-		// Brave Search - requires API key
-		const hasBrave = configs.some((c: any) => c.config_name === "BRAVE_API_KEY");
-
-		console.log("Search engine status:", { hasGoogle, hasExa, hasDuckDuckGo, hasBrave });
+		console.log("Search engine status:", { hasGoogle, isCustom });
 
 		return (
 			<>
-				{/* Cloud mode: offer Google (recommended), Exa, Brave without config gating */}
-				{isCloud ? (
-					<>
-							<SelectItem value="google">
+				{/* Custom mode: require API key configuration */}
+				{isCustom ? (
+					<SelectItemWithButton
+						value="google"
+						label={
+							<span>
 								<span>Google Search </span>
 								<TagComponent asChild>
 									<span>{t("setting.recommended")}</span>
 								</TagComponent>
-							</SelectItem>
-						<SelectItem value="exa">Exa Search</SelectItem>
-						<SelectItem value="brave">Brave Search</SelectItem>
-					</>
+							</span>
+						}
+						enabled={hasGoogle}
+						buttonText={t("setting.setting")}
+						onButtonClick={() => setShowSearchEngineConfig(true)}
+					/>
 				) : (
 					<>
-						{/* Local mode: gated by configuration with button */}
-						<SelectItemWithButton 
-							value="google" 
-							label={
-								<span>
-									<span>Google Search </span>
-									<TagComponent asChild>
-										<span>{t("setting.recommended")}</span>
-									</TagComponent>
-								</span>
-							}
-							enabled={hasGoogle}
-							buttonText={t("setting.setting")}
-							onButtonClick={() => setShowSearchEngineConfig(true)}
-						/>
-						<SelectItemWithButton 
-							value="exa" 
-							label="Exa Search" 
-							enabled={hasExa}
-							buttonText={t("setting.setting")}
-							onButtonClick={() => setShowSearchEngineConfig(true)}
-						/>
-						<SelectItemWithButton 
-							value="brave" 
-							label="Brave Search" 
-							enabled={hasBrave}
-							buttonText={t("setting.setting")}
-							onButtonClick={() => setShowSearchEngineConfig(true)}
-						/>
+						{/* Cloud or Local mode: Google enabled by default */}
+						<SelectItem value="google">
+							<span>Google Search </span>
+							<TagComponent asChild>
+								<span>{t("setting.recommended")}</span>
+							</TagComponent>
+						</SelectItem>
 					</>
 				)}
-
-				{/* Always available across modes with requested notes */}
-				<SelectItem value="bing">Bing</SelectItem>
-				<SelectItem value="baidu">Baidu</SelectItem>
-				<SelectItem value="wiki">Wiki</SelectItem>
-				<SelectItem value="duckduckgo">DuckDuckGo</SelectItem>
 			</>
 		);
 	};
@@ -560,7 +513,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 									showInstallButton={false}
 									showSelect
 									showStatusDot={false}
-									selectPlaceholder={t("setting.select-default-search-engine")}
+									selectPlaceholder="Google Search"
 									selectContent={generateSearchEngineSelectContent()}
 									onSelectChange={async (value) => {
 											try {
