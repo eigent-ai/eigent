@@ -1,5 +1,5 @@
 # Use a Python image with uv pre-installed
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 # Install the project into `/app`
 WORKDIR /app
@@ -15,9 +15,13 @@ ENV UV_PYTHON_INSTALL_MIRROR=https://registry.npmmirror.com/-/binary/python-buil
 ARG database_url
 ENV database_url=$database_url
 
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files first
-COPY pyproject.toml uv.lock ./
+COPY server/pyproject.toml server/uv.lock ./
 
 # Install the project's dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -25,7 +29,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Then, add the rest of the project source code and install it
 # Installing separately from its dependencies allows optimal layer caching
-COPY . /app
+COPY server/ /app
+
+# Copy the utils directory from the parent project
+COPY utils /app/utils
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev
 
@@ -41,7 +49,7 @@ RUN apt-get update && apt-get install -y curl netcat-openbsd && rm -rf /var/lib/
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy and make the start script executable
-COPY start.sh /app/start.sh
+COPY server/start.sh /app/start.sh
 RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 # Reset the entrypoint, don't invoke `uv`

@@ -118,6 +118,26 @@
 	"search-mcp": "Search MCPs",
 	"installed": "Installed",
 	"worker-name-cannot-be-empty": "Worker name cannot be empty",
-	"worker-name-already-exists": "Worker name already exists"
-	}
+	"worker-name-already-exists": "Worker name already exists",
+	"search-engine-integrations": "Intégrations de Moteur de Recherche",
+	"configured": "Configuré",
+	"incomplete": "Incomplet",
+	"not-configured": "Non Configuré",
+	"saving": "Enregistrement...",
+	"save-changes": "Enregistrer les Modifications",
+	"enable": "Activer",
+	"search": "Rechercher",
+	"test-connection": "Tester la Connexion",
+	"your-api-keys-are-stored-securely-and-never-shared-externally": "Vos clés API sont stockées de manière sécurisée et ne sont jamais partagées à l'extérieur.",
+	"this-service-is-public-and-does-not-require-credentials": "Ce service est public et ne nécessite pas d'identifiants.",
+	"this-service-does-not-require-an-api-key": "Ce service ne nécessite pas de clé API.",
+	"connection-test-successful": "Test de connexion réussi !",
+	"connection-test-failed": "Test de connexion échoué.",
+	"configuration-saved-successfully": "Configuration enregistrée avec succès !",
+	"failed-to-save-configuration": "Échec de l'enregistrement de la configuration.",
+  "recommended": "Recommandé",
+  "reset": "Réinitialiser",
+  "reset-success": "Réinitialisation réussie !",
+  "reset-failed": "Échec de la réinitialisation !"
+}
 

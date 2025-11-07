@@ -40,6 +40,10 @@ let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
 
+// Protocol URL queue for handling URLs before window is ready
+let protocolUrlQueue: string[] = [];
+let isWindowReady = false;
+
 // ==================== path config ====================
 const preload = path.join(__dirname, '../preload/index.mjs');
 const indexHtml = path.join(RENDERER_DIST, 'index.html');
@@ -97,6 +101,19 @@ const setupProtocolHandlers = () => {
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
   log.info('enter handleProtocolUrl', url);
+  
+  // If window is not ready, queue the URL
+  if (!isWindowReady || !win || win.isDestroyed()) {
+    log.info('Window not ready, queuing protocol URL:', url);
+    protocolUrlQueue.push(url);
+    return;
+  }
+
+  processProtocolUrl(url);
+}
+
+// Process a single protocol URL
+function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
   const share_token = urlObj.searchParams.get('share_token');
@@ -127,6 +144,26 @@ function handleProtocolUrl(url: string) {
     }
   } else {
     log.error('window not available');
+  }
+}
+
+// Process all queued protocol URLs
+function processQueuedProtocolUrls() {
+  if (protocolUrlQueue.length > 0) {
+    log.info('Processing queued protocol URLs:', protocolUrlQueue.length);
+
+    // Verify window is ready before processing
+    if (!win || win.isDestroyed() || !isWindowReady) {
+      log.warn('Window not ready for processing queued URLs, keeping URLs in queue');
+      return;
+    }
+
+    const urls = [...protocolUrlQueue];
+    protocolUrlQueue = [];
+
+    urls.forEach(url => {
+      processProtocolUrl(url);
+    });
   }
 }
 
@@ -207,7 +244,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
-    log.info('Starting new task')
+    log.info('Getting browser port')
     return browser_port
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
@@ -613,7 +650,7 @@ function registerIpcHandlers() {
       const stats = await fsp.stat(filePath);
       if (stats.isDirectory()) {
         log.error('Path is a directory, not a file:', filePath);
-        return { success: false, error: 'EISDIR: illegal operation on a directory, read' };
+        return { success: false, error: 'Path is a directory, not a file' };
       }
 
       // Read file content
@@ -809,14 +846,40 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('get-file-list', async (_, email: string, taskId: string) => {
+  ipcMain.handle('get-file-list', async (_, email: string, taskId: string, projectId?: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getFileList(email, taskId);
+    return manager.getFileList(email, taskId, projectId);
   });
 
-  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string) => {
+  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string, projectId?: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.deleteTaskFiles(email, taskId);
+    return manager.deleteTaskFiles(email, taskId, projectId);
+  });
+
+  // New project management handlers
+  ipcMain.handle('create-project-structure', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.createProjectStructure(email, projectId);
+  });
+
+  ipcMain.handle('get-project-list', async (_, email: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getProjectList(email);
+  });
+
+  ipcMain.handle('get-tasks-in-project', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getTasksInProject(email, projectId);
+  });
+
+  ipcMain.handle('move-task-to-project', async (_, email: string, taskId: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.moveTaskToProject(email, taskId, projectId);
+  });
+
+  ipcMain.handle('get-project-file-list', async (_, email: string, projectId: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getProjectFileList(email, projectId);
   });
 
   ipcMain.handle('get-log-folder', async (_, email: string) => {
@@ -1114,6 +1177,11 @@ async function createWindow() {
     });
   });
 
+  // Mark window as ready and process any queued protocol URLs
+  isWindowReady = true;
+  log.info('Window is ready, processing queued protocol URLs...');
+  processQueuedProtocolUrls();
+
   // Now check and install dependencies
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
@@ -1346,7 +1414,10 @@ app.on('window-all-closed', () => {
     webViewManager = null;
   }
   
+  // Reset window state
   win = null;
+  isWindowReady = false;
+  protocolUrlQueue = [];
   
   if (process.platform !== 'darwin') {
     app.quit();
@@ -1398,6 +1469,10 @@ app.on('before-quit', async (event) => {
     if (global.gc) {
       global.gc();
     }
+    
+    // Reset protocol handling state
+    isWindowReady = false;
+    protocolUrlQueue = [];
     
     log.info('All cleanup completed, exiting...');
   } catch (error) {

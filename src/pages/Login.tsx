@@ -1,12 +1,11 @@
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useStackApp } from "@stackframe/react";
 import loginGif from "@/assets/login.gif";
 import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 import github2 from "@/assets/github2.svg";
 import google from "@/assets/google.svg";
@@ -15,6 +14,7 @@ import eyeOff from "@/assets/eye-off.svg";
 import { proxyFetchPost } from "@/api/http";
 import { hasStackKeys } from "@/lib";
 import { useTranslation } from "react-i18next";
+import WindowControls from "@/components/WindowControls";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -35,6 +35,8 @@ export default function Login() {
 	});
 	const [isLoading, setIsLoading] = useState(false);
 	const [generalError, setGeneralError] = useState("");
+	const titlebarRef = useRef<HTMLDivElement>(null);
+	const [platform, setPlatform] = useState<string>("");
 
 	const validateEmail = (email: string) => {
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -212,22 +214,84 @@ export default function Login() {
 		};
 	}, []);
 
+	useEffect(() => {
+		const p = window.electronAPI.getPlatform();
+		setPlatform(p);
+
+		if (platform === "darwin") {
+			titlebarRef.current?.classList.add("mac");
+		}
+	}, [platform]);
+
+	// Handle before-close event for login page
+	useEffect(() => {
+		const handleBeforeClose = () => {
+			// On login page, always close directly without confirmation
+			window.electronAPI.closeWindow(true);
+		};
+
+		window.ipcRenderer?.on("before-close", handleBeforeClose);
+
+		return () => {
+			window.ipcRenderer?.off("before-close", handleBeforeClose);
+		};
+	}, []);
+
 	return (
-		<div className={`p-2 flex items-center justify-center gap-2 h-full`}>
-			<div className="flex items-center justify-center h-[calc(800px-16px)] rounded-3xl bg-white-100%">
-				<img src={loginGif} className=" rounded-3xl h-full object-cover" />
+		<div className="h-full flex flex-col relative overflow-hidden">
+			{/* Titlebar with drag region and window controls */}
+			<div
+				className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50"
+				id="login-titlebar"
+				ref={titlebarRef}
+				style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+			>
+				{/* Left spacer for macOS */}
+				<div
+					className={`${
+						platform === "darwin" ? "w-[70px]" : "w-0"
+					} flex items-center justify-center`}
+					style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+				>
+					{platform === "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
+				</div>
+
+				{/* Center drag region */}
+				<div 
+					className="h-full flex-1 flex items-center"
+					style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+				>
+					<div className="flex-1 h-10"></div>
+				</div>
+
+				{/* Right window controls */}
+				<div 
+					style={{ WebkitAppRegion: 'no-drag', pointerEvents: 'auto' } as React.CSSProperties}
+					onMouseDown={(e) => e.stopPropagation()}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<WindowControls />
+				</div>
 			</div>
-			<div className="h-full flex-1 flex flex-col items-center justify-center">
-				<div className="flex-1 flex flex-col items-center justify-center">
-					<div className="w-80">
-						<div className="h-[46px] relative text-[#27272A] font-inter text-[36px]  font-bold leading-[46px]">
-							{t("layout.login")}
-							<span
-								onClick={() => navigate("/signup")}
-								className="absolute bottom-0 right-0 text-[#27272A] font-inter text-[13px]  font-normal leading-5 cursor-pointer"
-							>
-								{t("layout.sign-up")}
-							</span>
+
+			{/* Main content - image extends to top, form has padding */}
+			<div className={`p-2 flex items-center justify-center gap-2 h-full`}>
+				<div className="flex items-center justify-center h-full rounded-3xl bg-white-100%">
+					<img src={loginGif} className="rounded-3xl h-full object-cover" />
+				</div>
+				<div className="h-full flex-1 flex flex-col items-center justify-center pt-11">
+				<div className="flex-1 flex flex-col w-80 items-center justify-center">
+						<div className="flex self-stretch items-end justify-between mb-4">
+							  <div className="text-text-heading text-heading-lg font-bold ">
+								  {t("layout.login")}
+								</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => navigate("/signup")}
+								>
+									{t("layout.sign-up")}
+								</Button>
 						</div>
 						{HAS_STACK_KEYS && (
 							<div className="w-full pt-6">
@@ -258,57 +322,31 @@ export default function Login() {
 								{t("layout.or")}
 							</div>
 						)}
-						<div className="w-full">
+						<div className="flex flex-col gap-4 w-full">
 							{generalError && (
-								<p className="text-red-500 text-sm mt-0.5 mb-4">
+								<p className="text-text-cuation text-label-md mt-1 mb-4">
 									{generalError}
 								</p>
 							)}
-							<div className="w-full mb-4 relative">
-								<Label
-									htmlFor="email"
-									className="inline-block text-[#222] font-inter text-[13px]  font-bold leading-5 h-5 mb-1.5"
-								>
-									{t("layout.email")}
-								</Label>
-								<div className="relative">
+							<div className="flex flex-col gap-4 w-full mb-4 relative">
 									<Input
 										id="email"
 										type="email"
+										size="default"
+										title={t("layout.email")}
 										placeholder={t("layout.enter-your-email")}
 										required
 										value={formData.email}
 										onChange={(e) => handleInputChange("email", e.target.value)}
-										className={`rounded border border-[#CCC] bg-white shadow-none text-[13px] text-input-text-focus font-normal ${
-											errors.email ? "border-red-500" : ""
-										}`}
+										state={errors.email ? "error" : undefined}
+										note={errors.email}
+									onEnter={handleLogin}
 									/>
-								</div>
-								{errors.email && (
-									<p className="text-red-500 text-sm mt-0.5">{errors.email}</p>
-								)}
-							</div>
-							<div className="w-full mb-1.5 relative">
-								<div className="flex items-center">
-									<Label
-										htmlFor="password"
-										className="inline-block text-[#222] font-inter text-[13px] font-bold leading-5 h-5 mb-1.5"
-									>
-										{t("layout.password")}
-									</Label>
-								</div>
 
-								<div className="relative">
-									<div
-										className="cursor-pointer w-6 h-6 absolute top-0 bottom-0 m-auto right-1.5"
-										onClick={() => {
-											setHidePassword(!hidePassword);
-										}}
-									>
-										<img src={hidePassword ? eye : eyeOff} />
-									</div>
 									<Input
 										id="password"
+										title={t("layout.password")}
+										size="default"
 										type={hidePassword ? "password" : "text"}
 										required
 										placeholder={t("layout.enter-your-password")}
@@ -316,35 +354,34 @@ export default function Login() {
 										onChange={(e) =>
 											handleInputChange("password", e.target.value)
 										}
-										className={`rounded border border-[#CCC] bg-white shadow-none text-[13px] text-input-text-focus font-normal pr-9 ${
-											errors.password ? "border-red-500" : ""
-										}`}
+										state={errors.password ? "error" : undefined}
+										note={errors.password}
+										backIcon={<img src={hidePassword ? eye : eyeOff} />}
+										onBackIconClick={() => setHidePassword(!hidePassword)}
+									onEnter={handleLogin}
 									/>
-								</div>
-								{errors.password && (
-									<p className="text-red-500 text-sm mt-0.5">
-										{errors.password}
-									</p>
-								)}
 							</div>
 						</div>
 						<Button
 							onClick={handleLogin}
-							size="lg"
-							variant="ghost"
+							size="md"
+							variant="primary"
 							type="submit"
-							className="w-full rounded-[24px] mt-4 bg-white-100% text-[#222] text-center transition-all duration-300 ease-in-out font-inter text-[15px]  font-bold leading-[22px] hover:bg-white-80%"
+							className="w-full rounded-full"
 							disabled={isLoading}
 						>
 							<span className="flex-1">
 								{isLoading ? t("layout.logging-in") : t("layout.log-in")}
 							</span>
 						</Button>
-					</div>
 				</div>
-
-				<div className="text-text-body text-xs font-medium leading-tight">
+				<Button 
+				  variant="ghost"
+					size="xs"
+					onClick={() => window.open("https://www.eigent.ai/privacy-policy", "_blank", "noopener,noreferrer")}
+				>
 					{t("layout.privacy-policy")}
+				</Button>
 				</div>
 			</div>
 		</div>

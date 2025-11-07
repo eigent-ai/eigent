@@ -6,7 +6,6 @@ from typing import Any, Callable, Type, TypeVar
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from loguru import logger
 from app.service.task import (
     ActionActivateToolkitData,
     ActionDeactivateToolkitData,
@@ -14,6 +13,9 @@ from app.service.task import (
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("toolkit_listen")
 
 
 def _safe_put_queue(task_lock, data):
@@ -36,7 +38,6 @@ def _safe_put_queue(task_lock, data):
                     asyncio.set_event_loop(new_loop)
                     try:
                         new_loop.run_until_complete(task_lock.put_queue(data))
-                        logger.debug(f"[listen_toolkit] Successfully sent data to queue using new event loop")
                     finally:
                         new_loop.close()
                 except Exception as e:
@@ -96,7 +97,6 @@ def listen_toolkit(
                         "message": args_str,
                     },
                 )
-                logger.debug(f"[listen_toolkit] Sending activate data: {activate_data.model_dump()}")
                 await task_lock.put_queue(activate_data)
                 error = None
                 res = None
@@ -134,7 +134,6 @@ def listen_toolkit(
                         "message": res_msg,
                     },
                 )
-                logger.debug(f"[listen_toolkit] Sending deactivate data: {deactivate_data.model_dump()}")
                 await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
@@ -181,19 +180,18 @@ def listen_toolkit(
                         "message": args_str,
                     },
                 )
-                logger.debug(f"[listen_toolkit sync] Sending activate data: {activate_data.model_dump()}")
                 _safe_put_queue(task_lock, activate_data)
                 error = None
                 res = None
                 try:
-                    logger.debug(f"Executing toolkit method: {toolkit_name}.{method_name} for agent '{toolkit.agent_name}'")
                     res = func(*args, **kwargs)
-                    # Safety check: if the result is a coroutine, we need to await it
+                    # Safety check: if the result is a coroutine, this is a programming error
                     if asyncio.iscoroutine(res):
-                        import warnings
-
-                        warnings.warn(f"Async function {func.__name__} was incorrectly called synchronously")
-                        res = asyncio.run(res)
+                        error_msg = f"Async function {func.__name__} was incorrectly called in sync context. This is a bug - the function should be marked as async or should not return a coroutine."
+                        logger.error(f"[listen_toolkit] {error_msg}")
+                        # Cannot safely await in sync context - close the coroutine to prevent warnings
+                        res.close()
+                        raise TypeError(error_msg)
                 except Exception as e:
                     error = e
 
@@ -287,11 +285,17 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
         for method_name, base_method in base_methods.items():
             if method_name in cls.__dict__:
                 continue
-                
+
             sig = signature(base_method)
-            
+
             def create_wrapper(method_name: str, base_method: Callable) -> Callable:
-                if iscoroutinefunction(base_method):
+                # Unwrap decorators to check the actual function
+                unwrapped_method = base_method
+                while hasattr(unwrapped_method, '__wrapped__'):
+                    unwrapped_method = unwrapped_method.__wrapped__
+
+                # Check if the unwrapped method is a coroutine function
+                if iscoroutinefunction(unwrapped_method):
                     async def async_method_wrapper(self, *args, **kwargs):
                         return await getattr(super(cls, self), method_name)(*args, **kwargs)
                     async_method_wrapper.__name__ = method_name
@@ -303,12 +307,12 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
                     sync_method_wrapper.__name__ = method_name
                     sync_method_wrapper.__signature__ = sig
                     return sync_method_wrapper
-            
+
             wrapper = create_wrapper(method_name, base_method)
             decorated_method = listen_toolkit(base_method)(wrapper)
-            
+
             setattr(cls, method_name, decorated_method)
 
         return cls
-    
+
     return class_decorator

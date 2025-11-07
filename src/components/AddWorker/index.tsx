@@ -1,22 +1,19 @@
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
-	DialogClose,
 	DialogContent,
+	DialogContentSection,
 	DialogFooter,
 	DialogHeader,
-	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
 	Bot,
-	CircleAlert,
 	Plus,
-	RefreshCw,
-	ChevronLeft,
-	ArrowRight,
 	Edit,
+	Eye,
+	EyeOff,
 } from "lucide-react";
 import ToolSelect from "./ToolSelect";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +22,6 @@ import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import { TooltipSimple } from "../ui/tooltip";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface EnvValue {
@@ -68,6 +64,7 @@ export function AddWorker({
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
+	const [secretVisible, setSecretVisible] = useState<{ [key: string]: boolean }>({});
 	const toolSelectRef = useRef<{
 		installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
 	} | null>(null);
@@ -86,6 +83,7 @@ export function AddWorker({
 		console.log(mcp);
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
+			const initialVisibility: { [key: string]: boolean } = {};
 			for(const key of Object.keys(mcp.install_command.env)) {
 				initialValues[key] = {
 					value: "",
@@ -95,8 +93,10 @@ export function AddWorker({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
+				initialVisibility[key] = false;
 			}
 			setEnvValues(initialValues);
+			setSecretVisible(initialVisibility);
 		}
 	};
 
@@ -136,18 +136,25 @@ export function AddWorker({
 		// clean status
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 	};
 
 	const handleCloseMcpEnvSetting = () => {
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 	};
 
 	const handleShowEnvConfig = (mcp: McpItem) => {
 		setActiveMcp(mcp);
 		initializeEnvValues(mcp);
 		setShowEnvConfig(true);
+	};
+
+	const isSensitiveKey = (key: string) => /token|key|secret|password|id/i.test(key);
+	const toggleSecretVisibility = (key: string) => {
+		setSecretVisible((prev) => ({ ...prev, [key]: !prev[key] }));
 	};
 
 	const handleSelectedToolsChange = (tools: McpItem[]) => {
@@ -161,6 +168,7 @@ export function AddWorker({
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 		setNameError("");
 	};
 
@@ -204,9 +212,11 @@ export function AddWorker({
 			}
 		});
 		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
-		for(const key of Object.keys(mcpLocal.mcpServers)) {
-			if (!mcpList.includes(key)) {
-				delete mcpLocal.mcpServers[key];
+		if (mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object') {
+			for(const key of Object.keys(mcpLocal.mcpServers)) {
+				if (!mcpList.includes(key)) {
+					delete mcpLocal.mcpServers[key];
+				}
 			}
 		}
 		if (edit) {
@@ -319,33 +329,24 @@ export function AddWorker({
 						</Button>
 					)}
 				</DialogTrigger>
-				<DialogContent className="sm:max-w-[425px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm">
-					<DialogHeader className="!bg-popup-surface !rounded-t-xl p-md">
-						<DialogTitle className="m-0">
-							<div className="flex gap-xs items-center justify-start">
-								{showEnvConfig && (
-									<ChevronLeft
-										onClick={handleCloseMcpEnvSetting}
-										size={16}
-										className="text-icon-primary cursor-pointer"
-									/>
-								)}
-								<div className="text-base font-bold leading-10 text-text-action">
-									{showEnvConfig
-										? t("workforce.configure-mcp-server")
-										: t("workforce.add-your-agent")}
-								</div>
-								<TooltipSimple content="Configure your MCP worker node here.">
-									<CircleAlert size={16} />
-								</TooltipSimple>
-							</div>
-						</DialogTitle>
-					</DialogHeader>
+				<DialogContent 
+					size="sm" 
+					className="p-0 gap-0"
+					onInteractOutside={(e) => e.preventDefault()}
+					onEscapeKeyDown={(e) => e.preventDefault()}
+				>
+					<DialogHeader
+						title={showEnvConfig ? t("workforce.configure-mcp-server") : t("workforce.add-your-agent")}
+						tooltip={t("layout.configure-your-mcp-worker-node-here")}
+						showTooltip={true}
+						showBackButton={showEnvConfig}
+						onBackClick={handleCloseMcpEnvSetting}
+					/>
 
 					{showEnvConfig ? (
 						// environment configuration interface
 						<>
-							<div className="flex flex-col gap-3 bg-white-100% p-md">
+							<DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
 								<div className="flex gap-md items-center">
 									{getCategoryIcon(activeMcp?.category?.name)}
 									<div>
@@ -378,35 +379,40 @@ export function AddWorker({
 									{Object.keys(activeMcp?.install_command?.env || {}).map(
 										(key) => (
 											<div key={key}>
-												<div className="text-text-body text-sm leading-normal font-bold">
-													{key}*
-												</div>
 												<Input
-													placeholder=""
-													className="h-7 rounded-sm border border-solid border-input-border-default bg-input-bg-default !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
+													size="default"
+													title={key}
+													required
+													placeholder={envValues[key]?.tip || `Enter ${key}`}
+													type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
 													value={envValues[key]?.value || ""}
 													onChange={(e) => updateEnvValue(key, e.target.value)}
+													note={envValues[key]?.tip}
+													backIcon={isSensitiveKey(key) ? (
+														secretVisible[key] ? (
+															<EyeOff size={16} className="text-button-transparent-icon-disabled" />
+														) : (
+															<Eye size={16} className="text-button-transparent-icon-disabled" />
+														)
+													) : undefined}
+													onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
 												/>
-												<div className="text-input-label-default text-xs leading-normal">
-													{envValues[key]?.tip}
-												</div>
 											</div>
 										)
 									)}
 								</div>
-							</div>
-							<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
-								<Button
-									onClick={handleCloseMcpEnvSetting}
-									variant="ghost"
-									size="sm"
-								>
-									{t("workforce.cancel")}
-								</Button>
-								<Button size="sm" onClick={handleConfigureMcpEnvSetting}>
-									<span>{t("Connect")}</span>
-									<ArrowRight size={16} />
-								</Button>
+							</DialogContentSection>
+							<DialogFooter 
+								className="bg-white-100% !rounded-b-xl p-md"
+								showCancelButton={true}
+								showConfirmButton={true}
+								cancelButtonText={t("workforce.cancel")}
+								confirmButtonText={t("layout.connect")}
+								onCancel={handleCloseMcpEnvSetting}
+								onConfirm={handleConfigureMcpEnvSetting}
+								cancelButtonVariant="ghost"
+								confirmButtonVariant="primary"
+							>
 							</DialogFooter>
 							{/* hidden but keep rendering ToolSelect component */}
 							<div style={{ display: "none" }}>
@@ -421,72 +427,59 @@ export function AddWorker({
 					) : (
 						// default add interface
 						<>
-							<div className="flex flex-col gap-3 bg-white-100% p-md">
-								<div className="flex flex-col gap-2">
-									<div className="flex items-center gap-sm pb-md border-[0px] border-b border-solid border-border-secondary">
+							<DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
+								<div className="flex flex-col gap-4">
+									<div className="flex items-center gap-sm">
+										<div className="flex w-16 h-16 items-center justify-center">
 										<Bot size={32} className="text-icon-primary" />
+										</div>
 										<Input
-											placeholder="Agent Name"
+											size="sm"
+											title={t("layout.name-your-agent")}
+											placeholder={t("layout.add-an-agent-name")}
 											value={workerName}
 											onChange={(e) => {
 												setWorkerName(e.target.value);
 												// when user starts input, clear error
 												if (nameError) setNameError("");
 											}}
-											className={`!border-none !bg-transparent !shadow-none text-xl leading-2xl font-bold !ring-0 !ring-offset-0 ${
-												nameError ? "border-red-500" : ""
-											}`}
+											state={nameError ? "error" : "default"}
+											note={nameError || ""}
 											required
 										/>
-										<RefreshCw
-											size={16}
-											className="text-button-transparent-icon-disabled"
-										/>
 									</div>
-									{nameError && (
-										<div className="text-red-500 text-sm font-medium">
-											{nameError}
-										</div>
-									)}
 								</div>
-								<div className="flex flex-col gap-sm ">
-									<div className="text-text-body text-sm leading-normal font-bold">
-										{t("workforce.description-optional")}
-									</div>
-									<Textarea
-										placeholder="I'm an agent specially designed for..."
+
+								<Textarea
+									  variant="enhanced"
+										size="sm"
+										title={t("workforce.description-optional")}
+										placeholder={t("layout.im-an-agent-specially-designed-for")}
 										value={workerDescription}
 										onChange={(e) => setWorkerDescription(e.target.value)}
-										className="rounded-sm border border-solid border-input-border-default bg-input-bg-default  !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
-									/>
-								</div>
-								<div>
-									<div className="flex items-center gap-sm ">
-										<div className="text-text-body text-sm leading-normal font-bold">
-											{t("workforce.agent-tool")}
-										</div>
-										<TooltipSimple content="Select MCP tools for your worker node.">
-											<CircleAlert size={16} />
-										</TooltipSimple>
-									</div>
-								</div>
+								/>
+
 								<ToolSelect
 									onShowEnvConfig={handleShowEnvConfig}
 									onSelectedToolsChange={handleSelectedToolsChange}
 									initialSelectedTools={selectedTools}
 									ref={toolSelectRef}
 								/>
-							</div>
-							<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
-								<DialogClose asChild>
-									<Button onClick={resetForm} variant="ghost" size="sm">
-										{t("workforce.cancel")}
-									</Button>
-								</DialogClose>
-								<Button size="sm" onClick={handleAddWorker} type="submit">
-									<span>{t("workforce.save-changes")}</span>
-								</Button>
-							</DialogFooter>
+							</DialogContentSection>
+							<DialogFooter 
+								className="bg-white-100% !rounded-b-xl p-md"
+								showCancelButton={true}
+								showConfirmButton={true}
+								cancelButtonText={t("workforce.cancel")}
+								confirmButtonText={t("workforce.save-changes")}
+								onCancel={() => {
+									resetForm();
+									setDialogOpen(false);
+								}}
+								onConfirm={handleAddWorker}
+								cancelButtonVariant="ghost"
+								confirmButtonVariant="primary"
+							/>
 						</>
 					)}
 				</DialogContent>

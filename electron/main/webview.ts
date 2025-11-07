@@ -64,6 +64,9 @@ export class WebViewManager {
       }
       const view = new WebContentsView({
         webPreferences: {
+          // Use a separate session partition for webviews to isolate storage from main window
+          // This ensures clearing webview storage won't affect main window's auth data
+          partition: 'persist:agent-webview',
           nodeIntegration: false,
           contextIsolation: true,
           backgroundThrottling: true,
@@ -269,6 +272,7 @@ export class WebViewManager {
 
       if (!webViewInfo.view.webContents.isDestroyed()) {
         webViewInfo.view.webContents.removeAllListeners()
+        // Now safe to clear all storage since webviews use separate partition
         webViewInfo.view.webContents.session.clearCache()
         webViewInfo.view.webContents.session.clearStorageData({
           storages: ['cookies', 'localstorage', 'websql', 'indexdb', 'serviceworkers', 'cachestorage']

@@ -1,4 +1,5 @@
 from typing_extensions import Any, Literal, TypedDict
+from typing import List, Dict, Optional
 from pydantic import BaseModel
 from app.exception.exception import ProgramException
 from app.model.chat import McpServers, Status, SupplementChat, Chat, UpdateData
@@ -9,7 +10,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 import weakref
-from loguru import logger
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("task_service")
 
 
 class Action(str, Enum):
@@ -252,6 +255,16 @@ class TaskLock:
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
 
+    # Context management fields
+    conversation_history: List[Dict[str, Any]]
+    """Store conversation history for context"""
+    last_task_result: str
+    """Store the last task execution result"""
+    question_agent: Optional[Any]
+    """Persistent question confirmation agent"""
+    summary_generated: bool
+    """Track if summary has been generated for this project"""
+
     def __init__(self, id: str, queue: asyncio.Queue, human_input: dict) -> None:
         self.id = id
         self.queue = queue
@@ -259,6 +272,12 @@ class TaskLock:
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.background_tasks = set()
+
+        # Initialize context management fields
+        self.conversation_history = []
+        self.last_task_result = ""
+        self.last_task_summary = ""
+        self.question_agent = None
 
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
@@ -293,6 +312,25 @@ class TaskLock:
                     pass
         self.background_tasks.clear()
 
+    def add_conversation(self, role: str, content: str | dict):
+        """Add a conversation entry to history"""
+        self.conversation_history.append({
+            'role': role,
+            'content': content,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    def get_recent_context(self, max_entries: int = None) -> str:
+        """Get recent conversation context as a formatted string"""
+        if not self.conversation_history:
+            return ""
+
+        context = "=== Recent Conversation ===\n"
+        history_to_use = self.conversation_history if max_entries is None else self.conversation_history[-max_entries:]
+        for entry in history_to_use:
+            context += f"{entry['role']}: {entry['content']}\n"
+        return context
+
 
 task_locks = dict[str, TaskLock]()
 # Cleanup task for removing stale task locks
@@ -304,6 +342,11 @@ def get_task_lock(id: str) -> TaskLock:
     if id not in task_locks:
         raise ProgramException("Task not found")
     return task_locks[id]
+
+
+def get_task_lock_if_exists(id: str) -> TaskLock | None:
+    """Get task lock if it exists, otherwise return None"""
+    return task_locks.get(id)
 
 
 def create_task_lock(id: str) -> TaskLock:

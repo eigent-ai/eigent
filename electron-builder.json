@@ -12,6 +12,10 @@
       "from": "backend",  
       "to": "backend",
       "filter": ["**/*", "!.venv/**/*"]
+    },
+    {
+      "from": "utils",
+      "to": "utils"
     }
   ],
   "protocols": [

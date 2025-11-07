@@ -4,7 +4,6 @@ import time
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
-from loguru import logger
 import websockets
 import websockets.exceptions
 
@@ -18,6 +17,9 @@ from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("hybrid_browser_toolkit")
 
 
 class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
@@ -45,8 +47,13 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                             future.set_result(response)
                             logger.debug(f"Processed response for message {message_id}")
                     else:
-                        # Log unexpected messages
-                        logger.warning(f"Received unexpected message: {response}")
+                        message_summary = {
+                            "id": response.get("id"),
+                            "success": response.get("success"),
+                            "has_result": "result" in response,
+                            "result_type": type(response.get("result")).__name__ if "result" in response else None
+                        }
+                        logger.debug(f"Received unexpected message: {message_summary}")
 
                 except asyncio.CancelledError:
                     disconnect_reason = "Receive loop cancelled"

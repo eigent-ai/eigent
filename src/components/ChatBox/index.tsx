@@ -192,20 +192,57 @@ export default function ChatBox(): JSX.Element {
 					return;
 				}
 
-				if (chatStore.tasks[_taskId as string]?.hasWaitComfirm) {
-					// If the task has not started yet (pending status), start it normally
-					if (chatStore.tasks[_taskId as string].status === "pending") {
+				// Check if we should continue the conversation or start a new task
+				const hasMessages = chatStore.tasks[_taskId as string].messages.length > 0;
+				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
+				const hasWaitComfirm = chatStore.tasks[_taskId as string]?.hasWaitComfirm;
+
+				// Continue conversation if:
+				// 1. Has wait confirm (simple query response)
+				// 2. Task is finished (complex task completed)
+				// 3. Has any messages but pending (ongoing conversation)
+				const shouldContinueConversation = hasWaitComfirm || isFinished || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
+
+				if (shouldContinueConversation) {
+					// Check if this is the very first message and task hasn't started
+					const hasSimpleResponse = chatStore.tasks[_taskId as string].messages.some(
+						m => m.step === "wait_confirm"
+					);
+					const hasComplexTask = chatStore.tasks[_taskId as string].messages.some(
+						m => m.step === "to_sub_tasks"
+					);
+
+					// Only start a new task if: pending, no messages processed yet
+					// OR while or after replaying a project
+					if ((chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished) 
+						|| chatStore.tasks[_taskId].type === "replay") {
 						setMessage("");
 						// Pass the message content to startTask instead of adding it to current chatStore
 						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
 						chatStore.startTask(_taskId, undefined, undefined, undefined, tempMessageContent, attachesToSend);
 						// keep hasWaitComfirm as true so that follow-up improves work as usual
 					} else {
-						// Task already started and is waiting for user confirmation – use improve API
+						// Continue conversation: simple response, complex task, or finished task
+						console.log("[Multi-turn] Continuing conversation with improve API");
+
+						//Generate nextId in case new chatStore is created to sync with the backend beforehand
+						const nextTaskId = generateUniqueId()
+						chatStore.setNextTaskId(nextTaskId);
+
 						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
+							task_id: nextTaskId
 						});
 						chatStore.setIsPending(_taskId, true);
+						// Add the user message to show it in UI
+						chatStore.addMessages(_taskId, {
+							id: generateUniqueId(),
+							role: "user",
+							content: tempMessageContent,
+							attaches: JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
+						});
+						chatStore.setAttaches(_taskId, []);
+						setMessage("");
 					}
 				} else {
 					if (!privacy) {
@@ -325,7 +362,9 @@ export default function ChatBox(): JSX.Element {
 	const [loading, setLoading] = useState(false);
 	const handleConfirmTask = async (taskId?: string) => {
 		const _taskId = taskId || chatStore.activeTaskId;
-		if (!_taskId || !projectStore.activeProjectId) return;
+		if (!_taskId || !projectStore.activeProjectId) {
+			return;
+		}
 		setLoading(true);
 		await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
 		setLoading(false);
@@ -420,7 +459,7 @@ export default function ChatBox(): JSX.Element {
 	const handleEditQuery = () => {
 		const taskId = chatStore.activeTaskId as string;
 		fetchDelete(`/chat/${taskId}`);
-		const messageIndex = chatStore.tasks[taskId].messages.findIndex(
+		const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
 			(item) => item.step === "to_sub_tasks"
 		);
 		const question = chatStore.tasks[taskId].messages[messageIndex - 2].content;
@@ -454,10 +493,18 @@ export default function ChatBox(): JSX.Element {
 
 		// Queued messages no longer change BottomBox state; QueuedBox renders independently
 
+		// Check for any to_sub_tasks message (confirmed or not)
+		const anyToSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
+		const toSubTasksMessage = task.messages.find((m) => (m.step === "to_sub_tasks" && !m.isConfirm));
+		
 		// Determine if we're in the "splitting in progress" phase (skeleton visible)
-		// Equivalent to the skeleton condition used in the JSX below
-		const toSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
-		const isSkeletonPhase = ((!toSubTasksMessage && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl);
+		// Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
+		const isSkeletonPhase = (
+			task.status !== 'finished' &&
+			!anyToSubTasksMessage && 
+			!task.hasWaitComfirm && 
+			task.messages.length > 0) || 
+			(task.isTakeControl && !anyToSubTasksMessage);
 		if (isSkeletonPhase) {
 			return "splitting";
 		}
@@ -585,9 +632,9 @@ export default function ChatBox(): JSX.Element {
 			{hasAnyMessages ? (
 				<div className="w-full h-[calc(100vh-54px)] flex flex-col rounded-xl border border-border-disabled  border-solid relative shadow-blur-effect overflow-hidden">
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
-					
+
 					{/* New Project Chat Container */}
-					<ProjectChatContainer 
+					<ProjectChatContainer
 						onPauseResume={handlePauseResume}
 						onSkip={handleSkip}
 						isPauseResumeLoading={isPauseResumeLoading}
@@ -602,7 +649,12 @@ export default function ChatBox(): JSX.Element {
 						})) || []}
 						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
 						subtitle={getBottomBoxState() === 'confirm' 
-							? chatStore.tasks[chatStore.activeTaskId]?.messages?.[0]?.content 
+							? (() => {
+								// Find the last message where role is "user"
+								const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+								const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
+								return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
+							})()
 							: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
 							onStartTask={() => handleConfirmTask()}
 							onEdit={handleEditQuery}
@@ -626,7 +678,7 @@ export default function ChatBox(): JSX.Element {
 								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 								onAddFile: handleFileSelect,
 								placeholder: t("chat.ask-placeholder"),
-								disabled: !privacy || useCloudModelInDev,
+								disabled: !privacy || useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded,
 								textareaRef: textareaRef,
 								allowDragDrop: true,
 								privacy: privacy,
@@ -641,11 +693,11 @@ export default function ChatBox(): JSX.Element {
 					<div className="absolute inset-0 blur-bg bg-bg-surface-secondary pointer-events-none"></div>
 					<div className=" w-full flex flex-col relative z-10">
 						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
-							<div className="text-xl leading-[30px] text-zinc-800 text-center font-bold">
-								{t("chat.welcome-to-eigent")}
+							<div className="text-body-lg text-text-heading text-center font-bold">
+								{t("layout.welcome-to-eigent")}
 							</div>
-							<div className="text-lg leading-7 text-zinc-500 text-center mb-5">
-								{t("chat.how-can-i-help-you")}
+							<div className="text-body-lg leading-7 text-text-label text-center mb-5">
+								{t("layout.how-can-i-help-you")}
 							</div>
 						</div>
 
@@ -663,7 +715,7 @@ export default function ChatBox(): JSX.Element {
 									onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 									onAddFile: handleFileSelect,
 									placeholder: t("chat.ask-placeholder"),
-									disabled: useCloudModelInDev,
+									disabled: useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded,
 									textareaRef: textareaRef,
 									allowDragDrop: false,
 									privacy: true,
@@ -706,23 +758,23 @@ export default function ChatBox(): JSX.Element {
 											className="text-icon-information"
 										/>
 										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
-											{t("chat.by-messaging-eigent")}{" "}
+											{t("layout.by-messaging-eigent")}{" "}
 											<a
 												href="https://www.eigent.ai/terms-of-use"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												{t("chat.terms-of-use")}
+												{t("layout.terms-of-use")}
 											</a>{" "}
-											{t("chat.and")}{" "}
+											{t("layout.and")}{" "}
 											<a
 												href="https://www.eigent.ai/privacy-policy"
 												target="_blank"
 												className="text-text-information underline"
 												onClick={(e) => e.stopPropagation()}
 											>
-												{t("chat.privacy-policy")}
+												{t("layout.privacy-policy")}
 											</a>
 											.
 										</span>
@@ -733,25 +785,25 @@ export default function ChatBox(): JSX.Element {
 									<div className="mr-2 flex flex-col items-center gap-2">
 										{[
 											{
-												label: t("chat.palm-springs-tennis-trip-planner"),
+												label: t("layout.palm-springs-tennis-trip-planner"),
 												message: t(
-													"chat.palm-springs-tennis-trip-planner-message"
+													"layout.palm-springs-tennis-trip-planner-message"
 												),
 											},
 											{
 												label: t(
-													"chat.bank-transfer-csv-analysis-and-visualization"
+													"layout.bank-transfer-csv-analysis"
 												),
 												message: t(
-													"chat.bank-transfer-csv-analysis-and-visualization-message"
+													"layout.bank-transfer-csv-analysis-message"
 												),
 											},
 											{
 												label: t(
-													"chat.find-duplicate-files-in-downloads-folder"
+													"layout.find-duplicate-files"
 												),
 												message: t(
-													"chat.find-duplicate-files-in-downloads-folder-message"
+													"layout.find-duplicate-files-message"
 												),
 											},
 										].map(({ label, message }) => (

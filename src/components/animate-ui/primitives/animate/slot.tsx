@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 type AnyProps = Record<string, unknown>;
 
 type DOMMotionProps<T extends HTMLElement = HTMLElement> = Omit<
-  HTMLMotionProps<keyof HTMLElementTagNameMap>,
+  HTMLMotionProps<'div'>,
   'ref'
 > & { ref?: React.Ref<T> };
 
@@ -28,8 +28,9 @@ function mergeRefs<T>(
       if (!ref) return;
       if (typeof ref === 'function') {
         ref(node);
-      } else {
-        (ref as React.RefObject<T | null>).current = node;
+      } else if ('current' in ref) {
+        // Use type assertion to safely assign to mutable ref
+        (ref as React.MutableRefObject<T | null>).current = node;
       }
     });
   };
