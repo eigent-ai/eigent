@@ -502,48 +502,58 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	};
 
 	return (
-		<div className="max-w-[900px] h-auto m-auto flex flex-col px-6 pb-40">
-			<div className="flex items-center justify-between py-8 border-b border-border-secondary">
-				{showMarket ? (
-					<div className="flex w-full items-center justify-between gap-sm">
-						<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
-							<ChevronLeft />
-						</Button>
-						<div className="text-body-lg font-bold text-text-body">
-							{t("setting.mcp-market")}
-						</div>
-						<div className="flex items-center gap-2 ml-auto">
-						  <div className="w-full">
-								<SearchInput value={marketKeyword} onChange={(e) => setMarketKeyword(e.target.value)} />
+		<div className="flex-1 h-auto m-auto">
+			{/* Header Section */}
+			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
+					<div className="flex w-full items-center justify-between">
+						{showMarket ? (
+							<div className="flex w-full items-center justify-between gap-sm">
+								<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
+									<ChevronLeft />
+								</Button>
+								<div className="text-heading-sm font-bold text-text-heading">
+									{t("setting.mcp-market")}
+								</div>
+								<div className="flex items-center gap-2 ml-auto">
+									<div className="w-full">
+										<SearchInput value={marketKeyword} onChange={(e) => setMarketKeyword(e.target.value)} />
+									</div>
+								</div>
 							</div>
-						</div>
+						) : (
+							<div className="flex w-full items-center justify-between">
+								<div className="text-heading-sm font-bold text-text-heading">
+									{t("setting.mcp-and-tools")}
+								</div>
+								<div className="flex items-center gap-sm">
+									<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+										<Plus />
+										<span>{t("setting.add-mcp-server")}</span>
+									</Button>
+									<Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
+										<Store />
+										<span>{t("setting.market")}</span>
+									</Button>
+								</div>
+							</div>
+						)}
 					</div>
-				) : (
-					<div className="flex items-center justify-between w-full">
-						<div className="text-body-lg font-bold text-text-body">
-							{t("setting.mcp-and-tools")}
-						</div>
-						<div className="flex items-center gap-sm">
-							<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-								<Plus />
-								<span>{t("setting.add-mcp-server")}</span>
-							</Button>
-							<Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
-								<Store />
-								<span>{t("setting.market")}</span>
-							</Button>
-						</div>
-					</div>
-				)}
+				</div>
 			</div>
-			<div className="flex flex-col gap-8">
+      
+			{/* Content Section */}
+			<div className="flex w-full">
+				<div className="flex px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
+
+			<div className="flex flex-col w-full gap-8">
 				{showMarket ? (
 					<div className="pt-2">
 						<MCPMarket onBack={() => setShowMarket(false)} keyword={marketKeyword} />
 					</div>
 				) : (
 					<>
-						<div className="flex flex-col">
+						<div className="flex-1 w-full">
 							<IntegrationList
 									items={essentialIntegrations}
 									showConfigButton={true}
@@ -650,6 +660,9 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						</div>
 					</>
 				)}
+			</div>
+
+			</div>
 			</div>
 		</div>
 	);

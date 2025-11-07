@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Globe, Cookie, Trash2, RefreshCw, RotateCw } from "lucide-react";
+import { Globe, Cookie, Trash2, RefreshCw, RotateCw, Plus, EllipsisVertical } from "lucide-react";
 import { fetchPost, fetchGet, fetchDelete } from "@/api/http";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ export default function Browser() {
 	const [deletingAll, setDeletingAll] = useState(false);
 	const [showRestartDialog, setShowRestartDialog] = useState(false);
 	const [cookiesBeforeBrowser, setCookiesBeforeBrowser] = useState<number>(0);
+	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
 	// Extract main domain (e.g., "aa.bb.cc" -> "bb.cc", "www.google.com" -> "google.com")
 	const getMainDomain = (domain: string): string => {
@@ -92,11 +93,16 @@ export default function Browser() {
 								const newDomains = newResponse.domains || [];
 								const newCookieCount = newDomains.reduce((sum: number, item: CookieDomain) => sum + item.cookie_count, 0);
 
-								if (newCookieCount !== currentCookieCount) {
-									// Cookies have changed, show restart dialog
+								if (newCookieCount > currentCookieCount) {
+									// Cookies were added, show success toast and restart dialog
+									const addedCount = newCookieCount - currentCookieCount;
+									toast.success(`Added ${addedCount} cookie${addedCount !== 1 ? 's' : ''}`);
+									setHasUnsavedChanges(true);
 									setShowRestartDialog(true);
-								} else {
-									toast.info("Browser closed, no cookie changes detected");
+								} else if (newCookieCount < currentCookieCount) {
+									// Cookies were deleted (shouldn't happen here, but handle it)
+									setHasUnsavedChanges(true);
+									setShowRestartDialog(true);
 								}
 							}
 						}
@@ -121,14 +127,8 @@ export default function Browser() {
 			if (response && response.success) {
 				const domains = response.domains || [];
 				setCookieDomains(domains);
-				if (domains.length > 0) {
-					toast.success(`Loaded ${domains.length} cookie domains`);
-				} else {
-					toast.info(response.message || "No cookies found");
-				}
 			} else {
 				setCookieDomains([]);
-				toast.info("No cookies found");
 			}
 		} catch (error: any) {
 			toast.error(error?.message || "Failed to load cookies");
@@ -152,6 +152,8 @@ export default function Browser() {
 			const domainsToRemove = new Set(subdomains.map(item => item.domain));
 			setCookieDomains(prev => prev.filter(item => !domainsToRemove.has(item.domain)));
 
+			// Mark as having unsaved changes
+			setHasUnsavedChanges(true);
 			// Show restart dialog after successful deletion
 			setShowRestartDialog(true);
 		} catch (error: any) {
@@ -160,7 +162,7 @@ export default function Browser() {
 			setDeletingDomain(null);
 		}
 	};
-
+4
 	const handleDeleteAll = async () => {
 		setDeletingAll(true);
 		try {
@@ -168,6 +170,8 @@ export default function Browser() {
 			toast.success("Deleted all cookies");
 			setCookieDomains([]);
 
+			// Mark as having unsaved changes
+			setHasUnsavedChanges(true);
 			// Show restart dialog after successful deletion
 			setShowRestartDialog(true);
 		} catch (error: any) {
@@ -191,7 +195,7 @@ export default function Browser() {
 	};
 
 	return (
-		<div className="max-w-[900px] h-auto m-auto flex flex-col px-20 pb-40 pt-8">
+		<div className="flex-1 h-auto m-auto">
 			{/* Restart Dialog */}
 			<AlertDialog
 				isOpen={showRestartDialog}
@@ -200,121 +204,137 @@ export default function Browser() {
 				title="Cookies Updated"
 				message="Cookies have been updated. Would you like to restart the application to use the new cookies?"
 				confirmText="Yes, Restart"
-				cancelText="No, Later"
+				cancelText="No, Add More"
+				confirmVariant="information"
 			/>
 
-			{/* Title and Restart Button */}
-			<div className="flex items-center justify-between mb-4">
-				<h2 className="text-heading-lg font-bold text-text-heading">Browser Management</h2>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleRestartApp}
-				>
-					<RotateCw className="w-4 h-4" />
-					Restart to Apply Changes
-				</Button>
-			</div>
-
-			<div className="flex flex-col gap-6">
-				{/* Browser Login Card */}
-				<div className="flex flex-col gap-4 p-6 border border-border-secondary rounded-lg bg-bg-surface-primary">
-					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 rounded-lg bg-bg-fill-browser-default flex items-center justify-center">
-							<Globe className="w-5 h-5 text-bg-fill-browser-active" />
+			{/* Header Section */}
+			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
+					<div className="flex flex-row items-center justify-between w-full gap-4">
+						<div className="flex flex-col">
+							<div className="text-heading-sm font-bold text-text-heading">{t("layout.browser-management")}</div>
+							<p className="text-body-sm text-text-label max-w-[700px]">
+							{t("layout.browser-management-description")}.</p>
 						</div>
-						<div className="flex flex-col gap-1">
-							<h3 className="text-body-lg font-bold text-text-heading">
-								Browser Login
-							</h3>
-							<p className="text-body-sm text-text-label">
-								Open a dedicated browser for website logins. Your login sessions will be saved and reused by Eigent agents.
-							</p>
-						</div>
-					</div>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="primary"
-							size="sm"
-							onClick={handleBrowserLogin}
-							disabled={loginLoading}
-						>
-							<Globe className="w-4 h-4" />
-							{loginLoading ? "Opening..." : "Open Browser"}
-						</Button>
 					</div>
 				</div>
+			</div>
+      
+			{/* Content Section */}
+			<div className="flex w-full">
+				<div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
 
-				{/* Cookies Card */}
-				<div className="flex flex-col gap-4 p-6 border border-border-secondary rounded-lg bg-bg-surface-primary">
-					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 rounded-lg bg-bg-fill-multimodal-default flex items-center justify-center">
-							<Cookie className="w-5 h-5 text-bg-fill-multimodal-active" />
-						</div>
-						<div className="flex flex-col gap-1 flex-1">
-							<h3 className="text-body-lg font-bold text-text-heading">
-								Cookies
-							</h3>
-							<p className="text-body-sm text-text-label">
-								View and manage cookies from your browser login sessions.
-							</p>
-						</div>
-					</div>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="primary"
-							size="sm"
-							onClick={handleLoadCookies}
-							disabled={cookiesLoading}
-						>
-							<RefreshCw className={`w-4 h-4 ${cookiesLoading ? 'animate-spin' : ''}`} />
-							{cookiesLoading ? "Loading..." : "Load Cookies"}
-						</Button>
-						{cookieDomains.length > 0 && (
-							<Button
-								variant="warning"
-								size="sm"
-								onClick={handleDeleteAll}
-								disabled={deletingAll}
-							>
-								<Trash2 className="w-4 h-4" />
-								{deletingAll ? "Deleting..." : "Delete All"}
-							</Button>
+					<div className="flex flex-col w-full min-h-full items-center justify-start border-border-disabled border-solid rounded-xl p-6 bg-surface-secondary relative">
+						{hasUnsavedChanges && (
+							<div className="absolute top-6 right-6">
+								<Button
+									variant="information"
+									size="xs"
+									onClick={handleRestartApp}
+									className="rounded-full"
+								>
+									<RefreshCw />
+									{t("layout.restart-to-apply")}
+								</Button>
+							</div>
 						)}
-					</div>
-					{cookieDomains.length > 0 && (
-						<div className="flex flex-col gap-3 mt-2">
-							<p className="text-body-sm font-semibold text-text-heading">
-								Cookie Domains ({groupDomainsByMain(cookieDomains).length}):
-							</p>
-							<div className="max-h-[500px] overflow-y-auto flex flex-col gap-2 border-2 border-border-secondary rounded-lg p-3 shadow-md bg-white">
-								{groupDomainsByMain(cookieDomains).map((group, index) => (
-									<div
-										key={index}
-										className="flex items-center justify-between px-4 py-3 bg-bg-surface-secondary rounded-lg hover:bg-bg-surface-tertiary transition-colors border border-border-disabled shadow-sm"
-									>
-										<div className="flex items-center gap-3 flex-1 min-w-0">
-											<span className="text-sm text-text-heading font-semibold truncate">
-												{group.mainDomain}
-											</span>
-											<span className="text-xs text-text-label px-2 py-1 bg-bg-surface-tertiary rounded">
-												{group.totalCookies} cookie{group.totalCookies !== 1 ? 's' : ''}
-											</span>
+						<div className="text-body-lg font-bold text-text-heading">{t("layout.browser-cookies")}</div>
+						<p className="max-w-[600px] text-center text-body-sm text-text-label">{t("layout.browser-cookies-description")}
+						</p>
+						{/* Cookies Section */}
+						<div className="flex flex-col max-w-[600px] w-full gap-3 border-[0.5px] border-border-secondary border-b-0 border-x-0 border-solid pt-3 mt-3">
+
+							<div className="flex flex-row items-center justify-between py-2">
+								<div className="flex flex-row items-center justify-start gap-2">
+									<div className="text-body-base font-bold text-text-body">
+										{t("layout.cookie-domains")}
+									</div>
+									{cookieDomains.length > 0 && (
+										<div className="text-label-sm font-bold text-text-information bg-tag-fill-info rounded-lg px-2">
+											{groupDomainsByMain(cookieDomains).length}
 										</div>
+									)}
+								</div>
+
+								<div className="flex items-center gap-2">
+									{cookieDomains.length > 0 && (
 										<Button
 											variant="ghost"
 											size="sm"
-											onClick={() => handleDeleteMainDomain(group.mainDomain, group.subdomains)}
-											disabled={deletingDomain === group.mainDomain}
-											className="ml-3 flex-shrink-0"
+											onClick={handleDeleteAll}
+											disabled={deletingAll}
+											className="!text-text-cuation uppercase"
 										>
-											<Trash2 className="w-4 h-4 text-text-danger" />
+											{deletingAll ? t("layout.deleting") : t("layout.delete-all")}
 										</Button>
+									)}
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={handleLoadCookies}
+										disabled={cookiesLoading}
+									>
+										<RefreshCw className={`w-4 h-4 ${cookiesLoading ? 'animate-spin' : ''}`} />
+									</Button>
+									<Button
+										variant="primary"
+										size="sm"
+										onClick={handleBrowserLogin}
+										disabled={loginLoading}
+									>
+										<Plus className="w-4 h-4" />
+										{loginLoading ? t("layout.opening") : t("layout.open-browser")}
+									</Button>
+								</div>
+							</div>	
+
+							{cookieDomains.length > 0 ? (
+								<div className="flex flex-col gap-2">
+									{groupDomainsByMain(cookieDomains).map((group, index) => (
+										<div
+											key={index}
+											className="flex items-center justify-between px-4 py-2 bg-surface-tertiary rounded-xl border-solid border-border-disabled"
+										>
+											<div className="flex flex-col w-full items-start justify-start">
+												<span className="text-body-sm text-text-body font-bold truncate">
+													{group.mainDomain}
+												</span>
+												<span className="text-label-xs text-text-label mt-1">
+													{group.totalCookies} Cookie{group.totalCookies !== 1 ? 's' : ''}
+												</span>
+											</div>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() => handleDeleteMainDomain(group.mainDomain, group.subdomains)}
+												disabled={deletingDomain === group.mainDomain}
+												className="ml-3 flex-shrink-0"
+											>
+												<Trash2 className="w-4 h-4 text-text-cuation" />
+											</Button>
+										</div>
+									))}
+								</div>
+							) : (
+								<div className="flex flex-col items-center justify-center py-8 px-4">
+									<Cookie className="w-12 h-12 text-icon-secondary opacity-50 mb-4" />
+									<div className="text-body-base font-bold text-text-label text-center">
+										{t("layout.no-cookies-saved-yet")}
 									</div>
-								))}
-							</div>
+									<p className="text-label-xs font-medium text-text-label text-center">
+										{t("layout.no-cookies-saved-yet-description")}
+									</p>
+								</div>
+							)}
 						</div>
-					)}
+					</div>
+          
+					<div className="flex-1 w-full items-center justify-center text-label-xs text-text-label text-center">
+						For more information, check out our 
+					<a href="https://www.eigent.ai/privacy-policy" target="_blank" className="text-text-information underline ml-1">{t("layout.privacy-policy")}</a>
+          </div>
+
 				</div>
 			</div>
 		</div>

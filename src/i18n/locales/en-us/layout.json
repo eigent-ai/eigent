@@ -130,5 +130,18 @@
 	"select-file": "Select File",
 	"all-files": "All Files",
 	"ask-placeholder": "Ask me anything...",
-	"new-task": "New Task"
+	"new-task": "New Task",
+	"projects-hub": "Projects Hub",
+	"browser-management": "Browser Management",
+	"browser-management-description": "The browser cookies are stored locally on your device, used only for tasks on those same sites, and can be cleared or disabled at any time.",
+	"restart-to-apply": "Restart to Apply",
+	"browser-cookies": "Browser Cookies",
+	"browser-cookies-description": "Use 「Open Browser」to sign in to a webpage and save its cookies. After you restart the desktop app, Eigent will remember them and help you complete future tasks on those sites.",
+	"cookie-domains": "Cookie Domains",
+	"deleting": "Deleting...",
+	"delete-all": "Delete All",
+	"opening": "Opening...",
+	"open-browser": "Open Browser",
+	"no-cookies-saved-yet": "No cookies saved yet",
+	"no-cookies-saved-yet-description": "Click \"Open Browser\" above to sign in to websites and save their cookies for future tasks."
 }
