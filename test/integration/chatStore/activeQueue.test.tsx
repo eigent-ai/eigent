@@ -151,11 +151,21 @@ describe("Case 3: Add to the workforce queue", () => {
               step: 'new_task_state',
               data: {
                 task_id: queuedTaskIds[0], // First queued task ID
-                content: 'Build a todo app',
+                content: 'Build a calculator app 2',
                 project_id: projectId
               }
             },
             delay: 100
+          },
+          {
+            event: {
+              step: 'remove_task',
+              data: {
+                task_id: queuedTaskIds[0], // Remove first task from queue
+                project_id: projectId
+              }
+            },
+            delay: 200
           },
           {
             event: {
@@ -174,16 +184,6 @@ describe("Case 3: Add to the workforce queue", () => {
                   { id: 'task-2', content: 'Implement calculator logic 2', status: '' },
                 ],
               },
-            },
-            delay: 200
-          },
-          {
-            event: {
-              step: 'remove_task',
-              data: {
-                task_id: queuedTaskIds[0], // Remove first task from queue
-                project_id: projectId
-              }
             },
             delay: 200
           },
@@ -294,7 +294,7 @@ describe("Case 3: Add to the workforce queue", () => {
       const task = chatStore.tasks[taskId]
       
       // Look for new_task_state in messages
-      const hasNewTaskState = task.messages.some((m: any) => m.content === 'Build a todo app')
+      const hasNewTaskState = task.messages.some((m: any) => m.content === 'Build a calculator app 2')      
       expect(hasNewTaskState).toBe(true)
       console.log("new_task_state event detected - new chat created")
     }, { timeout: 3000 })
@@ -567,6 +567,16 @@ describe("Case 3: Add to the workforce queue", () => {
         
         // Now send the queue-related events with actual task IDs
         const queueSequence = createSSESequence([
+          {
+            event: {
+              step: 'confirmed',
+              data: {
+                task_id: comprehensiveQueuedTaskIds[0], // First queued task ID
+                question: 'Build a todo application',
+              }
+            },
+            delay: 100
+          },
           {
             event: {
               step: 'new_task_state',

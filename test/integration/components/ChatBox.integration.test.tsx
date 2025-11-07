@@ -81,8 +81,8 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         </TestWrapper>
       )
       
-      expect(screen.getByText(/Welcome to Eigent/i)).toBeInTheDocument()
-      expect(screen.getByText(/How can I help you today/i)).toBeInTheDocument()
+      expect(screen.getByText(/layout.welcome-to-eigent/i)).toBeInTheDocument()
+      expect(screen.getByText(/layout.how-can-i-help-you/i)).toBeInTheDocument()
     })
 
     it('should render task splitting UI when task is in to_sub_tasks state', async () => {
@@ -132,7 +132,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         const calculatorElements = screen.getAllByText('Build a calculator app')
         expect(calculatorElements.length).toBeGreaterThanOrEqual(1)
         // The component should show task breakdown
-        expect(screen.queryByText(/Welcome to Eigent/i)).not.toBeInTheDocument()
+        expect(screen.queryByText(/layout.welcome-to-eigent/i)).not.toBeInTheDocument()
       })
     })
 
@@ -156,7 +156,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         chatStore.addMessages(taskId, {
           id: 'assistant-1',
           role: 'assistant',
-          content: 'I am doing well, thank you! How can I help you today?',
+          content: 'I am doing well, thank you! layout.how-can-i-help-you?',
           attaches: []
         })
         rerender()
@@ -170,8 +170,8 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
 
       await waitFor(() => {
         expect(screen.getByText('Hello, how are you?')).toBeInTheDocument()
-        expect(screen.getByText('I am doing well, thank you! How can I help you today?')).toBeInTheDocument()
-        expect(screen.queryByText(/Welcome to Eigent/i)).not.toBeInTheDocument()
+        expect(screen.getByText('I am doing well, thank you! layout.how-can-i-help-you?')).toBeInTheDocument()
+        expect(screen.queryByText(/layout.welcome-to-eigent/i)).not.toBeInTheDocument()
       })
     })
 
@@ -206,7 +206,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         expect(screen.getByText('Calculate 2+2')).toBeInTheDocument()
         // Should show some loading indicator - adjust this based on actual UI
         // For now, just check that we don't show the welcome screen
-        expect(screen.queryByText(/Welcome to Eigent/i)).not.toBeInTheDocument()
+        expect(screen.queryByText(/layout.welcome-to-eigent/i)).not.toBeInTheDocument()
       })
     })
 
@@ -334,7 +334,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       }).not.toThrow()
       
       // Should show some content (either welcome screen or handle the error gracefully)
-      expect(screen.getByText(/Welcome to Eigent/i) || screen.getByText(/error/i) || screen.getByRole('main')).toBeTruthy()
+      expect(screen.getByText(/layout.welcome-to-eigent/i) || screen.getByText(/error/i) || screen.getByRole('main')).toBeTruthy()
     })
 
     it('should handle missing activeTaskId gracefully', async () => {
@@ -348,7 +348,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
             <ChatBox />
           </TestWrapper>
         )
-        expect(screen.getByText(/Welcome to Eigent/i)).toBeInTheDocument()
+        expect(screen.getByText(/layout.welcome-to-eigent/i)).toBeInTheDocument()
         return
       }
 
@@ -405,15 +405,15 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       expect(sendButton).toBeDisabled()
     })
 
-    it('should display Terms of Use and Privacy Policy links', async () => {
+    it('should display layout.terms-of-use and layout.privacy-policy links', async () => {
       render(
         <TestWrapper>
           <ChatBox />
         </TestWrapper>
       )
 
-      const termsLink = screen.getByRole('link', { name: /Terms of Use/i })
-      const privacyLink = screen.getByRole('link', { name: /Privacy Policy/i })
+      const termsLink = screen.getByRole('link', { name: /layout.terms-of-use/i })
+      const privacyLink = screen.getByRole('link', { name: /layout.privacy-policy/i })
       
       expect(termsLink).toBeInTheDocument()
       expect(termsLink).toHaveAttribute('href', 'https://www.eigent.ai/terms-of-use')
