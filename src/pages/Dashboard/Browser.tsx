@@ -111,7 +111,7 @@ export default function Browser() {
 						clearInterval(checkInterval);
 						await handleLoadCookies();
 					}
-				}, 2000); // Check every 2 seconds
+				}, 500); // Check every 2 seconds
 			}
 		} catch (error: any) {
 			toast.error(error?.message || "Failed to open browser");
