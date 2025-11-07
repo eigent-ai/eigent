@@ -31,6 +31,7 @@
 	"installation-failed": "설치 실패",
 	"projects": "프로젝트",
 	"mcp-tools": "MCP 및 도구",
+	"browser": "브라우저",
 	"settings": "설정",
 	"workers": "작업자",
 	"triggers": "트리거",
@@ -128,5 +129,18 @@
 	"select-file": "파일 선택",
 	"all-files": "모든 파일",
 	"ask-placeholder": "무엇이든 물어보세요...",
-	"new-task": "새 작업"
+	"new-task": "새 작업",
+	"projects-hub": "프로젝트 허브",
+	"browser-management": "브라우저 관리",
+	"browser-management-description": "브라우저 쿠키는 기기에 로컬로 저장되며, 동일한 사이트의 작업에만 사용되며 언제든지 지우거나 비활성화할 수 있습니다.",
+	"restart-to-apply": "적용하려면 다시 시작",
+	"browser-cookies": "브라우저 쿠키",
+	"browser-cookies-description": "「브라우저 열기」를 사용하여 웹페이지에 로그인하고 쿠키를 저장하세요. 다시 시작한 후 Eigent는 이를 기억하고 해당 사이트에서 향후 작업을 완료하는 데 도움을 줍니다.",
+	"cookie-domains": "쿠키 도메인",
+	"deleting": "삭제 중...",
+	"delete-all": "모두 삭제",
+	"opening": "열는 중...",
+	"open-browser": "브라우저 열기",
+	"no-cookies-saved-yet": "아직 쿠키가 저장되지 않았습니다",
+	"no-cookies-saved-yet-description": "위의 \"브라우저 열기\"를 클릭하여 웹사이트에 로그인하고 향후 작업을 위해 쿠키를 저장하세요."
 }
