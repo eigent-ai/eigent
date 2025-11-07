@@ -5,7 +5,7 @@ from app.utils.oauth_state_manager import oauth_state_manager
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("tool_controller")
-router = APIRouter(tags=["task"])
+router = APIRouter()
 
 
 @router.post("/install/tool/{tool}", name="install tool")
