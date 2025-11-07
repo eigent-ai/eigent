@@ -12,7 +12,7 @@ import {
 	Power,
 	ChevronDown,
 	ChevronLeft,
-	House,
+	LayoutGrid,
 	Share,
 } from "lucide-react";
 import "./index.css";
@@ -145,9 +145,12 @@ function HeaderWin() {
 			return;
 		}
 
+		const projectId = projectStore.activeProjectId;
+		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
+
 		try {
 			const task = chatStore.tasks[taskId];
-			
+
 			// Stop the task if it's running
 			if (task && task.status === 'running') {
 				await fetchPut(`/task/${taskId}/take-control`, {
@@ -162,11 +165,15 @@ function HeaderWin() {
 				console.log("Task may not exist on backend:", error);
 			}
 
-			// Delete from history
-			try {
-				await proxyFetchDelete(`/api/chat/history/${taskId}`);
-			} catch (error) {
-				console.log("Task may not exist in history:", error);
+			// Delete from history using historyId
+			if (historyId) {
+				try {
+					await proxyFetchDelete(`/api/chat/history/${historyId}`);
+				} catch (error) {
+					console.log("History may not exist:", error);
+				}
+			} else {
+				console.warn("No historyId found for project, skipping history deletion");
 			}
 
 			// Remove from local store
@@ -176,8 +183,8 @@ function HeaderWin() {
 			const newTaskId = chatStore.create();
 			chatStore.setActiveTaskId(newTaskId);
 
-			// Navigate to home
-			navigate("/");
+			// Navigate to home with replace to force refresh
+			navigate("/", { replace: true });
 
 			toast.success(t("layout.project-ended-successfully"), {
 				closeButton: true,
@@ -246,7 +253,7 @@ function HeaderWin() {
 								 className="no-drag"
 								 onClick={() => navigate("/history")}
 									>
-									<House className="w-4 h-4" />
+									<LayoutGrid className="w-4 h-4" />
 							</Button>
 						</TooltipSimple>
 						<Button

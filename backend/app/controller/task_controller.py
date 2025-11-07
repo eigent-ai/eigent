@@ -20,7 +20,7 @@ from utils import traceroot_wrapper as traceroot
 logger = traceroot.get_logger("task_controller")
 
 
-router = APIRouter(tags=["task"])
+router = APIRouter()
 
 
 @router.post("/task/{id}/start", name="start task")
