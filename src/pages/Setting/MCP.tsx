@@ -159,7 +159,12 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 							try {
 								const response = await fetchPost("/install/tool/notion");
 								if (response.success) {
-									toast.success(t("setting.notion-mcp-installed-successfully"));
+									// Check if there's a warning (connection failed but installation marked as complete)
+									if (response.warning) {
+										toast.warning(response.warning, { duration: 5000 });
+									} else {
+										toast.success(t("setting.notion-mcp-installed-successfully"));
+									}
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
 										config_group: "Notion",
@@ -177,37 +182,45 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 								toast.error(error.message || t("setting.failed-to-install-notion-mcp"));
 							}
 						};
-					} else if (key.toLowerCase() === 'google calendar') {
-						onInstall = async () => {
-							try {
-								const response = await fetchPost("/install/tool/google_calendar");
-                                if (response.success) {
-                                    // Check if config exists first to avoid 400 error
-                                    const existingConfigs = await proxyFetchGet("/api/configs");
-                                    const existing = Array.isArray(existingConfigs) 
-                                        ? existingConfigs.find((c: any) => 
-                                            c.config_group?.toLowerCase() === "google calendar" &&
-                                            c.config_name === "GOOGLE_REFRESH_TOKEN"
-                                        )
-                                        : null;
-                                    
-                                    const configPayload = {
-                                        config_group: "Google Calendar",
-                                        config_name: "GOOGLE_REFRESH_TOKEN",
-                                        config_value: "exists",
-                                    };
-                                    
-                                    if (existing) {
-                                        await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-                                    } else {
-                                        await proxyFetchPost("/api/configs", configPayload);
-                                    }
-                                    
-                                    toast.success(t("setting.google-calendar-installed-successfully"));
-									// Refresh the integrations list to show the installed state
-									fetchList();
-									// Force refresh IntegrationList component
-									setRefreshKey(prev => prev + 1);
+						} else if (key.toLowerCase() === 'google calendar') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/google_calendar");
+									if (response.success) {
+										// Check if there's a warning (connection failed but installation marked as complete)
+										if (response.warning) {
+											toast.warning(response.warning, { duration: 5000 });
+										} else {
+											toast.success(t("setting.google-calendar-installed-successfully"));
+										}
+										try {
+											// Ensure we persist a marker config to indicate installation
+											const existingConfigs = await proxyFetchGet("/api/configs");
+											const existing = Array.isArray(existingConfigs)
+												? existingConfigs.find((c: any) =>
+													c.config_group?.toLowerCase() === "google calendar" &&
+													c.config_name === "GOOGLE_REFRESH_TOKEN"
+												)
+												: null;
+
+											const configPayload = {
+												config_group: "Google Calendar",
+												config_name: "GOOGLE_REFRESH_TOKEN",
+												config_value: "exists",
+											};
+
+											if (existing) {
+												await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+											} else {
+												await proxyFetchPost("/api/configs", configPayload);
+											}
+										} catch (configError) {
+											console.warn("Failed to persist Google Calendar config", configError);
+										}
+										// Refresh the integrations list to show the installed state
+										fetchList();
+										// Force refresh IntegrationList component
+										setRefreshKey(prev => prev + 1);
                                 } else if (response.status === "authorizing") {
                                     // Authorization in progress - start polling for completion
                                     toast.info(t("setting.please-complete-authorization-in-browser"));

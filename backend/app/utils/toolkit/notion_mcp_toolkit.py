@@ -23,7 +23,7 @@ def _customize_function_parameters(schema: Dict[str, Any]) -> None:
         properties = parameters.get("properties", {})
         required = parameters.get("required", [])
         
-        help_description = "If you need use parent, you can use `notion-search` for the imformation"
+        help_description = "If you need use parent, you can use `notion-search` for the information"
         # Modify the notion-create-pages function to make parent optional
         if function_name == "notion-create-pages" or function_name == "notion-create-database":
             required.remove("parent")
@@ -98,13 +98,6 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
                 
                 # Success! Got tools
                 logger.info(f"Successfully connected to Notion MCP server and loaded {len(tools)} tools")
-                
-                # Save tool schema
-                tool_schema = [
-                    item.get_openai_tool_schema() for item in tools
-                ]
-                with open("tool_schema.json", "w") as f:
-                    json.dump(tool_schema, f, indent=4)
                 
                 return tools
                 

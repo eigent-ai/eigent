@@ -72,6 +72,11 @@ const ToolSelect = forwardRef<
 								try {
 									const response = await fetchPost("/install/tool/notion");
 									if (response.success) {
+										// Check if there's a warning (connection failed but installation marked as complete)
+										if (response.warning) {
+											console.warn("Notion MCP connection warning:", response.warning);
+											// Still proceed but log the warning
+										}
 										// Save to config to mark as installed
 										await proxyFetchPost("/api/configs", {
 											config_group: "Notion",
@@ -98,64 +103,65 @@ const ToolSelect = forwardRef<
 									throw error;
 								}
 							};
-                } else if (key.toLowerCase() === 'google calendar') {
-					onInstall = async () => {
-						try {
-					const response = await fetchPost("/install/tool/google_calendar");
-					if (response.success) {
-						// Check if config exists first to avoid 400 error
-						const existingConfigs = await proxyFetchGet("/api/configs");
-						const existing = Array.isArray(existingConfigs)
-							? existingConfigs.find((c: any) =>
-								c.config_group?.toLowerCase() === "google calendar" &&
-								c.config_name === "GOOGLE_REFRESH_TOKEN"
-							)
-							: null;
-						
-						const configPayload = {
-							config_group: "Google Calendar",
-							config_name: "GOOGLE_REFRESH_TOKEN",
-							config_value: "exists",
-						};
-						
-						if (existing) {
-							await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-						} else {
-							await proxyFetchPost("/api/configs", configPayload);
-						}
-						
-						console.log("Google Calendar installed successfully");
-								// After successful installation, add to selected tools
-								const calendarItem = {
-									id: 0, // Use 0 for integration items
-									key: key,
-									name: key,
-									description: "Google Calendar integration for managing events and schedules",
-									toolkit: "google_calendar_toolkit", // Add the toolkit name
-									isLocal: true
-								};
-								addOption(calendarItem, true);
-                            } else if (response.status === "authorizing") {
-								// Authorization in progress - browser should have opened
-								console.log("Google Calendar authorization in progress. Please complete in browser.");
-								console.log(response.message);
-								// Don't throw error - this is expected behavior
-							} else {
-								// Real error
-								console.error("Failed to install Google Calendar:", response.error || "Unknown error");
-								throw new Error(response.error || "Failed to install Google Calendar");
-							}
-							// Return the response so IntegrationList can check the status
-							return response;
-						} catch (error: any) {
-							// Only throw if it's a real error, not authorization in progress
-							if (!error.message?.includes("authorization")) {
-								console.error("Failed to install Google Calendar:", error.message);
-								throw error;
-							}
-							return null; // Return null on error
-						}
-					};
+                        } else if (key.toLowerCase() === 'google calendar') {
+                            onInstall = async () => {
+                                try {
+                                    const response = await fetchPost("/install/tool/google_calendar");
+                                    if (response.success) {
+                                        if (response.warning) {
+                                            console.warn("Google Calendar connection warning:", response.warning);
+                                        }
+                                        try {
+                                            const existingConfigs = await proxyFetchGet("/api/configs");
+                                            const existing = Array.isArray(existingConfigs)
+                                                ? existingConfigs.find((c: any) =>
+                                                    c.config_group?.toLowerCase() === "google calendar" &&
+                                                    c.config_name === "GOOGLE_REFRESH_TOKEN"
+                                                )
+                                                : null;
+
+                                            const configPayload = {
+                                                config_group: "Google Calendar",
+                                                config_name: "GOOGLE_REFRESH_TOKEN",
+                                                config_value: "exists",
+                                            };
+
+                                            if (existing) {
+                                                await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+                                            } else {
+                                                await proxyFetchPost("/api/configs", configPayload);
+                                            }
+                                        } catch (configError) {
+                                            console.warn("Failed to persist Google Calendar config", configError);
+                                        }
+                                        console.log("Google Calendar installed successfully");
+                                        const calendarItem = {
+                                            id: 0, // Use 0 for integration items
+                                            key: key,
+                                            name: key,
+                                            description: "Google Calendar integration for managing events and schedules",
+                                            toolkit: "google_calendar_toolkit", // Add the toolkit name
+                                            isLocal: true
+                                        };
+                                        addOption(calendarItem, true);
+                                    } else if (response.status === "authorizing") {
+                                        console.log("Google Calendar authorization in progress. Please complete in browser.");
+                                        if (response.message) {
+                                            console.log(response.message);
+                                        }
+                                    } else {
+                                        console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+                                        throw new Error(response.error || "Failed to install Google Calendar");
+                                    }
+                                    return response;
+                                } catch (error: any) {
+                                    if (!error.message?.includes("authorization")) {
+                                        console.error("Failed to install Google Calendar:", error.message);
+                                        throw error;
+                                    }
+                                    return null; // Return null on authorization flow errors
+                                }
+                            };
 						} else {
 							onInstall = () =>
 								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
