@@ -63,6 +63,7 @@ class Chat(BaseModel):
     )
     new_agents: list["NewAgent"] = []
     extra_params: dict | None = None  # For provider-specific parameters like Azure
+    search_config: dict[str, str] | None = None  # User-specific search engine configurations (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
 
     @field_validator("model_type")
     @classmethod
