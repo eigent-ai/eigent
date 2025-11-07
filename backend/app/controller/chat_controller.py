@@ -38,22 +38,22 @@ SSE_TIMEOUT_SECONDS = 10 * 60
 
 
 async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TIMEOUT_SECONDS):
-    last_data_time = [time.time()]
+    """
+    Wraps a stream generator with timeout handling.
+
+    Closes the SSE connection if no data is received within the timeout period.
+    """
+    last_data_time = time.time()
     generator = stream_generator.__aiter__()
-    should_stop = False
 
     try:
-        while not should_stop:
-            elapsed = time.time() - last_data_time[0]
-            remaining_timeout = max(0, timeout_seconds - elapsed)
+        while True:
+            elapsed = time.time() - last_data_time
+            remaining_timeout = timeout_seconds - elapsed
 
-            if elapsed >= timeout_seconds:
-                chat_logger.warning(f"SSE timeout: No data received for {elapsed:.1f} seconds, closing connection")
-                yield sse_json("error", {"message": "Connection timeout: No data received for 10 minutes"})
-                break
             try:
                 data = await asyncio.wait_for(generator.__anext__(), timeout=remaining_timeout)
-                last_data_time[0] = time.time()
+                last_data_time = time.time()
                 yield data
             except asyncio.TimeoutError:
                 chat_logger.warning(f"SSE timeout: No data received for {timeout_seconds} seconds, closing connection")
