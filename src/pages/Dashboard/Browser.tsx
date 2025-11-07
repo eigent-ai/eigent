@@ -226,19 +226,25 @@ export default function Browser() {
 				<div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
 
 					<div className="flex flex-col w-full min-h-full items-center justify-start border-border-disabled border-solid rounded-xl p-6 bg-surface-secondary relative">
-						{hasUnsavedChanges && (
-							<div className="absolute top-6 right-6">
-								<Button
-									variant="information"
-									size="xs"
-									onClick={handleRestartApp}
-									className="rounded-full"
+						<div className="absolute top-6 right-6">
+							<Button
+								variant="information"
+								size="xs"
+								onClick={handleRestartApp}
+								className="justify-center gap-0 rounded-full overflow-hidden transition-all duration-300 ease-in-out"
+							>
+								<RefreshCw className="flex-shrink-0" />
+								<span
+									className={`overflow-hidden transition-all duration-300 ease-in-out ${
+										hasUnsavedChanges
+											? "max-w-[150px] opacity-100 pl-2"
+											: "max-w-0 opacity-0 ml-0"
+									}`}
 								>
-									<RefreshCw />
 									{t("layout.restart-to-apply")}
-								</Button>
-							</div>
-						)}
+								</span>
+							</Button>
+						</div>
 						<div className="text-body-lg font-bold text-text-heading">{t("layout.browser-cookies")}</div>
 						<p className="max-w-[600px] text-center text-body-sm text-text-label">{t("layout.browser-cookies-description")}
 						</p>
