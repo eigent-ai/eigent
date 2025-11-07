@@ -433,31 +433,27 @@ export function AddWorker({
 									</div>
 								</div>
 								<div className="flex flex-col gap-sm">
-						{Object.keys(activeMcp?.install_command?.env || {}).map((key) => (
-							<div key={key}>
-								<div className="text-text-body text-sm leading-normal font-bold">
-									{key}
-									{envValues[key]?.required ? "*" : ""}
-								</div>
-								<Input
-									size="default"
-									title={key}
-									required={envValues[key]?.required ?? true}
-									placeholder={envValues[key]?.tip || `Enter ${key}`}
-									type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
-									value={envValues[key]?.value || ""}
-									onChange={(e) => updateEnvValue(key, e.target.value)}
-									state={envValues[key]?.error ? "error" : "default"}
-									note={envValues[key]?.error || envValues[key]?.tip}
-									backIcon={isSensitiveKey(key)
-										? secretVisible[key]
-											? <EyeOff size={16} className="text-button-transparent-icon-disabled" />
-											: <Eye size={16} className="text-button-transparent-icon-disabled" />
-										: undefined}
-									onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
-								/>
-							</div>
-						))}
+									{Object.keys(activeMcp?.install_command?.env || {}).map((key) => (
+										<div key={key}>
+											<Input
+												size="default"
+												title={key}
+												required={envValues[key]?.required ?? true}
+												placeholder={envValues[key]?.tip || `Enter ${key}`}
+												type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
+												value={envValues[key]?.value || ""}
+												onChange={(e) => updateEnvValue(key, e.target.value)}
+												state={envValues[key]?.error ? "error" : "default"}
+												note={envValues[key]?.error || envValues[key]?.tip}
+												backIcon={isSensitiveKey(key)
+													? secretVisible[key]
+														? <EyeOff size={16} className="text-button-transparent-icon-disabled" />
+														: <Eye size={16} className="text-button-transparent-icon-disabled" />
+													: undefined}
+												onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
+											/>
+										</div>
+									))}
 								</div>
 							</DialogContentSection>
 							<DialogFooter 
