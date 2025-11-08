@@ -102,7 +102,6 @@ export default function ChatBox(): JSX.Element {
 		const task = chatStore.tasks[_taskId];
 		const isTaskBusy = (
 			// running or paused counts as busy
-			// TODO: Bug where when replay end hasMessages = false & status = running
 			(task.status === 'running' && !task.hasMessages) || task.status === 'pause' ||
 			// splitting phase: has to_sub_tasks not confirmed OR skeleton computing
 			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
@@ -110,6 +109,10 @@ export default function ChatBox(): JSX.Element {
 			// explicit confirm wait while task is pending but card not confirmed yet
 			(!!task.messages.find(m => m.step === 'to_sub_tasks' && !m.isConfirm) && task.status === 'pending')
 		);
+
+		//Fixes bug where doesn't matter the SSE order or final state of the chatStore
+		const isReplayChatStore = chatStore.tasks[_taskId as string]?.type === "replay";
+		const queueTask = isTaskBusy && !isReplayChatStore;
 
 		console.log(`Current task is ${isTaskBusy} with ${task}`);
 		
@@ -152,7 +155,7 @@ export default function ChatBox(): JSX.Element {
 				}
 			} else {
 				// If current task is busy (splitting/confirm/running), queue the new message instead of sending immediately
-				if (isTaskBusy) {
+				if (queueTask) {
 					const project_id = projectStore.activeProjectId;
 					// Queue the message locally; do not send to backend yet.
 					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];

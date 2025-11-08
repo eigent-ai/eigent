@@ -196,7 +196,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			queuedMessages: [], // Initialize empty queued messages array
 			metadata: {
 				status: 'active',
-				historyId: historyId
+				historyId: historyId,
+				tags: type === ProjectType.REPLAY ? ["replay"] : []
 			}
 		};
 		
