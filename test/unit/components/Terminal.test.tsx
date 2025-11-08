@@ -30,10 +30,14 @@ import userEvent from '@testing-library/user-event'
 // Import the mocked Terminal constructor so we can reset implementation
 // Note: Terminal mock will be accessed via require() in beforeEach to avoid hoisting issues
 
-// Mock dependencies
-// The mock path must match the import used later (three levels up from this test file)
-vi.mock('../../../src/store/chatStore', () => ({
-  useChatStore: vi.fn(),
+// Mock projectStore with proper vanilla store structure
+vi.mock('../../../src/store/projectStore', () => ({
+  useProjectStore: vi.fn()
+}))
+
+// Mock useChatStoreAdapter to provide both stores
+vi.mock('../../../src/hooks/useChatStoreAdapter', () => ({
+  default: vi.fn()
 }))
 
 // Mock xterm.js and its addons
@@ -76,14 +80,12 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 
 // Now import the modules that depend on the mocked packages
 import TerminalComponent from '../../../src/components/Terminal/index'
-import { useChatStore } from '../../../src/store/chatStore'
 
-describe('Terminal Component', () => {
-  // Ensure we treat useChatStore as a mockable function in tests.
-  // Some module resolution modes may not present it as a vi.fn, so coerce to `any` and
-  // create a mockReturnValue helper when missing.
-  const mockUseChatStore: any = useChatStore as any;
-  
+describe('Terminal Component', async () => {
+  // Import the mocked hooks
+  const mockUseChatStoreAdapter = vi.mocked((await import('../../../src/hooks/useChatStoreAdapter')).default)
+  const mockUseProjectStore = vi.mocked((await import('../../../src/store/projectStore')).useProjectStore)
+
   const defaultChatStoreState = {
     activeTaskId: 'test-task-id',
     tasks: {
@@ -93,13 +95,45 @@ describe('Terminal Component', () => {
     }
   }
 
+  const defaultProjectStoreState = {
+    activeProjectId: 'test-project-id',
+    projects: {},
+    createProject: vi.fn(),
+    setActiveProject: vi.fn(),
+    removeProject: vi.fn(),
+    updateProject: vi.fn(),
+    replayProject: vi.fn(),
+    addQueuedMessage: vi.fn(),
+    removeQueuedMessage: vi.fn(),
+    restoreQueuedMessage: vi.fn(),
+    clearQueuedMessages: vi.fn(),
+    createChatStore: vi.fn(),
+    appendInitChatStore: vi.fn(),
+    setActiveChatStore: vi.fn(),
+    removeChatStore: vi.fn(),
+    saveChatStore: vi.fn(),
+    getChatStore: vi.fn(),
+    getActiveChatStore: vi.fn(() => ({
+      getState: () => defaultChatStoreState,
+      subscribe: () => () => {}
+    })),
+    getAllChatStores: vi.fn(),
+    getAllProjects: vi.fn(),
+    getProjectById: vi.fn(),
+    getProjectTotalTokens: vi.fn(),
+    setHistoryId: vi.fn(),
+    getHistoryId: vi.fn()
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
-    // If the imported useChatStore wasn't a vi.fn, ensure it has mockReturnValue
-    if (typeof mockUseChatStore.mockReturnValue !== 'function') {
-      mockUseChatStore.mockReturnValue = vi.fn()
-    }
-    mockUseChatStore.mockReturnValue(defaultChatStoreState as any)
+
+    // Setup default store states
+    mockUseChatStoreAdapter.mockReturnValue({
+      projectStore: defaultProjectStoreState as any,
+      chatStore: defaultChatStoreState as any
+    })
+    mockUseProjectStore.mockReturnValue(defaultProjectStoreState as any)
     
     // Reset terminal mock
     Object.keys(mockTerminal).forEach(key => {
@@ -403,19 +437,24 @@ describe('Terminal Component', () => {
   describe('Task Switching', () => {
     it('should clear terminal when task changes', async () => {
       const { rerender } = render(<TerminalComponent />)
-      
+
       // Change active task
-      mockUseChatStore.mockReturnValue({
+      const newChatState = {
         activeTaskId: 'new-task-id',
         tasks: {
           'new-task-id': {
             terminal: []
           }
         }
-      } as any)
-      
+      }
+
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: newChatState as any
+      })
+
       rerender(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(mockTerminal.clear).toHaveBeenCalled()
       })
@@ -423,19 +462,24 @@ describe('Terminal Component', () => {
 
     it('should show task switch message when showWelcome is true', async () => {
       const { rerender } = render(<TerminalComponent showWelcome={true} />)
-      
+
       // Change active task
-      mockUseChatStore.mockReturnValue({
+      const newChatState = {
         activeTaskId: 'new-task-id',
         tasks: {
           'new-task-id': {
             terminal: []
           }
         }
-      } as any)
-      
+      }
+
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: newChatState as any
+      })
+
       rerender(<TerminalComponent showWelcome={true} />)
-      
+
       await waitFor(() => {
         expect(mockTerminal.writeln).toHaveBeenCalledWith('\x1b[32mTask switched...\x1b[0m')
       }, { timeout: 300 })
@@ -443,21 +487,26 @@ describe('Terminal Component', () => {
 
     it('should restore previous output when task has history', async () => {
       const historyContent = ['Previous command output']
-      
-      mockUseChatStore.mockReturnValue({
+
+      const newChatState = {
         activeTaskId: 'task-with-history',
         tasks: {
           'task-with-history': {
             terminal: historyContent
           }
         }
-      } as any)
-      
+      }
+
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: newChatState as any
+      })
+
       const { rerender } = render(<TerminalComponent content={historyContent} />)
-      
+
       // Trigger task switch
       rerender(<TerminalComponent content={historyContent} />)
-      
+
       await waitFor(() => {
         const calls = (mockTerminal.writeln as any).mock.calls.flat().map(String)
         const hasStart = calls.some(c => c.includes('--- Previous Output ---'))

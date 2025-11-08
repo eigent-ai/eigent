@@ -129,11 +129,15 @@ describe("Case 3: Add to the workforce queue", () => {
         
         // Wait for queuedTaskIds to be populated, then send queue-related events
         const checkForTaskIds = () => {
-          return new Promise<void>((resolve) => {
+          return new Promise<void>((resolve, reject) => {
+            const startTime = Date.now()
+            const timeout = 5000 // 5 second timeout
             const pollForIds = () => {
               if (queuedTaskIds.length > 0) {
                 console.log(`Found queued task IDs: ${queuedTaskIds}`)
                 resolve()
+              } else if (Date.now() - startTime > timeout) {
+                reject(new Error('Timeout waiting for queued task IDs'))
               } else {
                 setTimeout(pollForIds, 50) // Check every 50ms
               }
@@ -152,7 +156,7 @@ describe("Case 3: Add to the workforce queue", () => {
               data: {
                 task_id: queuedTaskIds[0], // First queued task ID
                 content: 'Build a calculator app 2',
-                project_id: projectId
+                project_id: currentProjectId
               }
             },
             delay: 100
@@ -162,7 +166,7 @@ describe("Case 3: Add to the workforce queue", () => {
               step: 'remove_task',
               data: {
                 task_id: queuedTaskIds[0], // Remove first task from queue
-                project_id: projectId
+                project_id: currentProjectId
               }
             },
             delay: 200
@@ -204,8 +208,11 @@ describe("Case 3: Add to the workforce queue", () => {
     const projectId = projectStore.activeProjectId as string
     const initiatorTaskId = initialChatStore.activeTaskId
 
-    // Verify initial queue is empty  
+    // Verify initial queue is empty
     expect(projectStore.getProjectById(projectId)?.queuedMessages).toEqual([])
+
+    // Store projectId in outer scope for use in SSE mock
+    let currentProjectId = projectId
 
     // Step 1: Start first task
     await act(async () => {
@@ -319,7 +326,7 @@ describe("Case 3: Add to the workforce queue", () => {
       const finalTaskId = finalChatStore.activeTaskId;
       const finalTask = finalChatStore.tasks[finalTaskId];
       expect(finalTask.status).toBe('finished');
-    })
+    }, { timeout: 2000 })
 
     // Step 7: Verify final state
     const { chatStore: finalChatStore, projectStore: finalProjectStore } = result.current
@@ -550,11 +557,15 @@ describe("Case 3: Add to the workforce queue", () => {
         
         // Wait for comprehensiveQueuedTaskIds to be populated, then send queue-related events
         const checkForTaskIds = () => {
-          return new Promise<void>((resolve) => {
+          return new Promise<void>((resolve, reject) => {
+            const startTime = Date.now()
+            const timeout = 5000 // 5 second timeout
             const pollForIds = () => {
               if (comprehensiveQueuedTaskIds.length > 0) {
                 console.log(`Found comprehensive queued task IDs: ${comprehensiveQueuedTaskIds}`)
                 resolve()
+              } else if (Date.now() - startTime > timeout) {
+                reject(new Error('Timeout waiting for comprehensive queued task IDs'))
               } else {
                 setTimeout(pollForIds, 50) // Check every 50ms
               }
@@ -733,7 +744,7 @@ describe("Case 3: Add to the workforce queue", () => {
       const finalTaskId = finalChatStore.activeTaskId;
       const finalTask = finalChatStore.tasks[finalTaskId];
       expect(finalTask.status).toBe('finished');
-    })
+    }, { timeout: 2000 })
 
     // Step 9: Final verification
     const { chatStore: finalChatStore, projectStore: finalProjectStore } = result.current
@@ -750,7 +761,10 @@ describe("Case 3: Add to the workforce queue", () => {
     expect(finalTask.summaryTask).not.toBe('Calculator App|Build a comprehensive calculator')
     
     //Get previous chatStore
-    const [initial, first, last] = finalProjectStore.getAllChatStores(finalProjectStore.activeProjectId);
+    const allChatStores = finalProjectStore.getAllChatStores(finalProjectStore.activeProjectId);
+    // Should have initial + first task + second task = 3 chat stores
+    expect(allChatStores).toHaveLength(3);
+    const [initial, first, second] = allChatStores;
     const originalTaskId = first.chatStore.getState().activeTaskId;
     const originalFinalTask = first.chatStore.getState().tasks[originalTaskId];
     expect(originalFinalTask.summaryTask).toBe('Calculator App|Build a comprehensive calculator')
