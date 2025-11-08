@@ -67,12 +67,11 @@ export function UserMessageCard({
 						return (
 							<>
 								{visibleFiles.map((file) => {
-									const isHovered = hoveredFilePath === file.filePath;
 									return (
 										<div
 											key={"attache-" + file.fileName}
 											className={cn(
-												"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto"
+												"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto cursor-pointer hover:bg-tag-surface-hover transition-colors"
 											)}
 											onMouseEnter={() => setHoveredFilePath(file.filePath)}
 											onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
@@ -82,7 +81,7 @@ export function UserMessageCard({
 											}}
 										>
 											{/* File icon */}
-											<div className="rounded-md cursor-pointer flex items-center justify-center w-6 h-6">
+											<div className="rounded-md flex items-center justify-center w-6 h-6">
 												{getFileIcon(file.fileName)}
 											</div>
 
@@ -98,7 +97,7 @@ export function UserMessageCard({
 										</div>
 									);
 								})}
-								
+
 								{/* Show remaining count if more than 4 files */}
 								{remainingCount > 0 && (
 									<div ref={remainingRef} className="relative">
@@ -118,12 +117,11 @@ export function UserMessageCard({
 										{isRemainingOpen && (
 											<div className="absolute left-0 mt-1 z-30 max-w-40 p-1 rounded-md border border-dropdown-border bg-dropdown-bg shadow-perfect">
 												<div className="max-h-64 overflow-auto gap-1 flex flex-col">
-													{attaches.slice(maxVisibleFiles, maxVisibleFiles + 5).map((file) => {
-														const isHovered = hoveredFilePath === file.filePath;
+													{attaches.slice(maxVisibleFiles).map((file) => {
 														return (
 															<div
 																key={file.filePath}
-																className="flex items-center gap-1 px-1 py-0.5 bg-tag-surface rounded-md"
+																className="flex items-center gap-1 px-1 py-0.5 bg-tag-surface rounded-md cursor-pointer hover:bg-tag-surface-hover transition-colors"
 																onMouseEnter={() => setHoveredFilePath(file.filePath)}
 																onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
 																onClick={(e) => {
@@ -132,7 +130,7 @@ export function UserMessageCard({
 																	setIsRemainingOpen(false);
 																}}
 															>
-																<div className="rounded-md cursor-pointer flex items-center justify-center w-6 h-6">
+																<div className="rounded-md flex items-center justify-center w-6 h-6">
 																	{getFileIcon(file.fileName)}
 																</div>
 																<p className="flex-1 font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0 overflow-hidden text-ellipsis">
