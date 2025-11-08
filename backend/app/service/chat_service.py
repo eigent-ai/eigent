@@ -428,6 +428,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # Check if this might be a misrouted second question
                 if camel_task is None and workforce is None:
+                    logger.error(f"Cannot add task: both camel_task and workforce are None for project {options.project_id}")
+                    yield sse_json("error", {"message": "Cannot add task: task not initialized. Please start a task first."})
                     continue
 
                 assert camel_task is not None
