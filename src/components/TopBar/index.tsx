@@ -12,7 +12,7 @@ import {
 	Power,
 	ChevronDown,
 	ChevronLeft,
-	House,
+	LayoutGrid,
 	Share,
 	MoreHorizontal,
 } from "lucide-react";
@@ -261,7 +261,7 @@ function HeaderWin() {
 								 className="no-drag"
 								 onClick={() => navigate("/history")}
 									>
-									<House className="w-4 h-4" />
+									<LayoutGrid className="w-4 h-4" />
 							</Button>
 						</TooltipSimple>
 						<Button
