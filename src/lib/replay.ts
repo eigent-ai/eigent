@@ -57,7 +57,8 @@ export const replayActiveTask = async (
 	if (project && project.chatStores) {
 		Object.entries(project.chatStores).forEach(([chatStoreId, chatStoreData]: [string, any]) => {
 			const timestamp = project.chatStoreTimestamps[chatStoreId] || 0;
-			
+			chatStoreData = chatStoreData.getState();
+
 			if (chatStoreData.tasks) {
 				Object.values(chatStoreData.tasks).forEach((task: any) => {
 					// Check messages for user content
@@ -68,33 +69,6 @@ export const replayActiveTask = async (
 							earliestTimestamp = timestamp;
 						}
 					}
-					
-					// Check task info for original questions
-					if (task.taskInfo && task.taskInfo.length > 0) {
-						task.taskInfo.forEach((info: any) => {
-							if (info.content && timestamp < earliestTimestamp) {
-								question = info.content;
-								earliestTimestamp = timestamp;
-							}
-						});
-					}
-					
-					// Check agent logs for original task content
-					if (task.taskAssigning) {
-						task.taskAssigning.forEach((agent: any) => {
-							if (agent.log) {
-								agent.log.forEach((logEntry: any) => {
-									if (logEntry.data && logEntry.data.message) {
-										const match = logEntry.data.message.match(/==============================\n(.*?)\n==============================/s);
-										if (match && match[1] && timestamp < earliestTimestamp) {
-											question = match[1].trim();
-											earliestTimestamp = timestamp;
-										}
-									}
-								});
-							}
-						});
-					}
 				});
 			}
 		});
@@ -103,6 +77,7 @@ export const replayActiveTask = async (
 	// Fallback to current task's first message if no question found
 	if (!question && chatStore.tasks[taskId] && chatStore.tasks[taskId].messages[0]) {
 		question = chatStore.tasks[taskId].messages[0].content;
+		console.log("[REPLAY] question fall back to ", question);
 	}
 
 	const historyId = projectStore.getHistoryId(projectId);
