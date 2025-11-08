@@ -13,26 +13,7 @@ import '../../../src/store/chatStore'
 
 import { useProjectStore } from '../../../src/store/projectStore'
 import useChatStoreAdapter from '../../../src/hooks/useChatStoreAdapter'
-import { mockFetchEventSource } from '../../mocks/sse.mock'
-
-// Helper function for sequential SSE events
-const createSSESequence = (events: Array<{ event: any; delay: number }>) => {
-  return async (onMessage: (data: any) => void) => {
-    for (let i = 0; i < events.length; i++) {
-      const { event, delay } = events[i]
-      
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          console.log(`Sending SSE Event ${i + 1}:`, event.step);
-          onMessage({
-            data: JSON.stringify(event)
-          })
-          resolve()
-        }, delay)
-      })
-    }
-  }
-}
+import { mockFetchEventSource, createSSESequence } from '../../mocks/sse.mock'
 
 // Mock electron IPC
 (global as any).ipcRenderer = {
