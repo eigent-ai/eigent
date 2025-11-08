@@ -38,6 +38,20 @@ app_logger.info(f"Loading routers with prefix: '{prefix}'")
 register_routers(api, prefix)
 app_logger.info("All routers loaded successfully")
 
+# Check if debug mode is enabled via environment variable
+if os.environ.get('ENABLE_PYTHON_DEBUG') == 'true':
+    try:
+        import debugpy
+        DEBUG_PORT = int(os.environ.get('DEBUG_PORT', '5678'))
+        app_logger.info(f"Debug mode enabled - Starting debugpy server on port {DEBUG_PORT}")
+        debugpy.listen(("localhost", DEBUG_PORT))
+        app_logger.info(f"Debugger ready for attachment on localhost:{DEBUG_PORT}")
+        #📝 In VS Code: Run 'Debug Python Backend (Attach)' configuration
+        # Don't wait for client automatically - let it attach when ready
+    except ImportError:
+        app_logger.warning("debugpy not available, install with: uv add debugpy")
+    except Exception as e:
+        app_logger.error(f"Failed to start debugpy: {e}")
 
 
 dir = pathlib.Path(__file__).parent / "runtime"
