@@ -1,3 +1,5 @@
+import { ChatStore } from "@/store/chatStore";
+import { ProjectStore } from "@/store/projectStore";
 import { NavigateFunction } from "react-router-dom";
 
 /**
@@ -11,7 +13,7 @@ import { NavigateFunction } from "react-router-dom";
  * @param historyId - The history ID for the replay
  */
 export const replayProject = async (
-	projectStore: any,
+	projectStore: ProjectStore,
 	navigate: NavigateFunction,
 	projectId: string,
 	question: string,
@@ -36,8 +38,8 @@ export const replayProject = async (
  * @param navigate - The navigate function from useNavigate hook
  */
 export const replayActiveTask = async (
-	chatStore: any,
-	projectStore: any,
+	chatStore: ChatStore,
+	projectStore: ProjectStore,
 	navigate: NavigateFunction
 ) => {
 	const taskId = chatStore.activeTaskId as string;
