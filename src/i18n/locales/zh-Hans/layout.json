@@ -33,6 +33,7 @@
 	"installation-failed": "安装失败",
 	"projects": "项目",
 	"mcp-tools": "MCP & 工具",
+	"browser": "浏览器",
 	"settings": "设置",
 	"workers": "工作器",
 	"triggers": "触发器",
@@ -131,5 +132,18 @@
 	"select-file": "选择文件",
 	"all-files": "所有文件",
 	"ask-placeholder": "问我任何问题...",
-	"new-task": "新任务"
+	"new-task": "新任务",
+	"projects-hub": "项目中心",
+	"browser-management": "浏览器管理",
+	"browser-management-description": "浏览器 Cookie 存储在您设备本地，仅用于相同网站的任务，可随时清除或禁用。",
+	"restart-to-apply": "重启以应用",
+	"browser-cookies": "浏览器 Cookie",
+	"browser-cookies-description": "使用「打开浏览器」登录网页并保存其 Cookie。重启客户端后，Eigent 会记住它们，并帮助您在这些网站上完成未来的任务。",
+	"cookie-domains": "Cookie 域名",
+	"deleting": "删除中...",
+	"delete-all": "删除全部",
+	"opening": "打开中...",
+	"open-browser": "打开浏览器",
+	"no-cookies-saved-yet": "尚未保存 Cookie",
+	"no-cookies-saved-yet-description": "点击上方的「打开浏览器」登录网站并保存其 Cookie，以便用于未来的任务。"
 }

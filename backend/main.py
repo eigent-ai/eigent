@@ -49,9 +49,9 @@ if os.environ.get('ENABLE_PYTHON_DEBUG') == 'true':
         #📝 In VS Code: Run 'Debug Python Backend (Attach)' configuration
         # Don't wait for client automatically - let it attach when ready
     except ImportError:
-        app_logger.info("⚠️  debugpy not available, install with: uv add debugpy")
+        app_logger.warning("debugpy not available, install with: uv add debugpy")
     except Exception as e:
-        app_logger.info(f"⚠️  Failed to start debugpy: {e}")
+        app_logger.error(f"Failed to start debugpy: {e}")
 
 
 dir = pathlib.Path(__file__).parent / "runtime"
