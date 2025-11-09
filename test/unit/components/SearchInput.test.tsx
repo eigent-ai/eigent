@@ -7,12 +7,30 @@ import { useState } from 'react'
 
 // Mock the Input component from ui (matching relative import in component)
 vi.mock('../../../src/components/ui/input', () => ({
-  Input: vi.fn().mockImplementation((props) => <input {...props} />)
+  Input: vi.fn().mockImplementation((props) => {
+    const { leadingIcon, ...restProps } = props
+    return (
+      <div className="relative w-full">
+        {leadingIcon && <div className="leading-icon-wrapper">{leadingIcon}</div>}
+        <input {...restProps} />
+      </div>
+    )
+  })
 }))
 
 // Mock lucide-react
 vi.mock('lucide-react', () => ({
   Search: vi.fn().mockImplementation((props) => <div data-testid="search-icon" {...props} />)
+}))
+
+// Mock i18next
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => {
+      if (key === 'setting.search-mcp') return 'Search MCPs'
+      return key
+    }
+  })
 }))
 
 describe('SearchInput Component', () => {
@@ -32,73 +50,69 @@ describe('SearchInput Component', () => {
   describe('Initial Render', () => {
     it('should render input field', () => {
       render(<SearchInput {...defaultProps} />)
-      
+
       const input = screen.getByRole('textbox')
       expect(input).toBeInTheDocument()
     })
 
     it('should render with empty value initially', () => {
       render(<SearchInput {...defaultProps} />)
-      
+
       const input = screen.getByRole('textbox')
       expect(input).toHaveValue('')
     })
 
     it('should render with provided value', () => {
       render(<SearchInput {...defaultProps} value="test search" />)
-      
+
       const input = screen.getByRole('textbox')
       expect(input).toHaveValue('test search')
     })
 
     it('should render search icon', () => {
       render(<SearchInput {...defaultProps} />)
-      
+
       const searchIcons = screen.getAllByTestId('search-icon')
       expect(searchIcons.length).toBeGreaterThan(0)
     })
   })
 
   describe('Placeholder Behavior', () => {
-    it('should show placeholder when value is empty and not focused', () => {
+    it('should have placeholder attribute', () => {
       render(<SearchInput {...defaultProps} />)
-      
-      expect(screen.getByText('Search MCPs')).toBeInTheDocument()
+
+      const input = screen.getByPlaceholderText('Search MCPs')
+      expect(input).toBeInTheDocument()
     })
 
-    it('should hide placeholder when input has value', () => {
+    it('should show placeholder when value is empty', () => {
+      render(<SearchInput {...defaultProps} />)
+
+      const input = screen.getByPlaceholderText('Search MCPs')
+      expect(input).toHaveValue('')
+    })
+
+    it('should not show placeholder text when input has value', () => {
       render(<SearchInput {...defaultProps} value="search term" />)
-      
-      expect(screen.queryByText('Search MCPs')).not.toBeInTheDocument()
+
+      const input = screen.getByRole('textbox') as HTMLInputElement
+      expect(input.value).toBe('search term')
     })
 
-    it('should hide placeholder when input is focused', async () => {
+    it('should maintain placeholder after focus and blur when empty', async () => {
       const user = userEvent.setup()
       render(<SearchInput {...defaultProps} />)
-      
-      const input = screen.getByRole('textbox')
-      await user.click(input)
-      
-      await waitFor(() => {
-        expect(screen.queryByText('Search MCPs')).not.toBeInTheDocument()
-      })
-    })
 
-    it('should show placeholder again when input loses focus and is empty', async () => {
-      const user = userEvent.setup()
-      render(<SearchInput {...defaultProps} />)
-      
       const input = screen.getByRole('textbox')
-      
+
       // Focus the input
       await user.click(input)
-      
+
       // Blur the input
       await user.tab()
-      
-      await waitFor(() => {
-        expect(screen.getByText('Search MCPs')).toBeInTheDocument()
-      })
+
+      // Placeholder should still be present
+      expect(screen.getByPlaceholderText('Search MCPs')).toBeInTheDocument()
     })
   })
 
@@ -106,45 +120,34 @@ describe('SearchInput Component', () => {
     it('should handle focus event', async () => {
       const user = userEvent.setup()
       render(<SearchInput {...defaultProps} />)
-      
+
       const input = screen.getByRole('textbox')
       await user.click(input)
-      
+
       expect(input).toHaveFocus()
     })
 
     it('should handle blur event', async () => {
       const user = userEvent.setup()
       render(<SearchInput {...defaultProps} />)
-      
+
       const input = screen.getByRole('textbox')
       await user.click(input)
       await user.tab()
-      
+
       expect(input).not.toHaveFocus()
     })
 
-    it('should change text alignment when focused', async () => {
+    it('should accept text input when focused', async () => {
       const user = userEvent.setup()
-      render(<SearchInput {...defaultProps} />)
-      
-      const input = screen.getByRole('textbox')
-      
-      // Initially should have center alignment (when empty and not focused)
-      expect(input).toHaveStyle({ textAlign: 'center' })
-      
-      // Focus the input
-      await user.click(input)
-      
-      // Should have left alignment when focused
-      expect(input).toHaveStyle({ textAlign: 'left' })
-    })
+      const mockOnChange = vi.fn()
+      render(<SearchInput value="" onChange={mockOnChange} />)
 
-    it('should change text alignment when has value', () => {
-      render(<SearchInput {...defaultProps} value="test" />)
-      
       const input = screen.getByRole('textbox')
-      expect(input).toHaveStyle({ textAlign: 'left' })
+      await user.click(input)
+      await user.keyboard('test')
+
+      expect(mockOnChange).toHaveBeenCalled()
     })
   })
 
@@ -201,91 +204,50 @@ describe('SearchInput Component', () => {
   })
 
   describe('Icon Positioning', () => {
-    it('should position search icon in center when placeholder is shown', () => {
+    it('should render search icon in component', () => {
       render(<SearchInput {...defaultProps} />)
-      
-      const placeholderContainer = screen.getByText('Search MCPs').parentElement
-      expect(placeholderContainer).toHaveClass('justify-center')
+
+      const searchIcon = screen.getByTestId('search-icon')
+      expect(searchIcon).toBeInTheDocument()
     })
 
-    it('should position search icon on left when input has value', () => {
+    it('should include leading icon when value is empty', () => {
+      render(<SearchInput {...defaultProps} />)
+
+      // The component should render with a leading icon
+      const iconWrapper = document.querySelector('.leading-icon-wrapper')
+      expect(iconWrapper).toBeInTheDocument()
+    })
+
+    it('should include leading icon when input has value', () => {
       render(<SearchInput {...defaultProps} value="test" />)
-      
-      // When value exists, the left-positioned icon should be visible
-      const leftIcon = document.querySelector('.absolute.left-4')
-      expect(leftIcon).toBeInTheDocument()
-    })
 
-    it('should position search icon on left when input is focused', async () => {
-      const user = userEvent.setup()
-      render(<SearchInput {...defaultProps} />)
-      
-      const input = screen.getByRole('textbox')
-      await user.click(input)
-      
-      await waitFor(() => {
-        const leftIcon = document.querySelector('.absolute.left-4')
-        expect(leftIcon).toBeInTheDocument()
-      })
+      // The component should render with a leading icon
+      const iconWrapper = document.querySelector('.leading-icon-wrapper')
+      expect(iconWrapper).toBeInTheDocument()
     })
   })
 
   describe('Styling and Classes', () => {
-    it('should apply correct CSS classes to input', () => {
+    it('should render within a container with relative positioning', () => {
       render(<SearchInput {...defaultProps} />)
-      
-      const input = screen.getByRole('textbox')
-      expect(input).toHaveClass(
-        'h-6',
-        'pl-12',
-        'pr-4',
-        'py-2',
-        'bg-bg-surface-tertiary',
-        'rounded-[24px]',
-        'border-none',
-        'shadow-none',
-        'focus-visible:ring-0',
-        'focus-visible:ring-transparent',
-        'focus-visible:border-none',
-        'text-gray-900'
-      )
-    })
 
-    it('should apply correct classes to container', () => {
-      render(<SearchInput {...defaultProps} />)
-      
       const container = screen.getByRole('textbox').parentElement
       expect(container).toHaveClass('relative', 'w-full')
     })
 
-    it('should apply correct classes to placeholder', () => {
+    it('should apply placeholder to input', () => {
       render(<SearchInput {...defaultProps} />)
-      
-      const placeholder = screen.getByText('Search MCPs').parentElement
-      expect(placeholder).toHaveClass(
-        'pointer-events-none',
-        'absolute',
-        'inset-0',
-        'flex',
-        'items-center',
-        'justify-center',
-        'text-text-secondary',
-        'select-none'
-      )
+
+      const input = screen.getByRole('textbox')
+      expect(input).toHaveAttribute('placeholder', 'Search MCPs')
     })
 
-    it('should apply correct classes to search icon in placeholder', () => {
+    it('should render search icon component', () => {
       render(<SearchInput {...defaultProps} />)
-      
-      const searchIcon = screen.getAllByTestId('search-icon')[0]
-      expect(searchIcon).toHaveClass('w-4', 'h-4', 'mr-2', 'text-icon-secondary')
-    })
 
-    it('should apply correct classes to search text in placeholder', () => {
-      render(<SearchInput {...defaultProps} />)
-      
-      const searchText = screen.getByText('Search MCPs')
-      expect(searchText).toHaveClass('text-xs', 'leading-none', 'text-text-body')
+      const searchIcon = screen.getByTestId('search-icon')
+      expect(searchIcon).toBeInTheDocument()
     })
   })
 
@@ -454,42 +416,39 @@ describe('SearchInput Component', () => {
   })
 
   describe('Component State Management', () => {
-    it('should maintain internal focus state correctly', async () => {
+    it('should handle value changes correctly', async () => {
       const user = userEvent.setup()
-      render(<SearchInput {...defaultProps} />)
-      
+      const Controlled = () => {
+        const [val, setVal] = useState('')
+        return <SearchInput value={val} onChange={(e: any) => setVal(e.target.value)} />
+      }
+
+      render(<Controlled />)
+
       const input = screen.getByRole('textbox')
-      
-      // Initially not focused
-      expect(screen.getByText('Search MCPs')).toBeInTheDocument()
-      
-      // Focus
-      await user.click(input)
-      expect(screen.queryByText('Search MCPs')).not.toBeInTheDocument()
-      
-      // Blur
-      await user.tab()
-      await waitFor(() => {
-        expect(screen.getByText('Search MCPs')).toBeInTheDocument()
-      })
+
+      // Type text
+      await user.type(input, 'test')
+
+      expect((input as HTMLInputElement).value).toBe('test')
     })
 
-    it('should handle rapid focus/blur events', async () => {
+    it('should handle rapid value changes', async () => {
       const user = userEvent.setup()
-      render(<SearchInput {...defaultProps} />)
-      
-      const input = screen.getByRole('textbox')
-      
-      // Rapid focus and blur
+      const Controlled = () => {
+        const [val, setVal] = useState('')
+        return <SearchInput value={val} onChange={(e: any) => setVal(e.target.value)} />
+      }
+
+      render(<Controlled />)
+
+      const input = screen.getByRole('textbox') as HTMLInputElement
+
+      // Rapid focus and type
       await user.click(input)
-      await user.tab()
-      await user.click(input)
-      await user.tab()
-      
-      // Should end up showing placeholder
-      await waitFor(() => {
-        expect(screen.getByText('Search MCPs')).toBeInTheDocument()
-      })
+      await user.keyboard('quick')
+
+      expect(input.value).toBe('quick')
     })
   })
 
