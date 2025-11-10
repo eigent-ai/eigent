@@ -66,7 +66,7 @@ export class WebViewManager {
         webPreferences: {
           // Use a separate session partition for webviews to isolate storage from main window
           // This ensures clearing webview storage won't affect main window's auth data
-          partition: 'persist:agent-webview',
+          partition: 'persist:user_login',
           nodeIntegration: false,
           contextIsolation: true,
           backgroundThrottling: true,
@@ -272,11 +272,11 @@ export class WebViewManager {
 
       if (!webViewInfo.view.webContents.isDestroyed()) {
         webViewInfo.view.webContents.removeAllListeners()
-        // Now safe to clear all storage since webviews use separate partition
+        // DO NOT clear storage data here!
+        // Multiple webviews share the same partition 'persist:user_login'
+        // Clearing storage would affect ALL webviews and remove login cookies
+        // Only clear cache which is per-webContents
         webViewInfo.view.webContents.session.clearCache()
-        webViewInfo.view.webContents.session.clearStorageData({
-          storages: ['cookies', 'localstorage', 'websql', 'indexdb', 'serviceworkers', 'cachestorage']
-        })
       }
 
       // remove webview from parent container

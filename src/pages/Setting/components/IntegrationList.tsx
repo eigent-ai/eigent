@@ -424,7 +424,7 @@ export default function IntegrationList({
 	);
 
 	return (
-		<div className="flex flex-col gap-md py-2">
+		<div className="flex flex-col w-full items-start justify-start gap-4">
 			<MCPEnvDialog
 				showEnvConfig={showEnvConfig}
 				onClose={onClose}
@@ -436,7 +436,7 @@ export default function IntegrationList({
 				return (
 					<div
 						key={item.key}
-						className="px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col items-center justify-between"
+						className="w-full px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col items-center justify-between"
 					>
 						<div className="flex flex-row w-full items-center gap-xs">
 							<div className="flex flex-row w-full items-center gap-xs">

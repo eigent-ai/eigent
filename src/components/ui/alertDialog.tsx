@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 
+type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "success" | "cuation" | "information" | "warning";
+
 interface ConfirmModalProps {
 	isOpen: boolean;
 	onClose: () => void;
@@ -9,6 +11,7 @@ interface ConfirmModalProps {
 	message?: string;
 	confirmText?: string;
 	cancelText?: string;
+	confirmVariant?: ButtonVariant;
 }
 
 export default function ConfirmModal({
@@ -19,6 +22,7 @@ export default function ConfirmModal({
 	message = "Confirm content?",
 	confirmText = "Confirm",
 	cancelText = "Cancel",
+	confirmVariant = "cuation",
 }: ConfirmModalProps) {
 	return (
 		<AnimatePresence>
@@ -29,7 +33,7 @@ export default function ConfirmModal({
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
-						className="fixed inset-0 bg-black/50 z-100 alert-dialog"
+						className="fixed inset-0 bg-white/5 backdrop-blur-sm z-100 alert-dialog"
 						onClick={onClose}
 					/>
 
@@ -51,7 +55,7 @@ export default function ConfirmModal({
 									{cancelText}
 								</Button>
 								<Button
-									variant="cuation"
+									variant={confirmVariant}
 									onClick={() => {
 										onConfirm();
 										onClose();

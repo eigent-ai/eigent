@@ -9,6 +9,15 @@ import https from 'https'
 import http from 'http'
 import { URL } from 'url'
 
+interface FileInfo {
+	path: string;
+	name: string;
+	type: string;
+	isFolder: boolean;
+	relativePath: string;
+	task_id?: string;
+	project_id?: string;
+}
 
 export class FileReader {
 	private win: BrowserWindow | null = null
