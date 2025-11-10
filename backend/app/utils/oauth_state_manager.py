@@ -2,7 +2,7 @@
 OAuth authorization state manager for background authorization flows
 """
 import threading
-from typing import Dict, Optional, Literal
+from typing import Dict, Optional, Literal, Any
 from datetime import datetime
 from utils import traceroot_wrapper as traceroot
 logger = traceroot.get_logger("main")
@@ -12,13 +12,13 @@ AuthStatus = Literal["pending", "authorizing", "success", "failed", "cancelled"]
 
 class OAuthState:
     """Represents the state of an OAuth authorization flow"""
-    
+
     def __init__(self, provider: str):
         self.provider = provider
         self.status: AuthStatus = "pending"
         self.error: Optional[str] = None
         self.thread: Optional[threading.Thread] = None
-        self.result: Optional[any] = None
+        self.result: Optional[Any] = None
         self.started_at = datetime.now()
         self.completed_at: Optional[datetime] = None
         self._cancel_event = threading.Event()
@@ -72,11 +72,11 @@ class OAuthStateManager:
             return self._states.get(provider)
     
     def update_status(
-        self, 
-        provider: str, 
-        status: AuthStatus, 
+        self,
+        provider: str,
+        status: AuthStatus,
         error: Optional[str] = None,
-        result: Optional[any] = None
+        result: Optional[Any] = None
     ):
         """Update the status of an authorization flow"""
         with self._lock:
