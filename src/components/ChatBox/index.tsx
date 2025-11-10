@@ -479,9 +479,16 @@ export default function ChatBox(): JSX.Element {
 		const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
 			(item) => item.step === "to_sub_tasks"
 		);
-		const question = chatStore.tasks[taskId].messages[messageIndex - 2].content;
+		const questionMessage = chatStore.tasks[taskId].messages[messageIndex - 2];
+		const question = questionMessage.content;
+		// Get the file attachments from the original user message (not from task.attaches which gets cleared after sending)
+		const attachments = questionMessage.attaches || [];
 		let id = chatStore.create();
 		chatStore.setHasMessages(id, true);
+		// Copy the file attachments to the new task
+		if (attachments.length > 0) {
+			chatStore.setAttaches(id, attachments);
+		}
 		chatStore.removeTask(taskId);
 		proxyFetchDelete(`/api/chat/history/${taskId}`);
 		setMessage(question);
