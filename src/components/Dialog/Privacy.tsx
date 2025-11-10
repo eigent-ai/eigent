@@ -18,6 +18,7 @@ import {
 import { AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { proxyFetchGet, proxyFetchPut } from "@/api/http";
+import { useTranslation } from "react-i18next";
 
 interface PrivacyDialogProps {
 	open: boolean;
@@ -26,6 +27,7 @@ interface PrivacyDialogProps {
 }
 
 export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProps) {
+	const { t } = useTranslation();
 	const API_FIELDS = [
 		"take_screenshot",
 		"access_local_software",
@@ -35,27 +37,23 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 
 	const [settings, setSettings] = useState([
 		{
-			title: "Allow Agent to Take Screenshots",
-			description:
-				"Permit the agent to capture screenshots of your computer screen. This can be used for support, diagnostics, or monitoring purposes. Screenshots may include visible personal information, so please enable with care.",
+			title: t("layout.allow-agent-to-take-screenshots"),
+			description: t("layout.permit-the-agent-to-capture"),
 			checked: false,
 		},
 		{
-			title: "Allow Agent to Access Local Software",
-			description:
-				"Grant the agent permission to interact with and utilize software installed on your local machine. This may be necessary for troubleshooting, running diagnostics, or performing specific tasks.",
+			title: t("layout.allow-agent-to-access-local-software"),
+			description: t("layout.grant-the-agent-permission"),
 			checked: false,
 		},
 		{
-			title: "Allow Agent to Access Your Address",
-			description:
-				"Authorize the agent to view and use your location or address details. This may be required for location-based services or personalized support.",
+			title: t("layout.allow-agent-to-access-your-address"),
+			description: t("layout.authorize-the-agent-to-view"),
 			checked: false,
 		},
 		{
-			title: "Password Storage",
-			description:
-				"Determine how passwords are handled and stored. You can choose to store passwords securely on the device or within the application, or opt out to manually enter them each time. All stored passwords are encrypted.",
+			title: t("layout.password-storage"),
+			description: t("layout.determine-how-passwords-are-handled"),
 			checked: false,
 		},
 	]);
@@ -126,7 +124,7 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 					<DialogTitle className="m-0">
 						<div className="flex items-center gap-2">
 							<div className="text-base font-bold leading-10 text-text-action">
-								Turn on all privacy settings to start using Eigent
+								{t("layout.turn-on-all-privacy-settings")}
 							</div>
 							<TooltipProvider>
 								<Tooltip>
@@ -137,7 +135,7 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 										/>
 									</TooltipTrigger>
 									<TooltipContent className="max-w-[340px]">
-										<p className="text-text-body text-sm">Eigent is a desktop software, it will operate the browser, terminal tools from your computer to start the tasks. It's important to make sure all necessary privacy settings are enabled before you begin using Eigent for full functionality.</p>
+										<p className="text-text-body text-sm">{t("layout.eigent-is-a-desktop-software")}</p>
 									</TooltipContent>
 								</Tooltip>
 							</TooltipProvider>
@@ -172,11 +170,11 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 				<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
 					<DialogClose asChild>
 						<Button variant="ghost" size="md">
-							Cancel
+							{t("layout.cancel")}
 						</Button>
 					</DialogClose>
 					<Button size="md" onClick={handleTurnOnAll} variant="primary">
-						Turn on All and Finish
+						{t("layout.turn-on-all-and-finish")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

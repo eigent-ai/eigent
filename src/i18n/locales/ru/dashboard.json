@@ -1,0 +1,23 @@
+{
+	"task-hub": "Центр задач",
+	"new-project": "Новый проект",
+	"search": "Поиск",
+	"project-archives": "Архивы проектов",
+	"ongoing-tasks": "Текущие задачи",
+	"share": "Поделиться",
+	"delete": "Удалить",
+	"table": "Таблица",
+	"list": "Список",
+	"search-dialog": "Диалог поиска",
+	"search-dialog-placeholder": "Искать или задать вопрос",
+	"no-results": "Результаты не найдены.",
+	"search-for-a-task-or-document": "Искать задачу или документ",
+	"calendar": "Календарь",
+	"search-emoji": "Поиск эмодзи",
+	"calculator": "Калькулятор",
+	"developer-agent": "Агент разработчика",
+	"search-agent": "Агент поиска",
+	"document-agent": "Агент документов",
+	"multi-modal-agent": "Мультимодальный агент",
+	"social-media-agent": "Агент социальных сетей"
+}

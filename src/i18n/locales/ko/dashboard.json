@@ -1,0 +1,23 @@
+{
+	"task-hub": "작업 허브",
+	"new-project": "새 프로젝트",
+	"search": "검색",
+	"project-archives": "프로젝트 보관소",
+	"ongoing-tasks": "진행 중인 작업",
+	"share": "공유",
+	"delete": "삭제",
+	"table": "테이블",
+	"list": "목록",
+	"search-dialog": "검색 대화 상자",
+	"search-dialog-placeholder": "검색 또는 질문하기",
+	"no-results": "결과를 찾을 수 없습니다.",
+	"search-for-a-task-or-document": "작업 또는 문서를 검색하세요",
+	"calendar": "달력",
+	"search-emoji": "이모지 검색",
+	"calculator": "계산기",
+	"developer-agent": "개발자 에이전트",
+	"search-agent": "검색 에이전트",
+	"document-agent": "문서 에이전트",
+	"multi-modal-agent": "멀티모달 에이전트",
+	"social-media-agent": "소셜미디어 에이전트"
+}

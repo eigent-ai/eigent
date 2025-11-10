@@ -1,0 +1,23 @@
+{
+	"task-hub": "مركز المهام",
+	"new-project": "مشروع جديد",
+	"search": "بحث",
+	"project-archives": "أرشيف المشاريع",
+	"ongoing-tasks": "المهام الجارية",
+	"share": "مشاركة",
+	"delete": "حذف",
+	"table": "جدول",
+	"list": "قائمة",
+	"search-dialog": "مربع حوار البحث",
+	"search-dialog-placeholder": "ابحث أو اطرح سؤالاً",
+	"no-results": "لا توجد نتائج",
+	"search-for-a-task-or-document": "ابحث عن مهمة أو مستند",
+	"calendar": "تقويم",
+	"search-emoji": "بحث إيموجي",
+	"calculator": "آلة حاسبة",
+	"developer-agent": "وكيل المطور",
+	"search-agent": "وكيل البحث",
+	"document-agent": "وكيل المستندات",
+	"multi-modal-agent": "وكيل متعدد الوسائط",
+	"social-media-agent": "وكيل وسائل التواصل الاجتماعي"
+}

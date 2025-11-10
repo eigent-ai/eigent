@@ -2,13 +2,17 @@ from typing import Any, Dict, List, Literal
 from camel.toolkits import SearchToolkit as BaseSearchToolkit
 from camel.toolkits.function_tool import FunctionTool
 import httpx
-from loguru import logger
+import os
 from app.component.environment import env, env_not_empty
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("search_toolkit")
 
 
+@auto_listen_toolkit(BaseSearchToolkit)
 class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     agent_name: str = Agents.search_agent
 
@@ -25,6 +29,32 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         super().__init__(
             timeout=timeout, exclude_domains=exclude_domains
         )
+        # Cache for user-specific search configurations
+        self._user_google_api_key = None
+        self._user_search_engine_id = None
+        self._config_loaded = False
+
+    def _load_user_search_config(self):
+        """
+        Load user-specific Google Search configuration from user's .env file.
+        This is called lazily when search_google is invoked.
+        """
+        if self._config_loaded:
+            return
+
+        self._config_loaded = True
+
+        # Try to get user-specific configuration from thread-local environment
+        # which is set by the middleware based on the user's project settings
+        google_api_key = env("GOOGLE_API_KEY")
+        search_engine_id = env("SEARCH_ENGINE_ID")
+
+        if google_api_key and search_engine_id:
+            self._user_google_api_key = google_api_key
+            self._user_search_engine_id = search_engine_id
+            logger.info("Loaded user-specific Google Search configuration")
+        else:
+            logger.debug("No user-specific Google Search configuration found, will use cloud search")
 
     # @listen_toolkit(BaseSearchToolkit.search_wiki)
     # def search_wiki(self, entity: str) -> str:
@@ -50,19 +80,61 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseSearchToolkit.search_google,
-        lambda _, query, search_type="web": f"with query '{query}' and {search_type} result pages",
+        lambda _, query, search_type="web", number_of_result_pages=10, start_page=1: f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}",
     )
-    def search_google(self, query: str, search_type: str = "web") -> list[dict[str, Any]]:
-        if env("GOOGLE_API_KEY") and env("SEARCH_ENGINE_ID"):
-            return super().search_google(query, search_type)
-        else:
-            return self.cloud_search_google(query, search_type)
+    def search_google(
+        self,
+        query: str,
+        search_type: str = "web",
+        number_of_result_pages: int = 10,
+        start_page: int = 1
+    ) -> list[dict[str, Any]]:
+        # Load user-specific configuration
+        self._load_user_search_config()
 
-    def cloud_search_google(self, query: str, search_type):
+        # If user has configured their own Google API keys, use them
+        if self._user_google_api_key and self._user_search_engine_id:
+            logger.info("Using user-configured Google Search API")
+            # Temporarily set environment variables for this search
+            old_google_key = os.environ.get("GOOGLE_API_KEY")
+            old_search_id = os.environ.get("SEARCH_ENGINE_ID")
+
+            try:
+                os.environ["GOOGLE_API_KEY"] = self._user_google_api_key
+                os.environ["SEARCH_ENGINE_ID"] = self._user_search_engine_id
+                return super().search_google(query, search_type, number_of_result_pages, start_page)
+            finally:
+                # Restore original environment variables
+                if old_google_key is not None:
+                    os.environ["GOOGLE_API_KEY"] = old_google_key
+                elif "GOOGLE_API_KEY" in os.environ:
+                    del os.environ["GOOGLE_API_KEY"]
+
+                if old_search_id is not None:
+                    os.environ["SEARCH_ENGINE_ID"] = old_search_id
+                elif "SEARCH_ENGINE_ID" in os.environ:
+                    del os.environ["SEARCH_ENGINE_ID"]
+        else:
+            # Fallback to cloud search
+            logger.info("Using cloud Google Search (no user configuration found)")
+            return self.cloud_search_google(query, search_type, number_of_result_pages, start_page)
+
+    def cloud_search_google(
+        self,
+        query: str,
+        search_type: str = "web",
+        number_of_result_pages: int = 10,
+        start_page: int = 1
+    ):
         url = env_not_empty("SERVER_URL")
         res = httpx.get(
             url + "/proxy/google",
-            params={"query": query, "search_type": search_type},
+            params={
+                "query": query,
+                "search_type": search_type,
+                "number_of_result_pages": number_of_result_pages,
+                "start_page": start_page
+            },
             headers={"api-key": env_not_empty("cloud_api_key")},
         )
         return res.json()
@@ -163,73 +235,73 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     # def search_bing(self, query: str) -> dict[str, Any]:
     #     return super().search_bing(query)
 
-    @listen_toolkit(BaseSearchToolkit.search_exa, lambda _, query, *args, **kwargs: f"{query}, {args}, {kwargs}")
-    def search_exa(
-        self,
-        query: str,
-        search_type: Literal["auto", "neural", "keyword"] = "auto",
-        category: None
-        | Literal[
-            "company",
-            "research paper",
-            "news",
-            "pdf",
-            "github",
-            "tweet",
-            "personal site",
-            "linkedin profile",
-            "financial report",
-        ] = None,
-        include_text: List[str] | None = None,
-        exclude_text: List[str] | None = None,
-        use_autoprompt: bool = True,
-        text: bool = False,
-    ) -> Dict[str, Any]:
-        if env("EXA_API_KEY"):
-            res = super().search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
-            return res
-        else:
-            return self.cloud_search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
-
-    def cloud_search_exa(
-        self,
-        query: str,
-        search_type: Literal["auto", "neural", "keyword"] = "auto",
-        category: None
-        | Literal[
-            "company",
-            "research paper",
-            "news",
-            "pdf",
-            "github",
-            "tweet",
-            "personal site",
-            "linkedin profile",
-            "financial report",
-        ] = None,
-        include_text: List[str] | None = None,
-        exclude_text: List[str] | None = None,
-        use_autoprompt: bool = True,
-        text: bool = False,
-    ):
-        url = env_not_empty("SERVER_URL")
-        logger.debug(f">>>>>>>>>>>>>>>>{url}<<<<")
-        res = httpx.post(
-            url + "/proxy/exa",
-            json={
-                "query": query,
-                "search_type": search_type,
-                "category": category,
-                "include_text": include_text,
-                "exclude_text": exclude_text,
-                "use_autoprompt": use_autoprompt,
-                "text": text,
-            },
-            headers={"api-key": env_not_empty("cloud_api_key")},
-        )
-        logger.debug(">>>>>>>>>>>>>>>>>")
-        logger.debug(res)
-        return res.json()
+    # @listen_toolkit(BaseSearchToolkit.search_exa, lambda _, query, *args, **kwargs: f"{query}, {args}, {kwargs}")
+    # def search_exa(
+    #     self,
+    #     query: str,
+    #     search_type: Literal["auto", "neural", "keyword"] = "auto",
+    #     category: None
+    #     | Literal[
+    #         "company",
+    #         "research paper",
+    #         "news",
+    #         "pdf",
+    #         "github",
+    #         "tweet",
+    #         "personal site",
+    #         "linkedin profile",
+    #         "financial report",
+    #     ] = None,
+    #     include_text: List[str] | None = None,
+    #     exclude_text: List[str] | None = None,
+    #     use_autoprompt: bool = True,
+    #     text: bool = False,
+    # ) -> Dict[str, Any]:
+    #     if env("EXA_API_KEY"):
+    #         res = super().search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
+    #         return res
+    #     else:
+    #         return self.cloud_search_exa(query, search_type, category, include_text, exclude_text, use_autoprompt, text)
+    #
+    # def cloud_search_exa(
+    #     self,
+    #     query: str,
+    #     search_type: Literal["auto", "neural", "keyword"] = "auto",
+    #     category: None
+    #     | Literal[
+    #         "company",
+    #         "research paper",
+    #         "news",
+    #         "pdf",
+    #         "github",
+    #         "tweet",
+    #         "personal site",
+    #         "linkedin profile",
+    #         "financial report",
+    #     ] = None,
+    #     include_text: List[str] | None = None,
+    #     exclude_text: List[str] | None = None,
+    #     use_autoprompt: bool = True,
+    #     text: bool = False,
+    # ):
+    #     url = env_not_empty("SERVER_URL")
+    #     logger.debug(f">>>>>>>>>>>>>>>>{url}<<<<")
+    #     res = httpx.post(
+    #         url + "/proxy/exa",
+    #         json={
+    #             "query": query,
+    #             "search_type": search_type,
+    #             "category": category,
+    #             "include_text": include_text,
+    #             "exclude_text": exclude_text,
+    #             "use_autoprompt": use_autoprompt,
+    #             "text": text,
+    #         },
+    #         headers={"api-key": env_not_empty("cloud_api_key")},
+    #     )
+    #     logger.debug(">>>>>>>>>>>>>>>>>")
+    #     logger.debug(res)
+    #     return res.json()
 
     # @listen_toolkit(
     #     BaseSearchToolkit.search_alibaba_tongxiao,
@@ -289,12 +361,12 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # if env("BOCHA_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_bocha))
 
-        if env("EXA_API_KEY") or env("cloud_api_key"):
-            tools.append(FunctionTool(search_toolkit.search_exa))
+        # if env("EXA_API_KEY") or env("cloud_api_key"):
+        #     tools.append(FunctionTool(search_toolkit.search_exa))
 
         # if env("TONGXIAO_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_alibaba_tongxiao))
         return tools
 
-    def get_tools(self) -> List[FunctionTool]:
-        return [FunctionTool(self.search_exa)]
+    # def get_tools(self) -> List[FunctionTool]:
+    #     return [FunctionTool(self.search_exa)]

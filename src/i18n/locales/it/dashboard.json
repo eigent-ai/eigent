@@ -1,0 +1,23 @@
+{
+	"task-hub": "Centro Attività",
+	"new-project": "Nuovo Progetto",
+	"search": "Cerca",
+	"project-archives": "Archivi Progetti",
+	"ongoing-tasks": "Attività in Corso",
+	"share": "Condividi",
+	"delete": "Elimina",
+	"table": "Tabella",
+	"list": "Lista",
+	"search-dialog": "Dialogo di Ricerca",
+	"search-dialog-placeholder": "Cerca o fai una domanda",
+	"no-results": "Nessun risultato trovato.",
+	"search-for-a-task-or-document": "Cerca un'attività o un documento",
+	"calendar": "Calendario",
+	"search-emoji": "Cerca Emoji",
+	"calculator": "Calcolatrice",
+	"developer-agent": "Agente Sviluppatore",
+	"search-agent": "Agente di Ricerca",
+	"document-agent": "Agente Documenti",
+	"multi-modal-agent": "Agente Multi Modale",
+	"social-media-agent": "Agente Social Media"
+}

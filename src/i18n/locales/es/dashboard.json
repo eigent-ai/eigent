@@ -1,0 +1,23 @@
+{
+	"task-hub": "Centro de tareas",
+	"new-project": "Nuevo Proyecto",
+	"search": "Buscar",
+	"project-archives": "Archivos de proyecto",
+	"ongoing-tasks": "Tareas en progreso",
+	"share": "Compartir",
+	"delete": "Eliminar",
+	"table": "Tabla",
+	"list": "Lista",
+	"search-dialog": "Buscar Dialog",
+	"search-dialog-placeholder": "Buscar o preguntar una pregunta",
+	"no-results": "No se encontraron resultados.",
+	"search-for-a-task-or-document": "Buscar una tarea o documento",
+	"calendar": "Calendario",
+	"search-emoji": "Buscar Emoji",
+	"calculator": "Calculadora",
+	"developer-agent": "Agente Desarrollador",
+	"search-agent": "Agente de Búsqueda",
+	"document-agent": "Agente de Documentos",
+	"multi-modal-agent": "Agente Multi Modal",
+	"social-media-agent": "Agente de Redes Sociales"
+}

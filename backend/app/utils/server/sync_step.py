@@ -3,9 +3,11 @@ import httpx
 import asyncio
 import os
 import json
-from loguru import logger
 from app.service.chat_service import Chat
 from app.component.environment import env
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("sync_step")
 
 
 def sync_step(func):
@@ -28,7 +30,9 @@ def sync_step(func):
                     send_to_api(
                         sync_url,
                         {
-                            "task_id": chat.task_id,
+                            # TODO: revert to task_id to support multi-task project replay
+                            # "task_id": chat.task_id,
+                            "task_id": chat.project_id,
                             "step": json_data["step"],
                             "data": json_data["data"],
                         },

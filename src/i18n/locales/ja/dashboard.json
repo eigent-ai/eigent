@@ -1,0 +1,23 @@
+{
+	"task-hub": "タスクハブ",
+	"new-project": "新規プロジェクト",
+	"search": "検索",
+	"project-archives": "プロジェクトアーカイブ",
+	"ongoing-tasks": "進行中のタスク",
+	"share": "共有",
+	"delete": "削除",
+	"table": "テーブル",
+	"list": "リスト",
+	"search-dialog": "検索ダイアログ",
+	"search-dialog-placeholder": "検索または質問を入力",
+	"no-results": "結果が見つかりませんでした。",
+	"search-for-a-task-or-document": "タスクまたはドキュメントを検索",
+	"calendar": "カレンダー",
+	"search-emoji": "絵文字を検索",
+	"calculator": "計算機",
+	"developer-agent": "開発者エージェント",
+	"search-agent": "検索エージェント",
+	"document-agent": "ドキュメントエージェント",
+	"multi-modal-agent": "マルチモーダルエージェント",
+	"social-media-agent": "ソーシャルメディアエージェント"
+}

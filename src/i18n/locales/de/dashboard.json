@@ -1,0 +1,23 @@
+{
+	"task-hub": "Aufgaben-Hub",
+	"new-project": "Neues Projekt",
+	"search": "Suchen",
+	"project-archives": "Projektarchive",
+	"ongoing-tasks": "Laufende Aufgaben",
+	"share": "Teilen",
+	"delete": "Löschen",
+	"table": "Tabelle",
+	"list": "Liste",
+	"search-dialog": "Suchdialog",
+	"search-dialog-placeholder": "Suchen oder eine Frage stellen",
+	"no-results": "Keine Ergebnisse gefunden.",
+	"search-for-a-task-or-document": "Nach einer Aufgabe oder einem Dokument suchen",
+	"calendar": "Kalender",
+	"search-emoji": "Emoji suchen",
+	"calculator": "Taschenrechner",
+	"developer-agent": "Entwickler-Agent",
+	"search-agent": "Such-Agent",
+	"document-agent": "Dokument-Agent",
+	"multi-modal-agent": "Multi-Modal-Agent",
+	"social-media-agent": "Social-Media-Agent"
+}

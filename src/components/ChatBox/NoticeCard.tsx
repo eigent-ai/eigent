@@ -4,16 +4,21 @@ import { TaskType } from "./TaskType";
 import { TaskItem } from "./TaskItem";
 import ShinyText from "@/components/ui/ShinyText/ShinyText";
 
-import { useChatStore } from "@/store/chatStore";
 
 import { ChevronDown, SquareCode } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export function NoticeCard() {
 	const [isExpanded, setIsExpanded] = useState(false);
 	const contentRef = useRef<HTMLDivElement>(null);
 
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 
 	// when cotList is added, smooth scroll to the bottom
 	useEffect(() => {

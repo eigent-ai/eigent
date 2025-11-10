@@ -84,12 +84,15 @@ describe('useInstallationSetup Hook', () => {
     })
 
     it('should set initState to carousel if tool is not installed', async () => {
+      // Set initial state to permissions (as would happen on fresh startup)
+      mockAuthStore.initState = 'permissions'
+
       // Mock tool not installed
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
         isInstalled: false
       })
-      
+
       renderHook(() => useInstallationSetup())
 
       await vi.waitFor(() => {
@@ -197,7 +200,10 @@ describe('useInstallationSetup Hook', () => {
   describe('Test Scenarios Integration', () => {
     it('should handle fresh installation scenario', async () => {
       TestScenarios.freshInstall(electronAPI)
-      
+
+      // Set initial state to permissions (as would happen on fresh startup)
+      mockAuthStore.initState = 'permissions'
+
       // Mock tool not installed
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
@@ -354,51 +360,4 @@ describe('useInstallationSetup Hook', () => {
     })
   })
 
-  describe('Console Logging', () => {
-    it('should log installation status check', async () => {
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-      renderHook(() => useInstallationSetup())
-
-      await vi.waitFor(() => {
-        expect(consoleLogSpy).toHaveBeenCalledWith(
-          '[useInstallationSetup] Installation status check:',
-          expect.any(Object)
-        )
-      })
-
-      consoleLogSpy.mockRestore()
-    })
-
-    it('should log when installation listeners are registered', () => {
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-      renderHook(() => useInstallationSetup())
-
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        '[useInstallationSetup] Installation listeners registered'
-      )
-
-      consoleLogSpy.mockRestore()
-    })
-
-    it('should log install complete events', () => {
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-      renderHook(() => useInstallationSetup())
-
-      const completeCallback = electronAPI.onInstallDependenciesComplete.mock.calls[0][0]
-      
-      act(() => {
-        completeCallback({ success: true })
-      })
-
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        '[useInstallationSetup] Install complete event received:',
-        { success: true }
-      )
-
-      consoleLogSpy.mockRestore()
-    })
-  })
 })

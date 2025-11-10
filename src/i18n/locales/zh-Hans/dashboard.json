@@ -1,0 +1,23 @@
+{
+	"task-hub": "任务中心",
+	"new-project": "新项目",
+	"search": "搜索",
+	"project-archives": "项目归档",
+	"ongoing-tasks": "进行中的任务",
+	"share": "分享",
+	"delete": "删除",
+	"table": "表格",
+	"list": "列表",
+	"search-dialog": "搜索对话",
+	"search-dialog-placeholder": "搜索或提问",
+	"no-results": "没有结果",
+	"search-for-a-task-or-document": "搜索任务或文档",
+	"calendar": "日历",
+	"search-emoji": "搜索表情",
+	"calculator": "计算器",
+	"developer-agent": "开发者智能体",
+	"search-agent": "搜索智能体",
+	"document-agent": "文档智能体",
+	"multi-modal-agent": "多模态智能体",
+	"social-media-agent": "社交媒体智能体"
+}

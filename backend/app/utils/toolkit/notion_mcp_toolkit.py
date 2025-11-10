@@ -1,11 +1,36 @@
 import os
+import json
+import asyncio
+from textwrap import indent
 from typing import Any, Dict, List
-from loguru import logger
 from camel.toolkits import FunctionTool
 from app.component.environment import env
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from camel.toolkits.mcp_toolkit import MCPToolkit
+from utils import traceroot_wrapper as traceroot
 
+logger = traceroot.get_logger("notion_mcp_toolkit")
+
+def _customize_function_parameters(schema: Dict[str, Any]) -> None:
+        r"""Customize function parameters for specific functions.
+
+        This method allows modifying parameter descriptions or other schema
+        attributes for specific functions.
+        """
+        function_info = schema.get("function", {})
+        function_name = function_info.get("name", "")
+        parameters = function_info.get("parameters", {})
+        properties = parameters.get("properties", {})
+        required = parameters.get("required", [])
+        
+        help_description = "If you need use parent, you can use `notion-search` for the information"
+        # Modify the notion-create-pages function to make parent optional
+        if function_name == "notion-create-pages" or function_name == "notion-create-database":
+            required.remove("parent")
+            parameters["required"] = required
+            if "parent" in properties:
+                # Update the parent parameter description
+                properties["parent"]["description"] = "Optional. " + properties["parent"]["description"] + help_description
 
 class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
 
@@ -33,80 +58,57 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
                 }
             }
         }
-        super().__init__(config_dict=config_dict, timeout=timeout)
-
-    def get_tools(self) -> List[FunctionTool]:
-        r"""Returns a list of tools provided by the NotionMCPToolkit.
-
-        Returns:
-            List[FunctionTool]: List of available tools.
-        """
-        all_tools = []
-        for client in self.clients:
-            try:
-                original_build_schema = client._build_tool_schema
-
-                def create_wrapper(orig_func):
-                    def wrapper(mcp_tool):
-                        return self._build_custom_tool_schema(
-                            mcp_tool, orig_func
-                        )
-
-                    return wrapper
-
-                client._build_tool_schema = create_wrapper(  # type: ignore[method-assign]
-                    original_build_schema
-                )
-
-                client_tools = client.get_tools()
-                all_tools.extend(client_tools)
-
-                client._build_tool_schema = original_build_schema  # type: ignore[method-assign]
-
-            except Exception as e:
-                logger.error(f"Failed to get tools from client: {e}")
-        return all_tools
-
-    def _build_custom_tool_schema(self, mcp_tool, original_build_schema):
-        r"""Build tool schema with custom modifications."""
-        schema = original_build_schema(mcp_tool)
-        self._customize_function_parameters(schema)
-        return schema
-
-    def _customize_function_parameters(self, schema: Dict[str, Any]) -> None:
-        r"""Customize function parameters for specific functions.
-
-        This method allows modifying parameter descriptions or other schema
-        attributes for specific functions.
-        """
-        function_info = schema.get("function", {})
-        function_name = function_info.get("name", "")
-        parameters = function_info.get("parameters", {})
-        properties = parameters.get("properties", {})
-
-        # Modify the notion-create-pages function to make parent optional
-        if function_name == "notion-create-pages":
-            if "parent" in properties:
-                # Update the parent parameter description
-                properties["parent"]["description"] = (
-                    "Optional. The parent under which the new pages will be created. "
-                    "This can be a page (page_id), a database page (database_id), or "
-                    "a data source/collection under a database (data_source_id). "
-                    "If omitted, the new pages will be created as private pages at the workspace level. "
-                    "Use data_source_id when you have a collection:// URL from the fetch tool."
-                )
+        super().__init__(config_dict=config_dict, timeout=timeout)    
 
     @classmethod
     async def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
-        tools = []
-        toolkit = cls(api_task_id)
-        try:
-            await toolkit.connect()
-            # Use subclass implementation that inlines upstream processing
-            all_tools = toolkit.get_tools()
-            for item in all_tools:
-                setattr(item, "_toolkit_name", cls.__name__)
-                tools.append(item)
-        except Exception as e:
-            print(f"Warning: Could not connect to Notion MCP server: {e}")
-        return tools
+        # Retry mechanism for remote MCP connection
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            tools = []
+            toolkit = None
+            
+            try:
+                # Create a fresh toolkit instance for each retry
+                toolkit = cls(api_task_id)
+                logger.info(f"Attempting to connect to Notion MCP server (attempt {attempt + 1}/{max_retries})")
+                
+                await toolkit.connect()
+                
+                # Get tools from the connected toolkit
+                all_tools = toolkit.get_tools()
+                tool_schema = [
+                    item.get_openai_tool_schema() for item in all_tools
+                ]
+                
+                # Adjust tool schema
+                for item in tool_schema:
+                    _customize_function_parameters(item)
+                
+                for item in all_tools:
+                    setattr(item, "_toolkit_name", cls.__name__)
+                    tools.append(item)
+                
+                # Check if we actually got tools
+                if len(tools) == 0:
+                    logger.warning(f"Connected to Notion MCP server but got 0 tools (attempt {attempt + 1}/{max_retries})")
+                    raise Exception("No tools retrieved from Notion MCP server")
+                
+                # Success! Got tools
+                logger.info(f"Successfully connected to Notion MCP server and loaded {len(tools)} tools")
+                
+                return tools
+                
+            except Exception as e:
+                logger.warning(f"Failed to connect to Notion MCP server (attempt {attempt + 1}/{max_retries}): {e}")
+                
+                # If not the last attempt, wait and retry
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    # Last attempt failed
+                    logger.error(f"All {max_retries} connection attempts to Notion MCP server failed. Notion tools will not be available for this task.")
+        return []

@@ -4,11 +4,13 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Settings2, Check } from "lucide-react";
 import {
 	proxyFetchGet,
 	proxyFetchPost,
+	proxyFetchPut,
 	proxyFetchDelete,
+	fetchDelete,
 } from "@/api/http";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
@@ -18,6 +20,16 @@ import { MCPEnvDialog } from "./MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
 import { useTranslation } from "react-i18next";
+import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+	Select,
+	SelectTrigger,
+	SelectValue,
+	SelectContent,
+	SelectItem,
+	SelectItemWithButton,
+} from "@/components/ui/select";
+import * as SelectPrimitive from "@radix-ui/react-select";
 interface IntegrationItem {
 	key: string;
 	name: string;
@@ -31,10 +43,29 @@ interface IntegrationListProps {
 	items: IntegrationItem[];
 	installedKeys?: string[];
 	oauth?: OAuth;
+	// optional select beside each item for importing options
+	showSelect?: boolean; // default hidden
+	selectPlaceholder?: string; // placeholder text
+	selectContent?: React.ReactNode; // custom content for SelectContent (e.g., list of <SelectItem />)
+	onSelectChange?: (value: string, item: IntegrationItem) => void; // callback when select changes
+  // button group options
+  showConfigButton?: boolean; // whether to show the config button (default: true)
+  showInstallButton?: boolean; // whether to show the install/uninstall button (default: true)
+  onConfigClick?: (item: IntegrationItem) => void; // optional external handler to open a popup
+  // status dot icon (ellipse) visibility
+  showStatusDot?: boolean; // default: true
 }
 
 export default function IntegrationList({
 	items,
+	showSelect = false,
+	selectPlaceholder = "Select...",
+	selectContent,
+  onSelectChange,
+  showConfigButton = true,
+  showInstallButton = true,
+  onConfigClick,
+  showStatusDot = true,
 }: IntegrationListProps) {
 	const { t } = useTranslation();
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
@@ -76,16 +107,24 @@ export default function IntegrationList({
 
 	// items or configs change, recalculate installed
 	useEffect(() => {
-		// remove duplicates by config_group
-		const groupSet = new Set<string>();
-		configs.forEach((c: any) => {
-			if (c.config_group) groupSet.add(c.config_group.toLowerCase());
-		});
 		// construct installed map
 		const map: { [key: string]: boolean } = {};
 		items.forEach((item) => {
-			if (groupSet.has(item.key.toLowerCase())) {
-				map[item.key] = true;
+			if (item.key === "Google Calendar") {
+				// Only mark installed after refresh token exists
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken;
+			} else {
+				// For other integrations, use presence of any config in the group
+				const hasConfig = configs.some(
+					(c: any) => c.config_group?.toLowerCase() === item.key.toLowerCase()
+				);
+				map[item.key] = hasConfig;
 			}
 		});
 		setInstalled(map);
@@ -98,11 +137,38 @@ export default function IntegrationList({
 		value: string
 	) => {
 		const configPayload = {
-			config_group: capitalizeFirstLetter(provider),
+			// Use exact group name, do not transform case to avoid whitelist mismatch
+			config_group: provider,
 			config_name: envVarKey,
 			config_value: value,
 		};
-		await proxyFetchPost("/api/configs", configPayload);
+		
+		// Fetch latest configs to avoid stale state when deciding POST/PUT
+		let latestConfigs: any[] = Array.isArray(configs) ? configs : [];
+		try {
+			const fresh = await proxyFetchGet("/api/configs");
+			if (Array.isArray(fresh)) latestConfigs = fresh;
+		} catch {}
+		
+		// Check if config already exists (by name, regardless of group - backend uniqueness is by name)
+		let existingConfig = latestConfigs.find((c: any) => c.config_name === envVarKey);
+		
+		if (existingConfig) {
+			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+		} else {
+			const res = await proxyFetchPost("/api/configs", configPayload);
+			// If backend says it already exists (race), switch to PUT
+			if (res && res.detail && (res.detail as string).toLowerCase().includes("already exists")) {
+				try {
+					const again = await proxyFetchGet("/api/configs");
+					const found = Array.isArray(again) ? again.find((c: any) => c.config_name === envVarKey) : null;
+					if (found) {
+						await proxyFetchPut(`/api/configs/${found.id}`, configPayload);
+					}
+				} catch {}
+			}
+		}
+		
 		if (window.electronAPI?.envWrite) {
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
@@ -228,44 +294,79 @@ export default function IntegrationList({
 				return;
 			}
 
-			if (item.key === "Google Calendar") {
-				let mcp = {
-					name: "Google Calendar",
-					key: "Google Calendar",
-					install_command: {
-						env: {} as any,
-					},
-					id: 14,
-				};
-				item.env_vars.map((key) => {
-					mcp.install_command.env[key] = "";
-				});
-				setActiveMcp(mcp);
-				setShowEnvConfig(true);
-				return;
-			}
+	if (item.key === "Google Calendar") {
+		let mcp = {
+			name: "Google Calendar",
+			key: "Google Calendar",
+			install_command: {
+				env: {} as any,
+			},
+			id: 14,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		setActiveMcp(mcp);
+		setShowEnvConfig(true);
+		return;
+	}
 
-			if (installed[item.key]) return;
-			await item.onInstall();
+	if (installed[item.key]) return;
+	await item.onInstall();
 		},
 		[installed]
 	);
 
 	const onConnect = async (mcp: any) => {
-		console.log(mcp);
+		// Refresh configs first to get latest state
+		await fetchInstalled();
+		
+		// Save all environment variables
 		await Promise.all(
 			Object.keys(mcp.install_command.env).map((key) => {
 				return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
 			})
 		);
 
-		fetchInstalled();
+		// After saving env vars, trigger installation/instantiation for Google Calendar
+		if (mcp.key === "Google Calendar") {
+			const calendarItem = items.find(item => item.key === "Google Calendar");
+			if (calendarItem && calendarItem.onInstall) {
+				await calendarItem.onInstall();
+			}
+		}
+
+		await fetchInstalled();
 		onClose();
 	};
 	const onClose = () => {
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 	};
+
+  const handleOpenConfig = useCallback((item: IntegrationItem) => {
+    // if external handler provided by parent, use it
+    if (onConfigClick) {
+      onConfigClick(item);
+      return;
+    }
+    // default behavior: if item has env vars, open built-in MCP config dialog
+    if (item?.env_vars && item.env_vars.length > 0) {
+      const mcp = {
+        name: item.name,
+        key: item.key,
+        install_command: {
+          env: {} as any,
+        },
+        id: -1,
+      };
+      item.env_vars.forEach((key) => {
+        (mcp.install_command.env as any)[key] = "";
+      });
+      setActiveMcp(mcp);
+      setShowEnvConfig(true);
+    }
+  }, [onConfigClick]);
 
 	// uninstall logic
 	const handleUninstall = useCallback(
@@ -296,6 +397,24 @@ export default function IntegrationList({
 					// ignore error
 				}
 			}
+			
+			// Clean up authentication tokens for Google Calendar and Notion
+			if (item.key === "Google Calendar") {
+				try {
+					await fetchDelete("/uninstall/tool/google_calendar");
+					console.log("Cleaned up Google Calendar authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Google Calendar tokens:", e);
+				}
+			} else if (item.key === "Notion") {
+				try {
+					await fetchDelete("/uninstall/tool/notion");
+					console.log("Cleaned up Notion authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Notion tokens:", e);
+				}
+			}
+			
 			// after deletion, refresh configs
 			setConfigs((prev) =>
 				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
@@ -305,7 +424,7 @@ export default function IntegrationList({
 	);
 
 	return (
-		<div className="space-y-3">
+		<div className="flex flex-col w-full items-start justify-start gap-4">
 			<MCPEnvDialog
 				showEnvConfig={showEnvConfig}
 				onClose={onClose}
@@ -317,23 +436,26 @@ export default function IntegrationList({
 				return (
 					<div
 						key={item.key}
-						className="p-4 bg-surface-secondary rounded-2xl flex items-center justify-between"
+						className="w-full px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col items-center justify-between"
 					>
-						<div className="flex items-center gap-xs">
-							<img
-								src={ellipseIcon}
-								alt="icon"
-								className="w-3 h-3 mr-2"
-								style={{
-									filter: isInstalled
-										? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
-										: "none",
-								}}
-							/>
-							<div className="text-base leading-snug font-bold text-text-action">
+						<div className="flex flex-row w-full items-center gap-xs">
+							<div className="flex flex-row w-full items-center gap-xs">
+									{showStatusDot && (
+											<img
+													src={ellipseIcon}
+													alt="icon"
+													className="w-3 h-3 mr-2"
+													style={{
+															filter: isInstalled
+																	? "grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)"
+																	: "none",
+													}}
+											/>
+									)}
+							 <div className="text-label-lg font-bold text-text-heading">
 								{item.name}
-							</div>
-							<div className="flex items-center">
+							 </div>
+							 <div className="flex items-center">
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<CircleAlert className="w-4 h-4 text-icon-secondary" />
@@ -342,35 +464,87 @@ export default function IntegrationList({
 										<div>{item.desc}</div>
 									</TooltipContent>
 								</Tooltip>
+							 </div>
+						  </div>
+            <div className="flex flex-row items-center gap-md">
+            {showConfigButton && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleOpenConfig(item);
+                }}
+              >
+									<Settings2 className="w-4 h-4" />
+								{t("setting.setting")}
+              </Button>
+            )}
+            {showInstallButton && (
+              <Button
+                type="button"
+                disabled={[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name)}
+                variant={[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name) ? "ghost" : (isInstalled ? "outline" : "primary")}
+                size="sm"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return isInstalled ? handleUninstall(item) : handleInstall(item);
+                }}
+              >
+                {[
+                  "X(Twitter)",
+                  "WhatsApp",
+                  "LinkedIn",
+                  "Reddit",
+                  "Github",
+                ].includes(item.name)
+                  ? t("setting.coming-soon")
+                  : isInstalled
+                  ? t("setting.uninstall")
+                  : t("setting.install")}
+              </Button>
+            )}
+            </div>
+					</div>
+					
+					{showSelect && (
+						<div className="flex flex-row w-full items-center gap-md mt-6 pt-6 border-b-0 border-x-0 border-solid border-border-secondary">
+						<div className="flex flex-row w-full items-center justify-between gap-md">
+							<div className="text-body-md text-text-body"> Default {item.name}</div>
+						  	<div className="flex-1 max-w-[300px]">
+								<Select onValueChange={(v) => onSelectChange?.(v, item)}>
+							  <SelectTrigger size="default">
+							  	 <SelectValue placeholder={selectPlaceholder} />
+						  		</SelectTrigger>
+						  		<SelectContent className="z-100">
+										{selectContent ?? (
+											<>
+												<SelectItem value="more">More integrations</SelectItem>
+											</>
+										)}
+						  		</SelectContent>
+						  	</Select>
 							</div>
 						</div>
-						<Button
-							disabled={[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)}
-							variant={isInstalled ? "secondary" : "primary"}
-							size="sm"
-							onClick={() =>
-								isInstalled ? handleUninstall(item) : handleInstall(item)
-							}
-						>
-							{[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)
-								? t("setting.coming-soon")
-								: isInstalled
-								? t("setting.uninstall")
-								: t("setting.install")}
-						</Button>
+						</div>
+					)}
 					</div>
+					
 				);
 			})}
 		</div>
