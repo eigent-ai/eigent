@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CircleAlert, Store, X } from "lucide-react";
-import { proxyFetchGet, proxyFetchPost, fetchPost } from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, proxyFetchPut, fetchPost, fetchGet } from "@/api/http";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
@@ -103,42 +103,65 @@ const ToolSelect = forwardRef<
 									throw error;
 								}
 							};
-						} else if (key.toLowerCase() === 'google calendar') {
-							onInstall = async () => {
-								try {
-									const response = await fetchPost("/install/tool/google_calendar");
-									if (response.success) {
-										// Check if there's a warning (connection failed but installation marked as complete)
-										if (response.warning) {
-											console.warn("Google Calendar connection warning:", response.warning);
-											// Still proceed but log the warning
-										}
-										// Save to config to mark as installed
-										await proxyFetchPost("/api/configs", {
-											config_group: "Google Calendar",
-											config_name: "GOOGLE_CLIENT_ID",
-											config_value: response.toolkit_name || "GoogleCalendarToolkit",
-										});
-										console.log("Google Calendar installed successfully");
-										// After successful installation, add to selected tools
-										const calendarItem = {
-											id: 0, // Use 0 for integration items
-											key: key,
-											name: key,
-											description: "Google Calendar integration for managing events and schedules",
-											toolkit: "google_calendar_toolkit", // Add the toolkit name
-											isLocal: true
-										};
-										addOption(calendarItem, true);
-									} else {
-										console.error("Failed to install Google Calendar:", response.error || "Unknown error");
-										throw new Error(response.error || "Failed to install Google Calendar");
-									}
-								} catch (error: any) {
-									console.error("Failed to install Google Calendar:", error.message);
-									throw error;
-								}
-							};
+                        } else if (key.toLowerCase() === 'google calendar') {
+                            onInstall = async () => {
+                                try {
+                                    const response = await fetchPost("/install/tool/google_calendar");
+                                    if (response.success) {
+                                        if (response.warning) {
+                                            console.warn("Google Calendar connection warning:", response.warning);
+                                        }
+                                        try {
+                                            const existingConfigs = await proxyFetchGet("/api/configs");
+                                            const existing = Array.isArray(existingConfigs)
+                                                ? existingConfigs.find((c: any) =>
+                                                    c.config_group?.toLowerCase() === "google calendar" &&
+                                                    c.config_name === "GOOGLE_REFRESH_TOKEN"
+                                                )
+                                                : null;
+
+                                            const configPayload = {
+                                                config_group: "Google Calendar",
+                                                config_name: "GOOGLE_REFRESH_TOKEN",
+                                                config_value: "exists",
+                                            };
+
+                                            if (existing) {
+                                                await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+                                            } else {
+                                                await proxyFetchPost("/api/configs", configPayload);
+                                            }
+                                        } catch (configError) {
+                                            console.warn("Failed to persist Google Calendar config", configError);
+                                        }
+                                        console.log("Google Calendar installed successfully");
+                                        const calendarItem = {
+                                            id: 0, // Use 0 for integration items
+                                            key: key,
+                                            name: key,
+                                            description: "Google Calendar integration for managing events and schedules",
+                                            toolkit: "google_calendar_toolkit", // Add the toolkit name
+                                            isLocal: true
+                                        };
+                                        addOption(calendarItem, true);
+                                    } else if (response.status === "authorizing") {
+                                        console.log("Google Calendar authorization in progress. Please complete in browser.");
+                                        if (response.message) {
+                                            console.log(response.message);
+                                        }
+                                    } else {
+                                        console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+                                        throw new Error(response.error || "Failed to install Google Calendar");
+                                    }
+                                    return response;
+                                } catch (error: any) {
+                                    if (!error.message?.includes("authorization")) {
+                                        console.error("Failed to install Google Calendar:", error.message);
+                                        throw error;
+                                    }
+                                    return null; // Return null on authorization flow errors
+                                }
+                            };
 						} else {
 							onInstall = () =>
 								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
@@ -221,12 +244,30 @@ const ToolSelect = forwardRef<
 		envVarKey: string,
 		value: string
 	) => {
+		// First fetch current configs to check for existing ones
+		const configsRes = await proxyFetchGet("/api/configs");
+		const configs = Array.isArray(configsRes) ? configsRes : [];
+		
 		const configPayload = {
 			config_group: capitalizeFirstLetter(provider),
 			config_name: envVarKey,
 			config_value: value,
 		};
-		await proxyFetchPost("/api/configs", configPayload);
+		
+		// Check if config already exists
+		const existingConfig = configs.find(
+			(c: any) => c.config_name === envVarKey && 
+			c.config_group?.toLowerCase() === provider.toLowerCase()
+		);
+		
+		if (existingConfig) {
+			// Update existing config
+			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+		} else {
+			// Create new config
+			await proxyFetchPost("/api/configs", configPayload);
+		}
+		
 		if (window.electronAPI?.envWrite) {
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
@@ -244,36 +285,146 @@ const ToolSelect = forwardRef<
 				env[key] = envValue[key]?.value;
 			});
 			activeMcp.install_command.env = env;
-			Object.keys(activeMcp.install_command.env).map(async (key) => {
-				await saveEnvAndConfig(
-					activeMcp.key,
-					key,
-					activeMcp.install_command.env[key]
-				);
-			});
 			
-			// Add to selected tools after saving config
-			if (activeMcp.key === "Google Calendar") {
-				const calendarItem = {
-					id: activeMcp.id,
-					key: activeMcp.key,
-					name: activeMcp.name,
-					description: "Google Calendar integration for managing events and schedules",
-					toolkit: "google_calendar_toolkit",
-					isLocal: true
-				};
-				addOption(calendarItem, true);
+			// Save all env vars and wait for completion
+			console.log("[installMcp] Saving env vars for", activeMcp.key);
+			try {
+				await Promise.all(
+					Object.keys(activeMcp.install_command.env).map(async (key) => {
+						console.log("[installMcp] Saving", key, "=", activeMcp.install_command.env[key]);
+						return saveEnvAndConfig(
+							activeMcp.key,
+							key,
+							activeMcp.install_command.env[key]
+						);
+					})
+				);
+				console.log("[installMcp] All env vars saved successfully");
+			} catch (error) {
+				console.error("[installMcp] Failed to save env vars:", error);
+				// Continue anyway to trigger installation
 			}
+			
+		// Trigger instantiation for Google Calendar
+		if (activeMcp.key === "Google Calendar") {
+			console.log("[ToolSelect installMcp] Starting Google Calendar installation");
+			try {
+				const response = await fetchPost("/install/tool/google_calendar");
+				
+				if (response.success) {
+					console.log("[ToolSelect installMcp] Immediate success");
+					// Mark as successfully installed by writing refresh token marker
+					const existingConfigs = await proxyFetchGet("/api/configs");
+					const existing = Array.isArray(existingConfigs)
+						? existingConfigs.find((c: any) =>
+							c.config_group?.toLowerCase() === "google calendar" &&
+							c.config_name === "GOOGLE_REFRESH_TOKEN"
+						)
+						: null;
+					
+					const configPayload = {
+						config_group: "Google Calendar",
+						config_name: "GOOGLE_REFRESH_TOKEN",
+						config_value: "exists",
+					};
+					
+					if (existing) {
+						await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+					} else {
+						await proxyFetchPost("/api/configs", configPayload);
+					}
+					
+					// Refresh integrations to update install status
+					fetchIntegrationsData();
+					
+					const selectedItem = {
+						id: activeMcp.id,
+						key: activeMcp.key,
+						name: activeMcp.name,
+						description: "Google Calendar integration for managing events and schedules",
+						toolkit: "google_calendar_toolkit",
+						isLocal: true
+					};
+					addOption(selectedItem, true);
+				} else if (response.status === "authorizing") {
+					// Authorization in progress - browser should have opened
+					console.log("[ToolSelect installMcp] Authorization required, starting polling loop");
+					
+					// WAIT for OAuth status completion instead of using setInterval
+					const start = Date.now();
+					const timeoutMs = 5 * 60 * 1000; // 5 minutes
+					
+					while (Date.now() - start < timeoutMs) {
+						try {
+							const statusResponse = await fetchGet("/oauth/status/google_calendar");
+							console.log("[ToolSelect installMcp] OAuth status:", statusResponse.status);
+							
+							if (statusResponse.status === "success") {
+								console.log("[ToolSelect installMcp] Authorization completed successfully!");
+								
+								// Try installing again now that authorization is complete
+								const retryResponse = await fetchPost("/install/tool/google_calendar");
+								if (retryResponse.success) {
+									// Mark as successfully installed
+									const existingConfigs = await proxyFetchGet("/api/configs");
+									const existing = Array.isArray(existingConfigs)
+										? existingConfigs.find((c: any) =>
+											c.config_group?.toLowerCase() === "google calendar" &&
+											c.config_name === "GOOGLE_REFRESH_TOKEN"
+										)
+										: null;
+									
+									const configPayload = {
+										config_group: "Google Calendar",
+										config_name: "GOOGLE_REFRESH_TOKEN",
+										config_value: "exists",
+									};
+									
+									if (existing) {
+										await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+									} else {
+										await proxyFetchPost("/api/configs", configPayload);
+									}
+									
+									fetchIntegrationsData();
+									
+									const selectedItem = {
+										id: activeMcp.id,
+										key: activeMcp.key,
+										name: activeMcp.name,
+										description: "Google Calendar integration for managing events and schedules",
+										toolkit: "google_calendar_toolkit",
+										isLocal: true
+									};
+									addOption(selectedItem, true);
+								}
+								console.log("[ToolSelect installMcp] Installation complete, returning");
+								return;
+							} else if (statusResponse.status === "failed") {
+								console.error("[ToolSelect installMcp] Authorization failed:", statusResponse.error);
+								return;
+							} else if (statusResponse.status === "cancelled") {
+								console.log("[ToolSelect installMcp] Authorization cancelled");
+								return;
+							}
+						} catch (error) {
+							console.error("[ToolSelect installMcp] Error polling OAuth status:", error);
+						}
+						
+						// Wait before next poll
+						await new Promise((r) => setTimeout(r, 1500));
+					}
+					
+					console.log("[ToolSelect installMcp] Polling timeout");
+					return;
+				} else {
+					console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+				}
+			} catch (error: any) {
+				console.error("Failed to install Google Calendar:", error.message);
+			}
+		}
 			return;
-			// async function fetchInstalled() {
-			// 	try {
-			// 		const configsRes = await proxyFetchGet("/api/configs");
-			// 		setConfigs(Array.isArray(configsRes) ? configsRes : []);
-			// 	} catch (e) {
-			// 		setConfigs([]);
-			// 	}
-			// }
-			// fetchInstalled();
 		}
 		setInstalling((prev) => ({ ...prev, [id]: true }));
 		try {

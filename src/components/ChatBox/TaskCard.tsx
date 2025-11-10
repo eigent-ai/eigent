@@ -340,11 +340,11 @@ export function TaskCard({
 															) : null;
 
 															// Only switch if this is a different chat
-															if (currentChatId !== chatId) {
+															if (currentChatId && currentChatId !== chatId) {
 																projectStore.setActiveChatStore(activeProjectId, chatId);
 															}
 														}
-														
+
 														// Set the active workspace and agent
 														chatStore.setActiveWorkSpace(
 															chatStore.activeTaskId as string,

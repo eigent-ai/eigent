@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-	proxyFetchGet,
-	proxyFetchDelete,
-	proxyFetchPost,
-	proxyFetchPut,
-	fetchPost,
+    proxyFetchGet,
+    proxyFetchDelete,
+    proxyFetchPost,
+    proxyFetchPut,
+    fetchPost,
+    fetchGet,
 } from "@/api/http";
 import MCPList from "./components/MCPList";
 import MCPConfigDialog from "./components/MCPConfigDialog";
@@ -135,7 +136,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object") {
 				const baseURL = getProxyBaseURL();
-				const list = Object.entries(res).map(([key, value]: [string, any]) => {
+                const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
 
 					// Special handling for Notion MCP
@@ -167,29 +168,97 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 								toast.error(error.message || t("setting.failed-to-install-notion-mcp"));
 							}
 						};
-					} else if (key.toLowerCase() === 'google calendar') {
-						onInstall = async () => {
-							try {
-								const response = await fetchPost("/install/tool/google_calendar");
-								if (response.success) {
-									// Check if there's a warning (connection failed but installation marked as complete)
-									if (response.warning) {
-										toast.warning(response.warning, { duration: 5000 });
-									} else {
-										toast.success(t("setting.google-calendar-installed-successfully"));
-									}
-									// Save to config to mark as installed
-									await proxyFetchPost("/api/configs", {
-										config_group: "Google Calendar",
-										config_name: "GOOGLE_CLIENT_ID",
-										config_value: response.toolkit_name || "GoogleCalendarToolkit",
-									});
-									// Refresh the integrations list to show the installed state
-									fetchList();
-									// Force refresh IntegrationList component
-									setRefreshKey(prev => prev + 1);
+						} else if (key.toLowerCase() === 'google calendar') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/google_calendar");
+									if (response.success) {
+										// Check if there's a warning (connection failed but installation marked as complete)
+										if (response.warning) {
+											toast.warning(response.warning, { duration: 5000 });
+										} else {
+											toast.success(t("setting.google-calendar-installed-successfully"));
+										}
+										try {
+											// Ensure we persist a marker config to indicate installation
+											const existingConfigs = await proxyFetchGet("/api/configs");
+											const existing = Array.isArray(existingConfigs)
+												? existingConfigs.find((c: any) =>
+													c.config_group?.toLowerCase() === "google calendar" &&
+													c.config_name === "GOOGLE_REFRESH_TOKEN"
+												)
+												: null;
+
+											const configPayload = {
+												config_group: "Google Calendar",
+												config_name: "GOOGLE_REFRESH_TOKEN",
+												config_value: "exists",
+											};
+
+											if (existing) {
+												await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+											} else {
+												await proxyFetchPost("/api/configs", configPayload);
+											}
+										} catch (configError) {
+											console.warn("Failed to persist Google Calendar config", configError);
+										}
+										// Refresh the integrations list to show the installed state
+										fetchList();
+										// Force refresh IntegrationList component
+										setRefreshKey(prev => prev + 1);
+                                } else if (response.status === "authorizing") {
+                                    // Authorization in progress - start polling for completion
+                                    toast.info(t("setting.please-complete-authorization-in-browser"));
+
+                                    // Poll for authorization completion via oauth status endpoint
+                                    const pollInterval = setInterval(async () => {
+                                        try {
+                                            const statusResp = await fetchGet("/oauth/status/google_calendar");
+                                            if (statusResp?.status === "success") {
+                                                clearInterval(pollInterval);
+                                                // Now that auth succeeded, run install again to initialize toolkit
+                                                const finalize = await fetchPost("/install/tool/google_calendar");
+                                                if (finalize?.success) {
+                                                    const configs = await proxyFetchGet("/api/configs");
+                                                    const existing = Array.isArray(configs)
+                                                        ? configs.find((c: any) =>
+                                                            c.config_group?.toLowerCase() === "google calendar" &&
+                                                            c.config_name === "GOOGLE_REFRESH_TOKEN"
+                                                        )
+                                                        : null;
+                                                    
+                                                    const payload = {
+                                                        config_group: "Google Calendar",
+                                                        config_name: "GOOGLE_REFRESH_TOKEN",
+                                                        config_value: "exists",
+                                                    };
+                                                    
+                                                    if (existing) {
+                                                        await proxyFetchPut(`/api/configs/${existing.id}`, payload);
+                                                    } else {
+                                                        await proxyFetchPost("/api/configs", payload);
+                                                    }
+                                                    
+                                                    toast.success(t("setting.google-calendar-installed-successfully"));
+                                                    fetchList();
+                                                    setRefreshKey((prev) => prev + 1);
+                                                }
+                                            } else if (statusResp?.status === "failed" || statusResp?.status === "cancelled") {
+                                                clearInterval(pollInterval);
+                                                const msg = statusResp?.error || (statusResp?.status === "cancelled" ? t("setting.authorization-cancelled") : t("setting.authorization-failed"));
+                                                toast.error(msg);
+                                            }
+                                            // if still authorizing, continue polling
+                                        } catch (err) {
+                                            console.error("Polling oauth status failed", err);
+                                        }
+                                    }, 2000);
+
+                                    // Safety timeout
+                                    setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
 								} else {
-									toast.error(response.error || t("setting.failed-to-install-google-calendar"));
+									toast.error(response.error || response.message || t("setting.failed-to-install-google-calendar"));
 								}
 							} catch (error: any) {
 								toast.error(error.message || t("setting.failed-to-install-google-calendar"));
@@ -223,7 +292,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 				console.log("API response:", res);
 				console.log("Generated list:", list);
 				console.log("Essential integrations:", essentialIntegrations);
-
+				
 				setIntegrations(
 					list.filter(
 						(item) => !essentialIntegrations.find((i) => i.key === item.key)
