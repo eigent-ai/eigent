@@ -218,7 +218,7 @@ export default function Project() {
 	const TABLE_VIEW_ENABLED = false;
 
 	return (
-      <div className="flex flex-col h-full max-w-[900px] mx-auto py-4">
+      <div className="flex-1 h-auto m-auto">
           {/* alert dialog */}
         <AlertDialog
           isOpen={deleteModalOpen}
@@ -229,7 +229,21 @@ export default function Project() {
           confirmText={t("layout.delete")}
           cancelText={t("layout.cancel")}
         />
-        <div className="px-6 py-4 flex justify-between items-center">
+
+        			{/* Header Section */}
+			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
+					<div className="flex flex-row items-center justify-between w-full gap-4">
+						<div className="flex flex-col">
+							<div className="text-heading-sm font-bold text-text-heading">{t("layout.projects-hub")}</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+      <div className="flex w-full">
+      <div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-start">
+        <div className="flex w-full justify-between items-center mb-4">
           <div className="text-body-lg font-bold">{t("dashboard.ongoing-tasks")}</div>
           <div className="flex items-center gap-md">
             {TABLE_VIEW_ENABLED && (
@@ -255,7 +269,7 @@ export default function Project() {
         </div>
         {TABLE_VIEW_ENABLED && history_type === "table" ? (
           // Table
-          <div className="p-6 flex justify-start items-center flex-wrap gap-6">
+          <div className="flex w-full justify-start items-center flex-wrap gap-6 mb-10">
             {Object.keys(chatStore.tasks).map((taskId) => {
               const task = chatStore.tasks[taskId];
               return task.status != "finished" && !task.type ? (
@@ -350,7 +364,7 @@ export default function Project() {
           </div>
         ) : (
         // List
-        <div className="p-6 flex flex-col justify-start items-center gap-4">
+        <div className="flex w-full flex-col justify-start items-center gap-4 mb-10">
             {Object.keys(chatStore.tasks).map((taskId) => {
               const task = chatStore.tasks[taskId];
               return task.status != "finished" && !task.type ? (
@@ -489,7 +503,7 @@ export default function Project() {
             })}
         </div>
         )}
-        <div className="px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div className="text-body-lg font-bold">{t("dashboard.project-archives")}</div>
           <div>
             {historyTasks.length === 0 && TABLE_VIEW_ENABLED && (
@@ -517,7 +531,7 @@ export default function Project() {
         </div>
         {TABLE_VIEW_ENABLED && history_type === "table" ? (
           // Table
-          <div className="p-6 flex justify-start items-center flex-wrap gap-6">
+          <div className="flex w-full justify-start items-center flex-wrap gap-6 mb-10">
             {historyTasks.map((task) => {
               return (
                 <div
@@ -558,7 +572,7 @@ export default function Project() {
           </div>
         ) : (
         // List
-        <div className="p-6 flex flex-col justify-start items-center gap-4 pb-40">
+        <div className="flex w-full flex-col justify-start items-center gap-4 mb-10">
             {historyTasks.map((task) => {
               return (
                 <div
@@ -655,6 +669,7 @@ export default function Project() {
         </div>
         )}
       </div>
-
+    </div>
+    </div>
   );
 }

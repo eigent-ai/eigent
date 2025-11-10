@@ -32,10 +32,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const scrollToBottom = useCallback(() => {
     if (containerRef.current) {
       setTimeout(() => {
-        containerRef.current!.scrollTo({
-          top: containerRef.current!.scrollHeight,
-          behavior: "smooth",
-        });
+        // Double check containerRef is still valid before scrolling
+        if (containerRef.current) {
+          containerRef.current.scrollTo({
+            top: containerRef.current.scrollHeight,
+            behavior: "smooth",
+          });
+        }
       }, 100);
     }
   }, []);
