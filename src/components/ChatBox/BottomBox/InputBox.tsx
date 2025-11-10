@@ -110,6 +110,7 @@ export const Inputbox = ({
 	const [hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
 	const [isRemainingOpen, setIsRemainingOpen] = useState(false);
 	const hoverCloseTimerRef = useRef<number | null>(null);
+	const [isComposing, setIsComposing] = useState(false);
 
 	const openRemainingPopover = () => {
 		if (hoverCloseTimerRef.current) {
@@ -156,7 +157,7 @@ export const Inputbox = ({
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && !e.shiftKey && !disabled) {
+		if (e.key === "Enter" && !e.shiftKey && !disabled && !isComposing) {
 			e.preventDefault();
 			handleSend();
 		}
@@ -259,34 +260,36 @@ export const Inputbox = ({
 			{/* Text Input Area */}
 			<div className="box-border flex gap-2.5 items-center justify-center pb-2 pt-2.5 px-0 relative w-full">
 				<div className="flex-1 box-border flex gap-2.5 items-center justify-center min-h-px min-w-px mx-2 py-0 relative">
-					<Textarea
-					  variant="none"
-						size="default"
-						ref={textareaRef}
-						value={value}
-						onChange={(e) => handleTextChange(e.target.value)}
-						onKeyDown={handleKeyDown}
-						onFocus={() => setIsFocused(true)}
-						onBlur={() => setIsFocused(false)}
-						disabled={disabled}
-						placeholder= {t("chat.ask-placeholder")}
-						className={cn(
-							"flex-1 resize-none",
-							"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
-							"px-0 py-0 min-h-[40px] max-h-[200px]",
-							"scrollbar overflow-auto",
-							isActive ? "text-input-text-focus" : "text-input-text-default"
-						)}
-						style={{
-							fontFamily: "Inter",
-						}}
-						rows={1}
-						onInput={(e) => {
-							const el = e.currentTarget;
-							el.style.height = "auto";
-							el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-						}}
-					/>
+				<Textarea
+				  variant="none"
+					size="default"
+					ref={textareaRef}
+					value={value}
+					onChange={(e) => handleTextChange(e.target.value)}
+					onKeyDown={handleKeyDown}
+					onCompositionStart={() => setIsComposing(true)}
+					onCompositionEnd={() => setIsComposing(false)}
+					onFocus={() => setIsFocused(true)}
+					onBlur={() => setIsFocused(false)}
+					disabled={disabled}
+					placeholder= {t("chat.ask-placeholder")}
+					className={cn(
+						"flex-1 resize-none",
+						"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
+						"px-0 py-0 min-h-[40px] max-h-[200px]",
+						"scrollbar overflow-auto",
+						isActive ? "text-input-text-focus" : "text-input-text-default"
+					)}
+					style={{
+						fontFamily: "Inter",
+					}}
+					rows={1}
+					onInput={(e) => {
+						const el = e.currentTarget;
+						el.style.height = "auto";
+						el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+					}}
+				/>
 				</div>
 			</div>
 
