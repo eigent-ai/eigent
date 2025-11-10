@@ -71,7 +71,7 @@ export default function BottomBox({
     else if (state === "confirm") backgroundClass = "bg-input-bg-confirm";
 
 	return (
-		<div className="flex flex-col w-full overflow-hidden relative z-50">
+		<div className="flex flex-col w-full relative z-50">
 			{/* QueuedBox overlay (should not affect BoxMain layout) */}
 			{queuedMessages.length > 0 && (
 				<div className="px-2 z-50 pointer-events-auto">
@@ -82,7 +82,7 @@ export default function BottomBox({
 				</div>
 			)}
 			{/* BoxMain */}
-			<div className={`flex flex-col gap-2 w-full p-2 rounded-t-lg ${backgroundClass} overflow-hidden`}>
+			<div className={`flex flex-col gap-2 w-full p-2 rounded-t-lg ${backgroundClass}`}>
 				{/* BoxHeader variants */}
 				{state === "splitting" && (
 						<BoxHeaderSplitting />
