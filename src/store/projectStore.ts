@@ -473,27 +473,35 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 		
 		console.log(`[ProjectStore] Created replay project ${replayProjectId} for ${taskIds.length} tasks`);
-		
+
 		// For each taskId, create a chat store within the project and call replay
-		taskIds.forEach(async (taskId, index) => {
-			console.log(`[ProjectStore] Creating replay for task ${index + 1}/${taskIds.length}: ${taskId}`);
-			
-			// Create a new chat store for this task
-			const chatId = createChatStore(replayProjectId, `Task ${taskId}`);
-			
-			if (chatId) {
-				const project = get().projects[replayProjectId];
-				const chatStore = project.chatStores[chatId];
-				
-				if (chatStore) {					
-					// Call replay on the chat store with the taskId, question, and 0 delay
-					await chatStore.getState().replay(taskId, question, 0.2);
-					console.log(`[ProjectStore] Started replay for task ${taskId}`);
+		// Use for...of loop instead of forEach to properly handle async operations
+		(async () => {
+			for (let index = 0; index < taskIds.length; index++) {
+				const taskId = taskIds[index];
+				console.log(`[ProjectStore] Creating replay for task ${index + 1}/${taskIds.length}: ${taskId}`);
+
+				// Create a new chat store for this task
+				const chatId = createChatStore(replayProjectId, `Task ${taskId}`);
+
+				if (chatId) {
+					const project = get().projects[replayProjectId];
+					const chatStore = project.chatStores[chatId];
+
+					if (chatStore) {
+						// Call replay on the chat store with the taskId, question, and 0 delay
+						try {
+							await chatStore.getState().replay(taskId, question, 0.2);
+							console.log(`[ProjectStore] Started replay for task ${taskId}`);
+						} catch (error) {
+							console.error(`[ProjectStore] Failed to replay task ${taskId}:`, error);
+						}
+					}
 				}
 			}
-		});
-		
-		console.log(`[ProjectStore] Completed replay setup for ${taskIds.length} tasks`);
+			console.log(`[ProjectStore] Completed replay setup for ${taskIds.length} tasks`);
+		})();
+
 		return replayProjectId;
 	},
 	

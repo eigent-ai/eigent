@@ -59,10 +59,10 @@ export const replayActiveTask = async (
 	if (project && project.chatStores) {
 		Object.entries(project.chatStores).forEach(([chatStoreId, chatStoreData]: [string, any]) => {
 			const timestamp = project.chatStoreTimestamps[chatStoreId] || 0;
-			chatStoreData = chatStoreData.getState();
+			const chatState = chatStoreData.getState();
 
-			if (chatStoreData.tasks) {
-				Object.values(chatStoreData.tasks).forEach((task: any) => {
+			if (chatState.tasks) {
+				Object.values(chatState.tasks).forEach((task: any) => {
 					// Check messages for user content
 					if (task.messages && task.messages.length > 0) {
 						const userMessage = task.messages.find((msg: any) => msg.role === 'user');
