@@ -475,7 +475,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		console.log(`[ProjectStore] Created replay project ${replayProjectId} for ${taskIds.length} tasks`);
 
 		// For each taskId, create a chat store within the project and call replay
-		// Use for...of loop instead of forEach to properly handle async operations
 		(async () => {
 			for (let index = 0; index < taskIds.length; index++) {
 				const taskId = taskIds[index];
