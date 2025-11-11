@@ -415,3 +415,8 @@ code {
 .stack-login-btn button {
   width: 100%;
 }
+
+.markdown-container ol {
+  padding-left: 1rem;
+  font-size: 12px; /* text-sm */
+}

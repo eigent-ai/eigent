@@ -168,9 +168,6 @@ export default function ChatBox(): JSX.Element {
 					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
 					setMessage("");
 					if (textareaRef.current) textareaRef.current.style.height = "60px";
-					toast.success("Task queued. It will be processed when the current task finishes.", {
-						closeButton: true,
-					});
 
 					//Send the task as soon as possible
 					//Workforce internal queue handles it
@@ -185,9 +182,17 @@ export default function ChatBox(): JSX.Element {
 								timestamp: Date.now()
 							}
 						});
+
+						// Only show success toast after API call succeeds
+						toast.success("Task queued. It will be processed when the current task finishes.", {
+							closeButton: true,
+						});
 					} catch (error) {
 						console.error(`Removing Message "${tempMessageContent}..." due to ${error}`)
 						projectStore.removeQueuedMessage(project_id as string, new_task_id);
+						toast.error("Failed to queue task. Please try again.", {
+							closeButton: true,
+						});
 					}
 					return;
 				}
@@ -614,11 +619,23 @@ export default function ChatBox(): JSX.Element {
 		try {
 			//Optimistic Removal
 			projectStore.removeQueuedMessage(project_id, task_id);
-			
-			await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
-				project_id: project_id,
-				task_id: task_id
-			});
+
+			// Always try to call the backend to remove the task
+			// The backend will handle the error gracefully if workforce is not initialized
+			// Note: Replay creates a new chatstore, so no conflicts
+			const task = chatStore.tasks[chatStore.activeTaskId as string];
+			// Only skip backend call if task is finished or hasn't started yet (no messages)
+			if(task && task.messages.length > 0 && task.status !== 'finished') {
+				try {
+					await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
+						project_id: project_id,
+						task_id: task_id
+					});
+				} catch (apiError) {
+					// If backend returns an error, it's okay - the task might not be in the workforce queue yet
+					console.log(`Backend remove call failed (expected if workforce not started): ${apiError}`);
+				}
+			}
 		} catch (error) {
 			// Revert the optimistic removal by restoring the original message
 			projectStore.restoreQueuedMessage(project_id, messageBackup);
