@@ -13,9 +13,8 @@ import uuid
 logger = traceroot.get_logger("tool_controller")
 router = APIRouter()
 
-# Global variable to track browser process for user login
-browser_process = None
-browser_process_pid = None
+# Global variable to track browser process for login
+browser_login_process = None
 
 
 @router.post("/install/tool/{tool}", name="install tool")
@@ -298,6 +297,44 @@ async def uninstall_tool(tool: str):
         )
 
 
+@router.get("/browser/status", name="check browser status")
+async def check_browser_status():
+    """
+    Check if the login browser is still running
+
+    Returns:
+        Browser status information
+    """
+    global browser_login_process
+
+    if browser_login_process is None:
+        return {
+            "success": True,
+            "is_open": False,
+            "message": "No browser process tracked"
+        }
+
+    # Check if process is still alive
+    poll_result = browser_login_process.poll()
+    if poll_result is None:
+        # Process is still running
+        return {
+            "success": True,
+            "is_open": True,
+            "pid": browser_login_process.pid,
+            "message": "Browser is running"
+        }
+    else:
+        # Process has exited
+        browser_login_process = None
+        return {
+            "success": True,
+            "is_open": False,
+            "exit_code": poll_result,
+            "message": "Browser has closed"
+        }
+
+
 @router.post("/browser/login", name="open browser for login")
 async def open_browser_login():
     """
@@ -306,16 +343,13 @@ async def open_browser_login():
     Returns:
         Browser session information
     """
-    global browser_process, browser_process_pid
-
+    global browser_login_process
     try:
         import subprocess
         import platform
         import socket
         import json
-        import sys
-        import time
-
+        
         # Use fixed profile name for persistent logins (no port suffix)
         session_id = "user_login"
         cdp_port = 9223
@@ -330,12 +364,12 @@ async def open_browser_login():
 
         logger.info(
             f"Creating browser session {session_id} with profile at: {user_data_dir}")
-
+        
         # Check if browser is already running on this port
         def is_port_in_use(port):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 return s.connect_ex(('localhost', port)) == 0
-
+        
         if is_port_in_use(cdp_port):
             logger.info(f"Browser already running on port {cdp_port}")
             return {
@@ -749,60 +783,145 @@ app.on('window-all-closed', () => {
         with open(electron_script_path, 'w') as f:
             f.write(electron_script_content)
 
-        # Determine if we're running in a packaged app
-        # Check for common indicators of packaged environment
+        # Determine Electron executable path
+        # Check if running in development (npx available) or production (packaged app)
+        import shutil
+
+        logger.info(f"[PROFILE USER LOGIN] __file__ path: {__file__}")
+        logger.info(f"[PROFILE USER LOGIN] Platform: {platform.system()}")
+
+        # Get the app's directory
+        app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        logger.info(f"[PROFILE USER LOGIN] Initial app_dir: {app_dir}")
+
+        # Try to detect if we're in a packaged app
         is_packaged = False
         electron_executable = None
 
-        # Method 1: Check if running from a packaged .app (macOS) or .exe (Windows)
+        # Check for packaged app structure
         if platform.system() == "Darwin":
-            # macOS: Check if we're inside a .app bundle
-            current_path = os.path.abspath(__file__)
-            if ".app/Contents/Resources" in current_path:
+            # macOS: Check if we're inside .app bundle
+            if ".app/Contents/Resources" in __file__:
                 is_packaged = True
-                # Find the Eigent executable in the .app bundle
-                # Path: /path/to/Eigent.app/Contents/Resources/backend/...
-                app_bundle = current_path.split(".app/Contents/Resources")[0] + ".app"
-                electron_executable = os.path.join(app_bundle, "Contents", "MacOS", "Eigent")
-                logger.info(f"[PROFILE USER LOGIN] Detected packaged macOS app: {app_bundle}")
+                # In packaged app, get the Electron binary from Frameworks
+                app_path = __file__.split(".app/Contents/Resources")[0] + ".app"
+                # Use the Electron Framework's binary
+                electron_executable = os.path.join(
+                    app_path,
+                    "Contents",
+                    "Frameworks",
+                    "Electron Framework.framework",
+                    "Versions",
+                    "A",
+                    "Electron Framework"
+                )
+                # Fallback to main app executable
+                if not os.path.exists(electron_executable):
+                    electron_executable = os.path.join(app_path, "Contents", "MacOS", "Eigent")
+                app_dir = os.path.dirname(app_path)
         elif platform.system() == "Windows":
-            # Windows: Check if we're running from Program Files or similar
-            current_path = os.path.abspath(__file__)
-            if "\\resources\\backend" in current_path.lower():
+            # Windows: Check if we're in a packaged directory
+            if "resources\\app.asar" in __file__ or "resources\\app" in __file__:
                 is_packaged = True
-                # Find Eigent.exe in the app directory
-                # Path: C:\...\Eigent\resources\backend\...
-                app_dir = current_path.split("\\resources\\backend")[0]
-                electron_executable = os.path.join(app_dir, "Eigent.exe")
-                logger.info(f"[PROFILE USER LOGIN] Detected packaged Windows app: {app_dir}")
+                # In packaged app, use electron.exe if available
+                app_path = __file__.split("resources")[0]
+                electron_executable = os.path.join(app_path, "electron.exe")
+                # Fallback to main app executable
+                if not os.path.exists(electron_executable):
+                    electron_executable = os.path.join(app_path, "Eigent.exe")
+                app_dir = app_path
+        elif platform.system() == "Linux":
+            # Linux: Check for AppImage or installed package
+            if "/tmp/.mount_" in __file__ or "opt/Eigent" in __file__:
+                is_packaged = True
 
-        # Build command based on environment
-        if is_packaged and electron_executable and os.path.exists(electron_executable):
-            # Packaged app: use the bundled Electron executable
-            electron_args = [
-                electron_executable,
-                electron_script_path,
-                user_data_dir,
-                str(cdp_port),
-                "https://www.google.com"
-            ]
-            app_dir = os.path.dirname(electron_executable)
-            logger.info(f"[PROFILE USER LOGIN] Using packaged Electron executable: {electron_executable}")
+        # Try to find electron executable
+        if not is_packaged:
+            # Development mode: use npx or electron from PATH
+            logger.info("[PROFILE USER LOGIN] Running in development mode")
+            npx_path = shutil.which("npx")
+            logger.info(f"[PROFILE USER LOGIN] npx path: {npx_path}")
+
+            if npx_path:
+                electron_args = [
+                    "npx",
+                    "electron",
+                    electron_script_path,
+                    user_data_dir,
+                    str(cdp_port),
+                    "https://www.google.com"
+                ]
+            else:
+                # Fallback: try direct electron
+                electron_path = shutil.which("electron")
+                logger.info(f"[PROFILE USER LOGIN] electron path: {electron_path}")
+
+                if electron_path:
+                    electron_args = [
+                        electron_path,
+                        electron_script_path,
+                        user_data_dir,
+                        str(cdp_port),
+                        "https://www.google.com"
+                    ]
+                else:
+                    error_msg = "Cannot find Electron executable. Please ensure Node.js and Electron are installed."
+                    logger.error(f"[PROFILE USER LOGIN] {error_msg}")
+                    raise Exception(error_msg)
         else:
-            # Development mode: use npx electron
-            electron_args = [
-                "npx",
-                "electron",
-                electron_script_path,
-                user_data_dir,
-                str(cdp_port),
-                "https://www.google.com"
-            ]
-            # Get the project root directory (where package.json is)
-            app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            logger.info(f"[PROFILE USER LOGIN] Using development npx electron")
+            # Packaged app mode
+            logger.info("[PROFILE USER LOGIN] Running in PACKAGED mode")
+            logger.info(f"[PROFILE USER LOGIN] Detected electron_executable: {electron_executable}")
+
+            # First try to use system electron if available
+            electron_path = shutil.which("electron")
+            logger.info(f"[PROFILE USER LOGIN] System electron path: {electron_path}")
+
+            if electron_path:
+                logger.info(f"[PROFILE USER LOGIN] Using system electron: {electron_path}")
+                electron_args = [
+                    electron_path,
+                    electron_script_path,
+                    user_data_dir,
+                    str(cdp_port),
+                    "https://www.google.com"
+                ]
+            elif electron_executable and os.path.exists(electron_executable):
+                # Use packaged electron binary
+                logger.info(f"[PROFILE USER LOGIN] Using packaged electron: {electron_executable}")
+                electron_args = [
+                    electron_executable,
+                    electron_script_path,
+                    user_data_dir,
+                    str(cdp_port),
+                    "https://www.google.com"
+                ]
+            else:
+                # Last resort: try npx in case Node.js is installed
+                npx_path = shutil.which("npx")
+                logger.info(f"[PROFILE USER LOGIN] Fallback npx path: {npx_path}")
+
+                if npx_path:
+                    logger.info(f"[PROFILE USER LOGIN] Falling back to npx electron")
+                    electron_args = [
+                        "npx",
+                        "-y",  # Auto-install if needed
+                        "electron",
+                        electron_script_path,
+                        user_data_dir,
+                        str(cdp_port),
+                        "https://www.google.com"
+                    ]
+                else:
+                    error_msg = (
+                        "Cannot find Electron executable in packaged app. "
+                        "Please install Electron globally: npm install -g electron"
+                    )
+                    logger.error(f"[PROFILE USER LOGIN] {error_msg}")
+                    raise Exception(error_msg)
 
         logger.info(f"[PROFILE USER LOGIN] Launching Electron browser with CDP on port {cdp_port}")
+        logger.info(f"[PROFILE USER LOGIN] Is packaged: {is_packaged}")
         logger.info(f"[PROFILE USER LOGIN] Working directory: {app_dir}")
         logger.info(f"[PROFILE USER LOGIN] userData path: {user_data_dir}")
         logger.info(f"[PROFILE USER LOGIN] Electron args: {electron_args}")
@@ -817,6 +936,9 @@ app.on('window-all-closed', () => {
             bufsize=1  # Line buffered
         )
 
+        # Store process reference for status checks
+        browser_login_process = process
+
         # Create async task to log Electron output
         async def log_electron_output():
             for line in iter(process.stdout.readline, ''):
@@ -826,48 +948,32 @@ app.on('window-all-closed', () => {
         import asyncio
         asyncio.create_task(log_electron_output())
 
-        # Wait and verify the browser actually started
-        logger.info(f"[PROFILE USER LOGIN] Waiting for Electron to start (PID: {process.pid})...")
+        # Wait a bit and verify Electron started successfully
         await asyncio.sleep(2)
 
-        # Check if process is still running
-        poll_result = process.poll()
-        if poll_result is not None:
-            # Process already exited - startup failed
-            logger.error(f"[PROFILE USER LOGIN] Electron process exited immediately with code {poll_result}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to start browser: Process exited with code {poll_result}. Check logs for details."
+        # Check if process is still alive
+        if process.poll() is not None:
+            # Process exited immediately - something went wrong
+            exit_code = process.poll()
+            logger.error(f"[PROFILE USER LOGIN] Electron process exited immediately with code {exit_code}")
+            browser_login_process = None
+            raise Exception(
+                f"Browser failed to start (exit code: {exit_code}). "
+                "This may be due to missing Electron executable or incorrect configuration."
             )
 
-        # Wait a bit more and check CDP port
-        max_wait = 10  # Wait up to 10 seconds for CDP port
-        wait_interval = 0.5
-        cdp_ready = False
-
-        for i in range(int(max_wait / wait_interval)):
-            await asyncio.sleep(wait_interval)
-
-            # Check if process is still alive
-            if process.poll() is not None:
-                logger.error(f"[PROFILE USER LOGIN] Electron process died during startup")
-                raise HTTPException(
-                    status_code=500,
-                    detail="Browser process terminated unexpectedly during startup"
-                )
-
-            # Check if CDP port is ready
+        # Verify CDP port is listening
+        max_retries = 10
+        port_ready = False
+        for i in range(max_retries):
             if is_port_in_use(cdp_port):
-                cdp_ready = True
-                logger.info(f"[PROFILE USER LOGIN] CDP port {cdp_port} is ready after {(i+1) * wait_interval:.1f}s")
+                port_ready = True
+                logger.info(f"[PROFILE USER LOGIN] CDP port {cdp_port} is ready")
                 break
+            await asyncio.sleep(0.5)
 
-        if not cdp_ready:
-            logger.warning(f"[PROFILE USER LOGIN] CDP port {cdp_port} not ready after {max_wait}s, but process is running")
-
-        # Store process in global variable for status tracking
-        browser_process = process
-        browser_process_pid = process.pid
+        if not port_ready:
+            logger.warning(f"[PROFILE USER LOGIN] CDP port {cdp_port} not ready after {max_retries * 0.5}s, but process is running")
 
         # Clean up the script file after a delay
         async def cleanup_script():
@@ -887,113 +993,21 @@ app.on('window-all-closed', () => {
             "user_data_dir": user_data_dir,
             "cdp_port": cdp_port,
             "pid": process.pid,
-            "cdp_ready": cdp_ready,
-            "is_packaged": is_packaged,
             "chrome_version": "130.0.6723.191",  # Electron 33's Chrome version
             "message": "Electron browser opened successfully. Please log in to your accounts.",
-            "note": "The browser will remain open for you to log in. Your login data will be saved in the profile."
+            "note": "The browser will remain open for you to log in. Your login data will be saved in the profile.",
+            "cdp_ready": port_ready
         }
 
     except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
         logger.error(f"Failed to open Electron browser for login: {e}")
+        logger.error(f"Traceback: {error_traceback}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to open browser: {str(e)}"
         )
-
-
-@router.get("/browser/status", name="check browser status")
-async def check_browser_status():
-    """
-    Check if the browser is still running
-
-    Returns:
-        Browser status information
-    """
-    global browser_process, browser_process_pid
-
-    try:
-        if browser_process is None and browser_process_pid is None:
-            return {
-                "success": True,
-                "is_open": False,
-                "message": "No browser process tracked"
-            }
-
-        # Check if process is still running
-        if browser_process is not None:
-            poll_result = browser_process.poll()
-            if poll_result is None:
-                # Process is still running
-                return {
-                    "success": True,
-                    "is_open": True,
-                    "pid": browser_process.pid,
-                    "message": "Browser is running"
-                }
-            else:
-                # Process has exited
-                logger.info(f"[BROWSER STATUS] Process {browser_process.pid} has exited with code {poll_result}")
-                browser_process = None
-                browser_process_pid = None
-                return {
-                    "success": True,
-                    "is_open": False,
-                    "exit_code": poll_result,
-                    "message": "Browser has closed"
-                }
-
-        # Fallback: check if PID is still running using psutil or os.kill
-        if browser_process_pid is not None:
-            try:
-                import psutil
-                if psutil.pid_exists(browser_process_pid):
-                    return {
-                        "success": True,
-                        "is_open": True,
-                        "pid": browser_process_pid,
-                        "message": "Browser is running (tracked by PID)"
-                    }
-                else:
-                    browser_process_pid = None
-                    return {
-                        "success": True,
-                        "is_open": False,
-                        "message": "Browser has closed"
-                    }
-            except ImportError:
-                # psutil not available, use os.kill method
-                import signal
-                try:
-                    os.kill(browser_process_pid, 0)  # Signal 0 doesn't kill, just checks
-                    return {
-                        "success": True,
-                        "is_open": True,
-                        "pid": browser_process_pid,
-                        "message": "Browser is running (tracked by PID)"
-                    }
-                except OSError:
-                    browser_process_pid = None
-                    return {
-                        "success": True,
-                        "is_open": False,
-                        "message": "Browser has closed"
-                    }
-
-        return {
-            "success": True,
-            "is_open": False,
-            "message": "No active browser process"
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to check browser status: {e}")
-        return {
-            "success": False,
-            "is_open": False,
-            "error": str(e),
-            "message": "Failed to check browser status"
-        }
 
 
 @router.get("/browser/cookies", name="list cookie domains")
