@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import FolderComponent from "./FolderComponent";
 
-import { MarkDown } from "@/components/ChatBox/MarkDown";
+import { MarkDown } from "@/components/ChatBox/MessageItem/MarkDown";
 import { useAuthStore } from "@/store/authStore";
 import { proxyFetchGet } from "@/api/http";
 import { useTranslation } from "react-i18next";

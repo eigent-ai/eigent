@@ -77,7 +77,14 @@ export default function Home() {
 		navigate("/");
 	};
 
-  useEffect(() => {}, []);
+  useEffect(() => {
+		// Update active tab when URL parameter changes
+		const tabFromUrl = searchParams.get('tab');
+		const validTabs = ["projects", "workers", "trigger", "settings", "mcp_tools"];
+		if (tabFromUrl && validTabs.includes(tabFromUrl)) {
+			setActiveTab(tabFromUrl as typeof activeTab);
+		}
+	}, [searchParams]);
 
 	return (
 		<div ref={scrollContainerRef} className="h-full overflow-y-auto scrollbar-hide mx-auto">
