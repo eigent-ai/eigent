@@ -21,7 +21,7 @@ import {
 	CircleSlash,
 } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
-import { TaskState, TaskStateType } from "../TaskState";
+import { TaskState, TaskStateType } from "@/components/TaskState";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface TaskCardProps {
@@ -173,16 +173,16 @@ export function TaskCard({
 
 	return (
 		<div>
-			<div className="w-full h-auto flex flex-col gap-2 transition-all duration-300">
-				<div className="w-full h-auto bg-task-surface backdrop-blur-[5px] rounded-xl py-sm relative overflow-hidden">
+			<div className="w-full h-auto flex flex-col pl-sm gap-2 transition-all duration-300">
+				<div className="w-full h-auto bg-task-surface rounded-xl py-sm relative overflow-hidden">
 					<div className="absolute top-0 left-0 w-full bg-transparent">
 						<Progress value={progressValue} className="h-[2px] w-full" />
 					</div>
-					<div className="text-sm font-bold leading-13 mb-2.5 px-sm">
-						{summaryTask
-							? summaryTask.split("|")[0].replace(/"/g, "")
-							: "Thinking hard..."}
-					</div>
+					{summaryTask && (
+						<div className="text-sm font-bold leading-13 mb-2.5 px-sm">
+							{summaryTask.split("|")[0].replace(/"/g, "")}
+						</div>
+					)}
 
 					{summaryTask && (
 						<div className={`flex items-center justify-between gap-2 px-sm`}>
@@ -422,7 +422,7 @@ export function TaskCard({
 												</div>
 												<div className="flex-1 flex flex-col items-start justify-center">
 													<div
-														className={` w-full break-words [overflow-wrap:anywhere] whitespace-pre-line ${
+														className={` w-full break-words whitespace-pre-line ${
 															task.status === "failed"
 																? "text-text-cuation-default"
 																: task.status === "blocked"
