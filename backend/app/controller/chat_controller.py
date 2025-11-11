@@ -88,6 +88,13 @@ async def post(data: Chat, request: Request):
     os.environ["OPENAI_API_BASE_URL"] = data.api_url or "https://api.openai.com/v1"
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
+    # Set user-specific search engine configuration if provided
+    if data.search_config:
+        for key, value in data.search_config.items():
+            if value:  # Only set non-empty values
+                os.environ[key] = value
+                chat_logger.info(f"Set search config: {key}", extra={"project_id": data.project_id})
+
     email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]).strip(".")
     camel_log = (
         Path.home()

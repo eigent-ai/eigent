@@ -31,6 +31,7 @@
 	"installation-failed": "Error al instalar",
 	"projects": "Proyectos",
 	"mcp-tools": "MCP & Herramientas",
+	"browser": "Navegador",
 	"settings": "Ajustes",
 	"workers": "Trabajadores",
 	"triggers": "Disparadores",
@@ -128,5 +129,18 @@
 	"select-file": "Seleccionar Archivo",
 	"all-files": "Todos los Archivos",
 	"ask-placeholder": "Pregúntame cualquier cosa...",
-	"new-task": "Nueva Tarea"
+	"new-task": "Nueva Tarea",
+	"projects-hub": "Centro de Proyectos",
+	"browser-management": "Gestión del Navegador",
+	"browser-management-description": "Las cookies del navegador se almacenan localmente en su dispositivo, se usan solo para tareas en esos mismos sitios y se pueden borrar o desactivar en cualquier momento.",
+	"restart-to-apply": "Reiniciar para Aplicar",
+	"browser-cookies": "Cookies del Navegador",
+	"browser-cookies-description": "Use \"Abrir Navegador\" para iniciar sesión en una página web y guardar sus cookies. Después de reiniciar la aplicación, Eigent las recordará y le ayudará a completar tareas futuras en esos sitios.",
+	"cookie-domains": "Dominios de Cookies",
+	"deleting": "Eliminando...",
+	"delete-all": "Eliminar Todo",
+	"opening": "Abriendo...",
+	"open-browser": "Abrir Navegador",
+	"no-cookies-saved-yet": "Aún no se han guardado cookies",
+	"no-cookies-saved-yet-description": "Haga clic en \"Abrir Navegador\" arriba para iniciar sesión en sitios web y guardar sus cookies para tareas futuras."
 }

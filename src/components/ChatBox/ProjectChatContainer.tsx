@@ -32,10 +32,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const scrollToBottom = useCallback(() => {
     if (containerRef.current) {
       setTimeout(() => {
-        containerRef.current!.scrollTo({
-          top: containerRef.current!.scrollHeight,
-          behavior: "smooth",
-        });
+        // Double check containerRef is still valid before scrolling
+        if (containerRef.current) {
+          containerRef.current.scrollTo({
+            top: containerRef.current.scrollHeight,
+            behavior: "smooth",
+          });
+        }
       }, 100);
     }
   }, []);
@@ -134,7 +137,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div 
       ref={containerRef}
-      className={`flex-1 relative z-10 flex flex-col overflow-y-auto scrollbar gap-2 ${className}`}
+      className={`flex-1 relative z-10 flex flex-col mt-sm overflow-y-auto scrollbar ${className}`}
     >
       <AnimatePresence mode="popLayout">
         {chatStores.map(({ chatId, chatStore }) => {
@@ -146,9 +149,12 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
           }
 
           const task = chatState.tasks[activeTaskId];
-          const hasMessages = task.messages.length > 0 || task.hasMessages;
-
-          if (!hasMessages) {
+          const messages = task.messages || [];
+          
+          // Only render if there are actual user messages (not just empty or system messages)
+          const hasUserMessages = messages.some((msg: any) => msg.role === 'user' && msg.content);
+          
+          if (!hasUserMessages) {
             return null;
           }
 

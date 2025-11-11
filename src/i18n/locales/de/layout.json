@@ -31,6 +31,7 @@
 	"installation-failed": "Installation fehlgeschlagen",
 	"projects": "Projekte",
 	"mcp-tools": "MCP & Tools",
+	"browser": "Browser",
 	"settings": "Einstellungen",
 	"workers": "Mitarbeiter",
 	"triggers": "Trigger",
@@ -128,5 +129,18 @@
 	"select-file": "Datei auswählen",
 	"all-files": "Alle Dateien",
 	"ask-placeholder": "Fragen Sie mich alles...",
-	"new-task": "Neue Aufgabe"
+	"new-task": "Neue Aufgabe",
+	"projects-hub": "Projekte-Hub",
+	"browser-management": "Browser-Verwaltung",
+	"browser-management-description": "Die Browser-Cookies werden lokal auf Ihrem Gerät gespeichert, werden nur für Aufgaben auf denselben Websites verwendet und können jederzeit gelöscht oder deaktiviert werden.",
+	"restart-to-apply": "Neu starten, um anzuwenden",
+	"browser-cookies": "Browser-Cookies",
+	"browser-cookies-description": "Verwenden Sie \"Browser öffnen\" um sich bei einer Webseite anzumelden und deren Cookies zu speichern. Nach dem Neustart der Desktop-App wird sich Eigent daran erinnern und Ihnen helfen, zukünftige Aufgaben auf diesen Websites zu erledigen.",
+	"cookie-domains": "Cookie-Domains",
+	"deleting": "Wird gelöscht...",
+	"delete-all": "Alle löschen",
+	"opening": "Wird geöffnet...",
+	"open-browser": "Browser öffnen",
+	"no-cookies-saved-yet": "Noch keine Cookies gespeichert",
+	"no-cookies-saved-yet-description": "Klicken Sie oben auf \"Browser öffnen\", um sich bei Websites anzumelden und deren Cookies für zukünftige Aufgaben zu speichern."
 }

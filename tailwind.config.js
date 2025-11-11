@@ -363,7 +363,7 @@ module.exports = {
 				},
 				menubutton: {
 					"fill-default": "var(--menubutton-fill-default)",
-					"fill-hover": "var(--menubutton-fill-active)",
+					"fill-hover": "var(--menubutton-fill-hover)",
 					"fill-active": "var(--menubutton-fill-active)",
 					"border-active": "var(--menubutton-border-active)",
 					"border-default": "var(--menubutton-border-default)",

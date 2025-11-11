@@ -38,43 +38,8 @@ interface SearchEngineConfigDialogProps {
 }
 
 function buildSearchEngines(modelType: 'cloud' | 'local' | 'custom'): SearchEngineProvider[] {
-	// Always-available engines in both versions
-	const commonEngines: SearchEngineProvider[] = [
-		{
-			id: "bing",
-			name: "Bing",
-			description: "Bing web crawling. No setup required — enabled by default.",
-			requiresApiKey: false,
-			enabledByDefault: true,
-			fields: [],
-		},
-		{
-			id: "baidu",
-			name: "Baidu",
-			description: "Baidu web crawling for Chinese-language results. Enabled by default.",
-			requiresApiKey: false,
-			enabledByDefault: true,
-			fields: [],
-		},
-		{
-			id: "wiki",
-			name: "Wiki",
-			description: "Wikipedia public API. Enabled by default.",
-			requiresApiKey: false,
-			enabledByDefault: true,
-			fields: [],
-		},
-		{
-			id: "duckduckgo",
-			name: "DuckDuckGo",
-			description: "DuckDuckGo free public API. No setup required.",
-			requiresApiKey: false,
-			enabledByDefault: true,
-			fields: [],
-		},
-	];
-
-	if (modelType === 'local') {
+	// Only Google search engine, with custom mode requiring API key configuration
+	if (modelType === 'custom') {
 		return [
 			{
 				id: "google",
@@ -95,66 +60,20 @@ function buildSearchEngines(modelType: 'cloud' | 'local' | 'custom'): SearchEngi
 					},
 				],
 			},
-			{
-				id: "exa",
-				name: "Exa Search",
-				description: "Connect to Exa Search API (requires API key).",
-				requiresApiKey: true,
-				fields: [
-					{
-						key: "EXA_API_KEY",
-						label: "Exa API Key",
-						placeholder: "Enter your Exa API key",
-						note: "Get your key → https://exa.ai",
-					},
-				],
-			},
-			{
-				id: "brave",
-				name: "Brave Search",
-				description: "Connect to Brave Search API (requires API key).",
-				requiresApiKey: true,
-				fields: [
-					{
-						key: "BRAVE_API_KEY",
-						label: "Brave API Key",
-						placeholder: "Enter your Brave Search API key",
-						note: "Get your key → https://brave.com/search/api/",
-					},
-				],
-			},
-			...commonEngines,
 		];
 	}
 
-	// cloud or custom → provide as selectable options, no config required
+	// cloud or local → Google enabled by default, no config required
 	return [
 		{
 			id: "google",
 			name: "Google",
-			description: "Google Search integration available for cloud mode.",
+			description: "Google Search integration available. No setup required — enabled by default.",
 			requiresApiKey: false,
 			enabledByDefault: true,
 			recommended: true,
 			fields: [],
 		},
-		{
-			id: "exa",
-			name: "Exa Search",
-			description: "Exa Search integration available for cloud mode.",
-			requiresApiKey: false,
-			enabledByDefault: true,
-			fields: [],
-		},
-		{
-			id: "brave",
-			name: "Brave Search",
-			description: "Brave Search integration available for cloud mode.",
-			requiresApiKey: false,
-			enabledByDefault: true,
-			fields: [],
-		},
-		...commonEngines,
 	];
 }
 

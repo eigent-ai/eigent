@@ -49,10 +49,36 @@ const preload = path.join(__dirname, '../preload/index.mjs');
 const indexHtml = path.join(RENDERER_DIST, 'index.html');
 const logPath = log.transports.file.getFile().path;
 
+// Profile initialization promise
+let profileInitPromise: Promise<void>;
+
 // Set remote debugging port
-findAvailablePort(browser_port).then(port => {
+// Storage strategy:
+// 1. Main window: partition 'persist:main_window' in app userData → Eigent account (persistent)
+// 2. WebView: partition 'persist:user_login' in app userData → will import cookies from tool_controller via session API
+// 3. tool_controller: ~/.eigent/browser_profiles/profile_user_login → source of truth for login cookies
+// 4. CDP browser: uses separate profile (doesn't share with main app)
+profileInitPromise = findAvailablePort(browser_port).then(async port => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
+
+  // Create isolated profile for CDP browser only
+  const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
+  const cdpProfile = path.join(browserProfilesBase, `cdp_profile_${port}`);
+
+  try {
+    await fsp.mkdir(cdpProfile, { recursive: true });
+    log.info(`[CDP BROWSER] Created CDP profile directory at ${cdpProfile}`);
+  } catch (error) {
+    log.error(`[CDP BROWSER] Failed to create directory: ${error}`);
+  }
+
+  // Set user-data-dir for Chrome DevTools Protocol only
+  app.commandLine.appendSwitch('user-data-dir', cdpProfile);
+
+  log.info(`[CDP BROWSER] Chrome DevTools Protocol enabled on port ${port}`);
+  log.info(`[CDP BROWSER] CDP profile directory: ${cdpProfile}`);
+  log.info(`[STORAGE] Main app userData: ${app.getPath('userData')}`);
 });
 
 // Memory optimization settings
@@ -249,6 +275,21 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  
+  // ==================== restart app handler ====================
+  ipcMain.handle('restart-app', async () => {
+    log.info('[RESTART] Restarting app to apply user profile changes');
+    
+    // Clean up Python process first
+    await cleanupPythonProcess();
+    
+    // Schedule relaunch after a short delay
+    setTimeout(() => {
+      app.relaunch();
+      app.quit();
+    }, 100);
+  });
+  
   ipcMain.handle('restart-backend', async () => {
     try {
       if (backendPort) {
@@ -756,6 +797,24 @@ function registerIpcHandlers() {
     let lines = content.split(/\r?\n/);
     lines = updateEnvBlock(lines, { [key]: value });
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
+    
+    // Also write to global .env file for backend process to read
+    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
+    let globalContent = '';
+    try {
+      globalContent = fs.existsSync(GLOBAL_ENV_PATH) ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8') : '';
+    } catch (error) {
+      log.error("global env-write read error:", error);
+    }
+    let globalLines = globalContent.split(/\r?\n/);
+    globalLines = updateEnvBlock(globalLines, { [key]: value });
+    try {
+      fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
+      log.info(`env-write: wrote ${key} to both user and global .env files`);
+    } catch (error) {
+      log.error("global env-write error:", error);
+    }
+    
     return { success: true };
   });
 
@@ -772,6 +831,19 @@ function registerIpcHandlers() {
     lines = removeEnvKey(lines, key);
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
     log.info("env-remove success", ENV_PATH);
+    
+    // Also remove from global .env file
+    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
+    try {
+      let globalContent = fs.existsSync(GLOBAL_ENV_PATH) ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8') : '';
+      let globalLines = globalContent.split(/\r?\n/);
+      globalLines = removeEnvKey(globalLines, key);
+      fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
+      log.info(`env-remove: removed ${key} from both user and global .env files`);
+    } catch (error) {
+      log.error("global env-remove error:", error);
+    }
+    
     return { success: true };
   });
 
@@ -975,6 +1047,10 @@ async function createWindow() {
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
 
+  log.info(`[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`);
+  log.info(`[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath('userData')}`);
+  log.info(`[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue('user-data-dir')}`);
+  
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -985,12 +1061,15 @@ async function createWindow() {
     transparent: true,
     vibrancy: 'sidebar',
     visualEffectState: 'active',
-    backgroundColor: '#00000000',
+    backgroundColor: '#f5f5f580',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     roundedCorners: true,
     webPreferences: {
+      // Use a dedicated partition for main window to isolate from webviews
+      // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
+      partition: 'persist:main_window',
       webSecurity: false,
       preload,
       nodeIntegration: true,
@@ -1000,14 +1079,58 @@ async function createWindow() {
     },
   });
 
+  // Main window now uses default userData directly with partition 'persist:main_window'
+  // No migration needed - data is already persistent
+
+  // ==================== Import cookies from tool_controller to WebView BEFORE creating WebViews ====================
+  // Copy partition data files before any session accesses them
+  try {
+    const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
+    const toolControllerProfile = path.join(browserProfilesBase, 'profile_user_login');
+    const toolControllerPartitionPath = path.join(toolControllerProfile, 'Partitions', 'user_login');
+
+    if (fs.existsSync(toolControllerPartitionPath)) {
+      log.info('[COOKIE SYNC] Found tool_controller partition, copying to WebView partition...');
+
+      const targetPartitionPath = path.join(app.getPath('userData'), 'Partitions', 'user_login');
+      log.info('[COOKIE SYNC] From:', toolControllerPartitionPath);
+      log.info('[COOKIE SYNC] To:', targetPartitionPath);
+
+      // Ensure target directory exists
+      if (!fs.existsSync(path.dirname(targetPartitionPath))) {
+        fs.mkdirSync(path.dirname(targetPartitionPath), { recursive: true });
+      }
+
+      // Copy the entire partition directory
+      fs.cpSync(toolControllerPartitionPath, targetPartitionPath, {
+        recursive: true,
+        force: true
+      });
+      log.info('[COOKIE SYNC] Successfully copied partition data to WebView');
+
+      // Verify cookies were copied
+      const targetCookies = path.join(targetPartitionPath, 'Cookies');
+      if (fs.existsSync(targetCookies)) {
+        const stats = fs.statSync(targetCookies);
+        log.info(`[COOKIE SYNC] Cookies file size: ${stats.size} bytes`);
+      }
+    } else {
+      log.info('[COOKIE SYNC] No tool_controller partition found, WebView will start fresh');
+    }
+  } catch (error) {
+    log.error('[COOKIE SYNC] Failed to sync partition data:', error);
+  }
+
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
   webViewManager = new WebViewManager(win);
 
-  // create initial webviews (reduced from 8 to 3)
-  for (let i = 1; i <= 3; i++) {
+  // create multiple webviews
+  log.info(`[PROJECT BROWSER] Creating WebViews with partition: persist:user_login`);
+  for (let i = 1; i <= 8; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
+  log.info('[PROJECT BROWSER] WebViewManager initialized with webviews');
 
   // ==================== set event listeners ====================
   setupWindowEventListeners();
@@ -1060,7 +1183,9 @@ async function createWindow() {
     log.info('Installation needed - clearing auth storage to force carousel state');
 
     // Clear the persisted auth storage file to force fresh initialization with carousel
-    const localStoragePath = path.join(app.getPath('userData'), 'Local Storage');
+    // Main window uses partition 'persist:main_window', so data is in Partitions/main_window
+    const partitionPath = path.join(app.getPath('userData'), 'Partitions', 'main_window');
+    const localStoragePath = path.join(partitionPath, 'Local Storage');
     const leveldbPath = path.join(localStoragePath, 'leveldb');
 
     try {
@@ -1126,8 +1251,10 @@ async function createWindow() {
         (function() {
           try {
             const authStorage = localStorage.getItem('auth-storage');
+            console.log('[ELECTRON DEBUG] Current auth-storage:', authStorage);
             if (authStorage) {
               const parsed = JSON.parse(authStorage);
+              console.log('[ELECTRON DEBUG] Parsed state:', parsed.state);
               if (parsed.state && parsed.state.initState !== 'done') {
                 console.log('[ELECTRON] Updating initState from', parsed.state.initState, 'to done');
                 // Only update the initState field, preserve all other data
@@ -1141,7 +1268,11 @@ async function createWindow() {
                 localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
                 console.log('[ELECTRON] initState updated to done, reloading page...');
                 return true; // Signal that we need to reload
+              } else {
+                console.log('[ELECTRON DEBUG] initState already done or state missing');
               }
+            } else {
+              console.log('[ELECTRON DEBUG] No auth-storage found in localStorage');
             }
             return false; // No reload needed
           } catch (e) {
@@ -1357,7 +1488,15 @@ const handleBeforeClose = () => {
 }
 
 // ==================== app event handle ====================
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Wait for profile initialization to complete
+  log.info('[MAIN] Waiting for profile initialization...');
+  try {
+    await profileInitPromise;
+    log.info('[MAIN] Profile initialization completed');
+  } catch (error) {
+    log.error('[MAIN] Profile initialization failed:', error);
+  }
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {
@@ -1441,39 +1580,42 @@ app.on('activate', () => {
 app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
-  
+
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();
-  
+
   try {
+    // NOTE: Profile sync removed - we now use app userData directly for all partitions
+    // No need to sync between different profile directories
+
     // Clean up resources
     if (webViewManager) {
       webViewManager.destroy();
       webViewManager = null;
     }
-    
+
     if (win && !win.isDestroyed()) {
       win.destroy();
       win = null;
     }
-    
+
     // Wait for Python process cleanup
     await cleanupPythonProcess();
-    
+
     // Clean up file reader if exists
     if (fileReader) {
       fileReader = null;
     }
-    
+
     // Clear any remaining timeouts/intervals
     if (global.gc) {
       global.gc();
     }
-    
+
     // Reset protocol handling state
     isWindowReady = false;
     protocolUrlQueue = [];
-    
+
     log.info('All cleanup completed, exiting...');
   } catch (error) {
     log.error('Error during cleanup:', error);
