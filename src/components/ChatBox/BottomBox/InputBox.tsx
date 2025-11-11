@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Paperclip, ArrowRight, X, Image, FileText, UploadCloud, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -108,18 +109,26 @@ export const Inputbox = ({
 	const dragCounter = useRef(0);
 	const [hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
 	const [isRemainingOpen, setIsRemainingOpen] = useState(false);
-	const remainingRef = useRef<HTMLDivElement | null>(null);
+	const hoverCloseTimerRef = useRef<number | null>(null);
+	const [isComposing, setIsComposing] = useState(false);
 
-	useEffect(() => {
-		const onDocClick = (e: MouseEvent) => {
-			if (!remainingRef.current) return;
-			if (!remainingRef.current.contains(e.target as Node)) {
-				setIsRemainingOpen(false);
-			}
-		};
-		document.addEventListener("mousedown", onDocClick);
-		return () => document.removeEventListener("mousedown", onDocClick);
-	}, []);
+	const openRemainingPopover = () => {
+		if (hoverCloseTimerRef.current) {
+			window.clearTimeout(hoverCloseTimerRef.current);
+			hoverCloseTimerRef.current = null;
+		}
+		setIsRemainingOpen(true);
+	};
+
+	const scheduleCloseRemainingPopover = () => {
+		if (hoverCloseTimerRef.current) {
+			window.clearTimeout(hoverCloseTimerRef.current);
+		}
+		hoverCloseTimerRef.current = window.setTimeout(() => {
+			setIsRemainingOpen(false);
+			hoverCloseTimerRef.current = null;
+		}, 150);
+	};
 
 	// Auto-resize textarea on value changes (hug content up to max height)
 	useEffect(() => {
@@ -148,7 +157,7 @@ export const Inputbox = ({
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && !e.shiftKey && !disabled) {
+		if (e.key === "Enter" && !e.shiftKey && !disabled && !isComposing) {
 			e.preventDefault();
 			handleSend();
 		}
@@ -251,34 +260,36 @@ export const Inputbox = ({
 			{/* Text Input Area */}
 			<div className="box-border flex gap-2.5 items-center justify-center pb-2 pt-2.5 px-0 relative w-full">
 				<div className="flex-1 box-border flex gap-2.5 items-center justify-center min-h-px min-w-px mx-2 py-0 relative">
-					<Textarea
-					  variant="none"
-						size="default"
-						ref={textareaRef}
-						value={value}
-						onChange={(e) => handleTextChange(e.target.value)}
-						onKeyDown={handleKeyDown}
-						onFocus={() => setIsFocused(true)}
-						onBlur={() => setIsFocused(false)}
-						disabled={disabled}
-						placeholder= {t("chat.ask-placeholder")}
-						className={cn(
-							"flex-1 resize-none",
-							"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
-							"px-0 py-0 min-h-[40px] max-h-[200px]",
-							"scrollbar overflow-auto",
-							isActive ? "text-input-text-focus" : "text-input-text-default"
-						)}
-						style={{
-							fontFamily: "Inter",
-						}}
-						rows={1}
-						onInput={(e) => {
-							const el = e.currentTarget;
-							el.style.height = "auto";
-							el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-						}}
-					/>
+				<Textarea
+				  variant="none"
+					size="default"
+					ref={textareaRef}
+					value={value}
+					onChange={(e) => handleTextChange(e.target.value)}
+					onKeyDown={handleKeyDown}
+					onCompositionStart={() => setIsComposing(true)}
+					onCompositionEnd={() => setIsComposing(false)}
+					onFocus={() => setIsFocused(true)}
+					onBlur={() => setIsFocused(false)}
+					disabled={disabled}
+					placeholder= {t("chat.ask-placeholder")}
+					className={cn(
+						"flex-1 resize-none",
+						"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
+						"px-0 py-0 min-h-[40px] max-h-[200px]",
+						"scrollbar overflow-auto",
+						isActive ? "text-input-text-focus" : "text-input-text-default"
+					)}
+					style={{
+						fontFamily: "Inter",
+					}}
+					rows={1}
+					onInput={(e) => {
+						const el = e.currentTarget;
+						el.style.height = "auto";
+						el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+					}}
+				/>
 				</div>
 			</div>
 
@@ -330,57 +341,64 @@ export const Inputbox = ({
 					})}
 					{/* Show remaining count if more than 5 files */}
 					{remainingCount > 0 && (
-						<div ref={remainingRef} className="relative">
-							<Button
-								size="icon"
-								variant="ghost"
-								className="bg-tag-surface box-border flex items-center relative rounded-lg h-auto"
-								onClick={(e) => {
-									e.stopPropagation();
-									setIsRemainingOpen((v) => !v);
-								}}
+						<Popover open={isRemainingOpen} onOpenChange={setIsRemainingOpen}>
+							<PopoverTrigger asChild>
+								<Button
+									size="icon"
+									variant="ghost"
+									className="bg-tag-surface box-border flex items-center relative rounded-lg h-auto"
+									onMouseEnter={openRemainingPopover}
+									onMouseLeave={scheduleCloseRemainingPopover}
+									onClick={(e) => {
+										e.stopPropagation();
+									}}
+								>
+									<p className="font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0">
+										{remainingCount}+
+									</p>
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent
+								align="end"
+								sideOffset={4}
+								className="!w-auto max-w-40 p-1 rounded-md border border-dropdown-border bg-dropdown-bg shadow-perfect"
+								onMouseEnter={openRemainingPopover}
+								onMouseLeave={scheduleCloseRemainingPopover}
 							>
-								<p className="font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0">
-									{remainingCount}+
-								</p>
-							</Button>
-							{isRemainingOpen && (
-								<div className="absolute left-0 mt-1 z-30 max-w-40 p-1 rounded-md border border-dropdown-border bg-dropdown-bg shadow-perfect">
-									<div className="max-h-64 overflow-auto gap-1 flex flex-col">
-										{files.slice(maxVisibleFiles, maxVisibleFiles + 5).map((file) => {
-											const isHovered = hoveredFilePath === file.filePath;
-											return (
-												<div
-													key={file.filePath}
-													className="flex items-center gap-1 px-1 py-0.5 bg-tag-surface rounded-md"
-													onMouseEnter={() => setHoveredFilePath(file.filePath)}
-													onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
+								<div className="max-h-[176px] overflow-auto scrollbar-hide gap-1 flex flex-col">
+									{files.slice(maxVisibleFiles).map((file) => {
+										const isHovered = hoveredFilePath === file.filePath;
+										return (
+											<div
+												key={file.filePath}
+												className="flex items-center gap-1 px-1 py-0.5 bg-tag-surface hover:bg-tag-surface-hover transition-colors duration-300 cursor-pointer rounded-lg"
+												onMouseEnter={() => setHoveredFilePath(file.filePath)}
+												onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
+											>
+												<a
+													href="#"
+													className={cn(
+														"rounded-md cursor-pointer flex items-center justify-center w-6 h-6"
+													)}
+													onClick={(e) => {
+														e.preventDefault();
+														e.stopPropagation();
+														handleRemoveFile(file.filePath);
+														setIsRemainingOpen(false);
+													}}
+													title={isHovered ? "Remove file" : file.fileName}
 												>
-										<a
-											href="#"
-											className={cn(
-												"rounded-md cursor-pointer flex items-center justify-center w-6 h-6"
-											)}
-											onClick={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												handleRemoveFile(file.filePath);
-												setIsRemainingOpen(false);
-											}}
-											title={isHovered ? "Remove file" : file.fileName}
-										>	
-											{isHovered ? <X className="text-icon-secondary size-4" /> : getFileIcon(file.fileName)}
-										</a>
-													<p className="flex-1 font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0 overflow-hidden text-ellipsis">
-														{file.fileName}
-													</p>
-												</div>
-											);
-										})}
-									</div>
+													{isHovered ? <X className="text-icon-secondary size-4" /> : getFileIcon(file.fileName)}
+												</a>
+												<p className="flex-1 font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0 overflow-hidden text-ellipsis">
+													{file.fileName}
+												</p>
+											</div>
+										);
+									})}
 								</div>
-							)}
-						</div>
+							</PopoverContent>
+						</Popover>
 					)}
 				</div>
 			)}

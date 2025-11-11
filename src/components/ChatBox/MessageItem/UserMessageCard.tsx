@@ -1,5 +1,6 @@
 import { Copy, FileText, X, Image } from "lucide-react";
 import { Button } from "../../ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "../../ui/popover";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
 
@@ -17,23 +18,31 @@ export function UserMessageCard({
 	attaches,
 }: UserMessageCardProps) {
 	const [hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
-	const [isRemainingOpen, setIsRemainingOpen] = useState(false);
-	const remainingRef = useRef<HTMLDivElement | null>(null);
-	
-	const handleCopy = () => {
+		const [isRemainingOpen, setIsRemainingOpen] = useState(false);
+		const hoverCloseTimerRef = useRef<number | null>(null);
+		
+		const handleCopy = () => {
 		navigator.clipboard.writeText(content);
 	};
 
-	useEffect(() => {
-		const onDocClick = (e: MouseEvent) => {
-			if (!remainingRef.current) return;
-			if (!remainingRef.current.contains(e.target as Node)) {
-				setIsRemainingOpen(false);
+		// Popover handles outside clicks; no manual listener needed
+		const openRemainingPopover = () => {
+			if (hoverCloseTimerRef.current) {
+				window.clearTimeout(hoverCloseTimerRef.current);
+				hoverCloseTimerRef.current = null;
 			}
+			setIsRemainingOpen(true);
 		};
-		document.addEventListener("mousedown", onDocClick);
-		return () => document.removeEventListener("mousedown", onDocClick);
-	}, []);
+
+		const scheduleCloseRemainingPopover = () => {
+			if (hoverCloseTimerRef.current) {
+				window.clearTimeout(hoverCloseTimerRef.current);
+			}
+			hoverCloseTimerRef.current = window.setTimeout(() => {
+				setIsRemainingOpen(false);
+				hoverCloseTimerRef.current = null;
+			}, 150);
+		};
 
 	const getFileIcon = (fileName: string) => {
 		const ext = fileName.split(".").pop()?.toLowerCase() || "";
@@ -46,7 +55,7 @@ export function UserMessageCard({
 	return (
 		<div
 			key={id}
-			className={`relative bg-white-80% w-full rounded-xl border px-sm py-2 ${className || ""} group overflow-hidden`}
+			className={`relative bg-white-80% w-full rounded-xl border px-sm py-2 ${className || ""} group overflow-visible`}
 		>
 			<div className="absolute bottom-[0px] right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
 				<Button onClick={handleCopy} variant="ghost" size="icon">
@@ -67,11 +76,12 @@ export function UserMessageCard({
 						return (
 							<>
 								{visibleFiles.map((file) => {
+									const isHovered = hoveredFilePath === file.filePath;
 									return (
 										<div
 											key={"attache-" + file.fileName}
 											className={cn(
-												"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto cursor-pointer hover:bg-tag-surface-hover transition-colors"
+												"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto cursor-pointer hover:bg-tag-surface-hover transition-colors duration-300"
 											)}
 											onMouseEnter={() => setHoveredFilePath(file.filePath)}
 											onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
@@ -100,49 +110,56 @@ export function UserMessageCard({
 
 								{/* Show remaining count if more than 4 files */}
 								{remainingCount > 0 && (
-									<div ref={remainingRef} className="relative">
-										<Button
-											size="icon"
-											variant="ghost"
-											className="bg-tag-surface box-border flex items-center relative rounded-lg h-auto"
-											onClick={(e) => {
-												e.stopPropagation();
-												setIsRemainingOpen((v) => !v);
-											}}
+									<Popover open={isRemainingOpen} onOpenChange={setIsRemainingOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												size="icon"
+												variant="ghost"
+												className="bg-tag-surface box-border flex items-center relative rounded-lg h-auto"
+												onMouseEnter={openRemainingPopover}
+												onMouseLeave={scheduleCloseRemainingPopover}
+												onClick={(e) => {
+													e.stopPropagation();
+												}}
+											>
+												<p className="font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0">
+													{remainingCount}+
+												</p>
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent
+											align="end"
+											sideOffset={4}
+											className="!w-auto max-w-40 p-1 rounded-md border border-dropdown-border bg-dropdown-bg shadow-perfect"
+											onMouseEnter={openRemainingPopover}
+											onMouseLeave={scheduleCloseRemainingPopover}
 										>
-											<p className="font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0">
-												{remainingCount}+
-											</p>
-										</Button>
-										{isRemainingOpen && (
-											<div className="absolute left-0 mt-1 z-30 max-w-40 p-1 rounded-md border border-dropdown-border bg-dropdown-bg shadow-perfect">
-												<div className="max-h-64 overflow-auto gap-1 flex flex-col">
-													{attaches.slice(maxVisibleFiles).map((file) => {
-														return (
-															<div
-																key={file.filePath}
-																className="flex items-center gap-1 px-1 py-0.5 bg-tag-surface rounded-md cursor-pointer hover:bg-tag-surface-hover transition-colors"
-																onMouseEnter={() => setHoveredFilePath(file.filePath)}
-																onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
-																onClick={(e) => {
-																	e.stopPropagation();
-																	window.ipcRenderer.invoke("reveal-in-folder", file.filePath);
-																	setIsRemainingOpen(false);
-																}}
-															>
-																<div className="rounded-md flex items-center justify-center w-6 h-6">
-																	{getFileIcon(file.fileName)}
-																</div>
-																<p className="flex-1 font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0 overflow-hidden text-ellipsis">
-																	{file.fileName}
-																</p>
+											<div className="max-h-[176px] overflow-auto scrollbar-hide gap-1 flex flex-col">
+												{attaches.slice(maxVisibleFiles).map((file) => {
+													const isHovered = hoveredFilePath === file.filePath;
+													return (
+														<div
+															key={file.filePath}
+															className="flex items-center gap-1 py-0.5 bg-tag-surface hover:bg-tag-surface-hover transition-colors duration-300 cursor-pointer rounded-lg"
+															onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
+															onClick={(e) => {
+																e.stopPropagation();
+																window.ipcRenderer.invoke("reveal-in-folder", file.filePath);
+																setIsRemainingOpen(false);
+															}}
+														>
+															<div className="rounded-md flex items-center justify-center w-6 h-6">
+																{getFileIcon(file.fileName)}
 															</div>
-														);
-													})}
-												</div>
+															<p className="flex-1 font-['Inter'] font-bold leading-tight text-text-body text-xs whitespace-nowrap my-0 overflow-hidden text-ellipsis">
+																{file.fileName}
+															</p>
+														</div>
+													);
+												})}
 											</div>
-										)}
-									</div>
+										</PopoverContent>
+									</Popover>
 								)}
 							</>
 						);
