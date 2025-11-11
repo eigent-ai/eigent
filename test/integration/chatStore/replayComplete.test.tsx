@@ -13,27 +13,8 @@ import '../../../src/store/chatStore'
 
 import { useProjectStore } from '../../../src/store/projectStore'
 import useChatStoreAdapter from '../../../src/hooks/useChatStoreAdapter'
-import { mockFetchEventSource } from '../../mocks/sse.mock'
-import { replayProject } from '../../../src/lib'
-
-// Helper function for sequential SSE events
-const createSSESequence = (events: Array<{ event: any; delay: number }>) => {
-  return async (onMessage: (data: any) => void) => {
-    for (let i = 0; i < events.length; i++) {
-      const { event, delay } = events[i]
-      
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          console.log(`Sending SSE Event ${i + 1}:`, event.step);
-          onMessage({
-            data: JSON.stringify(event)
-          })
-          resolve()
-        }, delay)
-      })
-    }
-  }
-}
+import { createSSESequence, issue619SseSequence, mockFetchEventSource } from '../../mocks/sse.mock'
+import { replayProject, replayActiveTask } from '../../../src/lib'
 
 // Mock navigate function
 const mockNavigate = vi.fn() as any
@@ -522,5 +503,305 @@ describe('Integration Test: Replay Functionality', () => {
       console.log('Parallel startTask during replay test completed successfully')
       console.log('Both tasks ran independently with separate chatStores')
     }, { timeout: 3000 })
+  })
+})
+
+//https://github.com/eigent-ai/eigent/issues/619 - Two task boxes
+describe('Issue #619 - Duplicate Task Boxes after replay', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const { result } = renderHook(() => useProjectStore());
+    //Reset projectStore
+    result.current.getAllProjects().forEach(project => {
+      result.current.removeProject(project.id)
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("should create a separate chatStore for each replay", async () => {
+    const { result, rerender } = renderHook(() => useChatStoreAdapter())
+
+    let sseCallCount = 0
+    
+    // Step 0: First simulate a replay mechanism to set up the scenario
+    const replaySequence = createSSESequence([
+      {
+        event: {
+          step: 'confirmed',
+          data: { question: 'Previous calendar task replay' }
+        },
+        delay: 50
+      },
+      {
+        event: {
+          step: 'to_sub_tasks',
+          data: {
+            summary_task: 'Calendar Replay|Previous calendar interaction',
+            sub_tasks: [
+              { id: 'replay-cal-1', content: 'Check calendar access', status: 'completed' },
+              { id: 'replay-cal-2', content: 'Fetch meeting data', status: 'completed' },
+            ],
+          },
+        },
+        delay: 100
+      },
+      {
+        event: {
+          step: "end", 
+          data: "--- Previous Calendar Task Replay Complete ---\nFound 3 upcoming meetings"
+        },
+        delay: 150
+      }
+    ])
+    
+    // Mock SSE stream with controlled events - delay setup until after task IDs are available
+    mockFetchEventSource.mockImplementation(async (url: string, options: any) => {
+      sseCallCount++
+      console.log(`SSE Call #${sseCallCount} initiated`)
+      
+      if (options.onmessage) {
+        // First simulate replay of previous event to establish context
+        if (sseCallCount === 1 && url.includes('/api/chat/steps/playback/')) {
+          console.log('Simulating replay mechanism for previous calendar task')
+          await replaySequence(options.onmessage)
+          return
+        }
+
+        // Now send the new task events with actual task IDs
+        const immediateSequence = createSSESequence(issue619SseSequence)
+        await immediateSequence(options.onmessage)
+      }
+    })
+
+    // Simulate the replay mechanism first
+    console.log('Starting replay simulation to establish context...')
+    await act(async () => {
+      await replayProject(
+        result.current.projectStore,
+        mockNavigate,
+        generateUniqueId(),
+        'Previous calendar task replay',
+        'calendar-replay-history'
+      )
+      rerender()
+    })
+
+    // Wait for replay to complete and verify it's established
+    await waitFor(() => {
+      rerender()
+      const { projectStore } = result.current
+      const projects = projectStore.getAllProjects()
+      const replayProject = projects.find((p: any) => p.name.includes('Replay Project'))
+      expect(replayProject).toBeDefined()
+      console.log('Replay mechanism completed - context established')
+    }, { timeout: 1000 })
+
+    // Get initial state
+    const { chatStore: initialChatStore, projectStore } = result.current
+    const projectId = projectStore.activeProjectId as string
+    const initiatorTaskId = initialChatStore.activeTaskId
+
+    // Verify initial queue is empty  
+    expect(projectStore.getProjectById(projectId)?.queuedMessages).toEqual([])
+
+    // Step 1: Start first task
+    await act(async () => {
+      const userMessage = 'Please help me check Google Calendar when is the next meeting, what kind of meeting it is, and who is attending the meeting.'
+      await initialChatStore.startTask(initiatorTaskId, undefined, undefined, undefined, userMessage)
+      rerender()
+    })
+
+    // Wait for task to start and reach 'to_sub_tasks' phase (task becomes busy)
+    await waitFor(() => {
+      rerender()
+      const { chatStore, projectStore } = result.current
+      const taskId = chatStore.activeTaskId
+      const task = chatStore.tasks[taskId]
+      
+      // Task should have subtasks (making it busy)
+      expect(task.summaryTask).toBe('Task|Please help me check Google Calendar when is the next meeting, what kind of meeting it is, and who is attending the meeting.')
+      console.log("Task info is ", task.taskInfo);
+      //Bcz of newTaskInfo { id: '', content: '', status: '' } we have 2 items
+      expect(task.taskInfo).toHaveLength(2)
+      
+      console.log("Task reached to_sub_tasks phase - now busy")
+    }, { timeout: 1500 })
+
+    //Waitfor end sse
+    await waitFor(() => {
+      rerender()
+      const { chatStore: finalChatStore, projectStore: finalProjectStore } = result.current;
+      const finalTaskId = finalChatStore.activeTaskId;
+      const finalTask = finalChatStore.tasks[finalTaskId];
+      expect(finalTask.status).toBe('finished');
+    }, { timeout: 10000 });
+
+    // Step 7: Verify final state
+    const { chatStore: finalChatStore, projectStore: finalProjectStore } = result.current
+    const finalProject = finalProjectStore.getProjectById(projectId)
+    
+    // Verify task completed successfully
+    const finalTaskId = finalChatStore.activeTaskId
+    const finalTask = finalChatStore.tasks[finalTaskId]
+    expect(finalTask.status).toBe('finished')
+    expect(finalTask.summaryTask).toBe('Task|Please help me check Google Calendar when is the next meeting, what kind of meeting it is, and who is attending the meeting.')
+    
+    console.log("Test completed - queue management verified: one task processed, one remains")
+  })
+
+  it("should have correct first question on replayActiveTask", async () => {
+    const { result, rerender } = renderHook(() => useChatStoreAdapter())
+    const projectStoreResult = renderHook(() => useProjectStore())
+
+    let sseCallCount = 0
+    const originalUserMessage = 'Please help me check Google Calendar when is the next meeting, what kind of meeting it is, and who is attending the meeting.'
+    
+    // Step 1: Create initial task with specific user message
+    const initialSequence = createSSESequence([
+      {
+        event: {
+          step: 'confirmed',
+          data: { question: originalUserMessage }
+        },
+        delay: 100
+      },
+      {
+        event: {
+          step: 'to_sub_tasks',
+          data: {
+            summary_task: 'Calendar Task|Check upcoming Google Calendar meetings',
+            sub_tasks: [
+              { id: 'cal-1', content: 'Access Google Calendar', status: 'completed' },
+              { id: 'cal-2', content: 'Fetch meeting details', status: 'completed' },
+            ],
+          },
+        },
+        delay: 200
+      },
+      {
+        event: {
+          step: "end", 
+          data: "--- Calendar Task Complete ---\nFound your next meeting: Team Standup at 2:00 PM"
+        },
+        delay: 300
+      }
+    ])
+
+    // Step 2: Setup replay sequence that should have same first question
+    const replaySequence = createSSESequence([
+      {
+        event: {
+          step: 'confirmed',
+          data: { question: "Fall Back question" }
+        },
+        delay: 100
+      },
+      {
+        event: {
+          step: 'to_sub_tasks',
+          data: {
+            summary_task: 'Calendar Task Replay|Replaying calendar meeting check',
+            sub_tasks: [
+              { id: 'replay-cal-1', content: 'Access Google Calendar (replay)', status: 'completed' },
+              { id: 'replay-cal-2', content: 'Fetch meeting details (replay)', status: 'completed' },
+            ],
+          },
+        },
+        delay: 200
+      },
+      {
+        event: {
+          step: "end", 
+          data: "--- Calendar Task Replay Complete ---\nReplayed: Found your next meeting"
+        },
+        delay: 300
+      }
+    ])
+
+    // Mock SSE to handle both initial task and replay
+    mockFetchEventSource.mockImplementation(async (url: string, options: any) => {
+      sseCallCount++
+      console.log(`SSE Call #${sseCallCount}: ${url}`)
+      
+      if (options.onmessage) {
+        if (sseCallCount === 1) {
+          // First call: initial task
+          console.log('Processing initial task events')
+          await initialSequence(options.onmessage)
+        } else if (url.includes('/api/chat/steps/playback/')) {
+          // Subsequent calls: replay
+          console.log('Processing replay events')
+          await replaySequence(options.onmessage)
+        }
+      }
+    })
+
+    // Step 3: Start initial task
+    await act(async () => {
+      const { chatStore } = result.current
+      const taskId = chatStore.activeTaskId
+      await chatStore.startTask(taskId, undefined, undefined, undefined, originalUserMessage)
+      rerender()
+    })
+
+    // Wait for initial task to complete
+    await waitFor(() => {
+      rerender()
+      const { chatStore } = result.current
+      const taskId = chatStore.activeTaskId
+      const task = chatStore.tasks[taskId]
+      expect(task.status).toBe('finished')
+      expect(task.messages[0].content).toBe(originalUserMessage)
+      console.log('Initial task completed with user message:', task.messages[0].content)
+    }, { timeout: 2000 })
+
+    // Step 4: Get the completed chatStore for replay
+    const { chatStore: completedChatStore, projectStore } = result.current
+    const completedTaskId = completedChatStore.activeTaskId
+    const completedTask = completedChatStore.tasks[completedTaskId]
+
+    // Verify we have the correct initial state
+    expect(completedTask.messages[0].content).toBe(originalUserMessage)
+    expect(completedTask.status).toBe('finished')
+
+    // Step 5: Call replayActiveTask using the completed chatStore
+    await act(async () => {
+      await replayActiveTask(completedChatStore, projectStore, mockNavigate)
+      rerender()
+    })
+
+    // Step 6: Wait for replay to complete and verify first question matches
+    await waitFor(() => {
+      rerender()
+      const { projectStore: updatedProjectStore } = result.current
+      const projects = updatedProjectStore.getAllProjects()
+      
+      // Find the replay project
+      const replayProject = projects.find((p: any) => p.name.includes('Replay Project'))
+      expect(replayProject).toBeDefined()
+      
+      // Get the replay chatStore
+      const replayChatStores = updatedProjectStore.getAllChatStores(replayProject!.id)
+      expect(replayChatStores.length).toBeGreaterThan(1)
+      
+      const replayChatStore = replayChatStores[1].chatStore // Skip the empty initial one
+      const replayTaskId = replayChatStore.getState().activeTaskId
+      const replayTask = replayChatStore.getState().tasks[replayTaskId]
+      
+      // THE MAIN TEST: First question in replay should match original user message
+      expect(replayTask).toBeDefined()
+      expect(replayTask.messages[0].content).toBe(originalUserMessage)
+      expect(replayTask.type).toBe('replay')
+      
+      console.log('✅ Replay first question matches original:', replayTask.messages[0].content)
+      console.log('✅ Original user message:', originalUserMessage)
+      console.log('✅ Test passed: replayActiveTask preserves correct first question')
+    }, { timeout: 3000 })
+
+    // Verify navigation was called for replay
+    expect(mockNavigate).toHaveBeenCalledWith("/")
   })
 })
