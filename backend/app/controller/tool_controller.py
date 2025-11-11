@@ -803,21 +803,10 @@ app.on('window-all-closed', () => {
             # macOS: Check if we're inside .app bundle
             if ".app/Contents/Resources" in __file__:
                 is_packaged = True
-                # In packaged app, get the Electron binary from Frameworks
+                # In packaged app, use the main app executable
                 app_path = __file__.split(".app/Contents/Resources")[0] + ".app"
-                # Use the Electron Framework's binary
-                electron_executable = os.path.join(
-                    app_path,
-                    "Contents",
-                    "Frameworks",
-                    "Electron Framework.framework",
-                    "Versions",
-                    "A",
-                    "Electron Framework"
-                )
-                # Fallback to main app executable
-                if not os.path.exists(electron_executable):
-                    electron_executable = os.path.join(app_path, "Contents", "MacOS", "Eigent")
+                # Use the main app executable (not the framework library)
+                electron_executable = os.path.join(app_path, "Contents", "MacOS", "Eigent")
                 app_dir = os.path.dirname(app_path)
         elif platform.system() == "Windows":
             # Windows: Check if we're in a packaged directory
@@ -873,11 +862,27 @@ app.on('window-all-closed', () => {
             logger.info("[PROFILE USER LOGIN] Running in PACKAGED mode")
             logger.info(f"[PROFILE USER LOGIN] Detected electron_executable: {electron_executable}")
 
-            # First try to use system electron if available
-            electron_path = shutil.which("electron")
-            logger.info(f"[PROFILE USER LOGIN] System electron path: {electron_path}")
+            # IMPORTANT: In packaged mode, prefer npx/system electron over packaged binary
+            # to avoid single-instance lock conflicts with the main app
 
-            if electron_path:
+            # First try npx electron (will use cached version if available)
+            npx_path = shutil.which("npx")
+            logger.info(f"[PROFILE USER LOGIN] npx path: {npx_path}")
+
+            if npx_path:
+                logger.info(f"[PROFILE USER LOGIN] Using npx electron (preferred in packaged mode)")
+                electron_args = [
+                    "npx",
+                    "-y",  # Auto-install if needed
+                    "electron",
+                    electron_script_path,
+                    user_data_dir,
+                    str(cdp_port),
+                    "https://www.google.com"
+                ]
+            # Second, try system electron if available
+            elif shutil.which("electron"):
+                electron_path = shutil.which("electron")
                 logger.info(f"[PROFILE USER LOGIN] Using system electron: {electron_path}")
                 electron_args = [
                     electron_path,
@@ -886,9 +891,10 @@ app.on('window-all-closed', () => {
                     str(cdp_port),
                     "https://www.google.com"
                 ]
+            # Last resort: use packaged electron binary (may have single-instance issues)
             elif electron_executable and os.path.exists(electron_executable):
-                # Use packaged electron binary
-                logger.info(f"[PROFILE USER LOGIN] Using packaged electron: {electron_executable}")
+                logger.warning(f"[PROFILE USER LOGIN] Using packaged electron as last resort: {electron_executable}")
+                logger.warning("[PROFILE USER LOGIN] This may fail due to single-instance lock. Consider installing Node.js.")
                 electron_args = [
                     electron_executable,
                     electron_script_path,
@@ -897,28 +903,12 @@ app.on('window-all-closed', () => {
                     "https://www.google.com"
                 ]
             else:
-                # Last resort: try npx in case Node.js is installed
-                npx_path = shutil.which("npx")
-                logger.info(f"[PROFILE USER LOGIN] Fallback npx path: {npx_path}")
-
-                if npx_path:
-                    logger.info(f"[PROFILE USER LOGIN] Falling back to npx electron")
-                    electron_args = [
-                        "npx",
-                        "-y",  # Auto-install if needed
-                        "electron",
-                        electron_script_path,
-                        user_data_dir,
-                        str(cdp_port),
-                        "https://www.google.com"
-                    ]
-                else:
-                    error_msg = (
-                        "Cannot find Electron executable in packaged app. "
-                        "Please install Electron globally: npm install -g electron"
-                    )
-                    logger.error(f"[PROFILE USER LOGIN] {error_msg}")
-                    raise Exception(error_msg)
+                error_msg = (
+                    "Cannot find Electron executable. "
+                    "Please install Node.js from https://nodejs.org to enable browser login feature."
+                )
+                logger.error(f"[PROFILE USER LOGIN] {error_msg}")
+                raise Exception(error_msg)
 
         logger.info(f"[PROFILE USER LOGIN] Launching Electron browser with CDP on port {cdp_port}")
         logger.info(f"[PROFILE USER LOGIN] Is packaged: {is_packaged}")
