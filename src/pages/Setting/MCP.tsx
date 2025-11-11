@@ -24,6 +24,17 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfigFile } from "electron/main/utils/mcpConfig";
 
+export const GMAIL_CONFIG = {
+	"Google Gmail": {
+			"env_vars": [
+					"GOOGLE_CLIENT_ID",
+					"GOOGLE_CLIENT_SECRET",
+					"GOOGLE_REFRESH_TOKEN"
+			],
+			"toolkit": "google_gmail_mcp_toolkit"
+	}
+}
+
 export default function SettingMCP() {
 	const navigate = useNavigate();
 	const { checkAgentTool } = useAuthStore();
@@ -109,6 +120,11 @@ export default function SettingMCP() {
 	useEffect(() => {
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object") {
+				if (typeof res === "object" && res !== null) {
+					Object.assign(res, GMAIL_CONFIG);
+					console.log("Modified config info with Gmail:", res);
+				}
+
 				const baseURL = getProxyBaseURL();
                 const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
