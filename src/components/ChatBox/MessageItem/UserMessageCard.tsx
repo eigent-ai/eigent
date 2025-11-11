@@ -81,8 +81,7 @@ export function UserMessageCard({
 										<div
 											key={"attache-" + file.fileName}
 											className={cn(
-												"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto",
-												isHovered && "bg-tag-surface-hover"
+												"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto cursor-pointer hover:bg-tag-surface-hover transition-colors duration-300"
 											)}
 											onMouseEnter={() => setHoveredFilePath(file.filePath)}
 											onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
@@ -92,7 +91,7 @@ export function UserMessageCard({
 											}}
 										>
 											{/* File icon */}
-											<div className="rounded-md cursor-pointer flex items-center justify-center w-6 h-6">
+											<div className="rounded-md flex items-center justify-center w-6 h-6">
 												{getFileIcon(file.fileName)}
 											</div>
 
@@ -108,7 +107,7 @@ export function UserMessageCard({
 										</div>
 									);
 								})}
-								
+
 								{/* Show remaining count if more than 4 files */}
 								{remainingCount > 0 && (
 									<Popover open={isRemainingOpen} onOpenChange={setIsRemainingOpen}>

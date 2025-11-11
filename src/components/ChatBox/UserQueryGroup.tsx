@@ -279,7 +279,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             } else if (message.content === "skip") {
               return (
                 <motion.div
-                  key={`end-${message.id}`}
+                  key={`skip-${message.id}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
@@ -296,7 +296,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             } else {
               return (
                 <motion.div
-                  key={`end-${message.id}`}
+                  key={`message-${message.id}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}

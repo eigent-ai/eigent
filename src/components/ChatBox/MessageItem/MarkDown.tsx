@@ -23,6 +23,9 @@ export const MarkDown = memo(
 		useEffect(() => {
 			if (!enableTypewriter) {
 				setDisplayedContent(content);
+				if (onTyping) {
+					onTyping();
+				}
 				return;
 			}
 
@@ -33,9 +36,6 @@ export const MarkDown = memo(
 				if (index < content.length) {
 					setDisplayedContent(content.slice(0, index + 1));
 					index++;
-					if (onTyping) {
-						onTyping();
-					}
 				} else {
 					clearInterval(timer);
 					// when typewriter effect is completed, call callback
