@@ -1180,57 +1180,57 @@ async function createWindow() {
 
   // Handle localStorage based on installation state
   if (needsInstallation) {
-    log.info('Installation needed - clearing auth storage to force carousel state');
+    log.info('Installation needed - resetting initState to carousel while preserving auth data');
 
-    // Clear the persisted auth storage file to force fresh initialization with carousel
-    // Main window uses partition 'persist:main_window', so data is in Partitions/main_window
-    const partitionPath = path.join(app.getPath('userData'), 'Partitions', 'main_window');
-    const localStoragePath = path.join(partitionPath, 'Local Storage');
-    const leveldbPath = path.join(localStoragePath, 'leveldb');
-
-    try {
-      // Delete the localStorage database to force fresh init
-      if (fs.existsSync(leveldbPath)) {
-        log.info('Removing localStorage database to force fresh state...');
-        fs.rmSync(leveldbPath, { recursive: true, force: true });
-        log.info('Successfully cleared localStorage');
-      }
-    } catch (error) {
-      log.error('Error clearing localStorage:', error);
-    }
-
+    // Instead of deleting the entire localStorage, we'll update only the initState
+    // This preserves login information while resetting the initialization flow
     // Set up the injection for when page loads
     win.webContents.once('dom-ready', () => {
       if (!win || win.isDestroyed()) {
         log.warn('Window destroyed before DOM ready - skipping localStorage injection');
         return;
       }
-      log.info('DOM ready - creating auth-storage with carousel state');
+      log.info('DOM ready - updating initState to carousel while preserving auth data');
       win.webContents.executeJavaScript(`
         (function() {
           try {
-            // Create fresh auth storage with carousel state
-            const newAuthStorage = {
-              state: {
-                token: null,
-                username: null,
-                email: null,
-                user_id: null,
-                appearance: 'light',
-                language: 'system',
-                isFirstLaunch: true,
-                modelType: 'cloud',
-                cloud_model_type: 'gpt-4.1',
-                initState: 'carousel',
-                share_token: null,
-                workerListData: {}
-              },
-              version: 0
-            };
-            localStorage.setItem('auth-storage', JSON.stringify(newAuthStorage));
-            console.log('[ELECTRON PRE-INJECT] Created fresh auth-storage with carousel state');
+            const authStorage = localStorage.getItem('auth-storage');
+            if (authStorage) {
+              // Preserve existing auth data, only update initState
+              const parsed = JSON.parse(authStorage);
+              const updatedStorage = {
+                ...parsed,
+                state: {
+                  ...parsed.state,
+                  initState: 'carousel'
+                }
+              };
+              localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
+              console.log('[ELECTRON PRE-INJECT] Updated initState to carousel, preserved auth data');
+            } else {
+              // No existing storage, create new one with carousel state
+              const newAuthStorage = {
+                state: {
+                  token: null,
+                  username: null,
+                  email: null,
+                  user_id: null,
+                  appearance: 'light',
+                  language: 'system',
+                  isFirstLaunch: true,
+                  modelType: 'cloud',
+                  cloud_model_type: 'gpt-4.1',
+                  initState: 'carousel',
+                  share_token: null,
+                  workerListData: {}
+                },
+                version: 0
+              };
+              localStorage.setItem('auth-storage', JSON.stringify(newAuthStorage));
+              console.log('[ELECTRON PRE-INJECT] Created fresh auth-storage with carousel state');
+            }
           } catch (e) {
-            console.error('[ELECTRON PRE-INJECT] Failed to create storage:', e);
+            console.error('[ELECTRON PRE-INJECT] Failed to update storage:', e);
           }
         })();
       `).catch(err => {
