@@ -48,6 +48,7 @@ import GroupedHistoryView from "@/components/GroupedHistoryView";
 export default function Project() {
 	const {t} = useTranslation()
 	const navigate = useNavigate();
+  const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
@@ -138,9 +139,10 @@ export default function Project() {
 		navigate(`/`);
 	};
 
-	const handleDelete = (id: string) => {
+	const handleDelete = (id: string, callback?: () => void) => {
 		setCurHistoryId(id);
 		setDeleteModalOpen(true);
+    if(callback) setDeleteCallback(callback);
 	};
 
 	const confirmDelete = async () => {
@@ -157,6 +159,7 @@ export default function Project() {
 		} finally {
 			setCurHistoryId("");
 			setDeleteModalOpen(false);
+      deleteCallback();
 		}
 	};
 

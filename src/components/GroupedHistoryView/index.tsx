@@ -5,11 +5,12 @@ import { fetchGroupedHistoryTasks } from "@/service/historyApi";
 import ProjectGroup from "./ProjectGroup";
 import { useTranslation } from "react-i18next";
 import { Loader2, FolderOpen } from "lucide-react";
+import { update } from "electron/main/update";
 
 interface GroupedHistoryViewProps {
   searchValue?: string;
   onTaskSelect: (projectId: string, question: string, historyId: string) => void;
-  onTaskDelete: (taskId: string) => void;
+  onTaskDelete: (historyId: string, callback: () => void) => void;
   onTaskShare: (taskId: string) => void;
   activeTaskId?: string;
   refreshTrigger?: number; // For triggering refresh from parent
@@ -37,6 +38,21 @@ export default function GroupedHistoryView({
       setLoading(false);
     }
   };
+
+  const onDelete = (historyId: string ) => {
+    try {
+      onTaskDelete(historyId, () => {
+        setProjects(prevProjects => {
+          return prevProjects.map(project => {
+            project.tasks = project.tasks.filter(task => String(task.id) !== historyId);
+            return project;
+          }).filter(project => project.tasks.length > 0);
+        });
+      });
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+    }
+  }
 
   useEffect(() => {
     loadProjects();
@@ -100,7 +116,7 @@ export default function GroupedHistoryView({
             <ProjectGroup
               project={project}
               onTaskSelect={onTaskSelect}
-              onTaskDelete={onTaskDelete}
+              onTaskDelete={onDelete}
               onTaskShare={onTaskShare}
               activeTaskId={activeTaskId}
               searchValue={searchValue}
