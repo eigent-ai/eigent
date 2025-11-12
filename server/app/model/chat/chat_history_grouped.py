@@ -30,9 +30,9 @@ class ProjectGroup(BaseModel):
 class GroupedHistoryResponse(BaseModel):
     """Response model for grouped history data"""
     projects: List[ProjectGroup]
-    total_projects: int
-    total_tasks: int
-    total_tokens: int
+    total_projects: int = 0
+    total_tasks: int = 0
+    total_tokens: int = 0
 
     @model_validator(mode="after")
     def calculate_totals(self):

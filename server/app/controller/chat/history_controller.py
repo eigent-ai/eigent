@@ -117,11 +117,11 @@ def list_grouped_chat_history(
         # Update project statistics
         project_data['task_count'] += 1
         project_data['total_tokens'] += history.tokens or 0
-        
-        # Count completed and failed tasks (assuming status 2 = completed, others = failed/ongoing)
-        if history.status == 2:  # ChatStatus.done
+
+        # Count completed and failed tasks (assuming status 1 = completed, others = failed/ongoing)
+        if history.status == 1:  # ChatStatus.done
             project_data['total_completed_tasks'] += 1
-        elif history.status != 1:  # Not ongoing, assume failed
+        else:  # Not ongoing, assume failed
             project_data['total_failed_tasks'] += 1
         
         # Update latest task date
