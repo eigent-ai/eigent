@@ -1282,9 +1282,9 @@ async function createWindow() {
           }
         })();
       `).then(needsReload => {
-        if (needsReload) {
+        if (needsReload && win && !win.isDestroyed()) {
           log.info('Reloading window after localStorage update');
-          win!.reload();
+          win.reload();
         }
       }).catch(err => {
         log.error('Failed to inject script:', err);
