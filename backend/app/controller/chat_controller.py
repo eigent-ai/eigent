@@ -22,6 +22,7 @@ from app.service.task import (
     ActionSkipTaskData,
     get_or_create_task_lock,
     get_task_lock,
+    set_current_task_id,
 )
 from app.component.environment import set_user_env_path
 from app.utils.workforce import Workforce
@@ -111,8 +112,11 @@ async def post(data: Chat, request: Request):
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
 
+    # Set the initial current_task_id in task_lock
+    set_current_task_id(data.project_id, data.task_id)
+
     # Put initial action in queue to start processing
-    await task_lock.put_queue(ActionImproveData(data=data.question))
+    await task_lock.put_queue(ActionImproveData(data=data.question, new_task_id=data.task_id))
 
     chat_logger.info(
         "Chat session initialized, starting streaming response",
@@ -145,7 +149,8 @@ def improve(id: str, data: SupplementChat):
         if hasattr(task_lock, "last_task_result"):
             chat_logger.info(f"[CONTEXT] Preserved task result: {len(task_lock.last_task_result)} chars")
 
-    # Update file save path if task_id is provided
+    # If task_id is provided, optimistically update file_save_path (will be destroyed if task is not complex)
+    # this is because a NEW workforce instance may be created for this task
     new_folder_path = None
     if data.task_id:
         try:
@@ -177,7 +182,7 @@ def improve(id: str, data: SupplementChat):
         except Exception as e:
             chat_logger.error(f"Error updating file path for project_id: {id}, task_id: {data.task_id}: {e}")
 
-    asyncio.run(task_lock.put_queue(ActionImproveData(data=data.question)))
+    asyncio.run(task_lock.put_queue(ActionImproveData(data=data.question, new_task_id=data.task_id)))
     chat_logger.info("Improvement request queued with preserved context", extra={"project_id": id})
     return Response(status_code=201)
 

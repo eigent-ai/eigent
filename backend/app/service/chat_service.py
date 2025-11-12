@@ -16,6 +16,7 @@ from app.service.task import (
     ActionNewAgent,
     TaskLock,
     delete_task_lock,
+    set_current_task_id,
 )
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
@@ -358,8 +359,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         except Exception as e:
                             logger.error(f"Error cleaning up folder: {e}")
                 else:
-                    yield sse_json("confirmed", {"question": question})
+                    # Update the sync_step with new task_id
+                    if hasattr(item, 'new_task_id') and item.new_task_id:
+                        set_current_task_id(options.project_id, item.new_task_id)
 
+                    yield sse_json("confirmed", {"question": question})
+                    
                     context_for_coordinator = build_context_for_workforce(task_lock, options)
 
                     (workforce, mcp) = await construct_workforce(options)
@@ -537,6 +542,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # Now trigger end of previous task using stored result
                 yield sse_json("end", old_task_result)
+                
+                # Update the sync_step with new task_id before sending new task sse events
+                set_current_task_id(options.project_id, task_id)
+                
                 # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
                 # Trigger Queue Removal
