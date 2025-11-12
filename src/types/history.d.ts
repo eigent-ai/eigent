@@ -27,6 +27,7 @@ export interface ProjectGroup {
   total_tokens: number;
   task_count: number;
   latest_task_date: string;
+  last_prompt: string;
   tasks: HistoryTask[];
   // Additional project-level metadata
   total_completed_tasks: number;
