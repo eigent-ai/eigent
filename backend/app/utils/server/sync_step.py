@@ -35,6 +35,7 @@ def sync_step(func):
                             "task_id": chat.project_id,
                             "step": json_data["step"],
                             "data": json_data["data"],
+                            "timestamp": time.time_ns() / 1_000_000_000,
                         },
                     )
                 )
