@@ -11,6 +11,7 @@ class ProjectGroup(BaseModel):
     total_tokens: int = 0
     task_count: int = 0
     latest_task_date: str
+    last_prompt: Optional[str] = None
     tasks: List[ChatHistoryOut] = []
     # Additional project-level metadata
     total_completed_tasks: int = 0

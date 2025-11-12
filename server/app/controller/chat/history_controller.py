@@ -90,6 +90,7 @@ def list_grouped_chat_history(
         'total_tokens': 0,
         'task_count': 0,
         'latest_task_date': '',
+        'last_prompt': None,
         'tasks': [],
         'total_completed_tasks': 0,
         'total_failed_tasks': 0,
@@ -106,6 +107,7 @@ def list_grouped_chat_history(
             project_data['project_id'] = project_id
             project_data['project_name'] = history.project_name or f"Project {project_id}"
             project_data['latest_task_date'] = history.created_at.isoformat() if history.created_at else ''
+            project_data['last_prompt'] = history.question  # Set the most recent question
         
         # Convert to ChatHistoryOut format
         history_out = ChatHistoryOut(**history.model_dump())
@@ -124,11 +126,12 @@ def list_grouped_chat_history(
         else:  # Not ongoing, assume failed
             project_data['total_failed_tasks'] += 1
         
-        # Update latest task date
+        # Update latest task date and last prompt
         if history.created_at:
             task_date = history.created_at.isoformat()
             if not project_data['latest_task_date'] or task_date > project_data['latest_task_date']:
                 project_data['latest_task_date'] = task_date
+                project_data['last_prompt'] = history.question
     
     # Convert to ProjectGroup objects and sort
     projects = []
