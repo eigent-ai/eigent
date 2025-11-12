@@ -77,10 +77,12 @@ export const fetchHistoryTasks = async (setTasks: React.Dispatch<React.SetStateA
 export const fetchGroupedHistoryTasks = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
   try {
     const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=true`);
-    setProjects(res.projects);
+    if(res.status !== 200) {
+      fetchGroupedHistoryTasksLegacy(setProjects);
+    } else setProjects(res.projects);
   } catch (error) {
-    console.error("Failed to fetch grouped history tasks, using fallback:", error);
-    fetchGroupedHistoryTasksLegacy(setProjects);
+    console.error("Failed to fetch grouped history summaries:", error);
+    setProjects([]);
   }
 };
 
@@ -88,10 +90,12 @@ export const fetchGroupedHistoryTasks = async (setProjects: React.Dispatch<React
 export const fetchGroupedHistorySummaries = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
   try {
     const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=false`);
-    setProjects(res.projects);
+    if(res.status !== 200) {
+      fetchGroupedHistoryTasksLegacy(setProjects);
+    } else setProjects(res.projects);
   } catch (error) {
-    console.error("Failed to fetch grouped history summaries, using fallback:", error);
-    fetchGroupedHistoryTasksLegacy(setProjects);
+    console.error("Failed to fetch grouped history summaries:", error);
+    setProjects([]);
   }
 };
 
