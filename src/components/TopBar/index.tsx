@@ -12,12 +12,19 @@ import {
 	Power,
 	ChevronDown,
 	ChevronLeft,
-	House,
+	LayoutGrid,
 	Share,
+	MoreHorizontal,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
@@ -140,14 +147,19 @@ function HeaderWin() {
 
 	const handleEndProject = async () => {
 		const taskId = chatStore.activeTaskId;
+		const currentProjectId = projectStore.activeProjectId;
+		
 		if (!taskId) {
 			toast.error(t("layout.no-active-project-to-end"));
 			return;
 		}
 
+		const projectId = projectStore.activeProjectId;
+		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
+
 		try {
 			const task = chatStore.tasks[taskId];
-			
+
 			// Stop the task if it's running
 			if (task && task.status === 'running') {
 				await fetchPut(`/task/${taskId}/take-control`, {
@@ -162,22 +174,26 @@ function HeaderWin() {
 				console.log("Task may not exist on backend:", error);
 			}
 
-			// Delete from history
-			try {
-				await proxyFetchDelete(`/api/chat/history/${taskId}`);
-			} catch (error) {
-				console.log("Task may not exist in history:", error);
+			// Delete from history using historyId
+			if (historyId) {
+				try {
+					await proxyFetchDelete(`/api/chat/history/${historyId}`);
+				} catch (error) {
+					console.log("History may not exist:", error);
+				}
+			} else {
+				console.warn("No historyId found for project, skipping history deletion");
 			}
 
 			// Remove from local store
 			chatStore.removeTask(taskId);
 
-			// Create a new project
-			const newTaskId = chatStore.create();
-			chatStore.setActiveTaskId(newTaskId);
+			// Create a completely new project instead of just a new task
+			// This ensures we start fresh without any residual state
+			projectStore.createProject("new project");
 
-			// Navigate to home
-			navigate("/");
+			// Navigate to home with replace to force refresh
+			navigate("/", { replace: true });
 
 			toast.success(t("layout.project-ended-successfully"), {
 				closeButton: true,
@@ -233,7 +249,6 @@ function HeaderWin() {
 								onClick={() => navigate("/")}
 							>
 								<ChevronLeft className="w-4 h-4" />
-								{t("layout.back")}
 							</Button>
 						</div>
 					)}
@@ -246,7 +261,7 @@ function HeaderWin() {
 								 className="no-drag"
 								 onClick={() => navigate("/history")}
 									>
-									<House className="w-4 h-4" />
+									<LayoutGrid className="w-4 h-4" />
 							</Button>
 						</TooltipSimple>
 						<Button
@@ -297,60 +312,6 @@ function HeaderWin() {
 							platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
-						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
-							<>
-								<TooltipSimple content={t("layout.report-bug")} side="bottom" align="center">
-									<Button
-										onClick={exportLog}
-										variant="ghost"
-										size="xs"
-										className="no-drag"
-									>
-										<FileDown className="w-4 h-4" />
-										{t("layout.report-bug")}
-									</Button>
-								</TooltipSimple>
-							</>
-						)}
-						<TooltipSimple content={t("layout.refer-friends")} side="bottom" align="center">
-							<Button
-								onClick={getReferFriendsLink}
-								variant="ghost"
-								size="xs"
-								className="no-drag"
-							>
-								<img
-									src={giftIcon}
-									alt="gift-icon"
-									className="w-4 h-4"
-								/>
-								{t("layout.refer-friends")}
-							</Button>
-						</TooltipSimple>
-						<TooltipSimple content={t("layout.settings")} side="bottom" align="center">
-							<Button
-								onClick={() => navigate("/history?tab=settings")}
-								variant="ghost"
-								size="xs"
-								className="no-drag"
-							>
-								<Settings className="w-4 h-4" />
-								{t("layout.settings")}
-							</Button>
-						</TooltipSimple>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
-								<Button
-									onClick={() => handleShare(chatStore.activeTaskId as string)}
-									variant="primary"
-									size="xs"
-									className="no-drag !text-button-fill-information-foreground"
-								>
-									{t("layout.share")}
-								</Button>
-							</TooltipSimple>
-						)}
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string] &&
 							(
@@ -370,6 +331,50 @@ function HeaderWin() {
 								</Button>
 							</TooltipSimple>
 						)}
+						{chatStore.activeTaskId &&
+							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
+								<Button
+									onClick={() => handleShare(chatStore.activeTaskId as string)}
+									variant="ghost"
+									size="xs"
+									className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
+								>
+									{t("layout.share")}
+								</Button>
+							</TooltipSimple>
+						)}
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									className="no-drag"
+								>
+									<MoreHorizontal className="w-4 h-4" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-36">
+								{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+									<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
+										<FileDown className="w-4 h-4" />
+										{t("layout.report-bug")}
+									</DropdownMenuItem>
+								)}
+								<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
+									<img
+										src={giftIcon}
+										alt="gift-icon"
+										className="w-4 h-4"
+									/>
+									{t("layout.refer-friends")}
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
+									<Settings className="w-4 h-4" />
+									{t("layout.settings")}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
 				)}
 				{location.pathname === "/history" && (

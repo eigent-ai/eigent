@@ -1,6 +1,6 @@
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useStackApp } from "@stackframe/react";
 import loginGif from "@/assets/login.gif";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import eyeOff from "@/assets/eye-off.svg";
 import { proxyFetchPost } from "@/api/http";
 import { hasStackKeys } from "@/lib";
 import { useTranslation } from "react-i18next";
+import WindowControls from "@/components/WindowControls";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -34,6 +35,8 @@ export default function Login() {
 	});
 	const [isLoading, setIsLoading] = useState(false);
 	const [generalError, setGeneralError] = useState("");
+	const titlebarRef = useRef<HTMLDivElement>(null);
+	const [platform, setPlatform] = useState<string>("");
 
 	const validateEmail = (email: string) => {
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -211,12 +214,72 @@ export default function Login() {
 		};
 	}, []);
 
+	useEffect(() => {
+		const p = window.electronAPI.getPlatform();
+		setPlatform(p);
+
+		if (platform === "darwin") {
+			titlebarRef.current?.classList.add("mac");
+		}
+	}, [platform]);
+
+	// Handle before-close event for login page
+	useEffect(() => {
+		const handleBeforeClose = () => {
+			// On login page, always close directly without confirmation
+			window.electronAPI.closeWindow(true);
+		};
+
+		window.ipcRenderer?.on("before-close", handleBeforeClose);
+
+		return () => {
+			window.ipcRenderer?.off("before-close", handleBeforeClose);
+		};
+	}, []);
+
 	return (
-		<div className={`p-2 flex items-center justify-center gap-2 h-full`}>
-			<div className="flex items-center justify-center h-[calc(800px-16px)] rounded-3xl bg-white-100%">
-				<img src={loginGif} className=" rounded-3xl h-full object-cover" />
+		<div className="h-full flex flex-col relative overflow-hidden">
+			{/* Titlebar with drag region and window controls */}
+			<div
+				className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50"
+				id="login-titlebar"
+				ref={titlebarRef}
+				style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+			>
+				{/* Left spacer for macOS */}
+				<div
+					className={`${
+						platform === "darwin" ? "w-[70px]" : "w-0"
+					} flex items-center justify-center`}
+					style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+				>
+					{platform === "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
+				</div>
+
+				{/* Center drag region */}
+				<div 
+					className="h-full flex-1 flex items-center"
+					style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+				>
+					<div className="flex-1 h-10"></div>
+				</div>
+
+				{/* Right window controls */}
+				<div 
+					style={{ WebkitAppRegion: 'no-drag', pointerEvents: 'auto' } as React.CSSProperties}
+					onMouseDown={(e) => e.stopPropagation()}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<WindowControls />
+				</div>
 			</div>
-			<div className="h-full flex-1 flex flex-col items-center justify-center">
+
+			{/* Main content - image extends to top, form has padding */}
+			<div className={`p-2 flex items-center justify-center gap-2 h-full`}>
+				<div className="flex items-center justify-center h-full rounded-3xl bg-white-100%">
+					<img src={loginGif} className="rounded-3xl h-full object-cover" />
+				</div>
+				<div className="h-full flex-1 flex flex-col items-center justify-center pt-11">
 				<div className="flex-1 flex flex-col w-80 items-center justify-center">
 						<div className="flex self-stretch items-end justify-between mb-4">
 							  <div className="text-text-heading text-heading-lg font-bold ">
@@ -319,6 +382,7 @@ export default function Login() {
 				>
 					{t("layout.privacy-policy")}
 				</Button>
+				</div>
 			</div>
 		</div>
 	);

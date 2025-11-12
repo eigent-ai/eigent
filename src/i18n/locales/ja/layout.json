@@ -31,6 +31,7 @@
 	"installation-failed": "インストールに失敗しました",
 	"projects": "プロジェクト",
 	"mcp-tools": "MCP & ツール",
+	"browser": "ブラウザ",
 	"settings": "設定",
 	"workers": "ワーカー",
 	"triggers": "トリガー",
@@ -128,5 +129,18 @@
 	"select-file": "ファイルを選択",
 	"all-files": "すべてのファイル",
 	"ask-placeholder": "何でも聞いてください...",
-	"new-task": "新しいタスク"
+	"new-task": "新しいタスク",
+	"projects-hub": "プロジェクトハブ",
+	"browser-management": "ブラウザ管理",
+	"browser-management-description": "ブラウザのCookieはデバイスにローカルに保存され、同じサイトのタスクでのみ使用され、いつでもクリアまたは無効にできます。",
+	"restart-to-apply": "適用するために再起動",
+	"browser-cookies": "ブラウザCookie",
+	"browser-cookies-description": "「ブラウザを開く」を使用して、ウェブページにログインし、そのCookieを保存します。再起動すると、Eigentはそれらを記憶し、それらのサイトで将来のタスクを完了するのに役立ちます。",
+	"cookie-domains": "Cookieドメイン",
+	"deleting": "削除中...",
+	"delete-all": "すべて削除",
+	"opening": "開いています...",
+	"open-browser": "ブラウザを開く",
+	"no-cookies-saved-yet": "まだCookieが保存されていません",
+	"no-cookies-saved-yet-description": "上記の「ブラウザを開く」をクリックして、ウェブサイトにログインし、将来のタスクのためにCookieを保存します。"
 }

@@ -193,60 +193,84 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 		return key;
 	};
 
-	const handleConfigureMcpEnvSetting = async () => {
-		if (isValidating) return;
+    const handleConfigureMcpEnvSetting = async () => {
+        if (isValidating) return;
 
-		setIsValidating(true);
-		clearFieldErrors();
+        setIsValidating(true);
+        clearFieldErrors();
 
-		// Validate required fields first
-		if (!validateRequiredFields()) {
-			setIsValidating(false);
-			return;
-		}
+        // Validate required fields first
+        if (!validateRequiredFields()) {
+            setIsValidating(false);
+            return;
+        }
 
-		const env: { [key: string]: string } = {};
-		Object.keys(envValues).forEach((key) => {
-			env[key] = envValues[key]?.value;
-		});
+        const env: { [key: string]: string } = {};
+        Object.keys(envValues).forEach((key) => {
+            env[key] = envValues[key]?.value;
+        });
 
-		// Validate Google API key
-		if (env["GOOGLE_API_KEY"] && env["SEARCH_ENGINE_ID"]) {
-			const result = await google_check(env["GOOGLE_API_KEY"], env["SEARCH_ENGINE_ID"]);
-			if (!result.success) {
-				setFieldError("GOOGLE_API_KEY", result.message);
-				setFieldError("SEARCH_ENGINE_ID", result.message);
-				setIsValidating(false);
-				return;
-			}
-		}
+        // Validate Google API key
+        if (env["GOOGLE_API_KEY"] && env["SEARCH_ENGINE_ID"]) {
+            const result = await google_check(env["GOOGLE_API_KEY"], env["SEARCH_ENGINE_ID"]);
+            if (!result.success) {
+                setFieldError("GOOGLE_API_KEY", result.message);
+                setFieldError("SEARCH_ENGINE_ID", result.message);
+                setIsValidating(false);
+                return;
+            }
+        }
 
-		// Validate Exa API key
-		if (env["EXA_API_KEY"]) {
-			const result = await exa_check(env["EXA_API_KEY"]);
-			if (!result.success) {
-				setFieldError("EXA_API_KEY", result.message);
-				setIsValidating(false);
-				return;
-			}
-		}
+        // Validate Exa API key
+        if (env["EXA_API_KEY"]) {
+            const result = await exa_check(env["EXA_API_KEY"]);
+            if (!result.success) {
+                setFieldError("EXA_API_KEY", result.message);
+                setIsValidating(false);
+                return;
+            }
+        }
 
-		// Save only if all validations succeed
-		const mcp = { ...activeMcp, install_command: { ...activeMcp.install_command, env } };
-		setEnvValues({});
-		setShowKeys({});
-		setIsValidating(false);
-		onConnect(mcp);
-	};
+        // Save only if all validations succeed
+        const mcp = { ...activeMcp, install_command: { ...activeMcp.install_command, env } };
+        try {
+            // Keep the dialog in validating state until onConnect completes
+            await onConnect(mcp);
+            // Only clear values after successful completion
+            setEnvValues({});
+            setShowKeys({});
+        } finally {
+            setIsValidating(false);
+        }
+    };
 	return (
 		<Dialog
 			open={showEnvConfig}
 			onOpenChange={(open) => {
-				if (!open) handleCloseMcpEnvSetting();
+				// If validating, ignore close intents from Radix (e.g., Confirm wraps Close internally)
+				if (!open) {
+					if (isValidating) return;
+					handleCloseMcpEnvSetting();
+				}
 			}}
 		>
 			<form>
-				<DialogContent aria-describedby={undefined} size="sm" showCloseButton onClose={handleCloseMcpEnvSetting}>
+				<DialogContent
+					aria-describedby={undefined}
+					size="sm"
+					showCloseButton
+					onClose={handleCloseMcpEnvSetting}
+					// Prevent closing while validating (OAuth in progress)
+					onInteractOutside={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+					onEscapeKeyDown={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+					onPointerDownOutside={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+				>
 					<DialogHeader title={t("setting.configure {name} Toolkit", { name: activeMcp?.name })} />
 
 					<div className="flex flex-col gap-3 p-md">
@@ -323,6 +347,8 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 						confirmButtonText={isValidating ? "Validating..." : t("setting.connect")}
 						onConfirm={handleConfigureMcpEnvSetting}
 						confirmButtonVariant="primary"
+						// Optional: consumers of DialogFooter may support disabled prop
+						{...(isValidating ? { confirmButtonDisabled: true } as any : {})}
 					/>
 				</DialogContent>
 			</form>

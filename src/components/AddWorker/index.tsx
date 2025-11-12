@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
-	DialogClose,
 	DialogContent,
 	DialogContentSection,
 	DialogFooter,
@@ -11,12 +10,10 @@ import {
 import { Input } from "@/components/ui/input";
 import {
 	Bot,
-	CircleAlert,
 	Plus,
-	RefreshCw,
-	ChevronLeft,
-	ArrowRight,
 	Edit,
+	Eye,
+	EyeOff,
 } from "lucide-react";
 import ToolSelect from "./ToolSelect";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,13 +22,13 @@ import githubIcon from "@/assets/github.svg";
 import { fetchPost } from "@/api/http";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import { TooltipSimple } from "../ui/tooltip";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface EnvValue {
 	value: string;
 	required: boolean;
 	tip: string;
+	error?: string;
 }
 
 interface McpItem {
@@ -68,6 +65,8 @@ export function AddWorker({
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
+	const [isValidating, setIsValidating] = useState(false);
+	const [secretVisible, setSecretVisible] = useState<{ [key: string]: boolean }>({});
 	const toolSelectRef = useRef<{
 		installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
 	} | null>(null);
@@ -86,7 +85,8 @@ export function AddWorker({
 		console.log(mcp);
 		if (mcp?.install_command?.env) {
 			const initialValues: { [key: string]: EnvValue } = {};
-			for(const key of Object.keys(mcp.install_command.env)) {
+			const initialVisibility: { [key: string]: boolean } = {};
+			for (const key of Object.keys(mcp.install_command.env)) {
 				initialValues[key] = {
 					value: "",
 					required: true,
@@ -95,8 +95,14 @@ export function AddWorker({
 							?.replace(/{{/g, "")
 							?.replace(/}}/g, "") || "",
 				};
+				// GOOGLE_REFRESH_TOKEN is obtained via OAuth and does not require manual input
+				if (key === "GOOGLE_REFRESH_TOKEN") {
+					initialValues[key].required = false;
+				}
+				initialVisibility[key] = false;
 			}
 			setEnvValues(initialValues);
+			setSecretVisible(initialVisibility);
 		}
 	};
 
@@ -107,47 +113,98 @@ export function AddWorker({
 				value,
 				required: prev[key]?.required || true,
 				tip: prev[key]?.tip || "",
+				error: "", // Clear error when user types
 			},
 		}));
 	};
 
+	const validateRequiredFields = () => {
+		let hasErrors = false;
+		const updatedEnvValues = { ...envValues };
+
+		Object.keys(envValues).forEach((key) => {
+			const field = envValues[key];
+			if (field?.required && (!field.value || field.value.trim() === "")) {
+				updatedEnvValues[key] = {
+					...field,
+					error: `${key} is required`,
+				};
+				hasErrors = true;
+			}
+		});
+
+		if (hasErrors) {
+			setEnvValues(updatedEnvValues);
+		}
+
+		return !hasErrors;
+	};
+
 	const handleConfigureMcpEnvSetting = async () => {
 		if (!activeMcp) return;
+		if (isValidating) return;
 
-		// switch back to tool selection interface, ensure ToolSelect component is visible
-		setShowEnvConfig(false);
+		// Validate required fields first
+		if (!validateRequiredFields()) {
+			return;
+		}
 
-		// wait for component re-rendering
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		setIsValidating(true);
+
+		// For Google Calendar, keep dialog open during authorization
+		// For other tools, close dialog immediately
+		if (activeMcp.key !== "Google Calendar") {
+			// switch back to tool selection interface, ensure ToolSelect component is visible
+			setShowEnvConfig(false);
+
+			// wait for component re-rendering
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
 
 		// call ToolSelect's install method
 		if (toolSelectRef.current) {
-			if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar") {
-				await toolSelectRef.current.installMcp(
-					activeMcp.id,
-					{ ...envValues },
-					activeMcp
-				);
-			} else {
-				await toolSelectRef.current.installMcp(activeMcp.id, { ...envValues });
+			try {
+				if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar") {
+					await toolSelectRef.current.installMcp(
+						activeMcp.id,
+						{ ...envValues },
+						activeMcp
+					);
+				} else {
+					await toolSelectRef.current.installMcp(activeMcp.id, { ...envValues });
+				}
+			} finally {
+				setIsValidating(false);
 			}
+		}
+
+		// For Google Calendar, close dialog after installMcp completes
+		if (activeMcp.key === "Google Calendar") {
+			setShowEnvConfig(false);
 		}
 
 		// clean status
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 	};
 
 	const handleCloseMcpEnvSetting = () => {
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 	};
 
 	const handleShowEnvConfig = (mcp: McpItem) => {
 		setActiveMcp(mcp);
 		initializeEnvValues(mcp);
 		setShowEnvConfig(true);
+	};
+
+	const isSensitiveKey = (key: string) => /token|key|secret|password|id/i.test(key);
+	const toggleSecretVisibility = (key: string) => {
+		setSecretVisible((prev) => ({ ...prev, [key]: !prev[key] }));
 	};
 
 	const handleSelectedToolsChange = (tools: McpItem[]) => {
@@ -161,6 +218,7 @@ export function AddWorker({
 		setShowEnvConfig(false);
 		setActiveMcp(null);
 		setEnvValues({});
+		setSecretVisible({});
 		setNameError("");
 	};
 
@@ -204,9 +262,11 @@ export function AddWorker({
 			}
 		});
 		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
-		for(const key of Object.keys(mcpLocal.mcpServers)) {
-			if (!mcpList.includes(key)) {
-				delete mcpLocal.mcpServers[key];
+		if (mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object') {
+			for(const key of Object.keys(mcpLocal.mcpServers)) {
+				if (!mcpList.includes(key)) {
+					delete mcpLocal.mcpServers[key];
+				}
 			}
 		}
 		if (edit) {
@@ -319,7 +379,19 @@ export function AddWorker({
 						</Button>
 					)}
 				</DialogTrigger>
-				<DialogContent size="sm" className="p-0 gap-0">
+				<DialogContent
+					size="sm"
+					className="p-0 gap-0"
+					onInteractOutside={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+					onEscapeKeyDown={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+					onPointerDownOutside={(e: any) => {
+						if (isValidating) e.preventDefault();
+					}}
+				>
 					<DialogHeader
 						title={showEnvConfig ? t("workforce.configure-mcp-server") : t("workforce.add-your-agent")}
 						tooltip={t("layout.configure-your-mcp-worker-node-here")}
@@ -361,24 +433,27 @@ export function AddWorker({
 									</div>
 								</div>
 								<div className="flex flex-col gap-sm">
-									{Object.keys(activeMcp?.install_command?.env || {}).map(
-										(key) => (
-											<div key={key}>
-												<div className="text-text-body text-sm leading-normal font-bold">
-													{key}*
-												</div>
-												<Input
-													placeholder=""
-													className="h-7 rounded-sm border border-solid border-input-border-default bg-input-bg-default !shadow-none text-sm leading-normal !ring-0 !ring-offset-0 resize-none"
-													value={envValues[key]?.value || ""}
-													onChange={(e) => updateEnvValue(key, e.target.value)}
-												/>
-												<div className="text-input-label-default text-xs leading-normal">
-													{envValues[key]?.tip}
-												</div>
-											</div>
-										)
-									)}
+									{Object.keys(activeMcp?.install_command?.env || {}).map((key) => (
+										<div key={key}>
+											<Input
+												size="default"
+												title={key}
+												required={envValues[key]?.required ?? true}
+												placeholder={envValues[key]?.tip || `Enter ${key}`}
+												type={isSensitiveKey(key) && !secretVisible[key] ? "password" : "text"}
+												value={envValues[key]?.value || ""}
+												onChange={(e) => updateEnvValue(key, e.target.value)}
+												state={envValues[key]?.error ? "error" : "default"}
+												note={envValues[key]?.error || envValues[key]?.tip}
+												backIcon={isSensitiveKey(key)
+													? secretVisible[key]
+														? <EyeOff size={16} className="text-button-transparent-icon-disabled" />
+														: <Eye size={16} className="text-button-transparent-icon-disabled" />
+													: undefined}
+												onBackIconClick={isSensitiveKey(key) ? () => toggleSecretVisibility(key) : undefined}
+											/>
+										</div>
+									))}
 								</div>
 							</DialogContentSection>
 							<DialogFooter 
@@ -386,13 +461,12 @@ export function AddWorker({
 								showCancelButton={true}
 								showConfirmButton={true}
 								cancelButtonText={t("workforce.cancel")}
-								confirmButtonText={t("layout.connect")}
+								confirmButtonText={isValidating ? "Validating..." : t("layout.connect")}
 								onCancel={handleCloseMcpEnvSetting}
 								onConfirm={handleConfigureMcpEnvSetting}
 								cancelButtonVariant="ghost"
 								confirmButtonVariant="primary"
 							>
-								<ArrowRight size={16} />
 							</DialogFooter>
 							{/* hidden but keep rendering ToolSelect component */}
 							<div style={{ display: "none" }}>
@@ -425,11 +499,6 @@ export function AddWorker({
 											}}
 											state={nameError ? "error" : "default"}
 											note={nameError || ""}
-											backIcon={<RefreshCw size={16} className="text-button-transparent-icon-disabled" />}
-											onBackIconClick={() => {
-												// Handle refresh/regenerate logic here
-												console.log("Refresh agent name");
-											}}
 											required
 										/>
 									</div>

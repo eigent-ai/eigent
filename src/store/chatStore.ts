@@ -265,6 +265,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				const providerList = res.items || []
 				console.log('providerList', providerList)
 				const provider = providerList[0]
+
+				if (!provider) {
+					throw new Error('No model provider configured. Please go to Settings > Models and configure at least one model provider as default.');
+				}
+
 				apiModel = {
 					api_key: provider.api_key,
 					model_type: provider.model_type,
@@ -298,6 +303,36 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				mcpLocal = await window.ipcRenderer.invoke("mcp-list");
 			}
 			console.log('mcpLocal', mcpLocal)
+
+			// Get search engine configuration for custom mode
+			let searchConfig: Record<string, string> = {}
+			if (modelType === 'custom') {
+				try {
+					const configsRes = await proxyFetchGet('/api/configs');
+					const configs = Array.isArray(configsRes) ? configsRes : [];
+
+					// Extract Google Search API keys
+					const googleApiKey = configs.find((c: any) =>
+						c.config_group?.toLowerCase() === 'search' &&
+						c.config_name === 'GOOGLE_API_KEY'
+					)?.config_value;
+
+					const searchEngineId = configs.find((c: any) =>
+						c.config_group?.toLowerCase() === 'search' &&
+						c.config_name === 'SEARCH_ENGINE_ID'
+					)?.config_value;
+
+					if (googleApiKey && searchEngineId) {
+						searchConfig = {
+							GOOGLE_API_KEY: googleApiKey,
+							SEARCH_ENGINE_ID: searchEngineId
+						};
+						console.log('Loaded custom search configuration');
+					}
+				} catch (error) {
+					console.error('Failed to load search configuration:', error);
+				}
+			}
 
 			const addWorkers = workerList.map((worker) => {
 				return {
@@ -391,7 +426,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
-					env_path: envPath
+					env_path: envPath,
+					search_config: searchConfig
 				}) : undefined,
 
 				async onmessage(event: any) {
@@ -645,8 +681,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						const currentChatStore = getCurrentChatStore();
 						//Make sure to add user Message on replay and avoid duplication of first msg						
-						if(type === "replay" && question && 
-							!(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+						if(question && !(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+							//Replace the optimistic update if existent.
+							const lastMessage = currentChatStore.tasks[currentTaskId]?.messages.at(-1);
+							if(lastMessage?.role === "user" && lastMessage.id && lastMessage.content === question) {
+								currentChatStore.removeMessage(currentTaskId, lastMessage.id)
+							} 
 							addMessages(currentTaskId, {
 								id: generateUniqueId(),
 								role: "user",

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-	proxyFetchGet,
-	proxyFetchDelete,
-	proxyFetchPost,
-	proxyFetchPut,
-	fetchPost,
+    proxyFetchGet,
+    proxyFetchDelete,
+    proxyFetchPost,
+    proxyFetchPut,
+    fetchPost,
+    fetchGet,
 } from "@/api/http";
 import MCPList from "./components/MCPList";
 import MCPConfigDialog from "./components/MCPConfigDialog";
@@ -76,7 +77,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 		{
 			key: "Search",
 			name: "Search Engine",
-			env_vars: ["GOOGLE_API_KEY", "SEARCH_ENGINE_ID", "EXA_API_KEY"],
+			env_vars: ["GOOGLE_API_KEY", "SEARCH_ENGINE_ID"],
 			desc: (
 				<>
 					{t("setting.environmental-variables-required")}: GOOGLE_API_KEY, SEARCH_ENGINE_ID
@@ -98,16 +99,6 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						>
 							{t("setting.google-custom-search-api")}
 						</a>
-						<br />
-						{t("setting.get-exa-api")}:{" "}
-						<a
-							onClick={() => {
-								window.location.href = "https://exa.ai";
-							}}
-							className="underline text-blue-500"
-						>
-							{t("setting.exa-ai")}
-						</a>
 					</span>
 				</>
 			),
@@ -115,9 +106,8 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	]);
 
 	// default search engine and availability
-	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("");
+	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("google");
 	const [hasGoogleSearch, setHasGoogleSearch] = useState<boolean>(false);
-	const [hasExaSearch, setHasExaSearch] = useState<boolean>(false);
 	const [configs, setConfigs] = useState<any[]>([]);
 
 	useEffect(() => {
@@ -130,17 +120,14 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 			const hasGoogleCseId = !!configs.find(
 				(item: any) => item.config_name === "SEARCH_ENGINE_ID"
 			);
-			const hasExa = !!configs.find(
-				(item: any) => item.config_name === "EXA_API_KEY"
-			);
 			setHasGoogleSearch(hasGoogleApiKey && hasGoogleCseId);
-			setHasExaSearch(hasExa);
 			const defaultEngine = configs.find(
 				(item: any) =>
 					item.config_group?.toLowerCase() === "search" &&
 					item.config_name === "DEFAULT_SEARCH_ENGINE"
 			)?.config_value;
 			if (defaultEngine) setDefaultSearchEngine(defaultEngine);
+			else setDefaultSearchEngine("google"); // Default to Google
 		});
 	}, []);
 
@@ -149,7 +136,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object") {
 				const baseURL = getProxyBaseURL();
-				const list = Object.entries(res).map(([key, value]: [string, any]) => {
+                const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
 
 					// Special handling for Notion MCP
@@ -158,7 +145,12 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 							try {
 								const response = await fetchPost("/install/tool/notion");
 								if (response.success) {
-									toast.success(t("setting.notion-mcp-installed-successfully"));
+									// Check if there's a warning (connection failed but installation marked as complete)
+									if (response.warning) {
+										toast.warning(response.warning, { duration: 5000 });
+									} else {
+										toast.success(t("setting.notion-mcp-installed-successfully"));
+									}
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
 										config_group: "Notion",
@@ -176,24 +168,97 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 								toast.error(error.message || t("setting.failed-to-install-notion-mcp"));
 							}
 						};
-					} else if (key.toLowerCase() === 'google calendar') {
-						onInstall = async () => {
-							try {
-								const response = await fetchPost("/install/tool/google_calendar");
-								if (response.success) {
-									toast.success(t("setting.google-calendar-installed-successfully"));
-									// Save to config to mark as installed
-									await proxyFetchPost("/api/configs", {
-										config_group: "Google Calendar",
-										config_name: "GOOGLE_CLIENT_ID",
-										config_value: response.toolkit_name || "GoogleCalendarToolkit",
-									});
-									// Refresh the integrations list to show the installed state
-									fetchList();
-									// Force refresh IntegrationList component
-									setRefreshKey(prev => prev + 1);
+						} else if (key.toLowerCase() === 'google calendar') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/google_calendar");
+									if (response.success) {
+										// Check if there's a warning (connection failed but installation marked as complete)
+										if (response.warning) {
+											toast.warning(response.warning, { duration: 5000 });
+										} else {
+											toast.success(t("setting.google-calendar-installed-successfully"));
+										}
+										try {
+											// Ensure we persist a marker config to indicate installation
+											const existingConfigs = await proxyFetchGet("/api/configs");
+											const existing = Array.isArray(existingConfigs)
+												? existingConfigs.find((c: any) =>
+													c.config_group?.toLowerCase() === "google calendar" &&
+													c.config_name === "GOOGLE_REFRESH_TOKEN"
+												)
+												: null;
+
+											const configPayload = {
+												config_group: "Google Calendar",
+												config_name: "GOOGLE_REFRESH_TOKEN",
+												config_value: "exists",
+											};
+
+											if (existing) {
+												await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+											} else {
+												await proxyFetchPost("/api/configs", configPayload);
+											}
+										} catch (configError) {
+											console.warn("Failed to persist Google Calendar config", configError);
+										}
+										// Refresh the integrations list to show the installed state
+										fetchList();
+										// Force refresh IntegrationList component
+										setRefreshKey(prev => prev + 1);
+                                } else if (response.status === "authorizing") {
+                                    // Authorization in progress - start polling for completion
+                                    toast.info(t("setting.please-complete-authorization-in-browser"));
+
+                                    // Poll for authorization completion via oauth status endpoint
+                                    const pollInterval = setInterval(async () => {
+                                        try {
+                                            const statusResp = await fetchGet("/oauth/status/google_calendar");
+                                            if (statusResp?.status === "success") {
+                                                clearInterval(pollInterval);
+                                                // Now that auth succeeded, run install again to initialize toolkit
+                                                const finalize = await fetchPost("/install/tool/google_calendar");
+                                                if (finalize?.success) {
+                                                    const configs = await proxyFetchGet("/api/configs");
+                                                    const existing = Array.isArray(configs)
+                                                        ? configs.find((c: any) =>
+                                                            c.config_group?.toLowerCase() === "google calendar" &&
+                                                            c.config_name === "GOOGLE_REFRESH_TOKEN"
+                                                        )
+                                                        : null;
+                                                    
+                                                    const payload = {
+                                                        config_group: "Google Calendar",
+                                                        config_name: "GOOGLE_REFRESH_TOKEN",
+                                                        config_value: "exists",
+                                                    };
+                                                    
+                                                    if (existing) {
+                                                        await proxyFetchPut(`/api/configs/${existing.id}`, payload);
+                                                    } else {
+                                                        await proxyFetchPost("/api/configs", payload);
+                                                    }
+                                                    
+                                                    toast.success(t("setting.google-calendar-installed-successfully"));
+                                                    fetchList();
+                                                    setRefreshKey((prev) => prev + 1);
+                                                }
+                                            } else if (statusResp?.status === "failed" || statusResp?.status === "cancelled") {
+                                                clearInterval(pollInterval);
+                                                const msg = statusResp?.error || (statusResp?.status === "cancelled" ? t("setting.authorization-cancelled") : t("setting.authorization-failed"));
+                                                toast.error(msg);
+                                            }
+                                            // if still authorizing, continue polling
+                                        } catch (err) {
+                                            console.error("Polling oauth status failed", err);
+                                        }
+                                    }, 2000);
+
+                                    // Safety timeout
+                                    setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
 								} else {
-									toast.error(response.error || t("setting.failed-to-install-google-calendar"));
+									toast.error(response.error || response.message || t("setting.failed-to-install-google-calendar"));
 								}
 							} catch (error: any) {
 								toast.error(error.message || t("setting.failed-to-install-google-calendar"));
@@ -227,7 +292,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 				console.log("API response:", res);
 				console.log("Generated list:", list);
 				console.log("Essential integrations:", essentialIntegrations);
-
+				
 				setIntegrations(
 					list.filter(
 						(item) => !essentialIntegrations.find((i) => i.key === item.key)
@@ -426,131 +491,108 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	// Generate search engine selection content
 	const generateSearchEngineSelectContent = () => {
 		console.log("Generating search engine select content, configs:", configs);
-		const isCloud = modelType === 'cloud';
-		
-		// Google Search - requires API key and Search Engine ID
+		const isCustom = modelType === 'custom';
+
+		// Google Search - requires API key and Search Engine ID in custom mode
 		const hasGoogleApiKey = configs.some((c: any) => c.config_name === "GOOGLE_API_KEY");
 		const hasGoogleCseId = configs.some((c: any) => c.config_name === "SEARCH_ENGINE_ID");
 		const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
 
-		// Exa Search - requires API key
-		const hasExa = configs.some((c: any) => c.config_name === "EXA_API_KEY");
-
-		// DuckDuckGo - requires API key
-		const hasDuckDuckGo = configs.some((c: any) => c.config_name === "DUCKDUCKGO_API_KEY");
-
-		// Brave Search - requires API key
-		const hasBrave = configs.some((c: any) => c.config_name === "BRAVE_API_KEY");
-
-		console.log("Search engine status:", { hasGoogle, hasExa, hasDuckDuckGo, hasBrave });
+		console.log("Search engine status:", { hasGoogle, isCustom });
 
 		return (
 			<>
-				{/* Cloud mode: offer Google (recommended), Exa, Brave without config gating */}
-				{isCloud ? (
-					<>
-							<SelectItem value="google">
+				{/* Custom mode: require API key configuration */}
+				{isCustom ? (
+					<SelectItemWithButton
+						value="google"
+						label={
+							<span>
 								<span>Google Search </span>
 								<TagComponent asChild>
 									<span>{t("setting.recommended")}</span>
 								</TagComponent>
-							</SelectItem>
-						<SelectItem value="exa">Exa Search</SelectItem>
-						<SelectItem value="brave">Brave Search</SelectItem>
-					</>
+							</span>
+						}
+						enabled={hasGoogle}
+						buttonText={t("setting.setting")}
+						onButtonClick={() => setShowSearchEngineConfig(true)}
+					/>
 				) : (
 					<>
-						{/* Local mode: gated by configuration with button */}
-						<SelectItemWithButton 
-							value="google" 
-							label={
-								<span>
-									<span>Google Search </span>
-									<TagComponent asChild>
-										<span>{t("setting.recommended")}</span>
-									</TagComponent>
-								</span>
-							}
-							enabled={hasGoogle}
-							buttonText={t("setting.setting")}
-							onButtonClick={() => setShowSearchEngineConfig(true)}
-						/>
-						<SelectItemWithButton 
-							value="exa" 
-							label="Exa Search" 
-							enabled={hasExa}
-							buttonText={t("setting.setting")}
-							onButtonClick={() => setShowSearchEngineConfig(true)}
-						/>
-						<SelectItemWithButton 
-							value="brave" 
-							label="Brave Search" 
-							enabled={hasBrave}
-							buttonText={t("setting.setting")}
-							onButtonClick={() => setShowSearchEngineConfig(true)}
-						/>
+						{/* Cloud or Local mode: Google enabled by default */}
+						<SelectItem value="google">
+							<span>Google Search </span>
+							<TagComponent asChild>
+								<span>{t("setting.recommended")}</span>
+							</TagComponent>
+						</SelectItem>
 					</>
 				)}
-
-				{/* Always available across modes with requested notes */}
-				<SelectItem value="bing">Bing</SelectItem>
-				<SelectItem value="baidu">Baidu</SelectItem>
-				<SelectItem value="wiki">Wiki</SelectItem>
-				<SelectItem value="duckduckgo">DuckDuckGo</SelectItem>
 			</>
 		);
 	};
 
 	return (
-		<div className="max-w-[900px] h-auto m-auto flex flex-col px-6 pb-40">
-			<div className="flex items-center justify-between py-8 border-b border-border-secondary">
-				{showMarket ? (
-					<div className="flex w-full items-center justify-between gap-sm">
-						<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
-							<ChevronLeft />
-						</Button>
-						<div className="text-body-lg font-bold text-text-body">
-							{t("setting.mcp-market")}
-						</div>
-						<div className="flex items-center gap-2 ml-auto">
-						  <div className="w-full">
-								<SearchInput value={marketKeyword} onChange={(e) => setMarketKeyword(e.target.value)} />
+		<div className="flex-1 h-auto m-auto">
+			{/* Header Section */}
+			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
+					<div className="flex w-full items-center justify-between">
+						{showMarket ? (
+							<div className="flex w-full items-center justify-between gap-sm">
+								<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
+									<ChevronLeft />
+								</Button>
+								<div className="text-heading-sm font-bold text-text-heading">
+									{t("setting.mcp-market")}
+								</div>
+								<div className="flex items-center gap-2 ml-auto">
+									<div className="w-full">
+										<SearchInput value={marketKeyword} onChange={(e) => setMarketKeyword(e.target.value)} />
+									</div>
+								</div>
 							</div>
-						</div>
+						) : (
+							<div className="flex w-full items-center justify-between">
+								<div className="text-heading-sm font-bold text-text-heading">
+									{t("setting.mcp-and-tools")}
+								</div>
+								<div className="flex items-center gap-sm">
+									<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+										<Plus />
+										<span>{t("setting.add-mcp-server")}</span>
+									</Button>
+									<Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
+										<Store />
+										<span>{t("setting.market")}</span>
+									</Button>
+								</div>
+							</div>
+						)}
 					</div>
-				) : (
-					<div className="flex items-center justify-between w-full">
-						<div className="text-body-lg font-bold text-text-body">
-							{t("setting.mcp-and-tools")}
-						</div>
-						<div className="flex items-center gap-sm">
-							<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-								<Plus />
-								<span>{t("setting.add-mcp-server")}</span>
-							</Button>
-							<Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
-								<Store />
-								<span>{t("setting.market")}</span>
-							</Button>
-						</div>
-					</div>
-				)}
+				</div>
 			</div>
-			<div className="flex flex-col gap-8">
+      
+			{/* Content Section */}
+			<div className="flex w-full">
+				<div className="flex px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
+
+			<div className="flex flex-col w-full gap-8">
 				{showMarket ? (
 					<div className="pt-2">
 						<MCPMarket onBack={() => setShowMarket(false)} keyword={marketKeyword} />
 					</div>
 				) : (
 					<>
-						<div className="flex flex-col">
+						<div className="flex-1 w-full">
 							<IntegrationList
 									items={essentialIntegrations}
 									showConfigButton={true}
 									showInstallButton={false}
 									showSelect
 									showStatusDot={false}
-									selectPlaceholder={t("setting.select-default-search-engine")}
+									selectPlaceholder="Google Search"
 									selectContent={generateSearchEngineSelectContent()}
 									onSelectChange={async (value) => {
 											try {
@@ -650,6 +692,9 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						</div>
 					</>
 				)}
+			</div>
+
+			</div>
 			</div>
 		</div>
 	);

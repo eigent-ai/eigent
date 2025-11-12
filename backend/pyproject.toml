@@ -19,6 +19,7 @@ dependencies = [
     "traceroot>=0.0.7",
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
+    "debugpy>=1.8.17",
 ]
 
 
