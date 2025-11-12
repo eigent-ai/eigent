@@ -451,7 +451,8 @@ export function Node({ id, data }: NodeProps) {
 									)}
 							</div>
 						)}
-						{data.type === "document_agent" && (
+						{data.type === "document_agent" && 
+							data?.agent?.tasks && data.agent.tasks.length > 0 && (
 							<div className="overflow-hidden w-full h-[180px] rounded-sm relative">
 								<div className="absolute left-0 top-0  scale-[0.3] w-[500px] h-[500px] origin-top-left">
 									<Folder data={data.agent as Agent} />
