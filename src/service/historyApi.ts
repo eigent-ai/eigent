@@ -18,7 +18,8 @@ const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
         tasks: [],
         total_completed_tasks: 0,
         total_failed_tasks: 0,
-        average_tokens_per_task: 0
+        average_tokens_per_task: 0,
+        last_prompt: task.question || "",
       });
     }
 
@@ -72,8 +73,30 @@ export const fetchHistoryTasks = async (setTasks: React.Dispatch<React.SetStateA
   }
 };
 
-// New function to fetch grouped history tasks
+// New function to fetch grouped history tasks from the backend endpoint
 export const fetchGroupedHistoryTasks = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
+  try {
+    const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=true`);
+    setProjects(res.projects);
+  } catch (error) {
+    console.error("Failed to fetch grouped history tasks, using fallback:", error);
+    fetchGroupedHistoryTasksLegacy(setProjects);
+  }
+};
+
+// Function to fetch grouped history summaries only (without individual tasks for better performance)
+export const fetchGroupedHistorySummaries = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
+  try {
+    const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=false`);
+    setProjects(res.projects);
+  } catch (error) {
+    console.error("Failed to fetch grouped history summaries, using fallback:", error);
+    fetchGroupedHistoryTasksLegacy(setProjects);
+  }
+};
+
+// Legacy function for backward compatibility - groups on frontend
+export const fetchGroupedHistoryTasksLegacy = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
   try {
     const res = await proxyFetchGet(`/api/chat/histories`);
     const groupedProjects = groupTasksByProject(res.items);
