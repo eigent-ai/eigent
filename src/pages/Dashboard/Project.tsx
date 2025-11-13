@@ -41,11 +41,14 @@ import { Tag } from "@/components/ui/tag";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
 import AlertDialog from "@/components/ui/alertDialog";
+import { fetchHistoryTasks } from "@/service/historyApi";
+import GroupedHistoryView from "@/components/GroupedHistoryView";
 
 
 export default function Project() {
 	const {t} = useTranslation()
 	const navigate = useNavigate();
+  const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
@@ -136,9 +139,10 @@ export default function Project() {
 		navigate(`/`);
 	};
 
-	const handleDelete = (id: string) => {
+	const handleDelete = (id: string, callback?: () => void) => {
 		setCurHistoryId(id);
 		setDeleteModalOpen(true);
+    if(callback) setDeleteCallback(callback);
 	};
 
 	const confirmDelete = async () => {
@@ -155,6 +159,7 @@ export default function Project() {
 		} finally {
 			setCurHistoryId("");
 			setDeleteModalOpen(false);
+      deleteCallback();
 		}
 	};
 
@@ -202,17 +207,7 @@ export default function Project() {
 
 
 	useEffect(() => {
-		const fetchHistoryTasks = async () => {
-			try {
-				const res = await proxyFetchGet(`/api/chat/histories`);
-				setHistoryTasks(res?.items ?? []);
-			} catch (error) {
-				console.error("Failed to fetch history tasks:", error);
-				setHistoryTasks([]);
-			}
-		};
-
-		fetchHistoryTasks();
+		fetchHistoryTasks(setHistoryTasks);
 	}, []);
 
 	// Feature flag to hide table view without deleting code
@@ -570,6 +565,16 @@ export default function Project() {
                 </div>
               );
             })}
+          </div>
+        ) : history_type === "grouped" ? (
+          // Grouped view
+          <div className="p-6 pb-40">
+            <GroupedHistoryView
+              onTaskSelect={handleSetActive}
+              onTaskDelete={handleDelete}
+              onTaskShare={handleShare}
+              activeTaskId={chatStore.activeTaskId || undefined}
+            />
           </div>
         ) : (
         // List

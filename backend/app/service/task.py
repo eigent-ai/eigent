@@ -48,6 +48,7 @@ class Action(str, Enum):
 class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
     data: str
+    new_task_id: str | None = None
 
 
 class ActionStartData(BaseModel):
@@ -264,6 +265,8 @@ class TaskLock:
     """Persistent question confirmation agent"""
     summary_generated: bool
     """Track if summary has been generated for this project"""
+    current_task_id: Optional[str]
+    """Current task ID to be used in SSE responses"""
 
     def __init__(self, id: str, queue: asyncio.Queue, human_input: dict) -> None:
         self.id = id
@@ -278,6 +281,7 @@ class TaskLock:
         self.last_task_result = ""
         self.last_task_summary = ""
         self.question_agent = None
+        self.current_task_id = None
 
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
@@ -347,6 +351,13 @@ def get_task_lock(id: str) -> TaskLock:
 def get_task_lock_if_exists(id: str) -> TaskLock | None:
     """Get task lock if it exists, otherwise return None"""
     return task_locks.get(id)
+
+
+def set_current_task_id(project_id: str, task_id: str) -> None:
+    """Set the current task ID for a project's task lock"""
+    task_lock = get_task_lock(project_id)
+    task_lock.current_task_id = task_id
+    logger.info(f"Updated current_task_id to {task_id} for project {project_id}")
 
 
 def create_task_lock(id: str) -> TaskLock:

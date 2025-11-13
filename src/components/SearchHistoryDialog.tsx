@@ -31,11 +31,15 @@ import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { replayProject } from "@/lib";
+import { fetchHistoryTasks } from "@/service/historyApi";
+import GroupedHistoryView from "@/components/GroupedHistoryView";
+import { useGlobalStore } from "@/store/globalStore";
 
 export function SearchHistoryDialog() {
 	const {t} = useTranslation()
 	const [open, setOpen] = useState(false);
 	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
+	const { history_type } = useGlobalStore();
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
@@ -51,7 +55,7 @@ export function SearchHistoryDialog() {
 			projectStore.setHistoryId(projectId, historyId);
 			projectStore.setActiveProject(projectId)
 			navigate(`/`);
-			close();
+			setOpen(false);
 		} else {
 			// if there is no record, execute replay
 			handleReplay(projectId, question, historyId);
@@ -59,22 +63,22 @@ export function SearchHistoryDialog() {
 	};
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {
-		close();
+		setOpen(false);
 		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
-	useEffect(() => {
-		const fetchHistoryTasks = async () => {
-			try {
-				const res = await proxyFetchGet(`/api/chat/histories`);
-				setHistoryTasks(res?.items ?? []);
-			} catch (error) {
-				console.error("Failed to fetch history tasks:", error);
-				setHistoryTasks([]);
-			}
-		};
+	const handleDelete = (taskId: string) => {
+		// TODO: Implement delete functionality similar to HistorySidebar
+		console.log("Delete task:", taskId);
+	};
 
-		fetchHistoryTasks();
+	const handleShare = (taskId: string) => {
+		// TODO: Implement share functionality similar to HistorySidebar
+		console.log("Share task:", taskId);
+	};
+
+	useEffect(() => {
+		fetchHistoryTasks(setHistoryTasks);
 	}, []);
 	return (
 		<>
@@ -94,24 +98,35 @@ export function SearchHistoryDialog() {
 				<CommandInput placeholder={t("dashboard.search-dialog-placeholder")} />
 				<CommandList>
 					<CommandEmpty>{t("dashboard.no-results")}</CommandEmpty>
-					<CommandGroup heading="Today">
-						{historyTasks.map((task) => (
-							<CommandItem
-								key={task.id}
-								className="cursor-pointer"
-								/**
-								 * TODO(history): Update to use project_id field
-								 * after update instead.
-								 */
-								onSelect={() => handleSetActive(task.task_id, task.question || "", task.id)}
-							>
-								<ScanFace />
-								<div className="overflow-hidden text-ellipsis whitespace-nowrap">
-									{task.question || ""}
-								</div>
-							</CommandItem>
-						))}
-					</CommandGroup>
+					{history_type === "grouped" ? (
+						<div className="p-4">
+							<GroupedHistoryView
+								onTaskSelect={handleSetActive}
+								onTaskDelete={handleDelete}
+								onTaskShare={handleShare}
+								activeTaskId={chatStore.activeTaskId || undefined}
+							/>
+						</div>
+					) : (
+						<CommandGroup heading="Today">
+							{historyTasks.map((task) => (
+								<CommandItem
+									key={task.id}
+									className="cursor-pointer"
+									/**
+									 * TODO(history): Update to use project_id field
+									 * after update instead.
+									 */
+									onSelect={() => handleSetActive(task.task_id, task.question, task.id)}
+								>
+									<ScanFace />
+									<div className="overflow-hidden text-ellipsis whitespace-nowrap">
+										{task.question}
+									</div>
+								</CommandItem>
+							))}
+						</CommandGroup>
+					)}
 					<CommandSeparator />
 				</CommandList>
 			</CommandDialog>
