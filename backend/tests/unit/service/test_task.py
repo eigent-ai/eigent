@@ -55,6 +55,15 @@ class TestTaskServiceModels:
         
         assert data.action == Action.improve
         assert data.data == "Improve this code"
+        assert data.new_task_id is None
+
+    def test_action_improve_data_with_new_task_id(self):
+        """Test ActionImproveData model creation with new_task_id."""
+        data = ActionImproveData(data="Improve this code", new_task_id="task_123")
+        
+        assert data.action == Action.improve
+        assert data.data == "Improve this code"
+        assert data.new_task_id == "task_123"
 
     def test_action_start_data_creation(self):
         """Test ActionStartData model creation."""

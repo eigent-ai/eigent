@@ -32,13 +32,15 @@ import {
 	PopoverClose,
 } from "../ui/popover";
 import AlertDialog from "../ui/alertDialog";
-import { proxyFetchGet, proxyFetchDelete, proxyFetchPost } from "@/api/http";
+import { proxyFetchGet, proxyFetchDelete } from "@/api/http";
 import { Tag } from "../ui/tag";
 import { share } from "@/lib/share";
 import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {getAuthStore} from "@/store/authStore";
+import { fetchGroupedHistoryTasks } from "@/service/historyApi";
+import { HistoryTask, ProjectGroup } from "@/types/history";
 
 export default function HistorySidebar() {
 	const { t } = useTranslation();
@@ -49,29 +51,19 @@ export default function HistorySidebar() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
-	const getTokens = chatStore.getTokens;
-	const { history_type, toggleHistoryType } = useGlobalStore();
 	const [searchValue, setSearchValue] = useState("");
 	const [historyOpen, setHistoryOpen] = useState(true);
-	const [historyTasks, setHistoryTasks] = useState<any[]>([]);
+	const [historyTasks, setHistoryTasks] = useState<ProjectGroup[]>([]);
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 	const [anchorStyle, setAnchorStyle] = useState<{ left: number; top: number } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
-	const [curHistoryId, setCurHistoryId] = useState("");
+	const [currentProjectId, setCurrentProjectId] = useState("");
 
 	const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
 		if (e.target.value) {
 			setHistoryOpen(true);
 		}
 		setSearchValue(e.target.value);
-	};
-
-	const toggleOpenHistory = async () => {
-		if (!historyOpen) {
-			await fetchHistoryTasks();
-		}
-		setHistoryOpen(!historyOpen);
 	};
 
 	const createChat = () => {
@@ -82,98 +74,39 @@ export default function HistorySidebar() {
 		navigate("/");
 	};
 
-	const agentMap = {
-		developer_agent: {
-			name: t("layout.developer-agent"),
-			textColor: "text-text-developer",
-			bgColor: "bg-bg-fill-coding-active",
-			shapeColor: "bg-bg-fill-coding-default",
-			borderColor: "border-bg-fill-coding-active",
-			bgColorLight: "bg-emerald-200",
-		},
-		search_agent: {
-			name: t("layout.search-agent"),
-
-			textColor: "text-blue-700",
-			bgColor: "bg-bg-fill-browser-active",
-			shapeColor: "bg-bg-fill-browser-default",
-			borderColor: "border-bg-fill-browser-active",
-			bgColorLight: "bg-blue-200",
-		},
-		document_agent: {
-			name: t("layout.document-agent"),
-
-			textColor: "text-yellow-700",
-			bgColor: "bg-bg-fill-writing-active",
-			shapeColor: "bg-bg-fill-writing-default",
-			borderColor: "border-bg-fill-writing-active",
-			bgColorLight: "bg-yellow-200",
-		},
-		multi_modal_agent: {
-			name: t("layout.multi-modal-agent"),
-
-			textColor: "text-fuchsia-700",
-			bgColor: "bg-bg-fill-multimodal-active",
-			shapeColor: "bg-bg-fill-multimodal-default",
-			borderColor: "border-bg-fill-multimodal-active",
-			bgColorLight: "bg-fuchsia-200",
-		},
-		social_medium_agent: {
-			name: t("layout.social-media-agent"),
-
-			textColor: "text-purple-700",
-			bgColor: "bg-violet-700",
-			shapeColor: "bg-violet-300",
-			borderColor: "border-violet-700",
-			bgColorLight: "bg-purple-50",
-		},
-	};
-
-	const handleClickAgent = (taskId: string, agent_id: string) => {
-		chatStore.setActiveTaskId(taskId);
-		chatStore.setActiveWorkSpace(taskId, "workflow");
-		chatStore.setActiveAgent(taskId, agent_id);
-		navigate(`/`);
-	};
-
-	const fetchHistoryTasks = async () => {
-		try {
-			const res = await proxyFetchGet(`/api/chat/histories`);
-			setHistoryTasks(res.items);
-		} catch (error) {
-			console.error("Failed to fetch history tasks:", error);
-		}
-	};
-
 	useEffect(() => {
-		fetchHistoryTasks();
+		fetchGroupedHistoryTasks(setHistoryTasks);
 	}, [chatStore.updateCount]);
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		await replayProject(projectStore, navigate, projectId, question, historyId);
+		// Get task IDs from the API response data in descending order (newest first)
+		const project = historyTasks.find(p => p.project_id === projectId);
+		const taskIdsList = project?.tasks.map((task: HistoryTask) => task.task_id) || [projectId];
+		await replayProject(projectStore, navigate, projectId, question, historyId, taskIdsList);
 	};
 
 	const handleDelete = (id: string) => {
 		console.log("Delete task:", id);
-		setCurHistoryId(id);
+		setCurrentProjectId(id);
 		setDeleteModalOpen(true);
 	};
 
+	// Deletes whole Project
 	const confirmDelete = async () => {
-		await deleteHistoryTask();
-		setHistoryTasks((list) => list.filter((item) => item.id !== curHistoryId));
-		setCurHistoryId("");
+		await deleteWholeProject(currentProjectId);
+		setHistoryTasks((list) => list.filter((item) => item.project_id !== currentProjectId));
+		setCurrentProjectId("");
 		setDeleteModalOpen(false);
 	};
 
-	const deleteHistoryTask = async () => {
+	const deleteHistoryTask = async (project: ProjectGroup, historyId: string) => {
 		try {
-			const res = await proxyFetchDelete(`/api/chat/history/${curHistoryId}`);
+			const res = await proxyFetchDelete(`/api/chat/history/${historyId}`);
 			console.log(res);
 			// also delete local files for this task if available (via Electron IPC)
 			const  {email} = getAuthStore()
-			const history = historyTasks.find((item) => item.id === curHistoryId);
+			const history = project.tasks.find((item: HistoryTask) => String(item.id) === historyId);
 			if (history?.task_id && (window as any).ipcRenderer) {
 				try {
 					//TODO(file): rename endpoint to use project_id
@@ -185,6 +118,47 @@ export default function HistorySidebar() {
 			}
 		} catch (error) {
 			console.error("Failed to delete history task:", error);
+		}
+	};
+
+	// Deletes whole project by using the tasks from historyTasks state
+	const deleteWholeProject = async (projectId: string) => {
+		try {
+			// Find the project in our existing data
+			const targetProject = historyTasks.find(project => project.project_id === projectId);
+			
+			if (targetProject && targetProject.tasks) {
+				console.log(`Found project ${projectId} with ${targetProject.tasks.length} tasks to delete`);
+				
+				// Delete each task one by one
+				for (const history of targetProject.tasks) {
+					console.log(`Deleting task: ${history.task_id} (history ID: ${history.id})`);
+					try {
+						const deleteRes = await proxyFetchDelete(`/api/chat/history/${history.id}`);
+						console.log(`Successfully deleted task ${history.task_id}:`, deleteRes);
+						
+						// Also delete local files for this task if available (via Electron IPC)
+						const {email} = getAuthStore();
+						if (history.task_id && (window as any).ipcRenderer) {
+							try {
+								await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id, history.project_id ?? undefined);
+								console.log(`Successfully cleaned up local files for task ${history.task_id}`);
+							} catch (error) {
+								console.warn(`Local file cleanup failed for task ${history.task_id}:`, error);
+							}
+						}
+					} catch (error) {
+						console.error(`Failed to delete task ${history.task_id}:`, error);
+					}
+				}
+				
+				projectStore.removeProject(projectId);
+				console.log(`Completed deletion of project ${projectId}`);
+			} else {
+				console.warn(`Project ${projectId} not found or has no tasks`);
+			}
+		} catch (error) {
+			console.error("Failed to delete whole project:", error);
 		}
 	};
 
@@ -457,71 +431,21 @@ export default function HistorySidebar() {
 											exit={{ height: 0, opacity: 0 }}
 											className=" flex-1"
 										>
-										{/* Table view hidden
-										{history_type === "table" ? (
-											// Table
-											<div className="flex justify-start items-center flex-wrap gap-2 ">
-													{historyTasks
-														.filter((task) =>
-															task?.question
-																?.toLowerCase()
-																.includes(searchValue.toLowerCase())
-														)
-														.map((task) => {
-															return (
-																<div
-																	onClick={() =>
-																		handleSetActive(task.task_id, task.question, task.id)
-																	}
-																	key={task.task_id}
-																	className={`${
-																		chatStore.activeTaskId === task?.task_id
-																			? "!bg-white-100%"
-																			: ""
-																	} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl w-[316px] h-[180px] p-6 shadow-history-item`}
-																>
-																	<div className="absolute h-[calc(100%+2px)] w-14 border border-solid border-[rgba(154,154,162,0.3)] border-t-transparent border-b-transparent rounded-3xl pointer-events-none top-[-1px] left-[-1px] border-r-transparent"></div>
-																	<div className="absolute h-[calc(100%+2px)] w-14 border border-solid border-[rgba(154,154,162,0.3)] border-t-transparent border-b-transparent rounded-3xl pointer-events-none top-[-1px] right-[-1px] border-l-transparent"></div>
-																	<div className="flex justify-between items-end gap-1">
-																		<img
-																			className="w-[60px] h-[60px] mt-2"
-																			src={folderIcon}
-																			alt="folder-icon"
-																		/>
-																		<Tag variant="primary">
-																			{t("layout.token")} {task.tokens || 0}
-																		</Tag>
-																	</div>
-
-																	<div className="text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis whitespace-nowrap">
-																		{task?.question.split("|")[0] ||
-																			t("dashboard.new-project")}
-																	</div>
-																	<div className="text-xs text-black leading-17  overflow-hidden text-ellipsis break-words line-clamp-2">
-																		{task?.question.split("|")[1] ||
-																			t("dashboard.new-project")}
-																	</div>
-																</div>
-															);
-														})}
-											</div>
-										) : (
-										    // List
-										*/}
 											<div className=" flex flex-col justify-start items-center gap-4 ">
 											{historyTasks
-												.filter((task) =>
-													task.question?.toLowerCase().includes(searchValue.toLowerCase())
+												.filter((project) =>
+													project.last_prompt?.toLowerCase().includes(searchValue.toLowerCase()) ||
+													project.project_name?.toLowerCase().includes(searchValue.toLowerCase())
 												)
-												.map((task) => {
+												.map((project) => {
 													return (
 														<div
 															onClick={() => {
-																handleSetActive(task.task_id, task.question, task.id);
+																handleSetActive(project.project_id, project.last_prompt, project.project_id);
 															}}
-															key={task.task_id}
+															key={project.project_id}
 															className={`${
-																chatStore.activeTaskId === task.task_id
+																chatStore.activeTaskId === project.project_id
 																	? "!bg-white-100%"
 																	: ""
 															} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
@@ -534,14 +458,12 @@ export default function HistorySidebar() {
 														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
 														content={
 															<div>
-																{" "}
-																{task?.question.split("|")[0] || t("layout.new-project")}
+																{project.last_prompt || project.project_name || t("layout.new-project")}
 															</div>
 														}
 													>
 														<span>
-															{" "}
-															{task?.question.split("|")[0] || t("layout.new-project")}
+															{project.last_prompt || project.project_name || t("layout.new-project")}
 														</span>
 													</TooltipSimple>
 												</div>
@@ -549,7 +471,7 @@ export default function HistorySidebar() {
 																variant="primary"
 																className="text-xs leading-17 font-medium text-nowrap"
 															>
-																{t("layout.token")} {task.tokens || 0}
+																{t("layout.token")} {project.total_tokens || 0}
 															</Tag>
 						
 															<Popover>
@@ -571,7 +493,7 @@ export default function HistorySidebar() {
 																				className="w-full"
 																				onClick={(e) => {
 																					e.stopPropagation();
-																					handleShare(task.task_id);
+																					handleShare(project.project_id);
 																				}}
 																			>
 																				<Share size={16} />
@@ -586,7 +508,7 @@ export default function HistorySidebar() {
 																				className="w-full"
 																				onClick={(e) => {
 																					e.stopPropagation();
-																					handleDelete(task.id);
+																					handleDelete(project.project_id);
 																				}}
 																			>
 																				<Trash2
