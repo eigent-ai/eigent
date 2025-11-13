@@ -536,7 +536,7 @@ export default function Project() {
             {historyTasks.map((task) => {
               return (
                 <div
-                  onClick={() => handleSetActive(task.task_id, task.question)}
+                  onClick={() => handleSetActive(task.task_id, task.question || "")}
                   key={task.task_id}
                   className={`${
                     chatStore.activeTaskId === task.task_id
@@ -578,7 +578,7 @@ export default function Project() {
               return (
                 <div
                   onClick={() => {
-                    handleSetActive(task.task_id, task.question);
+                    handleSetActive(task.task_id, task.question || "");
                   }}
                   key={task.task_id}
                   className={`${
