@@ -39,7 +39,7 @@ import { replayProject } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {getAuthStore} from "@/store/authStore";
-import { fetchGroupedHistorySummaries } from "@/service/historyApi";
+import { fetchGroupedHistoryTasks } from "@/service/historyApi";
 import { HistoryTask, ProjectGroup } from "@/types/history";
 
 export default function HistorySidebar() {
@@ -75,12 +75,15 @@ export default function HistorySidebar() {
 	};
 
 	useEffect(() => {
-		fetchGroupedHistorySummaries(setHistoryTasks);
+		fetchGroupedHistoryTasks(setHistoryTasks);
 	}, [chatStore.updateCount]);
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
-		await replayProject(projectStore, navigate, projectId, question, historyId);
+		// Get task IDs from the API response data in descending order (newest first)
+		const project = historyTasks.find(p => p.project_id === projectId);
+		const taskIdsList = project?.tasks.map((task: HistoryTask) => task.task_id) || [projectId];
+		await replayProject(projectStore, navigate, projectId, question, historyId, taskIdsList);
 	};
 
 	const handleDelete = (id: string) => {
@@ -118,15 +121,11 @@ export default function HistorySidebar() {
 		}
 	};
 
-	// Deletes whole project by getting all tasks and deleting them one by one
+	// Deletes whole project by using the tasks from historyTasks state
 	const deleteWholeProject = async (projectId: string) => {
 		try {
-			// First, get all tasks for this project using the grouped API
-			const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=true`);
-			const projects = res.projects || [];
-			
-			// Find the project that matches the projectId (currentProjectId)
-			const targetProject = projects.find((project: ProjectGroup) => project.project_id === projectId);
+			// Find the project in our existing data
+			const targetProject = historyTasks.find(project => project.project_id === projectId);
 			
 			if (targetProject && targetProject.tasks) {
 				console.log(`Found project ${projectId} with ${targetProject.tasks.length} tasks to delete`);
