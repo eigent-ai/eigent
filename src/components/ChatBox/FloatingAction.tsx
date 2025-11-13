@@ -33,7 +33,7 @@ export const FloatingAction = ({
 	return (
 		<div
 			className={cn(
-				"sticky top-2 bottom-2 left-0 right-0 flex w-full justify-center items-center z-20 pointer-events-none",
+				"sticky top-2 bottom-2 mt-4 left-0 right-0 flex w-full justify-center items-center z-20 pointer-events-none",
 				className
 			)}
 		>
