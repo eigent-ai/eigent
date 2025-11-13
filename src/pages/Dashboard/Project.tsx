@@ -205,9 +205,10 @@ export default function Project() {
 		const fetchHistoryTasks = async () => {
 			try {
 				const res = await proxyFetchGet(`/api/chat/histories`);
-				setHistoryTasks(res.items);
+				setHistoryTasks(res?.items ?? []);
 			} catch (error) {
 				console.error("Failed to fetch history tasks:", error);
+				setHistoryTasks([]);
 			}
 		};
 
