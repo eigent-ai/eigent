@@ -176,6 +176,8 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
 	onCancel?: () => void;
 	confirmButtonVariant?: "primary" | "secondary" | "outline" | "ghost" | "success" | "cuation" | "information" | "warning";
 	cancelButtonVariant?: "primary" | "secondary" | "outline" | "ghost" | "success" | "cuation" | "information" | "warning";
+	confirmButtonDisabled?: boolean;
+	cancelButtonDisabled?: boolean;
 }
 
 const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
@@ -189,6 +191,8 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
 		onCancel,
 		confirmButtonVariant = "primary",
 		cancelButtonVariant = "outline",
+		confirmButtonDisabled = false,
+		cancelButtonDisabled = false,
 		children,
 		...props 
 	}, ref) => (
@@ -206,6 +210,7 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
 					variant={cancelButtonVariant}
 					size="sm"
 					onClick={onCancel}
+					disabled={cancelButtonDisabled}
 				>
 					{cancelButtonText}
 				</Button>
@@ -215,6 +220,7 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
 					variant={confirmButtonVariant}
 					size="sm"
 					onClick={onConfirm}
+					disabled={confirmButtonDisabled}
 				>
 					{confirmButtonText}
 				</Button>
