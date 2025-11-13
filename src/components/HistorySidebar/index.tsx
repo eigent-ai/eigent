@@ -271,6 +271,157 @@ export default function HistorySidebar() {
 							</Button>
 						</div>
 						<div className="mt-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+							<div className="px-sm flex flex-col  gap-2">
+									{/* Table view hidden
+									{history_type === "table" ? (
+										// Table
+										<div className="flex justify-start items-center flex-wrap gap-2">
+										{Object.keys(chatStore.tasks)
+											.reverse()
+											.map((taskId) => {
+												const task = chatStore.tasks[taskId];
+												return task.status != "finished" && !task.type ? (
+													<div
+														key={taskId}
+														onClick={() => {
+															chatStore.setActiveTaskId(taskId);
+															navigate(`/`);
+															close();
+														}}
+														className={`${
+															chatStore.activeTaskId === taskId
+																? "!bg-white-100%"
+																: ""
+														} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl backdrop-blur-xl w-[316px] h-[180px]`}
+													>
+														<div className="px-6 flex justify-between items-center gap-md w-[284px] h-[180px]">
+															<div className="w-[122px] py-md h-full flex flex-col gap-1">
+																<div className="flex-1 flex justify-start items-end">
+																	<img
+																		className="w-[60px] h-[60px]"
+																		src={folderIcon}
+																		alt="folder-icon"
+																	/>
+																</div>
+																<div className="text-left text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis break-words line-clamp-3">
+																	{task?.messages?.[0]?.content || t("layout.new-project")}
+																</div>
+																<div className="w-full">
+																	<Progress
+																		value={task.progressValue}
+																		className="h-[2px] w-full"
+																	/>
+																</div>
+															</div>
+															<div className="w-[122px] pt-md h-full flex flex-col gap-sm">
+																<div className="flex justify-between items-center ">
+																	<div className="text-xs leading-17 font-medium text-text-secondary">
+																		{t("layout.tasks")}
+																	</div>
+																	<div className="text-xs leading-17 font-medium text-text-tertiary">
+																		{task.taskRunning?.filter(
+																			(taskItem) =>
+																				taskItem.status === "completed" ||
+																				taskItem.status === "failed"
+																		).length || 0}
+																		/{task.taskRunning?.length || 0}
+																	</div>
+																</div>
+																<div className="w-[133px] h-full overflow-y-auto scrollbar-hide  flex flex-col gap-sm">
+																	{task.taskAssigning.map(
+																		(taskAssigning) =>
+																			taskAssigning.status === "running" && (
+																				<div
+																					key={taskAssigning.agent_id}
+																					onClick={() =>
+																						handleClickAgent(
+																							taskId,
+																							taskAssigning.agent_id as AgentNameType
+																						)
+																					}
+																					className={`transition-all duration-300 flex justify-start items-center gap-1 px-sm py-xs bg-menutabs-bg-default hover:bg-white-100% rounded-lg border border-solid border-white-100% shadow-history-item ${
+																						agentMap[
+																							taskAssigning.type as keyof typeof agentMap
+																						]?.borderColor
+																					}`}
+																				>
+																					<Bot
+																						className={`w-3 h-3 ${
+																							agentMap[
+																								taskAssigning.type as keyof typeof agentMap
+																							]?.textColor
+																						}`}
+																					/>
+																					<div
+																						className={`${
+																							agentMap[
+																								taskAssigning.type as keyof typeof agentMap
+																							]?.textColor
+																						} text-xs leading-17 font-medium`}
+																					>
+																						{taskAssigning.name}
+																					</div>
+																				</div>
+																			)
+																	)}
+																</div>
+															</div>
+														</div>
+													</div>
+												) : (
+													""
+												);
+											})}
+									</div>
+								) : (
+									// List
+								*/}
+									<div className=" flex flex-col justify-start items-center gap-2 ">
+										{Object.keys(chatStore.tasks)
+											.reverse()
+											.map((taskId) => {
+												const task = chatStore.tasks[taskId];
+												return task.status != "finished" && !task.type ? (
+													<div
+														key={taskId}
+														onClick={() => {
+															chatStore.setActiveTaskId(taskId);
+															navigate(`/`);
+															close();
+														}}
+														className={`${
+															chatStore.activeTaskId === taskId
+																? "!bg-white-100%"
+																: ""
+														} max-w-full flex w-full items-center border-radius-2xl bg-white-30% box-sizing-border-box p-3 relative h-14 gap-md transition-all duration-300 hover:bg-white-100% rounded-2xl cursor-pointer`}
+													>
+														<img
+															className="w-8 h-8"
+															src={folderIcon}
+															alt="folder-icon"
+														/>
+												<div className="flex-1 overflow-hidden text-text-body text-ellipsis text-body-sm font-bold whitespace-nowrap">
+													<TooltipSimple
+														content={
+															<p>
+																{task?.messages?.[0]?.content || t("layout.new-project")}
+															</p>
+														}
+														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
+													>
+														<span>
+															{task?.messages?.[0]?.content || t("dashboard.new-project")}
+														</span>
+													</TooltipSimple>
+														</div>
+													</div>
+												) : (
+													""
+												);
+											})}
+										</div>
+									{/* )} */}
+							</div>
 							<div className="px-sm py-4 flex flex-col gap-2">
 								<AnimatePresence>
 									{historyOpen && (
