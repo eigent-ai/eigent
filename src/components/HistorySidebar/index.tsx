@@ -15,11 +15,16 @@ import {
 	SquarePlay,
 	Trash2,
 	Bot,
+	Pin,
+	Sparkles,
+	Hash,
+	Activity,
 } from "lucide-react";
+import { Sparkle } from "@/components/animate-ui/icons/sparkle";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import SearchInput from "./SearchInput";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useGlobalStore } from "@/store/globalStore";
 import folderIcon from "@/assets/Folder-1.svg";
 import { Progress } from "@/components/ui/progress";
@@ -77,6 +82,57 @@ export default function HistorySidebar() {
 	useEffect(() => {
 		fetchGroupedHistoryTasks(setHistoryTasks);
 	}, [chatStore.updateCount]);
+
+	// Group ongoing tasks by project
+	const ongoingProjects = useMemo(() => {
+		const projectMap = new Map<string, any>();
+		
+		// Iterate through all projects
+		const allProjects = projectStore.getAllProjects();
+		allProjects.forEach((project) => {
+			// Get all chat stores for this project
+			const chatStores = projectStore.getAllChatStores(project.id);
+			
+			let hasOngoingTasks = false;
+			let totalTokens = 0;
+			let taskCount = 0;
+			let lastPrompt = "";
+			
+			// Check all chat stores for ongoing tasks
+			chatStores.forEach(({ chatStore: cs }) => {
+				const csState = cs.getState();
+				Object.keys(csState.tasks || {}).forEach((taskId) => {
+					const task = csState.tasks[taskId];
+					// Only include ongoing tasks
+					if (task.status !== "finished" && !task.type) {
+						hasOngoingTasks = true;
+						taskCount++;
+						if (task.tokens) {
+							totalTokens += task.tokens;
+						}
+						if (!lastPrompt && task.messages?.[0]?.content) {
+							lastPrompt = task.messages[0].content;
+						}
+					}
+				});
+			});
+			
+			// Only add project if it has ongoing tasks
+			if (hasOngoingTasks) {
+				projectMap.set(project.id, {
+					project_id: project.id,
+					project_name: project.name,
+					tasks: [],
+					task_count: taskCount,
+					total_tokens: totalTokens,
+					last_prompt: lastPrompt,
+					isOngoing: true
+				});
+			}
+		});
+		
+		return Array.from(projectMap.values());
+	}, [chatStore.updateCount, projectStore, t]);
 
 	const handleReplay = async (projectId: string, question: string, historyId: string) => {
 		close();
@@ -237,29 +293,6 @@ export default function HistorySidebar() {
 							top: anchorStyle ? anchorStyle.top : 40,
 						}}
 					>
-						{/*<div className="flex items-center justify-between px-sm">
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => {
-									close();
-									navigate("/history");
-								}}
-								className="flex items-center gap-1 cursor-pointer"
-							>
-								<ArrowLeft size={16} />
-								<span className="text-text-primary text-sm font-bold leading-13">
-									{t("dashboard.task-hub")}
-								</span>
-							</Button>
-							<Button
-								onClick={() => toggleHistoryType()}
-								variant="ghost"
-								size="icon"
-							>
-								<GalleryVerticalEnd className="h-4 w-4" />
-							</Button>
-						</div>*/}
 						<div className="py-2 pl-2 flex justify-between items-center">
 							{/* Search */}
 							<SearchInput 
@@ -271,264 +304,207 @@ export default function HistorySidebar() {
 							</Button>
 						</div>
 						<div className="mt-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
-							<div className="px-sm flex flex-col  gap-2">
-									{/* Table view hidden
-									{history_type === "table" ? (
-										// Table
-										<div className="flex justify-start items-center flex-wrap gap-2">
-										{Object.keys(chatStore.tasks)
-											.reverse()
-											.map((taskId) => {
-												const task = chatStore.tasks[taskId];
-												return task.status != "finished" && !task.type ? (
-													<div
-														key={taskId}
-														onClick={() => {
-															chatStore.setActiveTaskId(taskId);
-															navigate(`/`);
-															close();
-														}}
-														className={`${
-															chatStore.activeTaskId === taskId
-																? "!bg-white-100%"
-																: ""
-														} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-3xl backdrop-blur-xl w-[316px] h-[180px]`}
-													>
-														<div className="px-6 flex justify-between items-center gap-md w-[284px] h-[180px]">
-															<div className="w-[122px] py-md h-full flex flex-col gap-1">
-																<div className="flex-1 flex justify-start items-end">
-																	<img
-																		className="w-[60px] h-[60px]"
-																		src={folderIcon}
-																		alt="folder-icon"
-																	/>
-																</div>
-																<div className="text-left text-[14px] text-text-primary font-bold leading-9 overflow-hidden text-ellipsis break-words line-clamp-3">
-																	{task?.messages?.[0]?.content || t("layout.new-project")}
-																</div>
-																<div className="w-full">
-																	<Progress
-																		value={task.progressValue}
-																		className="h-[2px] w-full"
-																	/>
-																</div>
-															</div>
-															<div className="w-[122px] pt-md h-full flex flex-col gap-sm">
-																<div className="flex justify-between items-center ">
-																	<div className="text-xs leading-17 font-medium text-text-secondary">
-																		{t("layout.tasks")}
-																	</div>
-																	<div className="text-xs leading-17 font-medium text-text-tertiary">
-																		{task.taskRunning?.filter(
-																			(taskItem) =>
-																				taskItem.status === "completed" ||
-																				taskItem.status === "failed"
-																		).length || 0}
-																		/{task.taskRunning?.length || 0}
-																	</div>
-																</div>
-																<div className="w-[133px] h-full overflow-y-auto scrollbar-hide  flex flex-col gap-sm">
-																	{task.taskAssigning.map(
-																		(taskAssigning) =>
-																			taskAssigning.status === "running" && (
-																				<div
-																					key={taskAssigning.agent_id}
-																					onClick={() =>
-																						handleClickAgent(
-																							taskId,
-																							taskAssigning.agent_id as AgentNameType
-																						)
-																					}
-																					className={`transition-all duration-300 flex justify-start items-center gap-1 px-sm py-xs bg-menutabs-bg-default hover:bg-white-100% rounded-lg border border-solid border-white-100% shadow-history-item ${
-																						agentMap[
-																							taskAssigning.type as keyof typeof agentMap
-																						]?.borderColor
-																					}`}
-																				>
-																					<Bot
-																						className={`w-3 h-3 ${
-																							agentMap[
-																								taskAssigning.type as keyof typeof agentMap
-																							]?.textColor
-																						}`}
-																					/>
-																					<div
-																						className={`${
-																							agentMap[
-																								taskAssigning.type as keyof typeof agentMap
-																							]?.textColor
-																						} text-xs leading-17 font-medium`}
-																					>
-																						{taskAssigning.name}
-																					</div>
-																				</div>
-																			)
-																	)}
-																</div>
-															</div>
-														</div>
-													</div>
-												) : (
-													""
-												);
-											})}
-									</div>
-								) : (
-									// List
-								*/}
-									<div className=" flex flex-col justify-start items-center gap-2 ">
-										{Object.keys(chatStore.tasks)
-											.reverse()
-											.map((taskId) => {
-												const task = chatStore.tasks[taskId];
-												return task.status != "finished" && !task.type ? (
-													<div
-														key={taskId}
-														onClick={() => {
-															chatStore.setActiveTaskId(taskId);
-															navigate(`/`);
-															close();
-														}}
-														className={`${
-															chatStore.activeTaskId === taskId
-																? "!bg-white-100%"
-																: ""
-														} max-w-full flex w-full items-center border-radius-2xl bg-white-30% box-sizing-border-box p-3 relative h-14 gap-md transition-all duration-300 hover:bg-white-100% rounded-2xl cursor-pointer`}
-													>
-														<img
-															className="w-8 h-8"
-															src={folderIcon}
-															alt="folder-icon"
-														/>
-												<div className="flex-1 overflow-hidden text-text-body text-ellipsis text-body-sm font-bold whitespace-nowrap">
-													<TooltipSimple
-														content={
-															<p>
-																{task?.messages?.[0]?.content || t("layout.new-project")}
-															</p>
-														}
-														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
-													>
-														<span>
-															{task?.messages?.[0]?.content || t("dashboard.new-project")}
-														</span>
-													</TooltipSimple>
-														</div>
-													</div>
-												) : (
-													""
-												);
-											})}
-										</div>
-									{/* )} */}
-							</div>
-							<div className="px-sm py-4 flex flex-col gap-2">
-								<AnimatePresence>
-									{historyOpen && (
-										<motion.div
-											initial={{ height: 0, opacity: 0 }}
-											animate={{ height: "auto", opacity: 1 }}
-											exit={{ height: 0, opacity: 0 }}
-											className=" flex-1"
+							<div className="px-sm flex flex-col gap-3">
+								{/* Ongoing Projects */}
+								{ongoingProjects
+									.filter((project) =>
+										project.last_prompt?.toLowerCase().includes(searchValue.toLowerCase()) ||
+										project.project_name?.toLowerCase().includes(searchValue.toLowerCase())
+									)
+									.map((project) => (
+										<div
+											key={project.project_id}
+											onClick={() => {
+												projectStore.setActiveProject(project.project_id);
+												navigate(`/`);
+												close();
+											}}
+											className="max-w-full relative cursor-pointer transition-all duration-300 bg-project-surface-default hover:bg-project-surface-hover rounded-xl flex justify-between items-center gap-sm w-full px-4 py-3 shadow-history-item border border-solid border-border-disabled"
 										>
-											<div className=" flex flex-col justify-start items-center gap-4 ">
-											{historyTasks
-												.filter((project) =>
-													project.last_prompt?.toLowerCase().includes(searchValue.toLowerCase()) ||
-													project.project_name?.toLowerCase().includes(searchValue.toLowerCase())
-												)
-												.map((project) => {
-													return (
-														<div
-															onClick={() => {
-																handleSetActive(project.project_id, project.last_prompt, project.project_id);
-															}}
-															key={project.project_id}
-															className={`${
-																chatStore.activeTaskId === project.project_id
-																	? "!bg-white-100%"
-																	: ""
-															} max-w-full relative cursor-pointer transition-all duration-300 bg-white-30% hover:bg-white-100% rounded-2xl flex justify-between items-center gap-md w-full p-3 h-14 shadow-history-item border border-solid border-border-disabled`}
-														>
-															<img className="w-8 h-8" src={folderIcon} alt="folder-icon" />
-						
-												<div className="w-full text-body-sm text-text-body font-bold overflow-hidden text-ellipsis whitespace-nowrap">
-													<TooltipSimple
-														align="start"
-														className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
-														content={
-															<div>
-																{project.last_prompt || project.project_name || t("layout.new-project")}
-															</div>
-														}
-													>
-														<span>
-															{project.last_prompt || project.project_name || t("layout.new-project")}
-														</span>
-													</TooltipSimple>
-												</div>
-															<Tag
-																variant="primary"
-																className="text-xs leading-17 font-medium text-nowrap"
-															>
-																{t("layout.token")} {project.total_tokens || 0}
-															</Tag>
-						
-															<Popover>
-																<PopoverTrigger asChild>
-																	<Button
-																		size="icon"
-																		onClick={(e) => e.stopPropagation()}
-																		variant="ghost"
-																	>
-																		<Ellipsis size={16} className="text-text-primary" />
-																	</Button>
-																</PopoverTrigger>
-																<PopoverContent className=" w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
-																	<div className="space-y-1">
-																		<PopoverClose asChild>
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				className="w-full"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					handleShare(project.project_id);
-																				}}
-																			>
-																				<Share size={16} />
-																				{t("layout.share")}
-																			</Button>
-																		</PopoverClose>
-						
-																		<PopoverClose asChild>
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				className="w-full"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					handleDelete(project.project_id);
-																				}}
-																			>
-																				<Trash2
-																					size={16}
-																					className="text-icon-primary group-hover:text-icon-cuation"
-																				/>
-																				{t("layout.delete")}
-																			</Button>
-																		</PopoverClose>
-																	</div>
-																</PopoverContent>
-															</Popover>
+											<Sparkles size={20} className="text-icon-information flex-shrink-0" />
+											
+											<div className="flex-1 min-w-0 flex flex-col gap-1">
+												<TooltipSimple
+													align="start"
+													className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
+													content={
+														<div>
+															{project.project_name || t("layout.new-project")}
 														</div>
-													);
-											})}
-												</div>
-											{/* )} */}
-										</motion.div>
-									)}
-								</AnimatePresence>
+													}
+												>
+													<span className="text-body-sm text-text-heading font-semibold overflow-hidden text-ellipsis whitespace-nowrap block">
+														{project.project_name || t("layout.new-project")}
+													</span>
+												</TooltipSimple>
+											
+											</div>
+
+											<div className="flex items-center gap-2 flex-shrink-0">
+												<TooltipSimple content={t("chat.token")}>
+													<Tag variant="info" size="sm">
+														<Hash className="w-3.5 h-3.5" />
+														<span className="text-xs">{project.total_tokens || 0}</span>
+													</Tag>
+												</TooltipSimple>
+												
+												<TooltipSimple content="Tasks">
+													<Tag variant="default" size="sm">
+														<Pin className="w-3.5 h-3.5" />
+														<span className="text-xs">{project.task_count}</span>
+													</Tag>
+												</TooltipSimple>
+											</div>
+
+											<Popover>
+												<PopoverTrigger asChild>
+													<Button
+														size="icon"
+														onClick={(e) => e.stopPropagation()}
+														variant="ghost"
+														className="flex-shrink-0"
+													>
+														<Ellipsis size={16} className="text-text-primary" />
+													</Button>
+												</PopoverTrigger>
+												<PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+													<div className="space-y-1">
+														<PopoverClose asChild>
+															<Button
+																variant="ghost"
+																size="sm"
+																className="w-full"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleShare(project.project_id);
+																}}
+															>
+																<Share size={16} />
+																{t("layout.share")}
+															</Button>
+														</PopoverClose>
+						
+														<PopoverClose asChild>
+															<Button
+																variant="ghost"
+																size="sm"
+																className="w-full"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleDelete(project.project_id);
+																}}
+															>
+																<Trash2
+																	size={16}
+																	className="text-icon-primary group-hover:text-icon-cuation"
+																/>
+																{t("layout.delete")}
+															</Button>
+														</PopoverClose>
+													</div>
+												</PopoverContent>
+											</Popover>
+										</div>
+									))}
+
+								{/* History Projects */}
+								{historyTasks
+									.filter((project) =>
+										project.last_prompt?.toLowerCase().includes(searchValue.toLowerCase()) ||
+										project.project_name?.toLowerCase().includes(searchValue.toLowerCase())
+									)
+									.map((project) => (
+										<div
+											onClick={() => {
+												handleSetActive(project.project_id, project.last_prompt, project.project_id);
+											}}
+											key={project.project_id}
+											className="max-w-full relative cursor-pointer transition-all duration-300 bg-project-surface-default hover:bg-project-surface-hover rounded-xl flex justify-between items-center gap-sm w-full px-4 py-3 shadow-history-item border border-solid border-border-disabled"
+										>
+											<Sparkle size={20} className="text-icon-secondary flex-shrink-0" />
+											
+											<div className="flex-1 min-w-0">
+												<TooltipSimple
+													align="start"
+													className="w-[300px] bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
+													content={
+														<div>
+															{project.last_prompt || project.project_name || t("layout.new-project")}
+														</div>
+													}
+												>
+													<span className="text-body-sm text-text-heading font-semibold overflow-hidden text-ellipsis whitespace-nowrap block">
+														{project.last_prompt || project.project_name || t("layout.new-project")}
+													</span>
+												</TooltipSimple>
+											</div>
+
+											<div className="flex items-center gap-2 flex-shrink-0">
+												<TooltipSimple content={t("chat.token")}>
+													<Tag variant="info" size="sm">
+														<Hash className="w-3.5 h-3.5" />
+														<span className="text-xs">{project.total_tokens || 0}</span>
+													</Tag>
+												</TooltipSimple>
+												
+												<TooltipSimple content="Tasks">
+													<Tag variant="default" size="sm">
+														<Pin className="w-3.5 h-3.5" />
+														<span className="text-xs">{project.task_count}</span>
+													</Tag>
+												</TooltipSimple>
+											</div>
+
+											<Popover>
+												<PopoverTrigger asChild>
+													<Button
+														size="icon"
+														onClick={(e) => e.stopPropagation()}
+														variant="ghost"
+														className="flex-shrink-0"
+													>
+														<Ellipsis size={16} className="text-text-primary" />
+													</Button>
+												</PopoverTrigger>
+												<PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+													<div className="space-y-1">
+														<PopoverClose asChild>
+															<Button
+																variant="ghost"
+																size="sm"
+																className="w-full"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleShare(project.project_id);
+																}}
+															>
+																<Share size={16} />
+																{t("layout.share")}
+															</Button>
+														</PopoverClose>
+						
+														<PopoverClose asChild>
+															<Button
+																variant="ghost"
+																size="sm"
+																className="w-full"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleDelete(project.project_id);
+																}}
+															>
+																<Trash2
+																	size={16}
+																	className="text-icon-primary group-hover:text-icon-cuation"
+																/>
+																{t("layout.delete")}
+															</Button>
+														</PopoverClose>
+													</div>
+												</PopoverContent>
+											</Popover>
+										</div>
+									))}
 							</div>
 						</div>
 					</motion.div>

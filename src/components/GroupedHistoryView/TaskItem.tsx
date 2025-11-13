@@ -1,5 +1,5 @@
 import React from "react";
-import { Ellipsis, Share, Trash2, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Ellipsis, Share, Trash2, Clock, CheckCircle, XCircle, CirclePause, CirclePlay, Pin, Hash } from "lucide-react";
 import { HistoryTask } from "@/types/history";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
@@ -20,6 +20,9 @@ interface TaskItemProps {
   onDelete: () => void;
   onShare: () => void;
   isLast: boolean;
+  isOngoing?: boolean;
+  onPause?: () => void;
+  onResume?: () => void;
 }
 
 export default function TaskItem({
@@ -28,33 +31,46 @@ export default function TaskItem({
   onSelect,
   onDelete,
   onShare,
-  isLast
+  isLast,
+  isOngoing = false,
+  onPause,
+  onResume
 }: TaskItemProps) {
   const { t } = useTranslation();
+  
+  // Check if task is paused (for ongoing tasks)
+  const isPaused = (task as any)._taskData?.status === "pause";
 
-  const getStatusIcon = (status: number) => {
+  const getStatusTag = (status: number) => {
     switch (status) {
-      case 1:
-        return <Clock className="w-3 h-3 text-yellow-500" />;
-      case 2:
-        return <CheckCircle className="w-3 h-3 text-green-500" />;
-      case 3:
-        return <XCircle className="w-3 h-3 text-red-500" />;
-      default:
-        return <Clock className="w-3 h-3 text-gray-500" />;
-    }
-  };
-
-  const getStatusText = (status: number) => {
-    switch (status) {
-      case 1:
-        return t("layout.running");
-      case 2:
-        return t("layout.completed");
-      case 3:
-        return t("layout.failed");
-      default:
-        return t("layout.unknown");
+      case 1: // Running
+        return (
+          <Tag variant="info" size="sm">
+            <Clock />
+            <span>{t("layout.running")}</span>
+          </Tag>
+        );
+      case 2: // Completed
+        return (
+          <Tag variant="success" size="sm">
+            <CheckCircle />
+            <span>{t("layout.completed")}</span>
+          </Tag>
+        );
+      case 3: // Failed
+        return (
+          <Tag variant="cuation" size="sm">
+            <XCircle />
+            <span>{t("layout.failed")}</span>
+          </Tag>
+        );
+      default: // Unknown
+        return (
+          <Tag variant="default" size="sm">
+            <Clock />
+            <span>{t("layout.unknown")}</span>
+          </Tag>
+        );
     }
   };
 
@@ -75,8 +91,8 @@ export default function TaskItem({
         ${!isLast ? "mb-2" : ""}
       `}
     >
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <img className="w-6 h-6 flex-shrink-0" src={folderIcon} alt="task-icon" />
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <Pin className="w-4 h-4 text-icon-primary" />
         
         <div className="flex flex-col gap-1 flex-1 min-w-0">
           <TooltipSimple
@@ -84,43 +100,57 @@ export default function TaskItem({
             className="max-w-xs bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
             content={
               <div className="space-y-1">
-                <div className="font-medium">{task.question}</div>
-                {task.summary && (
-                  <div className="text-xs opacity-75">{task.summary}</div>
-                )}
+                <div className="font-medium">{task.summary}</div>
                 <div className="text-xs opacity-60">
                   {t("layout.created")}: {formatDate(task.created_at)}
+                </div>
+                <div className="text-xs opacity-60">
+                  {t("layout.tokens")}: {task.tokens ? task.tokens.toLocaleString() : "0"}
                 </div>
               </div>
             }
           >
             <span className="text-text-body font-medium text-sm overflow-hidden text-ellipsis whitespace-nowrap block">
-              {task.question || t("layout.new-project")}
+              {task.summary || t("layout.new-project")}
             </span>
           </TooltipSimple>
-          
-          {task.summary && (
-            <span className="text-xs text-text-secondary overflow-hidden text-ellipsis whitespace-nowrap">
-              {task.summary}
-            </span>
-          )}
         </div>
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="flex items-center gap-1">
-          {getStatusIcon(task.status)}
-          <span className="text-xs text-text-secondary hidden sm:inline">
-            {getStatusText(task.status)}
-          </span>
-        </div>
+        {!isOngoing && getStatusTag(task.status)}
         
         <Tag
-          variant="primary"
-          className="text-xs leading-17 font-medium text-nowrap"
+          variant="info"
+          size="sm"
         >
-          {task.tokens ? task.tokens.toLocaleString() : "0"}
+          <Hash />
+          <span>{task.tokens ? task.tokens.toLocaleString() : "0"}</span>
         </Tag>
+
+        {isOngoing && (onPause || onResume) && (
+          <Tag
+            variant={isPaused ? "info" : "success"}
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isPaused && onResume) {
+                onResume();
+              } else if (!isPaused && onPause) {
+                onPause();
+              }
+            }}
+          >
+            {isPaused ? (
+              <CirclePlay />
+            ) : (
+              <CirclePause />
+            )}
+            <span>
+              {isPaused ? t("layout.continue") : t("layout.pause")}
+            </span>
+          </Tag>
+        )}
 
         <Popover>
           <PopoverTrigger asChild>
@@ -128,27 +158,32 @@ export default function TaskItem({
               size="icon"
               onClick={(e) => e.stopPropagation()}
               variant="ghost"
-              className="h-8 w-8 flex-shrink-0"
+              className="rounded-full"
             >
-              <Ellipsis size={14} className="text-text-primary" />
+              <Ellipsis />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+          <PopoverContent 
+            align="end"
+            className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border"
+          >
             <div className="space-y-1">
-              <PopoverClose asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onShare();
-                  }}
-                >
-                  <Share size={14} />
-                  {t("layout.share")}
-                </Button>
-              </PopoverClose>
+              {!isOngoing && (
+                <PopoverClose asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onShare();
+                    }}
+                  >
+                    <Share size={14} />
+                    {t("layout.share")}
+                  </Button>
+                </PopoverClose>
+              )}
 
               <PopoverClose asChild>
                 <Button

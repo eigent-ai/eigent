@@ -98,7 +98,7 @@ export function SearchHistoryDialog() {
 				<CommandInput placeholder={t("dashboard.search-dialog-placeholder")} />
 				<CommandList>
 					<CommandEmpty>{t("dashboard.no-results")}</CommandEmpty>
-					{history_type === "grouped" ? (
+					{history_type === "grid" ? (
 						<div className="p-4">
 							<GroupedHistoryView
 								onTaskSelect={handleSetActive}
