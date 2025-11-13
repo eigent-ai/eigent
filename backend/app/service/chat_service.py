@@ -543,9 +543,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Now trigger end of previous task using stored result
                 yield sse_json("end", old_task_result)
                 
-                # Update the sync_step with new task_id before sending new task sse events
-                set_current_task_id(options.project_id, task_id)
-                
                 # Always yield new_task_state first - this is not optional
                 yield sse_json("new_task_state", item.data)
                 # Trigger Queue Removal
@@ -577,6 +574,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             workforce.resume()
                             continue  # This continues the main while loop, waiting for next action
 
+                        # Update the sync_step with new task_id before sending new task sse events
+                        set_current_task_id(options.project_id, task_id)
+                
                         yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
 
