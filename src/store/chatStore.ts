@@ -352,7 +352,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}
 			
 			// create history
-			if (!type && !historyId) {
+			if (!type) {
 				const authStore = getAuthStore();
 
 				const obj = {
