@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from app.model.chat.chat_history import ChatHistoryOut, ChatHistoryIn, ChatHistory, ChatHistoryUpdate
+from app.model.chat.chat_history_grouped import ProjectGroup, GroupedHistoryResponse
 from fastapi_babel import _
 from sqlmodel import Session, select, desc, case
 from app.component.auth import Auth, auth_must
 from app.component.database import session
 from utils import traceroot_wrapper as traceroot
+from typing import Optional, Dict, List
+from collections import defaultdict
 
 logger = traceroot.get_logger("server_chat_history")
 
@@ -55,6 +58,104 @@ def list_chat_history(session: Session = Depends(session), auth: Auth = Depends(
     total = result.total if hasattr(result, 'total') else 0
     logger.debug("Chat histories listed", extra={"user_id": user_id, "total": total})
     return result
+
+
+@router.get("/histories/grouped", name="get grouped chat history")
+@traceroot.trace()
+def list_grouped_chat_history(
+    include_tasks: Optional[bool] = Query(True, description="Whether to include individual tasks in groups"),
+    session: Session = Depends(session), 
+    auth: Auth = Depends(auth_must)
+) -> GroupedHistoryResponse:
+    """List chat histories grouped by project_id for current user."""
+    user_id = auth.user.id
+    
+    # Get all histories for the user, ordered by creation time
+    stmt = (
+        select(ChatHistory)
+        .where(ChatHistory.user_id == user_id)
+        .order_by(
+            desc(case((ChatHistory.created_at.is_(None), 0), else_=1)),  # Non-null created_at first
+            desc(ChatHistory.created_at),  # Then by created_at descending
+            desc(ChatHistory.id)  # Finally by id descending for records with same/null created_at
+        )
+    )
+    
+    histories = session.exec(stmt).all()
+    
+    # Group histories by project_id
+    project_map: Dict[str, Dict] = defaultdict(lambda: {
+        'project_id': '',
+        'project_name': None,
+        'total_tokens': 0,
+        'task_count': 0,
+        'latest_task_date': '',
+        'last_prompt': None,
+        'tasks': [],
+        'total_completed_tasks': 0,
+        'total_failed_tasks': 0,
+        'average_tokens_per_task': 0
+    })
+    
+    for history in histories:
+        # Use project_id if available, fallback to task_id
+        project_id = history.project_id if history.project_id else history.task_id
+        project_data = project_map[project_id]
+        
+        # Initialize project data
+        if not project_data['project_id']:
+            project_data['project_id'] = project_id
+            project_data['project_name'] = history.project_name or f"Project {project_id}"
+            project_data['latest_task_date'] = history.created_at.isoformat() if history.created_at else ''
+            project_data['last_prompt'] = history.question  # Set the most recent question
+        
+        # Convert to ChatHistoryOut format
+        history_out = ChatHistoryOut(**history.model_dump())
+        
+        # Add task to project if requested
+        if include_tasks:
+            project_data['tasks'].append(history_out)
+        
+        # Update project statistics
+        project_data['task_count'] += 1
+        project_data['total_tokens'] += history.tokens or 0
+
+        # Count completed and failed tasks (assuming status 1 = completed, others = failed/ongoing)
+        if history.status == 1:  # ChatStatus.done
+            project_data['total_completed_tasks'] += 1
+        else:  # Not ongoing, assume failed
+            project_data['total_failed_tasks'] += 1
+        
+        # Update latest task date and last prompt
+        if history.created_at:
+            task_date = history.created_at.isoformat()
+            if not project_data['latest_task_date'] or task_date > project_data['latest_task_date']:
+                project_data['latest_task_date'] = task_date
+                project_data['last_prompt'] = history.question
+    
+    # Convert to ProjectGroup objects and sort
+    projects = []
+    for project_data in project_map.values():
+        # Sort tasks within each project by creation date (oldest first)
+        if include_tasks:
+            project_data['tasks'].sort(key=lambda x: x.created_at or '', reverse=False)
+        
+        project_group = ProjectGroup(**project_data)
+        projects.append(project_group)
+    
+    # Sort projects by latest task date (newest first)
+    projects.sort(key=lambda x: x.latest_task_date, reverse=True)
+    
+    response = GroupedHistoryResponse(projects=projects)
+    
+    logger.debug("Grouped chat histories listed", extra={
+        "user_id": user_id, 
+        "total_projects": response.total_projects,
+        "total_tasks": response.total_tasks,
+        "include_tasks": include_tasks
+    })
+    
+    return response
 
 
 @router.delete("/history/{history_id}", name="delete chat history")
