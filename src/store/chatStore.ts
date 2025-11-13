@@ -499,7 +499,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 												"project_id": project_id,
 												"task_id": newTaskId,
 												"user_id": authStore.user_id,
-												"question": messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
+												"question": question || messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
 												"language": systemLanguage,
 												"model_platform": apiModel.model_platform,
 												"model_type": apiModel.model_type,
