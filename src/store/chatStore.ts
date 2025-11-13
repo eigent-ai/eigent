@@ -230,7 +230,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const api = type == 'share' ? 
 			`${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` 
 			: type == 'replay' ? 
-				`${base_Url}/api/chat/steps/playback/${project_id}?delay_time=${delayTime}` 
+				`${base_Url}/api/chat/steps/playback/${newTaskId}?delay_time=${delayTime}` 
 				: `${baseURL}/chat`
 
 			const { tasks } = get()
