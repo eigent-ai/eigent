@@ -5,7 +5,6 @@ import { fetchGroupedHistoryTasks } from "@/service/historyApi";
 import ProjectGroup from "./ProjectGroup";
 import { useTranslation } from "react-i18next";
 import { Loader2, FolderOpen } from "lucide-react";
-import { update } from "electron/main/update";
 
 interface GroupedHistoryViewProps {
   searchValue?: string;
@@ -43,9 +42,15 @@ export default function GroupedHistoryView({
     try {
       onTaskDelete(historyId, () => {
         setProjects(prevProjects => {
+          // Create new project objects instead of mutating existing ones
           return prevProjects.map(project => {
-            project.tasks = project.tasks.filter(task => String(task.id) !== historyId);
-            return project;
+            const filteredTasks = project.tasks.filter(task => String(task.id) !== historyId);
+            return {
+              ...project,
+              tasks: filteredTasks,
+              task_count: filteredTasks.length,
+              total_tokens: filteredTasks.reduce((sum, task) => sum + (task.tokens || 0), 0)
+            };
           }).filter(project => project.tasks.length > 0);
         });
       });

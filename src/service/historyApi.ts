@@ -77,12 +77,16 @@ export const fetchHistoryTasks = async (setTasks: React.Dispatch<React.SetStateA
 export const fetchGroupedHistoryTasks = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
   try {
     const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=true`);
-    if(res.status !== 200) {
-      fetchGroupedHistoryTasksLegacy(setProjects);
-    } else setProjects(res.projects);
+    // If the response doesn't have projects field, fall back to legacy grouping
+    if(!res || !res.projects) {
+      await fetchGroupedHistoryTasksLegacy(setProjects);
+    } else {
+      setProjects(res.projects);
+    }
   } catch (error) {
-    console.error("Failed to fetch grouped history summaries:", error);
-    setProjects([]);
+    console.error("Failed to fetch grouped history tasks, falling back to legacy:", error);
+    // Fall back to legacy grouping if the new endpoint fails
+    await fetchGroupedHistoryTasksLegacy(setProjects);
   }
 };
 
@@ -90,12 +94,16 @@ export const fetchGroupedHistoryTasks = async (setProjects: React.Dispatch<React
 export const fetchGroupedHistorySummaries = async (setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>) => {
   try {
     const res = await proxyFetchGet(`/api/chat/histories/grouped?include_tasks=false`);
-    if(res.status !== 200) {
-      fetchGroupedHistoryTasksLegacy(setProjects);
-    } else setProjects(res.projects);
+    // If the response doesn't have projects field, fall back to legacy grouping
+    if(!res || !res.projects) {
+      await fetchGroupedHistoryTasksLegacy(setProjects);
+    } else {
+      setProjects(res.projects);
+    }
   } catch (error) {
-    console.error("Failed to fetch grouped history summaries:", error);
-    setProjects([]);
+    console.error("Failed to fetch grouped history summaries, falling back to legacy:", error);
+    // Fall back to legacy grouping if the new endpoint fails
+    await fetchGroupedHistoryTasksLegacy(setProjects);
   }
 };
 
