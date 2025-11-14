@@ -28,13 +28,11 @@ const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
     project.task_count++;
     project.total_tokens += task.tokens || 0;
     
-    // Count status-based metrics
-    if (task.status === 2) { // Assuming 2 is completed
+    // ChatStatus enum: ongoing = 1, done = 2
+    if (task.status === 2) { // ChatStatus.done (completed)
       project.total_completed_tasks++;
-    } else if (task.status === 3) { // Assuming 3 is failed
-      project.total_failed_tasks++;
     }
-
+  
     // Update latest task date
     if (task.created_at && task.created_at > project.latest_task_date) {
       project.latest_task_date = task.created_at;

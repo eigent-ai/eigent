@@ -42,29 +42,23 @@ export default function TaskItem({
   const isPaused = (task as any)._taskData?.status === "pause";
 
   const getStatusTag = (status: number) => {
+    // ChatStatus enum: ongoing = 1, done = 2
     switch (status) {
-      case 1: // Running
+      case 1: // ChatStatus.ongoing
         return (
           <Tag variant="info" size="sm">
             <Clock />
             <span>{t("layout.running")}</span>
           </Tag>
         );
-      case 2: // Completed
+      case 2: // ChatStatus.done
         return (
           <Tag variant="success" size="sm">
             <CheckCircle />
             <span>{t("layout.completed")}</span>
           </Tag>
         );
-      case 3: // Failed
-        return (
-          <Tag variant="cuation" size="sm">
-            <XCircle />
-            <span>{t("layout.failed")}</span>
-          </Tag>
-        );
-      default: // Unknown
+      default: // Unknown status
         return (
           <Tag variant="default" size="sm">
             <Clock />
@@ -100,18 +94,18 @@ export default function TaskItem({
             className="max-w-xs bg-surface-tertiary p-2 text-wrap break-words text-label-xs select-text pointer-events-auto shadow-perfect"
             content={
               <div className="space-y-1">
-                <div className="font-medium">{task.summary}</div>
+                <div className="font-medium">{task.summary || task.question}</div>
                 <div className="text-xs opacity-60">
                   {t("layout.created")}: {formatDate(task.created_at)}
                 </div>
                 <div className="text-xs opacity-60">
-                  {t("layout.tokens")}: {task.tokens ? task.tokens.toLocaleString() : "0"}
+                  {t("chat.token")}: {task.tokens ? task.tokens.toLocaleString() : "0"}
                 </div>
               </div>
             }
           >
             <span className="text-text-body font-medium text-sm overflow-hidden text-ellipsis whitespace-nowrap block">
-              {task.summary || t("layout.new-project")}
+              {task.summary || task.question || t("layout.new-project")}
             </span>
           </TooltipSimple>
         </div>
