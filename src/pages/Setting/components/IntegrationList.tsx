@@ -119,6 +119,15 @@ export default function IntegrationList({
 						c.config_value && String(c.config_value).length > 0
 				);
 				map[item.key] = hasRefreshToken;
+			} else if (item.key === "Gmail") {
+				// Only mark installed after refresh token exists
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "gmail" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken;
 			} else {
 				// For other integrations, use presence of any config in the group
 				const hasConfig = configs.some(
@@ -311,6 +320,23 @@ export default function IntegrationList({
 		return;
 	}
 
+	if (item.key === "Gmail") {
+		let mcp = {
+			name: "Gmail",
+			key: "Gmail",
+			install_command: {
+				env: {} as any,
+			},
+			id: 15,
+		};
+		item.env_vars.map((key) => {
+			mcp.install_command.env[key] = "";
+		});
+		setActiveMcp(mcp);
+		setShowEnvConfig(true);
+		return;
+	}
+
 	if (installed[item.key]) return;
 	await item.onInstall();
 		},
@@ -333,6 +359,14 @@ export default function IntegrationList({
 			const calendarItem = items.find(item => item.key === "Google Calendar");
 			if (calendarItem && calendarItem.onInstall) {
 				await calendarItem.onInstall();
+			}
+		}
+
+		// After saving env vars, trigger installation/instantiation for Gmail
+		if (mcp.key === "Gmail") {
+			const gmailItem = items.find(item => item.key === "Gmail");
+			if (gmailItem && gmailItem.onInstall) {
+				await gmailItem.onInstall();
 			}
 		}
 
@@ -398,13 +432,20 @@ export default function IntegrationList({
 				}
 			}
 			
-			// Clean up authentication tokens for Google Calendar and Notion
+			// Clean up authentication tokens for Google Calendar, Gmail, and Notion
 			if (item.key === "Google Calendar") {
 				try {
 					await fetchDelete("/uninstall/tool/google_calendar");
 					console.log("Cleaned up Google Calendar authentication tokens");
 				} catch (e) {
 					console.log("Failed to clean up Google Calendar tokens:", e);
+				}
+			} else if (item.key === "Gmail") {
+				try {
+					await fetchDelete("/uninstall/tool/google_gmail");
+					console.log("Cleaned up Gmail authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Gmail tokens:", e);
 				}
 			} else if (item.key === "Notion") {
 				try {
