@@ -45,8 +45,7 @@ export interface ProjectGroup {
   ongoing_tasks?: OngoingTask[]; // Add ongoing tasks to the project group
   // Additional project-level metadata
   total_completed_tasks: number;
-  total_failed_tasks: number;
-  total_ongoing_tasks?: number;
+  total_ongoing_tasks: number;
   average_tokens_per_task: number;
 }
 

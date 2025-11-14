@@ -110,10 +110,9 @@ export default function ProjectGroup({
     return date.toLocaleDateString();
   };
 
-  // Calculate if project has issues (failed tasks or tasks requiring human in the loop)
-  const hasFailedTasks = project.total_failed_tasks > 0;
+  // Calculate if project has issues (requiring human in the loop)
   const hasHumanInLoop = project.ongoing_tasks?.some(task => task.status === 'pending') || false;
-  const hasIssue = hasFailedTasks || hasHumanInLoop;
+  const hasIssue = hasHumanInLoop;
   
   // Calculate agent count (placeholder - count unique agents from tasks if available)
   const agentCount = project.tasks?.length > 0 

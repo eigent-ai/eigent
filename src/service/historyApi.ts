@@ -17,7 +17,7 @@ const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
         latest_task_date: task.created_at || new Date().toISOString(),
         tasks: [],
         total_completed_tasks: 0,
-        total_failed_tasks: 0,
+        total_ongoing_tasks: 0,
         average_tokens_per_task: 0,
         last_prompt: task.question || "",
       });
