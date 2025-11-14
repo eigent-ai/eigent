@@ -1,13 +1,10 @@
 import os
-import subprocess
-import time
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
 import websockets
 import websockets.exceptions
 
-from camel.models import BaseModelBackend
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
@@ -216,7 +213,6 @@ class WebSocketConnectionPool:
 # Global connection pool instance
 websocket_connection_pool = WebSocketConnectionPool()
 
-
 @auto_listen_toolkit(BaseHybridBrowserToolkit)
 class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     agent_name: str = Agents.search_agent
@@ -228,7 +224,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         headless: bool = False,
         user_data_dir: str | None = None,
         stealth: bool = True,
-        web_agent_model: BaseModelBackend | None = None,
         cache_dir: Optional[str] = None,
         enabled_tools: List[str] | None = None,
         browser_log_to_file: bool = False,
@@ -268,7 +263,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             headless=headless,
             user_data_dir=user_data_dir,
             stealth=stealth,
-            web_agent_model=web_agent_model,
             cache_dir=cache_dir,
             enabled_tools=enabled_tools,
             browser_log_to_file=browser_log_to_file,
@@ -329,7 +323,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             headless=self._headless,
             user_data_dir=self._user_data_dir,  # Use the same user_data_dir
             stealth=self._stealth,
-            web_agent_model=self._web_agent_model,
             cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
             enabled_tools=self.enabled_tools.copy(),
             browser_log_to_file=self._browser_log_to_file,
