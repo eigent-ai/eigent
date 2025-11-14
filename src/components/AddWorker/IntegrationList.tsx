@@ -301,7 +301,7 @@ export default function IntegrationList({
         // After saving env vars, handle Google Calendar authorization flow
         if (mcp.key === "Google Calendar") {
             console.log("[IntegrationList onConnect] Google Calendar detected, starting auth flow");
-            
+
             // Trigger install/authorization
             const calendarItem = items.find(item => item.key === "Google Calendar");
             try {
@@ -313,7 +313,7 @@ export default function IntegrationList({
             } catch (_) {}
 
             console.log("[IntegrationList onConnect] Starting OAuth status polling");
-            
+
             // Keep the dialog open and poll OAuth status until completion
             const start = Date.now();
             const timeoutMs = 5 * 60 * 1000; // 5 minutes
@@ -321,7 +321,7 @@ export default function IntegrationList({
                 try {
                     const statusRes: any = await fetchGet("/oauth/status/google_calendar");
                     console.log("[IntegrationList onConnect] OAuth status:", statusRes?.status);
-                    
+
                     if (statusRes?.status === "success") {
                         console.log("[IntegrationList onConnect] Success! Closing dialog");
                         await fetchInstalled();
@@ -344,7 +344,53 @@ export default function IntegrationList({
             return;
         }
 
-        console.log("[IntegrationList onConnect] Non-Google Calendar, closing immediately");
+        // After saving env vars, handle Gmail authorization flow
+        if (mcp.key === "Gmail") {
+            console.log("[IntegrationList onConnect] Gmail detected, starting auth flow");
+
+            // Trigger install/authorization
+            const gmailItem = items.find(item => item.key === "Gmail");
+            try {
+                if (gmailItem && gmailItem.onInstall) {
+                    await gmailItem.onInstall();
+                } else {
+                    await fetchPost("/install/tool/google_gmail");
+                }
+            } catch (_) {}
+
+            console.log("[IntegrationList onConnect] Starting OAuth status polling");
+
+            // Keep the dialog open and poll OAuth status until completion
+            const start = Date.now();
+            const timeoutMs = 5 * 60 * 1000; // 5 minutes
+            while (Date.now() - start < timeoutMs) {
+                try {
+                    const statusRes: any = await fetchGet("/oauth/status/google_gmail");
+                    console.log("[IntegrationList onConnect] OAuth status:", statusRes?.status);
+
+                    if (statusRes?.status === "success") {
+                        console.log("[IntegrationList onConnect] Success! Closing dialog");
+                        await fetchInstalled();
+                        onClose();
+                        return;
+                    }
+                    if (statusRes?.status === "failed" || statusRes?.status === "cancelled") {
+                        console.log("[IntegrationList onConnect] Failed/cancelled, keeping dialog open");
+                        // Stop waiting on failure/cancellation; keep dialog open for retry
+                        return;
+                    }
+                } catch (err) {
+                    console.log("[IntegrationList onConnect] Polling error:", err);
+                    // ignore transient polling errors
+                }
+                await new Promise((r) => setTimeout(r, 1500));
+            }
+            // Timeout reached; return to allow user to try again
+            console.log("[IntegrationList onConnect] Polling timeout");
+            return;
+        }
+
+        console.log("[IntegrationList onConnect] Non-Google/Gmail, closing immediately");
         await fetchInstalled();
         addOption(mcp, true);
         onClose();
@@ -379,13 +425,20 @@ export default function IntegrationList({
 				}
 			}
 			
-			// Clean up authentication tokens for Google Calendar and Notion
+			// Clean up authentication tokens for Google Calendar, Gmail, and Notion
 			if (item.key === "Google Calendar") {
 				try {
 					await fetchDelete("/uninstall/tool/google_calendar");
 					console.log("Cleaned up Google Calendar authentication tokens");
 				} catch (e) {
 					console.log("Failed to clean up Google Calendar tokens:", e);
+				}
+			} else if (item.key === "Gmail") {
+				try {
+					await fetchDelete("/uninstall/tool/google_gmail");
+					console.log("Cleaned up Gmail authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Gmail tokens:", e);
 				}
 			} else if (item.key === "Notion") {
 				try {

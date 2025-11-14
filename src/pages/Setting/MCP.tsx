@@ -29,6 +29,17 @@ import { ConfigFile } from "electron/main/utils/mcpConfig";
 import { SelectItem, SelectItemWithButton } from "@/components/ui/select";
 import { Tag as TagComponent } from "@/components/ui/tag";
 
+export const GMAIL_CONFIG = {
+	"Google Gmail": {
+			"env_vars": [
+					"GOOGLE_CLIENT_ID",
+					"GOOGLE_CLIENT_SECRET",
+					"GOOGLE_REFRESH_TOKEN"
+			],
+			"toolkit": "google_gmail_mcp_toolkit"
+	}
+}
+
 export default function SettingMCP() {
 	const navigate = useNavigate();
     const { checkAgentTool } = useAuthStore();
@@ -135,6 +146,11 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	useEffect(() => {
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object") {
+				if (typeof res === "object" && res !== null) {
+					Object.assign(res, GMAIL_CONFIG);
+					console.log("Modified config info with Gmail:", res);
+				}
+				
 				const baseURL = getProxyBaseURL();
                 const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
@@ -264,6 +280,102 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 								toast.error(error.message || t("setting.failed-to-install-google-calendar"));
 							}
 						};
+					} else if (key.toLowerCase() === 'gmail') {
+						onInstall = async () => {
+							try {
+								const response = await fetchPost("/install/tool/google_gmail");
+								if (response.success) {
+									// Check if there's a warning (connection failed but installation marked as complete)
+									if (response.warning) {
+										toast.warning(response.warning, { duration: 5000 });
+									} else {
+										toast.success(t("setting.gmail-installed-successfully"));
+									}
+									try {
+										// Ensure we persist a marker config to indicate installation
+										const existingConfigs = await proxyFetchGet("/api/configs");
+										const existing = Array.isArray(existingConfigs)
+											? existingConfigs.find((c: any) =>
+												c.config_group?.toLowerCase() === "gmail" &&
+												c.config_name === "GOOGLE_REFRESH_TOKEN"
+											)
+											: null;
+
+										const configPayload = {
+											config_group: "Gmail",
+											config_name: "GOOGLE_REFRESH_TOKEN",
+											config_value: "exists",
+										};
+
+										if (existing) {
+											await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+										} else {
+											await proxyFetchPost("/api/configs", configPayload);
+										}
+									} catch (configError) {
+										console.warn("Failed to persist Gmail config", configError);
+									}
+									// Refresh the integrations list to show the installed state
+									fetchList();
+									// Force refresh IntegrationList component
+									setRefreshKey(prev => prev + 1);
+								} else if (response.status === "authorizing") {
+									// Authorization in progress - start polling for completion
+									toast.info(t("setting.please-complete-authorization-in-browser"));
+
+									// Poll for authorization completion via oauth status endpoint
+									const pollInterval = setInterval(async () => {
+										try {
+											const statusResp = await fetchGet("/oauth/status/google_gmail");
+											if (statusResp?.status === "success") {
+												clearInterval(pollInterval);
+												// Now that auth succeeded, run install again to initialize toolkit
+												const finalize = await fetchPost("/install/tool/google_gmail");
+												if (finalize?.success) {
+													const configs = await proxyFetchGet("/api/configs");
+													const existing = Array.isArray(configs)
+														? configs.find((c: any) =>
+															c.config_group?.toLowerCase() === "gmail" &&
+															c.config_name === "GOOGLE_REFRESH_TOKEN"
+														)
+														: null;
+
+													const payload = {
+														config_group: "Gmail",
+														config_name: "GOOGLE_REFRESH_TOKEN",
+														config_value: "exists",
+													};
+
+													if (existing) {
+														await proxyFetchPut(`/api/configs/${existing.id}`, payload);
+													} else {
+														await proxyFetchPost("/api/configs", payload);
+													}
+
+													toast.success(t("setting.gmail-installed-successfully"));
+													fetchList();
+													setRefreshKey((prev) => prev + 1);
+												}
+											} else if (statusResp?.status === "failed" || statusResp?.status === "cancelled") {
+												clearInterval(pollInterval);
+												const msg = statusResp?.error || (statusResp?.status === "cancelled" ? t("setting.authorization-cancelled") : t("setting.authorization-failed"));
+												toast.error(msg);
+											}
+											// if still authorizing, continue polling
+										} catch (err) {
+											console.error("Polling oauth status failed", err);
+										}
+									}, 2000);
+
+									// Safety timeout
+									setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+								} else {
+									toast.error(response.error || response.message || t("setting.failed-to-install-gmail"));
+								}
+							} catch (error: any) {
+								toast.error(error.message || t("setting.failed-to-install-gmail"));
+							}
+						};
                     } else {
                         onInstall = () => {
                             const url = `${baseURL}/api/oauth/${key.toLowerCase()}/login`;
@@ -285,6 +397,8 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 								? t("setting.notion-workspace-integration")
 								: key.toLowerCase() === 'google calendar'
 								? t("setting.google-calendar-integration")
+								: key.toLowerCase() === 'gmail'
+								? t("setting.gmail-integration")
 								: "",
 						onInstall,
 					};
