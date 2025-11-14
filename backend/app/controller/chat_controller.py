@@ -204,9 +204,13 @@ def supplement(id: str, data: SupplementChat):
 def stop(id: str):
     """stop the task"""
     chat_logger.warning("Stopping chat session", extra={"task_id": id})
-    task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
-    chat_logger.info("Chat stop signal sent", extra={"task_id": id})
+    try:
+        task_lock = get_task_lock(id)
+        asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
+        chat_logger.info("Chat stop signal sent", extra={"task_id": id})
+    except Exception as e:
+        # Task lock may not exist if task is already finished or never started
+        chat_logger.info("Task lock not found or already stopped", extra={"task_id": id, "error": str(e)})
     return Response(status_code=204)
 
 

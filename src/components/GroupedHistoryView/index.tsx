@@ -143,8 +143,7 @@ export default function GroupedHistoryView({
     }
   }
 
-  const handleProjectRename = (projectId: string, newName: string) => {
-    // Update local state
+  const handleProjectRename = async (projectId: string, newName: string) => {
     setProjects(prevProjects => {
       return prevProjects.map(project => {
         if (project.project_id === projectId) {
@@ -156,9 +155,26 @@ export default function GroupedHistoryView({
         return project;
       });
     });
-    
-    // TODO: Implement API call to update project name
-    console.log(`Renaming project ${projectId} to ${newName}`);
+
+    // Call API to update project name
+    try {
+      const response = await fetch(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to update project name: ${response.status}`);
+        // Optionally: revert the local change if API call fails
+      } else {
+        console.log(`Successfully updated project ${projectId} name to ${newName}`);
+      }
+    } catch (error) {
+      console.error(`Error updating project name:`, error);
+      // Optionally: revert the local change if API call fails
+    }
   }
 
   useEffect(() => {

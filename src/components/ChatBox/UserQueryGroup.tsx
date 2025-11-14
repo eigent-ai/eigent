@@ -250,9 +250,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   {/* File List */}
                   {message.fileList && (
                     <div className="flex pl-3 gap-2 flex-wrap">
-                      {message.fileList.map((file: any) => (
+                      {message.fileList.map((file: any, fileIndex: number) => (
                         <motion.div
-                          key={`file-${file.name}`}
+                          key={`file-${message.id}-${file.name}-${fileIndex}`}
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: 0.3 }}
@@ -327,9 +327,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               >
                 {message.fileList && (
                   <div className="flex gap-2 flex-wrap">
-                    {message.fileList.map((file: any) => (
+                    {message.fileList.map((file: any, fileIndex: number) => (
                       <motion.div
-                        key={`file-${file.name}`}
+                        key={`file-${message.id}-${file.name}-${fileIndex}`}
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.3 }}
@@ -338,7 +338,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                           chatState.setActiveWorkSpace(activeTaskId as string, "documentWorkSpace");
                         }}
                         className="flex items-center gap-2 bg-message-fill-default rounded-2xl px-2 py-1 w-[120px] cursor-pointer hover:bg-message-fill-hover transition-colors"
-                      > 
+                      >
                         <FileText size={16} className="text-icon-primary flex-shrink-0" />
                         <div className="flex flex-col">
                           <div className="max-w-48 font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
