@@ -9,6 +9,8 @@ from camel.societies.workforce.workforce import (
 from camel.societies.workforce.task_channel import TaskChannel
 from camel.societies.workforce.base import BaseNode
 from camel.societies.workforce.utils import TaskAssignResult
+from camel.societies.workforce.workforce_metrics import WorkforceMetrics
+from camel.societies.workforce.events import WorkerCreatedEvent
 from camel.tasks.task import Task, TaskState, validate_task_content
 from app.component import code
 from app.exception.exception import UserException
@@ -273,12 +275,15 @@ class Workforce(BaseWorkforce):
         # If workforce is paused, start the worker's listening task
         self._start_child_node_when_paused(worker_node.start())
 
-        if self.metrics_logger:
-            self.metrics_logger.log_worker_created(
+        # Use proper CAMEL pattern for metrics logging
+        metrics_callbacks = [cb for cb in self._callbacks if isinstance(cb, WorkforceMetrics)]
+        if metrics_callbacks:
+            event = WorkerCreatedEvent(
                 worker_id=worker_node.node_id,
                 worker_type="SingleAgentWorker",
                 role=worker_node.description,
             )
+            metrics_callbacks[0].log_worker_created(event)
         return self
 
     async def _handle_completed_task(self, task: Task) -> None:
@@ -323,8 +328,10 @@ class Workforce(BaseWorkforce):
         result = await super()._handle_failed_task(task)
 
         error_message = ""
-        if self.metrics_logger and hasattr(self.metrics_logger, "log_entries"):
-            for entry in reversed(self.metrics_logger.log_entries):
+        # Use proper CAMEL pattern for metrics logging
+        metrics_callbacks = [cb for cb in self._callbacks if isinstance(cb, WorkforceMetrics)]
+        if metrics_callbacks and hasattr(metrics_callbacks[0], "log_entries"):
+            for entry in reversed(metrics_callbacks[0].log_entries):
                 if entry.get("event_type") == "task_failed" and entry.get("task_id") == task.id:
                     error_message = entry.get("error_message")
                     break

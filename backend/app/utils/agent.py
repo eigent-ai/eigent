@@ -106,6 +106,7 @@ class ListenChatAgent(ChatAgent):
         mask_tool_output: bool = False,
         pause_event: asyncio.Event | None = None,
         prune_tool_calls_from_memory: bool = False,
+        enable_snapshot_clean: bool = False,
     ) -> None:
         super().__init__(
             system_message=system_message,
@@ -126,6 +127,7 @@ class ListenChatAgent(ChatAgent):
             mask_tool_output=mask_tool_output,
             pause_event=pause_event,
             prune_tool_calls_from_memory=prune_tool_calls_from_memory,
+            enable_snapshot_clean=enable_snapshot_clean,
         )
         self.api_task_id = api_task_id
         self.agent_name = agent_name
@@ -490,6 +492,7 @@ def agent_model(
     prune_tool_calls_from_memory: bool = False,
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
+    enable_snapshot_clean: bool = False,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -525,6 +528,7 @@ def agent_model(
         agent_id=agent_id,
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
+        enable_snapshot_clean=enable_snapshot_clean,
     )
 
 
@@ -598,7 +602,7 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 </operating_environment>
 
 <mandatory_instructions>
-- You MUST use the `read_note` tool to read the notes from other agents.
+- You MUST use the `read_note` tool to read the ALL notes from other agents.
 
 - When you complete your task, your final response must be a comprehensive
 summary of your work and the outcome, presented in a clear, detailed, and
@@ -895,6 +899,7 @@ Your approach depends on available search tools:
             TerminalToolkit.toolkit_name(),
         ],
         toolkits_to_register_agent=[web_toolkit_for_agent_registration],
+        enable_snapshot_clean=True,
     )
 
 
@@ -958,7 +963,7 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 
 <mandatory_instructions>
 - Before creating any document, you MUST use the `read_note` tool to gather
-    all information collected by other team members.
+    all information collected by other team members by reading ALL notes.
 
 - You MUST use the available tools to create or modify documents (e.g.,
     `write_to_file`, `create_presentation`). Your primary output should be
@@ -1190,7 +1195,8 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 
 <mandatory_instructions>
 - You MUST use the `read_note` tool to to gather all information collected
-    by other team members and write down your findings in the notes.
+    by other team members by reading ALL notes and write down your findings in 
+    the notes.
 
 - When you complete your task, your final response must be a comprehensive
     summary of your analysis or the generated media, presented in a clear,

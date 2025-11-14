@@ -1,5 +1,7 @@
+import { fetchGroupedHistoryTasks } from "@/service/historyApi";
 import { ChatStore } from "@/store/chatStore";
 import { ProjectStore } from "@/store/projectStore";
+import { ProjectGroup } from "@/types/history";
 import { NavigateFunction } from "react-router-dom";
 
 /**
@@ -17,14 +19,10 @@ export const replayProject = async (
 	navigate: NavigateFunction,
 	projectId: string,
 	question: string,
-	historyId: string
+	historyId: string,
+	taskIdsList?: string[]
 ) => {
-	/**
-	 * TODO(history): For now all replaying is appending to the same instance
-	 * of task_id (to be renamed projectId). Later we need to filter task_id from
-	 * /api/chat/histories by project_id then feed it here.
-	 */
-	const taskIdsList = [projectId];
+	if(!taskIdsList) taskIdsList = [projectId];
 	projectStore.replayProject(taskIdsList, question, projectId, historyId);
 	navigate({ pathname: "/" });
 };
