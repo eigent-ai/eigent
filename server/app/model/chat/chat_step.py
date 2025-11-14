@@ -43,3 +43,4 @@ class ChatStepOut(BaseModel):
     task_id: str
     step: str
     data: Any
+    timestamp: float | None = None
