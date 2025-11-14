@@ -1,55 +1,53 @@
 import { Button } from "@/components/ui/button";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import { CircleAlert } from "lucide-react";
-import {
-	proxyFetchGet,
-	proxyFetchPost,
-	proxyFetchPut,
-	proxyFetchDelete,
-} from "@/api/http";
+import { proxyFetchGet, proxyFetchPost, proxyFetchPut, proxyFetchDelete } from "@/api/http";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import ellipseIcon from "@/assets/mcp/Ellipse-25.svg";
 import { capitalizeFirstLetter } from "@/lib";
-import { MCPEnvDialog } from "./MCPEnvDialog";
+import { MCPEnvDialog } from "@/pages/Setting/components/MCPEnvDialog";
 import { useAuthStore } from "@/store/authStore";
 import { OAuth } from "@/lib/oauth";
 import { useTranslation } from "react-i18next";
 interface IntegrationItem {
 	key: string;
 	name: string;
-	desc: string | React.ReactNode;
+	desc: string;
 	env_vars: string[];
+	toolkit?: string;  // Add toolkit field
 	onInstall: () => void | Promise<void>;
 }
 
 
+
 interface IntegrationListProps {
 	items: IntegrationItem[];
+	addOption: (mcp: any, isLocal: boolean) => void;
+	onShowEnvConfig?: (mcp: any) => void;
 	installedKeys?: string[];
-	oauth?: OAuth;
+	oauth?: OAuth | null;
 }
 
 export default function IntegrationList({
 	items,
+	addOption,
+	onShowEnvConfig,
+	installedKeys = [],
+	oauth,
 }: IntegrationListProps) {
-	const { t } = useTranslation();
+	const [callBackUrl, setCallBackUrl] = useState<string | null>(null);
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<any | null>(null);
 	const { email, checkAgentTool } = useAuthStore();
-	const [callBackUrl, setCallBackUrl] = useState<string | null>(null);
-
+	const { t } = useTranslation();
 	// local installed status
 	const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
 	// configs cache
 	const [configs, setConfigs] = useState<any[]>([]);
 	// 1. add useRef lock
 	const isLockedRef = useRef(false);
-	// 2. add ref to cache oauth event
+	// add cache oauth event ref
 	const pendingOauthEventRef = useRef<{
 		provider: string;
 		code: string;
@@ -58,18 +56,21 @@ export default function IntegrationList({
 	async function fetchInstalled(ignore: boolean = false) {
 		try {
 			const configsRes = await proxyFetchGet("/api/configs");
+			console.log("configsRes", configsRes);
 			if (!ignore) {
+				console.log("configsRes", Array.isArray(configsRes), configsRes);
 				setConfigs(Array.isArray(configsRes) ? configsRes : []);
 			}
 		} catch (e) {
+			console.log("fetchInstalled error", e);
 			if (!ignore) setConfigs([]);
 		}
 	}
-	// 3. fetch configs when mounted
+	// fetch configs when mounted
 	useEffect(() => {
 		let ignore = false;
 
-		fetchInstalled();
+		fetchInstalled(ignore);
 		return () => {
 			ignore = true;
 		};
@@ -77,11 +78,13 @@ export default function IntegrationList({
 
 	// items or configs change, recalculate installed
 	useEffect(() => {
-		// construct installed map
+		// For Google Calendar, check for allowed env keys
+		// For other integrations, check by config_group
 		const map: { [key: string]: boolean } = {};
+		
 		items.forEach((item) => {
 			if (item.key === "Google Calendar") {
-				// Only mark installed after refresh token exists
+				// Only mark installed when refresh token is present (auth completed)
 				const hasRefreshToken = configs.some(
 					(c: any) =>
 						c.config_group?.toLowerCase() === "google calendar" &&
@@ -90,7 +93,7 @@ export default function IntegrationList({
 				);
 				map[item.key] = hasRefreshToken;
 			} else if (item.key === "Google Gmail") {
-				// Only mark installed after refresh token exists
+				// Only mark installed when refresh token is present (auth completed)
 				const hasRefreshToken = configs.some(
 					(c: any) =>
 						c.config_group?.toLowerCase() === "google gmail" &&
@@ -99,13 +102,14 @@ export default function IntegrationList({
 				);
 				map[item.key] = hasRefreshToken;
 			} else {
-				// For other integrations, use presence of any config in the group
+				// For other integrations, use config_group presence
 				const hasConfig = configs.some(
 					(c: any) => c.config_group?.toLowerCase() === item.key.toLowerCase()
 				);
 				map[item.key] = hasConfig;
 			}
 		});
+		
 		setInstalled(map);
 	}, [items, configs]);
 
@@ -116,7 +120,7 @@ export default function IntegrationList({
 		value: string
 	) => {
 		const configPayload = {
-			// Use exact group name, do not transform case to avoid whitelist mismatch
+			// Keep exact group name to satisfy backend whitelist
 			config_group: provider,
 			config_name: envVarKey,
 			config_value: value,
@@ -129,14 +133,13 @@ export default function IntegrationList({
 			if (Array.isArray(fresh)) latestConfigs = fresh;
 		} catch {}
 		
-		// Check if config already exists (by name, regardless of group - backend uniqueness is by name)
+		// Backend uniqueness is by config_name for a user
 		let existingConfig = latestConfigs.find((c: any) => c.config_name === envVarKey);
 		
 		if (existingConfig) {
 			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
 		} else {
 			const res = await proxyFetchPost("/api/configs", configPayload);
-			// If backend says it already exists (race), switch to PUT
 			if (res && res.detail && (res.detail as string).toLowerCase().includes("already exists")) {
 				try {
 					const again = await proxyFetchGet("/api/configs");
@@ -153,20 +156,18 @@ export default function IntegrationList({
 		}
 	};
 
-	// wrap with useCallback, ensure processOauth can get the latest items and oauth when items change
+	// useCallback to ensure processOauth can get the latest items when items change
 	const processOauth = useCallback(
 		async (data: { provider: string; code: string }) => {
 			if (isLockedRef.current) return;
-			console.log("items", items);
 			if (!items || items.length === 0) {
-				// items are not ready, cache event, wait for items to have value
+				// items not ready, cache event, wait for items to have value
 				pendingOauthEventRef.current = data;
-				console.warn("items are empty, cache oauth event", data);
+				console.warn("items is empty, cache oauth event", data);
 				return;
 			}
 			const provider = data.provider.toLowerCase();
 			isLockedRef.current = true;
-		
 			try {
 				const tokenResult = await proxyFetchPost(
 					`/api/oauth/${provider}/token`,
@@ -179,8 +180,6 @@ export default function IntegrationList({
 				const currentItem = items.find(
 					(item) => item.key.toLowerCase() === provider
 				);
-				console.log("provider", provider);
-				console.log("items", items);
 				if (provider === "slack") {
 					if (
 						tokenResult.access_token &&
@@ -194,7 +193,7 @@ export default function IntegrationList({
 							envVarKey,
 							tokenResult.access_token
 						);
-						fetchInstalled();
+						await fetchInstalled();
 						console.log(
 							"Slack authorization successful and configuration saved!"
 						);
@@ -203,8 +202,6 @@ export default function IntegrationList({
 							"Slack authorization successful, but access_token not found or env configuration not found"
 						);
 					}
-				} else {
-					// other provider authorization successful, can be extended
 				}
 			} catch (e: any) {
 				console.log(`${data.provider} authorization failed: ${e.message || e}`);
@@ -212,7 +209,7 @@ export default function IntegrationList({
 				isLockedRef.current = false;
 			}
 		},
-		[items, callBackUrl] // add oauth to dependencies
+		[items, oauth]
 	);
 
 	// listen to main process oauth authorization callback, automatically mark as installed and get token
@@ -225,17 +222,14 @@ export default function IntegrationList({
 		return () => {
 			window.ipcRenderer?.off("oauth-authorized", handler);
 		};
-	}, [processOauth]);
+	}, [items, oauth, processOauth]);
 
 	// listen to oauth callback URL notification
 	useEffect(() => {
 		const handler = (_event: any, data: { url: string; provider: string }) => {
-			console.log("Received OAuth callback URL:", data);
-
+			console.log('OAuth callback URL:', data);
 			if (data.url && data.provider) {
-				console.log(`${data.provider} OAuth callback URL: ${data.url}`);
 				setCallBackUrl(data.url);
-				// Add user prompt or other processing logic here
 			}
 		};
 		window.ipcRenderer?.on("oauth-callback-url", handler);
@@ -244,22 +238,24 @@ export default function IntegrationList({
 		};
 	}, []);
 
-	// as long as oauth changes and there is a cached event, process it
+	// listen to items change, if there is a cached oauth event and items is ready, automatically process
 	useEffect(() => {
-		if (pendingOauthEventRef.current) {
+		if (items && items.length > 0 && pendingOauthEventRef.current) {
 			processOauth(pendingOauthEventRef.current);
 			pendingOauthEventRef.current = null;
 		}
-	}, [processOauth]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [items, oauth]);
+
 
 	// install/uninstall
 	const handleInstall = useCallback(
 		async (item: IntegrationItem) => {
 			console.log(item);
-			if (item.key === "Search") {
+			if (item.key === "EXA Search") {
 				let mcp = {
-					name: "Search",
-					key: "Search",
+					name: "EXA Search",
+					key: "EXA Search",
 					install_command: {
 						env: {} as any,
 					},
@@ -268,12 +264,14 @@ export default function IntegrationList({
 				item.env_vars.map((key) => {
 					mcp.install_command.env[key] = "";
 				});
-				setActiveMcp(mcp);
-				setShowEnvConfig(true);
+				onShowEnvConfig?.(mcp);
+				// setActiveMcp(mcp);
+				// setShowEnvConfig(true);
 				return;
 			}
 
 	if (item.key === "Google Calendar") {
+		// Always prompt env dialog first instead of jumping to authorization
 		let mcp = {
 			name: "Google Calendar",
 			key: "Google Calendar",
@@ -285,12 +283,12 @@ export default function IntegrationList({
 		item.env_vars.map((key) => {
 			mcp.install_command.env[key] = "";
 		});
-		setActiveMcp(mcp);
-		setShowEnvConfig(true);
+		onShowEnvConfig?.(mcp);
 		return;
 	}
 
 	if (item.key === "Google Gmail") {
+		// Always prompt env dialog first instead of jumping to authorization
 		let mcp = {
 			name: "Google Gmail",
 			key: "Google Gmail",
@@ -302,47 +300,51 @@ export default function IntegrationList({
 		item.env_vars.map((key) => {
 			mcp.install_command.env[key] = "";
 		});
-		setActiveMcp(mcp);
-		setShowEnvConfig(true);
+		onShowEnvConfig?.(mcp);
 		return;
 	}
-
-	if (installed[item.key]) return;
-	await item.onInstall();
+		if (installed[item.key]) return;
+		await item.onInstall();
+		// refresh configs after install to update installed state indicator
+		await fetchInstalled();
 		},
 		[installed]
 	);
 
-	const onConnect = async (mcp: any) => {
-		// Refresh configs first to get latest state
-		await fetchInstalled();
-		
-		// Save all environment variables
-		await Promise.all(
-			Object.keys(mcp.install_command.env).map((key) => {
-				return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
-			})
-		);
+    const onConnect = async (mcp: any) => {
+        // Refresh configs first to get latest state
+        await fetchInstalled();
+        
+        // Save all environment variables
+        await Promise.all(
+            Object.keys(mcp.install_command.env).map(async (key) => {
+                return saveEnvAndConfig(mcp.key, key, mcp.install_command.env[key]);
+            })
+        );
 
-		// After saving env vars, trigger installation/instantiation for Google Calendar
-		if (mcp.key === "Google Calendar") {
-			const calendarItem = items.find(item => item.key === "Google Calendar");
-			if (calendarItem && calendarItem.onInstall) {
-				await calendarItem.onInstall();
-			}
-		}
+        // After saving env vars, trigger installation/instantiation for Google Calendar
+        if (mcp.key === "Google Calendar") {
+            const calendarItem = items.find(item => item.key === "Google Calendar");
+            if (calendarItem && calendarItem.onInstall) {
+                await calendarItem.onInstall();
+            }
+        }
 
-		// After saving env vars, trigger installation/instantiation for Google Gmail
-		if (mcp.key === "Google Gmail") {
-			const gmailItem = items.find(item => item.key === "Google Gmail");
-			if (gmailItem && gmailItem.onInstall) {
-				await gmailItem.onInstall();
-			}
-		}
+        // After saving env vars, trigger installation/instantiation for Google Gmail
+        if (mcp.key === "Google Gmail") {
+            const gmailItem = items.find(item => item.key === "Google Gmail");
+            if (gmailItem && gmailItem.onInstall) {
+                await gmailItem.onInstall();
+            }
+        }
 
-		await fetchInstalled();
-		onClose();
-	};
+        await fetchInstalled();
+        // Don't call addOption here for Google Calendar or Gmail, as it's already called in onInstall
+        if (mcp.key !== "Google Calendar" && mcp.key !== "Google Gmail") {
+            addOption(mcp, true);
+        }
+        onClose();
+    };
 	const onClose = () => {
 		setShowEnvConfig(false);
 		setActiveMcp(null);
@@ -351,33 +353,28 @@ export default function IntegrationList({
 	// uninstall logic
 	const handleUninstall = useCallback(
 		async (item: IntegrationItem) => {
+			// find all config_group matching config, delete one by one
 			checkAgentTool(item.key);
-			// find all configs that match config_group, delete one by one
 			const groupKey = item.key.toLowerCase();
 			const toDelete = configs.filter(
 				(c: any) => c.config_group && c.config_group.toLowerCase() === groupKey
 			);
-			console.log("toDelete", toDelete);
 			for (const config of toDelete) {
 				try {
 					await proxyFetchDelete(`/api/configs/${config.id}`);
-					console.log("envRemove", email, item.env_vars[0]);
-
 					// delete env
 					if (
 						item.env_vars &&
 						item.env_vars.length > 0 &&
 						window.electronAPI?.envRemove
 					) {
-
 						await window.electronAPI.envRemove(email, item.env_vars[0]);
 					}
 				} catch (e) {
-					console.log("envRemove error", e);
 					// ignore error
 				}
 			}
-			// after deletion, refresh configs
+			// delete after refresh configs
 			setConfigs((prev) =>
 				prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
 			);
@@ -395,10 +392,31 @@ export default function IntegrationList({
 			></MCPEnvDialog>
 			{items.map((item) => {
 				const isInstalled = !!installed[item.key];
+				
 				return (
 					<div
 						key={item.key}
-						className="p-4 bg-surface-secondary rounded-2xl flex items-center justify-between"
+						className="cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between"
+						onClick={() => {
+							if (
+								![
+									"X(Twitter)",
+									"WhatsApp",
+									"LinkedIn",
+									"Reddit",
+									"Github",
+								].includes(item.name)
+							) {
+                                if (item.env_vars.length === 0 || isInstalled) {
+                                    // Ensure toolkit field is passed and normalized for known cases
+                                    const normalizedToolkit =
+                                        item.name === "Notion" ? "notion_mcp_toolkit" : item.toolkit;
+                                    addOption({ ...item, toolkit: normalizedToolkit }, true);
+								} else {
+									handleInstall(item);
+								}
+							}
+						}}
 					>
 						<div className="flex items-center gap-xs">
 							<img
@@ -415,42 +433,42 @@ export default function IntegrationList({
 								{item.name}
 							</div>
 							<div className="flex items-center">
-								<Tooltip>
-									<TooltipTrigger asChild>
+								<TooltipSimple content={item.desc}>
 										<CircleAlert className="w-4 h-4 text-icon-secondary" />
-									</TooltipTrigger>
-									<TooltipContent>
-										<div>{item.desc}</div>
-									</TooltipContent>
-								</Tooltip>
+								</TooltipSimple>
 							</div>
 						</div>
-						<Button
-							disabled={[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)}
-							variant={isInstalled ? "secondary" : "primary"}
-							size="sm"
-							onClick={() =>
-								isInstalled ? handleUninstall(item) : handleInstall(item)
-							}
-						>
-							{[
-								"X(Twitter)",
-								"WhatsApp",
-								"LinkedIn",
-								"Reddit",
-								"Github",
-							].includes(item.name)
-								? t("setting.coming-soon")
-								: isInstalled
-								? t("setting.uninstall")
-								: t("setting.install")}
-						</Button>
+						{item.env_vars.length !== 0 && (
+							<Button
+								disabled={[
+									"X(Twitter)",
+									"WhatsApp",
+									"LinkedIn",
+									"Reddit",
+									"Github",
+								].includes(item.name)}
+								variant={isInstalled ? "secondary" : "primary"}
+								size="sm"
+								onClick={(e) => {
+									e.stopPropagation();
+									return isInstalled
+										? handleUninstall(item)
+										: handleInstall(item);
+								}}
+							>
+								{[
+									"X(Twitter)",
+									"WhatsApp",
+									"LinkedIn",
+									"Reddit",
+									"Github",
+								].includes(item.name)
+									? t("setting.coming-soon")
+									: isInstalled
+									? t("setting.uninstall")
+									: t("setting.install")}
+							</Button>
+						)}
 					</div>
 				);
 			})}
