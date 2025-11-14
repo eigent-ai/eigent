@@ -137,7 +137,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         headless: bool = False,
         user_data_dir: str | None = None,
         stealth: bool = False,
-        web_agent_model: BaseModelBackend | None = None,
         cache_dir: str = os.path.expanduser("~/.eigent/tmp/"),
         enabled_tools: List[str] | None = None,
         browser_log_to_file: bool = False,
@@ -155,7 +154,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         self._headless = headless
         self._user_data_dir = user_data_dir
         self._stealth = stealth
-        self._web_agent_model = web_agent_model
         self._cache_dir = cache_dir
         self._browser_log_to_file = browser_log_to_file
         self._default_start_url = default_start_url
@@ -302,8 +300,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             # FunctionTool(browser.wait_user),
         ]
 
-        if browser.web_agent_model is not None:
-            base_tools.append(FunctionTool(browser.browser_solve_task))
 
         return base_tools
 
@@ -320,7 +316,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             headless=self._headless,
             user_data_dir=self._user_data_dir,
             stealth=self._stealth,
-            web_agent_model=self._web_agent_model,
             cache_dir=f"{self._cache_dir.rstrip('/')}_clone_{new_session_id}/",
             enabled_tools=self.enabled_tools.copy(),
             browser_log_to_file=self._browser_log_to_file,
