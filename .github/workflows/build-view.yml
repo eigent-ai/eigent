@@ -70,14 +70,22 @@ jobs:
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
 
-      - name: Upload Artifact
+      - name: Upload Artifact (macOS - dmg only)
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            release/*
-            !release/builder-debug.yml
-            !release/builder-effective-config.yaml
+            release/*.dmg
+          retention-days: 5
+
+      - name: Upload Artifact (Windows - exe only)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            release/*.exe
           retention-days: 5
   merge-release:
     needs: build
@@ -106,33 +114,28 @@ jobs:
           name: release-windows-latest-x64
           path: temp-win-x64
 
-      # Move files to final release directory, removing any nested release/ directory
+      # Move only dmg files for macOS and exe files for Windows
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-x64
+          # mac-x64 - only move dmg files
           if [ -d "temp-mac-x64/release" ]; then
-            mv temp-mac-x64/release/* release/mac-x64/ || true
+            find temp-mac-x64/release -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
           else
-            mv temp-mac-x64/* release/mac-x64/ || true
+            find temp-mac-x64 -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
           fi
 
-          # mac-arm64
+          # mac-arm64 - only move dmg files
           if [ -d "temp-mac-arm64/release" ]; then
-            mv temp-mac-arm64/release/* release/mac-arm64/ || true
+            find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
           else
-            mv temp-mac-arm64/* release/mac-arm64/ || true
+            find temp-mac-arm64 -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
           fi
 
-          # win-x64
+          # win-x64 - only move exe files
           if [ -d "temp-win-x64/release" ]; then
-            mv temp-win-x64/release/* release/win-x64/ || true
+            find temp-win-x64/release -name "*.exe" -exec mv {} release/win-x64/ \; || true
           else
-            mv temp-win-x64/* release/win-x64/ || true
+            find temp-win-x64 -name "*.exe" -exec mv {} release/win-x64/ \; || true
           fi
-
-      - name: Rename duplicate files
-        run: |
-          mv release/mac-x64/latest-mac.yml release/mac-x64/latest-x64-mac.yml || true
-          mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-arm64-mac.yml || true
 
