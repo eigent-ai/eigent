@@ -21,19 +21,6 @@ export interface HistoryTask {
   updated_at?: string;
 }
 
-export interface OngoingTask {
-  task_id: string;
-  project_id?: string;
-  project_name?: string;
-  question: string;
-  status: 'running' | 'pending' | 'pause';
-  tokens: number;
-  created_at?: string;
-  taskAssigning?: any[];
-  taskRunning?: any[];
-  progressValue?: number;
-}
-
 export interface ProjectGroup {
   project_id: string;
   project_name?: string;
@@ -42,7 +29,6 @@ export interface ProjectGroup {
   latest_task_date: string;
   last_prompt: string;
   tasks: HistoryTask[];
-  ongoing_tasks?: OngoingTask[]; // Add ongoing tasks to the project group
   // Additional project-level metadata
   total_completed_tasks: number;
   total_ongoing_tasks: number;

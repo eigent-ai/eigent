@@ -31,6 +31,8 @@ const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
     // ChatStatus enum: ongoing = 1, done = 2
     if (task.status === 2) { // ChatStatus.done (completed)
       project.total_completed_tasks++;
+    } else if (task.status === 1) { // ChatStatus.ongoing (pending/running etc..)
+      project.total_ongoing_tasks++;
     }
   
     // Update latest task date
