@@ -11,6 +11,7 @@ class ChatStep(AbstractModel, DefaultTimes, table=True):
     task_id: str = Field(index=True)
     step: str
     data: str = Field(sa_type=JSON)
+    timestamp: float | None = Field(default=None, nullable=True)
 
     @field_validator("data", mode="before")
     @classmethod
@@ -34,6 +35,7 @@ class ChatStepIn(BaseModel):
     task_id: str
     step: str
     data: Any
+    timestamp: float | None = None
 
 
 class ChatStepOut(BaseModel):
@@ -41,3 +43,4 @@ class ChatStepOut(BaseModel):
     task_id: str
     step: str
     data: Any
+    timestamp: float | None = None

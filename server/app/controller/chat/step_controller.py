@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import Depends, HTTPException, Query, Response, APIRouter
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, asc, select
+from sqlalchemy.sql.expression import case
 from app.component.database import session
 from app.component.auth import Auth, auth_must
 from fastapi_babel import _
@@ -46,7 +47,11 @@ async def share_playback(
 
     async def event_generator():
         try:
-            stmt = select(ChatStep).where(ChatStep.task_id == task_id).order_by(asc(ChatStep.id))
+            stmt = select(ChatStep).where(ChatStep.task_id == task_id).order_by(
+                asc(case((ChatStep.timestamp.is_(None), 1), else_=0)),
+                asc(ChatStep.timestamp),
+                asc(ChatStep.id)
+            )
             steps = session.exec(stmt).all()
 
             if not steps:
@@ -101,6 +106,7 @@ async def create_chat_step(step: ChatStepIn, session: Session = Depends(session)
             task_id=step.task_id,
             step=step.step,
             data=step.data,
+            timestamp=step.timestamp
         )
         session.add(chat_step)
         session.commit()
