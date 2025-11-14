@@ -8,7 +8,7 @@ import { Loader2, FolderOpen, Pin, Hash, LayoutGrid, List, Sparkles, Sparkle } f
 import { Tag } from "@/components/ui/tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGlobalStore } from "@/store/globalStore";
-import { proxyFetchDelete } from "@/api/http";
+import { proxyFetchDelete, proxyFetchPut } from "@/api/http";
 import { getAuthStore } from "@/store/authStore";
 import { useProjectStore } from "@/store/projectStore";
 
@@ -158,7 +158,7 @@ export default function GroupedHistoryView({
 
     // Call API to update project name
     try {
-      const response = await fetch(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`, {
+      const response = await proxyFetchPut(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
