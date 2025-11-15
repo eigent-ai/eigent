@@ -16,6 +16,7 @@ import { copyBrowserData } from './copy'
 import { findAvailablePort } from './init'
 import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
+import mime from "mime";
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
@@ -397,6 +398,12 @@ function registerIpcHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  ipcMain.handle("read-file-dataurl", async (event, filePath) => {
+  const file = fs.readFileSync(filePath);
+  const mimeType = mime.getType(path.extname(filePath)) || "application/octet-stream";
+  return `data:${mimeType};base64,${file.toString("base64")}`;
+});
 
   // ==================== log export handler ====================
   ipcMain.handle('export-log', async () => {

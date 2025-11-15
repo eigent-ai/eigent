@@ -1,6 +1,8 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
 
+
+
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
     const [channel, listener] = args
@@ -59,6 +61,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   executeCommand: (command: string,email:string) => ipcRenderer.invoke('execute-command', command,email),
   // file operations
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+  readFileAsDataUrl: (path : string) => ipcRenderer.invoke("read-file-dataurl", path),
   deleteFolder: (email: string) => ipcRenderer.invoke('delete-folder', email),
   getMcpConfigPath: (email: string) => ipcRenderer.invoke('get-mcp-config-path', email),
   // install dependencies related API
