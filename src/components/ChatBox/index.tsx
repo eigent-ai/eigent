@@ -102,7 +102,7 @@ export default function ChatBox(): JSX.Element {
 		const task = chatStore.tasks[_taskId];
 		const isTaskBusy = (
 			// running or paused counts as busy
-			(task.status === 'running' && !task.hasMessages) || task.status === 'pause' ||
+			(task.status === 'running' && task.hasMessages) || task.status === 'pause' ||
 			// splitting phase: has to_sub_tasks not confirmed OR skeleton computing
 			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
 			((!task.messages.find(m => m.step === 'to_sub_tasks') && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl) ||
@@ -219,11 +219,14 @@ export default function ChatBox(): JSX.Element {
 					const hasComplexTask = chatStore.tasks[_taskId as string].messages.some(
 						m => m.step === "to_sub_tasks"
 					);
+					const hasErrorMessage = chatStore.tasks[_taskId as string].messages.some(
+						m => m.role === "agent" && m.content.startsWith("❌ **Error**:")
+					);
 
 					// Only start a new task if: pending, no messages processed yet
 					// OR while or after replaying a project
 					if ((chatStore.tasks[_taskId as string].status === "pending" && !hasSimpleResponse && !hasComplexTask && !isFinished)
-						|| chatStore.tasks[_taskId].type === "replay") {
+						|| chatStore.tasks[_taskId].type === "replay" || hasErrorMessage) {
 						setMessage("");
 						// Pass the message content to startTask instead of adding it to current chatStore
 						const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];

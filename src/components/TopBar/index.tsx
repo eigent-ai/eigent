@@ -145,6 +145,7 @@ function HeaderWin() {
 		}
 	};
 
+	//TODO: Mark ChatStore details as completed
 	const handleEndProject = async () => {
 		const taskId = chatStore.activeTaskId;
 		const currentProjectId = projectStore.activeProjectId;
@@ -167,26 +168,26 @@ function HeaderWin() {
 				});
 			}
 
-			// Delete task from backend if it exists
+			// Stop Workforce
 			try {
-				await fetchDelete(`/chat/${taskId}`);
+				await fetchDelete(`/chat/${currentProjectId}`);
 			} catch (error) {
 				console.log("Task may not exist on backend:", error);
 			}
 
 			// Delete from history using historyId
-			if (historyId) {
+			if (historyId && task.status !== "finished") {
 				try {
 					await proxyFetchDelete(`/api/chat/history/${historyId}`);
+					// Remove from local store
+					chatStore.removeTask(taskId);
 				} catch (error) {
 					console.log("History may not exist:", error);
 				}
 			} else {
-				console.warn("No historyId found for project, skipping history deletion");
+				console.warn("No historyId found for project or task finished, skipping history deletion");
 			}
 
-			// Remove from local store
-			chatStore.removeTask(taskId);
 
 			// Create a completely new project instead of just a new task
 			// This ensures we start fresh without any residual state
