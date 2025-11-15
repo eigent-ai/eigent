@@ -362,6 +362,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     # Update the sync_step with new task_id
                     if hasattr(item, 'new_task_id') and item.new_task_id:
                         set_current_task_id(options.project_id, item.new_task_id)
+                        # Reset summary generation flag for new tasks to ensure proper summaries
+                        task_lock.summary_generated = False
+                        logger.info("Reset summary_generated flag for new task", extra={"project_id": options.project_id, "new_task_id": item.new_task_id})
 
                     yield sse_json("confirmed", {"question": question})
                     
@@ -385,32 +388,25 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         context_for_coordinator
                     )
 
-                    if not task_lock.summary_generated:
-                        summary_task_agent = task_summary_agent(options)
-                        try:
-                            summary_task_content = await asyncio.wait_for(
-                                summary_task(summary_task_agent, camel_task), timeout=10
-                            )
-                            task_lock.summary_generated = True
-                            logger.info("Generated summary for first task", extra={"project_id": options.project_id})
-                        except asyncio.TimeoutError:
-                            logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
-                            # Fallback to a minimal summary to unblock UI
-                            fallback_name = "Task"
-                            content_preview = camel_task.content if hasattr(camel_task, "content") else ""
-                            if content_preview is None:
-                                content_preview = ""
-                            fallback_summary = (
-                                (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
-                            )
-                            summary_task_content = f"{fallback_name}|{fallback_summary}"
-                            task_lock.summary_generated = True
-                    else:
-                        if len(question) > 100:
-                            summary_task_content = f"Task|{question[:97]}..."
-                        else:
-                            summary_task_content = f"Task|{question}"
-                        logger.info("Skipped summary generation for subsequent task", extra={"project_id": options.project_id})
+                    summary_task_agent = task_summary_agent(options)
+                    try:
+                        summary_task_content = await asyncio.wait_for(
+                            summary_task(summary_task_agent, camel_task), timeout=10
+                        )
+                        task_lock.summary_generated = True
+                        logger.info("Generated summary for task", extra={"project_id": options.project_id})
+                    except asyncio.TimeoutError:
+                        logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
+                        # Fallback to a minimal summary to unblock UI
+                        fallback_name = "Task"
+                        content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                        if content_preview is None:
+                            content_preview = ""
+                        fallback_summary = (
+                            (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                        )
+                        summary_task_content = f"{fallback_name}|{fallback_summary}"
+                        task_lock.summary_generated = True
 
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
@@ -588,11 +584,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             coordinator_context=context_for_multi_turn
                         )
 
-                        task_content_for_summary = new_task_content
-                        if len(task_content_for_summary) > 100:
-                            new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
-                        else:
-                            new_summary_content = f"Follow-up Task|{task_content_for_summary}"
+                        # Generate proper LLM summary for multi-turn tasks instead of hardcoded fallback
+                        try:
+                            multi_turn_summary_agent = task_summary_agent(options)
+                            new_summary_content = await asyncio.wait_for(
+                                summary_task(multi_turn_summary_agent, camel_task), timeout=10
+                            )
+                            logger.info("Generated LLM summary for multi-turn task", extra={"project_id": options.project_id})
+                        except asyncio.TimeoutError:
+                            logger.warning("Multi-turn summary_task timeout", extra={"project_id": options.project_id, "task_id": task_id})
+                            # Fallback to descriptive but not generic summary
+                            task_content_for_summary = new_task_content
+                            if len(task_content_for_summary) > 100:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
+                            else:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary}"
+                        except Exception as e:
+                            logger.error(f"Error generating multi-turn task summary: {e}")
+                            # Fallback to descriptive but not generic summary
+                            task_content_for_summary = new_task_content
+                            if len(task_content_for_summary) > 100:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
+                            else:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary}"
 
                         # Send the extracted events
                         yield to_sub_tasks(camel_task, new_summary_content)
