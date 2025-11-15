@@ -68,8 +68,13 @@ export default function GroupedHistoryView({
       onTaskDelete(historyId, () => {
         setProjects(prevProjects => {
           return prevProjects.map(project => {
-            project.tasks = project.tasks.filter(task => String(task.id) !== historyId);
-            return project;
+            const filteredTasks = project.tasks.filter(task => String(task.id) !== historyId);
+            return {
+              ...project,
+              tasks: filteredTasks,
+              task_count: filteredTasks.length,
+              total_tokens: filteredTasks.reduce((sum, task) => sum + (task.tokens || 0), 0)
+            };
           }).filter(project => project.tasks.length > 0);
         });
       });
@@ -158,15 +163,10 @@ export default function GroupedHistoryView({
 
     // Call API to update project name
     try {
-      const response = await proxyFetchPut(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await proxyFetchPut(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`);
 
-      if (!response.ok) {
-        console.error(`Failed to update project name: ${response.status}`);
+      if (response && response.code !== undefined && response.code !== 0) {
+        console.error(`Failed to update project name: ${response.code}`);
         // Optionally: revert the local change if API call fails
       } else {
         console.log(`Successfully updated project ${projectId} name to ${newName}`);
@@ -198,7 +198,7 @@ export default function GroupedHistoryView({
 
   // Get all projects from projectStore and find empty ones
   const allProjectsFromStore = projectStore.getAllProjects();
-  const emptyProjects = allProjectsFromStore.filter(project => projectStore.isEmptyProject ? projectStore.isEmptyProject(project) : false);
+  const emptyProjects = allProjectsFromStore.filter(project => projectStore.isEmptyProject(project));
   
   // Convert empty projects from projectStore format to ProjectGroup format
   const emptyProjectGroups: ProjectGroupType[] = emptyProjects.map(project => ({
