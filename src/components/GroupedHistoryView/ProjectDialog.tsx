@@ -189,12 +189,12 @@ export default function ProjectDialog({
 
             <div className="flex flex-col gap-xs">
               <span className="text-text-label text-label-sm font-normal">
-                {t("layout.failed")}
+                {t("layout.ongoing")}
               </span>
               <div className="flex flex-row items-center gap-sm">
-                <CircleSlash className="w-4 h-4 text-icon-cuation" />
+                <CircleSlash className="w-4 h-4 text-icon-information" />
                 <span className="text-text-heading text-body-lg font-bold">
-                  {project.total_failed_tasks}
+                  {project.total_ongoing_tasks}
                 </span>
               </div>
             </div>
