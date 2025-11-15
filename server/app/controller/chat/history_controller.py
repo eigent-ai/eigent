@@ -224,9 +224,14 @@ def update_project_name(
     user_id = auth.user.id
 
     # Get all histories for this project
+    # Handle both cases: when project_id is an actual project_id field,
+    # and when it's a task_id being used as a fallback project identifier
     stmt = (
         select(ChatHistory)
-        .where(ChatHistory.project_id == project_id)
+        .where(
+            (ChatHistory.project_id == project_id) |
+            ((ChatHistory.project_id.is_(None)) & (ChatHistory.task_id == project_id))
+        )
         .where(ChatHistory.user_id == user_id)
     )
 
@@ -251,7 +256,7 @@ def update_project_name(
             "updated_count": len(histories)
         })
 
-        return Response(status_code=200)
+        return Response(status_code=204)
     except Exception as e:
         session.rollback()
         logger.error("Project name update failed", extra={"user_id": user_id, "project_id": project_id, "error": str(e)}, exc_info=True)

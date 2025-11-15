@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Folder, FolderClosed, FolderOpen, Calendar, Target, Clock, Activity, Zap, Bot, MoreVertical, Edit, Trash2, MoreHorizontal, Pin, Hash, Sparkles, Sparkle } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderClosed, FolderOpen, Calendar, Target, Clock, Activity, Zap, Bot, MoreVertical, Edit, Trash2, MoreHorizontal, Pin, Hash, Sparkles, Sparkle, CheckCircle2 } from "lucide-react";
 import { ProjectGroup as ProjectGroupType, HistoryTask } from "@/types/history";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
@@ -188,7 +188,7 @@ export default function ProjectGroup({
                       </Tag>
                     </motion.div>
                   )}
-                  
+
                   {!isOngoing && hasIssue && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
@@ -197,6 +197,19 @@ export default function ProjectGroup({
                     >
                       <Tag variant="warning" size="xs">
                         {t("layout.issue") || "Issue"}
+                      </Tag>
+                    </motion.div>
+                  )}
+
+                  {!isOngoing && !hasIssue && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <Tag variant="success" size="xs">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {t("layout.completed") || "Completed"}
                       </Tag>
                     </motion.div>
                   )}
@@ -347,13 +360,20 @@ export default function ProjectGroup({
               {t("layout.ongoing")}
             </Tag>
           )}
-          
+
           {!isOngoing && hasIssue && (
             <Tag variant="warning" size="sm">
               {t("layout.issue") || "Issue"}
             </Tag>
           )}
-          
+
+          {!isOngoing && !hasIssue && (
+            <Tag variant="success" size="sm">
+              <CheckCircle2 />
+              {t("layout.completed") || "Completed"}
+            </Tag>
+          )}
+
           {/* Menu button */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
