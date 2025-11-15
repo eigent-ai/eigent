@@ -510,8 +510,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 new_task_state = item.data.get('state', 'unknown')
                 new_task_result = item.data.get('result', '')
 
-
-                assert camel_task is not None
+                if camel_task is None:
+                    logger.error(f"NEW_TASK_STATE action received but camel_task is None for project {options.project_id}, task {new_task_id}")
+                    yield sse_json("error", {"message": "Cannot process new task state: current task not initialized."})
+                    continue
 
                 old_task_content: str = camel_task.content
                 old_task_result: str = await get_task_result_with_optional_summary(camel_task, options)
@@ -680,16 +682,32 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                     workforce.resume()
             elif item.action == Action.end:
-                assert camel_task is not None
+                logger.info(f"Processing END action for project {options.project_id}, task {options.task_id}, camel_task exists: {camel_task is not None}, current status: {task_lock.status}")
+                
+                # Prevent duplicate end processing
+                if task_lock.status == Status.done:
+                    logger.warning(f"END action received but task already marked as done for project {options.project_id}, task {options.task_id}. Ignoring duplicate END action.")
+                    continue
+                
+                if camel_task is None:
+                    logger.warning(f"END action received but camel_task is None for project {options.project_id}, task {options.task_id}. This may indicate multiple END actions or improper task lifecycle management.")
+                    # Use the item data as the final result if camel_task is None
+                    final_result: str = str(item.data) if item.data else "Task completed"
+                else:
+                    final_result: str = await get_task_result_with_optional_summary(camel_task, options)
+                
                 task_lock.status = Status.done
-                final_result: str = await get_task_result_with_optional_summary(camel_task, options)
 
                 task_lock.last_task_result = final_result
 
-                task_content: str = camel_task.content
-                if "=== CURRENT TASK ===" in task_content:
-                    task_content = task_content.split("=== CURRENT TASK ===")[-1].strip()
-
+                # Handle task content - use fallback if camel_task is None
+                if camel_task is not None:
+                    task_content: str = camel_task.content
+                    if "=== CURRENT TASK ===" in task_content:
+                        task_content = task_content.split("=== CURRENT TASK ===")[-1].strip()
+                else:
+                    task_content: str = f"Task {options.task_id}"
+                
                 task_lock.add_conversation('task_result', {
                     'task_content': task_content,
                     'task_result': final_result,
@@ -716,8 +734,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Check if this might be a misrouted second question
                 if camel_task is None:
                     logger.warning(f"SUPPLEMENT action received but camel_task is None for project {options.project_id}")
+                    yield sse_json("error", {"message": "Cannot supplement task: task not initialized. Please start a task first."})
+                    continue
                 else:
-                    assert camel_task is not None
                     task_lock.status = Status.processing
                     camel_task.add_subtask(
                         Task(
