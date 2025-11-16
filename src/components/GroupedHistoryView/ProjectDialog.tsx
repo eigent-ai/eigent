@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ProjectGroup } from "@/types/history";
 import {
   Dialog,
@@ -9,10 +9,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Tag } from "@/components/ui/tag";
 import TaskItem from "./TaskItem";
 import { useTranslation } from "react-i18next";
-import { Hash, Zap, CheckCircle, XCircle, Clock, Pin, Edit2, Loader2, CircleSlash2, CircleSlash, ArrowLeft } from "lucide-react";
+import { Hash, CheckCircle, Clock, Pin, Loader2, LoaderCircle } from "lucide-react";
 import { useProjectStore } from "@/store/projectStore";
 
 interface ProjectDialogProps {
@@ -192,7 +191,7 @@ export default function ProjectDialog({
                 {t("layout.ongoing")}
               </span>
               <div className="flex flex-row items-center gap-sm">
-                <CircleSlash className="w-4 h-4 text-icon-information" />
+                <LoaderCircle className="w-4 h-4 text-icon-information" />
                 <span className="text-text-heading text-body-lg font-bold">
                   {project.total_ongoing_tasks}
                 </span>
