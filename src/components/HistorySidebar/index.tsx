@@ -203,7 +203,8 @@ export default function HistorySidebar() {
 
 	return (
 		<AnimatePresence>
-			{isOpen && (
+			{isOpen && anchorStyle && (
+
 				<>
 					{/* alert dialog */}
 					<AlertDialog
