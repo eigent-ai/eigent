@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import SearchInput from "./SearchInput";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState , useLayoutEffect} from "react";
 import { useGlobalStore } from "@/store/globalStore";
 import folderIcon from "@/assets/Folder-1.svg";
 import { Progress } from "@/components/ui/progress";
@@ -182,7 +182,7 @@ export default function HistorySidebar() {
 		}
 	};
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const updateAnchor = () => {
 			const btn = document.getElementById("active-task-title-btn");
 			if (btn) {
@@ -226,7 +226,7 @@ export default function HistorySidebar() {
 					/>
 					{/* dropdown-style history panel under title bar */}
 					<motion.div
-						initial={{ y: -8, opacity: 0 }}
+						initial={false}
 						animate={{ y: 0, opacity: 1 }}
 						exit={{ y: -8, opacity: 0 }}
 						transition={{ type: "spring", damping: 22, stiffness: 220 }}
@@ -234,8 +234,8 @@ export default function HistorySidebar() {
 						ref={panelRef}
 						className="backdrop-blur-xl flex flex-col fixed w-[360px] max-h-[70vh] bg-bg-surface-tertiary rounded-xl p-sm z-50 shadow-perfect overflow-hidden"
 						style={{
-							left: anchorStyle ? anchorStyle.left : 0,
-							top: anchorStyle ? anchorStyle.top : 40,
+							left: anchorStyle.left,
+							top: anchorStyle.top,
 						}}
 					>
 						{/*<div className="flex items-center justify-between px-sm">
