@@ -93,7 +93,7 @@ def list_grouped_chat_history(
         'last_prompt': None,
         'tasks': [],
         'total_completed_tasks': 0,
-        'total_failed_tasks': 0,
+        'total_ongoing_tasks': 0,
         'average_tokens_per_task': 0
     })
     
@@ -120,11 +120,10 @@ def list_grouped_chat_history(
         project_data['task_count'] += 1
         project_data['total_tokens'] += history.tokens or 0
 
-        # Count completed and failed tasks (assuming status 1 = completed, others = failed/ongoing)
-        if history.status == 1:  # ChatStatus.done
+        if history.status == 2:  # ChatStatus.done (completed)
             project_data['total_completed_tasks'] += 1
-        else:  # Not ongoing, assume failed
-            project_data['total_failed_tasks'] += 1
+        elif history.status == 1:  # ChatStatus.in_progress (ongoing)
+            project_data['total_ongoing_tasks'] += 1
         
         # Update latest task date and last prompt
         if history.created_at:
@@ -192,15 +191,15 @@ def update_chat_history(
     """Update chat history."""
     user_id = auth.user.id
     history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id)).first()
-    
+
     if not history:
         logger.warning("Chat history not found for update", extra={"user_id": user_id, "history_id": history_id})
         raise HTTPException(status_code=404, detail="Chat History not found")
-    
+
     if history.user_id != user_id:
         logger.warning("Unauthorized update attempt", extra={"user_id": user_id, "history_id": history_id, "owner_id": history.user_id})
         raise HTTPException(status_code=403, detail="You are not allowed to update this chat history")
-    
+
     try:
         update_data = data.model_dump(exclude_unset=True)
         history.update_fields(update_data)
@@ -210,4 +209,50 @@ def update_chat_history(
         return history
     except Exception as e:
         logger.error("Chat history update failed", extra={"user_id": user_id, "history_id": history_id, "error": str(e)}, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/project/{project_id}/name", name="update project name")
+@traceroot.trace()
+def update_project_name(
+    project_id: str,
+    new_name: str,
+    session: Session = Depends(session),
+    auth: Auth = Depends(auth_must)
+):
+    """Update project name for all tasks in a project."""
+    user_id = auth.user.id
+
+    # Get all histories for this project
+    stmt = (
+        select(ChatHistory)
+        .where(ChatHistory.project_id == project_id)
+        .where(ChatHistory.user_id == user_id)
+    )
+
+    histories = session.exec(stmt).all()
+
+    if not histories:
+        logger.warning("No histories found for project", extra={"user_id": user_id, "project_id": project_id})
+        raise HTTPException(status_code=404, detail="Project not found or access denied")
+
+    try:
+        # Update all histories for this project
+        for history in histories:
+            history.project_name = new_name
+            session.add(history)
+
+        session.commit()
+
+        logger.info("Project name updated", extra={
+            "user_id": user_id,
+            "project_id": project_id,
+            "new_name": new_name,
+            "updated_count": len(histories)
+        })
+
+        return Response(status_code=200)
+    except Exception as e:
+        session.rollback()
+        logger.error("Project name update failed", extra={"user_id": user_id, "project_id": project_id, "error": str(e)}, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -38,41 +38,38 @@ interface TagProps
 	icon?: React.ReactNode;
 }
 
-function Tag({
-	className,
-	variant,
-	size,
-	asChild = false,
-	text,
-	icon,
-	children,
-	...props
-}: TagProps) {
-	const Comp = asChild ? Slot : "div";
+const Tag = React.forwardRef<HTMLDivElement, TagProps>(
+	({ className, variant, size, asChild = false, text, icon, children, ...props }, ref) => {
+		const Comp = asChild ? Slot : "div";
 
-	// When asChild is true, just pass through the child without wrapping
-	if (asChild) {
+		// When asChild is true, just pass through the child without wrapping
+		if (asChild) {
+			return (
+				<Comp
+					ref={ref}
+					className={cn(tagVariants({ variant, size, className }))}
+					{...props}
+				>
+					{children}
+				</Comp>
+			);
+		}
+
+		// Normal rendering when asChild is false
 		return (
 			<Comp
+				ref={ref}
 				className={cn(tagVariants({ variant, size, className }))}
 				{...props}
 			>
+				{icon && <span className="flex-shrink-0">{icon}</span>}
+				{text && <span>{text}</span>}
 				{children}
 			</Comp>
 		);
 	}
+);
 
-	// Normal rendering when asChild is false
-	return (
-		<Comp
-			className={cn(tagVariants({ variant, size, className }))}
-			{...props}
-		>
-			{icon && <span className="flex-shrink-0">{icon}</span>}
-			{text && <span>{text}</span>}
-			{children}
-		</Comp>
-	);
-}
+Tag.displayName = "Tag";
 
 export { Tag, tagVariants };

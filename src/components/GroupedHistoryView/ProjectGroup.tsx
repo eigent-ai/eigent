@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Folder, FolderClosed, FolderOpen, Calendar, Target, Clock, Activity, Zap, Bot, MoreVertical, Edit, Trash2, MoreHorizontal, Pin, Hash, Sparkles, Sparkle } from "lucide-react";
 import { ProjectGroup as ProjectGroupType, HistoryTask } from "@/types/history";
@@ -11,6 +11,7 @@ import { useProjectStore } from "@/store/projectStore";
 import TaskItem from "./TaskItem";
 import ProjectDialog from "./ProjectDialog";
 import { replayProject } from "@/lib/replay";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -52,6 +53,7 @@ export default function ProjectGroup({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const projectStore = useProjectStore();
+  const { chatStore } = useChatStoreAdapter();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -110,10 +112,22 @@ export default function ProjectGroup({
     return date.toLocaleDateString();
   };
 
-  // Calculate if project has issues (failed tasks or tasks requiring human in the loop)
-  const hasFailedTasks = project.total_failed_tasks > 0;
-  const hasHumanInLoop = project.ongoing_tasks?.some(task => task.status === 'pending') || false;
-  const hasIssue = hasFailedTasks || hasHumanInLoop;
+  // Calculate if project has issues (requiring human in the loop)
+  // Find tasks in chatStore where task_id matches any task in the project
+  const hasHumanInLoop = useMemo(() => {
+    if (!chatStore?.tasks || !project.tasks?.length) return false;
+
+    // Get all task_ids from the project, filtering out undefined/null values
+    const projectTaskIds = project.tasks
+      .map(task => task.task_id)
+      .filter((id): id is string => !!id);
+
+    // Check if any task in chatStore with matching task_id has pending status
+    return Object.entries(chatStore.tasks).some(([taskId, task]) =>
+      projectTaskIds.includes(taskId) && task.status === 'pending'
+    );
+  }, [chatStore?.tasks, project.tasks]);
+  const hasIssue = hasHumanInLoop;
   
   // Calculate agent count (placeholder - count unique agents from tasks if available)
   const agentCount = project.tasks?.length > 0 
