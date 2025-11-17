@@ -3,9 +3,12 @@
 	"new-project": "Nouveau projet",
 	"search": "Rechercher",
 	"project-archives": "Archives de projets",
+	"ongoing-projects": "Projets en cours",
 	"ongoing-tasks": "Tâches en cours",
+	"completed-tasks": "Tâches terminées",
 	"share": "Partager",
 	"delete": "Supprimer",
+	"grid": "Grille",
 	"table": "Tableau",
 	"list": "Liste",
 	"search-dialog": "Boîte de dialogue de recherche",
@@ -14,5 +17,10 @@
 	"search-for-a-task-or-document": "Rechercher une tâche ou un document",
 	"calendar": "Calendrier",
 	"search-emoji": "Rechercher un emoji",
-	"calculator": "Calculatrice"
+	"calculator": "Calculatrice",
+	"developer-agent": "Agent Développeur",
+	"search-agent": "Agent de Recherche",
+	"document-agent": "Agent de Documents",
+	"multi-modal-agent": "Agent Multi Modal",
+	"social-media-agent": "Agent de Médias Sociaux"
 }

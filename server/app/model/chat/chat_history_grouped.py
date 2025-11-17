@@ -15,7 +15,7 @@ class ProjectGroup(BaseModel):
     tasks: List[ChatHistoryOut] = []
     # Additional project-level metadata
     total_completed_tasks: int = 0
-    total_failed_tasks: int = 0
+    total_ongoing_tasks: int = 0
     average_tokens_per_task: int = 0
 
     @model_validator(mode="after")

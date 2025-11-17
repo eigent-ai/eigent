@@ -356,10 +356,23 @@
     --tag-fill-multimodal: var(--fill-multimodal);
     --tag-fill-socialmedia: var(--fill-socialmedia);
     --tag-fill-info: var(--surface-information);
-    --tag-text-info: var(--text-information);
+    --tag-foreground-info: var(--text-information);
     --tag-surface-hover: var(--button-tertiery-fill-hover);
     --tag-fill-success: var(--surface-success);
-    --tag-text-success: var(--text-success);
+    --tag-foreground-success: var(--text-success);
+    --tag-fill-warning: var(--surface-warning);
+    --tag-foreground-warning: var(--text-warning);
+    --tag-fill-cuation: var(--surface-cuation);
+    --tag-foreground-cuation: var(--text-cuation);
+    --tag-foreground-default: var(--text-body);
+    --tag-fill-default: var(--surface-tertiary);
+    --tag-fill-default-foreground: var(--surface-secondary);
+
+    /* Project Component */
+    --project-surface: var(--surface-tertiary);
+    --project-surface-hover: var(--surface-tertiary-hover);
+    --project-border-default: var(--border-tertiary);
+    --project-border-hover: var(--border-primary);
 
     /* Message Component */
     --message-fill-default: var(--surface-tertiary);
@@ -443,6 +456,7 @@
     --surface-action-hover: var(--colors-primary-1);
     --surface-disabled: var(--colors-off-white-30);
     --surface-tertiary: var(--colors-white-100);
+    --surface-tertiary-hover: var(--colors-white-50);
     --surface-card: var(--colors-off-white-30);
     --surface-card-hover: var(--colors-off-white-80);
     --surface-card-focus: var(--colors-white-100);
@@ -560,6 +574,7 @@
     --surface-action-hover: var(--colors-primary-1);
     --surface-disabled: var(--colors-off-white-30);
     --surface-tertiary: var(--colors-white-100);
+    --surface-tertiary-hover: var(--colors-white-50);
     --surface-card: var(--colors-off-white-30);
     --surface-card-hover: var(--colors-off-white-80);
     --surface-card-focus: var(--colors-white-100);
