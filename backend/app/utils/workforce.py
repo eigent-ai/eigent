@@ -138,48 +138,16 @@ class Workforce(BaseWorkforce):
         Returns:
             List[Task]: The decomposed subtasks or the original task
         """
-        if not validate_task_content(task.content, task.id):
-            task.state = TaskState.FAILED
-            task.result = "Task failed: Invalid or empty content provided"
-            logger.warning(
-                f"Task {task.id} rejected: Invalid or empty content. "
-                f"Content preview: '{task.content}'"
-            )
-            return [task]
-
-        if reset and self._state != WorkforceState.RUNNING:
-            self.reset()
-            logger.info("Workforce reset before handling task.")
-
-        self._task = task
-        task.state = TaskState.FAILED
-
         if coordinator_context:
             original_content = task.content
-            task_with_context = coordinator_context
-            if coordinator_context:
-                task_with_context += "\n=== CURRENT TASK ===\n"
-            task_with_context += original_content
-            task.content = task_with_context
+            task.content = coordinator_context + "\n=== CURRENT TASK ===\n" + original_content
 
-            subtasks_result = self._decompose_task(task)
+            result = await super().handle_decompose_append_task(task, reset)
 
             task.content = original_content
+            return result
         else:
-            subtasks_result = self._decompose_task(task)
-
-        if isinstance(subtasks_result, Generator):
-            subtasks = []
-            for new_tasks in subtasks_result:
-                subtasks.extend(new_tasks)
-        else:
-            subtasks = subtasks_result
-
-        if subtasks:
-            self._pending_tasks.extendleft(reversed(subtasks))
-            logger.info(f"Appended {len(subtasks)} subtasks to pending tasks")
-
-        return subtasks if subtasks else [task]
+            return await super().handle_decompose_append_task(task, reset)
 
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification to the frontend, and send "start execution" notification when the task actually begins execution
