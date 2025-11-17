@@ -114,7 +114,7 @@ export function SearchHistoryDialog() {
 									key={task.id}
 									className="cursor-pointer"
 									/**
-									 * TODO(history): Update to use project_id field 
+									 * TODO(history): Update to use project_id field
 									 * after update instead.
 									 */
 									onSelect={() => handleSetActive(task.task_id, task.question, task.id)}

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
-from app.model.chat.chat_history import ChatHistoryOut, ChatHistoryIn, ChatHistory, ChatHistoryUpdate
+from app.model.chat.chat_history import ChatHistoryOut, ChatHistoryIn, ChatHistory, ChatHistoryUpdate, ChatStatus
 from app.model.chat.chat_history_grouped import ProjectGroup, GroupedHistoryResponse
 from fastapi_babel import _
 from sqlmodel import Session, select, desc, case
@@ -120,10 +120,15 @@ def list_grouped_chat_history(
         project_data['task_count'] += 1
         project_data['total_tokens'] += history.tokens or 0
 
-        if history.status == 2:  # ChatStatus.done (completed)
+        # Count completed and failed tasks
+        # ChatStatus.ongoing = 1, ChatStatus.done = 2
+        if history.status == ChatStatus.done:
             project_data['total_completed_tasks'] += 1
-        elif history.status == 1:  # ChatStatus.in_progress (ongoing)
+        elif history.status == ChatStatus.ongoing:
             project_data['total_ongoing_tasks'] += 1
+        else:
+            # Only count as failed if not ongoing and not done
+            project_data['total_failed_tasks'] += 1
         
         # Update latest task date and last prompt
         if history.created_at:
@@ -137,7 +142,7 @@ def list_grouped_chat_history(
     for project_data in project_map.values():
         # Sort tasks within each project by creation date (oldest first)
         if include_tasks:
-            project_data['tasks'].sort(key=lambda x: x.created_at or '', reverse=False)
+            project_data['tasks'].sort(key=lambda x: (x.created_at is None, x.created_at or ''), reverse=False)
         
         project_group = ProjectGroup(**project_data)
         projects.append(project_group)

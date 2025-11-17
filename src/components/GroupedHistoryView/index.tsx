@@ -67,6 +67,7 @@ export default function GroupedHistoryView({
     try {
       onTaskDelete(historyId, () => {
         setProjects(prevProjects => {
+          // Create new project objects instead of mutating existing ones
           return prevProjects.map(project => {
             const filteredTasks = project.tasks.filter(task => String(task.id) !== historyId);
             return {
