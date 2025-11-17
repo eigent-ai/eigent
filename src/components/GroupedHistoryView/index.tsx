@@ -98,8 +98,8 @@ export default function GroupedHistoryView({
       try {
         // Find the project in our existing data
         const targetProject = projects.find(project => project.project_id === projectId);
-        
-        if (targetProject && targetProject.tasks) {
+
+        if (targetProject && targetProject.tasks && targetProject.tasks.length > 0) {
           console.log(`Deleting project ${projectId} with ${targetProject.tasks.length} tasks`);
           
           // Delete each task one by one
@@ -130,8 +130,13 @@ export default function GroupedHistoryView({
           setProjects(prevProjects => prevProjects.filter(project => project.project_id !== projectId));
           
           console.log(`Completed deletion of project ${projectId}`);
+        } else if (targetProject) {
+          // Project exists but has no tasks, just remove from store
+          console.log(`Project ${projectId} has no tasks, removing from store only`);
+          projectStore.removeProject(projectId);
+          setProjects(prevProjects => prevProjects.filter(project => project.project_id !== projectId));
         } else {
-          console.warn(`Project ${projectId} not found or has no tasks`);
+          console.warn(`Project ${projectId} not found`);
         }
       } catch (error) {
         console.error("Failed to delete project:", error);

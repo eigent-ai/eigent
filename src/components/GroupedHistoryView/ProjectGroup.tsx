@@ -116,12 +116,14 @@ export default function ProjectGroup({
   // Find tasks in chatStore where task_id matches any task in the project
   const hasHumanInLoop = useMemo(() => {
     if (!chatStore?.tasks || !project.tasks?.length) return false;
-    
-    // Get all task_ids from the project
-    const projectTaskIds = project.tasks.map(task => task.task_id);
-    
+
+    // Get all task_ids from the project, filtering out undefined/null values
+    const projectTaskIds = project.tasks
+      .map(task => task.task_id)
+      .filter((id): id is string => !!id);
+
     // Check if any task in chatStore with matching task_id has pending status
-    return Object.entries(chatStore.tasks).some(([taskId, task]) => 
+    return Object.entries(chatStore.tasks).some(([taskId, task]) =>
       projectTaskIds.includes(taskId) && task.status === 'pending'
     );
   }, [chatStore?.tasks, project.tasks]);
