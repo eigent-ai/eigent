@@ -93,7 +93,7 @@ def list_grouped_chat_history(
         'last_prompt': None,
         'tasks': [],
         'total_completed_tasks': 0,
-        'total_failed_tasks': 0,
+        'total_ongoing_tasks': 0,
         'average_tokens_per_task': 0
     })
     
@@ -122,6 +122,8 @@ def list_grouped_chat_history(
 
         if history.status == 2:  # ChatStatus.done (completed)
             project_data['total_completed_tasks'] += 1
+        elif history.status == 1:  # ChatStatus.in_progress (ongoing)
+            project_data['total_ongoing_tasks'] += 1
         
         # Update latest task date and last prompt
         if history.created_at:

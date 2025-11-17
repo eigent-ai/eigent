@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ProjectGroup as ProjectGroupType, OngoingTask } from "@/types/history";
+import { ProjectGroup as ProjectGroupType } from "@/types/history";
 import { fetchGroupedHistoryTasks } from "@/service/historyApi";
 import ProjectGroup from "./ProjectGroup";
 import { useTranslation } from "react-i18next";
@@ -8,7 +8,7 @@ import { Loader2, FolderOpen, Pin, Hash, LayoutGrid, List, Sparkles, Sparkle } f
 import { Tag } from "@/components/ui/tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGlobalStore } from "@/store/globalStore";
-import { proxyFetchDelete } from "@/api/http";
+import { proxyFetchDelete, proxyFetchPut } from "@/api/http";
 import { getAuthStore } from "@/store/authStore";
 import { useProjectStore } from "@/store/projectStore";
 
@@ -68,8 +68,13 @@ export default function GroupedHistoryView({
       onTaskDelete(historyId, () => {
         setProjects(prevProjects => {
           return prevProjects.map(project => {
-            project.tasks = project.tasks.filter(task => String(task.id) !== historyId);
-            return project;
+            const filteredTasks = project.tasks.filter(task => String(task.id) !== historyId);
+            return {
+              ...project,
+              tasks: filteredTasks,
+              task_count: filteredTasks.length,
+              total_tokens: filteredTasks.reduce((sum, task) => sum + (task.tokens || 0), 0)
+            };
           }).filter(project => project.tasks.length > 0);
         });
       });
@@ -93,8 +98,8 @@ export default function GroupedHistoryView({
       try {
         // Find the project in our existing data
         const targetProject = projects.find(project => project.project_id === projectId);
-        
-        if (targetProject && targetProject.tasks) {
+
+        if (targetProject && targetProject.tasks && targetProject.tasks.length > 0) {
           console.log(`Deleting project ${projectId} with ${targetProject.tasks.length} tasks`);
           
           // Delete each task one by one
@@ -125,8 +130,13 @@ export default function GroupedHistoryView({
           setProjects(prevProjects => prevProjects.filter(project => project.project_id !== projectId));
           
           console.log(`Completed deletion of project ${projectId}`);
+        } else if (targetProject) {
+          // Project exists but has no tasks, just remove from store
+          console.log(`Project ${projectId} has no tasks, removing from store only`);
+          projectStore.removeProject(projectId);
+          setProjects(prevProjects => prevProjects.filter(project => project.project_id !== projectId));
         } else {
-          console.warn(`Project ${projectId} not found or has no tasks`);
+          console.warn(`Project ${projectId} not found`);
         }
       } catch (error) {
         console.error("Failed to delete project:", error);
@@ -158,15 +168,10 @@ export default function GroupedHistoryView({
 
     // Call API to update project name
     try {
-      const response = await fetch(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await proxyFetchPut(`/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`);
 
-      if (!response.ok) {
-        console.error(`Failed to update project name: ${response.status}`);
+      if (response && response.code !== undefined && response.code !== 0) {
+        console.error(`Failed to update project name: ${response.code}`);
         // Optionally: revert the local change if API call fails
       } else {
         console.log(`Successfully updated project ${projectId} name to ${newName}`);
@@ -181,73 +186,8 @@ export default function GroupedHistoryView({
     loadProjects();
   }, [refreshTrigger]);
 
-  // Create separate project groups for ongoing tasks
-  const ongoingProjects = React.useMemo(() => {
-    const projectMap = new Map<string, ProjectGroupType>();
-    
-    // Group ongoing tasks by their summaryTask (project name)
-    Object.entries(ongoingTasks).forEach(([taskId, task]) => {
-      // Skip finished tasks or special task types
-      if (task.status === "finished" || task.type) return;
-      
-      // Determine project_id - use summaryTask as project identifier
-      const projectId = task.summaryTask || taskId;
-      const projectName = task.summaryTask || t("dashboard.new-project");
-      
-      // Get or create project
-      let project = projectMap.get(projectId);
-      if (!project) {
-        project = {
-          project_id: projectId,
-          project_name: projectName,
-          total_tokens: 0,
-          task_count: 0,
-          latest_task_date: new Date().toISOString(),
-          last_prompt: task.summaryTask || "",
-          tasks: [],
-          ongoing_tasks: [],
-          total_completed_tasks: 0,
-          total_failed_tasks: 0,
-          total_ongoing_tasks: 0,
-          average_tokens_per_task: 0
-        };
-        projectMap.set(projectId, project);
-      }
-      
-      // Convert ongoing task to HistoryTask format for consistent rendering
-      const historyTask: any = {
-        id: taskId,
-        task_id: taskId,
-        project_id: projectId,
-        question: task.summaryTask || t("dashboard.new-project"),
-        language: "",
-        model_platform: "",
-        model_type: "",
-        max_retries: 0,
-        project_name: projectName,
-        tokens: task.tokens || 0,
-        status: task.status === "running" ? 1 : task.status === "pause" ? 0 : 1,
-        created_at: new Date().toISOString(),
-        _isOngoing: true, // Flag to identify ongoing tasks
-        _taskData: task // Store original task data for controls
-      };
-      
-      project.tasks.push(historyTask);
-      project.task_count++;
-      project.total_ongoing_tasks = (project.total_ongoing_tasks || 0) + 1;
-      project.total_tokens += historyTask.tokens;
-    });
-    
-    // Convert to array and sort by latest activity
-    return Array.from(projectMap.values()).sort((a, b) => {
-      const dateA = new Date(a.latest_task_date).getTime();
-      const dateB = new Date(b.latest_task_date).getTime();
-      return dateB - dateA;
-    });
-  }, [ongoingTasks, t]);
-
-  // Filter ongoing projects based on search value
-  const filteredOngoingProjects = ongoingProjects.filter(project => {
+  // Filter projects based on search value
+  const filteredProjects = projects.filter(project => {
     if (!searchValue) return true;
     
     // Check if project name matches
@@ -261,23 +201,26 @@ export default function GroupedHistoryView({
     );
   });
 
-  // Filter history projects based on search value
-  const filteredHistoryProjects = projects.filter(project => {
-    if (!searchValue) return true;
-    
-    // Check if project name matches
-    if (project.project_name?.toLowerCase().includes(searchValue.toLowerCase())) {
-      return true;
-    }
-    
-    // Check if any task in the project matches
-    return project.tasks.some(task =>
-      task.question?.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  });
-
-  // Combine for total count and checks
-  const allFilteredProjects = [...filteredOngoingProjects, ...filteredHistoryProjects];
+  // Get all projects from projectStore and find empty ones
+  const allProjectsFromStore = projectStore.getAllProjects();
+  const emptyProjects = allProjectsFromStore.filter(project => projectStore.isEmptyProject(project));
+  
+  // Convert empty projects from projectStore format to ProjectGroup format
+  const emptyProjectGroups: ProjectGroupType[] = emptyProjects.map(project => ({
+    project_id: project.id,
+    project_name: project.name,
+    total_tokens: 0,
+    task_count: 0,
+    latest_task_date: new Date(project.updatedAt).toISOString(),
+    last_prompt: "",
+    tasks: [],
+    total_completed_tasks: 0,
+    total_ongoing_tasks: 0,
+    average_tokens_per_task: 0
+  }));
+  
+  // Combine filtered projects with empty projects from store
+  const allProjects = [...emptyProjectGroups, ...filteredProjects];
 
   if (loading) {
     return (
@@ -288,7 +231,7 @@ export default function GroupedHistoryView({
     );
   }
 
-  if (allFilteredProjects.length === 0) {
+  if (filteredProjects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <FolderOpen className="w-12 h-12 text-icon-tertiary mb-4" />
@@ -316,7 +259,7 @@ export default function GroupedHistoryView({
             <Sparkle />
             <span className="text-body-sm"> {t("layout.projects")}</span>
             <span className="flex items-center justify-center w-5 h-5 rounded-full bg-tag-fill-default-foreground text-text-body text-label-xs font-bold">
-              {allFilteredProjects.length}
+              {allProjects.length}
             </span>
           </Tag>
           
@@ -324,7 +267,7 @@ export default function GroupedHistoryView({
             <Pin />
             <span className="text-body-sm"> {t("layout.total-tasks")}</span>
             <span className="flex items-center justify-center w-5 h-5 rounded-full bg-tag-fill-default-foreground text-text-body text-label-xs font-bold">
-              {allFilteredProjects.reduce((total, project) => total + project.task_count, 0)}
+              {allProjects.reduce((total, project) => total + project.task_count, 0)}
             </span>
           </Tag>
         </div>
@@ -378,61 +321,9 @@ export default function GroupedHistoryView({
               }}
             >
               <AnimatePresence mode="popLayout">
-                {/* Ongoing Projects */}
-                {filteredOngoingProjects.map((project, index) => (
+                {allProjects.map((project, index) => (
                   <motion.div
-                    key={`ongoing-${project.project_id}`}
-                    variants={{
-                      hidden: { opacity: 0, y: 20, scale: 0.95 },
-                      visible: { 
-                        opacity: 1, 
-                        y: 0, 
-                        scale: 1,
-                        transition: {
-                          duration: 0.3,
-                          ease: "easeOut"
-                        }
-                      }
-                    }}
-                    exit={{ 
-                      opacity: 0, 
-                      scale: 0.9,
-                      transition: {
-                        duration: 0.2
-                      }
-                    }}
-                    layout
-                  >
-                    <ProjectGroup
-                      project={project}
-                      onTaskSelect={(projectId, question, historyId) => {
-                        if (onOngoingTaskClick) {
-                          onOngoingTaskClick(historyId);
-                        }
-                      }}
-                      onTaskDelete={(taskId) => {
-                        if (onOngoingTaskDelete) {
-                          onOngoingTaskDelete(taskId);
-                        }
-                      }}
-                      onTaskShare={onTaskShare}
-                      activeTaskId={activeTaskId}
-                      searchValue={searchValue}
-                      isOngoing={true}
-                      onOngoingTaskPause={onOngoingTaskPause}
-                      onOngoingTaskResume={onOngoingTaskResume}
-                      onProjectEdit={handleProjectEdit}
-                      onProjectDelete={handleProjectDelete}
-                      onProjectRename={handleProjectRename}
-                      viewMode="grid"
-                    />
-                  </motion.div>
-                ))}
-
-                {/* History Projects */}
-                {filteredHistoryProjects.map((project, index) => (
-                  <motion.div
-                    key={`history-${project.project_id}`}
+                    key={project.project_id}
                     variants={{
                       hidden: { opacity: 0, y: 20, scale: 0.95 },
                       visible: { 
@@ -461,7 +352,9 @@ export default function GroupedHistoryView({
                       onTaskShare={onTaskShare}
                       activeTaskId={activeTaskId}
                       searchValue={searchValue}
-                      isOngoing={false}
+                      isOngoing={project.total_ongoing_tasks > 0}
+                      onOngoingTaskPause={onOngoingTaskPause}
+                      onOngoingTaskResume={onOngoingTaskResume}
                       onProjectEdit={handleProjectEdit}
                       onProjectDelete={handleProjectDelete}
                       onProjectRename={handleProjectRename}
@@ -488,60 +381,9 @@ export default function GroupedHistoryView({
               }}
             >
               <AnimatePresence mode="popLayout">
-                {/* Ongoing Projects */}
-                {filteredOngoingProjects.map((project, index) => (
+                {allProjects.map((project, index) => (
                   <motion.div
-                    key={`ongoing-${project.project_id}`}
-                    variants={{
-                      hidden: { opacity: 0, x: -20 },
-                      visible: { 
-                        opacity: 1, 
-                        x: 0,
-                        transition: {
-                          duration: 0.3,
-                          ease: "easeOut"
-                        }
-                      }
-                    }}
-                    exit={{ 
-                      opacity: 0, 
-                      x: -20,
-                      transition: {
-                        duration: 0.2
-                      }
-                    }}
-                    layout
-                  >
-                    <ProjectGroup
-                      project={project}
-                      onTaskSelect={(projectId, question, historyId) => {
-                        if (onOngoingTaskClick) {
-                          onOngoingTaskClick(historyId);
-                        }
-                      }}
-                      onTaskDelete={(taskId) => {
-                        if (onOngoingTaskDelete) {
-                          onOngoingTaskDelete(taskId);
-                        }
-                      }}
-                      onTaskShare={onTaskShare}
-                      activeTaskId={activeTaskId}
-                      searchValue={searchValue}
-                      isOngoing={true}
-                      onOngoingTaskPause={onOngoingTaskPause}
-                      onOngoingTaskResume={onOngoingTaskResume}
-                      onProjectEdit={handleProjectEdit}
-                      onProjectDelete={handleProjectDelete}
-                      onProjectRename={handleProjectRename}
-                      viewMode="list"
-                    />
-                  </motion.div>
-                ))}
-
-                {/* History Projects */}
-                {filteredHistoryProjects.map((project, index) => (
-                  <motion.div
-                    key={`history-${project.project_id}`}
+                    key={project.project_id}
                     variants={{
                       hidden: { opacity: 0, x: -20 },
                       visible: { 
@@ -569,7 +411,9 @@ export default function GroupedHistoryView({
                       onTaskShare={onTaskShare}
                       activeTaskId={activeTaskId}
                       searchValue={searchValue}
-                      isOngoing={false}
+                      isOngoing={project.total_ongoing_tasks > 0}
+                      onOngoingTaskPause={onOngoingTaskPause}
+                      onOngoingTaskResume={onOngoingTaskResume}
                       onProjectEdit={handleProjectEdit}
                       onProjectDelete={handleProjectDelete}
                       onProjectRename={handleProjectRename}
