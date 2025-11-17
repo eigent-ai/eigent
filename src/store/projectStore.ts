@@ -70,6 +70,7 @@ interface ProjectStore {
 	getAllProjects: () => Project[];
 	getProjectById: (projectId: string) => Project | null;
 	getProjectTotalTokens: (projectId: string) => number;
+	isEmptyProject: (project: Project) => boolean;
 
 	//History ID
 	setHistoryId: (projectId: string, historyId: string) => void;
@@ -820,6 +821,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 		
 		return project.metadata?.historyId || null;
+	},
+
+	isEmptyProject: (project: Project) => {
+		return isEmptyProject(project);
 	}
 }));
 
