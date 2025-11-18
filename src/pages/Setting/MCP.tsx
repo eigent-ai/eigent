@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-    proxyFetchGet,
-    proxyFetchDelete,
-    proxyFetchPost,
-    proxyFetchPut,
-    fetchPost,
-    fetchGet,
+	proxyFetchGet,
+	proxyFetchDelete,
+	proxyFetchPost,
+	proxyFetchPut,
+	fetchPost,
+	fetchGet,
 } from "@/api/http";
 import MCPList from "./components/MCPList";
 import MCPConfigDialog from "./components/MCPConfigDialog";
@@ -31,8 +31,8 @@ import { Tag as TagComponent } from "@/components/ui/tag";
 
 export default function SettingMCP() {
 	const navigate = useNavigate();
-    const { checkAgentTool } = useAuthStore();
-    const { modelType } = useAuthStore();
+	const { checkAgentTool } = useAuthStore();
+	const { modelType } = useAuthStore();
 	const { t } = useTranslation();
 	const [items, setItems] = useState<MCPUserItem[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -64,11 +64,11 @@ export default function SettingMCP() {
 	const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>(
 		{}
 	);
-const [collapsedMCP, setCollapsedMCP] = useState(false);
-const [collapsedExternal, setCollapsedExternal] = useState(false);
-const [showMarket, setShowMarket] = useState(false);
-const [marketKeyword, setMarketKeyword] = useState("");
-const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
+	const [collapsedMCP, setCollapsedMCP] = useState(false);
+	const [collapsedExternal, setCollapsedExternal] = useState(false);
+	const [showMarket, setShowMarket] = useState(false);
+	const [marketKeyword, setMarketKeyword] = useState("");
+	const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 
 	// add: integrations list
 	const [integrations, setIntegrations] = useState<any[]>([]);
@@ -80,7 +80,8 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 			env_vars: ["GOOGLE_API_KEY", "SEARCH_ENGINE_ID"],
 			desc: (
 				<>
-					{t("setting.environmental-variables-required")}: GOOGLE_API_KEY, SEARCH_ENGINE_ID
+					{t("setting.environmental-variables-required")}: GOOGLE_API_KEY,
+					SEARCH_ENGINE_ID
 					<br />
 					<span
 						style={{
@@ -106,7 +107,8 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	]);
 
 	// default search engine and availability
-	const [defaultSearchEngine, setDefaultSearchEngine] = useState<string>("google");
+	const [defaultSearchEngine, setDefaultSearchEngine] =
+		useState<string>("google");
 	const [hasGoogleSearch, setHasGoogleSearch] = useState<boolean>(false);
 	const [configs, setConfigs] = useState<any[]>([]);
 
@@ -136,11 +138,11 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object") {
 				const baseURL = getProxyBaseURL();
-                const list = Object.entries(res).map(([key, value]: [string, any]) => {
+				const list = Object.entries(res).map(([key, value]: [string, any]) => {
 					let onInstall = null;
 
 					// Special handling for Notion MCP
-					if (key.toLowerCase() === 'notion') {
+					if (key.toLowerCase() === "notion") {
 						onInstall = async () => {
 							try {
 								const response = await fetchPost("/install/tool/notion");
@@ -149,7 +151,9 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 									if (response.warning) {
 										toast.warning(response.warning, { duration: 5000 });
 									} else {
-										toast.success(t("setting.notion-mcp-installed-successfully"));
+										toast.success(
+											t("setting.notion-mcp-installed-successfully")
+										);
 									}
 									// Save to config to mark as installed
 									await proxyFetchPost("/api/configs", {
@@ -160,117 +164,160 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 									// Refresh the integrations list to show the installed state
 									fetchList();
 									// Force refresh IntegrationList component
-									setRefreshKey(prev => prev + 1);
+									setRefreshKey((prev) => prev + 1);
 								} else {
-									toast.error(response.error || t("setting.failed-to-install-notion-mcp"));
+									toast.error(
+										response.error || t("setting.failed-to-install-notion-mcp")
+									);
 								}
 							} catch (error: any) {
-								toast.error(error.message || t("setting.failed-to-install-notion-mcp"));
+								toast.error(
+									error.message || t("setting.failed-to-install-notion-mcp")
+								);
 							}
 						};
-						} else if (key.toLowerCase() === 'google calendar') {
-							onInstall = async () => {
-								try {
-									const response = await fetchPost("/install/tool/google_calendar");
-									if (response.success) {
-										// Check if there's a warning (connection failed but installation marked as complete)
-										if (response.warning) {
-											toast.warning(response.warning, { duration: 5000 });
+					} else if (key.toLowerCase() === "google calendar") {
+						onInstall = async () => {
+							try {
+								const response = await fetchPost(
+									"/install/tool/google_calendar"
+								);
+								if (response.success) {
+									// Check if there's a warning (connection failed but installation marked as complete)
+									if (response.warning) {
+										toast.warning(response.warning, { duration: 5000 });
+									} else {
+										toast.success(
+											t("setting.google-calendar-installed-successfully")
+										);
+									}
+									try {
+										// Ensure we persist a marker config to indicate installation
+										const existingConfigs = await proxyFetchGet("/api/configs");
+										const existing = Array.isArray(existingConfigs)
+											? existingConfigs.find(
+													(c: any) =>
+														c.config_group?.toLowerCase() ===
+															"google calendar" &&
+														c.config_name === "GOOGLE_REFRESH_TOKEN"
+											  )
+											: null;
+
+										const configPayload = {
+											config_group: "Google Calendar",
+											config_name: "GOOGLE_REFRESH_TOKEN",
+											config_value: "exists",
+										};
+
+										if (existing) {
+											await proxyFetchPut(
+												`/api/configs/${existing.id}`,
+												configPayload
+											);
 										} else {
-											toast.success(t("setting.google-calendar-installed-successfully"));
+											await proxyFetchPost("/api/configs", configPayload);
 										}
+									} catch (configError) {
+										console.warn(
+											"Failed to persist Google Calendar config",
+											configError
+										);
+									}
+									// Refresh the integrations list to show the installed state
+									fetchList();
+									// Force refresh IntegrationList component
+									setRefreshKey((prev) => prev + 1);
+								} else if (response.status === "authorizing") {
+									// Authorization in progress - start polling for completion
+									toast.info(
+										t("setting.please-complete-authorization-in-browser")
+									);
+
+									// Poll for authorization completion via oauth status endpoint
+									const pollInterval = setInterval(async () => {
 										try {
-											// Ensure we persist a marker config to indicate installation
-											const existingConfigs = await proxyFetchGet("/api/configs");
-											const existing = Array.isArray(existingConfigs)
-												? existingConfigs.find((c: any) =>
-													c.config_group?.toLowerCase() === "google calendar" &&
-													c.config_name === "GOOGLE_REFRESH_TOKEN"
-												)
-												: null;
+											const statusResp = await fetchGet(
+												"/oauth/status/google_calendar"
+											);
+											if (statusResp?.status === "success") {
+												clearInterval(pollInterval);
+												// Now that auth succeeded, run install again to initialize toolkit
+												const finalize = await fetchPost(
+													"/install/tool/google_calendar"
+												);
+												if (finalize?.success) {
+													const configs = await proxyFetchGet("/api/configs");
+													const existing = Array.isArray(configs)
+														? configs.find(
+																(c: any) =>
+																	c.config_group?.toLowerCase() ===
+																		"google calendar" &&
+																	c.config_name === "GOOGLE_REFRESH_TOKEN"
+														  )
+														: null;
 
-											const configPayload = {
-												config_group: "Google Calendar",
-												config_name: "GOOGLE_REFRESH_TOKEN",
-												config_value: "exists",
-											};
+													const payload = {
+														config_group: "Google Calendar",
+														config_name: "GOOGLE_REFRESH_TOKEN",
+														config_value: "exists",
+													};
 
-											if (existing) {
-												await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-											} else {
-												await proxyFetchPost("/api/configs", configPayload);
+													if (existing) {
+														await proxyFetchPut(
+															`/api/configs/${existing.id}`,
+															payload
+														);
+													} else {
+														await proxyFetchPost("/api/configs", payload);
+													}
+
+													toast.success(
+														t("setting.google-calendar-installed-successfully")
+													);
+													fetchList();
+													setRefreshKey((prev) => prev + 1);
+												}
+											} else if (
+												statusResp?.status === "failed" ||
+												statusResp?.status === "cancelled"
+											) {
+												clearInterval(pollInterval);
+												const msg =
+													statusResp?.error ||
+													(statusResp?.status === "cancelled"
+														? t("setting.authorization-cancelled")
+														: t("setting.authorization-failed"));
+												toast.error(msg);
 											}
-										} catch (configError) {
-											console.warn("Failed to persist Google Calendar config", configError);
+											// if still authorizing, continue polling
+										} catch (err) {
+											console.error("Polling oauth status failed", err);
 										}
-										// Refresh the integrations list to show the installed state
-										fetchList();
-										// Force refresh IntegrationList component
-										setRefreshKey(prev => prev + 1);
-                                } else if (response.status === "authorizing") {
-                                    // Authorization in progress - start polling for completion
-                                    toast.info(t("setting.please-complete-authorization-in-browser"));
+									}, 2000);
 
-                                    // Poll for authorization completion via oauth status endpoint
-                                    const pollInterval = setInterval(async () => {
-                                        try {
-                                            const statusResp = await fetchGet("/oauth/status/google_calendar");
-                                            if (statusResp?.status === "success") {
-                                                clearInterval(pollInterval);
-                                                // Now that auth succeeded, run install again to initialize toolkit
-                                                const finalize = await fetchPost("/install/tool/google_calendar");
-                                                if (finalize?.success) {
-                                                    const configs = await proxyFetchGet("/api/configs");
-                                                    const existing = Array.isArray(configs)
-                                                        ? configs.find((c: any) =>
-                                                            c.config_group?.toLowerCase() === "google calendar" &&
-                                                            c.config_name === "GOOGLE_REFRESH_TOKEN"
-                                                        )
-                                                        : null;
-                                                    
-                                                    const payload = {
-                                                        config_group: "Google Calendar",
-                                                        config_name: "GOOGLE_REFRESH_TOKEN",
-                                                        config_value: "exists",
-                                                    };
-                                                    
-                                                    if (existing) {
-                                                        await proxyFetchPut(`/api/configs/${existing.id}`, payload);
-                                                    } else {
-                                                        await proxyFetchPost("/api/configs", payload);
-                                                    }
-                                                    
-                                                    toast.success(t("setting.google-calendar-installed-successfully"));
-                                                    fetchList();
-                                                    setRefreshKey((prev) => prev + 1);
-                                                }
-                                            } else if (statusResp?.status === "failed" || statusResp?.status === "cancelled") {
-                                                clearInterval(pollInterval);
-                                                const msg = statusResp?.error || (statusResp?.status === "cancelled" ? t("setting.authorization-cancelled") : t("setting.authorization-failed"));
-                                                toast.error(msg);
-                                            }
-                                            // if still authorizing, continue polling
-                                        } catch (err) {
-                                            console.error("Polling oauth status failed", err);
-                                        }
-                                    }, 2000);
-
-                                    // Safety timeout
-                                    setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+									// Safety timeout
+									setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
 								} else {
-									toast.error(response.error || response.message || t("setting.failed-to-install-google-calendar"));
+									toast.error(
+										response.error ||
+											response.message ||
+											t("setting.failed-to-install-google-calendar")
+									);
 								}
 							} catch (error: any) {
-								toast.error(error.message || t("setting.failed-to-install-google-calendar"));
+								toast.error(
+									error.message ||
+										t("setting.failed-to-install-google-calendar")
+								);
 							}
 						};
-                    } else {
-                        onInstall = () => {
-                            const url = `${baseURL}/api/oauth/${key.toLowerCase()}/login`;
-                            // Open in a new window to avoid navigating the app/webview
-                            window.open(url, "_blank");
-                        };
-                    }
+					} else {
+						onInstall = () => {
+							const url = `${baseURL}/api/oauth/${key.toLowerCase()}/login`;
+							// Open in a new window to avoid navigating the app/webview
+							window.open(url, "_blank");
+						};
+					}
 
 					return {
 						key,
@@ -278,12 +325,12 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						env_vars: value.env_vars,
 						desc:
 							value.env_vars && value.env_vars.length > 0
-								? `${t("setting.environmental-variables-required")}: ${value.env_vars.join(
-										", "
-								  )}`
-								: key.toLowerCase() === 'notion'
+								? `${t(
+										"setting.environmental-variables-required"
+								  )}: ${value.env_vars.join(", ")}`
+								: key.toLowerCase() === "notion"
 								? t("setting.notion-workspace-integration")
-								: key.toLowerCase() === 'google calendar'
+								: key.toLowerCase() === "google calendar"
 								? t("setting.google-calendar-integration")
 								: "",
 						onInstall,
@@ -292,7 +339,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 				console.log("API response:", res);
 				console.log("Generated list:", list);
 				console.log("Essential integrations:", essentialIntegrations);
-				
+
 				setIntegrations(
 					list.filter(
 						(item) => !essentialIntegrations.find((i) => i.key === item.key)
@@ -368,7 +415,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 				command: configForm.command,
 				args: arrayToArgsJson(configForm.argsArr),
 				env: configForm.env,
-			}
+			};
 			await proxyFetchPut(`/api/mcp/users/${showConfig.id}`, mcpData);
 
 			if (window.ipcRenderer) {
@@ -418,7 +465,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 		setInstalling(true);
 		try {
 			if (addType === "local") {
-				let data:ConfigFile;
+				let data: ConfigFile;
 				try {
 					data = JSON.parse(localJson);
 
@@ -433,9 +480,12 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 						items.some((d) => d.mcp_name === name)
 					);
 					if (conflict) {
-						toast.error(t("setting.mcp-server-already-exists", { name: conflict }), {
-							closeButton: true,
-						});
+						toast.error(
+							t("setting.mcp-server-already-exists", { name: conflict }),
+							{
+								closeButton: true,
+							}
+						);
 						setInstalling(false);
 						return;
 					}
@@ -491,11 +541,15 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 	// Generate search engine selection content
 	const generateSearchEngineSelectContent = () => {
 		console.log("Generating search engine select content, configs:", configs);
-		const isCustom = modelType === 'custom';
+		const isCustom = modelType === "custom";
 
 		// Google Search - requires API key and Search Engine ID in custom mode
-		const hasGoogleApiKey = configs.some((c: any) => c.config_name === "GOOGLE_API_KEY");
-		const hasGoogleCseId = configs.some((c: any) => c.config_name === "SEARCH_ENGINE_ID");
+		const hasGoogleApiKey = configs.some(
+			(c: any) => c.config_name === "GOOGLE_API_KEY"
+		);
+		const hasGoogleCseId = configs.some(
+			(c: any) => c.config_name === "SEARCH_ENGINE_ID"
+		);
 		const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
 
 		console.log("Search engine status:", { hasGoogle, isCustom });
@@ -541,7 +595,11 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 					<div className="flex w-full items-center justify-between">
 						{showMarket ? (
 							<div className="flex w-full items-center justify-between gap-sm">
-								<Button variant="ghost" size="icon" onClick={() => setShowMarket(false)}>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => setShowMarket(false)}
+								>
 									<ChevronLeft />
 								</Button>
 								<div className="text-heading-sm font-bold text-text-heading">
@@ -549,7 +607,10 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 								</div>
 								<div className="flex items-center gap-2 ml-auto">
 									<div className="w-full">
-										<SearchInput value={marketKeyword} onChange={(e) => setMarketKeyword(e.target.value)} />
+										<SearchInput
+											value={marketKeyword}
+											onChange={(e) => setMarketKeyword(e.target.value)}
+										/>
 									</div>
 								</div>
 							</div>
@@ -559,142 +620,186 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 									{t("setting.mcp-and-tools")}
 								</div>
 								<div className="flex items-center gap-sm">
-									<Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setShowAdd(true)}
+									>
 										<Plus />
 										<span>{t("setting.add-mcp-server")}</span>
 									</Button>
-									<Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
+									{/* <Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
 										<Store />
 										<span>{t("setting.market")}</span>
-									</Button>
+									</Button> */}
 								</div>
 							</div>
 						)}
 					</div>
 				</div>
 			</div>
-      
+
 			{/* Content Section */}
 			<div className="flex w-full">
 				<div className="flex px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
-
-			<div className="flex flex-col w-full gap-8">
-				{showMarket ? (
-					<div className="pt-2">
-						<MCPMarket onBack={() => setShowMarket(false)} keyword={marketKeyword} />
-					</div>
-				) : (
-					<>
-						<div className="flex-1 w-full">
-							<IntegrationList
-									items={essentialIntegrations}
-									showConfigButton={true}
-									showInstallButton={false}
-									showSelect
-									showStatusDot={false}
-									selectPlaceholder="Google Search"
-									selectContent={generateSearchEngineSelectContent()}
-									onSelectChange={async (value) => {
+					<div className="flex flex-col w-full gap-8">
+						{showMarket ? (
+							<div className="pt-2">
+								<MCPMarket
+									onBack={() => setShowMarket(false)}
+									keyword={marketKeyword}
+								/>
+							</div>
+						) : (
+							<>
+								<div className="flex-1 w-full">
+									<IntegrationList
+										items={essentialIntegrations}
+										showConfigButton={true}
+										showInstallButton={false}
+										showSelect
+										showStatusDot={false}
+										selectPlaceholder="Google Search"
+										selectContent={generateSearchEngineSelectContent()}
+										onSelectChange={async (value) => {
 											try {
-													setDefaultSearchEngine(value);
-													await proxyFetchPost("/api/configs", {
-															config_group: "Search",
-															config_name: "DEFAULT_SEARCH_ENGINE",
-															config_value: value,
-													});
+												setDefaultSearchEngine(value);
+												await proxyFetchPost("/api/configs", {
+													config_group: "Search",
+													config_name: "DEFAULT_SEARCH_ENGINE",
+													config_value: value,
+												});
 											} catch (e) {}
-									}}
-									onConfigClick={(item) => {
+										}}
+										onConfigClick={(item) => {
 											if (item.key === "Search") {
-													setShowSearchEngineConfig(true);
+												setShowSearchEngineConfig(true);
 											}
-									}}
-							/>
-						</div>
-						<div className="flex flex-col">
-							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
-								<span className="text-text-body text-body-md font-bold">{t("setting.mcp")}</span>
-								<div className="flex-1" />
-								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedMCP((c) => !c); }}>
-									{collapsedMCP ? (
-										<ChevronDown className="w-4 h-4" />
-									) : (
-										<ChevronUp className="w-4 h-4" />
-									)}
-								</Button>
-							</div>
-							{!collapsedMCP && <IntegrationList key={refreshKey} items={integrations} showConfigButton={false} showInstallButton={true} />}
-						</div>
-						<div className="flex flex-col">
-							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
-								<div className="justify-center text-text-body text-body-md font-bold">{t("setting.your-own-mcps")}</div>
-								<div className="flex-1" />
-								<Button variant="ghost" size="md" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCollapsedExternal((c) => !c); }}>
-									{collapsedExternal ? (
-										<ChevronDown className="w-4 h-4" />
-									) : (
-										<ChevronUp className="w-4 h-4" />
-									)}
-								</Button>
-							</div>
-							{!collapsedExternal && (
-								<>
-									{isLoading && (<div className="text-center py-8 text-text-label">{t("setting.loading")}</div>)}
-									{error && <div className="text-center py-8 text-red-500">{error}</div>}
-									{!isLoading && !error && items.length === 0 && (<div className="text-center py-8 text-text-label">{t("setting.no-mcp-servers")}</div>)}
-									{!isLoading && (
-										<MCPList
-											items={items}
-											onSetting={setShowConfig}
-											onDelete={setDeleteTarget}
-											onSwitch={handleSwitch}
-											switchLoading={switchLoading}
+										}}
+									/>
+								</div>
+								<div className="flex flex-col">
+									<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
+										<span className="text-text-body text-body-md font-bold">
+											{t("setting.mcp")}
+										</span>
+										<div className="flex-1" />
+										<Button
+											variant="ghost"
+											size="md"
+											onClick={(e) => {
+												e.preventDefault();
+												e.stopPropagation();
+												setCollapsedMCP((c) => !c);
+											}}
+										>
+											{collapsedMCP ? (
+												<ChevronDown className="w-4 h-4" />
+											) : (
+												<ChevronUp className="w-4 h-4" />
+											)}
+										</Button>
+									</div>
+									{!collapsedMCP && (
+										<IntegrationList
+											key={refreshKey}
+											items={integrations}
+											showConfigButton={false}
+											showInstallButton={true}
 										/>
 									)}
-								</>
-							)}
-							<MCPConfigDialog
-								open={!!showConfig}
-								form={configForm}
-								mcp={showConfig}
-								onChange={setConfigForm as any}
-								onSave={handleConfigSave}
-								onClose={handleConfigClose}
-								loading={saving}
-								errorMsg={errorMsg}
-								onSwitchStatus={handleConfigSwitch}
-							/>
-							<MCPAddDialog
-								open={showAdd}
-								addType={addType}
-								setAddType={setAddType}
-								localJson={localJson}
-								setLocalJson={setLocalJson}
-								remoteName={remoteName}
-								setRemoteName={setRemoteName}
-								remoteUrl={remoteUrl}
-								setRemoteUrl={setRemoteUrl}
-								installing={installing}
-								onClose={() => setShowAdd(false)}
-								onInstall={handleInstall}
-							/>
-							<MCPDeleteDialog
-								open={!!deleteTarget}
-								target={deleteTarget}
-								onCancel={() => setDeleteTarget(null)}
-								onConfirm={handleDelete}
-								loading={deleting}
-							/>
-							<SearchEngineConfigDialog
-								open={showSearchEngineConfig}
-								onClose={() => setShowSearchEngineConfig(false)}
-							/>
-						</div>
-					</>
-				)}
-			</div>
-
-			</div>
+								</div>
+								<div className="flex flex-col">
+									<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
+										<div className="justify-center text-text-body text-body-md font-bold">
+											{t("setting.your-own-mcps")}
+										</div>
+										<div className="flex-1" />
+										<Button
+											variant="ghost"
+											size="md"
+											onClick={(e) => {
+												e.preventDefault();
+												e.stopPropagation();
+												setCollapsedExternal((c) => !c);
+											}}
+										>
+											{collapsedExternal ? (
+												<ChevronDown className="w-4 h-4" />
+											) : (
+												<ChevronUp className="w-4 h-4" />
+											)}
+										</Button>
+									</div>
+									{!collapsedExternal && (
+										<>
+											{isLoading && (
+												<div className="text-center py-8 text-text-label">
+													{t("setting.loading")}
+												</div>
+											)}
+											{error && (
+												<div className="text-center py-8 text-red-500">
+													{error}
+												</div>
+											)}
+											{!isLoading && !error && items.length === 0 && (
+												<div className="text-center py-8 text-text-label">
+													{t("setting.no-mcp-servers")}
+												</div>
+											)}
+											{!isLoading && (
+												<MCPList
+													items={items}
+													onSetting={setShowConfig}
+													onDelete={setDeleteTarget}
+													onSwitch={handleSwitch}
+													switchLoading={switchLoading}
+												/>
+											)}
+										</>
+									)}
+									<MCPConfigDialog
+										open={!!showConfig}
+										form={configForm}
+										mcp={showConfig}
+										onChange={setConfigForm as any}
+										onSave={handleConfigSave}
+										onClose={handleConfigClose}
+										loading={saving}
+										errorMsg={errorMsg}
+										onSwitchStatus={handleConfigSwitch}
+									/>
+									<MCPAddDialog
+										open={showAdd}
+										addType={addType}
+										setAddType={setAddType}
+										localJson={localJson}
+										setLocalJson={setLocalJson}
+										remoteName={remoteName}
+										setRemoteName={setRemoteName}
+										remoteUrl={remoteUrl}
+										setRemoteUrl={setRemoteUrl}
+										installing={installing}
+										onClose={() => setShowAdd(false)}
+										onInstall={handleInstall}
+									/>
+									<MCPDeleteDialog
+										open={!!deleteTarget}
+										target={deleteTarget}
+										onCancel={() => setDeleteTarget(null)}
+										onConfirm={handleDelete}
+										loading={deleting}
+									/>
+									<SearchEngineConfigDialog
+										open={showSearchEngineConfig}
+										onClose={() => setShowSearchEngineConfig(false)}
+									/>
+								</div>
+							</>
+						)}
+					</div>
+				</div>
 			</div>
 		</div>
 	);
