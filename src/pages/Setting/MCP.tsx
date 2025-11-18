@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Plus, Store, ChevronLeft } from "lucide-react";
 import SearchInput from "@/components/SearchInput";
 import { useNavigate } from "react-router-dom";
-import IntegrationList from "./components/IntegrationList";
+import IntegrationList from "@/components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
@@ -587,6 +587,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 					<>
 						<div className="flex-1 w-full">
 							<IntegrationList
+									variant="manage"
 									items={essentialIntegrations}
 									showConfigButton={true}
 									showInstallButton={false}
@@ -609,6 +610,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 													setShowSearchEngineConfig(true);
 											}
 									}}
+									translationNamespace="setting"
 							/>
 						</div>
 						<div className="flex flex-col">
@@ -623,7 +625,7 @@ const [showSearchEngineConfig, setShowSearchEngineConfig] = useState(false);
 									)}
 								</Button>
 							</div>
-							{!collapsedMCP && <IntegrationList key={refreshKey} items={integrations} showConfigButton={false} showInstallButton={true} />}
+							{!collapsedMCP && <IntegrationList key={refreshKey} variant="manage" items={integrations} showConfigButton={false} showInstallButton={true} translationNamespace="setting" />}
 						</div>
 						<div className="flex flex-col">
 							<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
