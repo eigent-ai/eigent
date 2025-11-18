@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Globe, Cookie, Trash2, RefreshCw, RotateCw, Plus, EllipsisVertical } from "lucide-react";
+import { Globe, Cookie, Trash2, RefreshCw, RotateCw, Plus, EllipsisVertical, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { fetchPost, fetchGet, fetchDelete } from "@/api/http";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import AlertDialog from "@/components/ui/alertDialog";
+import { Input } from "@/components/ui/input";
 
 interface CookieDomain {
 	domain: string;
@@ -18,6 +19,13 @@ interface GroupedDomain {
 	totalCookies: number;
 }
 
+interface CdpPortStatus {
+	checking: boolean;
+	available: boolean | null;
+	error?: string;
+	data?: any;
+}
+
 export default function Browser() {
 	const { t } = useTranslation();
 	const [loginLoading, setLoginLoading] = useState(false);
@@ -28,6 +36,19 @@ export default function Browser() {
 	const [showRestartDialog, setShowRestartDialog] = useState(false);
 	const [cookiesBeforeBrowser, setCookiesBeforeBrowser] = useState<number>(0);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+	// CDP port configuration
+	const [cdpPort, setCdpPort] = useState<number>(9222);
+	const [customPort, setCustomPort] = useState<string>("9222");
+	const [portStatus, setPortStatus] = useState<CdpPortStatus>({
+		checking: false,
+		available: null,
+	});
+
+	// Dialog states
+	const [showUseExistingDialog, setShowUseExistingDialog] = useState(false);
+	const [showLaunchNewDialog, setShowLaunchNewDialog] = useState(false);
+	const [pendingPort, setPendingPort] = useState<number | null>(null);
 
 	// Extract main domain (e.g., "aa.bb.cc" -> "bb.cc", "www.google.com" -> "google.com")
 	const getMainDomain = (domain: string): string => {
@@ -66,7 +87,125 @@ export default function Browser() {
 	// Auto-load cookies on component mount
 	useEffect(() => {
 		handleLoadCookies();
+		// Load current browser port on mount
+		loadCurrentBrowserPort();
 	}, []);
+
+	const loadCurrentBrowserPort = async () => {
+		if (window.ipcRenderer) {
+			const port = await window.ipcRenderer.invoke('get-browser-port');
+			setCdpPort(port);
+			setCustomPort(String(port));
+		}
+	};
+
+	const handleCheckPort = async () => {
+		const portNumber = parseInt(customPort);
+
+		if (isNaN(portNumber) || portNumber < 1 || portNumber > 65535) {
+			toast.error("Please enter a valid port number (1-65535)");
+			return;
+		}
+
+		setPortStatus({ checking: true, available: null });
+
+		try {
+			if (!window.electronAPI?.checkCdpPort) {
+				toast.error("CDP port check not available");
+				setPortStatus({ checking: false, available: false, error: "Not available" });
+				return;
+			}
+
+			const result = await window.electronAPI.checkCdpPort(portNumber);
+
+			if (result.available) {
+				setPortStatus({
+					checking: false,
+					available: true,
+					data: result.data,
+				});
+				// Browser exists, ask if user wants to use it
+				setPendingPort(portNumber);
+				setShowUseExistingDialog(true);
+			} else {
+				setPortStatus({
+					checking: false,
+					available: false,
+					error: result.error,
+				});
+				// No browser on this port, ask if user wants to launch one
+				setPendingPort(portNumber);
+				setShowLaunchNewDialog(true);
+			}
+		} catch (error: any) {
+			setPortStatus({
+				checking: false,
+				available: false,
+				error: error.message,
+			});
+			toast.error(error.message || "Failed to check port");
+		}
+	};
+
+	const handleUseExistingBrowser = async () => {
+		setShowUseExistingDialog(false);
+		if (pendingPort) {
+			try {
+				// Update the browser port in electron
+				// isExternal=true because we're using an existing external browser
+				if (window.electronAPI?.setBrowserPort) {
+					await window.electronAPI.setBrowserPort(pendingPort, true);
+				}
+				setCdpPort(pendingPort);
+				toast.success(`Now using external browser on port ${pendingPort}`);
+			} catch (error: any) {
+				toast.error(error.message || "Failed to set browser port");
+			}
+		}
+		setPendingPort(null);
+	};
+
+	const handleLaunchNewBrowser = async () => {
+		setShowLaunchNewDialog(false);
+
+		if (!pendingPort) {
+			return;
+		}
+
+		const port = pendingPort;
+		setPendingPort(null);
+
+		try {
+			if (!window.electronAPI?.launchCdpBrowser) {
+				toast.error("Launch CDP browser not available");
+				return;
+			}
+
+			toast.loading(`Launching browser on port ${port}...`, { id: 'launch-browser' });
+
+			const result = await window.electronAPI.launchCdpBrowser(port);
+
+			if (result.success) {
+				// Update the browser port in electron
+				// isExternal=false because this is our own launched browser
+				if (window.electronAPI?.setBrowserPort) {
+					await window.electronAPI.setBrowserPort(port, false);
+				}
+				setCdpPort(port);
+				toast.success(`Browser launched successfully on port ${port}`, { id: 'launch-browser' });
+				// Update port status
+				setPortStatus({
+					checking: false,
+					available: true,
+					data: result.data,
+				});
+			} else {
+				toast.error(result.error || "Failed to launch browser", { id: 'launch-browser' });
+			}
+		} catch (error: any) {
+			toast.error(error.message || "Failed to launch browser", { id: 'launch-browser' });
+		}
+	};
 
 	const handleBrowserLogin = async () => {
 		setLoginLoading(true);
@@ -208,6 +347,36 @@ export default function Browser() {
 				confirmVariant="information"
 			/>
 
+			{/* Use Existing Browser Dialog */}
+			<AlertDialog
+				isOpen={showUseExistingDialog}
+				onClose={() => {
+					setShowUseExistingDialog(false);
+					setPendingPort(null);
+				}}
+				onConfirm={handleUseExistingBrowser}
+				title="Browser Found"
+				message={`A browser is running on port ${pendingPort}. Would you like to use it for browser operations?`}
+				confirmText="Yes, Use This Browser"
+				cancelText="Cancel"
+				confirmVariant="information"
+			/>
+
+			{/* Launch New Browser Dialog */}
+			<AlertDialog
+				isOpen={showLaunchNewDialog}
+				onClose={() => {
+					setShowLaunchNewDialog(false);
+					setPendingPort(null);
+				}}
+				onConfirm={handleLaunchNewBrowser}
+				title="No Browser Found"
+				message={`No browser is running on port ${pendingPort}. Would you like to launch a new Chrome browser with CDP enabled on this port?`}
+				confirmText="Yes, Launch Browser"
+				cancelText="Cancel"
+				confirmVariant="information"
+			/>
+
 			{/* Header Section */}
 			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
 				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
@@ -248,6 +417,96 @@ export default function Browser() {
 						<div className="text-body-lg font-bold text-text-heading">{t("layout.browser-cookies")}</div>
 						<p className="max-w-[600px] text-center text-body-sm text-text-label">{t("layout.browser-cookies-description")}
 						</p>
+
+						{/* CDP Port Configuration Section */}
+						<div className="flex flex-col max-w-[600px] w-full gap-3 border-[0.5px] border-border-secondary border-b-0 border-x-0 border-solid pt-3 mt-3">
+							<div className="flex flex-row items-center justify-between py-2">
+								<div className="flex flex-col items-start">
+									<div className="text-body-base font-bold text-text-body">
+										CDP Browser Connection
+									</div>
+									<p className="text-label-xs text-text-label mt-1">
+										Connect to a Chrome browser with remote debugging enabled
+									</p>
+								</div>
+							</div>
+
+							<div className="flex flex-col gap-3 px-4 py-3 bg-surface-tertiary rounded-xl">
+								<div className="flex flex-col gap-2">
+									<div className="text-label-sm font-medium text-text-body">
+										Current Port: <span className="font-bold text-text-information">{cdpPort}</span>
+									</div>
+									<p className="text-label-xs text-text-label">
+										Check if a browser is available on a specific port
+									</p>
+								</div>
+
+								<div className="flex items-center gap-2">
+									<Input
+										type="number"
+										placeholder="Port number (e.g., 9222)"
+										value={customPort}
+										onChange={(e) => setCustomPort(e.target.value)}
+										className="flex-1"
+										min={1}
+										max={65535}
+									/>
+									<Button
+										variant="primary"
+										size="sm"
+										onClick={handleCheckPort}
+										disabled={portStatus.checking}
+										className="min-w-[100px]"
+									>
+										{portStatus.checking ? (
+											<>
+												<Loader2 className="w-4 h-4 animate-spin" />
+												Checking
+											</>
+										) : (
+											"Check Port"
+										)}
+									</Button>
+								</div>
+
+								{portStatus.available !== null && (
+									<div className={`flex items-start gap-2 p-3 rounded-lg ${
+										portStatus.available
+											? 'bg-tag-fill-success text-text-success'
+											: 'bg-tag-fill-error text-text-cuation'
+									}`}>
+										{portStatus.available ? (
+											<>
+												<CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+												<div className="flex flex-col gap-1">
+													<div className="text-label-sm font-bold">
+														Browser Available
+													</div>
+													{portStatus.data && (
+														<div className="text-label-xs opacity-90">
+															{portStatus.data['Browser']} - {portStatus.data['User-Agent']?.split(' ')[0]}
+														</div>
+													)}
+												</div>
+											</>
+										) : (
+											<>
+												<XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+												<div className="flex flex-col gap-1">
+													<div className="text-label-sm font-bold">
+														Browser Not Available
+													</div>
+													<div className="text-label-xs opacity-90">
+														{portStatus.error}
+													</div>
+												</div>
+											</>
+										)}
+									</div>
+								)}
+							</div>
+						</div>
+
 						{/* Cookies Section */}
 						<div className="flex flex-col max-w-[600px] w-full gap-3 border-[0.5px] border-border-secondary border-b-0 border-x-0 border-solid pt-3 mt-3">
 

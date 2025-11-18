@@ -729,15 +729,26 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
+    # Use cdp_keep_current_page=True only when using external CDP browser
+    # to preserve the current page. For internal browser, use False (default behavior)
+    use_keep_current_page = options.use_external_cdp if hasattr(options, 'use_external_cdp') else False
+
+    # When cdp_keep_current_page=True, don't set default_start_url (conflicts with keeping current page)
+    # When cdp_keep_current_page=False, use "about:blank" as default start URL
+    default_url = None if use_keep_current_page else "about:blank"
+
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
         session_id=str(uuid.uuid4())[:8],
-        default_start_url="about:blank",
+        default_start_url=default_url,
+        connect_over_cdp=True,
         cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+        cdp_keep_current_page=use_keep_current_page,
         enabled_tools=[
+            "browser_open",
             "browser_click",
             "browser_type",
             "browser_back",

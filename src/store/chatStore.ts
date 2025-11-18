@@ -381,7 +381,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-			
+			const use_external_cdp = await window.ipcRenderer.invoke('get-use-external-cdp');
+
 			// Lock the chatStore reference at the start of SSE session to prevent focus changes
 			// during active message processing
 			let lockedChatStore = targetChatStore;
@@ -426,6 +427,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
+					use_external_cdp: use_external_cdp,
 					env_path: envPath,
 					search_config: searchConfig
 				}) : undefined,
