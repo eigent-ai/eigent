@@ -217,6 +217,10 @@ websocket_connection_pool = WebSocketConnectionPool()
 class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     agent_name: str = Agents.search_agent
 
+    # CDP browser pool tracking
+    _cdp_port: int | None = None
+    _cdp_session_id: str | None = None
+
     def __init__(
         self,
         api_task_id: str,
@@ -282,6 +286,38 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             full_visual_mode=full_visual_mode,
         )
         logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
+
+        # Extract CDP port for pool management (if using CDP)
+        if connect_over_cdp and cdp_url:
+            try:
+                # Parse port from cdp_url (e.g., "http://localhost:9222")
+                import re
+                port_match = re.search(r':(\d+)', cdp_url)
+                if port_match:
+                    self._cdp_port = int(port_match.group(1))
+                    self._cdp_session_id = session_id
+                    logger.info(
+                        f"[HybridBrowserToolkit] Registered CDP browser on port {self._cdp_port} "
+                        f"for session {self._cdp_session_id}"
+                    )
+            except Exception as e:
+                logger.warning(f"[HybridBrowserToolkit] Failed to extract CDP port: {e}")
+
+    def __del__(self):
+        """Release CDP browser back to pool when toolkit is destroyed."""
+        if self._cdp_port is not None and self._cdp_session_id is not None:
+            try:
+                # Import here to avoid circular dependency
+                from app.utils.agent import _cdp_pool_manager
+                _cdp_pool_manager.release_browser(self._cdp_port, self._cdp_session_id)
+                logger.info(
+                    f"[HybridBrowserToolkit] Released CDP browser on port {self._cdp_port} "
+                    f"for session {self._cdp_session_id}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[HybridBrowserToolkit] Failed to release CDP browser on port {self._cdp_port}: {e}"
+                )
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
