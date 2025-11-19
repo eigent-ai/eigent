@@ -100,8 +100,9 @@ export default function ChatBox(): JSX.Element {
 
 		// Multi-turn support: Check if task is running or planning (splitting/confirm)
 		const task = chatStore.tasks[_taskId];
+		const requiresHumanReply = Boolean(task?.activeAsk);
+		const isTaskInProgress = ["running", "pause"].includes(task?.status || "");
 		const isTaskBusy = (
-			// running or paused counts as busy
 			(task.status === 'running' && !task.hasMessages) || task.status === 'pause' ||
 			// splitting phase: has to_sub_tasks not confirmed OR skeleton computing
 			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
@@ -109,16 +110,17 @@ export default function ChatBox(): JSX.Element {
 			// explicit confirm wait while task is pending but card not confirmed yet
 			(!!task.messages.find(m => m.step === 'to_sub_tasks' && !m.isConfirm) && task.status === 'pending')
 		);
-
-		//Fixes bug where doesn't matter the SSE order or final state of the chatStore
-		const isReplayChatStore = chatStore.tasks[_taskId as string]?.type === "replay";
-		const queueTask = isTaskBusy && !isReplayChatStore;
-
-		console.log(`Current task is ${isTaskBusy} with ${task}`);
+		const isReplayChatStore = task?.type === "replay";
+		if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
+			toast.error("Current task is in progress. Please wait for it to finish before sending a new request.", {
+				closeButton: true,
+			});
+			return;
+		}
 		
 		if (textareaRef.current) textareaRef.current.style.height = "60px";
 		try {
-			if (chatStore.tasks[_taskId].activeAsk) {
+			if (requiresHumanReply) {
 				chatStore.addMessages(_taskId, {
 					id: generateUniqueId(),
 					role: "user",
@@ -154,52 +156,6 @@ export default function ChatBox(): JSX.Element {
 					chatStore.addMessages(_taskId, message!);
 				}
 			} else {
-				// If current task is busy (splitting/confirm/running), queue the new message instead of sending immediately
-				if (queueTask) {
-					const project_id = projectStore.activeProjectId;
-					// Queue the message locally; do not send to backend yet.
-					const currentAttaches = JSON.parse(JSON.stringify(task.attaches)) || [];
-					const new_task_id = projectStore.addQueuedMessage(
-						project_id as string,
-						tempMessageContent,
-						currentAttaches
-					);
-					if(!new_task_id) {
-						console.error("Error queueing message as no task id is returned")
-						return;
-					}
-					chatStore.setAttaches(_taskId, []); // Clear attaches after queuing
-					setMessage("");
-					if (textareaRef.current) textareaRef.current.style.height = "60px";
-
-					//Send the task as soon as possible
-					//Workforce internal queue handles it
-					try {
-						await fetchPost(`/chat/${project_id}/add-task`, {
-							content: tempMessageContent,
-							project_id: project_id,
-							task_id: new_task_id,
-							additional_info: {
-								agent: chatStore.tasks[_taskId].activeAsk,
-								reply: tempMessageContent,
-								timestamp: Date.now()
-							}
-						});
-
-						// Only show success toast after API call succeeds
-						toast.success("Task queued. It will be processed when the current task finishes.", {
-							closeButton: true,
-						});
-					} catch (error) {
-						console.error(`Removing Message "${tempMessageContent}..." due to ${error}`)
-						projectStore.removeQueuedMessage(project_id as string, new_task_id);
-						toast.error("Failed to queue task. Please try again.", {
-							closeButton: true,
-						});
-					}
-					return;
-				}
-
 				// Check if we should continue the conversation or start a new task
 				const hasMessages = chatStore.tasks[_taskId as string].messages.length > 0;
 				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
@@ -521,7 +477,6 @@ export default function ChatBox(): JSX.Element {
 	const getBottomBoxState = () => {
 		if (!chatStore.activeTaskId) return "input";
 		const task = chatStore.tasks[chatStore.activeTaskId];
-		const activeProject = projectStore.getProjectById(projectStore.activeProjectId || '');
 
 		// Queued messages no longer change BottomBox state; QueuedBox renders independently
 
@@ -672,6 +627,10 @@ export default function ChatBox(): JSX.Element {
 		});
 	}, [chatStore, getAllChatStoresMemoized]);
 
+	const activeTask = chatStore.activeTaskId ? chatStore.tasks[chatStore.activeTaskId] : null;
+	const awaitingHumanReply = Boolean(activeTask?.activeAsk);
+	const shouldDisableInput = !awaitingHumanReply && ["running", "pause"].includes(activeTask?.status || "");
+
 	return (
 		<div className="w-full h-full flex-none items-center justify-center">
 			{hasAnyMessages ? (
@@ -721,7 +680,7 @@ export default function ChatBox(): JSX.Element {
 								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 								onAddFile: handleFileSelect,
 								placeholder: t("chat.ask-placeholder"),
-								disabled: !privacy || useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded,
+								disabled: !privacy || useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded || shouldDisableInput,
 								textareaRef: textareaRef,
 								allowDragDrop: true,
 								privacy: privacy,
@@ -758,7 +717,7 @@ export default function ChatBox(): JSX.Element {
 									onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 									onAddFile: handleFileSelect,
 									placeholder: t("chat.ask-placeholder"),
-									disabled: useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded,
+									disabled: useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded || shouldDisableInput,
 									textareaRef: textareaRef,
 									allowDragDrop: false,
 									privacy: true,
