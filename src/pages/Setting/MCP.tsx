@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Plus, Store, ChevronLeft } from "lucide-react";
 import SearchInput from "@/components/SearchInput";
 import { useNavigate } from "react-router-dom";
-import IntegrationList from "./components/IntegrationList";
+import IntegrationList from "@/components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
@@ -654,6 +654,7 @@ export default function SettingMCP() {
 							<>
 								<div className="flex-1 w-full">
 									<IntegrationList
+										variant="manage"
 										items={essentialIntegrations}
 										showConfigButton={true}
 										showInstallButton={false}
@@ -703,6 +704,7 @@ export default function SettingMCP() {
 									{!collapsedMCP && (
 										<IntegrationList
 											key={refreshKey}
+											variant="manage"
 											items={integrations}
 											showConfigButton={false}
 											showInstallButton={true}
@@ -759,43 +761,43 @@ export default function SettingMCP() {
 											)}
 										</>
 									)}
-									<MCPConfigDialog
-										open={!!showConfig}
-										form={configForm}
-										mcp={showConfig}
-										onChange={setConfigForm as any}
-										onSave={handleConfigSave}
-										onClose={handleConfigClose}
-										loading={saving}
-										errorMsg={errorMsg}
-										onSwitchStatus={handleConfigSwitch}
-									/>
-									<MCPAddDialog
-										open={showAdd}
-										addType={addType}
-										setAddType={setAddType}
-										localJson={localJson}
-										setLocalJson={setLocalJson}
-										remoteName={remoteName}
-										setRemoteName={setRemoteName}
-										remoteUrl={remoteUrl}
-										setRemoteUrl={setRemoteUrl}
-										installing={installing}
-										onClose={() => setShowAdd(false)}
-										onInstall={handleInstall}
-									/>
-									<MCPDeleteDialog
-										open={!!deleteTarget}
-										target={deleteTarget}
-										onCancel={() => setDeleteTarget(null)}
-										onConfirm={handleDelete}
-										loading={deleting}
-									/>
-									<SearchEngineConfigDialog
-										open={showSearchEngineConfig}
-										onClose={() => setShowSearchEngineConfig(false)}
-									/>
 								</div>
+								<MCPConfigDialog
+									open={!!showConfig}
+									form={configForm}
+									mcp={showConfig}
+									onChange={setConfigForm as any}
+									onSave={handleConfigSave}
+									onClose={handleConfigClose}
+									loading={saving}
+									errorMsg={errorMsg}
+									onSwitchStatus={handleConfigSwitch}
+								/>
+								<MCPAddDialog
+									open={showAdd}
+									addType={addType}
+									setAddType={setAddType}
+									localJson={localJson}
+									setLocalJson={setLocalJson}
+									remoteName={remoteName}
+									setRemoteName={setRemoteName}
+									remoteUrl={remoteUrl}
+									setRemoteUrl={setRemoteUrl}
+									installing={installing}
+									onClose={() => setShowAdd(false)}
+									onInstall={handleInstall}
+								/>
+								<MCPDeleteDialog
+									open={!!deleteTarget}
+									target={deleteTarget}
+									onCancel={() => setDeleteTarget(null)}
+									onConfirm={handleDelete}
+									loading={deleting}
+								/>
+								<SearchEngineConfigDialog
+									open={showSearchEngineConfig}
+									onClose={() => setShowSearchEngineConfig(false)}
+								/>
 							</>
 						)}
 					</div>

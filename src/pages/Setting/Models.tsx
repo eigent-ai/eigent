@@ -703,6 +703,8 @@ const [errors, setErrors] = useState<
 											? t("setting.claude-sonnet-4")
 											: cloud_model_type === "claude-3-5-haiku-20241022"
 											? t("setting.claude-3.5-haiku")
+											: cloud_model_type === "gemini-3-pro-preview"
+											? t("setting.gemini-3-pro-preview")
 											: cloud_model_type === "gpt-5"
 											? t("setting.gpt-5")
 											: cloud_model_type === "gpt-5-mini"
@@ -725,6 +727,7 @@ const [errors, setErrors] = useState<
 								<SelectContent>
 									<SelectItem value="gemini/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
 									<SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+									<SelectItem value="gemini-3-pro-preview">Gemini 3 Pro Preview</SelectItem>
 									<SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
 									<SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
