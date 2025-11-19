@@ -104,7 +104,7 @@ const FileTree: React.FC<FileTreeProps> = ({
 							{!child.isFolder && <span className="w-4" />}
 
 							{child.isFolder ? (
-								<FolderIcon className="w-5 h-5 mr-2flex-shrink-0 text-yellow-600" />
+								<FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
 							) : child.icon ? (
 								<child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
 							) : (

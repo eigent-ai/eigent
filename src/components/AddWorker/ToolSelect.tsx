@@ -13,7 +13,7 @@ import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
 import { TooltipSimple } from "../ui/tooltip";
-import IntegrationList from "./IntegrationList";
+import IntegrationList from "@/components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { capitalizeFirstLetter } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
@@ -720,11 +720,13 @@ const ToolSelect = forwardRef<
 			{isOpen && (
 				<div className="absolute top-full left-0 right-0 z-50 mt-1 bg-dropdown-bg rounded-lg border border-solid border-input-border-default overflow-y-auto">
 					<div className="max-h-[192px] overflow-y-auto">
-						<IntegrationList
-							onShowEnvConfig={onShowEnvConfig}
-							addOption={addOption}
-							items={integrations}
-						/>
+					<IntegrationList
+						variant="select"
+						onShowEnvConfig={onShowEnvConfig}
+						addOption={addOption}
+						items={integrations}
+						translationNamespace="layout"
+					/>
 						{mcpList
 							.filter(
 								(opt) =>
