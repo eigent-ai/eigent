@@ -447,7 +447,28 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}) : undefined,
 
 				async onmessage(event: any) {
-					const agentMessages: AgentMessage = JSON.parse(event.data);
+					let agentMessages: AgentMessage;
+
+					try {
+						agentMessages = JSON.parse(event.data);
+					} catch (error) {
+						console.error('Failed to parse SSE message:', error);
+						console.error('Raw event.data:', event.data);
+
+						// Create error task to notify user
+						const currentStore = getCurrentChatStore();
+						const currentId = getCurrentTaskId();
+						const newTaskId = currentStore.create();
+						currentStore.setActiveTaskId(newTaskId);
+						currentStore.setHasWaitComfirm(newTaskId, true);
+						currentStore.addMessages(newTaskId, {
+							id: generateUniqueId(),
+							role: "agent",
+							content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
+						});
+						return;
+					}
+
 					console.log("agentMessages", agentMessages);
 					const agentNameMap = {
 						developer_agent: "Developer Agent",
@@ -1032,7 +1053,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
 						}
 						if (agentMessages.data.method_name === 'browser_navigate' && agentMessages.data.message?.startsWith('{"url"')) {
-							addWebViewUrl(currentTaskId, JSON.parse(agentMessages.data.message)?.url as string, agentMessages.data.process_task_id as string)
+							try {
+								const urlData = JSON.parse(agentMessages.data.message);
+								if (urlData?.url) {
+									addWebViewUrl(currentTaskId, urlData.url as string, agentMessages.data.process_task_id as string)
+								}
+							} catch (error) {
+								console.error('Failed to parse browser_navigate URL:', error);
+								console.error('Raw message:', agentMessages.data.message);
+							}
 						}
 						let taskRunning = [...tasks[currentTaskId].taskRunning]
 
@@ -1190,23 +1219,46 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 
 					if (agentMessages.step === "error") {
-						console.error('Model error:', agentMessages.data)
-						const errorMessage = agentMessages.data.message || 'An error occurred while processing your request';
+						try {
+							console.error('Model error:', agentMessages.data);
 
-						// Create a new task to avoid "Task already exists" error
-						// and completely reset the interface
-						const newTaskId = create();
-						// Prevent showing task skeleton after an error occurs
-						setActiveTaskId(newTaskId);
-						setHasWaitComfirm(newTaskId, true);
+							// Safely extract error message with optional chaining
+							const errorMessage = agentMessages.data?.message ||
+							                     agentMessages.data?.error ||
+							                     'An error occurred while processing your request';
 
-						// Add error message to the new clean task
-						addMessages(newTaskId, {
-							id: generateUniqueId(),
-							role: "agent",
-							content: `❌ **Error**: ${errorMessage}`,
-						});
-						uploadLog(currentTaskId, type)
+							// Create a new task to avoid "Task already exists" error
+							// and completely reset the interface
+							const newTaskId = create();
+							// Prevent showing task skeleton after an error occurs
+							setActiveTaskId(newTaskId);
+							setHasWaitComfirm(newTaskId, true);
+
+							// Add error message to the new clean task
+							addMessages(newTaskId, {
+								id: generateUniqueId(),
+								role: "agent",
+								content: `**Error**: ${errorMessage}`,
+							});
+							uploadLog(currentTaskId, type);
+						} catch (error) {
+							console.error('Failed to handle model error:', error);
+							console.error('Original agentMessages:', agentMessages);
+
+							// Fallback: create error task with generic message
+							try {
+								const fallbackTaskId = create();
+								setActiveTaskId(fallbackTaskId);
+								setHasWaitComfirm(fallbackTaskId, true);
+								addMessages(fallbackTaskId, {
+									id: generateUniqueId(),
+									role: "agent",
+									content: `**Critical Error**: An unexpected error occurred. Please try again or contact support.`,
+								});
+							} catch (fallbackError) {
+								console.error('Failed to create fallback error task:', fallbackError);
+							}
+						}
 						return
 					}
 
