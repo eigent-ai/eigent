@@ -303,22 +303,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             except Exception as e:
                 logger.warning(f"[HybridBrowserToolkit] Failed to extract CDP port: {e}")
 
-    def __del__(self):
-        """Release CDP browser back to pool when toolkit is destroyed."""
-        if self._cdp_port is not None and self._cdp_session_id is not None:
-            try:
-                # Import here to avoid circular dependency
-                from app.utils.agent import _cdp_pool_manager
-                _cdp_pool_manager.release_browser(self._cdp_port, self._cdp_session_id)
-                logger.info(
-                    f"[HybridBrowserToolkit] Released CDP browser on port {self._cdp_port} "
-                    f"for session {self._cdp_session_id}"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"[HybridBrowserToolkit] Failed to release CDP browser on port {self._cdp_port}: {e}"
-                )
-
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
         logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
@@ -352,9 +336,19 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         # This allows multiple agents to use the same browser profile without conflicts
         logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
 
+        # Determine the CDP URL to use - preserve parent's CDP port if set
+        if self._cdp_port is not None:
+            # Use the same CDP port as parent to share the browser from pool
+            cdp_url = f"http://localhost:{self._cdp_port}"
+            logger.info(f"Cloning with parent's CDP port {self._cdp_port} for session {new_session_id}")
+        else:
+            # Fall back to default port
+            cdp_url = f"http://localhost:{env('browser_port', '9222')}"
+            logger.info(f"Cloning with default CDP port for session {new_session_id}")
+
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
-        return HybridBrowserToolkit(
+        cloned_toolkit = HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
             user_data_dir=self._user_data_dir,  # Use the same user_data_dir
@@ -374,10 +368,18 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             dom_content_loaded_timeout=self._dom_content_loaded_timeout,
             viewport_limit=self._viewport_limit,
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
-            cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+            cdp_url=cdp_url,
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
             full_visual_mode=self._full_visual_mode,
         )
+
+        # IMPORTANT: Clear the cloned toolkit's CDP tracking to prevent duplicate release
+        # Only the original toolkit that acquired the browser should release it
+        cloned_toolkit._cdp_port = None
+        cloned_toolkit._cdp_session_id = None
+        logger.debug(f"Cleared CDP tracking for cloned session {new_session_id} to prevent duplicate release")
+
+        return cloned_toolkit
 
     @classmethod
     def toolkit_name(cls) -> str:
@@ -397,8 +399,37 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         await websocket_connection_pool.close_connection(session_id)
         logger.info(f"Released WebSocket connection for session {session_id}")
 
+        # Release CDP browser from pool
+        self._release_cdp_browser()
+
+    def _release_cdp_browser(self):
+        """Release CDP browser back to pool."""
+        if hasattr(self, '_cdp_port') and self._cdp_port is not None and \
+           hasattr(self, '_cdp_session_id') and self._cdp_session_id is not None:
+            logger.info(f"[HybridBrowserToolkit] Explicitly releasing port {self._cdp_port} for session {self._cdp_session_id}")
+            try:
+                from app.utils.agent import _cdp_pool_manager
+                _cdp_pool_manager.release_browser(self._cdp_port, self._cdp_session_id)
+                logger.info(
+                    f"[HybridBrowserToolkit] Released CDP browser on port {self._cdp_port} "
+                    f"for session {self._cdp_session_id}"
+                )
+                # Clear the tracking to prevent double release
+                self._cdp_port = None
+                self._cdp_session_id = None
+            except Exception as e:
+                logger.warning(
+                    f"[HybridBrowserToolkit] Failed to release CDP browser: {e}"
+                )
+
     def __del__(self):
         """Cleanup when object is garbage collected."""
+        logger.info(f"[HybridBrowserToolkit] __del__ called for api_task_id: {getattr(self, 'api_task_id', 'UNKNOWN')}")
+
+        # Release CDP browser back to pool
+        self._release_cdp_browser()
+
+        # Log cleanup
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:
-            session_id = self._ws_config.get("session_id", "default")
+            session_id = self._ws_config.get("session_id", "default") if hasattr(self, "_ws_config") else "unknown"
             logger.debug(f"HybridBrowserToolkit for session {session_id} is being garbage collected")

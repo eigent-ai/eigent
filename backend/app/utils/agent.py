@@ -806,8 +806,12 @@ def search_agent(options: Chat):
     selected_is_external = options.use_external_cdp if hasattr(options, 'use_external_cdp') else False
 
     # If CDP browser pool is available and not empty, acquire an available browser
+    traceroot_logger.info(f"Checking CDP browser pool: hasattr={hasattr(options, 'cdp_browsers')}, "
+                         f"browsers={getattr(options, 'cdp_browsers', None)}")
+
     if hasattr(options, 'cdp_browsers') and options.cdp_browsers:
         global _cdp_pool_manager
+        traceroot_logger.info(f"CDP browser pool available with {len(options.cdp_browsers)} browsers")
         # Acquire an available (unoccupied) browser from the pool
         selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, toolkit_session_id)
 

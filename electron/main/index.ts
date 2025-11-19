@@ -306,7 +306,8 @@ function registerIpcHandlers() {
 
   // Get all browsers in the pool
   ipcMain.handle('get-cdp-browsers', () => {
-    log.info(`Getting CDP browser pool, count: ${cdp_browser_pool.length}`)
+    log.info(`[CDP POOL] Getting CDP browser pool, count: ${cdp_browser_pool.length}`)
+    log.info(`[CDP POOL] Pool content: ${JSON.stringify(cdp_browser_pool.map(b => ({id: b.id, port: b.port, name: b.name})))}`)
     return cdp_browser_pool
   });
 
@@ -418,38 +419,85 @@ function registerIpcHandlers() {
 
     try {
       const platform = process.platform;
-      let chromePath: string;
-      let chromeExecutable: string;
+      let chromeExecutable: string | null = null;
 
-      // Determine Chrome path based on platform
+      // Use Playwright's Chromium
+      let playwrightCacheDir: string;
+
       if (platform === 'darwin') {
-        chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-        if (!existsSync(chromePath)) {
-          return {
-            success: false,
-            error: 'Google Chrome not found at /Applications/Google Chrome.app',
-          };
-        }
-        chromeExecutable = chromePath;
+        playwrightCacheDir = path.join(app.getPath('home'), 'Library/Caches/ms-playwright');
       } else if (platform === 'win32') {
-        chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-        if (!existsSync(chromePath)) {
-          // Try alternative path
-          const altPath = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
-          if (existsSync(altPath)) {
-            chromePath = altPath;
-          } else {
-            return {
-              success: false,
-              error: 'Google Chrome not found',
-            };
-          }
-        }
-        chromeExecutable = chromePath;
+        playwrightCacheDir = path.join(app.getPath('home'), 'AppData/Local/ms-playwright');
+      } else if (platform === 'linux') {
+        playwrightCacheDir = path.join(app.getPath('home'), '.cache/ms-playwright');
       } else {
         return {
           success: false,
           error: `Unsupported platform: ${platform}`,
+        };
+      }
+
+      log.info(`Looking for Playwright Chromium in: ${playwrightCacheDir}`);
+
+      // Find the latest chromium directory
+      try {
+        if (!existsSync(playwrightCacheDir)) {
+          return {
+            success: false,
+            error: 'Playwright Chromium not found. Please run: npx playwright install chromium',
+          };
+        }
+
+        const chromiumDirs = fs.readdirSync(playwrightCacheDir)
+          .filter(dir => dir.startsWith('chromium-'))
+          .sort()
+          .reverse();
+
+        if (chromiumDirs.length === 0) {
+          return {
+            success: false,
+            error: 'No Playwright Chromium installations found. Please run: npx playwright install chromium',
+          };
+        }
+
+        const latestChromiumDir = chromiumDirs[0];
+        log.info(`Found Playwright Chromium version: ${latestChromiumDir}`);
+
+        // Build path to Chromium executable based on platform
+        if (platform === 'darwin') {
+          chromeExecutable = path.join(
+            playwrightCacheDir,
+            latestChromiumDir,
+            'chrome-mac/Chromium.app/Contents/MacOS/Chromium'
+          );
+        } else if (platform === 'win32') {
+          chromeExecutable = path.join(
+            playwrightCacheDir,
+            latestChromiumDir,
+            'chrome-win/chrome.exe'
+          );
+        } else if (platform === 'linux') {
+          chromeExecutable = path.join(
+            playwrightCacheDir,
+            latestChromiumDir,
+            'chrome-linux/chrome'
+          );
+        }
+
+        if (!chromeExecutable || !existsSync(chromeExecutable)) {
+          return {
+            success: false,
+            error: `Chromium executable not found at: ${chromeExecutable}`,
+          };
+        }
+
+        log.info(`Using Chromium at: ${chromeExecutable}`);
+
+      } catch (error: any) {
+        log.error(`Error finding Playwright Chromium: ${error}`);
+        return {
+          success: false,
+          error: `Failed to locate Playwright Chromium: ${error.message}`,
         };
       }
 
