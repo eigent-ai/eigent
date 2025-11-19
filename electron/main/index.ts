@@ -400,10 +400,15 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("read-file-dataurl", async (event, filePath) => {
-  const file = fs.readFileSync(filePath);
-  const mimeType = mime.getType(path.extname(filePath)) || "application/octet-stream";
-  return `data:${mimeType};base64,${file.toString("base64")}`;
-});
+    try {
+      const file = fs.readFileSync(filePath);
+      const mimeType = mime.getType(path.extname(filePath)) || "application/octet-stream";
+      return `data:${mimeType};base64,${file.toString("base64")}`;
+    } catch (error: any) {
+      log.error('Failed to read file as data URL:', filePath, error);
+      throw new Error(`Failed to read file: ${error.message}`);
+    }
+  });
 
   // ==================== log export handler ====================
   ipcMain.handle('export-log', async () => {
