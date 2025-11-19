@@ -17,9 +17,8 @@ import { cn } from "@/lib/utils";
 import { Hammer } from "@/components/animate-ui/icons/hammer";
 import MCP from "./Setting/MCP";
 import Browser from "./Dashboard/Browser";
-import folderIcon from "@/assets/Folder.svg";
-import SplitText from "@/components/ui/SplitText/SplitText";
 import WordCarousel from "@/components/ui/WordCarousel";
+import { Sparkle } from "@/components/animate-ui/icons/sparkle";
 
 
 
@@ -121,7 +120,7 @@ export default function Home() {
 				<div className="flex flex-row justify-between items-center w-full mx-auto">
 				<div className="flex items-center gap-2">
 			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
-			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Pin/>}>{t("layout.projects")}</MenuToggleItem>
+			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Sparkle/>}>{t("layout.projects")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>{t("layout.mcp-tools")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="browser" iconAnimateOnHover="default" icon={<Compass/>}>{t("layout.browser")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="settings" iconAnimateOnHover="default" icon={<Settings/>}>{t("layout.settings")}</MenuToggleItem>

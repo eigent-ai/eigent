@@ -3,8 +3,8 @@ import { persist } from 'zustand/middleware';
 
 // Define state types
 interface GlobalStore {
-	history_type: "table" | "list" | "grouped";
-	setHistoryType: (history_type: "table" | "list" | "grouped") => void;
+	history_type: "grid" | "list" | "table";
+	setHistoryType: (history_type: "grid" | "list" | "table") => void;
 	toggleHistoryType: () => void;
 }
 
@@ -12,15 +12,15 @@ interface GlobalStore {
 const globalStore = create<GlobalStore>()(
 	persist(
 		(set) => ({
-			history_type: "grouped",
-			setHistoryType: (history_type: "table" | "list" | "grouped") =>
+			history_type: "grid",
+			setHistoryType: (history_type: "grid" | "list" | "table") =>
 				set({ history_type }),
 			toggleHistoryType: () =>
 				set((state) => {
-					// Cycle through: grouped -> list -> table -> grouped
-					if (state.history_type === "grouped") return { history_type: "list" };
+					// Cycle through: grid -> list -> table -> grid
+					if (state.history_type === "grid") return { history_type: "list" };
 					if (state.history_type === "list") return { history_type: "table" };
-					return { history_type: "grouped" };
+					return { history_type: "grid" };
 				}),
 		}),
 		{
