@@ -106,6 +106,9 @@ export interface ChatStore {
 
 
 
+// Track auto-confirm timers per task to avoid reusing stale timers across rounds
+const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
 		activeTaskId: null,
@@ -557,7 +560,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setTaskTime,
 						setElapsed,
 						setActiveTaskId,
-						setIsContextExceeded} = getCurrentChatStore()
+						setIsContextExceeded,
+						setIsTaskEdit} = getCurrentChatStore()
 
 					currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
@@ -570,13 +574,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							setStatus(currentTaskId, 'pending');
 						}
 
+						// Each splitting round starts in a clean editing state
+						setIsTaskEdit(currentTaskId, false);
+
 						const messages = [...tasks[currentTaskId].messages]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
 						// For multi-turn scenarios, always create a new to_sub_tasks message
 						// even if one already exists from a previous task
 						if (toSubTaskIndex === -1 || isMultiTurnAfterCompletion) {
+							// Clear any pending auto-confirm timer from previous rounds
+							if (autoConfirmTimers[currentTaskId]) {
+								clearTimeout(autoConfirmTimers[currentTaskId]);
+								delete autoConfirmTimers[currentTaskId];
+							}
+
 							// 30 seconds auto confirm
-							setTimeout(() => {
+							autoConfirmTimers[currentTaskId] = setTimeout(() => {
 								const currentStore = getCurrentChatStore();
 								const currentId = getCurrentTaskId();
 								const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
@@ -589,6 +602,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									handleConfirmTask(project_id, currentId, type);
 								}
 								setIsTaskEdit(currentId, false);
+								delete autoConfirmTimers[currentId];
 							}, 30000);
 
 							const newNoticeMessage: Message = {
@@ -1704,8 +1718,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}))
 		},
 		handleConfirmTask: async (project_id:string, taskId: string, type?: string) => {
-			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning } = get();
+			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning, setIsTaskEdit } = get();
 			if (!taskId) return;
+
+			// Stop any pending auto-confirm timers for this task (manual confirmation)
+			if (autoConfirmTimers[taskId]) {
+				clearTimeout(autoConfirmTimers[taskId]);
+				delete autoConfirmTimers[taskId];
+			}
 
 			// record task start time
 			setTaskTime(taskId, Date.now());
@@ -1733,6 +1753,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 				setMessages(taskId, messages)
 			}
+
+			// Reset editing state after manual confirmation so next round can auto-start
+			setIsTaskEdit(taskId, false);
 		},
 		addTaskInfo() {
 			const { tasks, activeTaskId, setTaskInfo } = get()
