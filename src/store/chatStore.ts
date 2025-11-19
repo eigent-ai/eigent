@@ -928,7 +928,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (target) {
 							const { agentIndex, taskIndex } = target
 							const agentName = taskAssigning.find((agent: Agent) => agent.agent_id === assignee_id)?.name
-							taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
+							if(agentName!==taskAssigning[agentIndex].name){
+								taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
+							}
 						}
 
 						// Clear logs from the assignee agent that are related to this task
