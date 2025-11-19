@@ -627,9 +627,43 @@ export default function ChatBox(): JSX.Element {
 		});
 	}, [chatStore, getAllChatStoresMemoized]);
 
-	const activeTask = chatStore.activeTaskId ? chatStore.tasks[chatStore.activeTaskId] : null;
-	const awaitingHumanReply = Boolean(activeTask?.activeAsk);
-	const shouldDisableInput = !awaitingHumanReply && ["running", "pause"].includes(activeTask?.status || "");
+	const isTaskBusy = useMemo(() => {
+		if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId]) return false;
+		const task = chatStore.tasks[chatStore.activeTaskId];
+		return (
+			// running or paused
+			task.status === 'running' || 
+			task.status === 'pause' ||
+			// splitting phase
+			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+			// skeleton/computing phase
+			((!task.messages.find(m => m.step === 'to_sub_tasks') && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl)
+		);
+	}, [chatStore.activeTaskId, chatStore.tasks]);
+
+	const isInputDisabled = useMemo(() => {
+		if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId]) return true;
+		
+		const task = chatStore.tasks[chatStore.activeTaskId];
+		
+		// If ask human is active, allow input
+		if (task.activeAsk) return false;
+
+		if (isTaskBusy) return true;
+
+		// Standard checks
+		if (!privacy) return true;
+		if (useCloudModelInDev) return true;
+		if (task.isContextExceeded) return true;
+
+		return false;
+	}, [
+		chatStore.activeTaskId,
+		chatStore.tasks,
+		privacy,
+		useCloudModelInDev,
+		isTaskBusy
+	]);
 
 	return (
 		<div className="w-full h-full flex-none items-center justify-center">
@@ -644,7 +678,7 @@ export default function ChatBox(): JSX.Element {
 					{chatStore.activeTaskId && (
 						<BottomBox
 						state={getBottomBoxState()}
-						queuedMessages={projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
+						queuedMessages={isTaskBusy ? [] : projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
 							id: m.task_id,
 							content: m.content,
 							timestamp: m.timestamp
@@ -680,7 +714,7 @@ export default function ChatBox(): JSX.Element {
 								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 								onAddFile: handleFileSelect,
 								placeholder: t("chat.ask-placeholder"),
-								disabled: !privacy || useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded || shouldDisableInput,
+								disabled: isInputDisabled,
 								textareaRef: textareaRef,
 								allowDragDrop: true,
 								privacy: privacy,
@@ -717,7 +751,7 @@ export default function ChatBox(): JSX.Element {
 									onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
 									onAddFile: handleFileSelect,
 									placeholder: t("chat.ask-placeholder"),
-									disabled: useCloudModelInDev || chatStore.tasks[chatStore.activeTaskId]?.isContextExceeded || shouldDisableInput,
+									disabled: isInputDisabled,
 									textareaRef: textareaRef,
 									allowDragDrop: false,
 									privacy: true,
