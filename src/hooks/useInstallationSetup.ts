@@ -14,6 +14,7 @@ export const useInstallationSetup = () => {
 
   // Extract only the functions we need to avoid dependency issues
   const startInstallation = useInstallationStore(state => state.startInstallation);
+  const performInstallation = useInstallationStore(state => state.performInstallation);
   const addLog = useInstallationStore(state => state.addLog);
   const setSuccess = useInstallationStore(state => state.setSuccess);
   const setError = useInstallationStore(state => state.setError);
@@ -60,6 +61,13 @@ export const useInstallationSetup = () => {
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
+        } else if (initState !== 'done') {
+          // If not installing and not done, check if we need to install
+          const toolResult = await window.ipcRenderer.invoke("check-tool-installed");
+          if (toolResult.success && !toolResult.isInstalled) {
+             console.log('[useInstallationSetup] Tools missing and not installing. Starting installation...');
+             performInstallation();
+          }
         }
       } catch (err) {
         console.error('[useInstallationSetup] Failed to check installation status:', err);
