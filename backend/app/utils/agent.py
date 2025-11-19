@@ -70,6 +70,9 @@ from app.service.task import set_process_task
 
 NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
 
+# Global counter for round-robin browser selection from pool
+_browser_selection_counter = 0
+
 
 class ListenChatAgent(ChatAgent):
     @traceroot.trace()
@@ -729,9 +732,31 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
+    # Browser selection logic from CDP browser pool
+    selected_port = env('browser_port', '9222')
+    selected_is_external = options.use_external_cdp if hasattr(options, 'use_external_cdp') else False
+
+    # If CDP browser pool is available and not empty, select a browser from the pool
+    if hasattr(options, 'cdp_browsers') and options.cdp_browsers:
+        global _browser_selection_counter
+        # Use round-robin selection from the pool
+        selected_browser = options.cdp_browsers[_browser_selection_counter % len(options.cdp_browsers)]
+        _browser_selection_counter += 1
+
+        selected_port = selected_browser.get('port', selected_port)
+        selected_is_external = selected_browser.get('isExternal', False)
+
+        traceroot_logger.info(
+            f"Selected browser from pool: port={selected_port}, "
+            f"isExternal={selected_is_external}, "
+            f"name={selected_browser.get('name', 'Unnamed')}"
+        )
+    else:
+        traceroot_logger.info(f"No CDP browser pool available, using default port: {selected_port}")
+
     # Use cdp_keep_current_page=True only when using external CDP browser
     # to preserve the current page. For internal browser, use False (default behavior)
-    use_keep_current_page = options.use_external_cdp if hasattr(options, 'use_external_cdp') else False
+    use_keep_current_page = selected_is_external
 
     # When cdp_keep_current_page=True, don't set default_start_url (conflicts with keeping current page)
     # When cdp_keep_current_page=False, use "about:blank" as default start URL
@@ -745,7 +770,7 @@ def search_agent(options: Chat):
         session_id=str(uuid.uuid4())[:8],
         default_start_url=default_url,
         connect_over_cdp=True,
-        cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+        cdp_url=f"http://localhost:{selected_port}",
         cdp_keep_current_page=use_keep_current_page,
         enabled_tools=[
             "browser_open",

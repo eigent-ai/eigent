@@ -40,7 +40,19 @@ let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
 let use_external_cdp = false;  // Flag to track if using external CDP browser
-let cdp_browser_process: ChildProcessWithoutNullStreams | null = null;
+
+// CDP Browser Pool
+interface CdpBrowser {
+  id: string;
+  port: number;
+  isExternal: boolean;
+  name?: string;
+  addedAt: number;
+}
+let cdp_browser_pool: CdpBrowser[] = [];
+
+// Map to store multiple browser processes by port
+let cdp_browser_processes: Map<number, ChildProcessWithoutNullStreams> = new Map();
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -290,6 +302,89 @@ function registerIpcHandlers() {
     return use_external_cdp
   });
 
+  // ==================== CDP Browser Pool Management ====================
+
+  // Get all browsers in the pool
+  ipcMain.handle('get-cdp-browsers', () => {
+    log.info(`Getting CDP browser pool, count: ${cdp_browser_pool.length}`)
+    return cdp_browser_pool
+  });
+
+  // Get running browser processes
+  ipcMain.handle('get-running-browser-ports', () => {
+    const runningPorts = Array.from(cdp_browser_processes.keys());
+    log.info(`Getting running browser ports: ${runningPorts.join(', ')}`)
+    return runningPorts;
+  });
+
+  // Add browser to pool
+  ipcMain.handle('add-cdp-browser', (event, port: number, isExternal: boolean, name?: string) => {
+    log.info(`Adding CDP browser: port=${port}, external=${isExternal}, name=${name}`)
+
+    // Check if browser with this port already exists
+    const existing = cdp_browser_pool.find(b => b.port === port);
+    if (existing) {
+      return { success: false, error: 'Browser with this port already exists' };
+    }
+
+    const newBrowser: CdpBrowser = {
+      id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      port,
+      isExternal,
+      name,
+      addedAt: Date.now(),
+    };
+
+    cdp_browser_pool.push(newBrowser);
+    log.info(`Browser added to pool, new count: ${cdp_browser_pool.length}`)
+
+    return { success: true, browser: newBrowser };
+  });
+
+  // Remove browser from pool
+  ipcMain.handle('remove-cdp-browser', (event, browserId: string) => {
+    log.info(`Removing CDP browser: ${browserId}`)
+
+    const index = cdp_browser_pool.findIndex(b => b.id === browserId);
+    if (index === -1) {
+      return { success: false, error: 'Browser not found' };
+    }
+
+    const removed = cdp_browser_pool.splice(index, 1)[0];
+
+    // If it's a launched browser, kill the process
+    if (!removed.isExternal && cdp_browser_processes.has(removed.port)) {
+      log.info(`Killing browser process on port ${removed.port}`);
+      try {
+        const process = cdp_browser_processes.get(removed.port);
+        process?.kill();
+        cdp_browser_processes.delete(removed.port);
+      } catch (error) {
+        log.warn(`Failed to kill browser process on port ${removed.port}: ${error}`);
+      }
+    }
+
+    log.info(`Browser removed from pool, remaining count: ${cdp_browser_pool.length}`)
+
+    return { success: true, browser: removed };
+  });
+
+  // Update browser in pool
+  ipcMain.handle('update-cdp-browser', (event, browserId: string, updates: Partial<CdpBrowser>) => {
+    log.info(`Updating CDP browser: ${browserId}`)
+
+    const browser = cdp_browser_pool.find(b => b.id === browserId);
+    if (!browser) {
+      return { success: false, error: 'Browser not found' };
+    }
+
+    // Update allowed fields
+    if (updates.name !== undefined) browser.name = updates.name;
+
+    log.info(`Browser updated in pool`)
+    return { success: true, browser };
+  });
+
   // Check if CDP port is available
   ipcMain.handle('check-cdp-port', async (event, port: number) => {
     log.info(`Checking CDP port availability: ${port}`);
@@ -358,32 +453,25 @@ function registerIpcHandlers() {
         };
       }
 
-      // Create/clear user data directory
-      const userDataDir = path.join(app.getPath('userData'), 'cdp_browser_profile');
+      // Create user data directory with port number in name
+      // This allows multiple browsers on different ports to maintain separate profiles
+      const userDataDir = path.join(app.getPath('userData'), `cdp_browser_profile_${port}`);
 
-      // Clear the directory if it exists and is not empty
-      if (existsSync(userDataDir)) {
-        log.info(`Clearing existing user data directory: ${userDataDir}`);
-        try {
-          await fsp.rm(userDataDir, { recursive: true, force: true });
-        } catch (error) {
-          log.warn(`Failed to clear user data directory: ${error}`);
-        }
+      // Create directory if it doesn't exist (preserve existing data)
+      if (!existsSync(userDataDir)) {
+        await fsp.mkdir(userDataDir, { recursive: true });
+        log.info(`Created new user data directory: ${userDataDir}`);
+      } else {
+        log.info(`Using existing user data directory: ${userDataDir}`);
       }
 
-      // Create fresh directory
-      await fsp.mkdir(userDataDir, { recursive: true });
-      log.info(`Created fresh user data directory: ${userDataDir}`);
-
-      // Kill existing CDP browser process if any
-      if (cdp_browser_process) {
-        log.info('Killing existing CDP browser process');
-        try {
-          cdp_browser_process.kill();
-        } catch (error) {
-          log.warn(`Failed to kill existing process: ${error}`);
-        }
-        cdp_browser_process = null;
+      // Check if browser on this port is already running
+      if (cdp_browser_processes.has(port)) {
+        log.warn(`Browser process already exists on port ${port}`);
+        return {
+          success: false,
+          error: `Browser already running on port ${port}`,
+        };
       }
 
       // Chrome launch arguments
@@ -399,20 +487,23 @@ function registerIpcHandlers() {
       log.info(`Launching Chrome with args: ${args.join(' ')}`);
 
       // Spawn Chrome process
-      cdp_browser_process = spawn(chromeExecutable, args, {
+      const browserProcess = spawn(chromeExecutable, args, {
         detached: false,
         stdio: 'ignore',
       });
 
-      cdp_browser_process.on('error', (error) => {
-        log.error(`CDP browser process error: ${error}`);
-        cdp_browser_process = null;
+      browserProcess.on('error', (error) => {
+        log.error(`CDP browser process on port ${port} error: ${error}`);
+        cdp_browser_processes.delete(port);
       });
 
-      cdp_browser_process.on('exit', (code) => {
-        log.info(`CDP browser process exited with code ${code}`);
-        cdp_browser_process = null;
+      browserProcess.on('exit', (code) => {
+        log.info(`CDP browser process on port ${port} exited with code ${code}`);
+        cdp_browser_processes.delete(port);
       });
+
+      // Store the process in the Map
+      cdp_browser_processes.set(port, browserProcess);
 
       // Wait a bit for browser to start
       await new Promise(resolve => setTimeout(resolve, 2000));
