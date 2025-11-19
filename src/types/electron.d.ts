@@ -71,6 +71,10 @@ interface ElectronAPI {
     tempEmail: string;
   }>;
   restartApp: () => Promise<void>;
+  checkCdpPort: (port: number) => Promise<{ available: boolean; data?: any; error?: string }>;
+  launchCdpBrowser: (port: number) => Promise<{ success: boolean; port?: number; data?: any; error?: string }>;
+  setBrowserPort: (port: number, isExternal?: boolean) => Promise<{ success: boolean; port: number; use_external_cdp: boolean }>;
+  getUseExternalCdp: () => Promise<boolean>;
 }
 
 declare global {

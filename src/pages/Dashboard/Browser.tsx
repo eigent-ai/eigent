@@ -301,7 +301,7 @@ export default function Browser() {
 			setDeletingDomain(null);
 		}
 	};
-4
+
 	const handleDeleteAll = async () => {
 		setDeletingAll(true);
 		try {

@@ -7,7 +7,7 @@ import { update, registerUpdateIpcHandlers } from './update'
 import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
 import { WebViewManager } from './webview'
 import { FileReader } from './fileReader'
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
+import { ChildProcessWithoutNullStreams, ChildProcess, spawn } from 'node:child_process'
 import fs, { existsSync, readFileSync } from 'node:fs'
 import fsp from 'fs/promises'
 import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig'
@@ -41,7 +41,7 @@ let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
 let use_external_cdp = false;  // Flag to track if using external CDP browser
-let cdp_browser_process: ChildProcessWithoutNullStreams | null = null;
+let cdp_browser_process: ChildProcess | null = null;
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -270,6 +270,123 @@ const checkManagerInstance = (manager: any, name: string) => {
   return manager;
 };
 
+// Robust Chrome browser finder function
+async function findChromeBrowser(platform: string): Promise<{success: boolean; path?: string; error?: string; browser?: string}> {
+  const { promisify } = await import('util');
+  const { exec } = await import('child_process');
+  const execAsync = promisify(exec);
+
+  // Define browser paths for supported platforms (macOS and Windows only)
+  const browserPaths: Record<string, Array<{name: string; path: string; executable?: string}>> = {
+    darwin: [
+      { name: 'Google Chrome', path: '/Applications/Google Chrome.app', executable: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' },
+      { name: 'Chrome Canary', path: '/Applications/Google Chrome Canary.app', executable: '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary' },
+      { name: 'Chromium', path: '/Applications/Chromium.app', executable: '/Applications/Chromium.app/Contents/MacOS/Chromium' },
+      { name: 'Microsoft Edge', path: '/Applications/Microsoft Edge.app', executable: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' },
+    ],
+    win32: [
+      { name: 'Google Chrome', path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
+      { name: 'Google Chrome (x86)', path: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe' },
+      { name: 'Chrome Beta', path: path.join(homedir(), 'AppData', 'Local', 'Google', 'Chrome Beta', 'Application', 'chrome.exe') },
+      { name: 'Chrome Dev', path: path.join(homedir(), 'AppData', 'Local', 'Google', 'Chrome Dev', 'Application', 'chrome.exe') },
+      { name: 'Chrome Canary', path: path.join(homedir(), 'AppData', 'Local', 'Google', 'Chrome SxS', 'Application', 'chrome.exe') },
+      { name: 'Microsoft Edge', path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' },
+      { name: 'Chromium', path: path.join(homedir(), 'AppData', 'Local', 'Chromium', 'Application', 'chrome.exe') },
+    ]
+  };
+
+  // Get platform-specific paths
+  const candidates = browserPaths[platform];
+  if (!candidates) {
+    return {
+      success: false,
+      error: `Unsupported platform: ${platform}. Supported platforms: ${Object.keys(browserPaths).join(', ')}`
+    };
+  }
+
+  // Check each candidate path
+  for (const candidate of candidates) {
+    const executablePath = candidate.executable || candidate.path;
+
+    try {
+      if (existsSync(executablePath)) {
+        // Verify it's executable (especially important on Unix-like systems)
+        if (platform !== 'win32') {
+          try {
+            await fsp.access(executablePath, fs.constants.X_OK);
+          } catch {
+            continue; // Not executable, try next candidate
+          }
+        }
+
+        log.info(`Found browser: ${candidate.name} at ${executablePath}`);
+        return {
+          success: true,
+          path: executablePath,
+          browser: candidate.name
+        };
+      }
+    } catch (error) {
+      log.debug(`Failed to check ${candidate.name}: ${error}`);
+      continue;
+    }
+  }
+
+  // If no direct paths worked, try system PATH lookup
+  const commands = platform === 'win32'
+    ? ['chrome', 'chrome.exe', 'google-chrome', 'msedge', 'msedge.exe']
+    : ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge'];
+
+  for (const cmd of commands) {
+    try {
+      const which = platform === 'win32' ? 'where' : 'which';
+      const { stdout } = await execAsync(`${which} ${cmd}`);
+      const execPath = stdout.trim().split('\n')[0];
+
+      if (execPath && existsSync(execPath)) {
+        log.info(`Found browser via PATH: ${cmd} at ${execPath}`);
+        return {
+          success: true,
+          path: execPath,
+          browser: cmd
+        };
+      }
+    } catch (error) {
+      log.debug(`PATH lookup failed for ${cmd}: ${error}`);
+      continue;
+    }
+  }
+
+  // For macOS, also try using mdfind (Spotlight)
+  if (platform === 'darwin') {
+    try {
+      const { stdout } = await execAsync('mdfind "kMDItemCFBundleIdentifier = com.google.Chrome"');
+      const apps = stdout.trim().split('\n').filter(Boolean);
+
+      for (const app of apps) {
+        const executablePath = path.join(app, 'Contents', 'MacOS', 'Google Chrome');
+        if (existsSync(executablePath)) {
+          log.info(`Found Chrome via Spotlight: ${executablePath}`);
+          return {
+            success: true,
+            path: executablePath,
+            browser: 'Google Chrome (Spotlight)'
+          };
+        }
+      }
+    } catch (error) {
+      log.debug(`Spotlight search failed: ${error}`);
+    }
+  }
+
+  // Generate detailed error message
+  const triedPaths = candidates.map(c => c.executable || c.path);
+  return {
+    success: false,
+    error: `No suitable Chromium-based browser found. Tried paths: ${triedPaths.join(', ')}. Please install Google Chrome, Chromium, or Microsoft Edge.`
+  };
+}
+
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
@@ -324,40 +441,14 @@ function registerIpcHandlers() {
 
     try {
       const platform = process.platform;
-      let chromePath: string;
       let chromeExecutable: string;
 
-      // Determine Chrome path based on platform
-      if (platform === 'darwin') {
-        chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-        if (!existsSync(chromePath)) {
-          return {
-            success: false,
-            error: 'Google Chrome not found at /Applications/Google Chrome.app',
-          };
-        }
-        chromeExecutable = chromePath;
-      } else if (platform === 'win32') {
-        chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-        if (!existsSync(chromePath)) {
-          // Try alternative path
-          const altPath = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
-          if (existsSync(altPath)) {
-            chromePath = altPath;
-          } else {
-            return {
-              success: false,
-              error: 'Google Chrome not found',
-            };
-          }
-        }
-        chromeExecutable = chromePath;
-      } else {
-        return {
-          success: false,
-          error: `Unsupported platform: ${platform}`,
-        };
+      // Determine Chrome path based on platform using robust detection
+      const browserResult = await findChromeBrowser(platform);
+      if (!browserResult.success) {
+        return browserResult;
       }
+      chromeExecutable = browserResult.path!;
 
       // Create/clear user data directory
       const userDataDir = path.join(app.getPath('userData'), 'cdp_browser_profile');
