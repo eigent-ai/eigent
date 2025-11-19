@@ -103,6 +103,10 @@ export interface ChatStore {
 	setNextTaskId: (taskId: string | null) => void;
 }
 
+export type VanillaChatStore = {
+	getState: () => ChatStore;
+};
+
 
 
 
@@ -174,6 +178,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			);
 		},
 		removeTask(taskId: string) {
+			// Clean up any pending auto-confirm timers when removing a task
+			try {
+				if (autoConfirmTimers[taskId]) {
+					clearTimeout(autoConfirmTimers[taskId]);
+					delete autoConfirmTimers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error clearing auto-confirm timer in removeTask:', error);
+			}
+
 			set((state) => {
 				delete state.tasks[taskId];
 				return ({
@@ -243,13 +257,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// replay or share request
 			if (type) {
-				await proxyFetchGet(`/api/chat/snapshots`, {
+				const res = await proxyFetchGet(`/api/chat/snapshots`, {
 					api_task_id: taskId
-				}).then(res => {
-					if (res) {
-						snapshots = [...new Map(res.map((item: any) => [item.camel_task_id, item])).values()];
-					}
-				})
+				});
+				if (res) {
+					snapshots = [...new Map(res.map((item: any) => [item.camel_task_id, item])).values()];
+				}
 			}
 
 
@@ -490,7 +503,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 												role: "user",
 												content: question || messageContent as string,
 												//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches, messageAttaches) || []],
+												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || []), ...(messageAttaches || [])],
 										});
 										console.log("[NEW CHATSTORE] Created for ", project_id);
 
@@ -583,27 +596,41 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// even if one already exists from a previous task
 						if (toSubTaskIndex === -1 || isMultiTurnAfterCompletion) {
 							// Clear any pending auto-confirm timer from previous rounds
-							if (autoConfirmTimers[currentTaskId]) {
-								clearTimeout(autoConfirmTimers[currentTaskId]);
-								delete autoConfirmTimers[currentTaskId];
+							try {
+								if (autoConfirmTimers[currentTaskId]) {
+									clearTimeout(autoConfirmTimers[currentTaskId]);
+									delete autoConfirmTimers[currentTaskId];
+								}
+							} catch (error) {
+								console.warn('Error clearing auto-confirm timer:', error);
 							}
 
 							// 30 seconds auto confirm
-							autoConfirmTimers[currentTaskId] = setTimeout(() => {
-								const currentStore = getCurrentChatStore();
-								const currentId = getCurrentTaskId();
-								const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
-								const message = tasks[currentId].messages.findLast((item) => item.step === "to_sub_tasks");
-								const isConfirm = message?.isConfirm || false;
-								const isTakeControl =
-									tasks[currentId].isTakeControl;
+							try {
+								autoConfirmTimers[currentTaskId] = setTimeout(() => {
+									try {
+										const currentStore = getCurrentChatStore();
+										const currentId = getCurrentTaskId();
+										const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
+										const message = tasks[currentId].messages.findLast((item) => item.step === "to_sub_tasks");
+										const isConfirm = message?.isConfirm || false;
+										const isTakeControl =
+											tasks[currentId].isTakeControl;
 
-								if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
-									handleConfirmTask(project_id, currentId, type);
-								}
-								setIsTaskEdit(currentId, false);
-								delete autoConfirmTimers[currentId];
-							}, 30000);
+										if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
+											handleConfirmTask(project_id, currentId, type);
+										}
+										setIsTaskEdit(currentId, false);
+										delete autoConfirmTimers[currentId];
+									} catch (error) {
+										console.error('Error in auto-confirm timeout handler:', error);
+										// Clean up the timer reference even if there's an error
+										delete autoConfirmTimers[currentTaskId];
+									}
+								}, 30000);
+							} catch (error) {
+								console.error('Error setting auto-confirm timer:', error);
+							}
 
 							const newNoticeMessage: Message = {
 								id: generateUniqueId(),
@@ -1056,7 +1083,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										return toolkit.toolkitName === agentMessages.data.toolkit_name && toolkit.toolkitMethods === agentMessages.data.method_name && toolkit.toolkitStatus === 'running'
 									})
 
-									if (task.toolkits && index !== undefined && index != -1) {
+									if (task.toolkits && index !== -1) {
 										task.toolkits[index].message += '\n' + message.data.message as string
 										task.toolkits[index].toolkitStatus = "completed"
 									}
@@ -1688,7 +1715,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					...state.tasks,
 					[taskId]: {
 						...state.tasks[taskId],
-						actuveAskList: [...askList],
+						askList: [...askList],
 					},
 				},
 			}))
@@ -1722,9 +1749,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			if (!taskId) return;
 
 			// Stop any pending auto-confirm timers for this task (manual confirmation)
-			if (autoConfirmTimers[taskId]) {
-				clearTimeout(autoConfirmTimers[taskId]);
-				delete autoConfirmTimers[taskId];
+			try {
+				if (autoConfirmTimers[taskId]) {
+					clearTimeout(autoConfirmTimers[taskId]);
+					delete autoConfirmTimers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error clearing auto-confirm timer in handleConfirmTask:', error);
 			}
 
 			// record task start time
@@ -2083,6 +2114,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const { create } = get()
 			console.log('clearTasks')
 
+			// Clean up all pending auto-confirm timers when clearing tasks
+			try {
+				Object.keys(autoConfirmTimers).forEach(taskId => {
+					try {
+						if (autoConfirmTimers[taskId]) {
+							clearTimeout(autoConfirmTimers[taskId]);
+							delete autoConfirmTimers[taskId];
+						}
+					} catch (error) {
+						console.warn(`Error clearing timer for task ${taskId}:`, error);
+					}
+				});
+			} catch (error) {
+				console.error('Error during timer cleanup in clearTasks:', error);
+			}
+
 			window.ipcRenderer.invoke('restart-backend')
 				.then((res) => {
 					console.log('restart-backend', res)
@@ -2144,7 +2191,5 @@ const filterMessage = (message: AgentMessage) => {
 
 
 export const useChatStore = chatStore;
-
-export type VanillaChatStore = ReturnType<typeof chatStore>;
 
 export const getToolStore = () => chatStore().getState();
