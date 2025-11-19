@@ -575,18 +575,7 @@ export default function Folder({ data }: { data?: Agent }) {
 										"svg",
 								  ].includes(selectedFile.type.toLowerCase()) ? (
 									<div className="flex items-center justify-center h-full">
-										<img
-											src={
-												selectedFile.isRemote
-													? "localfile://" +
-													  encodeURIComponent(selectedFile.content as string)
-													: `localfile://${encodeURIComponent(
-															selectedFile.path
-													  )}`
-											}
-											alt={selectedFile.name}
-											className="max-w-full max-h-full object-contain"
-										/>
+										<ImageLoader selectedFile={selectedFile} />
 									</div>
 								) : (
 									<pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
@@ -616,4 +605,27 @@ export default function Folder({ data }: { data?: Agent }) {
 			</div>
 		</div>
 	);
+}
+
+function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
+    const [src, setSrc] = useState("");
+
+    useEffect(() => {
+        const filePath = selectedFile.isRemote
+            ? (selectedFile.content as string)
+            : selectedFile.path;
+
+        window.electronAPI
+            .readFileAsDataUrl(filePath)
+            .then(setSrc)
+            .catch((err: any) => console.error("Image load error:", err));
+    }, [selectedFile]);
+
+    return (
+        <img
+            src={src}
+            alt={selectedFile.name}
+            className="max-w-full max-h-full object-contain"
+        />
+    );
 }
