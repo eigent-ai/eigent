@@ -73,6 +73,7 @@
 	"agent-tool": "智能体工具",
 	"agent-tool-tooltip": "为您的智能体选择工具和集成",
 	"resume": "恢复",
+	"stop-task": "停止任务",
 	"next-task": "下一个任务",
 	"task-splitting": "任务拆分",
 	"task-running": "任务运行",

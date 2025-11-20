@@ -72,6 +72,7 @@
 	"agent-tool": "Strumento Agente",
 	"agent-tool-tooltip": "Seleziona strumenti e integrazioni per il tuo agente",
 	"resume": "Riprendi",
+	"stop-task": "Ferma Attività",
 	"next-task": "Prossima Attività",
 	"task-splitting": "Divisione Attività",
 	"task-running": "Esecuzione Attività",

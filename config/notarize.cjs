@@ -11,9 +11,9 @@ exports.default = async function notarizing(context) {
 	
 	// Validate required environment variables
 	if (!process.env.APPLE_ID || !process.env.APPLE_APP_SPECIFIC_PASSWORD || !process.env.APPLE_TEAM_ID) {
-		console.error("Missing required environment variables for notarization");
-		console.error("Required: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID");
-		throw new Error("Notarization failed: Missing required environment variables");
+		console.warn("Missing Apple environment variables for notarization");
+		console.warn("Skipping notarization. Required: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID");
+		return;
 	}
 	
 	return notarize({

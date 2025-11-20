@@ -10,6 +10,9 @@ from fastapi_babel import _
 from app.exception.exception import UserException
 from app.component.database import engine
 from convert_case import snake_case
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("abstract_model")
 
 
 class AbstractModel(SQLModel):
@@ -27,6 +30,13 @@ class AbstractModel(SQLModel):
         options: ExecutableOption | list[ExecutableOption] | None = None,
         s: Session,
     ):
+        logger.debug("Executing query by conditions", extra={
+            "model_class": cls.__name__,
+            "has_order_by": order_by is not None,
+            "limit": limit,
+            "offset": offset,
+            "has_options": options is not None
+        })
         stmt = select(cls).where(*whereclause)
         if order_by is not None:
             stmt = stmt.order_by(order_by)
@@ -44,8 +54,15 @@ class AbstractModel(SQLModel):
         *whereclause: ColumnExpressionArgument[bool] | bool,
         s: Session,
     ) -> bool:
+        logger.debug("Checking if record exists", extra={"model_class": cls.__name__})
         res = s.exec(select(func.count("*")).where(*whereclause)).first()
-        return res is not None and res > 0
+        result = res is not None and res > 0
+        logger.debug("Record existence check result", extra={
+            "model_class": cls.__name__,
+            "exists": result,
+            "count": res
+        })
+        return result
 
     @classmethod
     def count(
@@ -71,11 +88,24 @@ class AbstractModel(SQLModel):
         *whereclause: ColumnExpressionArgument[bool],
         s: Session,
     ):
+        logger.info("Deleting records by conditions", extra={"model_class": cls.__name__})
         stmt = delete(cls).where(*whereclause)
-        s.connection().execute(stmt)
+        result = s.connection().execute(stmt)
         s.commit()
+        logger.info("Records deleted", extra={
+            "model_class": cls.__name__,
+            "rows_affected": result.rowcount
+        })
 
     def save(self, s: Session | None = None):
+        model_id = getattr(self, 'id', None)
+        is_new = model_id is None
+        logger.info("Saving model", extra={
+            "model_class": self.__class__.__name__,
+            "model_id": model_id,
+            "is_new_record": is_new
+        })
+
         if s is None:
             with Session(engine, expire_on_commit=False) as s:
                 s.add(self)
@@ -84,13 +114,34 @@ class AbstractModel(SQLModel):
             s.add(self)
             s.commit()
 
+        logger.info("Model saved successfully", extra={
+            "model_class": self.__class__.__name__,
+            "model_id": getattr(self, 'id', None),
+            "was_new_record": is_new
+        })
+
     def delete(self, s: Session):
+        model_id = getattr(self, 'id', None)
+        is_soft_delete = isinstance(self, DefaultTimes)
+
+        logger.info("Deleting model", extra={
+            "model_class": self.__class__.__name__,
+            "model_id": model_id,
+            "is_soft_delete": is_soft_delete
+        })
+
         if isinstance(self, DefaultTimes):
             self.deleted_at = datetime.now()
             self.save(s)
         else:
             s.delete(self)
             s.commit()
+
+        logger.info("Model deleted successfully", extra={
+            "model_class": self.__class__.__name__,
+            "model_id": model_id,
+            "was_soft_delete": is_soft_delete
+        })
 
     def update_fields(self, update_dict: dict):
         for k, v in update_dict.items():

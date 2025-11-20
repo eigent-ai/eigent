@@ -26,6 +26,13 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         context_utility: ContextUtility | None = None,
         enable_workflow_memory: bool = False,
     ) -> None:
+        logger.info("Initializing SingleAgentWorker", extra={
+            "description": description,
+            "worker_agent_name": worker.agent_name,
+            "use_agent_pool": use_agent_pool,
+            "pool_max_size": pool_max_size,
+            "enable_workflow_memory": enable_workflow_memory
+        })
         super().__init__(
             description=description,
             worker=worker,
@@ -60,6 +67,12 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         # Get agent efficiently (from pool or by cloning)
         worker_agent = await self._get_worker_agent()
         worker_agent.process_task_id = task.id  # type: ignore  rewrite line
+
+        logger.info("Starting task processing", extra={
+            "task_id": task.id,
+            "worker_agent_id": worker_agent.agent_id,
+            "dependencies_count": len(dependencies)
+        })
 
         response_content = ""
         final_response = None

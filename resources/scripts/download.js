@@ -76,6 +76,7 @@ export async function downloadWithRedirects(url, destinationPath) {
 
               // Check if file exists and has size > 0
               try {
+
                 if (fs.existsSync(destinationPath)) {
                   const stats = fs.statSync(destinationPath)
                   if (stats.size === 0) {
@@ -89,6 +90,7 @@ export async function downloadWithRedirects(url, destinationPath) {
                 }
               } catch (err) {
                 safeReject(new Error(`Failed to verify download: ${err.message}`))
+
               }
             })
           })
