@@ -335,7 +335,7 @@ export default function ProjectGroup({
             <span>{project.total_tokens ? project.total_tokens.toLocaleString() : "0"}</span>
           </Tag>
 
-          <TooltipSimple content="Tasks">
+          <TooltipSimple content={t("layout.tasks")}>
             <Tag variant="default" size="sm" className="min-w-10">
               <Pin />
               <span>{project.task_count}</span>
