@@ -6,8 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { error } from "electron-log";
-import { t } from "i18next";
+import { useTranslation } from "react-i18next";
 import React from "react";
 
 interface InstallationErrorDialogProps {
@@ -27,6 +26,7 @@ const InstallationErrorDialog = ({
   retryInstallation,
   retryBackend,
 }:InstallationErrorDialogProps) => {
+  const { t } = useTranslation();
   if (backendError) {
     return (
       <Dialog open={true}>

@@ -1000,8 +1000,14 @@ function registerIpcHandlers() {
       // Prevent concurrent installations
       if (isInstallationInProgress) {
         log.info('[DEPS INSTALL] Installation already in progress, waiting...');
-        await installationLock;
-        return { success: true, message: 'Installation completed by another process' };
+        try {
+          const result = await installationLock;
+          log.info('[DEPS INSTALL] Concurrent installation completed', result);
+          return result;
+        } catch (err) {
+          log.error('[DEPS INSTALL] Concurrent installation failed', err);
+          return { success: false, error: String(err) };
+        }
       }
 
       log.info('[DEPS INSTALL] Manual installation/retry triggered');

@@ -534,6 +534,8 @@ def agent_model(
 
 @traceroot.trace()
 def question_confirm_agent(options: Chat):
+    traceroot_logger.info(f"Updating")
+    traceroot_logger.info(f"Installing")
     return agent_model(
         "question_confirm_agent",
         f"You are a highly capable agent. Your primary function is to analyze a user's request and determine the appropriate course of action. The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.",
