@@ -464,11 +464,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
-                if workforce is not None and item.project_id == options.project_id:
+                if workforce is not None and item.project_id == options.project_id and item.task_id is not None:
                     if workforce._state.name == 'PAUSED':
                         # Resume paused workforce to skip the task
                         workforce.resume()
-                    workforce.skip_gracefully()
+                        
+                    # skip_gracefully kept aside for now
+                    if workforce._running:
+                        workforce.stop()
+                    workforce.stop_gracefully()
+                    yield sse_json("skip_task", {"task_id": item.task_id, "message": "Workforce skipped"})
+                else:
+                    logger.warning(f"Cannot skip task: workforce is None or mismatched project/task ID for project {options.project_id}, task {item.task_id}")
             elif item.action == Action.start:
                 # Check conversation history length before starting task
                 is_exceeded, total_length = check_conversation_history_length(task_lock)

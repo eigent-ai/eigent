@@ -418,19 +418,13 @@ export default function ChatBox(): JSX.Element {
 		setIsPauseResumeLoading(true);
 		
 		try {
-			// Skip the current task
-			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
-				project_id: projectStore.activeProjectId
-			});
-
-			// Update task status to finished
-			chatStore.setStatus(taskId, 'finished');
-			chatStore.setIsPending(taskId, false);
+			// Skip the current task. For now acts like stop.
+			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task/${taskId}`);
 			
 			// toast.success("Task skipped successfully", {
 			// 	closeButton: true,
 			// });
-			toast.success("Task stopped successfully", {
+			toast.success("Stopping task in a moment", {
 				closeButton: true,
 			});
 		} catch (error) {

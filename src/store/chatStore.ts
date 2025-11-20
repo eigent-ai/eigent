@@ -101,6 +101,7 @@ export interface ChatStore {
 	clearTasks: () => void,
 	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
 	setNextTaskId: (taskId: string | null) => void;
+	stopTask: (currentChatStore: ChatStore, taskId: string, errorMessage?: string, type?: string) => void;
 }
 
 export type VanillaChatStore = {
@@ -1217,6 +1218,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					uploadLog(currentTaskId, type);
 					return
 				}
+					if(agentMessages.step === "skip_task") {
+						const { task_id } = agentMessages.data;
+						const { stopTask } = get();
+
+						if(task_id) {
+							stopTask(lockedChatStore.getState(), task_id, undefined, type);
+						} else {
+							console.error('skip_task event missing task_id:', agentMessages.data);
+						}
+					}
 
 					if (agentMessages.step === "error") {
 						try {
@@ -1232,44 +1243,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							                     (typeof agentMessages.data === 'string' ? agentMessages.data : null) ||
 							                     'An error occurred while processing your request';
 
-							// Mark all incomplete tasks as failed
-							let taskRunning = [...tasks[currentTaskId].taskRunning];
-							let taskAssigning = [...tasks[currentTaskId].taskAssigning];
-
-							// Update taskRunning - mark non-completed tasks as failed
-							taskRunning = taskRunning.map((task) => {
-								if (task.status !== "completed" && task.status !== "failed") {
-									task.status = "failed";
-								}
-								return task;
-							});
-
-							// Update taskAssigning - mark non-completed tasks as failed
-							taskAssigning = taskAssigning.map((agent) => {
-								agent.tasks = agent.tasks.map((task) => {
-									if (task.status !== "completed" && task.status !== "failed") {
-										task.status = "failed";
-									}
-									return task;
-								});
-								return agent;
-							});
-
-							// Apply the updates
-							setTaskRunning(currentTaskId, taskRunning);
-							setTaskAssigning(currentTaskId, taskAssigning);
-
-							// Complete the current task with error status
-							setStatus(currentTaskId, 'finished');
-							setIsPending(currentTaskId, false);
-
-							// Add error message to the current task
-							addMessages(currentTaskId, {
-								id: generateUniqueId(),
-								role: "agent",
-								content: `❌ **Error**: ${errorMessage}`,
-							});
-							uploadLog(currentTaskId, type)
+							// Use the extracted stopTask function
+							const { stopTask } = get();
+							stopTask(lockedChatStore.getState(), currentTaskId, errorMessage, type);
 
 							// Stop the workforce
 							try {
@@ -2202,6 +2178,73 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					},
 				},
 			}))
+		},
+		/**
+		 * Stops a task and marks all incomplete subtasks as failed
+		 * @param currentChatStore - The current chat store state
+		 * @param taskId - The ID of the task to stop
+		 * @param errorMessage - The error message to display
+		 * @param type - The task type (optional)
+		 */
+		stopTask: (currentChatStore: ChatStore, taskId: string, errorMessage?: string, type?: string) => {
+			const { 
+				tasks, 
+				setTaskRunning, 
+				setTaskAssigning, 
+				setStatus, 
+				setIsPending, 
+				addMessages 
+			} = currentChatStore;
+
+			// Mark all incomplete tasks as failed
+			let taskRunning = [...tasks[taskId].taskRunning];
+			let taskAssigning = [...tasks[taskId].taskAssigning];
+
+			// Update taskRunning - mark non-completed tasks as failed
+			taskRunning = taskRunning.map((task: any) => {
+				if (task.status !== "completed" && task.status !== "failed") {
+					task.status = "failed";
+				}
+				return task;
+			});
+
+			// Update taskAssigning - mark non-completed tasks as failed
+			taskAssigning = taskAssigning.map((agent: any) => {
+				agent.tasks = agent.tasks.map((task: any) => {
+					if (task.status !== "completed" && task.status !== "failed") {
+						task.status = "failed";
+					}
+					return task;
+				});
+				return agent;
+			});
+
+			// Apply the updates
+			setTaskRunning(taskId, taskRunning);
+			setTaskAssigning(taskId, taskAssigning);
+
+			// Complete the current task with error status
+			setStatus(taskId, 'finished');
+			setIsPending(taskId, false);
+
+			if(errorMessage) {
+				// Add error message to the current task
+				addMessages(taskId, {
+					id: generateUniqueId(),
+					role: "agent",
+					content: `❌ **Error**: ${errorMessage}`,
+				});
+			} else {
+				// Add message to the current task
+				addMessages(taskId, {
+					id: generateUniqueId(),
+					role: "agent",
+					content: `Task has been stopped.`,
+				});
+			}
+			uploadLog(taskId, type)
+
+			console.warn("Task stopped and incomplete subtasks marked as failed successfully:", taskId);
 		},
 		clearTasks: () => {
 			const { create } = get()
