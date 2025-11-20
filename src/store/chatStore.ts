@@ -458,7 +458,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						// Create error task to notify user
 						const currentStore = getCurrentChatStore();
-						const currentId = getCurrentTaskId();
 						const newTaskId = currentStore.create();
 						currentStore.setActiveTaskId(newTaskId);
 						currentStore.setHasWaitComfirm(newTaskId, true);
@@ -1223,9 +1222,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						try {
 							console.error('Model error:', agentMessages.data);
 
-							// Safely extract error message with optional chaining
+							// Validate that agentMessages.data exists before processing
+							if (agentMessages.data === undefined || agentMessages.data === null) {
+								throw new Error('Invalid error message format: missing data');
+							}
+
+							// Safely extract error message with fallback chain
 							const errorMessage = agentMessages.data?.message ||
-							                     agentMessages.data?.error ||
+							                     (typeof agentMessages.data === 'string' ? agentMessages.data : null) ||
 							                     'An error occurred while processing your request';
 
 							// Mark all incomplete tasks as failed
@@ -1277,18 +1281,21 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							console.error('Failed to handle model error:', error);
 							console.error('Original agentMessages:', agentMessages);
 
-							// Fallback: create error task with generic message
+							// Fallback: try to create error task with minimal operations
 							try {
+								const { create, setActiveTaskId, setHasWaitComfirm, addMessages } = get();
 								const fallbackTaskId = create();
 								setActiveTaskId(fallbackTaskId);
 								setHasWaitComfirm(fallbackTaskId, true);
 								addMessages(fallbackTaskId, {
 									id: generateUniqueId(),
 									role: "agent",
-									content: `**Critical Error**: An unexpected error occurred. Please try again or contact support.`,
+									content: `**Critical Error**: An unexpected error occurred while handling a model error. Please refresh the application or contact support.`,
 								});
 							} catch (fallbackError) {
 								console.error('Failed to create fallback error task:', fallbackError);
+								// Last resort: just log the error without creating UI elements
+								console.error('Original error that could not be displayed:', agentMessages);
 							}
 						}
 						return;
