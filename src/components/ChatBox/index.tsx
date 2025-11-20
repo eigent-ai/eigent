@@ -418,15 +418,13 @@ export default function ChatBox(): JSX.Element {
 		setIsPauseResumeLoading(true);
 
 		try {
-			// First, stop the SSE connection and update local state
-			chatStore.stopTask(taskId);
-
-			// Then notify backend to skip the task
+			// First, try to notify backend to skip the task
 			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
 				project_id: projectStore.activeProjectId
 			});
 
-			// Ensure pending state is cleared
+			// Only stop local task if backend call succeeds
+			chatStore.stopTask(taskId);
 			chatStore.setIsPending(taskId, false);
 
 			toast.success("Task stopped successfully", {
@@ -435,13 +433,21 @@ export default function ChatBox(): JSX.Element {
 		} catch (error) {
 			console.error("Failed to skip task:", error);
 
-			// If backend call failed, just ensure pending state is cleared
-			// Don't call stopTask again since it was already called above
-			chatStore.setIsPending(taskId, false);
-
-			toast.error("Task stopped locally, but backend notification failed", {
-				closeButton: true,
-			});
+			// If backend call failed, still try to stop local task as fallback
+			// but with different messaging to user
+			try {
+				chatStore.stopTask(taskId);
+				chatStore.setIsPending(taskId, false);
+				toast.warning("Task stopped locally, but backend notification failed. Backend task may continue running.", {
+					closeButton: true,
+					duration: 5000,
+				});
+			} catch (localError) {
+				console.error("Failed to stop task locally:", localError);
+				toast.error("Failed to stop task completely. Please refresh the page.", {
+					closeButton: true,
+				});
+			}
 		} finally {
 			setIsPauseResumeLoading(false);
 		}

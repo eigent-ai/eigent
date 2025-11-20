@@ -222,6 +222,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 			} catch (error) {
 				console.warn('Error aborting SSE connection in stopTask:', error);
+				// Even if abort fails, still clean up the reference
+				try {
+					delete activeSSEControllers[taskId];
+				} catch (cleanupError) {
+					console.warn('Error cleaning up SSE controller reference:', cleanupError);
+				}
 			}
 
 			// Clean up any pending auto-confirm timers
@@ -234,17 +240,29 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.warn('Error clearing auto-confirm timer in stopTask:', error);
 			}
 
-			// Update task status to finished
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						status: 'finished'
-					},
-				},
-			}))
+			// Update task status to finished - ensure this happens even if cleanup fails
+			try {
+				set((state) => {
+					// Check if task exists before updating
+					if (!state.tasks[taskId]) {
+						console.warn(`Task ${taskId} not found when trying to stop it`);
+						return state;
+					}
+
+					return {
+						...state,
+						tasks: {
+							...state.tasks,
+							[taskId]: {
+								...state.tasks[taskId],
+								status: 'finished'
+							},
+						},
+					};
+				});
+			} catch (error) {
+				console.error('Error updating task status to finished in stopTask:', error);
+			}
 		},
 		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
@@ -453,6 +471,17 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			let lockedTaskId = newTaskId;
 
 			// Create AbortController for this task's SSE connection
+			// First check if there's already an active SSE connection for this task
+			if (activeSSEControllers[newTaskId]) {
+				console.warn(`Task ${newTaskId} already has an active SSE connection, aborting old one`);
+				try {
+					activeSSEControllers[newTaskId].abort();
+				} catch (error) {
+					console.warn('Error aborting existing SSE connection:', error);
+				}
+				delete activeSSEControllers[newTaskId];
+			}
+
 			const abortController = new AbortController();
 			activeSSEControllers[newTaskId] = abortController;
 
@@ -529,11 +558,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					// Only ignore messages if:
 					// 1. The task doesn't exist, OR
-					// 2. The task is finished AND it's not a task-switching event (confirmed, new_task_state)
-					const isTaskSwitchingEvent = agentMessages.step === "confirmed" || agentMessages.step === "new_task_state";
-					if (!currentTask || (currentTask.status === 'finished' && !isTaskSwitchingEvent)) {
-						// Task was stopped, ignore any incoming messages
-						console.log(`Ignoring SSE message for stopped task ${lockedTaskId}, step: ${agentMessages.step}`);
+					// 2. The task is finished AND it's not a task-switching event
+					const isTaskSwitchingEvent = agentMessages.step === "confirmed" ||
+													agentMessages.step === "new_task_state" ||
+													agentMessages.step === "end";
+
+					// More robust check - only ignore if task doesn't exist OR
+					// task is finished and it's not a legitimate flow-control event
+					if (!currentTask) {
+						console.log(`Task ${lockedTaskId} not found, ignoring SSE message for step: ${agentMessages.step}`);
+						return;
+					}
+
+					if (currentTask.status === 'finished' && !isTaskSwitchingEvent) {
+						// Only ignore non-essential messages for finished tasks
+						// Allow flow control messages through even for finished tasks
+						console.log(`Ignoring SSE message for finished task ${lockedTaskId}, step: ${agentMessages.step}`);
 						return;
 					}
 
@@ -1667,13 +1707,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 				onerror(err) {
 					console.error("SSE Error:", err);
-					// Clean up AbortController on error
+					// Clean up AbortController on error with robust error handling
 					try {
 						if (activeSSEControllers[newTaskId]) {
 							delete activeSSEControllers[newTaskId];
+							console.log(`Cleaned up SSE controller for task ${newTaskId} after error`);
 						}
-					} catch (error) {
-						console.warn('Error cleaning up AbortController on SSE error:', error);
+					} catch (cleanupError) {
+						console.warn('Error cleaning up AbortController on SSE error:', cleanupError);
 					}
 					throw err;
 				},
@@ -1681,13 +1722,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				// Server closes connection
 				onclose() {
 					console.log("SSE connection closed");
-					// Clean up AbortController when connection closes
+					// Clean up AbortController when connection closes with robust error handling
 					try {
 						if (activeSSEControllers[newTaskId]) {
 							delete activeSSEControllers[newTaskId];
+							console.log(`Cleaned up SSE controller for task ${newTaskId} after connection close`);
 						}
-					} catch (error) {
-						console.warn('Error cleaning up AbortController on SSE close:', error);
+					} catch (cleanupError) {
+						console.warn('Error cleaning up AbortController on SSE close:', cleanupError);
 					}
 				},
 			});
