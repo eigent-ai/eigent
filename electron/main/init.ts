@@ -187,7 +187,27 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         }
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+        log.info(`Spawning backend process: ${uv_path} run uvicorn main:api --port ${port} --loop asyncio`);
+        log.info(`Backend working directory: ${backendPath}`);
+        log.info(`Using venv: ${venvPath}`);
+
+        // Pre-flight check: Test if uv and venv work
+        try {
+            const { stdout: uvVersion } = await execAsync(`${uv_path} --version`);
+            log.info(`UV version check: ${uvVersion.trim()}`);
+
+            const { stdout: pythonTest } = await execAsync(
+                `${uv_path} run python -c "print('Python OK')"`,
+                { cwd: backendPath, env: env }
+            );
+            log.info(`Python test output: ${pythonTest.trim()}`);
+        } catch (testErr) {
+            log.error(`Pre-flight check failed: ${testErr}`);
+            reject(new Error(`Backend environment check failed: ${testErr}`));
+            return;
+        }
+
         //Implicitly runs uv sync
         const node_process = spawn(
             uv_path,
@@ -195,6 +215,18 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             { cwd: backendPath, env: env, detached: false }
         );
 
+        log.info(`Backend process spawned with PID: ${node_process.pid}`);
+
+        // Check if process started successfully
+        setTimeout(() => {
+            if (node_process.killed) {
+                log.error('Backend process was killed immediately after spawn');
+            } else if (!node_process.pid) {
+                log.error('Backend process has no PID');
+            } else {
+                log.info(`Backend process still running after 1s with PID ${node_process.pid}`);
+            }
+        }, 1000);
 
         let started = false;
         let healthCheckInterval: NodeJS.Timeout | null = null;
@@ -209,26 +241,28 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             }
         }, 30000); // 30 second timeout
 
-        // Fallback: If no uvicorn log is detected within 5 seconds, start health check anyway
+        // Fallback: If no uvicorn log is detected within 10 seconds, start health check anyway
         // This handles cases where Python output is delayed or buffered
+        // First run takes longer due to implicit uv sync
         fallbackHealthCheck = setTimeout(() => {
             if (!started && healthCheckInterval === null) {
-                log.info('No uvicorn log detected after 5s, starting health check polling as fallback...');
+                log.info('No uvicorn log detected after 10s, starting health check polling as fallback...');
                 pollHealthEndpoint();
             }
-        }, 5000); // 5 second fallback
+        }, 10000); // 10 second fallback (increased from 5s for first run)
 
         // Helper function to poll health endpoint
         const pollHealthEndpoint = (): void => {
             if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck); // Clear fallback once polling starts
             let attempts = 0;
-            const maxAttempts = 20; // 5 seconds total (20 * 250ms)
+            const maxAttempts = 60; // 15 seconds total (60 * 250ms) - increased for first run
             const intervalMs = 250;
 
             healthCheckInterval = setInterval(() => {
                 attempts++;
                 const healthUrl = `http://127.0.0.1:${port}/health`;
-                
+                log.debug(`Health check attempt ${attempts}/${maxAttempts}: ${healthUrl}`);
+
                 const req = http.get(healthUrl, { timeout: 1000 }, (res) => {
                     if (res.statusCode === 200) {
                         log.info(`Backend health check passed after ${attempts} attempts`);
@@ -256,7 +290,21 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                         started = true;
                         clearTimeout(startTimeout);
                         if (healthCheckInterval) clearInterval(healthCheckInterval);
-                        node_process.kill();
+
+                        // Kill process tree more aggressively
+                        log.info(`Killing backend process ${node_process.pid} and its children...`);
+                        try {
+                            if (process.platform === 'win32') {
+                                node_process.kill('SIGKILL');
+                            } else {
+                                // On Unix, kill the process group
+                                process.kill(-node_process.pid!, 'SIGKILL');
+                            }
+                        } catch (e) {
+                            log.error(`Failed to kill backend process: ${e}`);
+                            node_process.kill('SIGKILL');
+                        }
+
                         reject(new Error('Backend health check failed: unable to connect'));
                     }
                 });
@@ -276,6 +324,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         };
 
         node_process.stdout.on('data', (data) => {
+            log.debug(`Backend stdout received ${data.length} bytes`);
             displayFilteredLogs(data);
             // check output content, judge if start success
             if (!started && data.toString().includes("Uvicorn running on")) {
@@ -285,6 +334,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         });
 
         node_process.stderr.on('data', (data) => {
+            log.debug(`Backend stderr received ${data.length} bytes`);
             displayFilteredLogs(data);
 
             if (!started && data.toString().includes("Uvicorn running on")) {
@@ -304,12 +354,28 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             }
         });
 
-        node_process.on('close', (code) => {
+        node_process.on('error', (err) => {
+            log.error(`Backend process error: ${err.message}`);
+            if (!started) {
+                started = true;
+                clearTimeout(startTimeout);
+                if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
+                reject(new Error(`Failed to spawn backend process: ${err.message}`));
+            }
+        });
+
+        node_process.on('close', async (code, signal) => {
+            log.info(`Backend process closed with code ${code}, signal ${signal}`);
             clearTimeout(startTimeout);
             if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
             if (healthCheckInterval) clearInterval(healthCheckInterval);
+
+            // Clean up port to ensure retry can work
             if (!started) {
-                reject(new Error(`fastapi exited with code ${code}`));
+                log.info(`Backend exited before ready, cleaning up port ${port}...`);
+                await killProcessOnPort(port);
+                reject(new Error(`Backend exited prematurely with code ${code}`));
             }
         });
     });

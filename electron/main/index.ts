@@ -1435,6 +1435,13 @@ const setupExternalLinkHandling = () => {
 const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
   try {
+    // Clean up any existing backend process before starting new one
+    if (python_process && !python_process.killed) {
+      log.info('Cleaning up existing backend process before restart...');
+      await cleanupPythonProcess();
+      python_process = null;
+    }
+
     const isToolInstalled = await checkToolInstalled();
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
