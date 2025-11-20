@@ -16,11 +16,13 @@ import {
 import { useTranslation } from "react-i18next";
 import { useInstallationUI } from "@/store/installationStore";
 import { TooltipSimple } from "../ui/tooltip";
+import { useBackendReady } from "@/store/backendStore";
 
 export const InstallDependencies: React.FC = () => {
 	const { initState } = useAuthStore();
 	const {t} = useTranslation();
-	
+	const backendIsReady = useBackendReady();
+
 	const {
 		progress,
 		latestLog,
@@ -30,6 +32,10 @@ export const InstallDependencies: React.FC = () => {
 		exportLog,
 	} = useInstallationUI();
 
+	// Determine the installation phase
+	const installationComplete = !isInstalling && initState === 'done';
+	const waitingForBackend = installationComplete && !backendIsReady;
+
 	return (
 		<div className="fixed !z-[100] inset-0 !bg-bg-page  bg-opacity-80 h-full w-full  flex items-center justify-center backdrop-blur-sm">
 			<div className="w-[1200px] p-[40px] h-full flex flex-col justify-center gap-xl">
@@ -37,13 +43,13 @@ export const InstallDependencies: React.FC = () => {
 					{/* {isInstalling.toString()} */}
 					<div>
 						<ProgressInstall
-							value={isInstalling ? progress : 100}
+							value={waitingForBackend ? 95 : (isInstalling ? progress : 100)}
 							className="w-full"
 						/>
 						<div className="flex items-center gap-2 justify-between">
 							<div className="text-text-label text-xs font-normal leading-tight ">
-								{isInstalling ? "System Installing ..." : ""}
-								<span className="pl-2">{latestLog?.data}</span>
+								{waitingForBackend ? "Starting backend service..." : (isInstalling ? "System Installing ..." : "")}
+								<span className="pl-2">{!waitingForBackend && latestLog?.data}</span>
 							</div>
 							<TooltipSimple content={`Cannot retry because state is ${error}`} hidden={true}>
 								<Button
@@ -51,6 +57,7 @@ export const InstallDependencies: React.FC = () => {
 									variant="outline"
 									className="mt-1"
 									onClick={retryInstallation}
+									disabled={waitingForBackend}
 								>
 									<RefreshCcw className="w-4 h-4" />
 								</Button>

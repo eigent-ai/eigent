@@ -24,6 +24,12 @@ export const useInstallationSetup = () => {
   const setSuccess = useInstallationStore(state => state.setSuccess);
   const setError = useInstallationStore(state => state.setError);
 
+  // Reset backend store on mount to ensure fresh state
+  useEffect(() => {
+    useBackendStore.getState().reset();
+    console.log('[useInstallationSetup] Backend store reset on mount');
+  }, []);
+
   // Check tool installation status on mount - but only during setup phase
   useEffect(() => {
     // Only run this check once on initial mount

@@ -1016,9 +1016,9 @@ function registerIpcHandlers() {
         log.info('[DEPS INSTALL] Sent install-dependencies-complete event after retry');
       }
 
-      // Start backend if needed (only if not already running)
-      // Uses shared logic to prevent duplication
-      await startBackendIfNeeded();
+      // Start backend after retry
+      // Note: checkAndStartBackend() will handle cleanup of any existing backend process
+      await startBackendAfterInstall();
 
       return { success: true, isInstalled: result.success };
     } catch (error) {
@@ -1073,6 +1073,16 @@ const ensureEigentDirectories = () => {
   }
 
   log.info('.eigent directory structure ensured');
+};
+
+// ==================== Shared backend startup logic ====================
+// Starts backend after installation completes
+// Used by both initial startup and retry flows
+// Note: No need to check if backend is running - on app startup it's never running,
+// and checkAndStartBackend() handles cleanup of any existing process
+const startBackendAfterInstall = async () => {
+  log.info('[DEPS INSTALL] Starting backend...');
+  await checkAndStartBackend();
 };
 
 // ==================== window create ====================
@@ -1367,21 +1377,8 @@ async function createWindow() {
   }
 
   // Start backend after dependencies are ready
-  // Uses shared logic that checks if backend is already running
-  await startBackendIfNeeded();
+  await startBackendAfterInstall();
 }
-
-// ==================== Shared backend startup logic ====================
-// This function ensures backend is started only when needed
-// Used by both initial startup and retry flows
-const startBackendIfNeeded = async () => {
-  if (!backendPort) {
-    log.info('[DEPS INSTALL] Backend not running, starting now...');
-    await checkAndStartBackend();
-  } else {
-    log.info('[DEPS INSTALL] Backend already running on port', backendPort, ', skipping startup');
-  }
-};
 
 // ==================== window event listeners ====================
 const setupWindowEventListeners = () => {
