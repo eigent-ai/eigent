@@ -88,7 +88,9 @@ export default function TaskItem({
       `}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Pin className="w-4 h-4 text-icon-primary" />
+        <TooltipSimple content="Tasks">
+          <Pin className="w-4 h-4 text-icon-primary" />
+        </TooltipSimple>
         
         <div className="flex flex-col gap-1 flex-1 min-w-0">
           <TooltipSimple

@@ -6,6 +6,7 @@ import ProjectGroup from "./ProjectGroup";
 import { useTranslation } from "react-i18next";
 import { Loader2, FolderOpen, Pin, Hash, LayoutGrid, List, Sparkles, Sparkle } from "lucide-react";
 import { Tag } from "@/components/ui/tag";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGlobalStore } from "@/store/globalStore";
 import { proxyFetchDelete, proxyFetchPut } from "@/api/http";
@@ -264,13 +265,15 @@ export default function GroupedHistoryView({
             </span>
           </Tag>
           
-          <Tag variant="default" size="sm" className="gap-2">
-            <Pin />
-            <span className="text-body-sm"> {t("layout.total-tasks")}</span>
-            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-tag-fill-default-foreground text-text-body text-label-xs font-bold">
-              {allProjects.reduce((total, project) => total + project.task_count, 0)}
-            </span>
-          </Tag>
+          <TooltipSimple content="Tasks">
+            <Tag variant="default" size="sm" className="gap-2">
+              <Pin />
+              <span className="text-body-sm"> {t("layout.total-tasks")}</span>
+              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-tag-fill-default-foreground text-text-body text-label-xs font-bold">
+                {allProjects.reduce((total, project) => total + project.task_count, 0)}
+              </span>
+            </Tag>
+          </TooltipSimple>
         </div>
         <div className="flex items-center gap-md">
           <Tabs
