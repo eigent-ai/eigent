@@ -8,7 +8,7 @@ import { TooltipSimple } from "@/components/ui/tooltip";
 import { CircleAlert, Settings2 } from "lucide-react";
 import { fetchGet, fetchPost } from "@/api/http";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import ellipseIcon from "@/assets/mcp/Ellipse-25.svg";
 import { MCPEnvDialog } from "@/pages/Setting/components/MCPEnvDialog";
 import { OAuth } from "@/lib/oauth";
@@ -239,12 +239,19 @@ export default function IntegrationList({
 	);
 
 	const COMING_SOON_ITEMS = [
+		"Slack",
 		"X(Twitter)",
 		"WhatsApp",
 		"LinkedIn",
 		"Reddit",
 		"Github",
 	];
+
+	const sortedItems = useMemo(() => {
+		const available = items.filter((item) => !COMING_SOON_ITEMS.includes(item.name));
+		const comingSoon = items.filter((item) => COMING_SOON_ITEMS.includes(item.name));
+		return [...available, ...comingSoon];
+	}, [items]);
 
 	// Determine container and item styles based on variant
 	const containerClassName = isSelectMode
@@ -267,7 +274,7 @@ export default function IntegrationList({
 				onConnect={onConnect}
 				activeMcp={activeMcp}
 			></MCPEnvDialog>
-			{items.map((item) => {
+			{sortedItems.map((item) => {
 				const isInstalled = !!installed[item.key];
 				const isComingSoon = COMING_SOON_ITEMS.includes(item.name);
 
