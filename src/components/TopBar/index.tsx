@@ -148,14 +148,13 @@ function HeaderWin() {
 	//TODO: Mark ChatStore details as completed
 	const handleEndProject = async () => {
 		const taskId = chatStore.activeTaskId;
-		const currentProjectId = projectStore.activeProjectId;
-		
+		const projectId = projectStore.activeProjectId;
+
 		if (!taskId) {
 			toast.error(t("layout.no-active-project-to-end"));
 			return;
 		}
 
-		const projectId = projectStore.activeProjectId;
 		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 
 		try {
@@ -170,7 +169,7 @@ function HeaderWin() {
 
 			// Stop Workforce
 			try {
-				await fetchDelete(`/chat/${currentProjectId}`);
+				await fetchDelete(`/chat/${projectId}`);
 			} catch (error) {
 				console.log("Task may not exist on backend:", error);
 			}

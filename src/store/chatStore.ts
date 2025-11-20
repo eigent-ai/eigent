@@ -105,6 +105,7 @@ export interface ChatStore {
 
 export type VanillaChatStore = {
 	getState: () => ChatStore;
+	subscribe: (listener: (state: ChatStore) => void) => () => void;
 };
 
 
@@ -1085,7 +1086,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										return toolkit.toolkitName === agentMessages.data.toolkit_name && toolkit.toolkitMethods === agentMessages.data.method_name && toolkit.toolkitStatus === 'running'
 									})
 
-									if (task.toolkits && index !== -1) {
+									if (task.toolkits && index !== -1 && index !== undefined) {
 										task.toolkits[index].message += '\n' + message.data.message as string
 										task.toolkits[index].toolkitStatus = "completed"
 									}
@@ -1223,10 +1224,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Complete the current task with error status
 						setStatus(currentTaskId, 'finished');
 						setIsPending(currentTaskId, false);
-						setHasWaitComfirm(newTaskId, true);
 
-						// Add error message to the new clean task
-						addMessages(newTaskId, {
+						// Add error message to the current task
+						addMessages(currentTaskId, {
 							id: generateUniqueId(),
 							role: "agent",
 							content: `❌ **Error**: ${errorMessage}`,
