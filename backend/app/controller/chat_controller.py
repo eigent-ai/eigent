@@ -58,7 +58,7 @@ async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TI
                 yield data
             except asyncio.TimeoutError:
                 chat_logger.warning(f"SSE timeout: No data received for {timeout_seconds} seconds, closing connection")
-                yield sse_json("error", {"message": "Connection timeout: No data received for 10 minutes"})
+                # TODO: Temporary change: suppress error signal to frontend on timeout. Needs proper fix later.
                 break
             except StopAsyncIteration:
                 break
