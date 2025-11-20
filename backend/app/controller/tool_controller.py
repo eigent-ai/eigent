@@ -260,11 +260,19 @@ async def uninstall_tool(tool: str):
 
     elif tool == "google_calendar":
         try:
-            # Clean up Google Calendar token directory
-            token_dir = os.path.join(os.path.expanduser("~"), ".eigent", "tokens", "google_calendar")
-            if os.path.exists(token_dir):
-                shutil.rmtree(token_dir)
-                logger.info(f"Removed Google Calendar token directory: {token_dir}")
+            # Clean up Google Calendar token directories (user-scoped + legacy)
+            token_dirs = set()
+            try:
+                token_dirs.add(os.path.dirname(GoogleCalendarToolkit._build_canonical_token_path()))
+            except Exception as e:
+                logger.warning(f"Failed to resolve canonical Google Calendar token path: {e}")
+
+            token_dirs.add(os.path.join(os.path.expanduser("~"), ".eigent", "tokens", "google_calendar"))
+
+            for token_dir in token_dirs:
+                if os.path.exists(token_dir):
+                    shutil.rmtree(token_dir)
+                    logger.info(f"Removed Google Calendar token directory: {token_dir}")
 
             # Clear OAuth state manager cache (this is the key fix!)
             # This removes the cached credentials from memory
