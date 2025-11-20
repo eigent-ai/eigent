@@ -51,7 +51,6 @@ export interface ChatStore {
 	tasks: { [key: string]: Task };
 	create: (id?: string, type?: any) => string;
 	removeTask: (taskId: string) => void;
-	stopTask: (taskId: string) => void;
 	setStatus: (taskId: string, status: 'running' | 'finished' | 'pending' | 'pause') => void;
 	setActiveTaskId: (taskId: string) => void;
 	replay: (taskId: string, question: string, time: number) => Promise<void>;
@@ -103,6 +102,7 @@ export interface ChatStore {
 	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
 	setNextTaskId: (taskId: string | null) => void;
 	stopTask: (currentChatStore: ChatStore, taskId: string, errorMessage?: string, type?: string) => void;
+	abortTaskSSE: (taskId: string) => void;
 }
 
 export type VanillaChatStore = {
@@ -213,7 +213,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			})
 		},
-		stopTask(taskId: string) {
+		abortTaskSSE(taskId: string) {
 			// Abort the SSE connection for this task
 			try {
 				if (activeSSEControllers[taskId]) {
@@ -2352,6 +2352,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				setIsPending, 
 				addMessages 
 			} = currentChatStore;
+
+			//Abort active SSE connection if exists
+			currentChatStore.abortTaskSSE(taskId);
 
 			// Mark all incomplete tasks as failed
 			let taskRunning = [...tasks[taskId].taskRunning];
