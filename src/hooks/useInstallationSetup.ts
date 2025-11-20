@@ -37,7 +37,6 @@ export const useInstallationSetup = () => {
       try {
         const result = await window.ipcRenderer.invoke("check-tool-installed");
 
-
         // Only perform tool check during setup phase (permissions or carousel)
         // Once user is in 'done' state (main app), don't check again
         // This prevents unexpected navigation away from the main app
@@ -57,24 +56,29 @@ export const useInstallationSetup = () => {
             }
           }
         }
+        return result;
       } catch (error) {
         console.error("[useInstallationSetup] Tool installation check failed:", error);
+        return { success: false, error };
       }
     };
 
-    const checkBackendStatus = async() => {
+    const checkBackendStatus = async(toolResult?: any) => {
       try {
         // Also check if installation is currently in progress
         const installationStatus = await window.electronAPI.getInstallationStatus();
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
-        } else if (initState !== 'done') {
-          // If not installing and not done, check if we need to install
-          const toolResult = await window.ipcRenderer.invoke("check-tool-installed");
+        } else if (initState !== 'done' && toolResult) {
+          // Use the tool result from the previous check to avoid duplicate API calls
           if (toolResult.success && !toolResult.isInstalled) {
              console.log('[useInstallationSetup] Tools missing and not installing. Starting installation...');
-             performInstallation();
+             try {
+               await performInstallation();
+             } catch (installError) {
+               console.error('[useInstallationSetup] Installation failed:', installError);
+             }
           }
         }
       } catch (err) {
@@ -82,8 +86,13 @@ export const useInstallationSetup = () => {
       }
     }
 
-    checkToolInstalled();
-    checkBackendStatus();
+    // Run checks sequentially to avoid race conditions and duplicate API calls
+    const runInitialChecks = async () => {
+      const toolResult = await checkToolInstalled();
+      await checkBackendStatus(toolResult);
+    };
+
+    runInitialChecks();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
