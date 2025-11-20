@@ -128,9 +128,12 @@ export const MarkDown = memo(
 							const cleanChildren = typeof children === 'string' 
 								? children.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '') 
 								: children;
+							const cleanHref = typeof href === 'string'
+								? href.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '').replace(/(%[0-9A-Fa-f]{2})+$/g, '')
+								: href;
 							return (
 								<a 
-									href={href} 
+									href={cleanHref} 
 									className="text-blue-600 hover:text-blue-800 underline break-words inline"
 									style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
 									target="_blank" 
