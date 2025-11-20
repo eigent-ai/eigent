@@ -15,6 +15,25 @@ export async function downloadWithRedirects(url, destinationPath) {
       reject(new Error(`timeout（${timeoutMs / 1000} seconds）`));
     }, timeoutMs);
 
+    // Use flag to prevent multiple resolve/reject calls
+    let settled = false;
+
+    const safeReject = (error) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      }
+    };
+
+    const safeResolve = () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      }
+    };
+
     const request = (url) => {
       https
         .get(url, (response) => {
@@ -23,58 +42,72 @@ export async function downloadWithRedirects(url, destinationPath) {
             return
           }
           if (response.statusCode !== 200) {
-            clearTimeout(timeout);
-            reject(new Error(`Download failed: ${response.statusCode} ${response.statusMessage}`))
+            safeReject(new Error(`Download failed: ${response.statusCode} ${response.statusMessage}`))
             return
           }
-          
+
           const file = fs.createWriteStream(destinationPath)
           let downloadedBytes = 0
           const expectedBytes = parseInt(response.headers['content-length'] || '0')
-          
+
           response.on('data', (chunk) => {
             downloadedBytes += chunk.length
           })
-          
+
           response.pipe(file)
-          
+
           file.on('finish', () => {
             file.close(() => {
-              clearTimeout(timeout);
-              
+              // Don't proceed if already rejected (e.g., by error handler)
+              if (settled) return;
+
               // Verify the download is complete
               if (expectedBytes > 0 && downloadedBytes !== expectedBytes) {
-                fs.unlinkSync(destinationPath)
-                reject(new Error(`Download incomplete: received ${downloadedBytes} bytes, expected ${expectedBytes}`))
+                try {
+                  if (fs.existsSync(destinationPath)) {
+                    fs.unlinkSync(destinationPath)
+                  }
+                } catch (err) {
+                  console.error('Failed to delete incomplete file:', err);
+                }
+                safeReject(new Error(`Download incomplete: received ${downloadedBytes} bytes, expected ${expectedBytes}`))
                 return
               }
-              
+
               // Check if file exists and has size > 0
               try {
-                const stats = fs.statSync(destinationPath)
-                if (stats.size === 0) {
-                  fs.unlinkSync(destinationPath)
-                  reject(new Error('Downloaded file is empty'))
-                  return
+
+                if (fs.existsSync(destinationPath)) {
+                  const stats = fs.statSync(destinationPath)
+                  if (stats.size === 0) {
+                    fs.unlinkSync(destinationPath)
+                    safeReject(new Error('Downloaded file is empty'))
+                    return
+                  }
+                  safeResolve()
+                } else {
+                  safeReject(new Error('Downloaded file does not exist'))
                 }
-              } catch (statError) {
-                reject(new Error(`Failed to check downloaded file: ${statError.message}`))
-                return
+              } catch (err) {
+                safeReject(new Error(`Failed to verify download: ${err.message}`))
+
               }
-              
-              resolve()
             })
           })
-          
+
           file.on('error', (err) => {
-            clearTimeout(timeout);
-            fs.unlinkSync(destinationPath)
-            reject(err)
+            try {
+              if (fs.existsSync(destinationPath)) {
+                fs.unlinkSync(destinationPath)
+              }
+            } catch (deleteErr) {
+              console.error('Failed to delete file after error:', deleteErr);
+            }
+            safeReject(err)
           })
         })
         .on('error', (err) => {
-          clearTimeout(timeout);
-          reject(err)
+          safeReject(err)
         })
     }
     request(url)
