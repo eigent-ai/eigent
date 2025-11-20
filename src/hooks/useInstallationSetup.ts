@@ -9,14 +9,9 @@ import { useAuthStore } from '@/store/authStore';
 export const useInstallationSetup = () => {
   const { initState, setInitState } = useAuthStore();
 
-  // Use ref to track if initial check is done to prevent repeated checks
   const hasCheckedOnMount = useRef(false);
-
-  // Track installation and backend readiness states
   const installationCompleted = useRef(false);
   const backendReady = useRef(false);
-
-  // Extract only the functions we need to avoid dependency issues
   const startInstallation = useInstallationStore(state => state.startInstallation);
   const performInstallation = useInstallationStore(state => state.performInstallation);
   const addLog = useInstallationStore(state => state.addLog);
@@ -25,14 +20,7 @@ export const useInstallationSetup = () => {
   const setBackendError = useInstallationStore(state => state.setBackendError);
   const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
 
-  // REMOVED: Don't reset initState from 'done' to 'carousel'
-  // Instead, we'll use installationState to control visibility in Layout component
-  // When tools are already installed, we set installationState to 'waiting-backend'
-  // which will show progress bar + text without showing carousel slides
-
-  // Check tool installation status on mount - but only during setup phase
   useEffect(() => {
-    // Only run this check once on initial mount
     if (hasCheckedOnMount.current) {
       return;
     }
@@ -44,19 +32,14 @@ export const useInstallationSetup = () => {
         const result = await window.ipcRenderer.invoke("check-tool-installed");
 
         if (result.success) {
-          // If tools are already installed, mark installation as completed
-          // This handles the app restart scenario where tools were installed previously
           if (result.isInstalled) {
             console.log('[useInstallationSetup] Tools already installed, waiting for backend');
             installationCompleted.current = true;
-            setWaitingBackend(); // Show "waiting for backend" state (progress bar + text, no carousel)
+            setWaitingBackend();
           }
 
-          // Only perform state transitions during setup phase (permissions or carousel)
-          // Once user is in 'done' state (main app), don't change initState
           if (initState !== 'done') {
             if (!result.isInstalled && initState === "permissions") {
-              // If tools are NOT installed and we're in permissions state, set to carousel
               console.log('[useInstallationSetup] Tools not installed and initState is permissions, setting to carousel');
               setInitState("carousel");
             }
@@ -71,13 +54,11 @@ export const useInstallationSetup = () => {
 
     const checkBackendStatus = async(toolResult?: any) => {
       try {
-        // Also check if installation is currently in progress
         const installationStatus = await window.electronAPI.getInstallationStatus();
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
         } else if (initState !== 'done' && toolResult) {
-          // Use the tool result from the previous check to avoid duplicate API calls
           if (toolResult.success && !toolResult.isInstalled) {
              console.log('[useInstallationSetup] Tools missing and not installing. Starting installation...');
              try {
@@ -92,7 +73,6 @@ export const useInstallationSetup = () => {
       }
     }
 
-    // Run checks sequentially to avoid race conditions and duplicate API calls
     const runInitialChecks = async () => {
       const toolResult = await checkToolInstalled();
       await checkBackendStatus(toolResult);
@@ -102,9 +82,7 @@ export const useInstallationSetup = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Setup Electron IPC listeners (only once)
   useEffect(() => {
-    // Helper function to check if both installation and backend are ready
     const checkAndSetDone = () => {
       console.log('[useInstallationSetup] Checking readiness - Installation:', installationCompleted.current, 'Backend:', backendReady.current);
 
@@ -114,9 +92,7 @@ export const useInstallationSetup = () => {
       }
     };
 
-    // Electron IPC event handlers
     const handleInstallStart = () => {
-      // Reset flags when installation starts
       installationCompleted.current = false;
       backendReady.current = false;
       startInstallation();
@@ -137,11 +113,7 @@ export const useInstallationSetup = () => {
         installationCompleted.current = true;
         console.log('[useInstallationSetup] Installation marked as completed');
 
-        // Don't call setSuccess() yet if we're still waiting for backend
-        // setSuccess() will be called in handleBackendReady when backend is ready
-        // This prevents installationState from changing from 'waiting-backend' to 'completed' prematurely
-
-        // Only set initState to done if backend is also ready
+        // setSuccess() will be called in handleBackendReady to prevent premature state change
         checkAndSetDone();
       } else {
         setError(data.error || 'Installation failed');
@@ -156,25 +128,19 @@ export const useInstallationSetup = () => {
         backendReady.current = true;
         console.log('[useInstallationSetup] Backend marked as ready');
 
-        // Mark installation as completed (changes state from 'waiting-backend' to 'completed')
         setSuccess();
-
-        // Only set initState to done if installation is also completed
         checkAndSetDone();
       } else {
         console.error('[useInstallationSetup] Backend failed to start:', data.error);
-        // Use setBackendError instead of setError for backend startup failures
         setBackendError(data.error || 'Backend startup failed');
       }
     };
 
-    // Register Electron IPC listeners
     window.electronAPI.onInstallDependenciesStart(handleInstallStart);
     window.electronAPI.onInstallDependenciesLog(handleInstallLog);
     window.electronAPI.onInstallDependenciesComplete(handleInstallComplete);
     window.electronAPI.onBackendReady(handleBackendReady);
 
-    // Cleanup listeners on unmount
     return () => {
       window.electronAPI.removeAllListeners('install-dependencies-start');
       window.electronAPI.removeAllListeners('install-dependencies-log');

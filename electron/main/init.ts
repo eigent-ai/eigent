@@ -163,27 +163,24 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         ...process.env,
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
-        PYTHONUNBUFFERED: '1',  // Disable Python output buffering to ensure immediate log output
+        PYTHONUNBUFFERED: '1',
         UV_PROJECT_ENVIRONMENT: venvPath,
         npm_config_cache: npmCacheDir,
     }
 
-    //Redirect output
     const displayFilteredLogs = (data: String) => {
         if (!data) return;
         const msg = data.toString().trimEnd();
-        //Detect if uv sync is run
         detectInstallationLogs(msg);
 
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
             log.error(`BACKEND: ${msg}`);
         } else if (msg.toLowerCase().includes("warn")) {
-            //Skip Warnings
-            // log.warn(`BACKEND: ${msg}`);
+            // Skip warnings
         } else if (msg.includes("DEBUG")) {
             log.debug(`BACKEND: ${msg}`);
         } else {
-            log.info(`BACKEND: ${msg}`); // treat uvicorn info logs as normal
+            log.info(`BACKEND: ${msg}`);
         }
     }
 
@@ -192,7 +189,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         log.info(`Backend working directory: ${backendPath}`);
         log.info(`Using venv: ${venvPath}`);
 
-        // Pre-flight check: Test if uv and venv work
         try {
             const { stdout: uvVersion } = await execAsync(`${uv_path} --version`);
             log.info(`UV version check: ${uvVersion.trim()}`);
@@ -208,16 +204,14 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             return;
         }
 
-        //Implicitly runs uv sync
-        // Use detached: true on Unix to create process group for proper cleanup
         const node_process = spawn(
             uv_path,
             ["run", "uvicorn", "main:api", "--port", port.toString(), "--loop", "asyncio"],
             {
                 cwd: backendPath,
                 env: env,
-                detached: process.platform !== 'win32', // detached on Unix for process group
-                stdio: ['ignore', 'pipe', 'pipe'] // Ensure stdout/stderr are captured
+                detached: process.platform !== 'win32',
+                stdio: ['ignore', 'pipe', 'pipe']
             }
         );
 
@@ -226,7 +220,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
         log.info(`Backend process spawned with PID: ${node_process.pid}`);
 
-        // Check if process started successfully
         setTimeout(() => {
             if (node_process.killed) {
                 log.error('Backend process was killed immediately after spawn');
@@ -246,40 +239,31 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 killBackendProcess(node_process);
                 reject(new Error('Backend failed to start within timeout'));
             }
-        }, 65000); // 65 second timeout (increased for first run with uv sync)
+        }, 65000);
 
-        // Start health check after a short delay to let process initialize
-        // No longer rely on log detection - directly use health endpoint
         const initialDelay = setTimeout(() => {
             if (!started) {
                 log.info('Starting backend health check polling...');
                 pollHealthEndpoint();
             }
-        }, 2000); // 2 second delay for process initialization
+        }, 2000);
 
-        // Helper function to kill backend process and all children
         const killBackendProcess = (proc: any) => {
             if (!proc || !proc.pid) return;
 
             log.info(`Killing backend process ${proc.pid} and its children...`);
             try {
                 if (process.platform === 'win32') {
-                    // Windows: use taskkill to kill process tree
                     spawn('taskkill', ['/pid', proc.pid.toString(), '/T', '/F']);
                 } else {
-                    // Unix: kill the entire process group
                     try {
                         process.kill(-proc.pid, 'SIGTERM');
-                        // Give it 1 second, then SIGKILL
                         setTimeout(() => {
                             try {
                                 process.kill(-proc.pid, 'SIGKILL');
-                            } catch (e) {
-                                // Process already dead, ignore
-                            }
+                            } catch (e) {}
                         }, 1000);
                     } catch (e) {
-                        // If process group kill fails, kill the main process
                         log.error(`Failed to kill process group: ${e}`);
                         proc.kill('SIGKILL');
                     }
@@ -289,10 +273,9 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             }
         };
 
-        // Helper function to poll health endpoint
         const pollHealthEndpoint = (): void => {
             let attempts = 0;
-            const maxAttempts = 240; // 60 seconds total (240 * 250ms) - increased for first run
+            const maxAttempts = 240;
             const intervalMs = 250;
 
             healthCheckInterval = setInterval(() => {
@@ -346,22 +329,19 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             }, intervalMs);
         };
 
-        // Monitor stdout for logs (no longer used for startup detection)
         node_process.stdout.on('data', (data) => {
             log.debug(`Backend stdout received ${data.length} bytes`);
             displayFilteredLogs(data);
         });
 
-        // Monitor stderr for logs and errors
         node_process.stderr.on('data', (data) => {
             log.debug(`Backend stderr received ${data.length} bytes`);
             displayFilteredLogs(data);
 
-            // Check for port binding errors - critical failure
             if (data.toString().includes("Address already in use") ||
                 data.toString().includes("bind() failed")) {
                 if (!started) {
-                    started = true; // Prevent multiple rejections
+                    started = true;
                     clearTimeout(startTimeout);
                     clearTimeout(initialDelay);
                     if (healthCheckInterval) clearInterval(healthCheckInterval);
@@ -388,7 +368,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             clearTimeout(initialDelay);
             if (healthCheckInterval) clearInterval(healthCheckInterval);
 
-            // Clean up port to ensure retry can work
             if (!started) {
                 log.info(`Backend exited before ready, cleaning up port ${port}...`);
                 await killProcessOnPort(port);

@@ -36,30 +36,7 @@ const Layout = () => {
 		retryBackend,
 	} = useInstallationUI();
 
-	// Setup installation IPC listeners and state synchronization
 	useInstallationSetup();
-
-	// Additional check: If initState is carousel but tools are installed, skip to done
-	// REMOVED: This check is too aggressive and causes premature navigation to main content
-	// The proper flow should be: installation complete -> backend ready -> then set initState='done'
-	// This is now handled in useInstallationSetup.ts
-	// useEffect(() => {
-	// 	const checkAndSkipCarousel = async () => {
-	// 		if (initState === 'carousel' && !isInstalling) {
-	// 			try {
-	// 				const result = await window.ipcRenderer.invoke("check-tool-installed");
-	// 				if (result.success && result.isInstalled) {
-	// 					console.log('[Layout] Tools installed, skipping carousel and setting initState to done');
-	// 					setInitState('done');
-	// 				}
-	// 			} catch (error) {
-	// 				console.error('[Layout] Failed to check tool installation:', error);
-	// 			}
-	// 		}
-	// 	};
-	//
-	// 	checkAndSkipCarousel();
-	// }, [initState, isInstalling, setInitState]);
 
 	useEffect(() => {
 		const handleBeforeClose = () => {
@@ -81,13 +58,7 @@ const Layout = () => {
 	// Determine what to show based on states
 	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling;
 
-	// Show install screen if either:
-	// 1. The installation store says to show it (isVisible && not completed)
-	// 2. OR if initState is not 'done' (meaning permissions or carousel should show)
-	// 3. OR if waiting for backend (installationState === 'waiting-backend')
 	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done' || installationState === 'waiting-backend';
-
-	// Only show main content when installation is complete (initState === 'done' AND not waiting for backend)
 	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (
@@ -113,7 +84,6 @@ const Layout = () => {
 					</>
 				)}
 
-				{/* Backend error dialog */}
 				{(backendError || (error && installationState === "error")) && (
 					<InstallationErrorDialog
 						error={error || ""}

@@ -27,7 +27,6 @@ const InstallationErrorDialog = ({
   retryInstallation,
   retryBackend,
 }:InstallationErrorDialogProps) => {
-  // Show backend error dialog if backendError exists
   if (backendError) {
     return (
       <Dialog open={true}>
@@ -50,7 +49,6 @@ const InstallationErrorDialog = ({
     );
   }
 
-  // Show installation error dialog if installation state is error
   return (
     <Dialog open={installationState == "error"}>
       <DialogContent className="bg-white-100%">

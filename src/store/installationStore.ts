@@ -143,7 +143,6 @@ export const useInstallationStore = create<InstallationStoreState>()(
               state: 'error',
             });
           }
-          // If successful, backend-ready event will be triggered automatically
         } catch (error) {
           set({
             backendError: error instanceof Error ? error.message : 'Unknown error',
@@ -176,16 +175,8 @@ export const useInstallationStore = create<InstallationStoreState>()(
           const result = await window.electronAPI.checkAndInstallDepsOnUpdate();
 
           if (result.success) {
-            // ✅ FIXED: Don't set initState='done' here!
-            // The proper flow is:
-            // 1. Installation completes → install-dependencies-complete event
-            // 2. Backend starts → backend-ready event
-            // 3. useInstallationSetup receives both events → sets initState='done'
-            // This ensures backend is ready before showing main page
+            // initState will be set to 'done' by useInstallationSetup after both installation and backend are ready
             setSuccess();
-
-            // Note: initState will be set to 'done' by useInstallationSetup.ts
-            // after both installation complete AND backend ready events are received
           } else {
             setError('Installation failed');
           }

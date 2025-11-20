@@ -47,7 +47,6 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
         resolve(true)
       } else {
         log.error(`Script exited with code ${code}`)
-        // Reject with detailed error message instead of just false
         const errorMessage = stderrOutput.trim() || `Script exited with code ${code}`;
         reject(new Error(errorMessage))
       }

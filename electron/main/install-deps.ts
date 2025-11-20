@@ -155,7 +155,6 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
             };
           }
         } catch (scriptError) {
-          // Capture detailed error from runInstallScript
           const errorMsg = `${toolName} installation failed: ${scriptError instanceof Error ? scriptError.message : String(scriptError)}`;
           safeMainWindowSend('install-dependencies-complete', {
             success: false,
@@ -183,7 +182,6 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
   } catch (error) {
       const errorMessage = `Command tool installation failed: ${error}`;
       log.error('[DEPS INSTALL] Exception during command tool installation:', error);
-      // Send failure event to frontend
       safeMainWindowSend('install-dependencies-complete', {
         success: false,
         code: 2,
@@ -626,7 +624,6 @@ export async function installDependencies(version: string): Promise<PromiseRetur
     const isInstalCommandTool = await installCommandTool()
     if (!isInstalCommandTool.success) {
         log.error('[DEPS INSTALL] Command tool installation failed:', isInstalCommandTool.message);
-        // Send failure event to frontend
         safeMainWindowSend('install-dependencies-complete', {
           success: false,
           code: 2,
