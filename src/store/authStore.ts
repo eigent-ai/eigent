@@ -80,7 +80,8 @@ const authStore = create<AuthState>()(
 					token: null, 
 					username: null, 
 					email: null, 
-					user_id: null 
+					user_id: null,
+					initState: 'carousel' // Reset to carousel state to wait for backend restart 
 				}),
 			
 			// set related methods
