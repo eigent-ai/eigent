@@ -187,6 +187,8 @@ if (!fs.existsSync(backendPath)) {
 
 const installingLockPath = path.join(backendPath, 'uv_installing.lock')
 const installedLockPath = path.join(backendPath, 'uv_installed.lock')
+// const proxyArgs = ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple']
+const proxyArgs = ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
 
 /**
  * Get current installation status by checking lock files
@@ -350,10 +352,10 @@ export async function installDependencies(version: string): Promise<PromiseRetur
   const venvPath = getVenvPath(version);
 
   const handleInstallOperations = {
-    spawnBabel: () => {
+    spawnBabel: (message:"mirror"|"main"="main") => {
       fs.writeFileSync(installedLockPath, '')
       log.info('[DEPS INSTALL] Script completed successfully')
-      console.log(`Install Dependencies completed for version ${version}`)
+      console.log(`Install Dependencies completed ${message} for version ${version}`)
       console.log(`Virtual environment path: ${venvPath}`)
       spawn(uv_path, ['run', 'task', 'babel'], {
         cwd: backendPath,
@@ -595,7 +597,7 @@ export async function installDependencies(version: string): Promise<PromiseRetur
     }
   }
 
-  return new Promise<PromiseReturnType>(async (resolve) => {
+  return new Promise<PromiseReturnType>(async (resolve, reject) => {
     console.log('start install dependencies')
     const mainWindowAvailable = handleInstallOperations.notifyInstallDependenciesPage();
     
@@ -645,29 +647,50 @@ export async function installDependencies(version: string): Promise<PromiseRetur
       // Non-critical, continue
     }
 
-    const installResult = await runInstall([], version)
-    if (!installResult.success) {
-        log.error('[DEPS INSTALL] Dependency installation failed', installResult.message)
-        safeMainWindowSend('install-dependencies-complete', { 
-          success: false, 
-          error: installResult.message || 'Install dependencies failed' 
-        });
-        resolve({ message: "Install dependencies failed", success: false })
+    // try default install
+    const installSuccess = await runInstall([], version)
+    if (installSuccess.success) {
+        // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
+        log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...')
+        await handleInstallOperations.installHybridBrowserDependencies()
+
+        handleInstallOperations.spawnBabel()
+
+        // Clean up old venvs after successful installation
+        log.info('[DEPS INSTALL] Cleaning up old virtual environments...')
+        await cleanupOldVenvs(version)
+        log.info('[DEPS INSTALL] Old venvs cleanup completed')
+
+        resolve({ message: "Dependencies installed successfully", success: true })
         return
     }
 
-    // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
-    log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...')
-    await handleInstallOperations.installHybridBrowserDependencies()
+    // try mirror install
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    let mirrorInstallSuccess: PromiseReturnType = { message: "", success: false }
+    mirrorInstallSuccess = (timezone === 'Asia/Shanghai')? await runInstall(proxyArgs, version) :await runInstall([], version)
 
-    handleInstallOperations.spawnBabel()
+    if (mirrorInstallSuccess.success) {
+        // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
+        log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...')
+        await handleInstallOperations.installHybridBrowserDependencies()
 
-    // Clean up old venvs after successful installation
-    log.info('[DEPS INSTALL] Cleaning up old virtual environments...')
-    await cleanupOldVenvs(version)
-    log.info('[DEPS INSTALL] Old venvs cleanup completed')
+        handleInstallOperations.spawnBabel("mirror")
 
-    resolve({ message: "Dependencies installed successfully", success: true })
+        // Clean up old venvs after successful installation
+        log.info('[DEPS INSTALL] Cleaning up old virtual environments...')
+        await cleanupOldVenvs(version)
+        log.info('[DEPS INSTALL] Old venvs cleanup completed')
+
+        resolve({ message: "Dependencies installed successfully with mirror", success: true })
+    } else {
+        log.error('Both default and mirror install failed')
+        safeMainWindowSend('install-dependencies-complete', { 
+          success: false, 
+          error: 'Both default and mirror install failed' 
+        });
+        resolve({ message: "Both default and mirror install failed", success: false })
+    }
   })
 }
 

@@ -1013,12 +1013,12 @@ function registerIpcHandlers() {
       // IMPORTANT: Send install-dependencies-complete success event
       if (!win.isDestroyed()) {
         win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-        log.info('[DEPS INSTALL] Sent install-dependencies-complete event after manual installation');
+        log.info('[DEPS INSTALL] Sent install-dependencies-complete event after retry');
       }
 
-      // IMPORTANT: Start backend after successful installation
-      log.info('[DEPS INSTALL] Starting backend after manual installation...');
-      await checkAndStartBackend();
+      // Start backend if needed (only if not already running)
+      // Uses shared logic to prevent duplication
+      await startBackendIfNeeded();
 
       return { success: true, isInstalled: result.success };
     } catch (error) {
@@ -1367,8 +1367,21 @@ async function createWindow() {
   }
 
   // Start backend after dependencies are ready
-  await checkAndStartBackend();
+  // Uses shared logic that checks if backend is already running
+  await startBackendIfNeeded();
 }
+
+// ==================== Shared backend startup logic ====================
+// This function ensures backend is started only when needed
+// Used by both initial startup and retry flows
+const startBackendIfNeeded = async () => {
+  if (!backendPort) {
+    log.info('[DEPS INSTALL] Backend not running, starting now...');
+    await checkAndStartBackend();
+  } else {
+    log.info('[DEPS INSTALL] Backend already running on port', backendPort, ', skipping startup');
+  }
+};
 
 // ==================== window event listeners ====================
 const setupWindowEventListeners = () => {
