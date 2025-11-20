@@ -9,7 +9,7 @@ interface ProjectSectionProps {
   chatStore: VanillaChatStore;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
-  onPauseResume: () => void;
+  // onPauseResume: () => void;  // Commented out - temporary not needed
   onSkip: () => void;
   isPauseResumeLoading: boolean;
 }
@@ -19,7 +19,7 @@ export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionPro
   chatStore,
   activeQueryId,
   onQueryActive,
-  onPauseResume,
+  // onPauseResume,  // Commented out - temporary not needed
   onSkip,
   isPauseResumeLoading
 }, ref) => {
@@ -64,8 +64,8 @@ export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionPro
       {activeTaskId && (
         <FloatingAction
           status={task.status}
-          onPause={onPauseResume}
-          onResume={onPauseResume}
+          // onPause={onPauseResume}  // Commented out - temporary not needed
+          // onResume={onPauseResume}  // Commented out - temporary not needed
           onSkip={onSkip}
           loading={isPauseResumeLoading}
         />

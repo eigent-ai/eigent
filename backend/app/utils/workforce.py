@@ -19,7 +19,6 @@ from app.service.task import (
     Action,
     ActionAssignTaskData,
     ActionEndData,
-    ActionNewTaskStateData,
     ActionTaskStateData,
     get_camel_task,
     get_task_lock,
@@ -45,6 +44,14 @@ class Workforce(BaseWorkforce):
         use_structured_output_handler: bool = True,
     ) -> None:
         self.api_task_id = api_task_id
+        logger.info("Initializing workforce", extra={
+            "api_task_id": api_task_id,
+            "description": description[:100] + "..." if len(description) > 100 else description,
+            "children_count": len(children) if children else 0,
+            "graceful_shutdown_timeout": graceful_shutdown_timeout,
+            "share_memory": share_memory,
+            "use_structured_output_handler": use_structured_output_handler
+        })
         super().__init__(
             description=description,
             children=children,
@@ -65,13 +72,20 @@ class Workforce(BaseWorkforce):
             coordinator_context: Optional context ONLY for coordinator agent during decomposition.
                                 This context will NOT be passed to subtasks or worker agents.
         """
+        logger.info("Starting task decomposition", extra={
+            "api_task_id": self.api_task_id,
+            "task_id": task.id,
+            "task_content": task.content[:200] + "..." if len(task.content) > 200 else task.content,
+            "has_coordinator_context": bool(coordinator_context)
+        })
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
             task.result = "Task failed: Invalid or empty content provided"
-            logger.warning(
-                f"Task {task.id} rejected: Invalid or empty content. Content preview: '{task.content[:50]}...'"
-            )
+            logger.warning("Task rejected: Invalid or empty content", extra={
+                "task_id": task.id,
+                "content_preview": task.content[:50] + "..." if len(task.content) > 50 else task.content
+            })
             raise UserException(code.error, task.result)
 
         self.reset()
@@ -81,11 +95,19 @@ class Workforce(BaseWorkforce):
         task.state = TaskState.OPEN
 
         subtasks = asyncio.run(self.handle_decompose_append_task(task))
+        logger.info("Task decomposition completed", extra={
+            "api_task_id": self.api_task_id,
+            "task_id": task.id,
+            "subtasks_count": len(subtasks)
+        })
         return subtasks
 
     async def eigent_start(self, subtasks: list[Task]):
         """start the workforce"""
-        logger.debug(f"start the workforce {subtasks=}")
+        logger.info("Starting workforce execution", extra={
+            "api_task_id": self.api_task_id,
+            "subtasks_count": len(subtasks)
+        })
         self._pending_tasks.extendleft(reversed(subtasks))
         # Save initial snapshot
         self.save_snapshot("Initial task decomposition")
@@ -93,7 +115,10 @@ class Workforce(BaseWorkforce):
         try:
             await self.start()
         except Exception as e:
-            logger.error(f"Error in workforce execution: {e}")
+            logger.error("Error in workforce execution", extra={
+                "api_task_id": self.api_task_id,
+                "error": str(e)
+            }, exc_info=True)
             self._state = WorkforceState.STOPPED
             raise
         finally:
@@ -294,18 +319,11 @@ class Workforce(BaseWorkforce):
             "failure_count": task.failure_count,
         }
         
-        if self._task_is_new(task_data):
-            await task_lock.put_queue(
-                ActionNewTaskStateData(
-                    data=task_data
-                )
+        await task_lock.put_queue(
+            ActionTaskStateData(
+                data=task_data
             )
-        else:
-            await task_lock.put_queue(
-                ActionTaskStateData(
-                    data=task_data
-                )
-            )
+        )
 
         return await super()._handle_completed_task(task)
 
@@ -338,36 +356,6 @@ class Workforce(BaseWorkforce):
         )
 
         return result
-
-    def _task_is_new(self, item:dict) -> bool:
-        # Validate the task state data object first
-        assert isinstance(item, dict)
-        task_id = item.get("task_id", "")
-        state = item.get("state", "")
-        result = item.get("result", "")
-        failure_count = item.get("failure_count", 0)
-        
-        # Validate required fields
-        if not task_id:
-            logger.error("Missing task_id in task_state data")
-            return False
-        elif not state:
-            logger.error(f"Missing state in task_state data for task {task_id}")
-            return False
-
-        # Ensure failure_count is an integer
-        try:
-            failure_count = int(failure_count)
-        except (ValueError, TypeError):
-            logger.error(f"Invalid failure_count in task_state data for task {task_id}: {failure_count}")
-            failure_count = 0  # Default to 0 if invalid
-        
-        should_send_new_task_state = (
-            state == "FAILED" or 
-            (failure_count == 0 and result.strip() == "")
-        )
-        
-        return should_send_new_task_state
 
     def stop(self) -> None:
         super().stop()
