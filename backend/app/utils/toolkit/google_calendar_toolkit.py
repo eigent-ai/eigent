@@ -21,17 +21,25 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
 
     def __init__(self, api_task_id: str, timeout: float | None = None):
         self.api_task_id = api_task_id
-        self._token_path = (
-            env("GOOGLE_CALENDAR_TOKEN_PATH")
-            or os.path.join(
-                os.path.expanduser("~"),
-                ".eigent",
-                "tokens",
-                "google_calendar",
-                f"google_calendar_token_{api_task_id}.json",
-            )
+        # Use a stable token file (no per-task suffix). Can be overridden by env.
+        self._token_path = env("GOOGLE_CALENDAR_TOKEN_PATH") or os.path.join(
+            os.path.expanduser("~"),
+            ".eigent",
+            "tokens",
+            "google_calendar",
+            "google_calendar_token.json",
         )
         super().__init__(timeout)
+
+    @classmethod
+    def _build_canonical_token_path(cls) -> str:
+        return env("GOOGLE_CALENDAR_TOKEN_PATH") or os.path.join(
+            os.path.expanduser("~"),
+            ".eigent",
+            "tokens",
+            "google_calendar",
+            "google_calendar_token.json",
+        )
 
     @classmethod
     def get_can_use_tools(cls, api_task_id: str):
@@ -77,12 +85,19 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
 
         creds = None
 
-        # First, try to load from token file
+        # First, try to load from token file (canonical then legacy install_auth)
         try:
             if os.path.exists(self._token_path):
                 logger.info(f"Loading credentials from token file: {self._token_path}")
                 creds = Credentials.from_authorized_user_file(self._token_path, SCOPES)
                 logger.info("Successfully loaded credentials from token file")
+            elif os.path.exists(self._token_path.replace("google_calendar_token.json", "google_calendar_token_install_auth.json")):
+                legacy_path = self._token_path.replace(
+                    "google_calendar_token.json", "google_calendar_token_install_auth.json"
+                )
+                logger.info(f"Loading credentials from legacy token file: {legacy_path}")
+                creds = Credentials.from_authorized_user_file(legacy_path, SCOPES)
+                logger.info("Successfully loaded credentials from legacy token file")
         except Exception as e:
             logger.warning(f"Could not load from token file: {e}")
             creds = None
@@ -231,12 +246,12 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
                     return
 
                 # Save credentials to token file
-                token_path = os.path.join(
+                token_path = env("GOOGLE_CALENDAR_TOKEN_PATH") or os.path.join(
                     os.path.expanduser("~"),
                     ".eigent",
                     "tokens",
                     "google_calendar",
-                    f"google_calendar_token_{api_task_id}.json",
+                    "google_calendar_token.json",
                 )
 
                 try:
