@@ -129,26 +129,43 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
         }
 
         console.log(`start install ${toolName}`);
-        await runInstallScript(scriptName);
-        const installed = await isBinaryExists(toolName);
+        try {
+          await runInstallScript(scriptName);
+          const installed = await isBinaryExists(toolName);
 
-        if (installed) {
-          safeMainWindowSend('install-dependencies-log', {
-            type: 'stdout',
-            data: `${toolName} installed successfully`,
-          });
-        } else {
+          if (installed) {
+            safeMainWindowSend('install-dependencies-log', {
+              type: 'stdout',
+              data: `${toolName} installed successfully`,
+            });
+            return {
+              message: `${toolName} installed successfully`,
+              success: true
+            };
+          } else {
+            const errorMsg = `${toolName} installation failed: binary not found after installation`;
+            safeMainWindowSend('install-dependencies-complete', {
+              success: false,
+              code: 2,
+              error: errorMsg,
+            });
+            return {
+              message: errorMsg,
+              success: false
+            };
+          }
+        } catch (scriptError) {
+          const errorMsg = `${toolName} installation failed: ${scriptError instanceof Error ? scriptError.message : String(scriptError)}`;
           safeMainWindowSend('install-dependencies-complete', {
             success: false,
             code: 2,
-            error: `${toolName} installation failed (script exit code 2)`,
+            error: errorMsg,
           });
+          return {
+            message: errorMsg,
+            success: false
+          };
         }
-
-        return {
-          message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
-          success: installed
-        };
       };
 
       const uvResult = await ensureInstalled('uv', 'install-uv.js');
@@ -163,7 +180,14 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 
       return { message: "Command tools installed successfully", success: true };
   } catch (error) {
-      return { message: `Command tool installation failed: ${error}`, success: false };
+      const errorMessage = `Command tool installation failed: ${error}`;
+      log.error('[DEPS INSTALL] Exception during command tool installation:', error);
+      safeMainWindowSend('install-dependencies-complete', {
+        success: false,
+        code: 2,
+        error: errorMessage
+      });
+      return { message: errorMessage, success: false };
   }
 }
 
@@ -599,6 +623,12 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
     const isInstalCommandTool = await installCommandTool()
     if (!isInstalCommandTool.success) {
+        log.error('[DEPS INSTALL] Command tool installation failed:', isInstalCommandTool.message);
+        safeMainWindowSend('install-dependencies-complete', {
+          success: false,
+          code: 2,
+          error: isInstalCommandTool.message || 'Command tool installation failed'
+        });
         resolve({ message: "Command tool installation failed", success: false })
         return
     }

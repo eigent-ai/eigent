@@ -29,6 +29,7 @@
 	"continue-with-google-login": "Continue with Google",
 	"continue-with-github-login": "Continue with Github",
 	"installation-failed": "Installation Failed",
+	"backend-startup-failed": "Backend Startup Failed",
 	"projects": "Projects",
 	"mcp-tools": "MCP & Tools",
 	"browser": "Browser",
