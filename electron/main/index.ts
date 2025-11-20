@@ -1116,7 +1116,7 @@ const startBackendAfterInstall = async () => {
 
 // ==================== installation lock ====================
 let isInstallationInProgress = false;
-let installationLock = Promise.resolve();
+let installationLock: Promise<PromiseReturnType> = Promise.resolve({ message: "No installation needed", success: true });
 
 // ==================== window create ====================
 async function createWindow() {
