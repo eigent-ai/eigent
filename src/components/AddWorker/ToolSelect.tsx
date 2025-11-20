@@ -45,6 +45,7 @@ const ToolSelect = forwardRef<
 	// state management - remove internal selected state, use parent passed initialSelectedTools
 	const [keyword, setKeyword] = useState<string>("");
 	const [mcpList, setMcpList] = useState<McpItem[]>([]);
+	const [allMcpList, setAllMcpList] = useState<McpItem[]>([]);
 	const [customMcpList, setCustomMcpList] = useState<any[]>([]);
 	const [isOpen, setIsOpen] = useState(false);
 	const [installed, setInstalled] = useState<{ [id: number]: boolean }>({});
@@ -216,7 +217,7 @@ const ToolSelect = forwardRef<
 			page: 1,
 			size: 100,
 		}).then((res) => {
-			setMcpList(res.items);
+			setAllMcpList(res.items);
 		});
 	};
 
@@ -237,6 +238,14 @@ const ToolSelect = forwardRef<
 			setCustomMcpList(customMcpList);
 		});
 	};
+
+	// only surface installed MCPs from the market list
+    useEffect(() => {
+		if (!installedIds.length) {
+			const filtered = allMcpList.filter((item) => installedIds.includes(item.id));
+			setMcpList(filtered);
+		}
+	}, [allMcpList, installedIds]);
 
 	// public save env/config logic
 	const saveEnvAndConfig = async (

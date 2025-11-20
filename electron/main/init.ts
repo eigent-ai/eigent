@@ -7,7 +7,7 @@ import * as net from "net";
 import * as http from "http";
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { promisify } from 'util'
-import { detectInstallationLogs, PromiseReturnType } from "./install-deps";
+import { PromiseReturnType } from "./install-deps";
 
 const execAsync = promisify(exec);
 
@@ -171,7 +171,11 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     const displayFilteredLogs = (data: String) => {
         if (!data) return;
         const msg = data.toString().trimEnd();
-        detectInstallationLogs(msg);
+
+        // REMOVED: detectInstallationLogs(msg)
+        // Reason: Removed keyword-based detection to avoid false positives when backend
+        // outputs logs containing keywords like "Installing", "Updating", "Syncing" etc.
+        // Installation is now only handled through the explicit installation flow.
 
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
             log.error(`BACKEND: ${msg}`);
