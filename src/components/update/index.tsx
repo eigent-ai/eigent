@@ -8,9 +8,19 @@ const Update = () => {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const { t } = useTranslation();
+
+  // Some updater errors (e.g. GitHub 503 / missing release) are noisy and not actionable for users.
+  const shouldSuppressError = (message?: string) => {
+    if (!message) return false;
+    const lower = message.toLowerCase();
+    return (
+      lower.includes("unable to find latest version on github")
+    );
+  };
+
   const checkUpdate = async () => {
     const result = await window.ipcRenderer.invoke("check-update");
-    if (result?.error) {
+    if (result?.error && !shouldSuppressError(result.error.message)) {
       toast.error(t("update.update-check-failed"), {
         description: result.error.message,
       });
@@ -40,11 +50,15 @@ const Update = () => {
 
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
-        toast.error(t("update.update-error"), {
+      if (shouldSuppressError(err.message)) {
+        console.warn("[update] suppressed updater error:", err.message);
+        return;
+      }
+      toast.error(t("update.update-error"), {
         description: err.message,
       });
     },
-    []
+    [t]
   );
 
   const onDownloadProgress = useCallback(
