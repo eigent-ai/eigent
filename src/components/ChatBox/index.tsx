@@ -162,11 +162,16 @@ export default function ChatBox(): JSX.Element {
 				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
 				const hasWaitComfirm = chatStore.tasks[_taskId as string]?.hasWaitComfirm;
 
+				// Check if this task was manually stopped (finished but without natural completion)
+				const wasTaskStopped = isFinished && !chatStore.tasks[_taskId as string].messages.some(
+					m => m.step === "end"  // Natural completion has an "end" step message
+				);
+
 				// Continue conversation if:
-				// 1. Has wait confirm (simple query response)
-				// 2. Task is finished (complex task completed)
+				// 1. Has wait confirm (simple query response) - but not if task was stopped
+				// 2. Task is naturally finished (complex task completed) - but not if task was stopped
 				// 3. Has any messages but pending (ongoing conversation)
-				const shouldContinueConversation = hasWaitComfirm || isFinished || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
+				const shouldContinueConversation = (hasWaitComfirm && !wasTaskStopped) || (isFinished && !wasTaskStopped) || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
 
 				if (shouldContinueConversation) {
 					// Check if this is the very first message and task hasn't started
@@ -416,7 +421,7 @@ export default function ChatBox(): JSX.Element {
 	const handleSkip = async () => {
 		const taskId = chatStore.activeTaskId as string;
 		setIsPauseResumeLoading(true);
-		
+
 		try {
 			// Skip the current task. For now acts like stop.
 			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task/${taskId}`);
@@ -429,18 +434,39 @@ export default function ChatBox(): JSX.Element {
 			});
 		} catch (error) {
 			console.error("Failed to skip task:", error);
-			toast.error("Failed to skip task", {
-				closeButton: true,
-			});
+
+			// If backend call failed, still try to stop local task as fallback
+			// but with different messaging to user
+			try {
+				chatStore.stopTask(taskId);
+				chatStore.setIsPending(taskId, false);
+				toast.warning("Task stopped locally, but backend notification failed. Backend task may continue running.", {
+					closeButton: true,
+					duration: 5000,
+				});
+			} catch (localError) {
+				console.error("Failed to stop task locally:", localError);
+				toast.error("Failed to stop task completely. Please refresh the page.", {
+					closeButton: true,
+				});
+			}
 		} finally {
 			setIsPauseResumeLoading(false);
 		}
 	};
 
 	// Edit query handler
-	const handleEditQuery = () => {
+	const handleEditQuery = async () => {
 		const taskId = chatStore.activeTaskId as string;
-		fetchDelete(`/chat/${taskId}`);
+		const projectId = projectStore.activeProjectId;
+
+		// Early validation
+		if (!projectId) {
+			console.error("No active project ID found for edit operation");
+			return;
+		}
+
+		// Get question and attachments before any deletions
 		const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
 			(item) => item.step === "to_sub_tasks"
 		);
@@ -448,6 +474,28 @@ export default function ChatBox(): JSX.Element {
 		const question = questionMessage.content;
 		// Get the file attachments from the original user message (not from task.attaches which gets cleared after sending)
 		const attachments = questionMessage.attaches || [];
+
+		// Delete task from backend first
+		try {
+			await fetchDelete(`/chat/${taskId}`);
+		} catch (error) {
+			console.error("Failed to delete task from backend:", error);
+			// Continue with local cleanup even if backend fails
+		}
+
+		// Delete chat history
+		const history_id = projectStore.getHistoryId(projectId);
+		if (history_id) {
+			try {
+				await proxyFetchDelete(`/api/chat/history/${history_id}`);
+			} catch(error) {
+				console.error(`Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`, error);
+			}
+		} else {
+			console.warn(`No history ID found for project ${projectId} during edit operation`);
+		}
+
+		// Create new task and clean up locally
 		let id = chatStore.create();
 		chatStore.setHasMessages(id, true);
 		// Copy the file attachments to the new task
@@ -455,13 +503,6 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setAttaches(id, attachments);
 		}
 		chatStore.removeTask(taskId);
-		const history_id = projectStore.getHistoryId(projectStore.activeProjectId);
-		try {
-			if(!history_id) throw new Error("No history ID found for the project");
-			proxyFetchDelete(`/api/chat/history/${history_id}`);
-		} catch(error) {
-			console.error("Failed to delete chat history:", error);
-		}
 		setMessage(question);
 	};
 
