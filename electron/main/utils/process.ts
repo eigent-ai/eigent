@@ -29,12 +29,16 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
     })
 
+    let stderrOutput = '';
+
     nodeProcess.stdout.on('data', (data) => {
       log.info(`Script output: ${data}`)
     })
 
     nodeProcess.stderr.on('data', (data) => {
-      log.error(`Script error: ${data}`)
+      const errorMsg = data.toString();
+      stderrOutput += errorMsg;
+      log.error(`Script error: ${errorMsg}`)
     })
 
     nodeProcess.on('close', (code) => {
@@ -43,7 +47,8 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
         resolve(true)
       } else {
         log.error(`Script exited with code ${code}`)
-        reject(false)
+        const errorMessage = stderrOutput.trim() || `Script exited with code ${code}`;
+        reject(new Error(errorMessage))
       }
     })
   })

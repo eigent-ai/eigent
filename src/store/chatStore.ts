@@ -1,4 +1,4 @@
-import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete } from '@/api/http';
+import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete, waitForBackendReady } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { createStore } from 'zustand';
 import { generateUniqueId, uploadLog } from "@/lib";
@@ -265,6 +265,24 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}
 		},
 		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
+			// ✅ Wait for backend to be ready before starting task (except for replay/share)
+			if (!type || type === 'normal') {
+				console.log('[startTask] Checking if backend is ready...');
+				const isBackendReady = await waitForBackendReady(15000, 500); // Wait up to 15 seconds
+
+				if (!isBackendReady) {
+					console.error('[startTask] Backend is not ready, cannot start task');
+					const { addMessages } = get();
+					addMessages(taskId, {
+						id: generateUniqueId(),
+						role: 'system',
+						content: '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+					});
+					return;
+				}
+				console.log('[startTask] Backend is ready, proceeding with task...');
+			}
+
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
 			const workerList = useWorkerList();
 			const { getLastUserMessage, setDelayTime, setType } = get();
@@ -520,8 +538,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					language: systemLanguage,
 					allow_local_system: true,
 					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
-					bun_mirror: systemLanguage === 'zh-cn' ? 'https://registry.npmmirror.com' : '',
-					uvx_mirror: systemLanguage === 'zh-cn' ? 'http://mirrors.aliyun.com/pypi/simple/' : '',
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
@@ -1706,7 +1722,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				},
 
 				onerror(err) {
-					console.error("SSE Error:", err);
+					console.error("[fetchEventSource] Error:", err);
+
+					// Allow automatic retry for connection errors
+					// TypeError usually means network/connection issues
+					if (err instanceof TypeError ||
+						err?.message?.includes('Failed to fetch') ||
+						err?.message?.includes('ECONNREFUSED') ||
+						err?.message?.includes('NetworkError')) {
+						console.warn('[fetchEventSource] Connection error detected, will retry automatically...');
+						// Don't throw - let fetchEventSource auto-retry
+						return;
+					}
+
+					// For other errors, log and throw to stop retrying
+					console.error('[fetchEventSource] Fatal error, stopping connection:', err);
+
 					// Clean up AbortController on error with robust error handling
 					try {
 						if (activeSSEControllers[newTaskId]) {
