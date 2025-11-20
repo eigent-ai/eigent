@@ -1301,58 +1301,21 @@ async function createWindow() {
       });
     });
   } else {
-    // Installation is complete - ensure initState is set to 'done'
-    log.info('Installation already complete - ensuring initState is done');
-
-    win.webContents.once('dom-ready', () => {
-      if (!win || win.isDestroyed()) {
-        log.warn('Window destroyed before DOM ready - skipping localStorage update');
-        return;
-      }
-      log.info('DOM ready - checking and updating auth-storage to done state');
-      win.webContents.executeJavaScript(`
-        (function() {
-          try {
-            const authStorage = localStorage.getItem('auth-storage');
-            console.log('[ELECTRON DEBUG] Current auth-storage:', authStorage);
-            if (authStorage) {
-              const parsed = JSON.parse(authStorage);
-              console.log('[ELECTRON DEBUG] Parsed state:', parsed.state);
-              if (parsed.state && parsed.state.initState !== 'done') {
-                console.log('[ELECTRON] Updating initState from', parsed.state.initState, 'to done');
-                // Only update the initState field, preserve all other data
-                const updatedStorage = {
-                  ...parsed,
-                  state: {
-                    ...parsed.state,
-                    initState: 'done'
-                  }
-                };
-                localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
-                console.log('[ELECTRON] initState updated to done, reloading page...');
-                return true; // Signal that we need to reload
-              } else {
-                console.log('[ELECTRON DEBUG] initState already done or state missing');
-              }
-            } else {
-              console.log('[ELECTRON DEBUG] No auth-storage found in localStorage');
-            }
-            return false; // No reload needed
-          } catch (e) {
-            console.error('[ELECTRON] Failed to update initState:', e);
-            // Don't modify localStorage if there's an error to prevent data corruption
-            return false;
-          }
-        })();
-      `).then(needsReload => {
-        if (needsReload && win && !win.isDestroyed()) {
-          log.info('Reloading window after localStorage update');
-          win.reload();
-        }
-      }).catch(err => {
-        log.error('Failed to inject script:', err);
-      });
-    });
+    // REMOVED: Previously this block would directly set initState='done' when installation
+    // was already complete, bypassing the backend readiness check.
+    //
+    // This caused a critical bug where:
+    // 1. Frontend would show immediately (initState='done')
+    // 2. Backend would still be starting (10-15 seconds)
+    // 3. Users could interact before backend was ready, causing connection errors
+    //
+    // The proper flow is now handled by useInstallationSetup.ts with dual-check mechanism:
+    // 1. Installation complete event → installationCompleted.current = true
+    // 2. Backend ready event → backendReady.current = true
+    // 3. Only when BOTH are true → setInitState('done')
+    //
+    // This ensures frontend never shows before backend is ready.
+    log.info('Installation already complete - letting useInstallationSetup handle state transitions');
   }
 
   // Load content
@@ -1385,6 +1348,10 @@ async function createWindow() {
     return;
   }
   log.info("[DEPS INSTALL] Dependency Success: ", res.message);
+
+  // IMPORTANT: Wait a bit to ensure React components have mounted and registered event listeners
+  // This prevents race condition where events are sent before listeners are ready
+  await new Promise(resolve => setTimeout(resolve, 500));
 
   // IMPORTANT: Always send install-dependencies-complete event when installation check succeeds
   // This includes both cases: actual installation completed AND installation was skipped (already installed)

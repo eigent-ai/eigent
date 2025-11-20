@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
 // Define all possible installation states
-export type InstallationState = 
+export type InstallationState =
   | 'idle'
   | 'checking-permissions'
-  | 'showing-carousel' 
+  | 'showing-carousel'
   | 'installing'
+  | 'waiting-backend'  // New state: tools installed, waiting for backend to be ready
   | 'error'
   | 'completed';
 
@@ -31,6 +32,7 @@ interface InstallationStoreState {
   addLog: (log: InstallationLog) => void;
   setSuccess: () => void;
   setError: (error: string) => void;
+  setWaitingBackend: () => void;
   retryInstallation: () => void;
   completeSetup: () => void;
   updateProgress: (progress: number) => void;
@@ -96,7 +98,14 @@ export const useInstallationStore = create<InstallationStoreState>()(
             },
           ],
         })),
-      
+
+      setWaitingBackend: () =>
+        set({
+          state: 'waiting-backend',
+          progress: 80,
+          isVisible: true,
+        }),
+
       retryInstallation: () => {
         set({
           ...initialState,

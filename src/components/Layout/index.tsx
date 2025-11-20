@@ -82,9 +82,10 @@ const Layout = () => {
 	// Show install screen if either:
 	// 1. The installation store says to show it (isVisible && not completed)
 	// 2. OR if initState is not 'done' (meaning permissions or carousel should show)
-	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done';
+	// 3. OR if waiting for backend (installationState === 'waiting-backend')
+	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done' || installationState === 'waiting-backend';
 
-	// Only show main content when installation is complete (initState === 'done')
+	// Only show main content when installation is complete (initState === 'done' AND not waiting for backend)
 	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (

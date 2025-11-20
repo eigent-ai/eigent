@@ -26,6 +26,7 @@ export const InstallDependencies: React.FC = () => {
 		latestLog,
 		error,
 		isInstalling,
+		installationState,
 		retryInstallation,
 		exportLog,
 	} = useInstallationUI();
@@ -37,31 +38,20 @@ export const InstallDependencies: React.FC = () => {
 					{/* {isInstalling.toString()} */}
 					<div>
 						<ProgressInstall
-							value={isInstalling ? progress : 100}
+							value={isInstalling || installationState === 'waiting-backend' ? progress : 100}
 							className="w-full"
 						/>
 						<div className="flex items-center gap-2 justify-between">
 							<div className="text-text-label text-xs font-normal leading-tight ">
-								{isInstalling ? "System Installing ..." : ""}
+								{isInstalling ? "System Installing ..." : installationState === 'waiting-backend' ? "Starting backend service..." : ""}
 								<span className="pl-2">{latestLog?.data}</span>
 							</div>
-							<TooltipSimple content={`Cannot retry because state is ${error}`} hidden={true}>
-								<Button
-									size="icon"
-									variant="outline"
-									className="mt-1"
-									onClick={retryInstallation}
-									disabled={isInstalling}
-								>
-									<RefreshCcw className="w-4 h-4" />
-								</Button>
-							</TooltipSimple>
 						</div>
 					</div>
 				</div>
 				<div>
 					{initState === "permissions" && <Permissions />}
-					{initState === "carousel" && <CarouselStep />}
+					{initState === "carousel" && installationState !== 'waiting-backend' && <CarouselStep />}
 				</div>
 			</div>
 			{/* error dialog */}
