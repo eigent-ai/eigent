@@ -12,12 +12,10 @@ import { useInstallationSetup } from "@/hooks/useInstallationSetup";
 import InstallationErrorDialog from "../InstallStep/InstallationErrorDialog/InstallationErrorDialog";
 import Halo from "../Halo";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { useBackendReady } from "@/store/backendStore";
 
 const Layout = () => {
 	const { initState, isFirstLaunch, setIsFirstLaunch, setInitState } = useAuthStore();
 	const [noticeOpen, setNoticeOpen] = useState(false);
-	const backendIsReady = useBackendReady();
 
 	//Get Chatstore for the active project's task
 	const { chatStore } = useChatStoreAdapter();
@@ -79,17 +77,14 @@ const Layout = () => {
 	}, [chatStore.tasks, chatStore.activeTaskId]);
 
 	// Determine what to show based on states
-	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling && backendIsReady;
+	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling;
 
 	// Show install screen if either:
 	// 1. The installation store says to show it (isVisible && not completed)
 	// 2. OR if initState is not 'done' (meaning permissions or carousel should show)
-	// 3. OR if backend is not ready yet (still starting up)
-	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done' || !backendIsReady;
+	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done';
 
-	// Only show main content when:
-	// 1. Installation is complete (initState === 'done')
-	// 2. Backend is ready
+	// Only show main content when installation is complete (initState === 'done')
 	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (

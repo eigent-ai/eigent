@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useInstallationStore } from '@/store/installationStore';
 import { useAuthStore } from '@/store/authStore';
-import { useBackendStore } from '@/store/backendStore';
 
 /**
  * Hook that sets up Electron IPC listeners and handles installation state synchronization
@@ -12,8 +11,9 @@ export const useInstallationSetup = () => {
 
   // Use ref to track if initial check is done to prevent repeated checks
   const hasCheckedOnMount = useRef(false);
+  const isInstalling = useRef(false); // Prevent concurrent installations
 
-  // Track installation and backend readiness states
+  // Track installation and backend readiness
   const installationCompleted = useRef(false);
   const backendReady = useRef(false);
 
@@ -23,12 +23,6 @@ export const useInstallationSetup = () => {
   const addLog = useInstallationStore(state => state.addLog);
   const setSuccess = useInstallationStore(state => state.setSuccess);
   const setError = useInstallationStore(state => state.setError);
-
-  // Reset backend store on mount to ensure fresh state
-  useEffect(() => {
-    useBackendStore.getState().reset();
-    console.log('[useInstallationSetup] Backend store reset on mount');
-  }, []);
 
   // Check tool installation status on mount - but only during setup phase
   useEffect(() => {
@@ -78,12 +72,15 @@ export const useInstallationSetup = () => {
           startInstallation();
         } else if (initState !== 'done' && toolResult) {
           // Use the tool result from the previous check to avoid duplicate API calls
-          if (toolResult.success && !toolResult.isInstalled) {
+          if (toolResult.success && !toolResult.isInstalled && !isInstalling.current) {
              console.log('[useInstallationSetup] Tools missing and not installing. Starting installation...');
+             isInstalling.current = true; // Set flag to prevent concurrent installations
              try {
                await performInstallation();
              } catch (installError) {
                console.error('[useInstallationSetup] Installation failed:', installError);
+             } finally {
+               isInstalling.current = false;
              }
           }
         }
@@ -104,9 +101,7 @@ export const useInstallationSetup = () => {
 
   // Setup Electron IPC listeners (only once)
   useEffect(() => {
-    const backendStore = useBackendStore.getState();
-
-    // Helper function to check if both installation and backend are ready
+    // Helper function to check if both conditions are met
     const checkAndSetDone = () => {
       console.log('[useInstallationSetup] Checking readiness - Installation:', installationCompleted.current, 'Backend:', backendReady.current);
 
@@ -118,10 +113,13 @@ export const useInstallationSetup = () => {
 
     // Electron IPC event handlers
     const handleInstallStart = () => {
-      // Reset flags when installation starts
-      installationCompleted.current = false;
-      backendReady.current = false;
-      startInstallation();
+      if (!isInstalling.current) {
+        isInstalling.current = true;
+        // Reset states when installation starts
+        installationCompleted.current = false;
+        backendReady.current = false;
+        startInstallation();
+      }
     };
 
     const handleInstallLog = (data: { type: string; data: string }) => {
@@ -134,12 +132,13 @@ export const useInstallationSetup = () => {
 
     const handleInstallComplete = (data: { success: boolean; code?: number; error?: string }) => {
       console.log('[useInstallationSetup] Installation complete event received:', data);
+      isInstalling.current = false;
 
       if (data.success) {
         setSuccess();
         installationCompleted.current = true;
         console.log('[useInstallationSetup] Installation marked as completed');
-        // Only set initState to done if backend is also ready
+        // Check if we can transition to done
         checkAndSetDone();
       } else {
         setError(data.error || 'Installation failed');
@@ -150,15 +149,12 @@ export const useInstallationSetup = () => {
       console.log('[useInstallationSetup] Backend ready event received:', data);
 
       if (data.success && data.port) {
-        console.log(`[useInstallationSetup] Backend is ready on port ${data.port}`);
-        backendStore.setReady(data.port);
         backendReady.current = true;
-        console.log('[useInstallationSetup] Backend marked as ready');
-        // Only set initState to done if installation is also completed
+        console.log('[useInstallationSetup] Backend marked as ready on port:', data.port);
+        // Check if we can transition to done
         checkAndSetDone();
       } else {
         console.error('[useInstallationSetup] Backend failed to start:', data.error);
-        backendStore.setError(data.error || 'Backend startup failed');
         setError(data.error || 'Backend startup failed');
       }
     };
@@ -168,7 +164,6 @@ export const useInstallationSetup = () => {
     window.electronAPI.onInstallDependenciesLog(handleInstallLog);
     window.electronAPI.onInstallDependenciesComplete(handleInstallComplete);
     window.electronAPI.onBackendReady(handleBackendReady);
-
 
     // Cleanup listeners on unmount
     return () => {

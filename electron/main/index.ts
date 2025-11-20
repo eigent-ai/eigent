@@ -997,10 +997,23 @@ function registerIpcHandlers() {
     try {
       if(win === null) throw new Error("Window is null");
 
+      // Prevent concurrent installations
+      if (isInstallationInProgress) {
+        log.info('[DEPS INSTALL] Installation already in progress, waiting...');
+        await installationLock;
+        return { success: true, message: 'Installation completed by another process' };
+      }
+
       log.info('[DEPS INSTALL] Manual installation/retry triggered');
 
-      //Force installation even if versionFile exists
-      const result = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
+      // Set lock
+      isInstallationInProgress = true;
+      installationLock = checkAndInstallDepsOnUpdate({win, forceInstall: true})
+        .finally(() => {
+          isInstallationInProgress = false;
+        });
+
+      const result = await installationLock;
 
       if (!result.success) {
         log.error('[DEPS INSTALL] Manual installation failed:', result.message);
@@ -1016,8 +1029,7 @@ function registerIpcHandlers() {
         log.info('[DEPS INSTALL] Sent install-dependencies-complete event after retry');
       }
 
-      // Start backend after retry
-      // Note: checkAndStartBackend() will handle cleanup of any existing backend process
+      // Start backend after retry with cleanup
       await startBackendAfterInstall();
 
       return { success: true, isInstalled: result.success };
@@ -1078,12 +1090,18 @@ const ensureEigentDirectories = () => {
 // ==================== Shared backend startup logic ====================
 // Starts backend after installation completes
 // Used by both initial startup and retry flows
-// Note: No need to check if backend is running - on app startup it's never running,
-// and checkAndStartBackend() handles cleanup of any existing process
 const startBackendAfterInstall = async () => {
   log.info('[DEPS INSTALL] Starting backend...');
+
+  // Add a small delay to ensure any previous processes are fully cleaned up
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   await checkAndStartBackend();
 };
+
+// ==================== installation lock ====================
+let isInstallationInProgress = false;
+let installationLock = Promise.resolve();
 
 // ==================== window create ====================
 async function createWindow() {
@@ -1452,7 +1470,7 @@ const checkAndStartBackend = async () => {
         log.info('Backend service started successfully', { port });
       });
 
-      // ✅ Only notify frontend AFTER backend health check passes
+      // Notify frontend that backend is ready
       if (win && !win.isDestroyed()) {
         log.info('Backend is ready, notifying frontend...');
         win.webContents.send('backend-ready', {
@@ -1483,8 +1501,6 @@ const checkAndStartBackend = async () => {
         error: String(error)
       });
     }
-    // Re-throw to let caller know about the failure
-    throw error;
   }
 };
 

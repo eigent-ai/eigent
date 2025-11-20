@@ -2,7 +2,6 @@ import { getAuthStore } from '@/store/authStore'
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
-import { useBackendStore } from '@/store/backendStore';
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
@@ -279,7 +278,7 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 /**
- * Wait for backend to be ready with retries
+ * Simple backend health check with retries
  * @param maxWaitMs - Maximum time to wait in milliseconds (default: 10000ms)
  * @param retryIntervalMs - Interval between retries in milliseconds (default: 500ms)
  * @returns Promise<boolean> - true if backend becomes ready, false if timeout
@@ -288,18 +287,6 @@ export async function waitForBackendReady(
   maxWaitMs: number = 10000,
   retryIntervalMs: number = 500
 ): Promise<boolean> {
-  const backendStore = useBackendStore.getState();
-
-  // If backend is already marked as ready, do a quick health check
-  if (backendStore.isReady) {
-    const isHealthy = await checkBackendHealth();
-    if (isHealthy) {
-      console.log('[Backend Health Check] Already ready and healthy');
-      return true;
-    }
-  }
-
-  // Wait for backend to become ready
   const startTime = Date.now();
   console.log('[Backend Health Check] Waiting for backend to be ready...');
 
