@@ -16,11 +16,12 @@ import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 const Layout = () => {
 	const { initState, isFirstLaunch, setIsFirstLaunch, setInitState } = useAuthStore();
 	const [noticeOpen, setNoticeOpen] = useState(false);
+
 	//Get Chatstore for the active project's task
 	const { chatStore } = useChatStoreAdapter();
-	if (!chatStore) {		
+	if (!chatStore) {
 		console.log(chatStore);
-		
+
 		return <div>Loading...</div>;
 	}
 
@@ -28,32 +29,14 @@ const Layout = () => {
 		installationState,
 		latestLog,
 		error,
+		backendError,
 		isInstalling,
 		shouldShowInstallScreen,
 		retryInstallation,
+		retryBackend,
 	} = useInstallationUI();
 
-	// Setup installation IPC listeners and state synchronization
 	useInstallationSetup();
-
-	// Additional check: If initState is carousel but tools are installed, skip to done
-	useEffect(() => {
-		const checkAndSkipCarousel = async () => {
-			if (initState === 'carousel' && !isInstalling) {
-				try {
-					const result = await window.ipcRenderer.invoke("check-tool-installed");
-					if (result.success && result.isInstalled) {
-						console.log('[Layout] Tools installed, skipping carousel and setting initState to done');
-						setInitState('done');
-					}
-				} catch (error) {
-					console.error('[Layout] Failed to check tool installation:', error);
-				}
-			}
-		};
-
-		checkAndSkipCarousel();
-	}, [initState, isInstalling, setInitState]);
 
 	useEffect(() => {
 		const handleBeforeClose = () => {
@@ -74,10 +57,8 @@ const Layout = () => {
 
 	// Determine what to show based on states
 	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling;
-	// Show install screen if either:
-	// 1. The installation store says to show it (isVisible && not completed)
-	// 2. OR if initState is not 'done' (meaning permissions or carousel should show)
-	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done';
+
+	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done' || installationState === 'waiting-backend';
 	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (
@@ -103,13 +84,16 @@ const Layout = () => {
 					</>
 				)}
 
-				{(error != "" && error !=undefined) &&
-					<InstallationErrorDialog 
-						error={error} 
-						installationState={installationState} 
-						latestLog={latestLog} 
-						retryInstallation={retryInstallation}/>
-				}
+				{(backendError || (error && installationState === "error")) && (
+					<InstallationErrorDialog
+						error={error || ""}
+						backendError={backendError}
+						installationState={installationState}
+						latestLog={latestLog}
+						retryInstallation={retryInstallation}
+						retryBackend={retryBackend}
+					/>
+				)}
 
 				<CloseNoticeDialog
 					onOpenChange={setNoticeOpen}
