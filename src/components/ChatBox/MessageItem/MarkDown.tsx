@@ -124,17 +124,22 @@ export const MarkDown = memo(
 						em: ({ children }) => (
 							<em className="italic text-primary">{children}</em>
 						),
-						a: ({ children, href }) => (
-							<a 
-								href={href} 
-								className="hover:text-blue-800 underline break-all"
-								style={{ wordBreak: 'break-all' }}
-								target="_blank" 
-								rel="noopener noreferrer"
-							>
-								{children}
-							</a>
-						),
+						a: ({ children, href }) => {
+							const cleanChildren = typeof children === 'string' 
+								? children.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '') 
+								: children;
+							return (
+								<a 
+									href={href} 
+									className="text-blue-600 hover:text-blue-800 underline break-words inline"
+									style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+									target="_blank" 
+									rel="noopener noreferrer"
+								>
+									{cleanChildren}
+								</a>
+							);
+						},
 						table: ({ children }) => (
 							<div className="overflow-x-auto w-full max-w-full">
 								<table
