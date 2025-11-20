@@ -216,14 +216,13 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             {
                 cwd: backendPath,
                 env: env,
-                detached: process.platform !== 'win32' // detached on Unix for process group
+                detached: process.platform !== 'win32', // detached on Unix for process group
+                stdio: ['ignore', 'pipe', 'pipe'] // Ensure stdout/stderr are captured
             }
         );
 
-        // On Unix, unref the process so it doesn't keep the parent alive
-        if (process.platform !== 'win32') {
-            node_process.unref();
-        }
+        // NOTE: Do NOT use unref() - we need to maintain the process reference
+        // to properly capture stdout/stderr and manage the process lifecycle
 
         log.info(`Backend process spawned with PID: ${node_process.pid}`);
 
