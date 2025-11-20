@@ -50,10 +50,15 @@ export async function downloadWithRedirects(url, destinationPath) {
               }
               
               // Check if file exists and has size > 0
-              const stats = fs.statSync(destinationPath)
-              if (stats.size === 0) {
-                fs.unlinkSync(destinationPath)
-                reject(new Error('Downloaded file is empty'))
+              try {
+                const stats = fs.statSync(destinationPath)
+                if (stats.size === 0) {
+                  fs.unlinkSync(destinationPath)
+                  reject(new Error('Downloaded file is empty'))
+                  return
+                }
+              } catch (statError) {
+                reject(new Error(`Failed to check downloaded file: ${statError.message}`))
                 return
               }
               
