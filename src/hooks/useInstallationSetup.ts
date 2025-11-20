@@ -7,11 +7,12 @@ import { useAuthStore } from '@/store/authStore';
  * This should be called once in your App component or Layout component
  */
 export const useInstallationSetup = () => {
-  const { initState, setInitState } = useAuthStore();
+  const { initState, setInitState, email } = useAuthStore();
 
   const hasCheckedOnMount = useRef(false);
   const installationCompleted = useRef(false);
   const backendReady = useRef(false);
+  const previousEmail = useRef<string | null>(null);
   const startInstallation = useInstallationStore(state => state.startInstallation);
   const performInstallation = useInstallationStore(state => state.performInstallation);
   const addLog = useInstallationStore(state => state.addLog);
@@ -19,6 +20,59 @@ export const useInstallationSetup = () => {
   const setError = useInstallationStore(state => state.setError);
   const setBackendError = useInstallationStore(state => state.setBackendError);
   const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
+
+  // Monitor email changes to detect account switching
+  useEffect(() => {
+    // Detect new login: email changed from null/different to a new value
+    if (previousEmail.current !== email && email !== null) {
+      console.log('[useInstallationSetup] Account switch detected:', previousEmail.current, '->', email);
+
+      // For account switching, tools are already installed, only backend needs restart
+      // So we mark installation as completed and only wait for backend
+      installationCompleted.current = true;
+      backendReady.current = false;
+
+      // Set to waiting-backend state since backend is restarting
+      if (initState === 'carousel') {
+        console.log('[useInstallationSetup] New account login detected, waiting for backend restart');
+        setWaitingBackend();
+
+        // Poll backend status every 2 seconds to ensure we catch when it's ready
+        // This is a fallback in case the backend-ready event is missed
+        const pollInterval = setInterval(async () => {
+          try {
+            const backendPort = await window.electronAPI.getBackendPort();
+            if (backendPort && backendPort > 0) {
+              console.log('[useInstallationSetup] Backend poll detected ready on port:', backendPort);
+
+              // Verify backend is actually responding
+              const response = await fetch(`http://localhost:${backendPort}/health`).catch(() => null);
+              if (response && response.ok) {
+                console.log('[useInstallationSetup] Backend health check passed');
+                clearInterval(pollInterval);
+
+                if (!backendReady.current) {
+                  backendReady.current = true;
+                  setSuccess();
+                  setInitState('done');
+                }
+              }
+            }
+          } catch (error) {
+            console.log('[useInstallationSetup] Backend poll check failed:', error);
+          }
+        }, 2000);
+
+        // Clear polling after 30 seconds to prevent infinite polling
+        setTimeout(() => {
+          clearInterval(pollInterval);
+        }, 30000);
+      }
+    }
+
+    // Update previous email
+    previousEmail.current = email;
+  }, [email, initState, setWaitingBackend, setSuccess, setInitState]);
 
   useEffect(() => {
     if (hasCheckedOnMount.current) {

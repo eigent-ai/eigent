@@ -56,14 +56,16 @@ interface ElectronAPI {
     error?: string
   }>;
   restartBackend: () => Promise<{ success: boolean; error?: string }>;
+  getBackendPort: () => Promise<number>;
   onInstallDependenciesStart: (callback: () => void) => void;
   onInstallDependenciesLog: (callback: (data: { type: string; data: string }) => void) => void;
   onInstallDependenciesComplete: (callback: (data: { success: boolean; code?: number; error?: string }) => void) => void;
-  onUpdateNotification: (callback: (data: { 
-    type: string; 
-    currentVersion: string; 
-    previousVersion: string; 
-    reason: string; 
+  onBackendReady: (callback: (data: { success: boolean; port?: number; error?: string }) => void) => void;
+  onUpdateNotification: (callback: (data: {
+    type: string;
+    currentVersion: string;
+    previousVersion: string;
+    reason: string;
   }) => void) => void;
   removeAllListeners: (channel: string) => void;
   getEmailFolderPath: (email: string) => Promise<{
