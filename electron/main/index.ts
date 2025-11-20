@@ -16,6 +16,7 @@ import { copyBrowserData } from './copy'
 import { findAvailablePort } from './init'
 import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
+import mime from "mime";
 import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
@@ -395,6 +396,17 @@ function registerIpcHandlers() {
     } catch (error: any) {
       log.error(' command execute failed:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("read-file-dataurl", async (event, filePath) => {
+    try {
+      const file = fs.readFileSync(filePath);
+      const mimeType = mime.getType(path.extname(filePath)) || "application/octet-stream";
+      return `data:${mimeType};base64,${file.toString("base64")}`;
+    } catch (error: any) {
+      log.error('Failed to read file as data URL:', filePath, error);
+      throw new Error(`Failed to read file: ${error.message}`);
     }
   });
 

@@ -66,7 +66,15 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     // Only show during active phases (not finished)
     chatState.tasks[activeTaskId].status !== 'finished';
 
-  const task = (queryGroup.taskMessage || isLastUserQuery) && activeTaskId ? chatState.tasks[activeTaskId] : null;
+  // Only show the fallback task box for the newest query while the agent is still splitting work.
+  // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
+  const shouldShowFallbackTask =
+    isLastUserQuery && activeTaskId && !chatState.tasks[activeTaskId].hasWaitComfirm;
+
+  const task =
+    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
+      ? chatState.tasks[activeTaskId]
+      : null;
 
   // Set up intersection observer for this query group
   useEffect(() => {

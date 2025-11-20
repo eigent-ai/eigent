@@ -79,30 +79,7 @@ class Workforce(BaseWorkforce):
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
 
-        if coordinator_context:
-            original_content = task.content
-            task_with_context = coordinator_context
-            if coordinator_context:
-                task_with_context += "\n=== CURRENT TASK ===\n"
-            task_with_context += original_content
-            task.content = task_with_context
-
-            subtasks_result = self._decompose_task(task)
-
-            task.content = original_content
-        else:
-            subtasks_result = self._decompose_task(task)
-
-        # Handle both streaming and non-streaming results
-        if isinstance(subtasks_result, Generator):
-            # This is a generator (streaming mode)
-            subtasks = []
-            for new_tasks in subtasks_result:
-                subtasks.extend(new_tasks)
-        else:
-            # This is a regular list (non-streaming mode)
-            subtasks = subtasks_result
-
+        subtasks = asyncio.run(self.handle_decompose_append_task(task))
         return subtasks
 
     async def eigent_start(self, subtasks: list[Task]):
@@ -178,10 +155,21 @@ class Workforce(BaseWorkforce):
             self._pending_tasks.extendleft(reversed(subtasks))
             logger.info(f"Appended {len(subtasks)} subtasks to pending tasks")
 
-        return subtasks if subtasks else [task]
+        if not subtasks:
+            fallback_task = Task(
+                content=task.content,
+                id=f"{task.id}.1",
+                parent=task,
+            )
+            task.subtasks = [fallback_task]
+            subtasks = [fallback_task]
+
+        return subtasks
 
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
-        # Task assignment phase: send "waiting for execution" notification to the frontend, and send "start execution" notification when the task actually begins execution
+        # Task assignment phase: send "waiting for execution" notification 
+        # to the frontend, and send "start execution" notification when the 
+        # task actually begins execution
         assigned = await super()._find_assignee(tasks)
 
         task_lock = get_task_lock(self.api_task_id)
