@@ -20,7 +20,6 @@ import {
 	LoaderCircle,
 } from "lucide-react";
 import { useProjectStore } from "@/store/projectStore";
-import { TooltipSimple } from "@/components/ui/tooltip";
 
 interface ProjectDialogProps {
 	open: boolean;
@@ -183,14 +182,12 @@ export default function ProjectDialog({
 							<span className="text-text-label text-label-sm font-normal">
 								{t("layout.total-tasks")}
 							</span>
-							<TooltipSimple content="Tasks">
-								<div className="flex flex-row items-center gap-sm">
-									<Pin className="w-4 h-4 text-icon-primary" />
-									<span className="text-text-heading text-body-lg font-bold">
-										{project.task_count}
-									</span>
-								</div>
-							</TooltipSimple>
+							<div className="flex flex-row items-center gap-sm">
+								<Pin className="w-4 h-4 text-icon-primary" />
+								<span className="text-text-heading text-body-lg font-bold">
+									{project.task_count}
+								</span>
+							</div>
 						</div>
 
 						<div className="flex flex-col gap-xs">
