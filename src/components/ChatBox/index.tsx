@@ -416,26 +416,30 @@ export default function ChatBox(): JSX.Element {
 	const handleSkip = async () => {
 		const taskId = chatStore.activeTaskId as string;
 		setIsPauseResumeLoading(true);
-		
+
 		try {
-			// Skip the current task
+			// First, stop the SSE connection and update local state
+			chatStore.stopTask(taskId);
+
+			// Then notify backend to skip the task
 			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
 				project_id: projectStore.activeProjectId
 			});
 
-			// Update task status to finished
-			chatStore.setStatus(taskId, 'finished');
+			// Ensure pending state is cleared
 			chatStore.setIsPending(taskId, false);
-			
-			// toast.success("Task skipped successfully", {
-			// 	closeButton: true,
-			// });
+
 			toast.success("Task stopped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
 			console.error("Failed to skip task:", error);
-			toast.error("Failed to skip task", {
+
+			// If backend call failed, just ensure pending state is cleared
+			// Don't call stopTask again since it was already called above
+			chatStore.setIsPending(taskId, false);
+
+			toast.error("Task stopped locally, but backend notification failed", {
 				closeButton: true,
 			});
 		} finally {
