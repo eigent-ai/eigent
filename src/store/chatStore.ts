@@ -105,6 +105,7 @@ export interface ChatStore {
 
 export type VanillaChatStore = {
 	getState: () => ChatStore;
+	subscribe: (listener: (state: ChatStore) => void) => () => void;
 };
 
 
@@ -1114,7 +1115,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										return toolkit.toolkitName === agentMessages.data.toolkit_name && toolkit.toolkitMethods === agentMessages.data.method_name && toolkit.toolkitStatus === 'running'
 									})
 
-									if (task.toolkits && index !== -1) {
+									if (task.toolkits && index !== -1 && index !== undefined) {
 										task.toolkits[index].message += '\n' + message.data.message as string
 										task.toolkits[index].toolkitStatus = "completed"
 									}
@@ -1227,20 +1228,51 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							                     agentMessages.data?.error ||
 							                     'An error occurred while processing your request';
 
-							// Create a new task to avoid "Task already exists" error
-							// and completely reset the interface
-							const newTaskId = create();
-							// Prevent showing task skeleton after an error occurs
-							setActiveTaskId(newTaskId);
-							setHasWaitComfirm(newTaskId, true);
+							// Mark all incomplete tasks as failed
+							let taskRunning = [...tasks[currentTaskId].taskRunning];
+							let taskAssigning = [...tasks[currentTaskId].taskAssigning];
 
-							// Add error message to the new clean task
-							addMessages(newTaskId, {
+							// Update taskRunning - mark non-completed tasks as failed
+							taskRunning = taskRunning.map((task) => {
+								if (task.status !== "completed" && task.status !== "failed") {
+									task.status = "failed";
+								}
+								return task;
+							});
+
+							// Update taskAssigning - mark non-completed tasks as failed
+							taskAssigning = taskAssigning.map((agent) => {
+								agent.tasks = agent.tasks.map((task) => {
+									if (task.status !== "completed" && task.status !== "failed") {
+										task.status = "failed";
+									}
+									return task;
+								});
+								return agent;
+							});
+
+							// Apply the updates
+							setTaskRunning(currentTaskId, taskRunning);
+							setTaskAssigning(currentTaskId, taskAssigning);
+
+							// Complete the current task with error status
+							setStatus(currentTaskId, 'finished');
+							setIsPending(currentTaskId, false);
+
+							// Add error message to the current task
+							addMessages(currentTaskId, {
 								id: generateUniqueId(),
 								role: "agent",
-								content: `**Error**: ${errorMessage}`,
+								content: `❌ **Error**: ${errorMessage}`,
 							});
-							uploadLog(currentTaskId, type);
+							uploadLog(currentTaskId, type)
+
+							// Stop the workforce
+							try {
+								await fetchDelete(`/chat/${project_id}`);
+							} catch (error) {
+								console.log("Task may not exist on backend:", error);
+							}
 						} catch (error) {
 							console.error('Failed to handle model error:', error);
 							console.error('Original agentMessages:', agentMessages);
@@ -1259,7 +1291,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								console.error('Failed to create fallback error task:', fallbackError);
 							}
 						}
-						return
+						return;
 					}
 
 					// Handle add_task events for project store

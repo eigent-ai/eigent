@@ -24,7 +24,7 @@ const useChatStoreAdapter = ():{
     }
 
     // Subscribe to store changes
-    const unsubscribe = activeChatStore.subscribe((state) => {
+    const unsubscribe = activeChatStore.subscribe((state: ChatStore) => {
       setChatState(state);
     });
     // Set initial state
