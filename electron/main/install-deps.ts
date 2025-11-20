@@ -256,6 +256,7 @@ class InstallLogs {
             UV_TOOL_DIR: getCachePath('uv_tool'),
             UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
             UV_PROJECT_ENVIRONMENT: venvPath,
+            UV_HTTP_TIMEOUT: '180', // 3 minutes timeout
         }
     })
   }
