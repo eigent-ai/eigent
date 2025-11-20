@@ -461,7 +461,13 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setAttaches(id, attachments);
 		}
 		chatStore.removeTask(taskId);
-		proxyFetchDelete(`/api/chat/history/${taskId}`);
+		const history_id = projectStore.getHistoryId(projectStore.activeProjectId);
+		try {
+			if(!history_id) throw new Error("No history ID found for the project");
+			proxyFetchDelete(`/api/chat/history/${history_id}`);
+		} catch(error) {
+			console.error("Failed to delete chat history:", error);
+		}
 		setMessage(question);
 	};
 
