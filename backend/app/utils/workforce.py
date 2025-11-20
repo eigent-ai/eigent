@@ -19,7 +19,6 @@ from app.service.task import (
     Action,
     ActionAssignTaskData,
     ActionEndData,
-    ActionNewTaskStateData,
     ActionTaskStateData,
     get_camel_task,
     get_task_lock,
@@ -294,18 +293,11 @@ class Workforce(BaseWorkforce):
             "failure_count": task.failure_count,
         }
         
-        if self._task_is_new(task_data):
-            await task_lock.put_queue(
-                ActionNewTaskStateData(
-                    data=task_data
-                )
+        await task_lock.put_queue(
+            ActionTaskStateData(
+                data=task_data
             )
-        else:
-            await task_lock.put_queue(
-                ActionTaskStateData(
-                    data=task_data
-                )
-            )
+        )
 
         return await super()._handle_completed_task(task)
 
@@ -338,36 +330,6 @@ class Workforce(BaseWorkforce):
         )
 
         return result
-
-    def _task_is_new(self, item:dict) -> bool:
-        # Validate the task state data object first
-        assert isinstance(item, dict)
-        task_id = item.get("task_id", "")
-        state = item.get("state", "")
-        result = item.get("result", "")
-        failure_count = item.get("failure_count", 0)
-        
-        # Validate required fields
-        if not task_id:
-            logger.error("Missing task_id in task_state data")
-            return False
-        elif not state:
-            logger.error(f"Missing state in task_state data for task {task_id}")
-            return False
-
-        # Ensure failure_count is an integer
-        try:
-            failure_count = int(failure_count)
-        except (ValueError, TypeError):
-            logger.error(f"Invalid failure_count in task_state data for task {task_id}: {failure_count}")
-            failure_count = 0  # Default to 0 if invalid
-        
-        should_send_new_task_state = (
-            state == "FAILED" or 
-            (failure_count == 0 and result.strip() == "")
-        )
-        
-        return should_send_new_task_state
 
     def stop(self) -> None:
         super().stop()
