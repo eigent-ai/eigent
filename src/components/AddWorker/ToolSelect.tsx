@@ -56,7 +56,7 @@ const ToolSelect = forwardRef<
 	const [integrations, setIntegrations] = useState<any[]>([]);
 	const fetchIntegrationsData = (keyword?: string) => {
 		proxyFetchGet("/api/config/info").then((res) => {
-			if (res && typeof res === "object") {
+			if (res && typeof res === "object" && !res.error) {
 				const baseURL = getProxyBaseURL();
 
 				const list = Object.entries(res)
@@ -187,7 +187,13 @@ const ToolSelect = forwardRef<
 						};
 					});
 				setIntegrations(list);
+			} else {
+				console.error("Failed to fetch integrations:", res);
+				setIntegrations([]);
 			}
+		}).catch((error) => {
+			console.error("Error fetching integrations:", error);
+			setIntegrations([]);
 		});
 	};
 
@@ -217,7 +223,16 @@ const ToolSelect = forwardRef<
 			page: 1,
 			size: 100,
 		}).then((res) => {
-			setAllMcpList(res.items);
+			// Add defensive check for API errors
+			if (res && res.items && Array.isArray(res.items)) {
+				setAllMcpList(res.items);
+			} else {
+				console.error("Failed to fetch MCPs:", res);
+				setAllMcpList([]);
+			}
+		}).catch((error) => {
+			console.error("Error fetching MCPs:", error);
+			setAllMcpList([]);
 		});
 	};
 
@@ -228,7 +243,7 @@ const ToolSelect = forwardRef<
 			if (Array.isArray(res)) {
 				ids = res.map((item: any) => item.mcp_id);
 				dataList = res;
-			} else if (Array.isArray(res.items)) {
+			} else if (res && Array.isArray(res.items)) {
 				ids = res.items.map((item: any) => item.mcp_id);
 				dataList = res.items;
 			}
@@ -236,14 +251,22 @@ const ToolSelect = forwardRef<
 
 			const customMcpList = dataList.filter((item: any) => item.mcp_id === 0);
 			setCustomMcpList(customMcpList);
+		}).catch((error) => {
+			console.error("Error fetching installed MCPs:", error);
+			setInstalledIds([]);
+			setCustomMcpList([]);
 		});
 	};
 
 	// only surface installed MCPs from the market list
     useEffect(() => {
-		if (!installedIds.length) {
+		// Add defensive check and fix logic: should filter when installedIds has items
+		if (Array.isArray(allMcpList) && installedIds.length > 0) {
 			const filtered = allMcpList.filter((item) => installedIds.includes(item.id));
 			setMcpList(filtered);
+		} else if (Array.isArray(allMcpList)) {
+			// If no installed IDs, show empty list instead of all
+			setMcpList([]);
 		}
 	}, [allMcpList, installedIds]);
 
