@@ -456,8 +456,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					language: systemLanguage,
 					allow_local_system: true,
 					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
-					bun_mirror: systemLanguage === 'zh-cn' ? 'https://registry.npmmirror.com' : '',
-					uvx_mirror: systemLanguage === 'zh-cn' ? 'http://mirrors.aliyun.com/pypi/simple/' : '',
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
