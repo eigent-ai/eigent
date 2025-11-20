@@ -427,7 +427,10 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setStatus(taskId, 'finished');
 			chatStore.setIsPending(taskId, false);
 			
-			toast.success("Task skipped successfully", {
+			// toast.success("Task skipped successfully", {
+			// 	closeButton: true,
+			// });
+			toast.success("Task stopped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
@@ -675,7 +678,7 @@ export default function ChatBox(): JSX.Element {
 				<div className="w-full h-full flex-1 flex flex-col">
 					{/* New Project Chat Container */}
 					<ProjectChatContainer
-						onPauseResume={handlePauseResume}
+						// onPauseResume={handlePauseResume}  // Commented out - temporary not needed
 						onSkip={handleSkip}
 						isPauseResumeLoading={isPauseResumeLoading}
 					/>

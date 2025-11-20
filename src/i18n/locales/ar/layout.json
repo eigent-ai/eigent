@@ -72,6 +72,7 @@
 	"agent-tool": "أداة الوكيل",
 	"agent-tool-tooltip": "اختر الأدوات والتكاملات لوكيلك",
 	"resume": "استئناف",
+	"stop-task":"إيقاف المهمة",
 	"next-task": "المهمة التالية",
 	"task-splitting": "تقسيم المهام",
 	"task-running": "تشغيل المهام",

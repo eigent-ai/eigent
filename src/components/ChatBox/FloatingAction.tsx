@@ -6,9 +6,9 @@ export interface FloatingActionProps {
 	/** Current task status */
 	status: "running" | "pause" | "pending" | "finished";
 	/** Callback when pause button is clicked */
-	onPause?: () => void;
+	// onPause?: () => void;  // Commented out - temporary not needed
 	/** Callback when resume button is clicked */
-	onResume?: () => void;
+	// onResume?: () => void;  // Commented out - temporary not needed
 	/** Callback when skip to next is clicked */
 	onSkip?: () => void;
 	/** Loading state for pause/resume actions */
@@ -19,14 +19,14 @@ export interface FloatingActionProps {
 
 export const FloatingAction = ({
 	status,
-	onPause,
-	onResume,
+	// onPause,  // Commented out - temporary not needed
+	// onResume,  // Commented out - temporary not needed
 	onSkip,
 	loading = false,
 	className,
 }: FloatingActionProps) => {
-	// Only show when task is running or paused
-	if (status !== "running" && status !== "pause") {
+	// Only show when task is running (removed pause state)
+	if (status !== "running") {
 		return null;
 	}
 
@@ -38,6 +38,18 @@ export const FloatingAction = ({
 			)}
 		>
 			<div className="pointer-events-auto flex items-center gap-2 bg-bg-surface-primary/95 backdrop-blur-md rounded-full p-1 shadow-[0px_4px_16px_rgba(0,0,0,0.12)] border border-border-default">
+				{/* Always show Stop Task button when running (removed pause/resume logic) */}
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={onSkip}
+					disabled={loading}
+					className="gap-1.5 rounded-full"
+				>
+					<span className="text-sm font-semibold">Stop Task</span>
+				</Button>
+
+				{/* Commented out pause/resume functionality
 				{status === "running" ? (
 					// State 1: Running - Show Pause button
 					<Button
@@ -73,6 +85,7 @@ export const FloatingAction = ({
 						</Button>
 					</>
 				)}
+				*/}
 			</div>
 		</div>
 	);

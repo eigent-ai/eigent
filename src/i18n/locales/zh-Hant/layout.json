@@ -74,6 +74,7 @@
 	"agent-tool": "智能體工具",
 	"agent-tool-tooltip": "為您的智能體選擇工具和整合",
 	"resume": "恢復",
+	"stop-task": "停止任務",
 	"next-task": "下一個任務",
 	"task-splitting": "任務拆分",
 	"task-running": "任務執行",
