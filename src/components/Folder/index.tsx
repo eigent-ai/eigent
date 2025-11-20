@@ -183,7 +183,23 @@ export default function Folder({ data }: { data?: Agent }) {
 		setLoading(true);
 		console.log("file", JSON.parse(JSON.stringify(file)));
 
-		// all files call open-file interface, the backend handles download and parsing
+		// For PDF files, use data URL instead of custom protocol
+		if (file.type === "pdf") {
+			window.ipcRenderer
+				.invoke("read-file-dataurl", file.path)
+				.then((dataUrl: string) => {
+					setSelectedFile({ ...file, content: dataUrl });
+					chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+					setLoading(false);
+				})
+				.catch((error) => {
+					console.error("read-file-dataurl error:", error);
+					setLoading(false);
+				});
+			return;
+		}
+
+		// all other files call open-file interface, the backend handles download and parsing
 		window.ipcRenderer
 			.invoke("open-file", file.type, file.path, isShowSourceCode)
 			.then((res) => {
@@ -539,10 +555,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									</div>
 								) : selectedFile.type === "pdf" ? (
 									<iframe
-										src={
-											"localfile://" +
-											encodeURIComponent(selectedFile.content as string)
-										}
+										src={selectedFile.content as string}
 										className="w-full h-full border-0"
 										title={selectedFile.name}
 									/>

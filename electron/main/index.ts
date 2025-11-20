@@ -89,6 +89,21 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== protocol privileges ====================
+// Register custom protocol privileges before app ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'localfile',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: false,
+      bypassCSP: false,
+    },
+  },
+]);
+
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
@@ -1577,12 +1592,24 @@ app.whenReady().then(async () => {
   });
 
   // ==================== protocol handle ====================
-  protocol.handle('localfile', async (request) => {
+  // Register protocol handler for both default session and main window session
+  const protocolHandler = async (request: Request) => {
     const url = decodeURIComponent(request.url.replace('localfile://', ''));
     const filePath = path.normalize(url);
 
+    log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
+    log.info(`[PROTOCOL] Decoded path: ${filePath}`);
+
     try {
+      // Check if file exists
+      const fileExists = await fsp.access(filePath).then(() => true).catch(() => false);
+      if (!fileExists) {
+        log.error(`[PROTOCOL] File not found: ${filePath}`);
+        return new Response('File Not Found', { status: 404 });
+      }
+
       const data = await fsp.readFile(filePath);
+      log.info(`[PROTOCOL] Successfully read file, size: ${data.length} bytes`);
 
       // set correct Content-Type according to file extension
       const ext = path.extname(filePath).toLowerCase();
@@ -1596,17 +1623,46 @@ app.whenReady().then(async () => {
         case '.htm':
           contentType = 'text/html';
           break;
+        case '.png':
+          contentType = 'image/png';
+          break;
+        case '.jpg':
+        case '.jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case '.gif':
+          contentType = 'image/gif';
+          break;
+        case '.svg':
+          contentType = 'image/svg+xml';
+          break;
+        case '.webp':
+          contentType = 'image/webp';
+          break;
       }
+
+      log.info(`[PROTOCOL] Returning file with Content-Type: ${contentType}`);
 
       return new Response(new Uint8Array(data), {
         headers: {
           'Content-Type': contentType,
+          'Content-Length': data.length.toString(),
         },
       });
     } catch (err) {
-      return new Response('Not Found', { status: 404 });
+      log.error(`[PROTOCOL] Error reading file: ${err}`);
+      return new Response('Internal Server Error', { status: 500 });
     }
-  });
+  };
+
+  // Register on default session
+  protocol.handle('localfile', protocolHandler);
+
+  // Also register on main window session
+  const mainSession = session.fromPartition('persist:main_window');
+  mainSession.protocol.handle('localfile', protocolHandler);
+
+  log.info('[PROTOCOL] Registered localfile protocol on both default and main_window sessions');
 
   // ==================== initialize app ====================
   initializeApp();
