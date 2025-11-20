@@ -37,23 +37,26 @@ const Layout = () => {
 	useInstallationSetup();
 
 	// Additional check: If initState is carousel but tools are installed, skip to done
-	useEffect(() => {
-		const checkAndSkipCarousel = async () => {
-			if (initState === 'carousel' && !isInstalling) {
-				try {
-					const result = await window.ipcRenderer.invoke("check-tool-installed");
-					if (result.success && result.isInstalled) {
-						console.log('[Layout] Tools installed, skipping carousel and setting initState to done');
-						setInitState('done');
-					}
-				} catch (error) {
-					console.error('[Layout] Failed to check tool installation:', error);
-				}
-			}
-		};
-
-		checkAndSkipCarousel();
-	}, [initState, isInstalling, setInitState]);
+	// REMOVED: This check is too aggressive and causes premature navigation to main content
+	// The proper flow should be: installation complete -> backend ready -> then set initState='done'
+	// This is now handled in useInstallationSetup.ts
+	// useEffect(() => {
+	// 	const checkAndSkipCarousel = async () => {
+	// 		if (initState === 'carousel' && !isInstalling) {
+	// 			try {
+	// 				const result = await window.ipcRenderer.invoke("check-tool-installed");
+	// 				if (result.success && result.isInstalled) {
+	// 					console.log('[Layout] Tools installed, skipping carousel and setting initState to done');
+	// 					setInitState('done');
+	// 				}
+	// 			} catch (error) {
+	// 				console.error('[Layout] Failed to check tool installation:', error);
+	// 			}
+	// 		}
+	// 	};
+	//
+	// 	checkAndSkipCarousel();
+	// }, [initState, isInstalling, setInitState]);
 
 	useEffect(() => {
 		const handleBeforeClose = () => {

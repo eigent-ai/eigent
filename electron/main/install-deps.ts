@@ -163,7 +163,15 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 
       return { message: "Command tools installed successfully", success: true };
   } catch (error) {
-      return { message: `Command tool installation failed: ${error}`, success: false };
+      const errorMessage = `Command tool installation failed: ${error}`;
+      log.error('[DEPS INSTALL] Exception during command tool installation:', error);
+      // Send failure event to frontend
+      safeMainWindowSend('install-dependencies-complete', {
+        success: false,
+        code: 2,
+        error: errorMessage
+      });
+      return { message: errorMessage, success: false };
   }
 }
 
@@ -599,6 +607,13 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
     const isInstalCommandTool = await installCommandTool()
     if (!isInstalCommandTool.success) {
+        log.error('[DEPS INSTALL] Command tool installation failed:', isInstalCommandTool.message);
+        // Send failure event to frontend
+        safeMainWindowSend('install-dependencies-complete', {
+          success: false,
+          code: 2,
+          error: isInstalCommandTool.message || 'Command tool installation failed'
+        });
         resolve({ message: "Command tool installation failed", success: false })
         return
     }

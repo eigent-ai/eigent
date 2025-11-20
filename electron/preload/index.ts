@@ -77,13 +77,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onInstallDependenciesComplete: (callback: (data: { success: boolean, code?: number, error?: string }) => void) => {
     ipcRenderer.on('install-dependencies-complete', (event, data) => callback(data));
   },
-  onUpdateNotification: (callback: (data: { 
-    type: string; 
-    currentVersion: string; 
-    previousVersion: string; 
-    reason: string; 
+  onUpdateNotification: (callback: (data: {
+    type: string;
+    currentVersion: string;
+    previousVersion: string;
+    reason: string;
   }) => void) => {
     ipcRenderer.on('update-notification', (event, data) => callback(data));
+  },
+  onBackendReady: (callback: (data: { success: boolean, port?: number, error?: string }) => void) => {
+    ipcRenderer.on('backend-ready', (event, data) => callback(data));
   },
   startBrowserImport: (args?: any) => ipcRenderer.invoke('start-browser-import', args),
   // remove listeners

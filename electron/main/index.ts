@@ -1329,10 +1329,19 @@ async function createWindow() {
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
-    win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
+    // Note: install-dependencies-complete failure event is already sent by installDependencies function
+    // in install-deps.ts, so we don't send it again here to avoid duplicate events
     return;
   }
   log.info("[DEPS INSTALL] Dependency Success: ", res.message);
+
+  // IMPORTANT: Always send install-dependencies-complete event when installation check succeeds
+  // This includes both cases: actual installation completed AND installation was skipped (already installed)
+  // The frontend needs this event to properly transition from installation screen to main app
+  if (!win.isDestroyed()) {
+    win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+    log.info("[DEPS INSTALL] Sent install-dependencies-complete event to frontend");
+  }
 
   // Start backend after dependencies are ready
   await checkAndStartBackend();
@@ -1397,25 +1406,45 @@ const checkAndStartBackend = async () => {
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
 
-      // Notify frontend installation success
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-      }
-
+      // Start backend and wait for health check to pass
       python_process = await startBackend((port) => {
         backendPort = port;
         log.info('Backend service started successfully', { port });
       });
 
-      python_process?.on('exit', (code, signal) => {
+      // ✅ Only notify frontend AFTER backend health check passes
+      if (win && !win.isDestroyed()) {
+        log.info('Backend is ready, notifying frontend...');
+        win.webContents.send('backend-ready', {
+          success: true,
+          port: backendPort
+        });
+      }
 
+      python_process?.on('exit', (code, signal) => {
         log.info('Python process exited', { code, signal });
       });
     } else {
       log.warn('Tool not installed, cannot start backend service');
+      // Notify frontend that backend cannot start
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('backend-ready', {
+          success: false,
+          error: 'Tools not installed'
+        });
+      }
     }
   } catch (error) {
-    log.debug("Cannot Start Backend due to ", error)
+    log.error("Failed to start backend:", error);
+    // Notify frontend of backend startup failure
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('backend-ready', {
+        success: false,
+        error: String(error)
+      });
+    }
+    // Re-throw to let caller know about the failure
+    throw error;
   }
 };
 
