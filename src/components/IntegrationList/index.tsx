@@ -239,6 +239,7 @@ export default function IntegrationList({
 	);
 
 	const COMING_SOON_ITEMS = [
+		"Slack",
 		"X(Twitter)",
 		"WhatsApp",
 		"LinkedIn",
