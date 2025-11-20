@@ -29,9 +29,11 @@ const Layout = () => {
 		installationState,
 		latestLog,
 		error,
+		backendError,
 		isInstalling,
 		shouldShowInstallScreen,
 		retryInstallation,
+		retryBackend,
 	} = useInstallationUI();
 
 	// Setup installation IPC listeners and state synchronization
@@ -111,13 +113,17 @@ const Layout = () => {
 					</>
 				)}
 
-				{(error != "" && error !=undefined) &&
+				{/* Backend error dialog */}
+				{(backendError || (error && installationState === "error")) && (
 					<InstallationErrorDialog
-						error={error}
+						error={error || ""}
+						backendError={backendError}
 						installationState={installationState}
 						latestLog={latestLog}
-						retryInstallation={retryInstallation}/>
-				}
+						retryInstallation={retryInstallation}
+						retryBackend={retryBackend}
+					/>
+				)}
 
 				<CloseNoticeDialog
 					onOpenChange={setNoticeOpen}

@@ -246,7 +246,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 killBackendProcess(node_process);
                 reject(new Error('Backend failed to start within timeout'));
             }
-        }, 45000); // 45 second timeout (increased for first run with uv sync)
+        }, 65000); // 65 second timeout (increased for first run with uv sync)
 
         // Start health check after a short delay to let process initialize
         // No longer rely on log detection - directly use health endpoint
@@ -292,7 +292,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         // Helper function to poll health endpoint
         const pollHealthEndpoint = (): void => {
             let attempts = 0;
-            const maxAttempts = 160; // 40 seconds total (160 * 250ms) - enough for first run
+            const maxAttempts = 240; // 60 seconds total (240 * 250ms) - increased for first run
             const intervalMs = 250;
 
             healthCheckInterval = setInterval(() => {

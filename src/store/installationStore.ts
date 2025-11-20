@@ -25,20 +25,23 @@ interface InstallationStoreState {
   progress: number;
   logs: InstallationLog[];
   error?: string;
+  backendError?: string;  // Separate error for backend startup failures
   isVisible: boolean;
-  
+
   // Actions
   startInstallation: () => void;
   addLog: (log: InstallationLog) => void;
   setSuccess: () => void;
   setError: (error: string) => void;
+  setBackendError: (error: string) => void;
   setWaitingBackend: () => void;
   retryInstallation: () => void;
+  retryBackend: () => Promise<void>;
   completeSetup: () => void;
   updateProgress: (progress: number) => void;
   setVisible: (visible: boolean) => void;
   reset: () => void;
-  
+
   // Async actions
   performInstallation: () => Promise<void>;
   exportLog: () => Promise<void>;
@@ -50,6 +53,7 @@ const initialState = {
   progress: 20,
   logs: [] as InstallationLog[],
   error: undefined,
+  backendError: undefined,
   isVisible: false,
 };
 
@@ -106,6 +110,12 @@ export const useInstallationStore = create<InstallationStoreState>()(
           isVisible: true,
         }),
 
+      setBackendError: (error: string) =>
+        set({
+          backendError: error,
+          state: 'error',
+        }),
+
       retryInstallation: () => {
         set({
           ...initialState,
@@ -114,7 +124,34 @@ export const useInstallationStore = create<InstallationStoreState>()(
         });
         get().performInstallation();
       },
-      
+
+      retryBackend: async () => {
+        try {
+          // Clear backend error and go back to waiting-backend state
+          set({
+            backendError: undefined,
+            state: 'waiting-backend',
+            progress: 80,
+          });
+
+          // Call restart-backend via electronAPI
+          const result = await window.electronAPI.restartBackend();
+
+          if (!result.success) {
+            set({
+              backendError: result.error || 'Failed to restart backend',
+              state: 'error',
+            });
+          }
+          // If successful, backend-ready event will be triggered automatically
+        } catch (error) {
+          set({
+            backendError: error instanceof Error ? error.message : 'Unknown error',
+            state: 'error',
+          });
+        }
+      },
+
       completeSetup: () =>
         set({
           state: 'completed',
@@ -211,21 +248,25 @@ export const useInstallationUI = () => {
   const progress = useInstallationStore(state => state.progress);
   const logs = useInstallationStore(state => state.logs);
   const error = useInstallationStore(state => state.error);
+  const backendError = useInstallationStore(state => state.backendError);
   const isVisible = useInstallationStore(state => state.isVisible);
   const performInstallation = useInstallationStore(state => state.performInstallation);
   const retryInstallation = useInstallationStore(state => state.retryInstallation);
+  const retryBackend = useInstallationStore(state => state.retryBackend);
   const exportLog = useInstallationStore(state => state.exportLog);
-  
+
   return {
     installationState: state,
     progress,
     latestLog: logs[logs.length - 1],
     error,
+    backendError,
     isInstalling: state === 'installing',
     shouldShowInstallScreen: isVisible && state !== 'completed',
     canRetry: state === 'error',
     performInstallation,
     retryInstallation,
+    retryBackend,
     exportLog,
   };
 };

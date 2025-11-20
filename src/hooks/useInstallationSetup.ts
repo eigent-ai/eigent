@@ -22,6 +22,7 @@ export const useInstallationSetup = () => {
   const addLog = useInstallationStore(state => state.addLog);
   const setSuccess = useInstallationStore(state => state.setSuccess);
   const setError = useInstallationStore(state => state.setError);
+  const setBackendError = useInstallationStore(state => state.setBackendError);
   const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
 
   // REMOVED: Don't reset initState from 'done' to 'carousel'
@@ -162,7 +163,8 @@ export const useInstallationSetup = () => {
         checkAndSetDone();
       } else {
         console.error('[useInstallationSetup] Backend failed to start:', data.error);
-        setError(data.error || 'Backend startup failed');
+        // Use setBackendError instead of setError for backend startup failures
+        setBackendError(data.error || 'Backend startup failed');
       }
     };
 
@@ -179,5 +181,5 @@ export const useInstallationSetup = () => {
       window.electronAPI.removeAllListeners('install-dependencies-complete');
       window.electronAPI.removeAllListeners('backend-ready');
     };
-  }, [startInstallation, addLog, setSuccess, setError, setInitState]);
+  }, [startInstallation, addLog, setSuccess, setError, setBackendError, setInitState]);
 };

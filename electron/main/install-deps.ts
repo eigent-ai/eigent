@@ -129,26 +129,44 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
         }
 
         console.log(`start install ${toolName}`);
-        await runInstallScript(scriptName);
-        const installed = await isBinaryExists(toolName);
+        try {
+          await runInstallScript(scriptName);
+          const installed = await isBinaryExists(toolName);
 
-        if (installed) {
-          safeMainWindowSend('install-dependencies-log', {
-            type: 'stdout',
-            data: `${toolName} installed successfully`,
-          });
-        } else {
+          if (installed) {
+            safeMainWindowSend('install-dependencies-log', {
+              type: 'stdout',
+              data: `${toolName} installed successfully`,
+            });
+            return {
+              message: `${toolName} installed successfully`,
+              success: true
+            };
+          } else {
+            const errorMsg = `${toolName} installation failed: binary not found after installation`;
+            safeMainWindowSend('install-dependencies-complete', {
+              success: false,
+              code: 2,
+              error: errorMsg,
+            });
+            return {
+              message: errorMsg,
+              success: false
+            };
+          }
+        } catch (scriptError) {
+          // Capture detailed error from runInstallScript
+          const errorMsg = `${toolName} installation failed: ${scriptError instanceof Error ? scriptError.message : String(scriptError)}`;
           safeMainWindowSend('install-dependencies-complete', {
             success: false,
             code: 2,
-            error: `${toolName} installation failed (script exit code 2)`,
+            error: errorMsg,
           });
+          return {
+            message: errorMsg,
+            success: false
+          };
         }
-
-        return {
-          message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
-          success: installed
-        };
       };
 
       const uvResult = await ensureInstalled('uv', 'install-uv.js');
