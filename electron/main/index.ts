@@ -1507,19 +1507,20 @@ const checkAndStartBackend = async () => {
 // ==================== process cleanup ====================
 const cleanupPythonProcess = async () => {
   try {
-    // First attempt: Try to kill using PID
+    // First attempt: Try to kill using PID and all children
     if (python_process?.pid) {
       const pid = python_process.pid;
-      log.info('Cleaning up Python process', { pid });
+      log.info('Cleaning up Python process and all children', { pid });
 
       // Remove all listeners to prevent memory leaks
       python_process.removeAllListeners();
 
       await new Promise<void>((resolve) => {
+        // Kill the entire process tree (parent + all children)
         kill(pid, 'SIGTERM', (err) => {
           if (err) {
             log.error('Failed to clean up process tree with SIGTERM:', err);
-            // Try SIGKILL as fallback
+            // Try SIGKILL as fallback for entire tree
             kill(pid, 'SIGKILL', (killErr) => {
               if (killErr) {
                 log.error('Failed to force kill process tree:', killErr);
@@ -1527,8 +1528,14 @@ const cleanupPythonProcess = async () => {
               resolve();
             });
           } else {
-            log.info('Successfully cleaned up Python process tree');
-            resolve();
+            log.info('Successfully sent SIGTERM to process tree');
+            // Give processes 1 second to clean up, then SIGKILL
+            setTimeout(() => {
+              kill(pid, 'SIGKILL', () => {
+                log.info('Sent SIGKILL to ensure cleanup');
+                resolve();
+              });
+            }, 1000);
           }
         });
       });

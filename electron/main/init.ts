@@ -209,11 +209,21 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         }
 
         //Implicitly runs uv sync
+        // Use detached: true on Unix to create process group for proper cleanup
         const node_process = spawn(
             uv_path,
             ["run", "uvicorn", "main:api", "--port", port.toString(), "--loop", "asyncio"],
-            { cwd: backendPath, env: env, detached: false }
+            {
+                cwd: backendPath,
+                env: env,
+                detached: process.platform !== 'win32' // detached on Unix for process group
+            }
         );
+
+        // On Unix, unref the process so it doesn't keep the parent alive
+        if (process.platform !== 'win32') {
+            node_process.unref();
+        }
 
         log.info(`Backend process spawned with PID: ${node_process.pid}`);
 
@@ -230,32 +240,60 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
         let started = false;
         let healthCheckInterval: NodeJS.Timeout | null = null;
-        let fallbackHealthCheck: NodeJS.Timeout | null = null;
 
         const startTimeout = setTimeout(() => {
             if (!started) {
                 if (healthCheckInterval) clearInterval(healthCheckInterval);
-                if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
-                node_process.kill();
+                killBackendProcess(node_process);
                 reject(new Error('Backend failed to start within timeout'));
             }
-        }, 30000); // 30 second timeout
+        }, 45000); // 45 second timeout (increased for first run with uv sync)
 
-        // Fallback: If no uvicorn log is detected within 10 seconds, start health check anyway
-        // This handles cases where Python output is delayed or buffered
-        // First run takes longer due to implicit uv sync
-        fallbackHealthCheck = setTimeout(() => {
-            if (!started && healthCheckInterval === null) {
-                log.info('No uvicorn log detected after 10s, starting health check polling as fallback...');
+        // Start health check after a short delay to let process initialize
+        // No longer rely on log detection - directly use health endpoint
+        const initialDelay = setTimeout(() => {
+            if (!started) {
+                log.info('Starting backend health check polling...');
                 pollHealthEndpoint();
             }
-        }, 10000); // 10 second fallback (increased from 5s for first run)
+        }, 2000); // 2 second delay for process initialization
+
+        // Helper function to kill backend process and all children
+        const killBackendProcess = (proc: any) => {
+            if (!proc || !proc.pid) return;
+
+            log.info(`Killing backend process ${proc.pid} and its children...`);
+            try {
+                if (process.platform === 'win32') {
+                    // Windows: use taskkill to kill process tree
+                    spawn('taskkill', ['/pid', proc.pid.toString(), '/T', '/F']);
+                } else {
+                    // Unix: kill the entire process group
+                    try {
+                        process.kill(-proc.pid, 'SIGTERM');
+                        // Give it 1 second, then SIGKILL
+                        setTimeout(() => {
+                            try {
+                                process.kill(-proc.pid, 'SIGKILL');
+                            } catch (e) {
+                                // Process already dead, ignore
+                            }
+                        }, 1000);
+                    } catch (e) {
+                        // If process group kill fails, kill the main process
+                        log.error(`Failed to kill process group: ${e}`);
+                        proc.kill('SIGKILL');
+                    }
+                }
+            } catch (e) {
+                log.error(`Failed to kill backend process: ${e}`);
+            }
+        };
 
         // Helper function to poll health endpoint
         const pollHealthEndpoint = (): void => {
-            if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck); // Clear fallback once polling starts
             let attempts = 0;
-            const maxAttempts = 60; // 15 seconds total (60 * 250ms) - increased for first run
+            const maxAttempts = 160; // 40 seconds total (160 * 250ms) - enough for first run
             const intervalMs = 250;
 
             healthCheckInterval = setInterval(() => {
@@ -277,7 +315,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                             started = true;
                             clearTimeout(startTimeout);
                             if (healthCheckInterval) clearInterval(healthCheckInterval);
-                            node_process.kill();
+                            killBackendProcess(node_process);
                             reject(new Error(`Backend health check failed: HTTP ${res.statusCode}`));
                         }
                     }
@@ -290,21 +328,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                         started = true;
                         clearTimeout(startTimeout);
                         if (healthCheckInterval) clearInterval(healthCheckInterval);
-
-                        // Kill process tree more aggressively
-                        log.info(`Killing backend process ${node_process.pid} and its children...`);
-                        try {
-                            if (process.platform === 'win32') {
-                                node_process.kill('SIGKILL');
-                            } else {
-                                // On Unix, kill the process group
-                                process.kill(-node_process.pid!, 'SIGKILL');
-                            }
-                        } catch (e) {
-                            log.error(`Failed to kill backend process: ${e}`);
-                            node_process.kill('SIGKILL');
-                        }
-
+                        killBackendProcess(node_process);
                         reject(new Error('Backend health check failed: unable to connect'));
                     }
                 });
@@ -316,41 +340,35 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                         started = true;
                         clearTimeout(startTimeout);
                         if (healthCheckInterval) clearInterval(healthCheckInterval);
-                        node_process.kill();
+                        killBackendProcess(node_process);
                         reject(new Error('Backend health check timed out'));
                     }
                 });
             }, intervalMs);
         };
 
+        // Monitor stdout for logs (no longer used for startup detection)
         node_process.stdout.on('data', (data) => {
             log.debug(`Backend stdout received ${data.length} bytes`);
             displayFilteredLogs(data);
-            // check output content, judge if start success
-            if (!started && data.toString().includes("Uvicorn running on")) {
-                log.info('Uvicorn startup detected, starting health check polling...');
-                pollHealthEndpoint();
-            }
         });
 
+        // Monitor stderr for logs and errors
         node_process.stderr.on('data', (data) => {
             log.debug(`Backend stderr received ${data.length} bytes`);
             displayFilteredLogs(data);
 
-            if (!started && data.toString().includes("Uvicorn running on")) {
-                log.info('Uvicorn startup detected (stderr), starting health check polling...');
-                pollHealthEndpoint();
-            }
-
-            // Check for port binding errors
+            // Check for port binding errors - critical failure
             if (data.toString().includes("Address already in use") ||
                 data.toString().includes("bind() failed")) {
-                started = true; // Prevent multiple rejections
-                clearTimeout(startTimeout);
-                if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
-                if (healthCheckInterval) clearInterval(healthCheckInterval);
-                node_process.kill();
-                reject(new Error(`Port ${port} is already in use`));
+                if (!started) {
+                    started = true; // Prevent multiple rejections
+                    clearTimeout(startTimeout);
+                    clearTimeout(initialDelay);
+                    if (healthCheckInterval) clearInterval(healthCheckInterval);
+                    killBackendProcess(node_process);
+                    reject(new Error(`Port ${port} is already in use`));
+                }
             }
         });
 
@@ -359,7 +377,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             if (!started) {
                 started = true;
                 clearTimeout(startTimeout);
-                if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
+                clearTimeout(initialDelay);
                 if (healthCheckInterval) clearInterval(healthCheckInterval);
                 reject(new Error(`Failed to spawn backend process: ${err.message}`));
             }
@@ -368,7 +386,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         node_process.on('close', async (code, signal) => {
             log.info(`Backend process closed with code ${code}, signal ${signal}`);
             clearTimeout(startTimeout);
-            if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
+            clearTimeout(initialDelay);
             if (healthCheckInterval) clearInterval(healthCheckInterval);
 
             // Clean up port to ensure retry can work
