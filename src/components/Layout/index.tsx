@@ -9,6 +9,7 @@ import animationData from "@/assets/animation/onboarding_success.json";
 import CloseNoticeDialog from "../Dialog/CloseNotice";
 import { useInstallationUI } from "@/store/installationStore";
 import { useInstallationSetup } from "@/hooks/useInstallationSetup";
+import InstallationErrorDialog from "../InstallStep/InstallationErrorDialog/InstallationErrorDialog";
 import Halo from "../Halo";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
@@ -26,8 +27,11 @@ const Layout = () => {
 
 	const {
 		installationState,
+		latestLog,
+		error,
 		isInstalling,
 		shouldShowInstallScreen,
+		retryInstallation,
 	} = useInstallationUI();
 
 	// Setup installation IPC listeners and state synchronization
@@ -106,6 +110,14 @@ const Layout = () => {
 						<HistorySidebar />
 					</>
 				)}
+
+				{(error != "" && error !=undefined) &&
+					<InstallationErrorDialog
+						error={error}
+						installationState={installationState}
+						latestLog={latestLog}
+						retryInstallation={retryInstallation}/>
+				}
 
 				<CloseNoticeDialog
 					onOpenChange={setNoticeOpen}
