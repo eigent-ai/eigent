@@ -444,9 +444,17 @@ export default function ChatBox(): JSX.Element {
 	};
 
 	// Edit query handler
-	const handleEditQuery = () => {
+	const handleEditQuery = async () => {
 		const taskId = chatStore.activeTaskId as string;
-		fetchDelete(`/chat/${taskId}`);
+		const projectId = projectStore.activeProjectId;
+
+		// Early validation
+		if (!projectId) {
+			console.error("No active project ID found for edit operation");
+			return;
+		}
+
+		// Get question and attachments before any deletions
 		const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
 			(item) => item.step === "to_sub_tasks"
 		);
@@ -454,6 +462,28 @@ export default function ChatBox(): JSX.Element {
 		const question = questionMessage.content;
 		// Get the file attachments from the original user message (not from task.attaches which gets cleared after sending)
 		const attachments = questionMessage.attaches || [];
+
+		// Delete task from backend first
+		try {
+			await fetchDelete(`/chat/${taskId}`);
+		} catch (error) {
+			console.error("Failed to delete task from backend:", error);
+			// Continue with local cleanup even if backend fails
+		}
+
+		// Delete chat history
+		const history_id = projectStore.getHistoryId(projectId);
+		if (history_id) {
+			try {
+				await proxyFetchDelete(`/api/chat/history/${history_id}`);
+			} catch(error) {
+				console.error(`Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`, error);
+			}
+		} else {
+			console.warn(`No history ID found for project ${projectId} during edit operation`);
+		}
+
+		// Create new task and clean up locally
 		let id = chatStore.create();
 		chatStore.setHasMessages(id, true);
 		// Copy the file attachments to the new task
@@ -461,7 +491,6 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setAttaches(id, attachments);
 		}
 		chatStore.removeTask(taskId);
-		proxyFetchDelete(`/api/chat/history/${taskId}`);
 		setMessage(question);
 	};
 

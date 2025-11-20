@@ -2,6 +2,7 @@ import { getAuthStore } from '@/store/authStore'
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
+
 const defaultHeaders = {
   'Content-Type': 'application/json',
 }
@@ -249,4 +250,58 @@ export async function uploadFile(url: string, formData: FormData, headers?: Reco
   }
 
   return handleResponse(fetch(fullUrl, options))
+}
+
+// =============== Backend Health Check ===============
+
+/**
+ * Check if backend is ready by checking the health endpoint
+ * @returns Promise<boolean> - true if backend is ready, false otherwise
+ */
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const baseURL = await getBaseURL();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1000);
+
+    const res = await fetch(`${baseURL}/health`, {
+      signal: controller.signal,
+      method: 'GET',
+    });
+
+    clearTimeout(timeoutId);
+    return res.ok;
+  } catch (error) {
+    console.log('[Backend Health Check] Not ready:', error);
+    return false;
+  }
+}
+
+/**
+ * Simple backend health check with retries
+ * @param maxWaitMs - Maximum time to wait in milliseconds (default: 10000ms)
+ * @param retryIntervalMs - Interval between retries in milliseconds (default: 500ms)
+ * @returns Promise<boolean> - true if backend becomes ready, false if timeout
+ */
+export async function waitForBackendReady(
+  maxWaitMs: number = 10000,
+  retryIntervalMs: number = 500
+): Promise<boolean> {
+  const startTime = Date.now();
+  console.log('[Backend Health Check] Waiting for backend to be ready...');
+
+  while (Date.now() - startTime < maxWaitMs) {
+    const isReady = await checkBackendHealth();
+
+    if (isReady) {
+      console.log(`[Backend Health Check] Backend is ready after ${Date.now() - startTime}ms`);
+      return true;
+    }
+
+    console.log(`[Backend Health Check] Backend not ready, retrying... (${Date.now() - startTime}ms elapsed)`);
+    await new Promise(resolve => setTimeout(resolve, retryIntervalMs));
+  }
+
+  console.error(`[Backend Health Check] Backend failed to start within ${maxWaitMs}ms`);
+  return false;
 }

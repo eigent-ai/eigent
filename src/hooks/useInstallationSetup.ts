@@ -9,19 +9,18 @@ import { useAuthStore } from '@/store/authStore';
 export const useInstallationSetup = () => {
   const { initState, setInitState } = useAuthStore();
 
-  // Use ref to track if initial check is done to prevent repeated checks
   const hasCheckedOnMount = useRef(false);
-
-  // Extract only the functions we need to avoid dependency issues
+  const installationCompleted = useRef(false);
+  const backendReady = useRef(false);
   const startInstallation = useInstallationStore(state => state.startInstallation);
   const performInstallation = useInstallationStore(state => state.performInstallation);
   const addLog = useInstallationStore(state => state.addLog);
   const setSuccess = useInstallationStore(state => state.setSuccess);
   const setError = useInstallationStore(state => state.setError);
+  const setBackendError = useInstallationStore(state => state.setBackendError);
+  const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
 
-  // Check tool installation status on mount - but only during setup phase
   useEffect(() => {
-    // Only run this check once on initial mount
     if (hasCheckedOnMount.current) {
       return;
     }
@@ -32,17 +31,15 @@ export const useInstallationSetup = () => {
       try {
         const result = await window.ipcRenderer.invoke("check-tool-installed");
 
-        // Only perform tool check during setup phase (permissions or carousel)
-        // Once user is in 'done' state (main app), don't check again
-        // This prevents unexpected navigation away from the main app
-        if (initState !== 'done') {
-          if (result.success) {
-            if (result.isInstalled && initState === "carousel") {
-              // If tools ARE installed and we're in carousel state, go to done
-              console.log('[useInstallationSetup] Tools installed but initState is carousel, setting to done');
-              setInitState("done");
-            } else if (!result.isInstalled && initState === "permissions") {
-              // If tools are NOT installed and we're in permissions state, set to carousel
+        if (result.success) {
+          if (result.isInstalled) {
+            console.log('[useInstallationSetup] Tools already installed, waiting for backend');
+            installationCompleted.current = true;
+            setWaitingBackend();
+          }
+
+          if (initState !== 'done') {
+            if (!result.isInstalled && initState === "permissions") {
               console.log('[useInstallationSetup] Tools not installed and initState is permissions, setting to carousel');
               setInitState("carousel");
             }
@@ -57,13 +54,11 @@ export const useInstallationSetup = () => {
 
     const checkBackendStatus = async(toolResult?: any) => {
       try {
-        // Also check if installation is currently in progress
         const installationStatus = await window.electronAPI.getInstallationStatus();
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
         } else if (initState !== 'done' && toolResult) {
-          // Use the tool result from the previous check to avoid duplicate API calls
           if (toolResult.success && !toolResult.isInstalled) {
              console.log('[useInstallationSetup] Tools missing and not installing. Starting installation...');
              try {
@@ -78,7 +73,6 @@ export const useInstallationSetup = () => {
       }
     }
 
-    // Run checks sequentially to avoid race conditions and duplicate API calls
     const runInitialChecks = async () => {
       const toolResult = await checkToolInstalled();
       await checkBackendStatus(toolResult);
@@ -88,10 +82,19 @@ export const useInstallationSetup = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Setup Electron IPC listeners (only once)
   useEffect(() => {
-    // Electron IPC event handlers
+    const checkAndSetDone = () => {
+      console.log('[useInstallationSetup] Checking readiness - Installation:', installationCompleted.current, 'Backend:', backendReady.current);
+
+      if (installationCompleted.current && backendReady.current) {
+        console.log('[useInstallationSetup] Both installation and backend are ready, setting initState to done');
+        setInitState('done');
+      }
+    };
+
     const handleInstallStart = () => {
+      installationCompleted.current = false;
+      backendReady.current = false;
       startInstallation();
     };
 
@@ -104,26 +107,45 @@ export const useInstallationSetup = () => {
     };
 
     const handleInstallComplete = (data: { success: boolean; code?: number; error?: string }) => {
-      
+      console.log('[useInstallationSetup] Installation complete event received:', data);
+
       if (data.success) {
-        setSuccess();
-        setInitState('done');
+        installationCompleted.current = true;
+        console.log('[useInstallationSetup] Installation marked as completed');
+
+        // setSuccess() will be called in handleBackendReady to prevent premature state change
+        checkAndSetDone();
       } else {
         setError(data.error || 'Installation failed');
       }
     };
 
-    // Register Electron IPC listeners
+    const handleBackendReady = (data: { success: boolean; port?: number; error?: string }) => {
+      console.log('[useInstallationSetup] Backend ready event received:', data);
+
+      if (data.success && data.port) {
+        console.log(`[useInstallationSetup] Backend is ready on port ${data.port}`);
+        backendReady.current = true;
+        console.log('[useInstallationSetup] Backend marked as ready');
+
+        setSuccess();
+        checkAndSetDone();
+      } else {
+        console.error('[useInstallationSetup] Backend failed to start:', data.error);
+        setBackendError(data.error || 'Backend startup failed');
+      }
+    };
+
     window.electronAPI.onInstallDependenciesStart(handleInstallStart);
     window.electronAPI.onInstallDependenciesLog(handleInstallLog);
     window.electronAPI.onInstallDependenciesComplete(handleInstallComplete);
+    window.electronAPI.onBackendReady(handleBackendReady);
 
-
-    // Cleanup listeners on unmount
     return () => {
       window.electronAPI.removeAllListeners('install-dependencies-start');
       window.electronAPI.removeAllListeners('install-dependencies-log');
       window.electronAPI.removeAllListeners('install-dependencies-complete');
+      window.electronAPI.removeAllListeners('backend-ready');
     };
-  }, [startInstallation, addLog, setSuccess, setError, setInitState]);
+  }, [startInstallation, addLog, setSuccess, setError, setBackendError, setInitState]);
 };
