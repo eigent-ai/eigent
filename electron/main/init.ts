@@ -163,6 +163,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         ...process.env,
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
+        PYTHONUNBUFFERED: '1',  // Disable Python output buffering to ensure immediate log output
         UV_PROJECT_ENVIRONMENT: venvPath,
         npm_config_cache: npmCacheDir,
     }
@@ -197,16 +198,29 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
         let started = false;
         let healthCheckInterval: NodeJS.Timeout | null = null;
+        let fallbackHealthCheck: NodeJS.Timeout | null = null;
+
         const startTimeout = setTimeout(() => {
             if (!started) {
                 if (healthCheckInterval) clearInterval(healthCheckInterval);
+                if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
                 node_process.kill();
                 reject(new Error('Backend failed to start within timeout'));
             }
         }, 30000); // 30 second timeout
 
+        // Fallback: If no uvicorn log is detected within 5 seconds, start health check anyway
+        // This handles cases where Python output is delayed or buffered
+        fallbackHealthCheck = setTimeout(() => {
+            if (!started && healthCheckInterval === null) {
+                log.info('No uvicorn log detected after 5s, starting health check polling as fallback...');
+                pollHealthEndpoint();
+            }
+        }, 5000); // 5 second fallback
+
         // Helper function to poll health endpoint
         const pollHealthEndpoint = (): void => {
+            if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck); // Clear fallback once polling starts
             let attempts = 0;
             const maxAttempts = 20; // 5 seconds total (20 * 250ms)
             const intervalMs = 250;
@@ -283,6 +297,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 data.toString().includes("bind() failed")) {
                 started = true; // Prevent multiple rejections
                 clearTimeout(startTimeout);
+                if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
                 if (healthCheckInterval) clearInterval(healthCheckInterval);
                 node_process.kill();
                 reject(new Error(`Port ${port} is already in use`));
@@ -291,6 +306,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
         node_process.on('close', (code) => {
             clearTimeout(startTimeout);
+            if (fallbackHealthCheck) clearTimeout(fallbackHealthCheck);
             if (healthCheckInterval) clearInterval(healthCheckInterval);
             if (!started) {
                 reject(new Error(`fastapi exited with code ${code}`));
