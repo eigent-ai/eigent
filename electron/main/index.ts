@@ -996,10 +996,33 @@ function registerIpcHandlers() {
   ipcMain.handle('install-dependencies', async () => {
     try {
       if(win === null) throw new Error("Window is null");
+
+      log.info('[DEPS INSTALL] Manual installation/retry triggered');
+
       //Force installation even if versionFile exists
-      const isInstalled = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
-      return { success: true, isInstalled };
+      const result = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
+
+      if (!result.success) {
+        log.error('[DEPS INSTALL] Manual installation failed:', result.message);
+        // Note: Failure event already sent by installDependencies function
+        return { success: false, error: result.message };
+      }
+
+      log.info('[DEPS INSTALL] Manual installation succeeded');
+
+      // IMPORTANT: Send install-dependencies-complete success event
+      if (!win.isDestroyed()) {
+        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+        log.info('[DEPS INSTALL] Sent install-dependencies-complete event after manual installation');
+      }
+
+      // IMPORTANT: Start backend after successful installation
+      log.info('[DEPS INSTALL] Starting backend after manual installation...');
+      await checkAndStartBackend();
+
+      return { success: true, isInstalled: result.success };
     } catch (error) {
+      log.error('[DEPS INSTALL] Manual installation error:', error);
       return { success: false, error: (error as Error).message };
     }
   });

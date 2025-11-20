@@ -124,16 +124,22 @@ export const useInstallationStore = create<InstallationStoreState>()(
       // Async actions
       performInstallation: async () => {
         const { startInstallation, setSuccess, setError } = get();
-        
+
         try {
           startInstallation();
           const result = await window.electronAPI.checkAndInstallDepsOnUpdate();
-          
+
           if (result.success) {
+            // ✅ FIXED: Don't set initState='done' here!
+            // The proper flow is:
+            // 1. Installation completes → install-dependencies-complete event
+            // 2. Backend starts → backend-ready event
+            // 3. useInstallationSetup receives both events → sets initState='done'
+            // This ensures backend is ready before showing main page
             setSuccess();
-            // Update auth store
-            const { useAuthStore } = await import('./authStore');
-            useAuthStore.getState().setInitState('done');
+
+            // Note: initState will be set to 'done' by useInstallationSetup.ts
+            // after both installation complete AND backend ready events are received
           } else {
             setError('Installation failed');
           }
