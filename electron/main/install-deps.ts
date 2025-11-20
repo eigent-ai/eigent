@@ -681,6 +681,18 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
 let dependencyInstallationDetected = false;
 let installationNotificationSent = false;
+
+/**
+ * @deprecated This function is no longer called and should not be used.
+ *
+ * REASON FOR DEPRECATION:
+ * - Keyword-based detection causes false positives when backend logs contain
+ *   words like "Installing", "Updating", "Syncing" during normal operation
+ * - Checking file system on every backend log line is inefficient
+ * - Installation is now only handled through explicit installation flow in createWindow
+ *
+ * This function is kept for backwards compatibility but is not invoked anywhere.
+ */
 export function detectInstallationLogs(msg:string) {
   // CRITICAL FIX: Use file system to check if installation is complete
   // Don't rely on module variables as they can be reset during hot reload
