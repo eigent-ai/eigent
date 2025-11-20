@@ -336,7 +336,7 @@ export default function SearchEngineConfigDialog({
 							{/* Action Buttons */}
 							{!selectedProvider.enabledByDefault && (
 								<div className="flex gap-3 items-center justify-end">
-									{selectedProvider.requiresApiKey && (
+									{/* {selectedProvider.requiresApiKey && (
 										<Button
 											variant="outline"
 											size="sm"
@@ -345,7 +345,7 @@ export default function SearchEngineConfigDialog({
 										>
 											 {testing ? t("setting.testing") : t("setting.test-connection")}
 										</Button>
-									)}
+									)} */}
 									<Button
 										size="sm"
 										onClick={saveConfiguration}
