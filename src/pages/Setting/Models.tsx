@@ -709,8 +709,6 @@ const [errors, setErrors] = useState<
 											? t("setting.gpt-5")
 											: cloud_model_type === "gpt-5-mini"
 											? t("setting.gpt-5-mini")
-											: cloud_model_type === "gpt-5-nano"
-											? t("setting.gpt-5-nano")
 											: t("setting.gemini-2.5-pro")}
 									</span>
 								</TooltipContent>
@@ -732,7 +730,6 @@ const [errors, setErrors] = useState<
 									<SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
-									<SelectItem value="gpt-5-nano">GPT-5 nano</SelectItem>
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
 									</SelectItem>
