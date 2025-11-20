@@ -162,11 +162,16 @@ export default function ChatBox(): JSX.Element {
 				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
 				const hasWaitComfirm = chatStore.tasks[_taskId as string]?.hasWaitComfirm;
 
+				// Check if this task was manually stopped (finished but without natural completion)
+				const wasTaskStopped = isFinished && !chatStore.tasks[_taskId as string].messages.some(
+					m => m.step === "end"  // Natural completion has an "end" step message
+				);
+
 				// Continue conversation if:
-				// 1. Has wait confirm (simple query response)
-				// 2. Task is finished (complex task completed)
+				// 1. Has wait confirm (simple query response) - but not if task was stopped
+				// 2. Task is naturally finished (complex task completed) - but not if task was stopped
 				// 3. Has any messages but pending (ongoing conversation)
-				const shouldContinueConversation = hasWaitComfirm || isFinished || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
+				const shouldContinueConversation = (hasWaitComfirm && !wasTaskStopped) || (isFinished && !wasTaskStopped) || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
 
 				if (shouldContinueConversation) {
 					// Check if this is the very first message and task hasn't started

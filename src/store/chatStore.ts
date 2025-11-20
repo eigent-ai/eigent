@@ -275,7 +275,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					const { addMessages } = get();
 					addMessages(taskId, {
 						id: generateUniqueId(),
-						role: 'system',
+						role: 'agent',
 						content: '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
 					});
 					return;
