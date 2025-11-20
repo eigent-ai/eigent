@@ -162,11 +162,16 @@ export default function ChatBox(): JSX.Element {
 				const isFinished = chatStore.tasks[_taskId as string].status === "finished";
 				const hasWaitComfirm = chatStore.tasks[_taskId as string]?.hasWaitComfirm;
 
+				// Check if this task was manually stopped (finished but without natural completion)
+				const wasTaskStopped = isFinished && !chatStore.tasks[_taskId as string].messages.some(
+					m => m.step === "end"  // Natural completion has an "end" step message
+				);
+
 				// Continue conversation if:
-				// 1. Has wait confirm (simple query response)
-				// 2. Task is finished (complex task completed)
+				// 1. Has wait confirm (simple query response) - but not if task was stopped
+				// 2. Task is naturally finished (complex task completed) - but not if task was stopped
 				// 3. Has any messages but pending (ongoing conversation)
-				const shouldContinueConversation = hasWaitComfirm || isFinished || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
+				const shouldContinueConversation = (hasWaitComfirm && !wasTaskStopped) || (isFinished && !wasTaskStopped) || (hasMessages && chatStore.tasks[_taskId as string].status === "pending");
 
 				if (shouldContinueConversation) {
 					// Check if this is the very first message and task hasn't started
@@ -416,28 +421,38 @@ export default function ChatBox(): JSX.Element {
 	const handleSkip = async () => {
 		const taskId = chatStore.activeTaskId as string;
 		setIsPauseResumeLoading(true);
-		
+
 		try {
-			// Skip the current task
+			// First, try to notify backend to skip the task
 			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
 				project_id: projectStore.activeProjectId
 			});
 
-			// Update task status to finished
-			chatStore.setStatus(taskId, 'finished');
+			// Only stop local task if backend call succeeds
+			chatStore.stopTask(taskId);
 			chatStore.setIsPending(taskId, false);
-			
-			// toast.success("Task skipped successfully", {
-			// 	closeButton: true,
-			// });
+
 			toast.success("Task stopped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
 			console.error("Failed to skip task:", error);
-			toast.error("Failed to skip task", {
-				closeButton: true,
-			});
+
+			// If backend call failed, still try to stop local task as fallback
+			// but with different messaging to user
+			try {
+				chatStore.stopTask(taskId);
+				chatStore.setIsPending(taskId, false);
+				toast.warning("Task stopped locally, but backend notification failed. Backend task may continue running.", {
+					closeButton: true,
+					duration: 5000,
+				});
+			} catch (localError) {
+				console.error("Failed to stop task locally:", localError);
+				toast.error("Failed to stop task completely. Please refresh the page.", {
+					closeButton: true,
+				});
+			}
 		} finally {
 			setIsPauseResumeLoading(false);
 		}
