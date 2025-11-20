@@ -14,9 +14,7 @@ const Update = () => {
     if (!message) return false;
     const lower = message.toLowerCase();
     return (
-      lower.includes("cannot parse releases feed") ||
-      lower.includes("unable to find latest version on github") ||
-      lower.includes("httperror: 503")
+      lower.includes("unable to find latest version on github")
     );
   };
 
