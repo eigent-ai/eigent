@@ -33,6 +33,7 @@ interface Project {
 interface ProjectStore {
 	activeProjectId: string | null;
 	projects: { [projectId: string]: Project };
+	refetchCounter: number;
 	
 	// Project management
 	/**
@@ -71,6 +72,7 @@ interface ProjectStore {
 	getProjectById: (projectId: string) => Project | null;
 	getProjectTotalTokens: (projectId: string) => number;
 	isEmptyProject: (project: Project) => boolean;
+	refetchProjects: () => void;
 
 	//History ID
 	setHistoryId: (projectId: string, historyId: string) => void;
@@ -133,6 +135,7 @@ const isEmptyProject = (project: Project): boolean => {
 const projectStore = create<ProjectStore>()((set, get) => ({
 	activeProjectId: null,
 	projects: {},
+	refetchCounter: 0,
 	
 	createProject: (name: string, description?: string, projectId?: string, type?:ProjectType, historyId?: string) => {
 		const { projects } = get();
@@ -825,6 +828,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
 	isEmptyProject: (project: Project) => {
 		return isEmptyProject(project);
+	},
+
+	refetchProjects: () => {
+		set((state) => ({ refetchCounter: state.refetchCounter + 1 }));
 	}
 }));
 
