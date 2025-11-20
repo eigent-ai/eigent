@@ -72,6 +72,7 @@
 	"agent-tool": "Agent-Tool",
 	"agent-tool-tooltip": "Wählen Sie Tools und Integrationen für Ihren Agenten",
 	"resume": "Fortsetzen",
+	"stop-task": "Aufgabe stoppen",
 	"next-task": "Nächste Aufgabe",
 	"task-splitting": "Aufgabenteilung",
 	"task-running": "Aufgabe wird ausgeführt",
