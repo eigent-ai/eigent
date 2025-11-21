@@ -33,12 +33,16 @@ interface AuthState {
 	// shared token
 	share_token?: string | null;
 	
+	// local proxy value recorded at login
+	localProxyValue?: string | null;
+	
 	// worker list data
 	workerListData: { [key: string]: Agent[] };
 	
-	// auth related methods
-	setAuth: (auth: AuthInfo) => void;
-	logout: () => void;
+			// auth related methods
+			setAuth: (auth: AuthInfo) => void;
+			logout: () => void;
+			setLocalProxyValue: (value: string | null) => void;
 	
 	// set related methods
 	setAppearance: (appearance: string) => void;
@@ -69,6 +73,7 @@ const authStore = create<AuthState>()(
 			cloud_model_type: 'gpt-4.1',
 			initState: 'permissions',
 			share_token: null,
+			localProxyValue: null,
 			workerListData: {},
 			
 			// auth related methods
@@ -80,7 +85,8 @@ const authStore = create<AuthState>()(
 					token: null, 
 					username: null, 
 					email: null, 
-					user_id: null 
+					user_id: null,
+					localProxyValue: null
 				}),
 			
 			// set related methods
@@ -98,6 +104,8 @@ const authStore = create<AuthState>()(
 			setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 			
 			setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
+			
+			setLocalProxyValue: (value) => set({ localProxyValue: value }),
 			
 			// worker related methods
 			setWorkerList: (workerList) => {
@@ -152,6 +160,7 @@ const authStore = create<AuthState>()(
 				cloud_model_type: state.cloud_model_type,
 				initState: state.initState,
 				isFirstLaunch: state.isFirstLaunch,
+				localProxyValue: state.localProxyValue,
 				workerListData: state.workerListData,
 			}),
 		}
