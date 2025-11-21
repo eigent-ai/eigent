@@ -199,6 +199,7 @@ class ActionRemoveTaskData(BaseModel):
 class ActionSkipTaskData(BaseModel):
     action: Literal[Action.skip_task] = Action.skip_task
     project_id: str
+    task_id: str
 
 
 ActionData = (

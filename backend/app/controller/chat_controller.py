@@ -279,16 +279,16 @@ def remove_task(project_id: str, task_id: str):
         raise UserException(code.error, f"Failed to remove task: {str(e)}")
 
 
-@router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
+@router.post("/chat/{project_id}/skip-task/{task_id}", name="skip task in workforce")
 @traceroot.trace()
-def skip_task(project_id: str):
+def skip_task(project_id: str, task_id: str):
     """Skip a task in the workforce"""
-    chat_logger.info(f"Skipping task in workforce for project_id: {project_id}")
+    chat_logger.info(f"Skipping task in workforce for project_id: {project_id}, task_id: {task_id}")
     task_lock = get_task_lock(project_id)
 
     try:
         # Queue the skip task action
-        skip_task_action = ActionSkipTaskData(project_id=project_id)
+        skip_task_action = ActionSkipTaskData(project_id=project_id, task_id=task_id)
         asyncio.run(task_lock.put_queue(skip_task_action))
 
         chat_logger.info(f"Task skip request queued for project_id: {project_id}")
