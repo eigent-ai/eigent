@@ -23,6 +23,7 @@ interface TaskItemProps {
   isOngoing?: boolean;
   onPause?: () => void;
   onResume?: () => void;
+  showActions?: boolean;
 }
 
 export default function TaskItem({
@@ -34,7 +35,8 @@ export default function TaskItem({
   isLast,
   isOngoing = false,
   onPause,
-  onResume
+  onResume,
+  showActions = true
 }: TaskItemProps) {
   const { t } = useTranslation();
   
@@ -86,7 +88,9 @@ export default function TaskItem({
       `}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Pin className="w-4 h-4 text-icon-primary" />
+        <TooltipSimple content={t("layout.tasks")}>
+          <Pin className="w-4 h-4 text-icon-primary" />
+        </TooltipSimple>
         
         <div className="flex flex-col gap-1 flex-1 min-w-0">
           <TooltipSimple
@@ -146,23 +150,40 @@ export default function TaskItem({
           </Tag>
         )}
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              size="icon"
-              onClick={(e) => e.stopPropagation()}
-              variant="ghost"
-              className="rounded-full"
+        {showActions && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                size="icon"
+                onClick={(e) => e.stopPropagation()}
+                variant="ghost"
+                className="rounded-full"
+              >
+                <Ellipsis />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent 
+              align="end"
+              className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border"
             >
-              <Ellipsis />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent 
-            align="end"
-            className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border"
-          >
-            <div className="space-y-1">
-              {!isOngoing && (
+              <div className="space-y-1">
+                {!isOngoing && (
+                  <PopoverClose asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onShare();
+                      }}
+                    >
+                      <Share size={14} />
+                      {t("layout.share")}
+                    </Button>
+                  </PopoverClose>
+                )}
+
                 <PopoverClose asChild>
                   <Button
                     variant="ghost"
@@ -170,35 +191,20 @@ export default function TaskItem({
                     className="w-full justify-start"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onShare();
+                      onDelete();
                     }}
                   >
-                    <Share size={14} />
-                    {t("layout.share")}
+                    <Trash2
+                      size={14}
+                      className="text-icon-primary group-hover:text-icon-cuation"
+                    />
+                    {t("layout.delete")}
                   </Button>
                 </PopoverClose>
-              )}
-
-              <PopoverClose asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                >
-                  <Trash2
-                    size={14}
-                    className="text-icon-primary group-hover:text-icon-cuation"
-                  />
-                  {t("layout.delete")}
-                </Button>
-              </PopoverClose>
-            </div>
-          </PopoverContent>
-        </Popover>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
     </div>
   );

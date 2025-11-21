@@ -1,6 +1,8 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
 
+
+
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
     const [channel, listener] = args
@@ -59,12 +61,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   executeCommand: (command: string,email:string) => ipcRenderer.invoke('execute-command', command,email),
   // file operations
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+  readFileAsDataUrl: (path : string) => ipcRenderer.invoke("read-file-dataurl", path),
   deleteFolder: (email: string) => ipcRenderer.invoke('delete-folder', email),
   getMcpConfigPath: (email: string) => ipcRenderer.invoke('get-mcp-config-path', email),
   // install dependencies related API
   checkAndInstallDepsOnUpdate: () => ipcRenderer.invoke('install-dependencies'),
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
   getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
+  restartBackend: () => ipcRenderer.invoke('restart-backend'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);
   },
@@ -74,13 +78,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onInstallDependenciesComplete: (callback: (data: { success: boolean, code?: number, error?: string }) => void) => {
     ipcRenderer.on('install-dependencies-complete', (event, data) => callback(data));
   },
-  onUpdateNotification: (callback: (data: { 
-    type: string; 
-    currentVersion: string; 
-    previousVersion: string; 
-    reason: string; 
+  onUpdateNotification: (callback: (data: {
+    type: string;
+    currentVersion: string;
+    previousVersion: string;
+    reason: string;
   }) => void) => {
     ipcRenderer.on('update-notification', (event, data) => callback(data));
+  },
+  onBackendReady: (callback: (data: { success: boolean, port?: number, error?: string }) => void) => {
+    ipcRenderer.on('backend-ready', (event, data) => callback(data));
   },
   startBrowserImport: (args?: any) => ipcRenderer.invoke('start-browser-import', args),
   // remove listeners

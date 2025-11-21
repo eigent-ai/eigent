@@ -104,7 +104,7 @@ const FileTree: React.FC<FileTreeProps> = ({
 							{!child.isFolder && <span className="w-4" />}
 
 							{child.isFolder ? (
-								<FolderIcon className="w-5 h-5 mr-2flex-shrink-0 text-yellow-600" />
+								<FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
 							) : child.icon ? (
 								<child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
 							) : (
@@ -183,7 +183,23 @@ export default function Folder({ data }: { data?: Agent }) {
 		setLoading(true);
 		console.log("file", JSON.parse(JSON.stringify(file)));
 
-		// all files call open-file interface, the backend handles download and parsing
+		// For PDF files, use data URL instead of custom protocol
+		if (file.type === "pdf") {
+			window.ipcRenderer
+				.invoke("read-file-dataurl", file.path)
+				.then((dataUrl: string) => {
+					setSelectedFile({ ...file, content: dataUrl });
+					chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+					setLoading(false);
+				})
+				.catch((error) => {
+					console.error("read-file-dataurl error:", error);
+					setLoading(false);
+				});
+			return;
+		}
+
+		// all other files call open-file interface, the backend handles download and parsing
 		window.ipcRenderer
 			.invoke("open-file", file.type, file.path, isShowSourceCode)
 			.then((res) => {
@@ -539,10 +555,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									</div>
 								) : selectedFile.type === "pdf" ? (
 									<iframe
-										src={
-											"localfile://" +
-											encodeURIComponent(selectedFile.content as string)
-										}
+										src={selectedFile.content as string}
 										className="w-full h-full border-0"
 										title={selectedFile.name}
 									/>
@@ -575,18 +588,7 @@ export default function Folder({ data }: { data?: Agent }) {
 										"svg",
 								  ].includes(selectedFile.type.toLowerCase()) ? (
 									<div className="flex items-center justify-center h-full">
-										<img
-											src={
-												selectedFile.isRemote
-													? "localfile://" +
-													  encodeURIComponent(selectedFile.content as string)
-													: `localfile://${encodeURIComponent(
-															selectedFile.path
-													  )}`
-											}
-											alt={selectedFile.name}
-											className="max-w-full max-h-full object-contain"
-										/>
+										<ImageLoader selectedFile={selectedFile} />
 									</div>
 								) : (
 									<pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
@@ -616,4 +618,27 @@ export default function Folder({ data }: { data?: Agent }) {
 			</div>
 		</div>
 	);
+}
+
+function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
+    const [src, setSrc] = useState("");
+
+    useEffect(() => {
+        const filePath = selectedFile.isRemote
+            ? (selectedFile.content as string)
+            : selectedFile.path;
+
+        window.electronAPI
+            .readFileAsDataUrl(filePath)
+            .then(setSrc)
+            .catch((err: any) => console.error("Image load error:", err));
+    }, [selectedFile]);
+
+    return (
+        <img
+            src={src}
+            alt={selectedFile.name}
+            className="max-w-full max-h-full object-contain"
+        />
+    );
 }

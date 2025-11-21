@@ -13,7 +13,7 @@ import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import githubIcon from "@/assets/github.svg";
 import { TooltipSimple } from "../ui/tooltip";
-import IntegrationList from "./IntegrationList";
+import IntegrationList from "@/components/IntegrationList";
 import { getProxyBaseURL } from "@/lib";
 import { capitalizeFirstLetter } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
@@ -45,6 +45,7 @@ const ToolSelect = forwardRef<
 	// state management - remove internal selected state, use parent passed initialSelectedTools
 	const [keyword, setKeyword] = useState<string>("");
 	const [mcpList, setMcpList] = useState<McpItem[]>([]);
+	const [allMcpList, setAllMcpList] = useState<McpItem[]>([]);
 	const [customMcpList, setCustomMcpList] = useState<any[]>([]);
 	const [isOpen, setIsOpen] = useState(false);
 	const [installed, setInstalled] = useState<{ [id: number]: boolean }>({});
@@ -55,7 +56,7 @@ const ToolSelect = forwardRef<
 	const [integrations, setIntegrations] = useState<any[]>([]);
 	const fetchIntegrationsData = (keyword?: string) => {
 		proxyFetchGet("/api/config/info").then((res) => {
-			if (res && typeof res === "object") {
+			if (res && typeof res === "object" && !res.error) {
 				const baseURL = getProxyBaseURL();
 
 				const list = Object.entries(res)
@@ -186,7 +187,13 @@ const ToolSelect = forwardRef<
 						};
 					});
 				setIntegrations(list);
+			} else {
+				console.error("Failed to fetch integrations:", res);
+				setIntegrations([]);
 			}
+		}).catch((error) => {
+			console.error("Error fetching integrations:", error);
+			setIntegrations([]);
 		});
 	};
 
@@ -216,7 +223,16 @@ const ToolSelect = forwardRef<
 			page: 1,
 			size: 100,
 		}).then((res) => {
-			setMcpList(res.items);
+			// Add defensive check for API errors
+			if (res && res.items && Array.isArray(res.items)) {
+				setAllMcpList(res.items);
+			} else {
+				console.error("Failed to fetch MCPs:", res);
+				setAllMcpList([]);
+			}
+		}).catch((error) => {
+			console.error("Error fetching MCPs:", error);
+			setAllMcpList([]);
 		});
 	};
 
@@ -227,7 +243,7 @@ const ToolSelect = forwardRef<
 			if (Array.isArray(res)) {
 				ids = res.map((item: any) => item.mcp_id);
 				dataList = res;
-			} else if (Array.isArray(res.items)) {
+			} else if (res && Array.isArray(res.items)) {
 				ids = res.items.map((item: any) => item.mcp_id);
 				dataList = res.items;
 			}
@@ -235,8 +251,24 @@ const ToolSelect = forwardRef<
 
 			const customMcpList = dataList.filter((item: any) => item.mcp_id === 0);
 			setCustomMcpList(customMcpList);
+		}).catch((error) => {
+			console.error("Error fetching installed MCPs:", error);
+			setInstalledIds([]);
+			setCustomMcpList([]);
 		});
 	};
+
+	// only surface installed MCPs from the market list
+    useEffect(() => {
+		// Add defensive check and fix logic: should filter when installedIds has items
+		if (Array.isArray(allMcpList) && installedIds.length > 0) {
+			const filtered = allMcpList.filter((item) => installedIds.includes(item.id));
+			setMcpList(filtered);
+		} else if (Array.isArray(allMcpList)) {
+			// If no installed IDs, show empty list instead of all
+			setMcpList([]);
+		}
+	}, [allMcpList, installedIds]);
 
 	// public save env/config logic
 	const saveEnvAndConfig = async (
@@ -720,11 +752,13 @@ const ToolSelect = forwardRef<
 			{isOpen && (
 				<div className="absolute top-full left-0 right-0 z-50 mt-1 bg-dropdown-bg rounded-lg border border-solid border-input-border-default overflow-y-auto">
 					<div className="max-h-[192px] overflow-y-auto">
-						<IntegrationList
-							onShowEnvConfig={onShowEnvConfig}
-							addOption={addOption}
-							items={integrations}
-						/>
+					<IntegrationList
+						variant="select"
+						onShowEnvConfig={onShowEnvConfig}
+						addOption={addOption}
+						items={integrations}
+						translationNamespace="layout"
+					/>
 						{mcpList
 							.filter(
 								(opt) =>

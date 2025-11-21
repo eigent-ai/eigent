@@ -72,6 +72,7 @@
 	"agent-tool": "エージェントツール",
 	"agent-tool-tooltip": "エージェントのツールと統合を選択",
 	"resume": "再開",
+	"stop-task": "タスクを停止",
 	"next-task": "次のタスク",
 	"task-splitting": "タスク分割",
 	"task-running": "タスク実行中",

@@ -11,6 +11,9 @@ from app.service.task import Action, ActionTerminalData, Agents, get_task_lock
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("terminal_toolkit")
 
 
 @auto_listen_toolkit(BaseTerminalToolkit)
@@ -37,11 +40,22 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             self.agent_name = agent_name
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
+
+        logger.info("Initializing TerminalToolkit", extra={
+            "api_task_id": api_task_id,
+            "agent_name": self.agent_name,
+            "working_directory": working_directory,
+            "safe_mode": safe_mode,
+            "use_docker_backend": use_docker_backend
+        })
+
         if TerminalToolkit._thread_pool is None:
             TerminalToolkit._thread_pool = ThreadPoolExecutor(
                 max_workers=1,
                 thread_name_prefix="terminal_toolkit"
             )
+            logger.debug("Created terminal toolkit thread pool")
+
         super().__init__(
             timeout=timeout,
             working_directory=working_directory,
@@ -62,6 +76,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         """
         # Convert ANSI escape sequences to plain text
         super()._write_to_log(log_file, content)
+        logger.debug("Terminal output logged", extra={
+            "api_task_id": self.api_task_id,
+            "log_file": log_file,
+            "content_length": len(content)
+        })
         self._update_terminal_output(_to_plain(content))
 
     def _update_terminal_output(self, output: str):

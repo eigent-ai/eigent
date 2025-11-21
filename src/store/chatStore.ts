@@ -1,4 +1,4 @@
-import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete } from '@/api/http';
+import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete, waitForBackendReady } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { createStore } from 'zustand';
 import { generateUniqueId, uploadLog } from "@/lib";
@@ -51,6 +51,7 @@ export interface ChatStore {
 	tasks: { [key: string]: Task };
 	create: (id?: string, type?: any) => string;
 	removeTask: (taskId: string) => void;
+	stopTask: (taskId: string) => void;
 	setStatus: (taskId: string, status: 'running' | 'finished' | 'pending' | 'pause') => void;
 	setActiveTaskId: (taskId: string) => void;
 	replay: (taskId: string, question: string, time: number) => Promise<void>;
@@ -103,8 +104,19 @@ export interface ChatStore {
 	setNextTaskId: (taskId: string | null) => void;
 }
 
+export type VanillaChatStore = {
+	getState: () => ChatStore;
+	subscribe: (listener: (state: ChatStore) => void) => () => void;
+};
 
 
+
+
+// Track auto-confirm timers per task to avoid reusing stale timers across rounds
+const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+// Track active SSE connections for proper cleanup
+const activeSSEControllers: Record<string, AbortController> = {};
 
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
@@ -171,6 +183,26 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			);
 		},
 		removeTask(taskId: string) {
+			// Clean up any pending auto-confirm timers when removing a task
+			try {
+				if (autoConfirmTimers[taskId]) {
+					clearTimeout(autoConfirmTimers[taskId]);
+					delete autoConfirmTimers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error clearing auto-confirm timer in removeTask:', error);
+			}
+
+			// Clean up SSE connection if it exists
+			try {
+				if (activeSSEControllers[taskId]) {
+					activeSSEControllers[taskId].abort();
+					delete activeSSEControllers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error aborting SSE connection in removeTask:', error);
+			}
+
 			set((state) => {
 				delete state.tasks[taskId];
 				return ({
@@ -180,7 +212,77 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			})
 		},
+		stopTask(taskId: string) {
+			// Abort the SSE connection for this task
+			try {
+				if (activeSSEControllers[taskId]) {
+					console.log(`Stopping SSE connection for task ${taskId}`);
+					activeSSEControllers[taskId].abort();
+					delete activeSSEControllers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error aborting SSE connection in stopTask:', error);
+				// Even if abort fails, still clean up the reference
+				try {
+					delete activeSSEControllers[taskId];
+				} catch (cleanupError) {
+					console.warn('Error cleaning up SSE controller reference:', cleanupError);
+				}
+			}
+
+			// Clean up any pending auto-confirm timers
+			try {
+				if (autoConfirmTimers[taskId]) {
+					clearTimeout(autoConfirmTimers[taskId]);
+					delete autoConfirmTimers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error clearing auto-confirm timer in stopTask:', error);
+			}
+
+			// Update task status to finished - ensure this happens even if cleanup fails
+			try {
+				set((state) => {
+					// Check if task exists before updating
+					if (!state.tasks[taskId]) {
+						console.warn(`Task ${taskId} not found when trying to stop it`);
+						return state;
+					}
+
+					return {
+						...state,
+						tasks: {
+							...state.tasks,
+							[taskId]: {
+								...state.tasks[taskId],
+								status: 'finished'
+							},
+						},
+					};
+				});
+			} catch (error) {
+				console.error('Error updating task status to finished in stopTask:', error);
+			}
+		},
 		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
+			// ✅ Wait for backend to be ready before starting task (except for replay/share)
+			if (!type || type === 'normal') {
+				console.log('[startTask] Checking if backend is ready...');
+				const isBackendReady = await waitForBackendReady(15000, 500); // Wait up to 15 seconds
+
+				if (!isBackendReady) {
+					console.error('[startTask] Backend is not ready, cannot start task');
+					const { addMessages } = get();
+					addMessages(taskId, {
+						id: generateUniqueId(),
+						role: 'agent',
+						content: '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+					});
+					return;
+				}
+				console.log('[startTask] Backend is ready, proceeding with task...');
+			}
+
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
 			const workerList = useWorkerList();
 			const { getLastUserMessage, setDelayTime, setType } = get();
@@ -240,13 +342,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// replay or share request
 			if (type) {
-				await proxyFetchGet(`/api/chat/snapshots`, {
+				const res = await proxyFetchGet(`/api/chat/snapshots`, {
 					api_task_id: taskId
-				}).then(res => {
-					if (res) {
-						snapshots = [...new Map(res.map((item: any) => [item.camel_task_id, item])).values()];
-					}
-				})
+				});
+				if (res) {
+					snapshots = [...new Map(res.map((item: any) => [item.camel_task_id, item])).values()];
+				}
 			}
 
 
@@ -386,26 +487,42 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			// during active message processing
 			let lockedChatStore = targetChatStore;
 			let lockedTaskId = newTaskId;
-			
+
+			// Create AbortController for this task's SSE connection
+			// First check if there's already an active SSE connection for this task
+			if (activeSSEControllers[newTaskId]) {
+				console.warn(`Task ${newTaskId} already has an active SSE connection, aborting old one`);
+				try {
+					activeSSEControllers[newTaskId].abort();
+				} catch (error) {
+					console.warn('Error aborting existing SSE connection:', error);
+				}
+				delete activeSSEControllers[newTaskId];
+			}
+
+			const abortController = new AbortController();
+			activeSSEControllers[newTaskId] = abortController;
+
 			// Getter functions that use the locked references instead of dynamic ones
 			const getCurrentChatStore = () => {
 				return lockedChatStore.getState();
 			};
-			
+
 			// Get the locked task ID - this won't change during the SSE session
 			const getCurrentTaskId = () => {
 				return lockedTaskId;
 			};
-			
+
 			// Function to update locked references (only for special cases like replay)
 			const updateLockedReferences = (newChatStore: VanillaChatStore, newTaskId: string) => {
 				lockedChatStore = newChatStore;
 				lockedTaskId = newTaskId;
 			};
-			
+
 			fetchEventSource(api, {
 				method: !type ? "POST" : "GET",
 				openWhenHidden: true,
+				signal: abortController.signal, // Add abort signal for proper cleanup
 				headers: { "Content-Type": "application/json", "Authorization": type == 'replay' ? `Bearer ${token}` : undefined as unknown as string },
 				body: !type ? JSON.stringify({
 					project_id: project_id,
@@ -421,8 +538,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					language: systemLanguage,
 					allow_local_system: true,
 					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
-					bun_mirror: systemLanguage === 'zh-cn' ? 'https://registry.npmmirror.com' : '',
-					uvx_mirror: systemLanguage === 'zh-cn' ? 'http://mirrors.aliyun.com/pypi/simple/' : '',
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
@@ -431,7 +546,53 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}) : undefined,
 
 				async onmessage(event: any) {
-					const agentMessages: AgentMessage = JSON.parse(event.data);
+					let agentMessages: AgentMessage;
+
+					try {
+						agentMessages = JSON.parse(event.data);
+					} catch (error) {
+						console.error('Failed to parse SSE message:', error);
+						console.error('Raw event.data:', event.data);
+
+						// Create error task to notify user
+						const currentStore = getCurrentChatStore();
+						const newTaskId = currentStore.create();
+						currentStore.setActiveTaskId(newTaskId);
+						currentStore.setHasWaitComfirm(newTaskId, true);
+						currentStore.addMessages(newTaskId, {
+							id: generateUniqueId(),
+							role: "agent",
+							content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
+						});
+						return;
+					}
+
+					// Check if this task has been stopped before processing any message
+					// But allow messages that switch to new tasks (like confirmed events)
+					const lockedTaskId = getCurrentTaskId();
+					const currentTask = getCurrentChatStore().tasks[lockedTaskId];
+
+					// Only ignore messages if:
+					// 1. The task doesn't exist, OR
+					// 2. The task is finished AND it's not a task-switching event
+					const isTaskSwitchingEvent = agentMessages.step === "confirmed" ||
+													agentMessages.step === "new_task_state" ||
+													agentMessages.step === "end";
+
+					// More robust check - only ignore if task doesn't exist OR
+					// task is finished and it's not a legitimate flow-control event
+					if (!currentTask) {
+						console.log(`Task ${lockedTaskId} not found, ignoring SSE message for step: ${agentMessages.step}`);
+						return;
+					}
+
+					if (currentTask.status === 'finished' && !isTaskSwitchingEvent) {
+						// Only ignore non-essential messages for finished tasks
+						// Allow flow control messages through even for finished tasks
+						console.log(`Ignoring SSE message for finished task ${lockedTaskId}, step: ${agentMessages.step}`);
+						return;
+					}
+
 					console.log("agentMessages", agentMessages);
 					const agentNameMap = {
 						developer_agent: "Developer Agent",
@@ -487,7 +648,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 												role: "user",
 												content: question || messageContent as string,
 												//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches, messageAttaches) || []],
+												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || []), ...(messageAttaches || [])],
 										});
 										console.log("[NEW CHATSTORE] Created for ", project_id);
 
@@ -557,7 +718,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setTaskTime,
 						setElapsed,
 						setActiveTaskId,
-						setIsContextExceeded} = getCurrentChatStore()
+						setIsContextExceeded,
+						setIsTaskEdit} = getCurrentChatStore()
 
 					currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
@@ -570,26 +732,50 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							setStatus(currentTaskId, 'pending');
 						}
 
+						// Each splitting round starts in a clean editing state
+						setIsTaskEdit(currentTaskId, false);
+
 						const messages = [...tasks[currentTaskId].messages]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
 						// For multi-turn scenarios, always create a new to_sub_tasks message
 						// even if one already exists from a previous task
 						if (toSubTaskIndex === -1 || isMultiTurnAfterCompletion) {
-							// 30 seconds auto confirm
-							setTimeout(() => {
-								const currentStore = getCurrentChatStore();
-								const currentId = getCurrentTaskId();
-								const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
-								const message = tasks[currentId].messages.findLast((item) => item.step === "to_sub_tasks");
-								const isConfirm = message?.isConfirm || false;
-								const isTakeControl =
-									tasks[currentId].isTakeControl;
-
-								if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
-									handleConfirmTask(project_id, currentId, type);
+							// Clear any pending auto-confirm timer from previous rounds
+							try {
+								if (autoConfirmTimers[currentTaskId]) {
+									clearTimeout(autoConfirmTimers[currentTaskId]);
+									delete autoConfirmTimers[currentTaskId];
 								}
-								setIsTaskEdit(currentId, false);
-							}, 30000);
+							} catch (error) {
+								console.warn('Error clearing auto-confirm timer:', error);
+							}
+
+							// 30 seconds auto confirm
+							try {
+								autoConfirmTimers[currentTaskId] = setTimeout(() => {
+									try {
+										const currentStore = getCurrentChatStore();
+										const currentId = getCurrentTaskId();
+										const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
+										const message = tasks[currentId].messages.findLast((item) => item.step === "to_sub_tasks");
+										const isConfirm = message?.isConfirm || false;
+										const isTakeControl =
+											tasks[currentId].isTakeControl;
+
+										if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
+											handleConfirmTask(project_id, currentId, type);
+										}
+										setIsTaskEdit(currentId, false);
+										delete autoConfirmTimers[currentId];
+									} catch (error) {
+										console.error('Error in auto-confirm timeout handler:', error);
+										// Clean up the timer reference even if there's an error
+										delete autoConfirmTimers[currentTaskId];
+									}
+								}, 30000);
+							} catch (error) {
+								console.error('Error setting auto-confirm timer:', error);
+							}
 
 							const newNoticeMessage: Message = {
 								id: generateUniqueId(),
@@ -887,7 +1073,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (target) {
 							const { agentIndex, taskIndex } = target
 							const agentName = taskAssigning.find((agent: Agent) => agent.agent_id === assignee_id)?.name
-							taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
+							if(agentName!==taskAssigning[agentIndex].name){
+								taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
+							}
 						}
 
 						// Clear logs from the assignee agent that are related to this task
@@ -989,7 +1177,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
 						}
 						if (agentMessages.data.method_name === 'browser_navigate' && agentMessages.data.message?.startsWith('{"url"')) {
-							addWebViewUrl(currentTaskId, JSON.parse(agentMessages.data.message)?.url as string, agentMessages.data.process_task_id as string)
+							try {
+								const urlData = JSON.parse(agentMessages.data.message);
+								if (urlData?.url) {
+									addWebViewUrl(currentTaskId, urlData.url as string, agentMessages.data.process_task_id as string)
+								}
+							} catch (error) {
+								console.error('Failed to parse browser_navigate URL:', error);
+								console.error('Raw message:', agentMessages.data.message);
+							}
 						}
 						let taskRunning = [...tasks[currentTaskId].taskRunning]
 
@@ -1042,7 +1238,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										return toolkit.toolkitName === agentMessages.data.toolkit_name && toolkit.toolkitMethods === agentMessages.data.method_name && toolkit.toolkitStatus === 'running'
 									})
 
-									if (task.toolkits && index !== undefined && index != -1) {
+									if (task.toolkits && index !== -1 && index !== undefined) {
 										task.toolkits[index].message += '\n' + message.data.message as string
 										task.toolkits[index].toolkitStatus = "completed"
 									}
@@ -1147,24 +1343,86 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 
 					if (agentMessages.step === "error") {
-						console.error('Model error:', agentMessages.data)
-						const errorMessage = agentMessages.data.message || 'An error occurred while processing your request';
+						try {
+							console.error('Model error:', agentMessages.data);
 
-						// Create a new task to avoid "Task already exists" error
-						// and completely reset the interface
-						const newTaskId = create();
-						// Prevent showing task skeleton after an error occurs
-						setActiveTaskId(newTaskId);
-						setHasWaitComfirm(newTaskId, true);
+							// Validate that agentMessages.data exists before processing
+							if (agentMessages.data === undefined || agentMessages.data === null) {
+								throw new Error('Invalid error message format: missing data');
+							}
 
-						// Add error message to the new clean task
-						addMessages(newTaskId, {
-							id: generateUniqueId(),
-							role: "agent",
-							content: `❌ **Error**: ${errorMessage}`,
-						});
-						uploadLog(currentTaskId, type)
-						return
+							// Safely extract error message with fallback chain
+							const errorMessage = agentMessages.data?.message ||
+							                     (typeof agentMessages.data === 'string' ? agentMessages.data : null) ||
+							                     'An error occurred while processing your request';
+
+							// Mark all incomplete tasks as failed
+							let taskRunning = [...tasks[currentTaskId].taskRunning];
+							let taskAssigning = [...tasks[currentTaskId].taskAssigning];
+
+							// Update taskRunning - mark non-completed tasks as failed
+							taskRunning = taskRunning.map((task) => {
+								if (task.status !== "completed" && task.status !== "failed") {
+									task.status = "failed";
+								}
+								return task;
+							});
+
+							// Update taskAssigning - mark non-completed tasks as failed
+							taskAssigning = taskAssigning.map((agent) => {
+								agent.tasks = agent.tasks.map((task) => {
+									if (task.status !== "completed" && task.status !== "failed") {
+										task.status = "failed";
+									}
+									return task;
+								});
+								return agent;
+							});
+
+							// Apply the updates
+							setTaskRunning(currentTaskId, taskRunning);
+							setTaskAssigning(currentTaskId, taskAssigning);
+
+							// Complete the current task with error status
+							setStatus(currentTaskId, 'finished');
+							setIsPending(currentTaskId, false);
+
+							// Add error message to the current task
+							addMessages(currentTaskId, {
+								id: generateUniqueId(),
+								role: "agent",
+								content: `❌ **Error**: ${errorMessage}`,
+							});
+							uploadLog(currentTaskId, type)
+
+							// Stop the workforce
+							try {
+								await fetchDelete(`/chat/${project_id}`);
+							} catch (error) {
+								console.log("Task may not exist on backend:", error);
+							}
+						} catch (error) {
+							console.error('Failed to handle model error:', error);
+							console.error('Original agentMessages:', agentMessages);
+
+							// Fallback: try to create error task with minimal operations
+							try {
+								const { create, setActiveTaskId, setHasWaitComfirm, addMessages } = get();
+								const fallbackTaskId = create();
+								setActiveTaskId(fallbackTaskId);
+								setHasWaitComfirm(fallbackTaskId, true);
+								addMessages(fallbackTaskId, {
+									id: generateUniqueId(),
+									role: "agent",
+									content: `**Critical Error**: An unexpected error occurred while handling a model error. Please refresh the application or contact support.`,
+								});
+							} catch (fallbackError) {
+								console.error('Failed to create fallback error task:', fallbackError);
+								// Last resort: just log the error without creating UI elements
+								console.error('Original error that could not be displayed:', agentMessages);
+							}
+						}
+						return;
 					}
 
 					// Handle add_task events for project store
@@ -1464,13 +1722,46 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				},
 
 				onerror(err) {
-					console.error("Error:", err);
+					console.error("[fetchEventSource] Error:", err);
+
+					// Allow automatic retry for connection errors
+					// TypeError usually means network/connection issues
+					if (err instanceof TypeError ||
+						err?.message?.includes('Failed to fetch') ||
+						err?.message?.includes('ECONNREFUSED') ||
+						err?.message?.includes('NetworkError')) {
+						console.warn('[fetchEventSource] Connection error detected, will retry automatically...');
+						// Don't throw - let fetchEventSource auto-retry
+						return;
+					}
+
+					// For other errors, log and throw to stop retrying
+					console.error('[fetchEventSource] Fatal error, stopping connection:', err);
+
+					// Clean up AbortController on error with robust error handling
+					try {
+						if (activeSSEControllers[newTaskId]) {
+							delete activeSSEControllers[newTaskId];
+							console.log(`Cleaned up SSE controller for task ${newTaskId} after error`);
+						}
+					} catch (cleanupError) {
+						console.warn('Error cleaning up AbortController on SSE error:', cleanupError);
+					}
 					throw err;
 				},
 
 				// Server closes connection
 				onclose() {
-					console.log("server closed");
+					console.log("SSE connection closed");
+					// Clean up AbortController when connection closes with robust error handling
+					try {
+						if (activeSSEControllers[newTaskId]) {
+							delete activeSSEControllers[newTaskId];
+							console.log(`Cleaned up SSE controller for task ${newTaskId} after connection close`);
+						}
+					} catch (cleanupError) {
+						console.warn('Error cleaning up AbortController on SSE close:', cleanupError);
+					}
 				},
 			});
 
@@ -1674,7 +1965,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					...state.tasks,
 					[taskId]: {
 						...state.tasks[taskId],
-						actuveAskList: [...askList],
+						askList: [...askList],
 					},
 				},
 			}))
@@ -1704,8 +1995,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}))
 		},
 		handleConfirmTask: async (project_id:string, taskId: string, type?: string) => {
-			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning } = get();
+			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning, setIsTaskEdit } = get();
 			if (!taskId) return;
+
+			// Stop any pending auto-confirm timers for this task (manual confirmation)
+			try {
+				if (autoConfirmTimers[taskId]) {
+					clearTimeout(autoConfirmTimers[taskId]);
+					delete autoConfirmTimers[taskId];
+				}
+			} catch (error) {
+				console.warn('Error clearing auto-confirm timer in handleConfirmTask:', error);
+			}
 
 			// record task start time
 			setTaskTime(taskId, Date.now());
@@ -1733,6 +2034,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				}
 				setMessages(taskId, messages)
 			}
+
+			// Reset editing state after manual confirmation so next round can auto-start
+			setIsTaskEdit(taskId, false);
 		},
 		addTaskInfo() {
 			const { tasks, activeTaskId, setTaskInfo } = get()
@@ -2060,6 +2364,38 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const { create } = get()
 			console.log('clearTasks')
 
+			// Clean up all pending auto-confirm timers when clearing tasks
+			try {
+				Object.keys(autoConfirmTimers).forEach(taskId => {
+					try {
+						if (autoConfirmTimers[taskId]) {
+							clearTimeout(autoConfirmTimers[taskId]);
+							delete autoConfirmTimers[taskId];
+						}
+					} catch (error) {
+						console.warn(`Error clearing timer for task ${taskId}:`, error);
+					}
+				});
+			} catch (error) {
+				console.error('Error during timer cleanup in clearTasks:', error);
+			}
+
+			// Clean up all active SSE connections
+			try {
+				Object.keys(activeSSEControllers).forEach(taskId => {
+					try {
+						if (activeSSEControllers[taskId]) {
+							activeSSEControllers[taskId].abort();
+							delete activeSSEControllers[taskId];
+						}
+					} catch (error) {
+						console.warn(`Error aborting SSE connection for task ${taskId}:`, error);
+					}
+				});
+			} catch (error) {
+				console.error('Error during SSE cleanup in clearTasks:', error);
+			}
+
 			window.ipcRenderer.invoke('restart-backend')
 				.then((res) => {
 					console.log('restart-backend', res)
@@ -2121,7 +2457,5 @@ const filterMessage = (message: AgentMessage) => {
 
 
 export const useChatStore = chatStore;
-
-export type VanillaChatStore = ReturnType<typeof chatStore>;
 
 export const getToolStore = () => chatStore().getState();

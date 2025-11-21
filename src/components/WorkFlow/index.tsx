@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
 	PanOnScrollMode,
 	ReactFlow,
@@ -49,6 +49,8 @@ export default function Workflow({
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
 	const [nodes, setNodes, onNodesChange] = useNodesState<CustomNode>([]);
 	const workerList = useWorkerList();
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const [containerWidth, setContainerWidth] = useState(0);
 	const baseWorker: Agent[] = [
 		{
 			tasks: [],
@@ -279,34 +281,47 @@ export default function Workflow({
 	}, [taskAssigning, isEditMode, workerList]);
 
 	const { setViewport, getViewport } = useReactFlow();
+	const [isAnimating, setIsAnimating] = useState(false);
+	const totalNodesWidth = useMemo(() => {
+		if (!nodes.length) return 0;
+
+		const widths = nodes.map((node) => (node.data.isExpanded ? 684 : 342));
+		const spacing = Math.max(nodes.length - 1, 0) * 20;
+
+		return widths.reduce((sum, width) => sum + width, 0) + spacing + 16; // padding buffer
+	}, [nodes]);
+
+	const minViewportX = useMemo(() => {
+		if (!containerWidth) return 0;
+		const contentWidth = Math.max(totalNodesWidth, containerWidth);
+		return Math.min(0, containerWidth - contentWidth);
+	}, [containerWidth, totalNodesWidth]);
+
+	const clampViewportX = useCallback(
+		(x: number) => Math.min(0, Math.max(minViewportX, x)),
+		[minViewportX]
+	);
+
 	useEffect(() => {
-		const container: HTMLElement | null =
-			document.querySelector(".react-flow__pane");
-		if (!container) return;
-
-		const onWheel = (e: WheelEvent) => {
-			if (e.deltaY !== 0 && !isEditMode) {
-				e.preventDefault();
-
-				const { x, y, zoom } = getViewport();
-				setViewport({ x: x - e.deltaY, y, zoom }, { duration: 0 });
+		const updateWidth = () => {
+			if (containerRef.current) {
+				setContainerWidth(containerRef.current.clientWidth);
 			}
 		};
 
-		container.addEventListener("wheel", onWheel, { passive: false });
+		updateWidth();
+		window.addEventListener("resize", updateWidth);
 
 		return () => {
-			container.removeEventListener("wheel", onWheel);
+			window.removeEventListener("resize", updateWidth);
 		};
-	}, [getViewport, setViewport, isEditMode]);
+	}, []);
 
-	const [isAnimating, setIsAnimating] = useState(false);
 	const moveViewport = (dx: number) => {
 		if (isAnimating) return;
 		const viewport = getViewport();
 		setIsAnimating(true);
-		// Prevent scrolling past x=0 (too far right) when moving left
-		const newX = dx > 0 ? Math.min(0, viewport.x + dx) : viewport.x + dx;
+		const newX = clampViewportX(viewport.x + dx);
 		setViewport(
 			{ x: newX, y: viewport.y, zoom: viewport.zoom },
 			{
@@ -321,6 +336,28 @@ export default function Workflow({
 	const handleShare = async (taskId: string) => {
 		share(taskId);
 	};
+
+	useEffect(() => {
+		const container: HTMLElement | null =
+			document.querySelector(".react-flow__pane");
+		if (!container) return;
+
+		const onWheel = (e: WheelEvent) => {
+			if (e.deltaY !== 0 && !isEditMode) {
+				e.preventDefault();
+
+				const { x, y, zoom } = getViewport();
+				const nextX = clampViewportX(x - e.deltaY);
+				setViewport({ x: nextX, y, zoom }, { duration: 0 });
+			}
+		};
+
+		container.addEventListener("wheel", onWheel, { passive: false });
+
+		return () => {
+			container.removeEventListener("wheel", onWheel);
+		};
+	}, [getViewport, setViewport, isEditMode, clampViewportX]);
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
@@ -383,7 +420,7 @@ export default function Workflow({
 					</div>
 				</div>
 			</div>
-			<div className="h-full w-full">
+			<div className="h-full w-full" ref={containerRef}>
 				<ReactFlow
 					nodes={nodes}
 					edges={[]}
@@ -398,6 +435,11 @@ export default function Workflow({
 					nodesDraggable={isEditMode}
 					panOnScrollMode={PanOnScrollMode.Horizontal}
 					onMove={(event, viewport) => {
+						const clampedX = clampViewportX(viewport.x);
+						if (clampedX !== viewport.x) {
+							setViewport({ ...viewport, x: clampedX });
+							return;
+						}
 						if (isEditMode) {
 							setLastViewport(viewport);
 						}
