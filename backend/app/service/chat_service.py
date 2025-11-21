@@ -268,23 +268,34 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
 
-    logger.info("Starting step_solve", extra={"project_id": options.project_id, "task_id": options.task_id})
+    logger.info("=" * 80)
+    logger.info("🚀 [LIFECYCLE] step_solve STARTED", extra={"project_id": options.project_id, "task_id": options.task_id})
+    logger.info("=" * 80)
     logger.debug("Step solve options", extra={"task_id": options.task_id, "model_platform": options.model_platform})
 
     while True:
         loop_iteration += 1
+        logger.debug(f"[LIFECYCLE] step_solve loop iteration #{loop_iteration}", extra={"project_id": options.project_id, "task_id": options.task_id})
 
         if await request.is_disconnected():
-            logger.warning(f"Client disconnected for project {options.project_id}")
+            logger.warning("=" * 80)
+            logger.warning(f"⚠️  [LIFECYCLE] CLIENT DISCONNECTED for project {options.project_id}")
+            logger.warning("=" * 80)
             if workforce is not None:
+                logger.info(f"[LIFECYCLE] Stopping workforce due to client disconnect, workforce._running={workforce._running}")
                 if workforce._running:
                     workforce.stop()
                 workforce.stop_gracefully()
+                logger.info(f"[LIFECYCLE] Workforce stopped after client disconnect")
+            else:
+                logger.info(f"[LIFECYCLE] Workforce is None, no need to stop")
             task_lock.status = Status.done
             try:
                 await delete_task_lock(task_lock.id)
+                logger.info(f"[LIFECYCLE] Task lock deleted after client disconnect")
             except Exception as e:
                 logger.error(f"Error deleting task lock on disconnect: {e}")
+            logger.info(f"[LIFECYCLE] Breaking out of step_solve loop due to client disconnect")
             break
         try:
             item = await task_lock.get_queue()
@@ -295,16 +306,23 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
         try:
             if item.action == Action.improve or start_event_loop:
+                logger.info("=" * 80)
+                logger.info(f"💬 [NEW-QUESTION] Action.improve received or start_event_loop", extra={"project_id": options.project_id, "start_event_loop": start_event_loop})
+                logger.info(f"[NEW-QUESTION] Current workforce state: workforce={'None' if workforce is None else f'exists(id={id(workforce)})'}")
+                logger.info(f"[NEW-QUESTION] Current camel_task state: camel_task={'None' if camel_task is None else f'exists(id={camel_task.id})'}")
+                logger.info("=" * 80)
                 # from viztracer import VizTracer
 
                 # tracer = VizTracer()
                 # tracer.start()
                 if start_event_loop is True:
                     question = options.question
+                    logger.info(f"[NEW-QUESTION] Initial question from options.question: '{question[:100]}...'")
                     start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data
+                    logger.info(f"[NEW-QUESTION] Follow-up question from ActionImproveData: '{question[:100]}...'")
 
                 is_exceeded, total_length = check_conversation_history_length(task_lock)
                 if is_exceeded:
@@ -321,10 +339,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if len(options.attaches) > 0:
                     # Questions with attachments always need workforce
                     is_complex_task = True
+                    logger.info(f"[NEW-QUESTION] Has attachments, treating as complex task")
                 else:
+                    logger.info(f"[NEW-QUESTION] Calling question_confirm to determine complexity")
                     is_complex_task = await question_confirm(question_agent, question, task_lock)
+                    logger.info(f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}")
 
                 if not is_complex_task:
+                    logger.info(f"[NEW-QUESTION] ✅ Simple question, providing direct answer without workforce")
                     simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {question}\n\nProvide a direct, helpful answer to this simple question."
 
                     try:
@@ -359,18 +381,23 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         except Exception as e:
                             logger.error(f"Error cleaning up folder: {e}")
                 else:
+                    logger.info(f"[NEW-QUESTION] 🔧 Complex task, creating workforce and decomposing")
                     # Update the sync_step with new task_id
                     if hasattr(item, 'new_task_id') and item.new_task_id:
                         set_current_task_id(options.project_id, item.new_task_id)
                         # Reset summary generation flag for new tasks to ensure proper summaries
                         task_lock.summary_generated = False
-                        logger.info("Reset summary_generated flag for new task", extra={"project_id": options.project_id, "new_task_id": item.new_task_id})
+                        logger.info("[NEW-QUESTION] Reset summary_generated flag for new task", extra={"project_id": options.project_id, "new_task_id": item.new_task_id})
 
+                    logger.info(f"[NEW-QUESTION] Sending 'confirmed' SSE to frontend")
                     yield sse_json("confirmed", {"question": question})
-                    
+
+                    logger.info(f"[NEW-QUESTION] Building context for coordinator")
                     context_for_coordinator = build_context_for_workforce(task_lock, options)
 
+                    logger.info(f"[NEW-QUESTION] 🏭 Creating NEW workforce instance (previous={'None' if workforce is None else f'id={id(workforce)}'})")
                     (workforce, mcp) = await construct_workforce(options)
+                    logger.info(f"[NEW-QUESTION] ✅ NEW Workforce instance created, id={id(workforce)}")
                     for new_agent in options.new_agents:
                         workforce.add_single_agent_worker(
                             format_agent_description(new_agent), await new_agent_model(new_agent, options)
@@ -378,23 +405,27 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_lock.status = Status.confirmed
 
                     clean_task_content = question + options.summary_prompt
+                    logger.info(f"[NEW-QUESTION] Creating camel_task with id={options.task_id}")
                     camel_task = Task(content=clean_task_content, id=options.task_id)
                     if len(options.attaches) > 0:
                         camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
+                    logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
                     sub_tasks = await asyncio.to_thread(
                         workforce.eigent_make_sub_tasks,
                         camel_task,
                         context_for_coordinator
                     )
+                    logger.info(f"[NEW-QUESTION] ✅ Task decomposed into {len(sub_tasks)} subtasks")
 
+                    logger.info(f"[NEW-QUESTION] Generating task summary")
                     summary_task_agent = task_summary_agent(options)
                     try:
                         summary_task_content = await asyncio.wait_for(
                             summary_task(summary_task_agent, camel_task), timeout=10
                         )
                         task_lock.summary_generated = True
-                        logger.info("Generated summary for task", extra={"project_id": options.project_id})
+                        logger.info("[NEW-QUESTION] ✅ Summary generated successfully", extra={"project_id": options.project_id})
                     except asyncio.TimeoutError:
                         logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
                         # Fallback to a minimal summary to unblock UI
@@ -408,7 +439,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         summary_task_content = f"{fallback_name}|{fallback_summary}"
                         task_lock.summary_generated = True
 
+                    logger.info(f"[NEW-QUESTION] 📤 Sending to_sub_tasks SSE to frontend (task card)")
+                    logger.info(f"[NEW-QUESTION] to_sub_tasks data: task_id={camel_task.id}, summary={summary_task_content[:50]}..., subtasks_count={len(camel_task.subtasks)}")
                     yield to_sub_tasks(camel_task, summary_task_content)
+                    logger.info(f"[NEW-QUESTION] ✅ to_sub_tasks SSE sent")
                     # tracer.stop()
                     # tracer.save("trace.json")
 
@@ -464,11 +498,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
+                logger.info("=" * 80)
+                logger.info(f"🛑 [LIFECYCLE] SKIP_TASK action received", extra={"project_id": options.project_id, "item_project_id": item.project_id})
+                logger.info("=" * 80)
                 if workforce is not None and item.project_id == options.project_id:
+                    logger.info(f"[LIFECYCLE] Workforce exists (id={id(workforce)}), state={workforce._state.name}, _running={workforce._running}")
                     if workforce._state.name == 'PAUSED':
+                        logger.info(f"[LIFECYCLE] Workforce is PAUSED, resuming before skip")
                         # Resume paused workforce to skip the task
                         workforce.resume()
+                    logger.info(f"[LIFECYCLE] Calling workforce.skip_gracefully()")
                     workforce.skip_gracefully()
+                    logger.info(f"[LIFECYCLE] workforce.skip_gracefully() called successfully")
+                else:
+                    logger.warning(f"[LIFECYCLE] Cannot skip: workforce is None or project_id mismatch (workforce={'not None' if workforce else 'None'}, expected_project_id={options.project_id}, item_project_id={item.project_id})")
             elif item.action == Action.start:
                 # Check conversation history length before starting task
                 is_exceeded, total_length = check_conversation_history_length(task_lock)
@@ -504,11 +547,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
+                logger.info("=" * 80)
+                logger.info(f"🔄 [LIFECYCLE] NEW_TASK_STATE action received (Multi-turn)", extra={"project_id": options.project_id})
+                logger.info("=" * 80)
 
                 # Log new task state details
                 new_task_id = item.data.get('task_id', 'unknown')
                 new_task_state = item.data.get('state', 'unknown')
                 new_task_result = item.data.get('result', '')
+                logger.info(f"[LIFECYCLE] New task details: task_id={new_task_id}, state={new_task_state}")
 
                 if camel_task is None:
                     logger.error(f"NEW_TASK_STATE action received but camel_task is None for project {options.project_id}, task {new_task_id}")
@@ -548,13 +595,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # Then handle multi-turn processing
                 if workforce is not None and new_task_content:
+                    logger.info(f"[LIFECYCLE] Multi-turn: workforce exists (id={id(workforce)}), pausing for question confirmation")
                     task_lock.status = Status.confirming
                     workforce.pause()
+                    logger.info(f"[LIFECYCLE] Multi-turn: workforce paused, state={workforce._state.name}")
 
                     try:
+                        logger.info(f"[LIFECYCLE] Multi-turn: calling question_confirm for new task")
                         is_multi_turn_complex = await question_confirm(question_agent, new_task_content, task_lock)
+                        logger.info(f"[LIFECYCLE] Multi-turn: question_confirm result: is_complex={is_multi_turn_complex}")
 
                         if not is_multi_turn_complex:
+                            logger.info(f"[LIFECYCLE] Multi-turn: task is simple, providing direct answer without workforce")
                             simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {new_task_content}\n\nProvide a direct, helpful answer to this simple question."
 
                             try:
@@ -569,22 +621,28 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 logger.error(f"Error generating simple answer in multi-turn: {e}")
                                 yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": new_task_content})
 
+                            logger.info(f"[LIFECYCLE] Multi-turn: simple answer provided, resuming workforce")
                             workforce.resume()
+                            logger.info(f"[LIFECYCLE] Multi-turn: workforce resumed, continuing to next iteration")
                             continue  # This continues the main while loop, waiting for next action
 
                         # Update the sync_step with new task_id before sending new task sse events
+                        logger.info(f"[LIFECYCLE] Multi-turn: task is complex, setting new task_id={task_id}")
                         set_current_task_id(options.project_id, task_id)
-                
+
                         yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
 
+                        logger.info(f"[LIFECYCLE] Multi-turn: building context for workforce")
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
+                        logger.info(f"[LIFECYCLE] Multi-turn: calling workforce.handle_decompose_append_task for new task decomposition")
                         new_sub_tasks = await workforce.handle_decompose_append_task(
                             camel_task,
                             reset=False,
                             coordinator_context=context_for_multi_turn
                         )
+                        logger.info(f"[LIFECYCLE] Multi-turn: task decomposed into {len(new_sub_tasks)} subtasks")
 
                         # Generate proper LLM summary for multi-turn tasks instead of hardcoded fallback
                         try:
@@ -682,11 +740,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                     workforce.resume()
             elif item.action == Action.end:
-                logger.info(f"Processing END action for project {options.project_id}, task {options.task_id}, camel_task exists: {camel_task is not None}, current status: {task_lock.status}")
-                
+                logger.info("=" * 80)
+                logger.info(f"🏁 [LIFECYCLE] END action received for project {options.project_id}, task {options.task_id}")
+                logger.info(f"[LIFECYCLE] camel_task exists: {camel_task is not None}, current status: {task_lock.status}, workforce exists: {workforce is not None}")
+                if workforce is not None:
+                    logger.info(f"[LIFECYCLE] Workforce state at END: _state={workforce._state.name}, _running={workforce._running}")
+                logger.info("=" * 80)
+
                 # Prevent duplicate end processing
                 if task_lock.status == Status.done:
-                    logger.warning(f"END action received but task already marked as done for project {options.project_id}, task {options.task_id}. Ignoring duplicate END action.")
+                    logger.warning(f"⚠️  [LIFECYCLE] END action received but task already marked as done. Ignoring duplicate END action.")
                     continue
                 
                 if camel_task is None:
@@ -718,17 +781,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("end", final_result)
 
                 if workforce is not None:
+                    logger.info(f"[LIFECYCLE] 🛑 Calling workforce.stop_gracefully() for project {options.project_id}, workforce id={id(workforce)}")
                     workforce.stop_gracefully()
-                    logger.info(f"Workforce stopped gracefully for project {options.project_id}")
+                    logger.info(f"[LIFECYCLE] ✅ Workforce stopped gracefully for project {options.project_id}")
                     workforce = None
+                    logger.info(f"[LIFECYCLE] Workforce set to None")
                 else:
-                    logger.warning(f"Workforce already None at end action for project {options.project_id}")
+                    logger.warning(f"[LIFECYCLE] ⚠️  Workforce already None at end action for project {options.project_id}")
 
                 camel_task = None
+                logger.info(f"[LIFECYCLE] camel_task set to None")
 
                 if question_agent is not None:
                     question_agent.reset()
-                    logger.info(f"Reset question_agent for project {options.project_id}")
+                    logger.info(f"[LIFECYCLE] question_agent reset for project {options.project_id}")
             elif item.action == Action.supplement:
 
                 # Check if this might be a misrouted second question
@@ -752,14 +818,23 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                 yield sse_json(Action.budget_not_enough, {"message": "budget not enouth"})
             elif item.action == Action.stop:
+                logger.info("=" * 80)
+                logger.info(f"⏹️  [LIFECYCLE] STOP action received for project {options.project_id}")
+                logger.info("=" * 80)
                 if workforce is not None:
+                    logger.info(f"[LIFECYCLE] Workforce exists (id={id(workforce)}), _running={workforce._running}, _state={workforce._state.name}")
                     if workforce._running:
+                        logger.info(f"[LIFECYCLE] Calling workforce.stop() because _running=True")
                         workforce.stop()
+                        logger.info(f"[LIFECYCLE] workforce.stop() completed")
+                    logger.info(f"[LIFECYCLE] Calling workforce.stop_gracefully()")
                     workforce.stop_gracefully()
-                    logger.info(f"Workforce stopped for project {options.project_id}")
+                    logger.info(f"[LIFECYCLE] ✅ Workforce stopped for project {options.project_id}")
                 else:
-                    logger.warning(f"Workforce is None at stop action for project {options.project_id}")
+                    logger.warning(f"[LIFECYCLE] ⚠️  Workforce is None at stop action for project {options.project_id}")
+                logger.info(f"[LIFECYCLE] Deleting task lock")
                 await delete_task_lock(task_lock.id)
+                logger.info(f"[LIFECYCLE] Task lock deleted, breaking out of loop")
                 break
             else:
                 logger.warning(f"Unknown action: {item.action}")
@@ -796,13 +871,17 @@ async def install_mcp(
 
 
 def to_sub_tasks(task: Task, summary_task_content: str):
-    return sse_json(
+    logger.info(f"[TO-SUB-TASKS] 📋 Creating to_sub_tasks SSE event")
+    logger.info(f"[TO-SUB-TASKS] task.id={task.id}, summary={summary_task_content[:50]}..., subtasks_count={len(task.subtasks)}")
+    result = sse_json(
         "to_sub_tasks",
         {
             "summary_task": summary_task_content,
             "sub_tasks": tree_sub_tasks(task.subtasks),
         },
     )
+    logger.info(f"[TO-SUB-TASKS] ✅ to_sub_tasks SSE event created")
+    return result
 
 
 def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):

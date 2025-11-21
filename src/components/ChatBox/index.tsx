@@ -417,43 +417,52 @@ export default function ChatBox(): JSX.Element {
 		setIsPauseResumeLoading(false);
 	};
 
-	// Skip to next task handler
+	// Stop task handler (真正停止workforce)
 	const handleSkip = async () => {
 		const taskId = chatStore.activeTaskId as string;
+		console.log("=" .repeat(80));
+		console.log("🛑 [STOP-BUTTON] handleSkip CALLED from frontend");
+		console.log(`[STOP-BUTTON] taskId: ${taskId}, projectId: ${projectStore.activeProjectId}`);
+		console.log("=" .repeat(80));
 		setIsPauseResumeLoading(true);
 
 		try {
-			// First, try to notify backend to skip the task
-			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
-				project_id: projectStore.activeProjectId
-			});
+			// Call DELETE /chat/{id} to trigger Action.stop and stop_gracefully
+			console.log(`[STOP-BUTTON] Sending DELETE request to /chat/${projectStore.activeProjectId}`);
+			await fetchDelete(`/chat/${projectStore.activeProjectId}`);
+			console.log("[STOP-BUTTON] ✅ Backend stop request successful");
 
 			// Only stop local task if backend call succeeds
+			console.log("[STOP-BUTTON] Calling chatStore.stopTask locally");
 			chatStore.stopTask(taskId);
 			chatStore.setIsPending(taskId, false);
+			console.log("[STOP-BUTTON] ✅ Local task stopped successfully");
 
 			toast.success("Task stopped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
-			console.error("Failed to skip task:", error);
+			console.error("[STOP-BUTTON] ❌ Failed to stop task:", error);
 
 			// If backend call failed, still try to stop local task as fallback
 			// but with different messaging to user
+			console.log("[STOP-BUTTON] Attempting to stop task locally as fallback");
 			try {
 				chatStore.stopTask(taskId);
 				chatStore.setIsPending(taskId, false);
+				console.log("[STOP-BUTTON] ⚠️  Local task stopped, but backend may still be running");
 				toast.warning("Task stopped locally, but backend notification failed. Backend task may continue running.", {
 					closeButton: true,
 					duration: 5000,
 				});
 			} catch (localError) {
-				console.error("Failed to stop task locally:", localError);
+				console.error("[STOP-BUTTON] ❌ Failed to stop task locally:", localError);
 				toast.error("Failed to stop task completely. Please refresh the page.", {
 					closeButton: true,
 				});
 			}
 		} finally {
+			console.log("[STOP-BUTTON] handleSkip completed");
 			setIsPauseResumeLoading(false);
 		}
 	};
