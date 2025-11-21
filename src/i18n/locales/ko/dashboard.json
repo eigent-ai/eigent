@@ -22,5 +22,6 @@
 	"search-agent": "검색 에이전트",
 	"document-agent": "문서 에이전트",
 	"multi-modal-agent": "멀티모달 에이전트",
-	"social-media-agent": "소셜미디어 에이전트"
+	"social-media-agent": "소셜미디어 에이전트",
+	"no-projects-found": "프로젝트를 찾을 수 없습니다."
 }

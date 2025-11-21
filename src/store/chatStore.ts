@@ -535,7 +535,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					api_key: apiModel.api_key,
 					api_url: apiModel.api_url,
 					extra_params: apiModel.extra_params,
-					installed_mcp: mcpLocal,
+					installed_mcp: { mcpServers: {} },
 					language: systemLanguage,
 					allow_local_system: true,
 					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
