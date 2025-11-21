@@ -45,6 +45,12 @@ export default function SettingModels() {
 		useAuthStore();
 	const navigate = useNavigate();
 	const { t } = useTranslation();
+	const getValidateMessage = (res: any) =>
+		res?.message ??
+		res?.detail?.message ??
+		res?.detail?.error?.message ??
+		res?.error?.message ??
+		t("setting.validate-failed");
 	const [items, setItems] = useState<Provider[]>(
 		INIT_PROVODERS.filter((p) => p.id !== "local")
 	);
@@ -226,7 +232,7 @@ const [errors, setErrors] = useState<
           setErrors((prev) => {
             const next = [...prev];
             if (!next[idx]) next[idx] = {} as any;
-            next[idx].apiKey = res?.message || t("setting.validate-failed");
+            next[idx].apiKey = getValidateMessage(res);
             return next;
           });
           return;
@@ -238,7 +244,7 @@ const [errors, setErrors] = useState<
         setErrors((prev) => {
           const next = [...prev];
           if (!next[idx]) next[idx] = {} as any;
-          next[idx].apiKey = t("setting.validate-failed");
+          next[idx].apiKey = getValidateMessage(e);
           return next;
         });
 		} finally {
@@ -369,7 +375,7 @@ const [errors, setErrors] = useState<
 				} else {
 					console.log("failed", res.message);
 					const toastId = toast(t("setting.validate-failed"), {
-						description: res.message,
+						description: getValidateMessage(res),
 						action: {
 							label: t("setting.close"),
 							onClick: () => {
@@ -383,6 +389,15 @@ const [errors, setErrors] = useState<
 				console.log(res);
 			} catch (e) {
 				console.log(e);
+				const toastId = toast(t("setting.validate-failed"), {
+					description: getValidateMessage(e),
+					action: {
+						label: t("setting.close"),
+						onClick: () => {
+							toast.dismiss(toastId);
+						},
+					},
+				});
 			} finally {
 				setLoading(null);
 			}
