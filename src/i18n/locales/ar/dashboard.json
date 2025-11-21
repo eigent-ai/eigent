@@ -22,5 +22,6 @@
 	"search-agent": "وكيل البحث",
 	"document-agent": "وكيل المستندات",
 	"multi-modal-agent": "وكيل متعدد الوسائط",
-	"social-media-agent": "وكيل وسائل التواصل الاجتماعي"
+	"social-media-agent": "وكيل وسائل التواصل الاجتماعي",
+	"no-projects-found": "لا توجد مشاريع"
 }
