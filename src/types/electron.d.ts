@@ -29,7 +29,7 @@ interface ElectronAPI {
   createWebView: (id: string, url: string) => Promise<any>;
   hideWebView: (id: string) => Promise<any>;
   changeViewSize: (id: string, size: any) => Promise<any>;
-  onWebviewNavigated: (callback: (id: string, url: string) => void) => void;
+  onWebviewNavigated: (callback: (id: string, url: string) => void) => () => void;
   showWebview: (id: string) => Promise<any>;
   getActiveWebview: () => Promise<any>;
   setSize: (size: any) => Promise<any>;

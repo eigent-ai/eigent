@@ -40,7 +40,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createWebView: (id: string, url: string) => ipcRenderer.invoke('create-webview', id, url),
   hideWebView: (id: string) => ipcRenderer.invoke('hide-webview', id),
   changeViewSize: (id: string, size: Size) => ipcRenderer.invoke('change-view-size', id, size),
-  onWebviewNavigated: (callback: (id: string, url: string) => void) => ipcRenderer.on('webview-navigated', (event, id, url) => callback(id, url)),
+  onWebviewNavigated: (callback: (id: string, url: string) => void) => {
+    const listener = (event: any, id: string, url: string) => callback(id, url);
+    ipcRenderer.on('webview-navigated', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.off('webview-navigated', listener);
+  },
   showWebview: (id: string) => ipcRenderer.invoke('show-webview', id),
   getActiveWebview: () => ipcRenderer.invoke('get-active-webview'),
   setSize: (size: Size) => ipcRenderer.invoke('set-size', size),
