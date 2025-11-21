@@ -251,6 +251,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         task_lock.question_agent = None
     if not hasattr(task_lock, 'summary_generated'):
         task_lock.summary_generated = False
+    if not hasattr(task_lock, 'last_yielded_task_id'):
+        task_lock.last_yielded_task_id = None
 
     # Create or reuse persistent question_agent
     if task_lock.question_agent is None:
@@ -408,7 +410,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         summary_task_content = f"{fallback_name}|{fallback_summary}"
                         task_lock.summary_generated = True
 
+                    logger.info(f"[YIELD_TRACK] About to yield to_sub_tasks in Action.improve, task_id={options.task_id}, last_yielded={task_lock.last_yielded_task_id}")
                     yield to_sub_tasks(camel_task, summary_task_content)
+                    # Record that we've yielded subtasks for this task
+                    task_lock.last_yielded_task_id = options.task_id
+                    logger.info(f"[YIELD_TRACK] Completed yield to_sub_tasks in Action.improve, task_id={options.task_id}")
                     # tracer.stop()
                     # tracer.save("trace.json")
 
@@ -574,7 +580,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         # Update the sync_step with new task_id before sending new task sse events
                         set_current_task_id(options.project_id, task_id)
-                
+
                         yield sse_json("confirmed", {"question": new_task_content})
                         task_lock.status = Status.confirmed
 
@@ -610,8 +616,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             else:
                                 new_summary_content = f"Follow-up Task|{task_content_for_summary}"
 
-                        # Send the extracted events
-                        yield to_sub_tasks(camel_task, new_summary_content)
+                        # Prevent duplicate yield: only yield if this task_id hasn't been yielded yet
+                        if task_lock.last_yielded_task_id != task_id:
+                            logger.info(f"[YIELD_TRACK] About to yield to_sub_tasks in new_task_state, task_id={task_id}, last_yielded={task_lock.last_yielded_task_id}")
+                            yield to_sub_tasks(camel_task, new_summary_content)
+                            task_lock.last_yielded_task_id = task_id
+                            logger.info(f"[YIELD_TRACK] Completed yield to_sub_tasks in new_task_state, task_id={task_id}")
+                        else:
+                            logger.warning(f"[YIELD_TRACK] PREVENTED duplicate yield to_sub_tasks for task_id={task_id}, already yielded")
 
                         # Update the context with new task data
                         sub_tasks = new_sub_tasks

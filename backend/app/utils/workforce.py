@@ -363,6 +363,40 @@ class Workforce(BaseWorkforce):
         task = asyncio.create_task(task_lock.put_queue(ActionEndData()))
         task_lock.add_background_task(task)
 
+    async def _handle_skip_or_stop(self) -> None:
+        """
+        Override to prevent skip_gracefully from escalating to stop_gracefully
+        when the task queue is empty.
+
+        In the parent class (CAMEL's Workforce), when _pending_tasks is empty,
+        skip_gracefully is automatically converted to stop_gracefully, which
+        causes the workforce to shut down and lose state.
+
+        This override keeps the workforce in SKIP state even when there are
+        no pending tasks, allowing the workforce to remain active for multi-turn
+        conversations.
+        """
+        if self._state == WorkforceState.STOPPING:
+            # Only handle stop_gracefully - shut down the workforce
+            logger.info("Workforce stopping gracefully", extra={
+                "api_task_id": self.api_task_id
+            })
+            await self._graceful_shutdown()
+        elif self._state == WorkforceState.SKIPPING:
+            # Handle skip_gracefully - skip current task but keep workforce alive
+            # Unlike parent class, we do NOT escalate to stop when queue is empty
+            logger.info("Workforce skipping current task gracefully (keeping workforce alive)", extra={
+                "api_task_id": self.api_task_id,
+                "pending_tasks_empty": self._pending_tasks_empty
+            })
+            await self._graceful_shutdown()
+            # After graceful shutdown of current tasks, set state to IDLE instead of STOPPED
+            # This allows the workforce to accept new tasks
+            self._state = WorkforceState.IDLE
+            logger.info("Workforce skip completed, now IDLE and ready for new tasks", extra={
+                "api_task_id": self.api_task_id
+            })
+
     async def cleanup(self) -> None:
         r"""Clean up resources when workforce is done"""
         try:
