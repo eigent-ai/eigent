@@ -94,7 +94,7 @@ class Workforce(BaseWorkforce):
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
 
-        subtasks = asyncio.run(self.handle_decompose_append_task(task))
+        subtasks = asyncio.run(self.handle_decompose_append_task(task, reset=False, coordinator_context=coordinator_context))
         logger.info("Task decomposition completed", extra={
             "api_task_id": self.api_task_id,
             "task_id": task.id,
