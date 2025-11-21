@@ -5,14 +5,14 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 
 interface ProjectChatContainerProps {
   className?: string;
-  onPauseResume: () => void;
+  // onPauseResume: () => void;  // Commented out - temporary not needed
   onSkip: () => void;
   isPauseResumeLoading: boolean;
 }
 
-export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({ 
+export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = "",
-  onPauseResume,
+  // onPauseResume,  // Commented out - temporary not needed
   onSkip,
   isPauseResumeLoading
 }) => {
@@ -165,7 +165,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
               chatStore={chatStore}
               activeQueryId={activeQueryId}
               onQueryActive={setActiveQueryId}
-              onPauseResume={onPauseResume}
+              // onPauseResume={onPauseResume}  // Commented out - temporary not needed
               onSkip={onSkip}
               isPauseResumeLoading={isPauseResumeLoading}
             />

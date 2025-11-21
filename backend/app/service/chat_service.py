@@ -368,6 +368,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     # Update the sync_step with new task_id
                     if hasattr(item, 'new_task_id') and item.new_task_id:
                         set_current_task_id(options.project_id, item.new_task_id)
+                        # Reset summary generation flag for new tasks to ensure proper summaries
+                        task_lock.summary_generated = False
+                        logger.info("Reset summary_generated flag for new task", extra={"project_id": options.project_id, "new_task_id": item.new_task_id})
 
                     yield sse_json("confirmed", {"question": question})
                     
@@ -391,32 +394,25 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         context_for_coordinator
                     )
 
-                    if not task_lock.summary_generated:
-                        summary_task_agent = task_summary_agent(options)
-                        try:
-                            summary_task_content = await asyncio.wait_for(
-                                summary_task(summary_task_agent, camel_task), timeout=10
-                            )
-                            task_lock.summary_generated = True
-                            logger.info("Generated summary for first task", extra={"project_id": options.project_id})
-                        except asyncio.TimeoutError:
-                            logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
-                            # Fallback to a minimal summary to unblock UI
-                            fallback_name = "Task"
-                            content_preview = camel_task.content if hasattr(camel_task, "content") else ""
-                            if content_preview is None:
-                                content_preview = ""
-                            fallback_summary = (
-                                (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
-                            )
-                            summary_task_content = f"{fallback_name}|{fallback_summary}"
-                            task_lock.summary_generated = True
-                    else:
-                        if len(question) > 100:
-                            summary_task_content = f"Task|{question[:97]}..."
-                        else:
-                            summary_task_content = f"Task|{question}"
-                        logger.info("Skipped summary generation for subsequent task", extra={"project_id": options.project_id})
+                    summary_task_agent = task_summary_agent(options)
+                    try:
+                        summary_task_content = await asyncio.wait_for(
+                            summary_task(summary_task_agent, camel_task), timeout=10
+                        )
+                        task_lock.summary_generated = True
+                        logger.info("Generated summary for task", extra={"project_id": options.project_id})
+                    except asyncio.TimeoutError:
+                        logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
+                        # Fallback to a minimal summary to unblock UI
+                        fallback_name = "Task"
+                        content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                        if content_preview is None:
+                            content_preview = ""
+                        fallback_summary = (
+                            (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                        )
+                        summary_task_content = f"{fallback_name}|{fallback_summary}"
+                        task_lock.summary_generated = True
 
                     yield to_sub_tasks(camel_task, summary_task_content)
                     # tracer.stop()
@@ -520,8 +516,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 new_task_state = item.data.get('state', 'unknown')
                 new_task_result = item.data.get('result', '')
 
-
-                assert camel_task is not None
+                if camel_task is None:
+                    logger.error(f"NEW_TASK_STATE action received but camel_task is None for project {options.project_id}, task {new_task_id}")
+                    yield sse_json("error", {"message": "Cannot process new task state: current task not initialized."})
+                    continue
 
                 old_task_content: str = camel_task.content
                 old_task_result: str = await get_task_result_with_optional_summary(camel_task, options)
@@ -594,11 +592,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             coordinator_context=context_for_multi_turn
                         )
 
-                        task_content_for_summary = new_task_content
-                        if len(task_content_for_summary) > 100:
-                            new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
-                        else:
-                            new_summary_content = f"Follow-up Task|{task_content_for_summary}"
+                        # Generate proper LLM summary for multi-turn tasks instead of hardcoded fallback
+                        try:
+                            multi_turn_summary_agent = task_summary_agent(options)
+                            new_summary_content = await asyncio.wait_for(
+                                summary_task(multi_turn_summary_agent, camel_task), timeout=10
+                            )
+                            logger.info("Generated LLM summary for multi-turn task", extra={"project_id": options.project_id})
+                        except asyncio.TimeoutError:
+                            logger.warning("Multi-turn summary_task timeout", extra={"project_id": options.project_id, "task_id": task_id})
+                            # Fallback to descriptive but not generic summary
+                            task_content_for_summary = new_task_content
+                            if len(task_content_for_summary) > 100:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
+                            else:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary}"
+                        except Exception as e:
+                            logger.error(f"Error generating multi-turn task summary: {e}")
+                            # Fallback to descriptive but not generic summary
+                            task_content_for_summary = new_task_content
+                            if len(task_content_for_summary) > 100:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary[:97]}..."
+                            else:
+                                new_summary_content = f"Follow-up Task|{task_content_for_summary}"
 
                         # Send the extracted events
                         yield to_sub_tasks(camel_task, new_summary_content)
@@ -672,16 +688,32 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                     workforce.resume()
             elif item.action == Action.end:
-                assert camel_task is not None
+                logger.info(f"Processing END action for project {options.project_id}, task {options.task_id}, camel_task exists: {camel_task is not None}, current status: {task_lock.status}")
+                
+                # Prevent duplicate end processing
+                if task_lock.status == Status.done:
+                    logger.warning(f"END action received but task already marked as done for project {options.project_id}, task {options.task_id}. Ignoring duplicate END action.")
+                    continue
+                
+                if camel_task is None:
+                    logger.warning(f"END action received but camel_task is None for project {options.project_id}, task {options.task_id}. This may indicate multiple END actions or improper task lifecycle management.")
+                    # Use the item data as the final result if camel_task is None
+                    final_result: str = str(item.data) if item.data else "Task completed"
+                else:
+                    final_result: str = await get_task_result_with_optional_summary(camel_task, options)
+                
                 task_lock.status = Status.done
-                final_result: str = await get_task_result_with_optional_summary(camel_task, options)
 
                 task_lock.last_task_result = final_result
 
-                task_content: str = camel_task.content
-                if "=== CURRENT TASK ===" in task_content:
-                    task_content = task_content.split("=== CURRENT TASK ===")[-1].strip()
-
+                # Handle task content - use fallback if camel_task is None
+                if camel_task is not None:
+                    task_content: str = camel_task.content
+                    if "=== CURRENT TASK ===" in task_content:
+                        task_content = task_content.split("=== CURRENT TASK ===")[-1].strip()
+                else:
+                    task_content: str = f"Task {options.task_id}"
+                
                 task_lock.add_conversation('task_result', {
                     'task_content': task_content,
                     'task_result': final_result,
@@ -708,8 +740,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Check if this might be a misrouted second question
                 if camel_task is None:
                     logger.warning(f"SUPPLEMENT action received but camel_task is None for project {options.project_id}")
+                    yield sse_json("error", {"message": "Cannot supplement task: task not initialized. Please start a task first."})
+                    continue
                 else:
-                    assert camel_task is not None
                     task_lock.status = Status.processing
                     camel_task.add_subtask(
                         Task(

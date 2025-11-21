@@ -45,6 +45,12 @@ export default function SettingModels() {
 		useAuthStore();
 	const navigate = useNavigate();
 	const { t } = useTranslation();
+	const getValidateMessage = (res: any) =>
+		res?.message ??
+		res?.detail?.message ??
+		res?.detail?.error?.message ??
+		res?.error?.message ??
+		t("setting.validate-failed");
 	const [items, setItems] = useState<Provider[]>(
 		INIT_PROVODERS.filter((p) => p.id !== "local")
 	);
@@ -226,7 +232,7 @@ const [errors, setErrors] = useState<
           setErrors((prev) => {
             const next = [...prev];
             if (!next[idx]) next[idx] = {} as any;
-            next[idx].apiKey = res?.message || t("setting.validate-failed");
+            next[idx].apiKey = getValidateMessage(res);
             return next;
           });
           return;
@@ -238,9 +244,10 @@ const [errors, setErrors] = useState<
         setErrors((prev) => {
           const next = [...prev];
           if (!next[idx]) next[idx] = {} as any;
-          next[idx].apiKey = t("setting.validate-failed");
+          next[idx].apiKey = getValidateMessage(e);
           return next;
         });
+        return;
 		} finally {
 			setLoading(null);
 		}
@@ -369,7 +376,7 @@ const [errors, setErrors] = useState<
 				} else {
 					console.log("failed", res.message);
 					const toastId = toast(t("setting.validate-failed"), {
-						description: res.message,
+						description: getValidateMessage(res),
 						action: {
 							label: t("setting.close"),
 							onClick: () => {
@@ -383,6 +390,16 @@ const [errors, setErrors] = useState<
 				console.log(res);
 			} catch (e) {
 				console.log(e);
+				const toastId = toast(t("setting.validate-failed"), {
+					description: getValidateMessage(e),
+					action: {
+						label: t("setting.close"),
+						onClick: () => {
+							toast.dismiss(toastId);
+						},
+					},
+				});
+				return;
 			} finally {
 				setLoading(null);
 			}
@@ -709,8 +726,6 @@ const [errors, setErrors] = useState<
 											? t("setting.gpt-5")
 											: cloud_model_type === "gpt-5-mini"
 											? t("setting.gpt-5-mini")
-											: cloud_model_type === "gpt-5-nano"
-											? t("setting.gpt-5-nano")
 											: t("setting.gemini-2.5-pro")}
 									</span>
 								</TooltipContent>
@@ -732,7 +747,6 @@ const [errors, setErrors] = useState<
 									<SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
-									<SelectItem value="gpt-5-nano">GPT-5 nano</SelectItem>
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
 									</SelectItem>
@@ -806,7 +820,7 @@ const [errors, setErrors] = useState<
 											size="sm"
 											className="focus-none"
 											disabled={!canSwitch || loading === idx}
-											onClick={() => handleVerify(idx)}
+											onClick={() => handleSwitch(idx, false)}
 										>
 											Default
 											<Check />
@@ -816,7 +830,7 @@ const [errors, setErrors] = useState<
 											variant="ghost"
 											size="sm"
 											disabled={!canSwitch || loading === idx}
-											onClick={() => handleVerify(idx)}
+											onClick={() => handleSwitch(idx, true)}
 											className={canSwitch ? "!text-text-label" : ""}
 										>
 											{!canSwitch ? "Not Configured" : "Set as Default"}

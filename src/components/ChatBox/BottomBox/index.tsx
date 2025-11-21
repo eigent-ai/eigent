@@ -64,6 +64,7 @@ export default function BottomBox({
 	loading,
 }: BottomBoxProps) {
     const { t } = useTranslation();
+		const enableQueuedBox = false; //TODO: Enable queued box https://github.com/eigent-ai/eigent/issues/684
 
     // Background color reflects current state only
     let backgroundClass = "bg-input-bg-default";
@@ -73,7 +74,7 @@ export default function BottomBox({
 	return (
 		<div className="flex flex-col w-full relative z-50">
 			{/* QueuedBox overlay (should not affect BoxMain layout) */}
-			{queuedMessages.length > 0 && (
+			{enableQueuedBox && queuedMessages.length > 0 && (
 				<div className="px-2 z-50 pointer-events-auto">
 					<QueuedBox
 							queuedMessages={queuedMessages}

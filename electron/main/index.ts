@@ -103,6 +103,21 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== protocol privileges ====================
+// Register custom protocol privileges before app ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'localfile',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: false,
+      bypassCSP: false,
+    },
+  },
+]);
+
 // ==================== app config ====================
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
@@ -1316,10 +1331,45 @@ function registerIpcHandlers() {
   ipcMain.handle('install-dependencies', async () => {
     try {
       if(win === null) throw new Error("Window is null");
-      //Force installation even if versionFile exists
-      const isInstalled = await checkAndInstallDepsOnUpdate({win, forceInstall: true});
-      return { success: true, isInstalled };
+
+      // Prevent concurrent installations
+      if (isInstallationInProgress) {
+        log.info('[DEPS INSTALL] Installation already in progress, waiting...');
+        await installationLock;
+        return { success: true, message: 'Installation completed by another process' };
+      }
+
+      log.info('[DEPS INSTALL] Manual installation/retry triggered');
+
+      // Set lock
+      isInstallationInProgress = true;
+      installationLock = checkAndInstallDepsOnUpdate({win, forceInstall: true})
+        .finally(() => {
+          isInstallationInProgress = false;
+        });
+
+      const result = await installationLock;
+
+      if (!result.success) {
+        log.error('[DEPS INSTALL] Manual installation failed:', result.message);
+        // Note: Failure event already sent by installDependencies function
+        return { success: false, error: result.message };
+      }
+
+      log.info('[DEPS INSTALL] Manual installation succeeded');
+
+      // IMPORTANT: Send install-dependencies-complete success event
+      if (!win.isDestroyed()) {
+        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+        log.info('[DEPS INSTALL] Sent install-dependencies-complete event after retry');
+      }
+
+      // Start backend after retry with cleanup
+      await startBackendAfterInstall();
+
+      return { success: true, isInstalled: result.success };
     } catch (error) {
+      log.error('[DEPS INSTALL] Manual installation error:', error);
       return { success: false, error: (error as Error).message };
     }
   });
@@ -1371,6 +1421,22 @@ const ensureEigentDirectories = () => {
 
   log.info('.eigent directory structure ensured');
 };
+
+// ==================== Shared backend startup logic ====================
+// Starts backend after installation completes
+// Used by both initial startup and retry flows
+const startBackendAfterInstall = async () => {
+  log.info('[DEPS INSTALL] Starting backend...');
+
+  // Add a small delay to ensure any previous processes are fully cleaned up
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  await checkAndStartBackend();
+};
+
+// ==================== installation lock ====================
+let isInstallationInProgress = false;
+let installationLock: Promise<PromiseReturnType> = Promise.resolve({ message: "No installation needed", success: true });
 
 // ==================== window create ====================
 async function createWindow() {
@@ -1570,58 +1636,21 @@ async function createWindow() {
       });
     });
   } else {
-    // Installation is complete - ensure initState is set to 'done'
-    log.info('Installation already complete - ensuring initState is done');
-
-    win.webContents.once('dom-ready', () => {
-      if (!win || win.isDestroyed()) {
-        log.warn('Window destroyed before DOM ready - skipping localStorage update');
-        return;
-      }
-      log.info('DOM ready - checking and updating auth-storage to done state');
-      win.webContents.executeJavaScript(`
-        (function() {
-          try {
-            const authStorage = localStorage.getItem('auth-storage');
-            console.log('[ELECTRON DEBUG] Current auth-storage:', authStorage);
-            if (authStorage) {
-              const parsed = JSON.parse(authStorage);
-              console.log('[ELECTRON DEBUG] Parsed state:', parsed.state);
-              if (parsed.state && parsed.state.initState !== 'done') {
-                console.log('[ELECTRON] Updating initState from', parsed.state.initState, 'to done');
-                // Only update the initState field, preserve all other data
-                const updatedStorage = {
-                  ...parsed,
-                  state: {
-                    ...parsed.state,
-                    initState: 'done'
-                  }
-                };
-                localStorage.setItem('auth-storage', JSON.stringify(updatedStorage));
-                console.log('[ELECTRON] initState updated to done, reloading page...');
-                return true; // Signal that we need to reload
-              } else {
-                console.log('[ELECTRON DEBUG] initState already done or state missing');
-              }
-            } else {
-              console.log('[ELECTRON DEBUG] No auth-storage found in localStorage');
-            }
-            return false; // No reload needed
-          } catch (e) {
-            console.error('[ELECTRON] Failed to update initState:', e);
-            // Don't modify localStorage if there's an error to prevent data corruption
-            return false;
-          }
-        })();
-      `).then(needsReload => {
-        if (needsReload && win && !win.isDestroyed()) {
-          log.info('Reloading window after localStorage update');
-          win.reload();
-        }
-      }).catch(err => {
-        log.error('Failed to inject script:', err);
-      });
-    });
+    // REMOVED: Previously this block would directly set initState='done' when installation
+    // was already complete, bypassing the backend readiness check.
+    //
+    // This caused a critical bug where:
+    // 1. Frontend would show immediately (initState='done')
+    // 2. Backend would still be starting (10-15 seconds)
+    // 3. Users could interact before backend was ready, causing connection errors
+    //
+    // The proper flow is now handled by useInstallationSetup.ts with dual-check mechanism:
+    // 1. Installation complete event → installationCompleted.current = true
+    // 2. Backend ready event → backendReady.current = true
+    // 3. Only when BOTH are true → setInitState('done')
+    //
+    // This ensures frontend never shows before backend is ready.
+    log.info('Installation already complete - letting useInstallationSetup handle state transitions');
   }
 
   // Load content
@@ -1649,13 +1678,26 @@ async function createWindow() {
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
-    win.webContents.send('install-dependencies-complete', { success: false, code: 2, error: res.message });
+    // Note: install-dependencies-complete failure event is already sent by installDependencies function
+    // in install-deps.ts, so we don't send it again here to avoid duplicate events
     return;
   }
   log.info("[DEPS INSTALL] Dependency Success: ", res.message);
 
+  // IMPORTANT: Wait a bit to ensure React components have mounted and registered event listeners
+  // This prevents race condition where events are sent before listeners are ready
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  // IMPORTANT: Always send install-dependencies-complete event when installation check succeeds
+  // This includes both cases: actual installation completed AND installation was skipped (already installed)
+  // The frontend needs this event to properly transition from installation screen to main app
+  if (!win.isDestroyed()) {
+    win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
+    log.info("[DEPS INSTALL] Sent install-dependencies-complete event to frontend");
+  }
+
   // Start backend after dependencies are ready
-  await checkAndStartBackend();
+  await startBackendAfterInstall();
 }
 
 // ==================== window event listeners ====================
@@ -1713,48 +1755,74 @@ const setupExternalLinkHandling = () => {
 const checkAndStartBackend = async () => {
   log.info('Checking and starting backend service...');
   try {
+    // Clean up any existing backend process before starting new one
+    if (python_process && !python_process.killed) {
+      log.info('Cleaning up existing backend process before restart...');
+      await cleanupPythonProcess();
+      python_process = null;
+    }
+
     const isToolInstalled = await checkToolInstalled();
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
 
-      // Notify frontend installation success
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-      }
-
+      // Start backend and wait for health check to pass
       python_process = await startBackend((port) => {
         backendPort = port;
         log.info('Backend service started successfully', { port });
       });
 
-      python_process?.on('exit', (code, signal) => {
+      // Notify frontend that backend is ready
+      if (win && !win.isDestroyed()) {
+        log.info('Backend is ready, notifying frontend...');
+        win.webContents.send('backend-ready', {
+          success: true,
+          port: backendPort
+        });
+      }
 
+      python_process?.on('exit', (code, signal) => {
         log.info('Python process exited', { code, signal });
       });
     } else {
       log.warn('Tool not installed, cannot start backend service');
+      // Notify frontend that backend cannot start
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('backend-ready', {
+          success: false,
+          error: 'Tools not installed'
+        });
+      }
     }
   } catch (error) {
-    log.debug("Cannot Start Backend due to ", error)
+    log.error("Failed to start backend:", error);
+    // Notify frontend of backend startup failure
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('backend-ready', {
+        success: false,
+        error: String(error)
+      });
+    }
   }
 };
 
 // ==================== process cleanup ====================
 const cleanupPythonProcess = async () => {
   try {
-    // First attempt: Try to kill using PID
+    // First attempt: Try to kill using PID and all children
     if (python_process?.pid) {
       const pid = python_process.pid;
-      log.info('Cleaning up Python process', { pid });
+      log.info('Cleaning up Python process and all children', { pid });
 
       // Remove all listeners to prevent memory leaks
       python_process.removeAllListeners();
 
       await new Promise<void>((resolve) => {
+        // Kill the entire process tree (parent + all children)
         kill(pid, 'SIGTERM', (err) => {
           if (err) {
             log.error('Failed to clean up process tree with SIGTERM:', err);
-            // Try SIGKILL as fallback
+            // Try SIGKILL as fallback for entire tree
             kill(pid, 'SIGKILL', (killErr) => {
               if (killErr) {
                 log.error('Failed to force kill process tree:', killErr);
@@ -1762,8 +1830,14 @@ const cleanupPythonProcess = async () => {
               resolve();
             });
           } else {
-            log.info('Successfully cleaned up Python process tree');
-            resolve();
+            log.info('Successfully sent SIGTERM to process tree');
+            // Give processes 1 second to clean up, then SIGKILL
+            setTimeout(() => {
+              kill(pid, 'SIGKILL', () => {
+                log.info('Sent SIGKILL to ensure cleanup');
+                resolve();
+              });
+            }, 1000);
           }
         });
       });
@@ -1838,12 +1912,24 @@ app.whenReady().then(async () => {
   });
 
   // ==================== protocol handle ====================
-  protocol.handle('localfile', async (request) => {
+  // Register protocol handler for both default session and main window session
+  const protocolHandler = async (request: Request) => {
     const url = decodeURIComponent(request.url.replace('localfile://', ''));
     const filePath = path.normalize(url);
 
+    log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
+    log.info(`[PROTOCOL] Decoded path: ${filePath}`);
+
     try {
+      // Check if file exists
+      const fileExists = await fsp.access(filePath).then(() => true).catch(() => false);
+      if (!fileExists) {
+        log.error(`[PROTOCOL] File not found: ${filePath}`);
+        return new Response('File Not Found', { status: 404 });
+      }
+
       const data = await fsp.readFile(filePath);
+      log.info(`[PROTOCOL] Successfully read file, size: ${data.length} bytes`);
 
       // set correct Content-Type according to file extension
       const ext = path.extname(filePath).toLowerCase();
@@ -1857,17 +1943,46 @@ app.whenReady().then(async () => {
         case '.htm':
           contentType = 'text/html';
           break;
+        case '.png':
+          contentType = 'image/png';
+          break;
+        case '.jpg':
+        case '.jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case '.gif':
+          contentType = 'image/gif';
+          break;
+        case '.svg':
+          contentType = 'image/svg+xml';
+          break;
+        case '.webp':
+          contentType = 'image/webp';
+          break;
       }
+
+      log.info(`[PROTOCOL] Returning file with Content-Type: ${contentType}`);
 
       return new Response(new Uint8Array(data), {
         headers: {
           'Content-Type': contentType,
+          'Content-Length': data.length.toString(),
         },
       });
     } catch (err) {
-      return new Response('Not Found', { status: 404 });
+      log.error(`[PROTOCOL] Error reading file: ${err}`);
+      return new Response('Internal Server Error', { status: 500 });
     }
-  });
+  };
+
+  // Register on default session
+  protocol.handle('localfile', protocolHandler);
+
+  // Also register on main window session
+  const mainSession = session.fromPartition('persist:main_window');
+  mainSession.protocol.handle('localfile', protocolHandler);
+
+  log.info('[PROTOCOL] Registered localfile protocol on both default and main_window sessions');
 
   // ==================== initialize app ====================
   initializeApp();

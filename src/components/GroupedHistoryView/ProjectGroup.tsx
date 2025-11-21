@@ -178,7 +178,8 @@ export default function ProjectGroup({
                 
                 {/* Status badges */}
                 <div className="flex items-center gap-2">
-                  {isOngoing && (
+                  {/* TODO: Add ongoing badge after finish state management is implemented */}
+                  {/* {isOngoing && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -189,9 +190,9 @@ export default function ProjectGroup({
                         {t("layout.ongoing")}
                       </Tag>
                     </motion.div>
-                  )}
+                  )} */}
                   
-                  {!isOngoing && hasIssue && (
+                  {/* {!isOngoing && hasIssue && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -201,7 +202,7 @@ export default function ProjectGroup({
                         {t("layout.issue") || "Issue"}
                       </Tag>
                     </motion.div>
-                  )}
+                  )} */}
                   </div>
               </div>
               <TooltipSimple
@@ -334,28 +335,30 @@ export default function ProjectGroup({
             <span>{project.total_tokens ? project.total_tokens.toLocaleString() : "0"}</span>
           </Tag>
 
-          <Tag variant="default" size="sm" className="min-w-10">
-            <Pin />
-            <span>{project.task_count}</span>
-          </Tag>
+          <TooltipSimple content={t("layout.tasks")}>
+            <Tag variant="default" size="sm" className="min-w-10">
+              <Pin />
+              <span>{project.task_count}</span>
+            </Tag>
+          </TooltipSimple>
         </div>
 
         {/* End: Status and menu */}
         <div className="flex items-center gap-2 min-w-32 w-fit justify-end ml-4 border border-solid border-border-disabled border-r-0 border-y-0 pl-4">
           {/* Status tag */}
-          {isOngoing && (
+          {/* {isOngoing && (
             <Tag variant="info" size="sm">
               <Activity />
               {t("layout.ongoing")}
             </Tag>
-          )}
+          )} */}
           
-          {!isOngoing && hasIssue && (
+          {/* {!isOngoing && hasIssue && (
             <Tag variant="warning" size="sm">
               {t("layout.issue") || "Issue"}
             </Tag>
-          )}
-          
+          )} */}
+
           {/* Menu button */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

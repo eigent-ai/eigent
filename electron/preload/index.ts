@@ -40,7 +40,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createWebView: (id: string, url: string) => ipcRenderer.invoke('create-webview', id, url),
   hideWebView: (id: string) => ipcRenderer.invoke('hide-webview', id),
   changeViewSize: (id: string, size: Size) => ipcRenderer.invoke('change-view-size', id, size),
-  onWebviewNavigated: (callback: (id: string, url: string) => void) => ipcRenderer.on('webview-navigated', (event, id, url) => callback(id, url)),
+  onWebviewNavigated: (callback: (id: string, url: string) => void) => {
+    const channel = 'webview-navigated'
+    const listener = (event: any, id: string, url: string) => callback(id, url);
+    ipcRenderer.on(channel, listener);
+    // Return cleanup function to remove listener
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
   showWebview: (id: string) => ipcRenderer.invoke('show-webview', id),
   getActiveWebview: () => ipcRenderer.invoke('get-active-webview'),
   setSize: (size: Size) => ipcRenderer.invoke('set-size', size),
@@ -68,6 +76,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkAndInstallDepsOnUpdate: () => ipcRenderer.invoke('install-dependencies'),
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
   getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
+  getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
+  restartBackend: () => ipcRenderer.invoke('restart-backend'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);
   },
@@ -77,13 +87,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onInstallDependenciesComplete: (callback: (data: { success: boolean, code?: number, error?: string }) => void) => {
     ipcRenderer.on('install-dependencies-complete', (event, data) => callback(data));
   },
-  onUpdateNotification: (callback: (data: { 
-    type: string; 
-    currentVersion: string; 
-    previousVersion: string; 
-    reason: string; 
+  onUpdateNotification: (callback: (data: {
+    type: string;
+    currentVersion: string;
+    previousVersion: string;
+    reason: string;
   }) => void) => {
     ipcRenderer.on('update-notification', (event, data) => callback(data));
+  },
+  onBackendReady: (callback: (data: { success: boolean, port?: number, error?: string }) => void) => {
+    ipcRenderer.on('backend-ready', (event, data) => callback(data));
   },
   startBrowserImport: (args?: any) => ipcRenderer.invoke('start-browser-import', args),
   // remove listeners

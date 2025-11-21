@@ -283,30 +283,39 @@ class TaskLock:
         self.question_agent = None
         self.current_task_id = None
 
+        logger.info("Task lock initialized", extra={"task_id": id, "created_at": self.created_at.isoformat()})
+
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
+        logger.debug("Adding item to task queue", extra={"task_id": self.id, "action": data.action})
         await self.queue.put(data)
 
     async def get_queue(self):
         self.last_accessed = datetime.now()
+        logger.debug("Getting item from task queue", extra={"task_id": self.id})
         return await self.queue.get()
 
     async def put_human_input(self, agent: str, data: Any = None):
+        logger.debug("Adding human input", extra={"task_id": self.id, "agent": agent, "has_data": data is not None})
         await self.human_input[agent].put(data)
 
     async def get_human_input(self, agent: str):
+        logger.debug("Getting human input", extra={"task_id": self.id, "agent": agent})
         return await self.human_input[agent].get()
 
     def add_human_input_listen(self, agent: str):
+        logger.debug("Adding human input listener", extra={"task_id": self.id, "agent": agent})
         self.human_input[agent] = asyncio.Queue(1)
 
     def add_background_task(self, task: asyncio.Task) -> None:
         r"""Add a task to track and clean up weak references"""
+        logger.debug("Adding background task", extra={"task_id": self.id, "background_tasks_count": len(self.background_tasks)})
         self.background_tasks.add(task)
         task.add_done_callback(lambda t: self.background_tasks.discard(t))
 
     async def cleanup(self):
         r"""Cancel all background tasks and clean up resources"""
+        logger.info("Starting task lock cleanup", extra={"task_id": self.id, "background_tasks_count": len(self.background_tasks)})
         for task in list(self.background_tasks):
             if not task.done():
                 task.cancel()
@@ -315,9 +324,11 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+        logger.info("Task lock cleanup completed", extra={"task_id": self.id})
 
     def add_conversation(self, role: str, content: str | dict):
         """Add a conversation entry to history"""
+        logger.debug("Adding conversation entry", extra={"task_id": self.id, "role": role, "content_length": len(str(content))})
         self.conversation_history.append({
             'role': role,
             'content': content,
@@ -344,7 +355,9 @@ task_index: dict[str, weakref.ref[Task]] = {}
 
 def get_task_lock(id: str) -> TaskLock:
     if id not in task_locks:
+        logger.error("Task lock not found", extra={"task_id": id})
         raise ProgramException("Task not found")
+    logger.debug("Task lock retrieved", extra={"task_id": id})
     return task_locks[id]
 
 
@@ -357,12 +370,15 @@ def set_current_task_id(project_id: str, task_id: str) -> None:
     """Set the current task ID for a project's task lock"""
     task_lock = get_task_lock(project_id)
     task_lock.current_task_id = task_id
-    logger.info(f"Updated current_task_id to {task_id} for project {project_id}")
+    logger.info("Updated current task ID", extra={"project_id": project_id, "task_id": task_id})
 
 
 def create_task_lock(id: str) -> TaskLock:
     if id in task_locks:
+        logger.warning("Attempting to create task lock that already exists", extra={"task_id": id})
         raise ProgramException("Task already exists")
+
+    logger.info("Creating new task lock", extra={"task_id": id})
     task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
 
     # Start cleanup task if not running
@@ -370,26 +386,31 @@ def create_task_lock(id: str) -> TaskLock:
     # if _cleanup_task is None or _cleanup_task.done():
     #     _cleanup_task = asyncio.create_task(_periodic_cleanup())
 
+    logger.info("Task lock created successfully", extra={"task_id": id, "total_task_locks": len(task_locks)})
     return task_locks[id]
 
 
 def get_or_create_task_lock(id: str) -> TaskLock:
     """Get existing task lock or create a new one if it doesn't exist"""
     if id in task_locks:
+        logger.debug("Using existing task lock", extra={"task_id": id})
         return task_locks[id]
+    logger.info("Task lock not found, creating new one", extra={"task_id": id})
     return create_task_lock(id)
 
 
 async def delete_task_lock(id: str):
     if id not in task_locks:
+        logger.warning("Attempting to delete non-existent task lock", extra={"task_id": id})
         raise ProgramException("Task not found")
 
     # Clean up background tasks before deletion
     task_lock = task_locks[id]
+    logger.info("Cleaning up task lock", extra={"task_id": id, "background_tasks": len(task_lock.background_tasks)})
     await task_lock.cleanup()
 
     del task_locks[id]
-    logger.debug(f"Deleted task lock {id}, remaining locks: {len(task_locks)}")
+    logger.info("Task lock deleted successfully", extra={"task_id": id, "remaining_task_locks": len(task_locks)})
 
 
 def get_camel_task(id: str, tasks: list[Task]) -> None | Task:
