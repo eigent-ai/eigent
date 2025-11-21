@@ -6,6 +6,7 @@ import light from "@/assets/light.png";
 import dark from "@/assets/dark.png";
 import transparent from "@/assets/transparent.png";
 import { useAuthStore } from "@/store/authStore";
+import { useInstallationStore } from "@/store/installationStore";
 import { useNavigate } from "react-router-dom";
 import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";

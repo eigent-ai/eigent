@@ -75,12 +75,13 @@ const authStore = create<AuthState>()(
 			setAuth: ({ token, username, email, user_id }) =>
 				set({ token, username, email, user_id }),
 			
-			logout: () => 
-				set({ 
-					token: null, 
-					username: null, 
-					email: null, 
-					user_id: null 
+			logout: () =>
+				set({
+					token: null,
+					username: null,
+					email: null,
+					user_id: null,
+					initState: 'carousel'
 				}),
 			
 			// set related methods
