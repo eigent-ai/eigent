@@ -22,5 +22,6 @@
 	"search-agent": "Such-Agent",
 	"document-agent": "Dokument-Agent",
 	"multi-modal-agent": "Multi-Modal-Agent",
-	"social-media-agent": "Social-Media-Agent"
+	"social-media-agent": "Social-Media-Agent",
+	"no-projects-found": "Keine Projekte gefunden."
 }

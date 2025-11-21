@@ -477,7 +477,7 @@ export default function ChatBox(): JSX.Element {
 
 		// Delete task from backend first
 		try {
-			await fetchDelete(`/chat/${taskId}`);
+			await fetchDelete(`/chat/${projectId}`);
 		} catch (error) {
 			console.error("Failed to delete task from backend:", error);
 			// Continue with local cleanup even if backend fails

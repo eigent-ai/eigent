@@ -16,12 +16,28 @@ const ProtectedRoute = () => {
 	const [isAuthenticated, setIsAuthenticated] = useState(false);
 	const [initialized, setInitialized] = useState(false);
 
-	const authStore = useAuthStore();
+	const { token, localProxyValue, logout } = useAuthStore();
 	useEffect(() => {
-		setIsAuthenticated(!!authStore.token);
+		// Check VITE_USE_LOCAL_PROXY value on app startup
+		if (token) {
+			const currentProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+			const storedProxyValue = localProxyValue;
+			
+			// If stored value exists and differs from current, logout
+			if (storedProxyValue !== null && storedProxyValue !== currentProxyValue) {
+				console.warn('VITE_USE_LOCAL_PROXY value changed, logging out user');
+				logout();
+				setIsAuthenticated(false);
+				setLoading(false);
+				setInitialized(true);
+				return;
+			}
+		}
+		
+		setIsAuthenticated(!!token);
 		setLoading(false);
 		setInitialized(true);
-	}, [authStore.token]);
+	}, [token, localProxyValue, logout]);
 	
 	if (loading || !initialized) {
 		return (
