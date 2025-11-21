@@ -44,11 +44,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const channel = 'webview-navigated'
     const listener = (event: any, id: string, url: string) => callback(id, url);
     ipcRenderer.on(channel, listener);
-    console.log(`[preload] add ${channel}; count=${ipcRenderer.listenerCount(channel)}`)
     // Return cleanup function to remove listener
     return () => {
       ipcRenderer.off(channel, listener);
-      console.log(`[preload] remove ${channel}; count=${ipcRenderer.listenerCount(channel)}`)
     };
   },
   showWebview: (id: string) => ipcRenderer.invoke('show-webview', id),

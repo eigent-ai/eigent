@@ -209,6 +209,7 @@ export function WorkSpaceMenu() {
 	}, [
 		chatStore.activeTaskId,
 		chatStore.tasks[chatStore.activeTaskId as string]?.webViewUrls,
+		chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning,
 	]);
 
 	const agentMap = {
