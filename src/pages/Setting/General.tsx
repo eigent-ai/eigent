@@ -6,6 +6,7 @@ import light from "@/assets/light.png";
 import dark from "@/assets/dark.png";
 import transparent from "@/assets/transparent.png";
 import { useAuthStore } from "@/store/authStore";
+import { useInstallationStore } from "@/store/installationStore";
 import { useNavigate } from "react-router-dom";
 import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";
@@ -29,6 +30,10 @@ import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 export default function SettingGeneral() {
 	const { t } = useTranslation();
 	const authStore = useAuthStore();
+
+	const resetInstallation = useInstallationStore(state => state.reset);
+	const setNeedsBackendRestart = useInstallationStore(state => state.setNeedsBackendRestart);
+
 	const navigate = useNavigate();
 	const [isLoading, setIsLoading] = useState(false);
 	const setAppearance = authStore.setAppearance;
@@ -159,6 +164,10 @@ export default function SettingGeneral() {
 						size="xs"
 						onClick={() => {
 							chatStore.clearTasks();
+
+							resetInstallation(); // Reset installation state for new account
+							setNeedsBackendRestart(true); // Mark that backend is restarting
+
 							authStore.logout();
 							navigate("/login");
 						}}

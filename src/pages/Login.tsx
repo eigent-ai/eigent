@@ -20,7 +20,7 @@ const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
 export default function Login() {
 	const app = HAS_STACK_KEYS ? useStackApp() : null;
-	const { setAuth,setModelType } = useAuthStore();
+	const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
@@ -103,7 +103,10 @@ export default function Login() {
 			}
 
 			setAuth({ email: formData.email, ...data });
-			setModelType('cloud')
+			setModelType('cloud');
+			// Record VITE_USE_LOCAL_PROXY value at login
+			const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+			setLocalProxyValue(localProxyValue);
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
@@ -124,8 +127,11 @@ export default function Login() {
 				return;
 			}
 			console.log("data", data);
-			setModelType('cloud')
+			setModelType('cloud');
 			setAuth({ email: formData.email, ...data });
+			// Record VITE_USE_LOCAL_PROXY value at login
+			const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+			setLocalProxyValue(localProxyValue);
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);

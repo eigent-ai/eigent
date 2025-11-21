@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useInstallationStore } from '@/store/installationStore';
 import { useAuthStore } from '@/store/authStore';
 
@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/authStore';
  * This should be called once in your App component or Layout component
  */
 export const useInstallationSetup = () => {
-  const { initState, setInitState } = useAuthStore();
+  const { initState, setInitState, email } = useAuthStore();
 
   const hasCheckedOnMount = useRef(false);
   const installationCompleted = useRef(false);
@@ -19,6 +19,100 @@ export const useInstallationSetup = () => {
   const setError = useInstallationStore(state => state.setError);
   const setBackendError = useInstallationStore(state => state.setBackendError);
   const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
+  const needsBackendRestart = useInstallationStore(state => state.needsBackendRestart);
+  const setNeedsBackendRestart = useInstallationStore(state => state.setNeedsBackendRestart);
+
+  // Shared function to poll backend status
+  const startBackendPolling = useCallback(() => {
+    console.log('[useInstallationSetup] Starting backend polling');
+
+    // Immediately check backend status once
+    const checkBackendStatus = async () => {
+      try {
+        const backendPort = await window.electronAPI.getBackendPort();
+        if (backendPort && backendPort > 0) {
+          console.log('[useInstallationSetup] Backend immediately detected on port:', backendPort);
+
+          // Verify backend is actually responding
+          const response = await fetch(`http://localhost:${backendPort}/health`).catch(() => null);
+          if (response && response.ok) {
+            console.log('[useInstallationSetup] Backend health check passed immediately');
+            backendReady.current = true;
+            setSuccess();
+            setInitState('done');
+            setNeedsBackendRestart(false);
+            return true; // Backend is ready, no need to poll
+          }
+        }
+      } catch (error) {
+        console.log('[useInstallationSetup] Initial backend check failed:', error);
+      }
+      return false; // Backend not ready, need to poll
+    };
+
+    // Check immediately, then start polling if needed
+    checkBackendStatus().then((isReady) => {
+      if (isReady) {
+        console.log('[useInstallationSetup] Backend already ready, skipping polling');
+        return;
+      }
+
+      console.log('[useInstallationSetup] Backend not ready, starting polling');
+
+      // Poll backend status every 2 seconds to ensure we catch when it's ready
+      // This is a fallback in case the backend-ready event is missed
+      const pollInterval = setInterval(async () => {
+        try {
+          const backendPort = await window.electronAPI.getBackendPort();
+          if (backendPort && backendPort > 0) {
+            console.log('[useInstallationSetup] Backend poll detected ready on port:', backendPort);
+
+            // Verify backend is actually responding
+            const response = await fetch(`http://localhost:${backendPort}/health`).catch(() => null);
+            if (response && response.ok) {
+              console.log('[useInstallationSetup] Backend health check passed');
+              clearInterval(pollInterval);
+
+              if (!backendReady.current) {
+                backendReady.current = true;
+                setSuccess();
+                setInitState('done');
+                // Clear the flag after backend is ready
+                setNeedsBackendRestart(false);
+              }
+            }
+          }
+        } catch (error) {
+          console.log('[useInstallationSetup] Backend poll check failed:', error);
+        }
+      }, 2000);
+
+      // Clear polling after 30 seconds to prevent infinite polling
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 30000);
+    });
+  }, [setSuccess, setInitState, setNeedsBackendRestart]);
+
+  // Monitor for backend restart after logout
+  useEffect(() => {
+    // When user logs in after logout, needsBackendRestart will be true
+    if (needsBackendRestart && email !== null) {
+      console.log('[useInstallationSetup] Detected login after logout, waiting for backend restart');
+
+      // For account switching, tools are already installed, only backend needs restart
+      // So we mark installation as completed and only wait for backend
+      installationCompleted.current = true;
+      backendReady.current = false;
+
+      // Set to waiting-backend state
+      setWaitingBackend();
+
+      // Start polling for backend
+      startBackendPolling();
+    }
+  }, [needsBackendRestart, email, setWaitingBackend, startBackendPolling]);
+
 
   useEffect(() => {
     if (hasCheckedOnMount.current) {
@@ -36,6 +130,9 @@ export const useInstallationSetup = () => {
             console.log('[useInstallationSetup] Tools already installed, waiting for backend');
             installationCompleted.current = true;
             setWaitingBackend();
+
+            // Start polling for backend when tools are already installed
+            startBackendPolling();
           }
 
           if (initState !== 'done') {
