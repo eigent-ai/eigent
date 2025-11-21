@@ -16,6 +16,7 @@ export const useInstallationSetup = () => {
   const performInstallation = useInstallationStore(state => state.performInstallation);
   const addLog = useInstallationStore(state => state.addLog);
   const setSuccess = useInstallationStore(state => state.setSuccess);
+  const setBackendReadyFlag = useInstallationStore(state => state.setBackendReady);
   const setError = useInstallationStore(state => state.setError);
   const setBackendError = useInstallationStore(state => state.setBackendError);
   const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
@@ -25,6 +26,7 @@ export const useInstallationSetup = () => {
   // Shared function to poll backend status
   const startBackendPolling = useCallback(() => {
     console.log('[useInstallationSetup] Starting backend polling');
+    setBackendReadyFlag(false);
 
     // Immediately check backend status once
     const checkBackendStatus = async () => {
@@ -38,6 +40,7 @@ export const useInstallationSetup = () => {
           if (response && response.ok) {
             console.log('[useInstallationSetup] Backend health check passed immediately');
             backendReady.current = true;
+            setBackendReadyFlag(true);
             setSuccess();
             setInitState('done');
             setNeedsBackendRestart(false);
@@ -75,6 +78,7 @@ export const useInstallationSetup = () => {
 
               if (!backendReady.current) {
                 backendReady.current = true;
+                setBackendReadyFlag(true);
                 setSuccess();
                 setInitState('done');
                 // Clear the flag after backend is ready
@@ -92,7 +96,7 @@ export const useInstallationSetup = () => {
         clearInterval(pollInterval);
       }, 30000);
     });
-  }, [setSuccess, setInitState, setNeedsBackendRestart]);
+  }, [setSuccess, setInitState, setNeedsBackendRestart, setBackendReadyFlag]);
 
   // Monitor for backend restart after logout
   useEffect(() => {
@@ -192,6 +196,7 @@ export const useInstallationSetup = () => {
     const handleInstallStart = () => {
       installationCompleted.current = false;
       backendReady.current = false;
+      setBackendReadyFlag(false);
       startInstallation();
     };
 
@@ -223,12 +228,14 @@ export const useInstallationSetup = () => {
       if (data.success && data.port) {
         console.log(`[useInstallationSetup] Backend is ready on port ${data.port}`);
         backendReady.current = true;
+        setBackendReadyFlag(true);
         console.log('[useInstallationSetup] Backend marked as ready');
 
         setSuccess();
         checkAndSetDone();
       } else {
         console.error('[useInstallationSetup] Backend failed to start:', data.error);
+        setBackendReadyFlag(false);
         setBackendError(data.error || 'Backend startup failed');
       }
     };
@@ -244,5 +251,5 @@ export const useInstallationSetup = () => {
       window.electronAPI.removeAllListeners('install-dependencies-complete');
       window.electronAPI.removeAllListeners('backend-ready');
     };
-  }, [startInstallation, addLog, setSuccess, setError, setBackendError, setInitState]);
+  }, [startInstallation, addLog, setSuccess, setError, setBackendError, setInitState, setBackendReadyFlag]);
 };

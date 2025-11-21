@@ -32,6 +32,7 @@ const Layout = () => {
 		backendError,
 		isInstalling,
 		shouldShowInstallScreen,
+		isBackendReady,
 		retryInstallation,
 		retryBackend,
 	} = useInstallationUI();
@@ -58,7 +59,7 @@ const Layout = () => {
 	// Determine what to show based on states
 	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling;
 
-	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done' || installationState === 'waiting-backend';
+	const actualShouldShowInstallScreen = shouldShowInstallScreen || initState !== 'done' || installationState === 'waiting-backend' || !isBackendReady;
 	const shouldShowMainContent = !actualShouldShowInstallScreen;
 
 	return (

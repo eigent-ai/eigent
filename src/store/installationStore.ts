@@ -27,12 +27,14 @@ interface InstallationStoreState {
   error?: string;
   backendError?: string;  // Separate error for backend startup failures
   isVisible: boolean;
+  isBackendReady: boolean; // Tracks whether backend has signaled readiness
   needsBackendRestart: boolean;  // Flag to indicate backend is restarting after logout
 
   // Actions
   startInstallation: () => void;
   addLog: (log: InstallationLog) => void;
   setSuccess: () => void;
+  setBackendReady: (ready: boolean) => void;
   setError: (error: string) => void;
   setBackendError: (error: string) => void;
   setWaitingBackend: () => void;
@@ -57,6 +59,7 @@ const initialState = {
   error: undefined,
   backendError: undefined,
   isVisible: false,
+  isBackendReady: false,
   needsBackendRestart: false,
 };
 
@@ -75,6 +78,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           logs: [],
           error: undefined,
           isVisible: true,
+          isBackendReady: false,
         }),
       
       addLog: (log: InstallationLog) =>
@@ -90,6 +94,11 @@ export const useInstallationStore = create<InstallationStoreState>()(
         set({
           state: 'completed',
           progress: 100,
+        }),
+
+      setBackendReady: (ready: boolean) =>
+        set({
+          isBackendReady: ready,
         }),
       
       setError: (error: string) =>
@@ -111,6 +120,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           state: 'waiting-backend',
           progress: 80,
           isVisible: true,
+          isBackendReady: false,
         }),
 
       setNeedsBackendRestart: (needs: boolean) =>
@@ -122,6 +132,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
         set({
           backendError: error,
           state: 'error',
+          isBackendReady: false,
         }),
 
       retryInstallation: () => {
@@ -129,6 +140,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           ...initialState,
           isVisible: true,
           state: 'installing',
+          isBackendReady: false,
         });
         get().performInstallation();
       },
@@ -140,6 +152,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
             backendError: undefined,
             state: 'waiting-backend',
             progress: 80,
+            isBackendReady: false,
           });
 
           // Call restart-backend via electronAPI
@@ -149,12 +162,14 @@ export const useInstallationStore = create<InstallationStoreState>()(
             set({
               backendError: result.error || 'Failed to restart backend',
               state: 'error',
+              isBackendReady: false,
             });
           }
         } catch (error) {
           set({
             backendError: error instanceof Error ? error.message : 'Unknown error',
             state: 'error',
+            isBackendReady: false,
           });
         }
       },
@@ -249,6 +264,7 @@ export const useInstallationUI = () => {
   const error = useInstallationStore(state => state.error);
   const backendError = useInstallationStore(state => state.backendError);
   const isVisible = useInstallationStore(state => state.isVisible);
+  const isBackendReady = useInstallationStore(state => state.isBackendReady);
   const performInstallation = useInstallationStore(state => state.performInstallation);
   const retryInstallation = useInstallationStore(state => state.retryInstallation);
   const retryBackend = useInstallationStore(state => state.retryBackend);
@@ -262,6 +278,7 @@ export const useInstallationUI = () => {
     backendError,
     isInstalling: state === 'installing',
     shouldShowInstallScreen: isVisible && state !== 'completed',
+    isBackendReady,
     canRetry: state === 'error',
     performInstallation,
     retryInstallation,
