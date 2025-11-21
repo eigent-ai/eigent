@@ -399,11 +399,17 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 
 
-			let mcpLocal = {}
-			if (window.ipcRenderer) {
-				mcpLocal = await window.ipcRenderer.invoke("mcp-list");
-			}
-			console.log('mcpLocal', mcpLocal)
+			// Only include MCP servers that are attached to workers, instead of all locally installed servers
+			const installedMcp = { mcpServers: {} as Record<string, any> };
+			workerList.forEach((worker) => {
+				const mcpTools = worker.workerInfo?.mcp_tools;
+				if (mcpTools?.mcpServers && typeof mcpTools.mcpServers === "object") {
+					for (const [key, value] of Object.entries(mcpTools.mcpServers)) {
+						installedMcp.mcpServers[key] = value;
+					}
+				}
+			});
+			console.log("installedMcp (per workers)", installedMcp);
 
 			// Get search engine configuration for custom mode
 			let searchConfig: Record<string, string> = {}
@@ -534,7 +540,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					api_key: apiModel.api_key,
 					api_url: apiModel.api_url,
 					extra_params: apiModel.extra_params,
-					installed_mcp: mcpLocal,
+					installed_mcp: installedMcp,
 					language: systemLanguage,
 					allow_local_system: true,
 					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
