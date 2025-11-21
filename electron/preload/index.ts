@@ -69,7 +69,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
   getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
   restartBackend: () => ipcRenderer.invoke('restart-backend'),
-  getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);
   },

@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/authStore';
  * This should be called once in your App component or Layout component
  */
 export const useInstallationSetup = () => {
-  const { initState, setInitState, email } = useAuthStore();
+  const { initState, setInitState } = useAuthStore();
 
   const hasCheckedOnMount = useRef(false);
   const installationCompleted = useRef(false);
@@ -21,6 +21,7 @@ export const useInstallationSetup = () => {
   const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
   const needsBackendRestart = useInstallationStore(state => state.needsBackendRestart);
   const setNeedsBackendRestart = useInstallationStore(state => state.setNeedsBackendRestart);
+
 
   // Monitor for backend restart after logout
   useEffect(() => {
@@ -70,6 +71,7 @@ export const useInstallationSetup = () => {
       }, 30000);
     }
   }, [needsBackendRestart, email, initState, setWaitingBackend, setSuccess, setInitState, setNeedsBackendRestart]);
+
 
   useEffect(() => {
     if (hasCheckedOnMount.current) {
