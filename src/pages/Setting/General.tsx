@@ -31,6 +31,7 @@ export default function SettingGeneral() {
 	const { t } = useTranslation();
 	const authStore = useAuthStore();
 	const resetInstallation = useInstallationStore(state => state.reset);
+	const setNeedsBackendRestart = useInstallationStore(state => state.setNeedsBackendRestart);
 	const navigate = useNavigate();
 	const [isLoading, setIsLoading] = useState(false);
 	const setAppearance = authStore.setAppearance;
@@ -162,6 +163,7 @@ export default function SettingGeneral() {
 						onClick={() => {
 							chatStore.clearTasks();
 							resetInstallation(); // Reset installation state for new account
+							setNeedsBackendRestart(true); // Mark that backend is restarting
 							authStore.logout();
 							navigate("/login");
 						}}

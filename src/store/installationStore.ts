@@ -27,6 +27,7 @@ interface InstallationStoreState {
   error?: string;
   backendError?: string;  // Separate error for backend startup failures
   isVisible: boolean;
+  needsBackendRestart: boolean;  // Flag to indicate backend is restarting after logout
 
   // Actions
   startInstallation: () => void;
@@ -35,6 +36,7 @@ interface InstallationStoreState {
   setError: (error: string) => void;
   setBackendError: (error: string) => void;
   setWaitingBackend: () => void;
+  setNeedsBackendRestart: (needs: boolean) => void;
   retryInstallation: () => void;
   retryBackend: () => Promise<void>;
   completeSetup: () => void;
@@ -55,6 +57,7 @@ const initialState = {
   error: undefined,
   backendError: undefined,
   isVisible: false,
+  needsBackendRestart: false,
 };
 
 // Create the installation store
@@ -108,6 +111,11 @@ export const useInstallationStore = create<InstallationStoreState>()(
           state: 'waiting-backend',
           progress: 80,
           isVisible: true,
+        }),
+
+      setNeedsBackendRestart: (needs: boolean) =>
+        set({
+          needsBackendRestart: needs,
         }),
 
       setBackendError: (error: string) =>
