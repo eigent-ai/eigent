@@ -426,10 +426,7 @@ export default function ChatBox(): JSX.Element {
 			// Skip the current task. For now acts like stop.
 			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task/${taskId}`);
 			
-			// toast.success("Task skipped successfully", {
-			// 	closeButton: true,
-			// });
-			toast.success("Stopping task in a moment", {
+			toast.success("Task skipped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
@@ -438,7 +435,7 @@ export default function ChatBox(): JSX.Element {
 			// If backend call failed, still try to stop local task as fallback
 			// but with different messaging to user
 			try {
-				chatStore.stopTask(taskId);
+				chatStore.abortTaskSSE(taskId);
 				chatStore.setIsPending(taskId, false);
 				toast.warning("Task stopped locally, but backend notification failed. Backend task may continue running.", {
 					closeButton: true,
