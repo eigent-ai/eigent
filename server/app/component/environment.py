@@ -5,9 +5,13 @@ from fastapi import APIRouter, FastAPI
 from dotenv import load_dotenv
 import importlib
 from typing import Any, overload
+from utils import traceroot_wrapper as traceroot
 
+logger = traceroot.get_logger("environment")
 
+logger.info("Loading environment variables from .env file")
 load_dotenv()
+logger.info("Environment variables loaded successfully")
 
 
 @overload
@@ -23,20 +27,26 @@ def env(key: str, default: Any) -> Any: ...
 
 
 def env(key: str, default=None):
-    return os.getenv(key, default)
+    value = os.getenv(key, default)
+    logger.debug("Environment variable accessed", extra={"key": key, "has_value": value is not None, "using_default": value == default})
+    return value
 
 
 def env_or_fail(key: str):
     value = env(key)
     if value is None:
+        logger.error("Required environment variable missing", extra={"key": key})
         raise Exception("can't get env config value.")
+    logger.debug("Required environment variable retrieved", extra={"key": key})
     return value
 
 
 def env_not_empty(key: str):
     value = env(key)
     if not value:
+        logger.error("Environment variable is empty", extra={"key": key})
         raise Exception("env config value can't be empty.")
+    logger.debug("Non-empty environment variable retrieved", extra={"key": key})
     return value
 
 
@@ -71,8 +81,14 @@ def auto_include_routers(api: FastAPI, prefix: str, directory: str):
     :param prefix: 路由前缀
     :param directory: 要扫描的目录路径
     """
+    logger.info("Starting automatic router registration", extra={
+        "prefix": prefix,
+        "directory": directory
+    })
+
     # 将目录转换为绝对路径
     dir_path = Path(directory).resolve()
+    router_count = 0
 
     # 遍历目录下所有.py文件
     for root, _, files in os.walk(dir_path):
@@ -81,17 +97,44 @@ def auto_include_routers(api: FastAPI, prefix: str, directory: str):
                 # 构造完整文件路径
                 file_path = Path(root) / file_name
 
+                logger.debug("Processing controller file", extra={
+                    "file_name": file_name,
+                    "file_path": str(file_path)
+                })
+
                 # 生成模块名称
                 module_name = file_path.stem
 
-                # 使用importlib加载模块
-                spec = importlib.util.spec_from_file_location(module_name, file_path)
-                if spec is None or spec.loader is None:
-                    continue
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                try:
+                    # 使用importlib加载模块
+                    spec = importlib.util.spec_from_file_location(module_name, file_path)
+                    if spec is None or spec.loader is None:
+                        logger.warning("Failed to create module spec", extra={"file_path": str(file_path)})
+                        continue
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
 
-                # 检查模块中是否存在router属性且是APIRouter实例
-                router = getattr(module, "router", None)
-                if isinstance(router, APIRouter):
-                    api.include_router(router, prefix=prefix)
+                    # 检查模块中是否存在router属性且是APIRouter实例
+                    router = getattr(module, "router", None)
+                    if isinstance(router, APIRouter):
+                        api.include_router(router, prefix=prefix)
+                        router_count += 1
+                        logger.debug("Router registered successfully", extra={
+                            "module_name": module_name,
+                            "prefix": prefix
+                        })
+                    else:
+                        logger.debug("No valid router found in module", extra={"module_name": module_name})
+
+                except Exception as e:
+                    logger.error("Failed to load controller module", extra={
+                        "module_name": module_name,
+                        "file_path": str(file_path),
+                        "error": str(e)
+                    }, exc_info=True)
+
+    logger.info("Automatic router registration completed", extra={
+        "prefix": prefix,
+        "directory": directory,
+        "routers_registered": router_count
+    })

@@ -72,6 +72,7 @@
 	"agent-tool": "에이전트 도구",
 	"agent-tool-tooltip": "에이전트를 위한 도구 및 통합 선택",
 	"resume": "재개",
+	"stop-task": "작업 중지",
 	"next-task": "다음 작업",
 	"task-splitting": "작업 분할",
 	"task-running": "작업 실행",

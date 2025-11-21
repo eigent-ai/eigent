@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, memo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -19,12 +19,23 @@ export const MarkDown = memo(
 		olPadding?: string;
 	}) => {
 		const [displayedContent, setDisplayedContent] = useState("");
+		const lastContentRef = useRef<string | null>(null);
+		const typingCallbackRef = useRef(onTyping);
 
 		useEffect(() => {
+			typingCallbackRef.current = onTyping;
+		}, [onTyping]);
+
+		useEffect(() => {
+			if (lastContentRef.current === content) {
+				return;
+			}
+			lastContentRef.current = content;
+
 			if (!enableTypewriter) {
 				setDisplayedContent(content);
-				if (onTyping) {
-					onTyping();
+				if (typingCallbackRef.current) {
+					typingCallbackRef.current();
 				}
 				return;
 			}
@@ -39,14 +50,14 @@ export const MarkDown = memo(
 				} else {
 					clearInterval(timer);
 					// when typewriter effect is completed, call callback
-					if (onTyping) {
-						onTyping();
+					if (typingCallbackRef.current) {
+						typingCallbackRef.current();
 					}
 				}
 			}, speed);
 
 			return () => clearInterval(timer);
-		}, [content, speed, enableTypewriter, onTyping]);
+		}, [content, speed, enableTypewriter]);
 
 		return (
 			<div className="max-w-none markdown-container overflow-hidden">

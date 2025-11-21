@@ -129,26 +129,43 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
         }
 
         console.log(`start install ${toolName}`);
-        await runInstallScript(scriptName);
-        const installed = await isBinaryExists(toolName);
+        try {
+          await runInstallScript(scriptName);
+          const installed = await isBinaryExists(toolName);
 
-        if (installed) {
-          safeMainWindowSend('install-dependencies-log', {
-            type: 'stdout',
-            data: `${toolName} installed successfully`,
-          });
-        } else {
+          if (installed) {
+            safeMainWindowSend('install-dependencies-log', {
+              type: 'stdout',
+              data: `${toolName} installed successfully`,
+            });
+            return {
+              message: `${toolName} installed successfully`,
+              success: true
+            };
+          } else {
+            const errorMsg = `${toolName} installation failed: binary not found after installation`;
+            safeMainWindowSend('install-dependencies-complete', {
+              success: false,
+              code: 2,
+              error: errorMsg,
+            });
+            return {
+              message: errorMsg,
+              success: false
+            };
+          }
+        } catch (scriptError) {
+          const errorMsg = `${toolName} installation failed: ${scriptError instanceof Error ? scriptError.message : String(scriptError)}`;
           safeMainWindowSend('install-dependencies-complete', {
             success: false,
             code: 2,
-            error: `${toolName} installation failed (script exit code 2)`,
+            error: errorMsg,
           });
+          return {
+            message: errorMsg,
+            success: false
+          };
         }
-
-        return {
-          message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
-          success: installed
-        };
       };
 
       const uvResult = await ensureInstalled('uv', 'install-uv.js');
@@ -163,7 +180,14 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 
       return { message: "Command tools installed successfully", success: true };
   } catch (error) {
-      return { message: `Command tool installation failed: ${error}`, success: false };
+      const errorMessage = `Command tool installation failed: ${error}`;
+      log.error('[DEPS INSTALL] Exception during command tool installation:', error);
+      safeMainWindowSend('install-dependencies-complete', {
+        success: false,
+        code: 2,
+        error: errorMessage
+      });
+      return { message: errorMessage, success: false };
   }
 }
 
@@ -232,6 +256,7 @@ class InstallLogs {
             UV_TOOL_DIR: getCachePath('uv_tool'),
             UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
             UV_PROJECT_ENVIRONMENT: venvPath,
+            UV_HTTP_TIMEOUT: '180', // 3 minutes timeout
         }
     })
   }
@@ -599,6 +624,12 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
     const isInstalCommandTool = await installCommandTool()
     if (!isInstalCommandTool.success) {
+        log.error('[DEPS INSTALL] Command tool installation failed:', isInstalCommandTool.message);
+        safeMainWindowSend('install-dependencies-complete', {
+          success: false,
+          code: 2,
+          error: isInstalCommandTool.message || 'Command tool installation failed'
+        });
         resolve({ message: "Command tool installation failed", success: false })
         return
     }
@@ -677,104 +708,4 @@ export async function installDependencies(version: string): Promise<PromiseRetur
         resolve({ message: "Both default and mirror install failed", success: false })
     }
   })
-}
-
-let dependencyInstallationDetected = false;
-let installationNotificationSent = false;
-export function detectInstallationLogs(msg:string) {
-  // CRITICAL FIX: Use file system to check if installation is complete
-  // Don't rely on module variables as they can be reset during hot reload
-
-  // Check if dependencies are already installed
-  const isAlreadyInstalled = fs.existsSync(installedLockPath);
-
-  // If installed lock file exists, dependencies are already installed
-  // Skip all detection to avoid false positives
-  if (isAlreadyInstalled) {
-    // Dependencies are already installed, skip detection entirely
-    return;
-  }
-
-  // Also skip if notification was already sent (in current session)
-  if (installationNotificationSent) {
-    return;
-  }
-
-  // Check for UV dependency installation patterns
-  const installPatterns = [
-      "Resolved", // UV resolving dependencies
-      "Downloaded", // UV downloading packages
-      "Installing", // UV installing packages
-      "Built", // UV building packages
-      "Prepared", // UV preparing virtual environment
-      "Syncing", // UV sync process
-      "Creating virtualenv", // Virtual environment creation
-      "Updating", // UV updating packages
-      "× No solution found when resolving dependencies", // Dependency resolution issues
-      "Audited" // UV auditing dependencies
-  ];
-
-  // Detect if UV is installing dependencies
-  if (!dependencyInstallationDetected && installPatterns.some(pattern =>
-      msg.includes(pattern) && !msg.includes("Uvicorn running on")
-  )) {
-      dependencyInstallationDetected = true;
-      log.info('[BACKEND STARTUP] UV dependency installation detected during uvicorn startup');
-
-      // Create installing lock file to maintain consistency with install-deps.ts
-      InstallLogs.setLockPath();
-      log.info('[BACKEND STARTUP] Created uv_installing.lock file');
-
-      // Notify frontend that installation has started (only once)
-      if (!installationNotificationSent) {
-          installationNotificationSent = true;
-          const notificationSent = safeMainWindowSend('install-dependencies-start');
-          if (notificationSent) {
-              log.info('[BACKEND STARTUP] Notified frontend of dependency installation start');
-          } else {
-              log.warn('[BACKEND STARTUP] Failed to notify frontend of dependency installation start');
-          }
-      }
-  }
-  
-  // Send installation logs to frontend if installation was detected
-  if (dependencyInstallationDetected && !msg.includes("Uvicorn running on")) {
-      safeMainWindowSend('install-dependencies-log', {
-          type: msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback") ? 'stderr' : 'stdout',
-          data: msg
-      });
-  }
-  
-  // Check if installation is complete (uvicorn starts successfully)
-  if (dependencyInstallationDetected && msg.includes("Uvicorn running on")) {
-      log.info('[BACKEND STARTUP] UV dependency installation completed, uvicorn started successfully');
-      
-      // Clean up installing lock and create installed lock
-      InstallLogs.cleanLockPath();
-      fs.writeFileSync(installedLockPath, '');
-      log.info('[BACKEND STARTUP] Created uv_installed.lock file');
-      
-      safeMainWindowSend('install-dependencies-complete', {
-          success: true,
-          message: 'Dependencies installed successfully during backend startup'
-      });
-  }
-  
-  // Handle installation failures
-  if (dependencyInstallationDetected && (
-      msg.toLowerCase().includes("failed to resolve dependencies") ||
-      msg.toLowerCase().includes("installation failed") ||
-      msg.includes("× No solution found when resolving dependencies")
-  )) {
-      log.error('[BACKEND STARTUP] UV dependency installation failed');
-      
-      // Clean up installing lock file
-      InstallLogs.cleanLockPath();
-      log.info('[BACKEND STARTUP] Cleaned up uv_installing.lock file after failure');
-      
-      safeMainWindowSend('install-dependencies-complete', {
-          success: false,
-          error: 'Dependency installation failed during backend startup'
-      });
-  }
 }
