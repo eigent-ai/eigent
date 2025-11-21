@@ -40,7 +40,9 @@ export const useInstallationSetup = () => {
           if (response && response.ok) {
             console.log('[useInstallationSetup] Backend health check passed immediately');
             backendReady.current = true;
+            console.log('[useInstallationSetup] BackendReadyFlag before set to true (immediate check):', useInstallationStore.getState().isBackendReady);
             setBackendReadyFlag(true);
+            console.log('[useInstallationSetup] BackendReadyFlag after set to true (immediate check):', useInstallationStore.getState().isBackendReady);
             setSuccess();
             setInitState('done');
             setNeedsBackendRestart(false);
@@ -78,7 +80,9 @@ export const useInstallationSetup = () => {
 
               if (!backendReady.current) {
                 backendReady.current = true;
+                console.log('[useInstallationSetup] BackendReadyFlag before set to true (polling):', useInstallationStore.getState().isBackendReady);
                 setBackendReadyFlag(true);
+                console.log('[useInstallationSetup] BackendReadyFlag after set to true (polling):', useInstallationStore.getState().isBackendReady);
                 setSuccess();
                 setInitState('done');
                 // Clear the flag after backend is ready
@@ -228,14 +232,18 @@ export const useInstallationSetup = () => {
       if (data.success && data.port) {
         console.log(`[useInstallationSetup] Backend is ready on port ${data.port}`);
         backendReady.current = true;
+        console.log('[useInstallationSetup] BackendReadyFlag before set to true:', useInstallationStore.getState().isBackendReady);
         setBackendReadyFlag(true);
+        console.log('[useInstallationSetup] BackendReadyFlag after set to true:', useInstallationStore.getState().isBackendReady);
         console.log('[useInstallationSetup] Backend marked as ready');
 
         setSuccess();
         checkAndSetDone();
       } else {
         console.error('[useInstallationSetup] Backend failed to start:', data.error);
+        console.log('[useInstallationSetup] BackendReadyFlag before set to false:', useInstallationStore.getState().isBackendReady);
         setBackendReadyFlag(false);
+        console.log('[useInstallationSetup] BackendReadyFlag after set to false:', useInstallationStore.getState().isBackendReady);
         setBackendError(data.error || 'Backend startup failed');
       }
     };
