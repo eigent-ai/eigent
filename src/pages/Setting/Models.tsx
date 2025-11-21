@@ -820,7 +820,7 @@ const [errors, setErrors] = useState<
 											size="sm"
 											className="focus-none"
 											disabled={!canSwitch || loading === idx}
-											onClick={() => handleVerify(idx)}
+											onClick={() => handleSwitch(idx, false)}
 										>
 											Default
 											<Check />
@@ -830,7 +830,7 @@ const [errors, setErrors] = useState<
 											variant="ghost"
 											size="sm"
 											disabled={!canSwitch || loading === idx}
-											onClick={() => handleVerify(idx)}
+											onClick={() => handleSwitch(idx, true)}
 											className={canSwitch ? "!text-text-label" : ""}
 										>
 											{!canSwitch ? "Not Configured" : "Set as Default"}
