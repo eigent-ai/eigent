@@ -464,11 +464,27 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
+                logger.info(f"Processing skip_task action for project {options.project_id}")
                 if workforce is not None and item.project_id == options.project_id:
                     if workforce._state.name == 'PAUSED':
                         # Resume paused workforce to skip the task
                         workforce.resume()
                     workforce.skip_gracefully()
+                    logger.info(f"Workforce skip requested for project {options.project_id}")
+
+                # Important: When skip is requested, we need to properly clean up and exit
+                # the event loop to prevent duplicate processing when a new conversation starts
+                task_lock.status = Status.done
+
+                # Stop workforce gracefully to ensure clean shutdown
+                if workforce is not None:
+                    workforce.stop_gracefully()
+                    logger.info(f"Workforce stopped gracefully after skip for project {options.project_id}")
+                    workforce = None
+
+                # Break the loop to terminate this SSE session
+                # A new session will be created when user sends next message
+                break
             elif item.action == Action.start:
                 # Check conversation history length before starting task
                 is_exceeded, total_length = check_conversation_history_length(task_lock)
