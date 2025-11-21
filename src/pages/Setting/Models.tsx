@@ -247,6 +247,7 @@ const [errors, setErrors] = useState<
           next[idx].apiKey = getValidateMessage(e);
           return next;
         });
+        return;
 		} finally {
 			setLoading(null);
 		}
@@ -398,6 +399,7 @@ const [errors, setErrors] = useState<
 						},
 					},
 				});
+				return;
 			} finally {
 				setLoading(null);
 			}
