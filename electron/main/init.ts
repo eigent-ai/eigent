@@ -123,9 +123,27 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     const backendPath = getBackendPath()
     const userData = app.getPath('userData');
     const currentVersion = app.getVersion();
-    const venvPath = getVenvPath(currentVersion);
+    const preferredVenvPath = getVenvPath(currentVersion);
+    const pythonExists = (venvRoot: string) => {
+        const pythonBin = process.platform === 'win32'
+            ? path.join(venvRoot, 'Scripts', 'python.exe')
+            : path.join(venvRoot, 'bin', 'python');
+        return fs.existsSync(pythonBin);
+    };
+
+    const localVenvPath = path.join(backendPath, '.venv');
+    const resolvedVenvPath = pythonExists(preferredVenvPath)
+        ? preferredVenvPath
+        : (pythonExists(localVenvPath) ? localVenvPath : preferredVenvPath);
+
+    if (resolvedVenvPath !== preferredVenvPath && resolvedVenvPath === localVenvPath) {
+        log.warn(`Preferred venv ${preferredVenvPath} has no Python executable, falling back to ${localVenvPath}`);
+    } else if (!pythonExists(resolvedVenvPath)) {
+        log.warn(`Python executable not found in ${resolvedVenvPath}; backend start may fail until dependencies are installed.`);
+    }
+
     console.log('userData', userData)
-    console.log('Using venv path:', venvPath)
+    console.log('Using venv path:', resolvedVenvPath)
     // Try to find an available port, with aggressive cleanup if needed
     let port: number;
     const portFile = path.join(userData, 'port.txt');
@@ -154,7 +172,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         setPort(port);
     }
 
-    const npmCacheDir = path.join(venvPath, '.npm-cache');
+    const npmCacheDir = path.join(resolvedVenvPath, '.npm-cache');
     if (!fs.existsSync(npmCacheDir)) {
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
@@ -164,7 +182,8 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         PYTHONUNBUFFERED: '1',
-        UV_PROJECT_ENVIRONMENT: venvPath,
+        UV_PROJECT_ENVIRONMENT: resolvedVenvPath,
+        VIRTUAL_ENV: resolvedVenvPath,
         npm_config_cache: npmCacheDir,
     }
 
@@ -191,7 +210,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     return new Promise(async (resolve, reject) => {
         log.info(`Spawning backend process: ${uv_path} run uvicorn main:api --port ${port} --loop asyncio`);
         log.info(`Backend working directory: ${backendPath}`);
-        log.info(`Using venv: ${venvPath}`);
+        log.info(`Using venv: ${resolvedVenvPath}`);
 
         try {
             const { stdout: uvVersion } = await execAsync(`${uv_path} --version`);
