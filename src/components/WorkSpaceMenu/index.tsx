@@ -80,7 +80,7 @@ export function WorkSpaceMenu() {
 	]);
 
 	useEffect(() => {
-		window.electronAPI.onWebviewNavigated((id: string, url: string) => {
+		const cleanup = window.electronAPI.onWebviewNavigated((id: string, url: string) => {
 			let webViewUrls = [
 				...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls,
 			];
@@ -99,7 +99,7 @@ export function WorkSpaceMenu() {
 					const activeAgentIndex = taskAssigning.findIndex((item) =>
 						item.tasks.find((task) => task.id === hasUrl?.processTaskId)
 					);
-					
+
 					if (activeAgentIndex === -1) {
 						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
 						if (searchAgentIndex !== -1) {
@@ -203,9 +203,13 @@ export function WorkSpaceMenu() {
 				captureWebview();
 			}, 200);
 		});
+
+		// Cleanup function to remove listener when component unmounts or dependencies change
+		return cleanup;
 	}, [
 		chatStore.activeTaskId,
 		chatStore.tasks[chatStore.activeTaskId as string]?.webViewUrls,
+		chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning,
 	]);
 
 	const agentMap = {
