@@ -192,7 +192,7 @@ export default function ProjectGroup({
                     </motion.div>
                   )} */}
                   
-                  {!isOngoing && hasIssue && (
+                  {/* {!isOngoing && hasIssue && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -202,7 +202,7 @@ export default function ProjectGroup({
                         {t("layout.issue") || "Issue"}
                       </Tag>
                     </motion.div>
-                  )}
+                  )} */}
                   </div>
               </div>
               <TooltipSimple
@@ -353,12 +353,12 @@ export default function ProjectGroup({
             </Tag>
           )} */}
           
-          {!isOngoing && hasIssue && (
+          {/* {!isOngoing && hasIssue && (
             <Tag variant="warning" size="sm">
               {t("layout.issue") || "Issue"}
             </Tag>
-          )}
-          
+          )} */}
+
           {/* Menu button */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
