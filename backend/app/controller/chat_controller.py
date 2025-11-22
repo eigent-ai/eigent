@@ -204,14 +204,19 @@ def supplement(id: str, data: SupplementChat):
 @traceroot.trace()
 def stop(id: str):
     """stop the task"""
-    chat_logger.warning("Stopping chat session", extra={"task_id": id})
+    chat_logger.info("=" * 80)
+    chat_logger.info("🛑 [STOP-BUTTON] DELETE /chat/{id} request received from frontend")
+    chat_logger.info(f"[STOP-BUTTON] project_id/task_id: {id}")
+    chat_logger.info("=" * 80)
     try:
         task_lock = get_task_lock(id)
+        chat_logger.info(f"[STOP-BUTTON] Task lock retrieved, task_lock.id: {task_lock.id}, task_lock.status: {task_lock.status}")
+        chat_logger.info(f"[STOP-BUTTON] Queueing ActionStopData(Action.stop) to task_lock queue")
         asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
-        chat_logger.info("Chat stop signal sent", extra={"task_id": id})
+        chat_logger.info(f"[STOP-BUTTON] ✅ ActionStopData queued successfully, this will trigger workforce.stop_gracefully()")
     except Exception as e:
         # Task lock may not exist if task is already finished or never started
-        chat_logger.info("Task lock not found or already stopped", extra={"task_id": id, "error": str(e)})
+        chat_logger.warning(f"[STOP-BUTTON] ⚠️  Task lock not found or already stopped, task_id: {id}, error: {str(e)}")
     return Response(status_code=204)
 
 
@@ -282,18 +287,33 @@ def remove_task(project_id: str, task_id: str):
 @router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
 @traceroot.trace()
 def skip_task(project_id: str):
-    """Skip a task in the workforce"""
-    chat_logger.info(f"Skipping task in workforce for project_id: {project_id}")
+    """
+    Skip/Stop current task execution while preserving context.
+    This endpoint is called when user clicks the Stop button.
+
+    Behavior:
+    - Stops workforce gracefully
+    - Marks task as done
+    - Preserves conversation_history and last_task_result in task_lock
+    - Sends 'end' event to frontend
+    - Keeps SSE connection alive for multi-turn conversation
+    """
+    chat_logger.info("=" * 80)
+    chat_logger.info(f"🛑 [STOP-BUTTON] SKIP-TASK request received from frontend (User clicked Stop)")
+    chat_logger.info(f"[STOP-BUTTON] project_id: {project_id}")
+    chat_logger.info("=" * 80)
     task_lock = get_task_lock(project_id)
+    chat_logger.info(f"[STOP-BUTTON] Task lock retrieved, task_lock.id: {task_lock.id}, task_lock.status: {task_lock.status}")
 
     try:
-        # Queue the skip task action
+        # Queue the skip task action - this will preserve context for multi-turn
         skip_task_action = ActionSkipTaskData(project_id=project_id)
+        chat_logger.info(f"[STOP-BUTTON] Queueing ActionSkipTaskData (preserves context, marks as done)")
         asyncio.run(task_lock.put_queue(skip_task_action))
 
-        chat_logger.info(f"Task skip request queued for project_id: {project_id}")
+        chat_logger.info(f"[STOP-BUTTON] ✅ Skip request queued - task will stop gracefully and preserve context")
         return Response(status_code=201)
 
     except Exception as e:
-        chat_logger.error(f"Error skipping task for project_id: {project_id}: {e}")
+        chat_logger.error(f"[STOP-BUTTON] ❌ Error skipping task for project_id: {project_id}: {e}")
         raise UserException(code.error, f"Failed to skip task: {str(e)}")

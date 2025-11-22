@@ -208,6 +208,8 @@ export default function ChatBox(): JSX.Element {
 						const nextTaskId = generateUniqueId()
 						chatStore.setNextTaskId(nextTaskId);
 
+						// Use improve endpoint (POST /chat/{id}) - {id} is project_id
+						// This reuses the existing SSE connection and step_solve loop
 						fetchPost(`/chat/${projectStore.activeProjectId}`, {
 							question: tempMessageContent,
 							task_id: nextTaskId
@@ -417,43 +419,57 @@ export default function ChatBox(): JSX.Element {
 		setIsPauseResumeLoading(false);
 	};
 
-	// Skip to next task handler
+	// Stop task handler - triggers Action.skip_task which preserves context
 	const handleSkip = async () => {
 		const taskId = chatStore.activeTaskId as string;
+		console.log("=" .repeat(80));
+		console.log("🛑 [STOP-BUTTON] handleSkip CALLED from frontend");
+		console.log(`[STOP-BUTTON] taskId: ${taskId}, projectId: ${projectStore.activeProjectId}`);
+		console.log("=" .repeat(80));
 		setIsPauseResumeLoading(true);
 
 		try {
-			// First, try to notify backend to skip the task
+			// Call skip-task endpoint to trigger Action.skip_task
+			// This will stop the task gracefully while preserving context for multi-turn
+			console.log(`[STOP-BUTTON] Sending POST request to /chat/${projectStore.activeProjectId}/skip-task`);
 			await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
 				project_id: projectStore.activeProjectId
 			});
+			console.log("[STOP-BUTTON] ✅ Backend skip-task request successful");
 
-			// Only stop local task if backend call succeeds
-			chatStore.stopTask(taskId);
+			// DO NOT call chatStore.stopTask here!
+			// Keep SSE connection alive to receive "end" event from backend
+			// The "end" event will set status to 'finished' and allow multi-turn conversation
+			console.log("[STOP-BUTTON] ⚠️  SSE connection kept alive, waiting for backend 'end' event");
+
+			// Only set isPending to false so UI shows task is stopped
 			chatStore.setIsPending(taskId, false);
+			console.log("[STOP-BUTTON] ✅ Task marked as not pending, SSE connection remains open");
 
 			toast.success("Task stopped successfully", {
 				closeButton: true,
 			});
 		} catch (error) {
-			console.error("Failed to skip task:", error);
+			console.error("[STOP-BUTTON] ❌ Failed to stop task:", error);
 
-			// If backend call failed, still try to stop local task as fallback
-			// but with different messaging to user
+			// If backend call failed, close SSE connection as fallback
+			console.log("[STOP-BUTTON] Backend call failed, closing SSE connection as fallback");
 			try {
 				chatStore.stopTask(taskId);
 				chatStore.setIsPending(taskId, false);
+				console.log("[STOP-BUTTON] ⚠️  SSE connection closed due to backend failure");
 				toast.warning("Task stopped locally, but backend notification failed. Backend task may continue running.", {
 					closeButton: true,
 					duration: 5000,
 				});
 			} catch (localError) {
-				console.error("Failed to stop task locally:", localError);
+				console.error("[STOP-BUTTON] ❌ Failed to stop task locally:", localError);
 				toast.error("Failed to stop task completely. Please refresh the page.", {
 					closeButton: true,
 				});
 			}
 		} finally {
+			console.log("[STOP-BUTTON] handleSkip completed");
 			setIsPauseResumeLoading(false);
 		}
 	};
