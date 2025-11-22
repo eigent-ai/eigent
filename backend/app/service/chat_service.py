@@ -526,27 +526,26 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None and item.project_id == options.project_id:
                     logger.info(f"[LIFECYCLE] Workforce exists (id={id(workforce)}), state={workforce._state.name}, _running={workforce._running}")
 
-                    # Stop workforce execution while preserving the instance and agents
-                    logger.info(f"[LIFECYCLE] 🛑 Stopping workforce to preserve agents")
+                    # Use pause() to truly block execution at await _pause_event.wait()
+                    # This immediately stops processing new tasks
+                    logger.info(f"[LIFECYCLE] ⏸️  Pausing workforce to stop execution")
+                    workforce.pause()
+                    logger.info(f"[LIFECYCLE] ✅ workforce.pause() completed, state={workforce._state.name}")
 
-                    # Use stop_gracefully() to set _stop_requested flag
-                    # This will cause the main loop in _listen_to_channel to exit
-                    workforce.stop_gracefully()
-                    logger.info(f"[LIFECYCLE] ✅ stop_gracefully() completed, _stop_requested=True")
+                    # Set _running=False for workforce AND all children to allow reset() on next decomposition
+                    # reset() has @check_if_running(False) decorator that checks both workforce and children
+                    # reset() will automatically call _pause_event.set() to clear pause state
+                    workforce._running = False
+                    logger.info(f"[LIFECYCLE] 🔧 Set workforce._running=False")
 
-                    # Call BaseWorkforce.stop() to cancel listening tasks and set _running=False
-                    if workforce._running:
-                        from camel.societies.workforce.workforce import Workforce as BaseWorkforce
-                        BaseWorkforce.stop(workforce)
-                        logger.info(f"[LIFECYCLE] ✅ BaseWorkforce.stop() completed, _running={workforce._running}")
-
-                    # Set state to IDLE to allow reset() on next decomposition
-                    from camel.societies.workforce.workforce import WorkforceState
-                    workforce._state = WorkforceState.IDLE
-                    logger.info(f"[LIFECYCLE] 🔧 Set workforce._state = IDLE")
+                    # Also set _running=False for all children (agents)
+                    # This is critical because workforce.reset() calls child.reset() which also checks _running
+                    for child in workforce._children:
+                        child._running = False
+                    logger.info(f"[LIFECYCLE] 🔧 Set _running=False for {len(workforce._children)} children (agents)")
 
                     # DO NOT set workforce = None - preserve it for agent reuse
-                    logger.info(f"[LIFECYCLE] 🔄 Workforce preserved (id={id(workforce)}) for agent reuse in next turn")
+                    logger.info(f"[LIFECYCLE] 🔄 Workforce preserved (id={id(workforce)}) in PAUSED state for next turn")
                 else:
                     logger.warning(f"[LIFECYCLE] Cannot skip: workforce is None or project_id mismatch")
 
