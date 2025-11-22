@@ -575,10 +575,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					// Only ignore messages if task is finished and not a valid post-completion event
 					// Valid events after task completion:
 					// - Task switching: confirmed, new_task_state, end
+					// - Multi-turn complex: to_sub_tasks (for task decomposition after Stop)
 					// - Multi-turn simple answer: wait_confirm
 					const isTaskSwitchingEvent = agentMessages.step === "confirmed" ||
 													agentMessages.step === "new_task_state" ||
-													agentMessages.step === "end";
+													agentMessages.step === "end" ||
+													agentMessages.step === "to_sub_tasks";
 
 					const isMultiTurnSimpleAnswer = agentMessages.step === "wait_confirm";
 
@@ -614,8 +616,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					const previousChatStore = getCurrentChatStore()
 					if(agentMessages.step === "confirmed") {
 						const { question } = agentMessages.data;
-						const shouldCreateNewChat = project_id && (question || messageContent);
-						
+
+						// Check if this is multi-turn after task completion
+						const isMultiTurnConfirmed = currentTask.status === 'finished';
+
+						// Don't create new chatStore for multi-turn scenarios
+						const shouldCreateNewChat = project_id && (question || messageContent) && !isMultiTurnConfirmed;
+
+						if (isMultiTurnConfirmed) {
+							console.log('[MULTI-TURN] Confirmed after task completion, keeping status=finished for to_sub_tasks detection');
+							// Don't clear agents here - let to_sub_tasks handle it
+							// Don't change status here - keep 'finished' so to_sub_tasks can detect multi-turn
+						}
+
 						//All except first confirmed event to reuse the existing chatStore
 						if(shouldCreateNewChat && !skipFirstConfirm) {
 								/**
@@ -687,7 +700,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						} else {
 							//NOTE: Triggered only with first "confirmed" in the project
 							//Handle Original cases - with old chatStore
-							previousChatStore.setStatus(currentTaskId, 'pending');
+							// Don't change status for multi-turn - let to_sub_tasks detect it's after completion
+							if (!isMultiTurnConfirmed) {
+								previousChatStore.setStatus(currentTaskId, 'pending');
+							}
 							previousChatStore.setHasWaitComfirm(currentTaskId, false);
 						}
 
@@ -728,10 +744,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "to_sub_tasks") {
 						// Check if this is a multi-turn scenario after task completion
 						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
+						console.log('[MULTI-TURN] to_sub_tasks received, isMultiTurnAfterCompletion:', isMultiTurnAfterCompletion, 'current status:', tasks[currentTaskId].status);
 
 						// Reset status for multi-turn complex tasks to allow splitting panel to show
 						if (isMultiTurnAfterCompletion) {
+							console.log('[MULTI-TURN] to_sub_tasks after completion, clearing agent tasks');
 							setStatus(currentTaskId, 'pending');
+
+							// Clear agent tasks for multi-turn to show fresh task list
+							// Keep agents but reset their tasks array
+							const clearedAgents = tasks[currentTaskId].taskAssigning.map(agent => ({
+								...agent,
+								tasks: [],
+								log: []
+							}));
+							console.log('[MULTI-TURN] Cleared agents:', clearedAgents.length, 'agents, setting to taskAssigning');
+							setTaskAssigning(currentTaskId, clearedAgents);
 						}
 
 						// Each splitting round starts in a clean editing state

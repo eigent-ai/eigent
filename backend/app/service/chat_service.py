@@ -400,7 +400,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     if workforce is not None:
                         logger.info(f"[NEW-QUESTION] 🔄 Workforce exists (id={id(workforce)}), state={workforce._state.name}, _running={workforce._running}")
                         logger.info(f"[NEW-QUESTION] ✅ Reusing existing workforce with preserved agents")
-                        # Workforce is already stopped from skip_task, ready for new decomposition
+                        # Workforce is in IDLE state from skip_task, ready for reset and new decomposition
                     else:
                         logger.info(f"[NEW-QUESTION] 🏭 Creating NEW workforce instance (workforce=None)")
                         (workforce, mcp) = await construct_workforce(options)
@@ -411,23 +411,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             )
                     task_lock.status = Status.confirmed
 
-                    # If camel_task already exists (from previous paused task), add new question as subtask
-                    # Otherwise, create a new camel_task
-                    if camel_task is not None:
-                        logger.info(f"[NEW-QUESTION] 🔄 camel_task exists (id={camel_task.id}), adding new question as context")
-                        # Update the task content with new question
-                        clean_task_content = question + options.summary_prompt
-                        logger.info(f"[NEW-QUESTION] Updating existing camel_task content with new question")
-                        # We keep the existing task structure but update content for new decomposition
-                        camel_task = Task(content=clean_task_content, id=options.task_id)
-                        if len(options.attaches) > 0:
-                            camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
+                    # Always create a new camel_task for the new question
+                    # The old task is preserved in conversation_history
+                    clean_task_content = question + options.summary_prompt
+                    old_task_id = camel_task.id if camel_task is not None else None
+
+                    if old_task_id:
+                        logger.info(f"[NEW-QUESTION] Previous camel_task exists (id={old_task_id}), creating new task for new question")
+                        logger.info(f"[NEW-QUESTION] Old task context is preserved in conversation_history")
                     else:
-                        clean_task_content = question + options.summary_prompt
-                        logger.info(f"[NEW-QUESTION] Creating NEW camel_task with id={options.task_id}")
-                        camel_task = Task(content=clean_task_content, id=options.task_id)
-                        if len(options.attaches) > 0:
-                            camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
+                        logger.info(f"[NEW-QUESTION] Creating first camel_task with id={options.task_id}")
+
+                    camel_task = Task(content=clean_task_content, id=options.task_id)
+                    if len(options.attaches) > 0:
+                        camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
                     logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
                     sub_tasks = await asyncio.to_thread(
@@ -529,21 +526,27 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None and item.project_id == options.project_id:
                     logger.info(f"[LIFECYCLE] Workforce exists (id={id(workforce)}), state={workforce._state.name}, _running={workforce._running}")
 
-                    # Stop workforce completely
-                    logger.info(f"[LIFECYCLE] 🛑 Stopping workforce")
+                    # Stop workforce execution while preserving the instance and agents
+                    logger.info(f"[LIFECYCLE] 🛑 Stopping workforce to preserve agents")
+
+                    # Use stop_gracefully() to set _stop_requested flag
+                    # This will cause the main loop in _listen_to_channel to exit
+                    workforce.stop_gracefully()
+                    logger.info(f"[LIFECYCLE] ✅ stop_gracefully() completed, _stop_requested=True")
+
+                    # Call BaseWorkforce.stop() to cancel listening tasks and set _running=False
                     if workforce._running:
-                        # Import correct BaseWorkforce from camel
                         from camel.societies.workforce.workforce import Workforce as BaseWorkforce
                         BaseWorkforce.stop(workforce)
-                        logger.info(f"[LIFECYCLE] ✅ BaseWorkforce.stop() completed, state={workforce._state.name}, _running={workforce._running}")
+                        logger.info(f"[LIFECYCLE] ✅ BaseWorkforce.stop() completed, _running={workforce._running}")
 
-                    workforce.stop_gracefully()
-                    logger.info(f"[LIFECYCLE] ✅ Workforce stopped gracefully")
+                    # Set state to IDLE to allow reset() on next decomposition
+                    from camel.societies.workforce.workforce import WorkforceState
+                    workforce._state = WorkforceState.IDLE
+                    logger.info(f"[LIFECYCLE] 🔧 Set workforce._state = IDLE")
 
-                    # Clear workforce to avoid state issues
-                    # Next question will create fresh workforce
-                    workforce = None
-                    logger.info(f"[LIFECYCLE] Workforce set to None, will be recreated on next question")
+                    # DO NOT set workforce = None - preserve it for agent reuse
+                    logger.info(f"[LIFECYCLE] 🔄 Workforce preserved (id={id(workforce)}) for agent reuse in next turn")
                 else:
                     logger.warning(f"[LIFECYCLE] Cannot skip: workforce is None or project_id mismatch")
 
@@ -566,9 +569,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     'working_directory': get_working_directory(options, task_lock)
                 })
 
-                # Clear camel_task as well (workforce is cleared, so camel_task should be too)
-                camel_task = None
-                logger.info(f"[LIFECYCLE] ✅ Task marked as done, workforce and camel_task cleared, ready for multi-turn")
+                # Preserve camel_task as well (workforce is preserved, keep task for context)
+                # DO NOT set camel_task = None
+                logger.info(f"[LIFECYCLE] 🔄 camel_task preserved (id={camel_task.id if camel_task else 'None'}) for context in next turn")
+                logger.info(f"[LIFECYCLE] ✅ Task marked as done, workforce and camel_task preserved, ready for multi-turn")
 
                 # Send end event to frontend with string format (matching normal end event format)
                 yield sse_json("end", end_message)
