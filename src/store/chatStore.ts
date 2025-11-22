@@ -482,7 +482,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-			
+			const use_external_cdp = await window.ipcRenderer.invoke('get-use-external-cdp');
+			const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
+			console.log('[FRONTEND CDP] Project:', project_id, 'Browser port:', browser_port, 'External CDP:', use_external_cdp);
+			console.log('[FRONTEND CDP] CDP Browsers count:', cdp_browsers?.length || 0);
+			console.log('[FRONTEND CDP] CDP Browsers details:', JSON.stringify(cdp_browsers));
+
 			// Lock the chatStore reference at the start of SSE session to prevent focus changes
 			// during active message processing
 			let lockedChatStore = targetChatStore;
@@ -534,13 +539,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					api_key: apiModel.api_key,
 					api_url: apiModel.api_url,
 					extra_params: apiModel.extra_params,
-					installed_mcp: [],
+					installed_mcp: { mcpServers: {} },
 					language: systemLanguage,
 					allow_local_system: true,
 					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
+					use_external_cdp: use_external_cdp,
+					cdp_browsers: cdp_browsers,
 					env_path: envPath,
 					search_config: searchConfig
 				}) : undefined,

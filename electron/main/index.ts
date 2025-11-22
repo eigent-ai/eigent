@@ -7,7 +7,7 @@ import { update, registerUpdateIpcHandlers } from './update'
 import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
 import { WebViewManager } from './webview'
 import { FileReader } from './fileReader'
-import { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import fs, { existsSync, readFileSync } from 'node:fs'
 import fsp from 'fs/promises'
 import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig'
@@ -40,6 +40,20 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
+let use_external_cdp = false;  // Flag to track if using external CDP browser
+
+// CDP Browser Pool
+interface CdpBrowser {
+  id: string;
+  port: number;
+  isExternal: boolean;
+  name?: string;
+  addedAt: number;
+}
+let cdp_browser_pool: CdpBrowser[] = [];
+
+// Map to store multiple browser processes by port
+let cdp_browser_processes: Map<number, ChildProcessWithoutNullStreams> = new Map();
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -289,6 +303,312 @@ function registerIpcHandlers() {
     log.info('Getting browser port')
     return browser_port
   });
+
+  // Set browser port
+  ipcMain.handle('set-browser-port', (event, port: number, isExternal: boolean = false) => {
+    log.info(`Setting browser port to ${port}, external: ${isExternal}`)
+    browser_port = port
+    use_external_cdp = isExternal
+    return { success: true, port: browser_port, use_external_cdp }
+  });
+
+  // Get external CDP flag
+  ipcMain.handle('get-use-external-cdp', () => {
+    log.info(`Getting use_external_cdp: ${use_external_cdp}`)
+    return use_external_cdp
+  });
+
+  // ==================== CDP Browser Pool Management ====================
+
+  // Get all browsers in the pool
+  ipcMain.handle('get-cdp-browsers', () => {
+    log.info(`[CDP POOL] Getting CDP browser pool, count: ${cdp_browser_pool.length}`)
+    log.info(`[CDP POOL] Pool content: ${JSON.stringify(cdp_browser_pool.map(b => ({id: b.id, port: b.port, name: b.name})))}`)
+    return cdp_browser_pool
+  });
+
+  // Get running browser processes
+  ipcMain.handle('get-running-browser-ports', () => {
+    const runningPorts = Array.from(cdp_browser_processes.keys());
+    log.info(`Getting running browser ports: ${runningPorts.join(', ')}`)
+    return runningPorts;
+  });
+
+  // Add browser to pool
+  ipcMain.handle('add-cdp-browser', (event, port: number, isExternal: boolean, name?: string) => {
+    log.info(`Adding CDP browser: port=${port}, external=${isExternal}, name=${name}`)
+
+    // Check if browser with this port already exists
+    const existing = cdp_browser_pool.find(b => b.port === port);
+    if (existing) {
+      return { success: false, error: 'Browser with this port already exists' };
+    }
+
+    const newBrowser: CdpBrowser = {
+      id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      port,
+      isExternal,
+      name,
+      addedAt: Date.now(),
+    };
+
+    cdp_browser_pool.push(newBrowser);
+    log.info(`Browser added to pool, new count: ${cdp_browser_pool.length}`)
+
+    return { success: true, browser: newBrowser };
+  });
+
+  // Remove browser from pool
+  ipcMain.handle('remove-cdp-browser', (event, browserId: string) => {
+    log.info(`Removing CDP browser: ${browserId}`)
+
+    const index = cdp_browser_pool.findIndex(b => b.id === browserId);
+    if (index === -1) {
+      return { success: false, error: 'Browser not found' };
+    }
+
+    const removed = cdp_browser_pool.splice(index, 1)[0];
+
+    // If it's a launched browser, kill the process
+    if (!removed.isExternal && cdp_browser_processes.has(removed.port)) {
+      log.info(`Killing browser process on port ${removed.port}`);
+      try {
+        const process = cdp_browser_processes.get(removed.port);
+        process?.kill();
+        cdp_browser_processes.delete(removed.port);
+      } catch (error) {
+        log.warn(`Failed to kill browser process on port ${removed.port}: ${error}`);
+      }
+    }
+
+    log.info(`Browser removed from pool, remaining count: ${cdp_browser_pool.length}`)
+
+    return { success: true, browser: removed };
+  });
+
+  // Update browser in pool
+  ipcMain.handle('update-cdp-browser', (event, browserId: string, updates: Partial<CdpBrowser>) => {
+    log.info(`Updating CDP browser: ${browserId}`)
+
+    const browser = cdp_browser_pool.find(b => b.id === browserId);
+    if (!browser) {
+      return { success: false, error: 'Browser not found' };
+    }
+
+    // Update allowed fields
+    if (updates.name !== undefined) browser.name = updates.name;
+
+    log.info(`Browser updated in pool`)
+    return { success: true, browser };
+  });
+
+  // Check if CDP port is available
+  ipcMain.handle('check-cdp-port', async (event, port: number) => {
+    log.info(`Checking CDP port availability: ${port}`);
+    try {
+      const response = await axios.get(`http://localhost:${port}/json/version`, {
+        timeout: 3000,
+      });
+
+      if (response.status === 200 && response.data) {
+        log.info(`CDP port ${port} is available and responsive`);
+        return {
+          available: true,
+          data: response.data,
+        };
+      }
+      return { available: false, error: 'Invalid response from CDP' };
+    } catch (error: any) {
+      log.warn(`CDP port ${port} is not available: ${error.message}`);
+      return {
+        available: false,
+        error: error.code === 'ECONNREFUSED'
+          ? 'Connection refused - no browser running on this port'
+          : error.message,
+      };
+    }
+  });
+
+  // Launch CDP browser with custom port
+  ipcMain.handle('launch-cdp-browser', async (event, port: number) => {
+    log.info(`Launching CDP browser on port ${port}`);
+
+    try {
+      const platform = process.platform;
+      let chromeExecutable: string | null = null;
+
+      // Use Playwright's Chromium
+      let playwrightCacheDir: string;
+
+      if (platform === 'darwin') {
+        playwrightCacheDir = path.join(app.getPath('home'), 'Library/Caches/ms-playwright');
+      } else if (platform === 'win32') {
+        playwrightCacheDir = path.join(app.getPath('home'), 'AppData/Local/ms-playwright');
+      } else if (platform === 'linux') {
+        playwrightCacheDir = path.join(app.getPath('home'), '.cache/ms-playwright');
+      } else {
+        return {
+          success: false,
+          error: `Unsupported platform: ${platform}`,
+        };
+      }
+
+      log.info(`Looking for Playwright Chromium in: ${playwrightCacheDir}`);
+
+      // Find the latest chromium directory
+      try {
+        if (!existsSync(playwrightCacheDir)) {
+          return {
+            success: false,
+            error: 'Playwright Chromium not found. Please run: npx playwright install chromium',
+          };
+        }
+
+        const chromiumDirs = fs.readdirSync(playwrightCacheDir)
+          .filter(dir => dir.startsWith('chromium-'))
+          .sort()
+          .reverse();
+
+        if (chromiumDirs.length === 0) {
+          return {
+            success: false,
+            error: 'No Playwright Chromium installations found. Please run: npx playwright install chromium',
+          };
+        }
+
+        const latestChromiumDir = chromiumDirs[0];
+        log.info(`Found Playwright Chromium version: ${latestChromiumDir}`);
+
+        // Build path to Chromium executable based on platform
+        if (platform === 'darwin') {
+          chromeExecutable = path.join(
+            playwrightCacheDir,
+            latestChromiumDir,
+            'chrome-mac/Chromium.app/Contents/MacOS/Chromium'
+          );
+        } else if (platform === 'win32') {
+          chromeExecutable = path.join(
+            playwrightCacheDir,
+            latestChromiumDir,
+            'chrome-win/chrome.exe'
+          );
+        } else if (platform === 'linux') {
+          chromeExecutable = path.join(
+            playwrightCacheDir,
+            latestChromiumDir,
+            'chrome-linux/chrome'
+          );
+        }
+
+        if (!chromeExecutable || !existsSync(chromeExecutable)) {
+          return {
+            success: false,
+            error: `Chromium executable not found at: ${chromeExecutable}`,
+          };
+        }
+
+        log.info(`Using Chromium at: ${chromeExecutable}`);
+
+      } catch (error: any) {
+        log.error(`Error finding Playwright Chromium: ${error}`);
+        return {
+          success: false,
+          error: `Failed to locate Playwright Chromium: ${error.message}`,
+        };
+      }
+
+      // Create user data directory with port number in name
+      // This allows multiple browsers on different ports to maintain separate profiles
+      const userDataDir = path.join(app.getPath('userData'), `cdp_browser_profile_${port}`);
+
+      // Create directory if it doesn't exist (preserve existing data)
+      if (!existsSync(userDataDir)) {
+        await fsp.mkdir(userDataDir, { recursive: true });
+        log.info(`Created new user data directory: ${userDataDir}`);
+      } else {
+        log.info(`Using existing user data directory: ${userDataDir}`);
+      }
+
+      // Check if browser on this port is already running
+      if (cdp_browser_processes.has(port)) {
+        log.warn(`Browser process already exists on port ${port}`);
+        return {
+          success: false,
+          error: `Browser already running on port ${port}`,
+        };
+      }
+
+      // Chrome launch arguments
+      const args = [
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${userDataDir}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-blink-features=AutomationControlled',
+        'about:blank',
+      ];
+
+      log.info(`Launching Chrome with args: ${args.join(' ')}`);
+
+      // Spawn Chrome process
+      const browserProcess = spawn(chromeExecutable, args, {
+        detached: false,
+        stdio: 'ignore',
+      });
+
+      browserProcess.on('error', (error) => {
+        log.error(`CDP browser process on port ${port} error: ${error}`);
+        cdp_browser_processes.delete(port);
+      });
+
+      browserProcess.on('exit', (code) => {
+        log.info(`CDP browser process on port ${port} exited with code ${code}`);
+        cdp_browser_processes.delete(port);
+      });
+
+      // Store the process in the Map
+      cdp_browser_processes.set(port, browserProcess);
+
+      // Wait a bit for browser to start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify browser is accessible
+      try {
+        const response = await axios.get(`http://localhost:${port}/json/version`, {
+          timeout: 5000,
+        });
+
+        if (response.status === 200) {
+          log.info(`CDP browser successfully launched on port ${port}`);
+          // This is our own launched browser, not external
+          use_external_cdp = false;
+          return {
+            success: true,
+            port,
+            data: response.data,
+          };
+        }
+      } catch (verifyError) {
+        log.warn(`Failed to verify CDP browser: ${verifyError}`);
+        return {
+          success: false,
+          error: 'Browser launched but not responding on CDP port',
+        };
+      }
+
+      return {
+        success: true,
+        port,
+      };
+    } catch (error: any) {
+      log.error(`Failed to launch CDP browser: ${error}`);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  });
+
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
   

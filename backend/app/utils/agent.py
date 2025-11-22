@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import platform
+import threading
 from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
@@ -69,6 +70,74 @@ from app.service.task import (
 from app.service.task import set_process_task
 
 NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
+
+# Global counter for round-robin browser selection from pool
+_browser_selection_counter = 0
+
+# CDP Browser occupation management
+class CdpBrowserPoolManager:
+    """Manages CDP browser pool occupation to ensure parallel tasks use different browsers."""
+
+    def __init__(self):
+        self._occupied_ports = {}  # port -> session_id mapping
+        self._lock = threading.Lock()
+
+    def acquire_browser(self, cdp_browsers: list[dict], session_id: str) -> dict | None:
+        """
+        Acquire an available browser from the pool.
+
+        Args:
+            cdp_browsers: List of browser configurations
+            session_id: Unique session identifier for this toolkit instance
+
+        Returns:
+            Browser configuration dict or None if no browsers available
+        """
+        with self._lock:
+            # Find first unoccupied browser
+            for browser in cdp_browsers:
+                port = browser.get('port')
+                if port and port not in self._occupied_ports:
+                    self._occupied_ports[port] = session_id
+                    traceroot_logger.info(
+                        f"Acquired browser on port {port} for session {session_id}. "
+                        f"Occupied: {list(self._occupied_ports.keys())}"
+                    )
+                    return browser
+
+            traceroot_logger.warning(
+                f"No available browsers in pool for session {session_id}. "
+                f"All occupied: {list(self._occupied_ports.keys())}"
+            )
+            return None
+
+    def release_browser(self, port: int, session_id: str):
+        """
+        Release a browser back to the pool.
+
+        Args:
+            port: Browser port to release
+            session_id: Session identifier
+        """
+        with self._lock:
+            if port in self._occupied_ports and self._occupied_ports[port] == session_id:
+                del self._occupied_ports[port]
+                traceroot_logger.info(
+                    f"Released browser on port {port} from session {session_id}. "
+                    f"Occupied: {list(self._occupied_ports.keys())}"
+                )
+            else:
+                traceroot_logger.warning(
+                    f"Attempted to release browser on port {port} but it was not occupied by {session_id}"
+                )
+
+    def get_occupied_ports(self) -> list[int]:
+        """Get list of currently occupied ports."""
+        with self._lock:
+            return list(self._occupied_ports.keys())
+
+# Global CDP browser pool manager instance
+_cdp_pool_manager = CdpBrowserPoolManager()
 
 
 class ListenChatAgent(ChatAgent):
@@ -729,15 +798,62 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
+    # Generate unique session ID for this toolkit instance
+    toolkit_session_id = str(uuid.uuid4())[:8]
+
+    # Browser selection logic from CDP browser pool using occupation manager
+    selected_port = env('browser_port', '9222')
+    selected_is_external = options.use_external_cdp if hasattr(options, 'use_external_cdp') else False
+
+    # If CDP browser pool is available and not empty, acquire an available browser
+    traceroot_logger.info(f"Checking CDP browser pool: hasattr={hasattr(options, 'cdp_browsers')}, "
+                         f"browsers={getattr(options, 'cdp_browsers', None)}")
+
+    if hasattr(options, 'cdp_browsers') and options.cdp_browsers:
+        global _cdp_pool_manager
+        traceroot_logger.info(f"CDP browser pool available with {len(options.cdp_browsers)} browsers")
+        # Acquire an available (unoccupied) browser from the pool
+        selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, toolkit_session_id)
+
+        if selected_browser:
+            selected_port = selected_browser.get('port', selected_port)
+            selected_is_external = selected_browser.get('isExternal', False)
+
+            traceroot_logger.info(
+                f"Acquired browser from pool: port={selected_port}, "
+                f"isExternal={selected_is_external}, "
+                f"name={selected_browser.get('name', 'Unnamed')}, "
+                f"session={toolkit_session_id}"
+            )
+        else:
+            # No available browsers - fall back to default or log warning
+            traceroot_logger.warning(
+                f"No available browsers in pool for session {toolkit_session_id}, "
+                f"using default port {selected_port}"
+            )
+    else:
+        traceroot_logger.info(f"No CDP browser pool available, using default port: {selected_port}")
+
+    # Use cdp_keep_current_page=True only when using external CDP browser
+    # to preserve the current page. For internal browser, use False (default behavior)
+    use_keep_current_page = selected_is_external
+
+    # When cdp_keep_current_page=True, don't set default_start_url (conflicts with keeping current page)
+    # When cdp_keep_current_page=False, use "about:blank" as default start URL
+    default_url = None if use_keep_current_page else "about:blank"
+
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
-        session_id=str(uuid.uuid4())[:8],
-        default_start_url="about:blank",
-        cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+        session_id=toolkit_session_id,  # Use the session ID for pool management
+        default_start_url=default_url,
+        connect_over_cdp=True,
+        cdp_url=f"http://localhost:{selected_port}",
+        cdp_keep_current_page=use_keep_current_page,
         enabled_tools=[
+            "browser_open",
             "browser_click",
             "browser_type",
             "browser_back",
