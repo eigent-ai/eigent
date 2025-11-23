@@ -1736,18 +1736,43 @@ const setupDevToolsShortcuts = () => {
 const setupExternalLinkHandling = () => {
   if (!win) return;
 
+  // Helper function to check if URL is external
+  const isExternalUrl = (url: string): boolean => {
+    try {
+      const urlObj = new URL(url);
+      // Allow localhost and internal URLs
+      if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+        return false;
+      }
+      // Allow hash navigation
+      if (url.startsWith('#') || url.startsWith('/#')) {
+        return false;
+      }
+      // External URLs start with http/https and are not localhost
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
   // handle new window open
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:') || url.startsWith('http:')) {
+    if (isExternalUrl(url)) {
       shell.openExternal(url);
+      return { action: 'deny' };
     }
     return { action: 'deny' };
   });
 
   // handle navigation
   win.webContents.on('will-navigate', (event, url) => {
-    event.preventDefault();
-    shell.openExternal(url);
+    // Only prevent navigation and open external URLs
+    // Allow internal navigation like hash changes
+    if (isExternalUrl(url)) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+    // For internal URLs (localhost, hash navigation), allow navigation to proceed
   });
 };
 
