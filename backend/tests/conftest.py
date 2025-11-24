@@ -197,12 +197,14 @@ def app() -> FastAPI:
     """Create FastAPI test application."""
     from fastapi import FastAPI
     from app.controller.chat_controller import router as chat_router
+    from app.controller.health_controller import router as health_router
     from app.controller.model_controller import router as model_router
     from app.controller.task_controller import router as task_router
     from app.controller.tool_controller import router as tool_router
     
     app = FastAPI()
     app.include_router(chat_router)
+    app.include_router(health_router)
     app.include_router(model_router)
     app.include_router(task_router)
     app.include_router(tool_router)
@@ -225,10 +227,12 @@ def mock_task_lock():
     task_lock.status = "OPEN"  # Changed from CREATED to OPEN
     task_lock.queue = asyncio.Queue()
     task_lock.get_queue = AsyncMock()
-    task_lock.put_queue = AsyncMock()
-    task_lock.put_human_input = AsyncMock()
+    # Use AsyncMock with return_value to prevent unawaited coroutine warnings
+    task_lock.put_queue = AsyncMock(return_value=None)
+    task_lock.put_human_input = AsyncMock(return_value=None)
     task_lock.add_background_task = MagicMock()
     return task_lock
+
 
 
 @pytest.fixture
