@@ -107,6 +107,7 @@ class ListenChatAgent(ChatAgent):
         pause_event: asyncio.Event | None = None,
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
+        **kwargs: Any,
     ) -> None:
         super().__init__(
             system_message=system_message,
@@ -128,6 +129,7 @@ class ListenChatAgent(ChatAgent):
             pause_event=pause_event,
             prune_tool_calls_from_memory=prune_tool_calls_from_memory,
             enable_snapshot_clean=enable_snapshot_clean,
+            **kwargs,
         )
         self.api_task_id = api_task_id
         self.agent_name = agent_name
@@ -503,6 +505,21 @@ def agent_model(
         )
     )
 
+    # Build model config, defaulting to streaming for planner
+    extra_params = options.extra_params or {}
+    model_config: dict[str, Any] = {}
+    if options.is_cloud():
+        model_config["user"] = str(options.project_id)
+    model_config.update(
+        {
+            k: v
+            for k, v in extra_params.items()
+            if k not in ["model_platform", "model_type", "api_key", "url"]
+        }
+    )
+    if agent_name in (Agents.task_agent):
+        model_config["stream"] = True
+
     return ListenChatAgent(
         options.project_id,
         agent_name,
@@ -512,16 +529,7 @@ def agent_model(
             model_type=options.model_type,
             api_key=options.api_key,
             url=options.api_url,
-            model_config_dict={
-                "user": str(options.project_id),
-            }
-            if options.is_cloud()
-            else None,
-            **{
-                k: v
-                for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
-            },
+            model_config_dict=model_config or None,
         ),
         # output_language=options.language,
         tools=tools,
@@ -529,6 +537,7 @@ def agent_model(
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
+        stream_accumulate=False,
     )
 
 
