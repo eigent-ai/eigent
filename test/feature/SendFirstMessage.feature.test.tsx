@@ -36,17 +36,16 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, renderHook, waitFor, act } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import ChatBox from '../../../src/components/ChatBox/index'
-
+import ChatBox from '../../src/components/ChatBox'
 // Import necessary mocks
-import '../../../test/mocks/proxy.mock'
-import '../../../test/mocks/authStore.mock'
-import '../../../test/mocks/sse.mock'
+import '../mocks/proxy.mock'
+import '../mocks/authStore.mock'
+import '../mocks/sse.mock'
 
-import { useProjectStore } from '../../../src/store/projectStore'
-
+import { useProjectStore } from '../../src/store/projectStore'
+import useChatStoreAdapter from '../../src/hooks/useChatStoreAdapter'
 // Mock Electron IPC
 (global as any).ipcRenderer = {
   invoke: vi.fn((channel) => {
@@ -181,6 +180,109 @@ describe('Feature test example: chat experience', () => {
     expect(privacyLink).toBeInTheDocument()
     expect(privacyLink).toHaveAttribute('href', 'https://www.eigent.ai/privacy-policy')
     expect(privacyLink).toHaveAttribute('target', '_blank')
+  })
+
+  /**
+   * Test 4: TaskPlanning journey
+   *
+   * This spec validates the complete user workflow from sending a message to task breakdown:
+   * - User sends a message
+   * - System displays the user message
+   * - System splits the task into subtasks (task planning phase)
+   * - Task summary and subtasks are displayed to the user
+   *
+   * This test covers the core message-send and task-splitting workflow.
+   */
+  it('processes TaskPlanning journey with task splitting and subtask display', async () => {
+    // 1. Get the chat store using the adapter hook
+    const { result, rerender: rerenderHook } = renderHook(() => useChatStoreAdapter())
+    const { chatStore } = result.current
+
+    if (!chatStore) {
+      throw new Error('ChatStore is null')
+    }
+
+    const taskId = chatStore.activeTaskId
+    expect(taskId).toBeDefined()
+
+    // 2. Render the component
+    render(
+      <TestWrapper>
+        <ChatBox />
+      </TestWrapper>
+    )
+
+    // 3. Simulate user sending a message
+    const userMessage = 'Create a simple todo list application'
+
+    await act(async () => {
+      chatStore.setHasMessages(taskId!, true)
+      chatStore.addMessages(taskId!, {
+        id: 'user-msg-1',
+        role: 'user',
+        content: userMessage,
+        attaches: []
+      })
+      rerenderHook()
+    })
+
+    // 4. Verify user message appears in the UI
+    await waitFor(() => {
+      expect(screen.getByText(userMessage)).toBeInTheDocument()
+    })
+
+    // 5. Simulate task splitting phase (to_sub_tasks SSE event)
+    await act(async () => {
+      chatStore.setSummaryTask(taskId!, 'Todo List Application|Create a simple todo list application')
+      chatStore.addMessages(taskId!, {
+        id: 'to-sub-tasks-msg',
+        role: 'assistant',
+        content: '',
+        step: 'to_sub_tasks',
+        data: {
+          summary_task: 'Todo List Application|Create a simple todo list application',
+          sub_tasks: [
+            {
+              id: 'subtask-1',
+              content: 'Create HTML structure for todo list',
+              status: '',
+              subtasks: []
+            },
+            {
+              id: 'subtask-2',
+              content: 'Implement JavaScript functionality',
+              status: '',
+              subtasks: []
+            },
+            {
+              id: 'subtask-3',
+              content: 'Add CSS styling',
+              status: '',
+              subtasks: []
+            }
+          ]
+        }
+      })
+      chatStore.setTaskInfo(taskId!, [
+        { id: 'subtask-1', content: 'Create HTML structure for todo list', status: '' },
+        { id: 'subtask-2', content: 'Implement JavaScript functionality', status: '' },
+        { id: 'subtask-3', content: 'Add CSS styling', status: '' }
+      ])
+      rerenderHook()
+    })
+
+    // 6. Verify task summary and subtasks appear in the UI
+    await waitFor(() => {
+      expect(screen.getByText('Todo List Application')).toBeInTheDocument()
+      expect(screen.getByText('Create HTML structure for todo list')).toBeInTheDocument()
+      expect(screen.getByText('Implement JavaScript functionality')).toBeInTheDocument()
+      expect(screen.getByText('Add CSS styling')).toBeInTheDocument()
+    })
+
+    // 7. Verify chatStore state is correct by getting fresh state
+    const updatedChatStore = result.current.chatStore
+    expect(updatedChatStore!.tasks[taskId!].summaryTask).toContain('Todo List Application')
+    expect(updatedChatStore!.tasks[taskId!].taskInfo).toHaveLength(3)
   })
 })
 
