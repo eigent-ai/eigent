@@ -801,46 +801,30 @@ def search_agent(options: Chat):
     # Generate unique session ID for this toolkit instance
     toolkit_session_id = str(uuid.uuid4())[:8]
 
-    # Browser selection logic from CDP browser pool using occupation manager
-    selected_port = env('browser_port', '9222')
-    selected_is_external = options.use_external_cdp if hasattr(options, 'use_external_cdp') else False
-
-    # If CDP browser pool is available and not empty, acquire an available browser
-    traceroot_logger.info(f"Checking CDP browser pool: hasattr={hasattr(options, 'cdp_browsers')}, "
-                         f"browsers={getattr(options, 'cdp_browsers', None)}")
-
-    if hasattr(options, 'cdp_browsers') and options.cdp_browsers:
-        global _cdp_pool_manager
-        traceroot_logger.info(f"CDP browser pool available with {len(options.cdp_browsers)} browsers")
-        # Acquire an available (unoccupied) browser from the pool
-        selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, toolkit_session_id)
-
-        if selected_browser:
-            selected_port = selected_browser.get('port', selected_port)
-            selected_is_external = selected_browser.get('isExternal', False)
-
-            traceroot_logger.info(
-                f"Acquired browser from pool: port={selected_port}, "
-                f"isExternal={selected_is_external}, "
-                f"name={selected_browser.get('name', 'Unnamed')}, "
-                f"session={toolkit_session_id}"
-            )
-        else:
-            # No available browsers - fall back to default or log warning
-            traceroot_logger.warning(
-                f"No available browsers in pool for session {toolkit_session_id}, "
-                f"using default port {selected_port}"
-            )
+    # SIMPLIFIED: Use fixed CDP port from environment or first browser in pool
+    # No occupation management - all agents share the same browser connection
+    if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
+        # Use first browser from pool
+        selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
+        selected_is_external = options.cdp_browsers[0].get('isExternal', False)
+        traceroot_logger.info(
+            f"Using CDP browser: port={selected_port}, "
+            f"isExternal={selected_is_external}, "
+            f"name={options.cdp_browsers[0].get('name', 'Unnamed')}"
+        )
     else:
-        traceroot_logger.info(f"No CDP browser pool available, using default port: {selected_port}")
+        # Use default port from environment
+        selected_port = env('browser_port', '9222')
+        selected_is_external = False
+        traceroot_logger.info(f"Using default CDP port: {selected_port}")
 
-    # Use cdp_keep_current_page=True only when using external CDP browser
-    # to preserve the current page. For internal browser, use False (default behavior)
-    use_keep_current_page = selected_is_external
+    # IMPORTANT: Always use cdp_keep_current_page=True to preserve browser state
+    # across tasks (both internal and external browsers)
+    use_keep_current_page = True
 
-    # When cdp_keep_current_page=True, don't set default_start_url (conflicts with keeping current page)
-    # When cdp_keep_current_page=False, use "about:blank" as default start URL
-    default_url = None if use_keep_current_page else "about:blank"
+    # When cdp_keep_current_page=True, don't set default_start_url to avoid
+    # opening a new page and conflicting with keeping the current page
+    default_url = None
 
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
@@ -848,10 +832,10 @@ def search_agent(options: Chat):
         browser_log_to_file=True,
         stealth=True,
         session_id=toolkit_session_id,  # Use the session ID for pool management
-        default_start_url=None,
+        default_start_url=default_url,
         connect_over_cdp=True,
         cdp_url=f"http://localhost:{selected_port}",
-        cdp_keep_current_page=True,
+        cdp_keep_current_page=use_keep_current_page,
         enabled_tools=[
             "browser_open",
             "browser_click",
@@ -962,23 +946,6 @@ Your capabilities include:
 
 <web_search_workflow>
 Your approach depends on available search tools:
-
-**If Google Search is Available:**
-- Initial Search: Start with `search_google` to get a list of relevant URLs
-- Browser-Based Exploration: Use the browser tools to investigate the URLs
-
-**If Google Search is NOT Available:**
-- **MUST start with direct website search**: Use `browser_visit_page` to go
-  directly to popular search engines and informational websites such as:
-  * General search: google.com, bing.com, duckduckgo.com
-  * Academic: scholar.google.com, pubmed.ncbi.nlm.nih.gov
-  * News: news.google.com, bbc.com/news, reuters.com
-  * Technical: stackoverflow.com, github.com
-  * Reference: wikipedia.org, britannica.com
-- **Manual search process**: Type your query into the search boxes on these
-  sites using `browser_type` and submit with `browser_enter`
-- **Extract URLs from results**: Only use URLs that appear in the search
-  results on these websites
 
 **Common Browser Operations (both scenarios):**
 - **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
