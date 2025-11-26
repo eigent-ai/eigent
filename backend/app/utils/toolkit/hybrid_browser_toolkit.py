@@ -387,20 +387,23 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
     async def close(self):
         """Close the browser toolkit and release WebSocket connection."""
-        try:
-            # Close browser if needed
-            if self._ws_wrapper:
-                await super().browser_close()
-        except Exception as e:
-            logger.error(f"Error closing browser: {e}")
+        logger.info(f"[HybridBrowserToolkit] close() called - browser will remain open for reuse")
 
-        # Release connection from pool
-        session_id = self._ws_config.get("session_id", "default")
-        await websocket_connection_pool.close_connection(session_id)
-        logger.info(f"Released WebSocket connection for session {session_id}")
+        # DISABLED: Do not close browser - keep it open for reuse across tasks
+        # try:
+        #     # Close browser if needed
+        #     if self._ws_wrapper:
+        #         await super().browser_close()
+        # except Exception as e:
+        #     logger.error(f"Error closing browser: {e}")
 
-        # Release CDP browser from pool
-        self._release_cdp_browser()
+        # DISABLED: Do not release WebSocket connection - keep it in pool for reuse
+        # session_id = self._ws_config.get("session_id", "default")
+        # await websocket_connection_pool.close_connection(session_id)
+        # logger.info(f"Released WebSocket connection for session {session_id}")
+
+        # DISABLED: Do not release CDP browser - keep it in pool for reuse
+        # self._release_cdp_browser()
 
     def _release_cdp_browser(self):
         """Release CDP browser back to pool."""
@@ -424,10 +427,10 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
     def __del__(self):
         """Cleanup when object is garbage collected."""
-        logger.info(f"[HybridBrowserToolkit] __del__ called for api_task_id: {getattr(self, 'api_task_id', 'UNKNOWN')}")
+        logger.info(f"[HybridBrowserToolkit] __del__ called for api_task_id: {getattr(self, 'api_task_id', 'UNKNOWN')} - browser will remain open")
 
-        # Release CDP browser back to pool
-        self._release_cdp_browser()
+        # DISABLED: Do not release CDP browser on garbage collection - keep it in pool for reuse
+        # self._release_cdp_browser()
 
         # Log cleanup
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:

@@ -1242,7 +1242,8 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     workforce.add_single_agent_worker(
         "Search Agent: Can search the web, extract webpage content, "
         "simulate browser actions, and provide relevant information to "
-        "solve the given task.",
+        "solve the given task. "
+        "NOTE: Opening the browser will automatically open the Salesforce interface.",
         searcher,
     )
     workforce.add_single_agent_worker(
