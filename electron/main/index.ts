@@ -476,28 +476,57 @@ function registerIpcHandlers() {
           };
         }
 
-        const latestChromiumDir = chromiumDirs[0];
-        log.info(`Found Playwright Chromium version: ${latestChromiumDir}`);
+        // Prioritize versions that have Chromium.app over Google Chrome for Testing
+        let selectedChromiumDir = chromiumDirs[0];
+        if (platform === 'darwin') {
+          for (const dir of chromiumDirs) {
+            const chromiumAppPaths = [
+              path.join(playwrightCacheDir, dir, 'chrome-mac-arm64', 'Chromium.app'),
+              path.join(playwrightCacheDir, dir, 'chrome-mac', 'Chromium.app'),
+            ];
+            if (chromiumAppPaths.some(p => existsSync(p))) {
+              selectedChromiumDir = dir;
+              log.info(`Selected Chromium version with Chromium.app: ${dir}`);
+              break;
+            }
+          }
+        }
+
+        const latestChromiumDir = selectedChromiumDir;
+        log.info(`Using Playwright Chromium version: ${latestChromiumDir}`);
 
         // Build path to Chromium executable based on platform
         if (platform === 'darwin') {
-          chromeExecutable = path.join(
-            playwrightCacheDir,
-            latestChromiumDir,
-            'chrome-mac/Chromium.app/Contents/MacOS/Chromium'
-          );
+          // Try to find Chromium executable in both arm64 and regular directories
+          // Priority: Chromium.app (older versions) > Google Chrome for Testing (newer versions)
+          const possiblePaths = [
+            // ARM64 paths
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac-arm64', 'Chromium.app/Contents/MacOS/Chromium'),
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac-arm64', 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+            // Intel/Universal paths
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac', 'Chromium.app/Contents/MacOS/Chromium'),
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac', 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+          ];
+
+          // Find the first path that exists
+          chromeExecutable = possiblePaths.find(p => existsSync(p)) || null;
         } else if (platform === 'win32') {
-          chromeExecutable = path.join(
-            playwrightCacheDir,
-            latestChromiumDir,
-            'chrome-win/chrome.exe'
-          );
+          // Windows: Try to find chrome.exe in possible directories
+          const possiblePaths = [
+            // 64-bit paths
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-win64', 'chrome.exe'),
+            // 32-bit or older versions
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-win', 'chrome.exe'),
+          ];
+
+          chromeExecutable = possiblePaths.find(p => existsSync(p)) || null;
         } else if (platform === 'linux') {
-          chromeExecutable = path.join(
-            playwrightCacheDir,
-            latestChromiumDir,
-            'chrome-linux/chrome'
-          );
+          // Linux: Try to find chrome in possible directories
+          const possiblePaths = [
+            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-linux', 'chrome'),
+          ];
+
+          chromeExecutable = possiblePaths.find(p => existsSync(p)) || null;
         }
 
         if (!chromeExecutable || !existsSync(chromeExecutable)) {
