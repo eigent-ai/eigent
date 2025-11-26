@@ -848,10 +848,10 @@ def search_agent(options: Chat):
         browser_log_to_file=True,
         stealth=True,
         session_id=toolkit_session_id,  # Use the session ID for pool management
-        default_start_url=default_url,
+        default_start_url=None,
         connect_over_cdp=True,
         cdp_url=f"http://localhost:{selected_port}",
-        cdp_keep_current_page=use_keep_current_page,
+        cdp_keep_current_page=True,
         enabled_tools=[
             "browser_open",
             "browser_click",
