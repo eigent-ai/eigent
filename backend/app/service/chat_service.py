@@ -234,6 +234,12 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 @sync_step
 @traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
+    # Log CDP browsers received from frontend
+    logger.info(f"[BACKEND CDP] Received request for project: {options.project_id}")
+    logger.info(f"[BACKEND CDP] browser_port: {options.browser_port}, use_external_cdp: {options.use_external_cdp}")
+    logger.info(f"[BACKEND CDP] cdp_browsers count: {len(options.cdp_browsers) if hasattr(options, 'cdp_browsers') else 'N/A'}")
+    logger.info(f"[BACKEND CDP] cdp_browsers: {options.cdp_browsers if hasattr(options, 'cdp_browsers') else 'N/A'}")
+
     # if True:
     #     import faulthandler
 
@@ -1236,7 +1242,8 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     workforce.add_single_agent_worker(
         "Search Agent: Can search the web, extract webpage content, "
         "simulate browser actions, and provide relevant information to "
-        "solve the given task.",
+        "solve the given task. "
+        "NOTE: Opening the browser will automatically open the Salesforce interface.",
         searcher,
     )
     workforce.add_single_agent_worker(

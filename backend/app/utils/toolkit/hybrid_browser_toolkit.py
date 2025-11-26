@@ -316,9 +316,13 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         # This allows multiple agents to use the same browser profile without conflicts
         logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
 
+        # Use the same CDP URL as parent
+        cdp_url = self.config_loader.get_browser_config().cdp_url
+        logger.info(f"Cloning with CDP URL: {cdp_url} for session {new_session_id}")
+
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
-        return HybridBrowserToolkit(
+        cloned_toolkit = HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
             user_data_dir=self._user_data_dir,  # Use the same user_data_dir
@@ -338,31 +342,30 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             dom_content_loaded_timeout=self._dom_content_loaded_timeout,
             viewport_limit=self._viewport_limit,
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
-            cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+            cdp_url=cdp_url,
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
             full_visual_mode=self._full_visual_mode,
         )
+
+        return cloned_toolkit
 
     @classmethod
     def toolkit_name(cls) -> str:
         return "Browser Toolkit"
 
     async def close(self):
-        """Close the browser toolkit and release WebSocket connection."""
-        try:
-            # Close browser if needed
-            if self._ws_wrapper:
-                await super().browser_close()
-        except Exception as e:
-            logger.error(f"Error closing browser: {e}")
+        """Close the browser toolkit - but keep browser and connections open for reuse."""
+        logger.info(f"[HybridBrowserToolkit] close() called - browser and connections will remain open for reuse")
 
-        # Release connection from pool
-        session_id = self._ws_config.get("session_id", "default")
-        await websocket_connection_pool.close_connection(session_id)
-        logger.info(f"Released WebSocket connection for session {session_id}")
+        # DISABLED: Do not close browser - keep it open for reuse across tasks
+        # DISABLED: Do not release WebSocket connection - keep it in pool for reuse
+        # DISABLED: Do not release CDP browser port - use fixed port, no occupation management
 
     def __del__(self):
         """Cleanup when object is garbage collected."""
+        logger.info(f"[HybridBrowserToolkit] __del__ called for api_task_id: {getattr(self, 'api_task_id', 'UNKNOWN')} - browser will remain open")
+
+        # Log cleanup
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:
-            session_id = self._ws_config.get("session_id", "default")
+            session_id = self._ws_config.get("session_id", "default") if hasattr(self, "_ws_config") else "unknown"
             logger.debug(f"HybridBrowserToolkit for session {session_id} is being garbage collected")
