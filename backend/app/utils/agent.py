@@ -861,8 +861,9 @@ def search_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
-            "browser_scroll",
-            "browser_get_som_screenshot",
+            "browser_get_page_snapshot"
+            # "browser_scroll",
+            # "browser_get_page_snapshot",
         ],
     )
 
@@ -985,7 +986,7 @@ Your approach depends on available search tools:
     interactive elements, not the full page text. To see more content on
     long pages, Navigate with `browser_click`, `browser_back`, and
     `browser_forward`. Manage multiple pages with `browser_switch_tab`.
-- **Analysis**: Use `browser_get_som_screenshot` to understand the page
+- **Analysis**: Use `browser_get_page_snapshot` to understand the page
     layout and identify interactive elements. Since this is a heavy
     operation, only use it when visual analysis is necessary.
 - **Interaction**: Use `browser_type` to fill out forms and
