@@ -3,7 +3,7 @@ Centralized router registration for the Eigent API.
 All routers are explicitly registered here for better visibility and maintainability.
 """
 from fastapi import FastAPI
-from app.controller import chat_controller, model_controller, task_controller, tool_controller, health_controller
+from app.controller import chat_controller, model_controller, task_controller, tool_controller, health_controller, trigger_controller
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("router")
@@ -47,6 +47,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": tool_controller.router,
             "tags": ["tool"], 
             "description": "Tool installation and management"
+        },
+        {
+            "router": trigger_controller.router,
+            "tags": ["trigger"],
+            "description": "Webhook and schedule trigger management with Camel workforce integration"
         },
     ]
     

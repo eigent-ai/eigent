@@ -9,6 +9,7 @@ import General from "@/pages/Setting/General";
 import Privacy from "@/pages/Setting/Privacy";
 import Models from "@/pages/Setting/Models";
 import MCP from "@/pages/Setting/MCP";
+import Triggers from "@/pages/Setting/Triggers";
 import {
 	X,
 	CircleCheck,
@@ -16,6 +17,7 @@ import {
 	Fingerprint,
 	TextSelect,
 	Server,
+	Zap,
 } from "lucide-react";
 
 export default function Setting() {
@@ -42,6 +44,12 @@ export default function Setting() {
 			name: t("setting.models"),
 			icon: TextSelect,
 			path: "/setting/models",
+		},
+		{
+			id: "triggers",
+			name: t("setting.triggers"),
+			icon: Zap,
+			path: "/setting/triggers",
 		},
 	];
 	// Initialize tab from URL once, then manage locally without routing
@@ -99,6 +107,7 @@ export default function Setting() {
 						{activeTab === "general" && <General />}
 						{activeTab === "privacy" && <Privacy />}
 						{activeTab === "models" && <Models />}
+						{activeTab === "triggers" && <Triggers />}
 					</div>
 				</div>
 			</div>
