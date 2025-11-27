@@ -1,4 +1,4 @@
-import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript } from "./utils/process";
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript, killProcessByName } from "./utils/process";
 import { spawn, exec } from 'child_process'
 import log from 'electron-log'
 import fs from 'fs'
@@ -21,16 +21,16 @@ export function getMainWindow(): BrowserWindow | null {
 export async function checkToolInstalled() {
     return new Promise<PromiseReturnType>(async (resolve, reject) => {
         if (!(await isBinaryExists('uv'))) {
-            resolve({success: false, message: "uv doesn't exist"})
+            resolve({ success: false, message: "uv doesn't exist" })
             return
         }
 
         if (!(await isBinaryExists('bun'))) {
-            resolve({success: false, message: "Bun doesn't exist"})
+            resolve({ success: false, message: "Bun doesn't exist" })
             return
         }
 
-        resolve({success: true, message: "Tools exist already"})
+        resolve({ success: true, message: "Tools exist already" })
     })
 
 }
@@ -210,6 +210,21 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 // Attempt to repair the environment
                 log.info("Attempting to repair environment...");
 
+                // Cleanup stale processes and locks
+                log.info("Cleaning up stale processes and locks...");
+                await killProcessByName('uv');
+                await killProcessByName('python');
+
+                // Try to remove the lock file explicitly if it exists
+                try {
+                    const lockFile = path.join(getCachePath('uv_python'), '.lock');
+                    if (fs.existsSync(lockFile)) {
+                        fs.unlinkSync(lockFile);
+                    }
+                } catch (e) {
+                    log.warn(`Failed to remove lock file: ${e}`);
+                }
+
                 // Use proxy if in China (simple check based on timezone)
                 // Add official PyPI as fallback for packages not available on mirror
                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -217,7 +232,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     ? [
                         '--default-index', 'https://mirrors.aliyun.com/pypi/simple/',
                         '--index', 'https://pypi.org/simple/'
-                      ]
+                    ]
                     : [];
 
                 // Step 1: Ensure Python is installed (fixes corrupted/missing Python)
@@ -299,7 +314,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                         setTimeout(() => {
                             try {
                                 process.kill(-proc.pid, 'SIGKILL');
-                            } catch (e) {}
+                            } catch (e) { }
                         }, 1000);
                     } catch (e) {
                         log.error(`Failed to kill process group: ${e}`);

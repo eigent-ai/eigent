@@ -157,3 +157,34 @@ export function getUvEnv(version: string): Record<string, string> {
     UV_HTTP_TIMEOUT: '180',
   }
 }
+
+export async function killProcessByName(name: string): Promise<void> {
+  const platform = process.platform
+  try {
+    if (platform === 'win32') {
+      await new Promise<void>((resolve, reject) => {
+        // /F = force, /IM = image name
+        const cmd = spawn('taskkill', ['/F', '/IM', `${name}.exe`])
+        cmd.on('close', (code) => {
+          // code 0 = success, code 128 = process not found (which is fine)
+          if (code === 0 || code === 128) resolve()
+          else reject(new Error(`taskkill exited with code ${code}`))
+        })
+        cmd.on('error', reject)
+      })
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        const cmd = spawn('pkill', ['-9', name])
+        cmd.on('close', (code) => {
+          // code 0 = success, code 1 = no process found (which is fine)
+          if (code === 0 || code === 1) resolve()
+          else reject(new Error(`pkill exited with code ${code}`))
+        })
+        cmd.on('error', reject)
+      })
+    }
+  } catch (err) {
+    // Ignore errors, just best effort
+    log.warn(`Failed to kill process ${name}:`, err)
+  }
+}
