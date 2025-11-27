@@ -752,6 +752,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setElapsed,
 						setActiveTaskId,
 						setIsContextExceeded,
+						setStreamingDecomposeText,
+						clearStreamingDecomposeText,
 						setIsTaskEdit } = getCurrentChatStore()
 
 					currentTaskId = getCurrentTaskId();
@@ -783,7 +785,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							streamingDecomposeTextTimers[currentId] = setTimeout(() => {
 								const bufferedText = streamingDecomposeTextBuffer[currentId];
 								if (bufferedText !== undefined) {
-									getCurrentChatStore().setStreamingDecomposeText(currentId, bufferedText);
+									setStreamingDecomposeText(currentId, bufferedText);
 								}
 								delete streamingDecomposeTextTimers[currentId];
 							}, 16);
@@ -793,9 +795,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					if (agentMessages.step === "to_sub_tasks") {
 						// Clear streaming decompose text when task splitting is done
-						const currentStore = getCurrentChatStore();
-						const currentId = getCurrentTaskId();
-						currentStore.clearStreamingDecomposeText(currentId);
+						clearStreamingDecomposeText(currentTaskId);
 						// Check if this is a multi-turn scenario after task completion
 						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
