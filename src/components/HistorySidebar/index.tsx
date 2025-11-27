@@ -79,9 +79,10 @@ export default function HistorySidebar() {
 		navigate("/");
 	};
 
+	// Re-fetch history when chat updates or when refetchProjects is called
 	useEffect(() => {
 		fetchGroupedHistoryTasks(setHistoryTasks);
-	}, [chatStore.updateCount]);
+	}, [chatStore.updateCount, projectStore.refetchCounter]);
 
 	// Group ongoing tasks by project
 	const ongoingProjects = useMemo(() => {
@@ -90,6 +91,10 @@ export default function HistorySidebar() {
 		// Iterate through all projects
 		const allProjects = projectStore.getAllProjects();
 		allProjects.forEach((project) => {
+			if(historyTasks.find(p => p.project_id === project.id)) {
+				//Skip if project already exists in historyTasks
+				return;
+			}
 			// Get all chat stores for this project
 			const chatStores = projectStore.getAllChatStores(project.id);
 			
@@ -159,6 +164,7 @@ export default function HistorySidebar() {
 	const deleteHistoryTask = async (project: ProjectGroup, historyId: string) => {
 		try {
 			const res = await proxyFetchDelete(`/api/chat/history/${historyId}`);
+			projectStore.refetchProjects();
 			console.log(res);
 			// also delete local files for this task if available (via Electron IPC)
 			const  {email} = getAuthStore()
