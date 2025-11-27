@@ -225,6 +225,17 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     log.warn(`Failed to remove lock file: ${e}`);
                 }
 
+                // Cleanup corrupted python cache
+                try {
+                    const pythonCacheDir = getCachePath('uv_python');
+                    if (fs.existsSync(pythonCacheDir)) {
+                        log.info(`Removing potentially corrupted Python cache: ${pythonCacheDir}`);
+                        fs.rmSync(pythonCacheDir, { recursive: true, force: true });
+                    }
+                } catch (e) {
+                    log.warn(`Failed to remove Python cache: ${e}`);
+                }
+
                 // Use proxy if in China (simple check based on timezone)
                 // Add official PyPI as fallback for packages not available on mirror
                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
