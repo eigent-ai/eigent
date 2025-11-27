@@ -1,4 +1,4 @@
-import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, isBinaryExists, runInstallScript } from "./utils/process";
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript } from "./utils/process";
 import { spawn, exec } from 'child_process'
 import log from 'electron-log'
 import fs from 'fs'
@@ -159,12 +159,13 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
 
+    const uvEnv = getUvEnv(currentVersion);
     const env = {
         ...process.env,
+        ...uvEnv,
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         PYTHONUNBUFFERED: '1',
-        UV_PROJECT_ENVIRONMENT: venvPath,
         npm_config_cache: npmCacheDir,
     }
 
@@ -202,10 +203,33 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 { cwd: backendPath, env: env }
             );
             log.info(`Python test output: ${pythonTest.trim()}`);
-        } catch (testErr) {
-            log.error(`Pre-flight check failed: ${testErr}`);
-            reject(new Error(`Backend environment check failed: ${testErr}`));
-            return;
+        } catch (testErr: any) {
+            log.warn(`Pre-flight check failed, attempting repair: ${testErr}`);
+
+            try {
+                // Attempt to repair by re-syncing the environment
+                log.info("Attempting to repair environment with uv sync...");
+
+                // Use proxy if in China (simple check based on timezone)
+                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const proxyArgs = timezone === 'Asia/Shanghai'
+                    ? ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
+                    : [];
+
+                const syncArgs = ['sync', '--no-dev', ...proxyArgs];
+                await execAsync(`${uv_path} ${syncArgs.join(' ')}`, { cwd: backendPath, env: env });
+
+                // Retry the check
+                const { stdout: pythonTest } = await execAsync(
+                    `${uv_path} run python -c "print('Python OK')"`,
+                    { cwd: backendPath, env: env }
+                );
+                log.info(`Python test output after repair: ${pythonTest.trim()}`);
+            } catch (repairErr) {
+                log.error(`Repair failed: ${repairErr}`);
+                reject(new Error(`Backend environment check failed: ${testErr}\nRepair failed: ${repairErr}`));
+                return;
+            }
         }
 
         const node_process = spawn(

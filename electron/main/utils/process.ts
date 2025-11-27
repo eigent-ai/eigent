@@ -142,3 +142,18 @@ export async function isBinaryExists(name: string): Promise<boolean> {
 
   return await fs.existsSync(cmd)
 }
+
+/**
+ * Get unified UV environment variables for consistent Python environment management.
+ * This ensures both installation and runtime use the same paths.
+ * @param version - The app version for venv path
+ * @returns Environment variables for UV commands
+ */
+export function getUvEnv(version: string): Record<string, string> {
+  return {
+    UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+    UV_TOOL_DIR: getCachePath('uv_tool'),
+    UV_PROJECT_ENVIRONMENT: getVenvPath(version),
+    UV_HTTP_TIMEOUT: '180',
+  }
+}
