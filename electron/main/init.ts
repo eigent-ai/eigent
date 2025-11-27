@@ -236,6 +236,16 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     log.warn(`Failed to remove Python cache: ${e}`);
                 }
 
+                // Cleanup corrupted venv (pyvenv.cfg may reference non-existent Python version)
+                try {
+                    if (fs.existsSync(venvPath)) {
+                        log.info(`Removing potentially corrupted venv: ${venvPath}`);
+                        fs.rmSync(venvPath, { recursive: true, force: true });
+                    }
+                } catch (e) {
+                    log.warn(`Failed to remove venv: ${e}`);
+                }
+
                 // Use proxy if in China (simple check based on timezone)
                 // Add official PyPI as fallback for packages not available on mirror
                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
