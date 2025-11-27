@@ -207,15 +207,25 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             log.warn(`Pre-flight check failed, attempting repair: ${testErr}`);
 
             try {
-                // Attempt to repair by re-syncing the environment
-                log.info("Attempting to repair environment with uv sync...");
+                // Attempt to repair the environment
+                log.info("Attempting to repair environment...");
 
                 // Use proxy if in China (simple check based on timezone)
+                // Add official PyPI as fallback for packages not available on mirror
                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
                 const proxyArgs = timezone === 'Asia/Shanghai'
-                    ? ['--default-index', 'https://mirrors.aliyun.com/pypi/simple/']
+                    ? [
+                        '--default-index', 'https://mirrors.aliyun.com/pypi/simple/',
+                        '--index', 'https://pypi.org/simple/'
+                      ]
                     : [];
 
+                // Step 1: Ensure Python is installed (fixes corrupted/missing Python)
+                log.info("Step 1: Ensuring Python is installed...");
+                await execAsync(`${uv_path} python install 3.10`, { cwd: backendPath, env: env });
+
+                // Step 2: Sync dependencies
+                log.info("Step 2: Syncing dependencies...");
                 const syncArgs = ['sync', '--no-dev', ...proxyArgs];
                 await execAsync(`${uv_path} ${syncArgs.join(' ')}`, { cwd: backendPath, env: env });
 
