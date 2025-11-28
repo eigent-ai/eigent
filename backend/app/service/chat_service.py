@@ -17,6 +17,8 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+    ActionDecomposeProgressData,
+    ActionDecomposeTextData,
 )
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
@@ -267,6 +269,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     last_completed_task_result = ""  # Track the last completed task result
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
+    event_loop = asyncio.get_running_loop()
+    sub_tasks: list[Task] = []
 
     logger.info("=" * 80)
     logger.info("🚀 [LIFECYCLE] step_solve STARTED", extra={"project_id": options.project_id, "task_id": options.task_id})
@@ -429,55 +433,116 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         if len(options.attaches) > 0:
                             camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
+                    # Stream decomposition in background so queue items (decompose_text) are processed immediately
                     logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
-                    sub_tasks = await asyncio.to_thread(
-                        workforce.eigent_make_sub_tasks,
-                        camel_task,
-                        context_for_coordinator
-                    )
-                    logger.info(f"[NEW-QUESTION] ✅ Task decomposed into {len(sub_tasks)} subtasks")
+                    stream_state = {"subtasks": [], "seen_ids": set()}
+                    state_holder: dict[str, Any] = {"sub_tasks": [], "summary_task": ""}
 
-                    logger.info(f"[NEW-QUESTION] Generating task summary")
-                    summary_task_agent = task_summary_agent(options)
-                    try:
-                        summary_task_content = await asyncio.wait_for(
-                            summary_task(summary_task_agent, camel_task), timeout=10
-                        )
-                        task_lock.summary_generated = True
-                        logger.info("[NEW-QUESTION] ✅ Summary generated successfully", extra={"project_id": options.project_id})
-                    except asyncio.TimeoutError:
-                        logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
-                        # Fallback to a minimal summary to unblock UI
-                        fallback_name = "Task"
-                        content_preview = camel_task.content if hasattr(camel_task, "content") else ""
-                        if content_preview is None:
-                            content_preview = ""
-                        fallback_summary = (
-                            (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
-                        )
-                        summary_task_content = f"{fallback_name}|{fallback_summary}"
-                        task_lock.summary_generated = True
+                    def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
+                        fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
+                        for t in fresh_tasks:
+                            stream_state["seen_ids"].add(t.id)
+                        stream_state["subtasks"].extend(fresh_tasks)
 
-                    logger.info(f"[NEW-QUESTION] 📤 Sending to_sub_tasks SSE to frontend (task card)")
-                    logger.info(f"[NEW-QUESTION] to_sub_tasks data: task_id={camel_task.id}, summary={summary_task_content[:50]}..., subtasks_count={len(camel_task.subtasks)}")
-                    yield to_sub_tasks(camel_task, summary_task_content)
-                    logger.info(f"[NEW-QUESTION] ✅ to_sub_tasks SSE sent")
-                    # tracer.stop()
-                    # tracer.save("trace.json")
+                    def on_stream_text(text_chunk: str):
+                        try:
+                            asyncio.run_coroutine_threadsafe(
+                                task_lock.put_queue(
+                                    ActionDecomposeTextData(
+                                        data={
+                                            "project_id": options.project_id,
+                                            "task_id": options.task_id,
+                                            "content": text_chunk,
+                                        }
+                                    )
+                                ),
+                                event_loop,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to stream decomposition text: {e}")
 
-                    # Only auto-start in debug mode
-                    if env("debug") == "on":
-                        logger.info(f"[DEBUG] Auto-starting workforce in debug mode")
-                        task_lock.status = Status.processing
-                        task = asyncio.create_task(workforce.eigent_start(sub_tasks))
-                        task_lock.add_background_task(task)
+                    async def run_decomposition():
+                        nonlocal camel_task
+                        try:
+                            sub_tasks = await asyncio.to_thread(
+                                workforce.eigent_make_sub_tasks,
+                                camel_task,
+                                context_for_coordinator,
+                                on_stream_batch,
+                                on_stream_text,
+                            )
+                            if stream_state["subtasks"]:
+                                sub_tasks = stream_state["subtasks"]
+                            state_holder["sub_tasks"] = sub_tasks
+                            logger.info(f"[NEW-QUESTION] ✅ Task decomposed into {len(sub_tasks)} subtasks")
+                            try:
+                                setattr(task_lock, "decompose_sub_tasks", sub_tasks)
+                            except Exception:
+                                pass
+
+                            logger.info(f"[NEW-QUESTION] Generating task summary")
+                            summary_task_agent = task_summary_agent(options)
+                            try:
+                                summary_task_content = await asyncio.wait_for(
+                                    summary_task(summary_task_agent, camel_task), timeout=10
+                                )
+                                task_lock.summary_generated = True
+                                logger.info("[NEW-QUESTION] ✅ Summary generated successfully", extra={"project_id": options.project_id})
+                            except asyncio.TimeoutError:
+                                logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
+                                task_lock.summary_generated = True
+                                fallback_name = "Task"
+                                content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                                if content_preview is None:
+                                    content_preview = ""
+                                summary_task_content = (
+                                    (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                                )
+                                summary_task_content = f"{fallback_name}|{summary_task_content}"
+                            except Exception:
+                                task_lock.summary_generated = True
+                                fallback_name = "Task"
+                                content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                                if content_preview is None:
+                                    content_preview = ""
+                                summary_task_content = (
+                                    (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                                )
+                                summary_task_content = f"{fallback_name}|{summary_task_content}"
+
+                            state_holder["summary_task"] = summary_task_content
+                            try:
+                                setattr(task_lock, "summary_task_content", summary_task_content)
+                            except Exception:
+                                pass
+                            logger.info(f"[NEW-QUESTION] 📤 Sending to_sub_tasks SSE to frontend (task card)")
+                            logger.info(f"[NEW-QUESTION] to_sub_tasks data: task_id={camel_task.id}, summary={summary_task_content[:50]}..., subtasks_count={len(camel_task.subtasks)}")
+                            payload = {
+                                "project_id": options.project_id,
+                                "task_id": options.task_id,
+                                "sub_tasks": tree_sub_tasks(camel_task.subtasks),
+                                "delta_sub_tasks": tree_sub_tasks(sub_tasks),
+                                "is_final": True,
+                                "summary_task": summary_task_content,
+                            }
+                            await task_lock.put_queue(ActionDecomposeProgressData(data=payload))
+                            logger.info(f"[NEW-QUESTION] ✅ to_sub_tasks SSE sent")
+                        except Exception as e:
+                            logger.error(f"Error in background decomposition: {e}", exc_info=True)
+
+                    bg_task = asyncio.create_task(run_decomposition())
+                    task_lock.add_background_task(bg_task)
 
             elif item.action == Action.update_task:
                 assert camel_task is not None
                 update_tasks = {item.id: item for item in item.data.task}
+                # Use stored decomposition results if available
+                if not sub_tasks:
+                    sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
                 sub_tasks = update_sub_tasks(sub_tasks, update_tasks)
                 add_sub_tasks(camel_task, item.data.task)
-                yield to_sub_tasks(camel_task, summary_task_content)
+                summary_task_content_local = getattr(task_lock, "summary_task_content", summary_task_content)
+                yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
 
                 # Check if this might be a misrouted second question
@@ -596,6 +661,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     continue
 
                 task_lock.status = Status.processing
+                if not sub_tasks:
+                    sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
@@ -700,11 +767,39 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
                         logger.info(f"[LIFECYCLE] Multi-turn: calling workforce.handle_decompose_append_task for new task decomposition")
+                        stream_state = {"subtasks": [], "seen_ids": set()}
+
+                        def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
+                            fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
+                            for t in fresh_tasks:
+                                stream_state["seen_ids"].add(t.id)
+                            stream_state["subtasks"].extend(fresh_tasks)
+
+                        def on_stream_text(text_chunk: str):
+                            try:
+                                asyncio.run_coroutine_threadsafe(
+                                    task_lock.put_queue(
+                                        ActionDecomposeTextData(
+                                            data={
+                                                "project_id": options.project_id,
+                                                "task_id": options.task_id,
+                                                "content": text_chunk,
+                                            }
+                                        )
+                                    ),
+                                    event_loop,
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to stream decomposition text: {e}")
                         new_sub_tasks = await workforce.handle_decompose_append_task(
                             camel_task,
                             reset=False,
-                            coordinator_context=context_for_multi_turn
+                            coordinator_context=context_for_multi_turn,
+                            on_stream_batch=on_stream_batch,
+                            on_stream_text=on_stream_text,
                         )
+                        if stream_state["subtasks"]:
+                            new_sub_tasks = stream_state["subtasks"]
                         logger.info(f"[LIFECYCLE] Multi-turn: task decomposed into {len(new_sub_tasks)} subtasks")
 
                         # Generate proper LLM summary for multi-turn tasks instead of hardcoded fallback
@@ -731,8 +826,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             else:
                                 new_summary_content = f"Follow-up Task|{task_content_for_summary}"
 
-                        # Send the extracted events
-                        yield to_sub_tasks(camel_task, new_summary_content)
+                        # Emit final subtasks once when decomposition is complete
+                        final_payload = {
+                            "project_id": options.project_id,
+                            "task_id": options.task_id,
+                            "sub_tasks": tree_sub_tasks(camel_task.subtasks),
+                            "delta_sub_tasks": tree_sub_tasks(new_sub_tasks),
+                            "is_final": True,
+                            "summary_task": new_summary_content,
+                        }
+                        await task_lock.put_queue(ActionDecomposeProgressData(data=final_payload))
 
                         # Update the context with new task data
                         sub_tasks = new_sub_tasks
@@ -795,6 +898,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"Workforce resumed for project {options.project_id}")
                 else:
                     logger.warning(f"Cannot resume: workforce is None for project {options.project_id}")
+            elif item.action == Action.decompose_text:
+                yield sse_json("decompose_text", item.data)
+            elif item.action == Action.decompose_progress:
+                yield sse_json("to_sub_tasks", item.data)
             elif item.action == Action.new_agent:
                 if workforce is not None:
                     workforce.pause()
