@@ -34,12 +34,13 @@ const mockImplementation = {
     if (url.includes('/api/providers')) {
       return Promise.resolve({ items: [] })
     }
-    // Mock privacy settings
+    // Mock privacy settings - all required fields must be true
     if (url.includes('/api/user/privacy')) {
       return Promise.resolve({
-        dataCollection: true,
-        analytics: true,
-        marketing: true
+        take_screenshot: true,
+        access_local_software: true,
+        access_your_address: true,
+        password_storage: true
       })
     }
     // Mock configs
