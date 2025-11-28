@@ -10,7 +10,16 @@ const mockImplementation = {
   }),
   fetchPut: vi.fn(() => Promise.resolve({ success: true })),
   getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
-  proxyFetchPost: vi.fn((url, data) => {
+  proxyFetchPost: vi.fn().mockImplementation((url, data) => {
+    // Mock login
+    if (url.includes('/api/login')) {
+      return Promise.resolve({
+        code: 0,
+        token: 'test-token',
+        username: 'Test User',
+        user_id: 1,
+      })
+    }
     // Mock history creation
     if (url.includes('/api/chat/history')) {
       return Promise.resolve({ id: 'history-' + Date.now() })
