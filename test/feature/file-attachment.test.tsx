@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom'
 import { Inputbox, FileAttachment } from '../../src/components/ChatBox/BottomBox/InputBox'
 import userEvent from '@testing-library/user-event'
 
@@ -98,7 +99,7 @@ describe('Feature Test: File Attachment', () => {
     )
 
     // Verify file name is displayed
-    expect(screen.getByText('test.txt')).toBeTruthy()
+    expect(screen.getByText('test.txt')).toBeInTheDocument()
   })
 
   /**
@@ -125,9 +126,9 @@ describe('Feature Test: File Attachment', () => {
     )
 
     // Verify all file names are displayed
-    expect(screen.getByText('document.pdf')).toBeDefined()
-    expect(screen.getByText('image.png')).toBeDefined()
-    expect(screen.getByText('data.csv')).toBeDefined()
+    expect(screen.getByText('document.pdf')).toBeInTheDocument()
+    expect(screen.getByText('image.png')).toBeInTheDocument()
+    expect(screen.getByText('data.csv')).toBeInTheDocument()
   })
 
   /**
@@ -154,14 +155,14 @@ describe('Feature Test: File Attachment', () => {
 
     // Find the file chip and hover to reveal X button
     const fileChip = screen.getByText('test.txt').closest('div')
-    expect(fileChip).toBeDefined()
+    expect(fileChip).toBeInTheDocument()
 
     // Hover over the file chip
     await user.hover(fileChip!)
 
     // Find and click the remove link (X icon)
     const removeLink = fileChip!.querySelector('a')
-    expect(removeLink).toBeDefined()
+    expect(removeLink).toBeInTheDocument()
     await user.click(removeLink!)
 
     // Verify onFilesChange was called with empty array
@@ -229,7 +230,7 @@ describe('Feature Test: File Attachment', () => {
     )
 
     // Verify file is displayed
-    expect(screen.getByText('test.txt')).toBeDefined()
+    expect(screen.getByText('test.txt')).toBeInTheDocument()
 
     // Update with message
     rerender(
@@ -243,9 +244,9 @@ describe('Feature Test: File Attachment', () => {
 
     // Verify both message and file are present
     const textarea = screen.getByRole('textbox')
-    expect(textarea).toBeDefined()
+    expect(textarea).toBeInTheDocument()
     expect((textarea as HTMLTextAreaElement).value).toBe('This is a message')
-    expect(screen.getByText('test.txt')).toBeDefined()
+    expect(screen.getByText('test.txt')).toBeInTheDocument()
   })
 
   /**
@@ -277,14 +278,14 @@ describe('Feature Test: File Attachment', () => {
     )
 
     // Verify first 5 files are displayed
-    expect(screen.getByText('file1.txt')).toBeDefined()
-    expect(screen.getByText('file2.txt')).toBeDefined()
-    expect(screen.getByText('file3.txt')).toBeDefined()
-    expect(screen.getByText('file4.txt')).toBeDefined()
-    expect(screen.getByText('file5.txt')).toBeDefined()
+    expect(screen.getByText('file1.txt')).toBeInTheDocument()
+    expect(screen.getByText('file2.txt')).toBeInTheDocument()
+    expect(screen.getByText('file3.txt')).toBeInTheDocument()
+    expect(screen.getByText('file4.txt')).toBeInTheDocument()
+    expect(screen.getByText('file5.txt')).toBeInTheDocument()
 
     // Verify remaining count is shown (2+)
-    expect(screen.getByText('2+')).toBeDefined()
+    expect(screen.getByText('2+')).toBeInTheDocument()
   })
 
   /**
@@ -310,8 +311,8 @@ describe('Feature Test: File Attachment', () => {
     )
 
     // Both files should be displayed
-    expect(screen.getByText('photo.jpg')).toBeDefined()
-    expect(screen.getByText('document.pdf')).toBeDefined()
+    expect(screen.getByText('photo.jpg')).toBeInTheDocument()
+    expect(screen.getByText('document.pdf')).toBeInTheDocument()
 
     // Check that SVG icons are rendered (lucide icons render as SVGs)
     const svgElements = container.querySelectorAll('svg')
@@ -440,7 +441,7 @@ describe('Feature Test: File Attachment', () => {
     )
 
     // Step 3: File appears in list
-    expect(screen.getByText('test.txt')).toBeDefined()
+    expect(screen.getByText('test.txt')).toBeInTheDocument()
 
     // Step 4: Type message
     const textarea = screen.getByRole('textbox')
@@ -458,7 +459,7 @@ describe('Feature Test: File Attachment', () => {
 
     // Verify both message and file are present
     expect((textarea as HTMLTextAreaElement).value).toBe('Please analyze this file')
-    expect(screen.getByText('test.txt')).toBeDefined()
+    expect(screen.getByText('test.txt')).toBeInTheDocument()
 
     // Step 5: Remove file
     const fileChip = screen.getByText('test.txt').closest('div')
