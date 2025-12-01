@@ -58,7 +58,13 @@
             "pages": [
               "/core/concepts",
               "/core/workforce",
-              "/core/models",
+              {
+                "group": "Models",
+                "pages": [
+                  "/core/models/gemini",
+                  "/core/models/local-model"
+                ]
+              },
               "/core/tools",
               "/core/workers"
             ]
