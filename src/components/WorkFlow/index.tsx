@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
 	PanOnScrollMode,
 	ReactFlow,
@@ -12,10 +12,10 @@ import { Node as CustomNodeComponent } from "./node";
 
 import { SquareStack, ChevronLeft, ChevronRight, Share } from "lucide-react";
 import "@xyflow/react/dist/style.css";
-import { useChatStore } from "@/store/chatStore";
 import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 interface NodeData {
 	agent: Agent;
@@ -31,17 +31,26 @@ const nodeTypes: NodeTypes = {
 	node: (props: any) => <CustomNodeComponent {...props} />,
 };
 
+const VIEWPORT_ANIMATION_DURATION = 500;
+
 export default function Workflow({
 	taskAssigning,
 }: {
 	taskAssigning: Agent[];
 }) {
 	const {t} = useTranslation();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [lastViewport, setLastViewport] = useState({ x: 0, y: 0, zoom: 1 });
 	const [nodes, setNodes, onNodesChange] = useNodesState<CustomNode>([]);
 	const workerList = useWorkerList();
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const [containerWidth, setContainerWidth] = useState(0);
 	const baseWorker: Agent[] = [
 		{
 			tasks: [],
@@ -221,7 +230,7 @@ export default function Workflow({
 	);
 
 	useEffect(() => {
-		console.log("workerList	", workerList);
+		// console.log("workerList	", workerList);
 		setNodes((prev: CustomNode[]) => {
 			if (!taskAssigning) return prev;
 			const base = [...baseWorker, ...workerList].filter(
@@ -245,7 +254,7 @@ export default function Workflow({
 						},
 						position: isEditMode
 							? node.position
-							: { x: index * (342+20) + 8, y: 16 },
+							: { x: index * (342 + 20) + 8, y: 16 },
 					};
 				} else {
 					return {
@@ -259,7 +268,7 @@ export default function Workflow({
 							isEditMode: isEditMode,
 							workerInfo: agent?.workerInfo,
 						},
-						position: { x: index * (342+20) + 8, y: 16 },
+						position: { x: index * (342 + 20) + 8, y: 16 },
 						type: "node",
 					};
 				}
@@ -272,6 +281,62 @@ export default function Workflow({
 	}, [taskAssigning, isEditMode, workerList]);
 
 	const { setViewport, getViewport } = useReactFlow();
+	const [isAnimating, setIsAnimating] = useState(false);
+	const totalNodesWidth = useMemo(() => {
+		if (!nodes.length) return 0;
+
+		const widths = nodes.map((node) => (node.data.isExpanded ? 684 : 342));
+		const spacing = Math.max(nodes.length - 1, 0) * 20;
+
+		return widths.reduce((sum, width) => sum + width, 0) + spacing + 16; // padding buffer
+	}, [nodes]);
+
+	const minViewportX = useMemo(() => {
+		if (!containerWidth) return 0;
+		const contentWidth = Math.max(totalNodesWidth, containerWidth);
+		return Math.min(0, containerWidth - contentWidth);
+	}, [containerWidth, totalNodesWidth]);
+
+	const clampViewportX = useCallback(
+		(x: number) => Math.min(0, Math.max(minViewportX, x)),
+		[minViewportX]
+	);
+
+	useEffect(() => {
+		const updateWidth = () => {
+			if (containerRef.current) {
+				setContainerWidth(containerRef.current.clientWidth);
+			}
+		};
+
+		updateWidth();
+		window.addEventListener("resize", updateWidth);
+
+		return () => {
+			window.removeEventListener("resize", updateWidth);
+		};
+	}, []);
+
+	const moveViewport = (dx: number) => {
+		if (isAnimating) return;
+		const viewport = getViewport();
+		setIsAnimating(true);
+		const newX = clampViewportX(viewport.x + dx);
+		setViewport(
+			{ x: newX, y: viewport.y, zoom: viewport.zoom },
+			{
+				duration: VIEWPORT_ANIMATION_DURATION,
+			}
+		);
+		setTimeout(() => {
+			setIsAnimating(false);
+		}, VIEWPORT_ANIMATION_DURATION);
+	};
+
+	const handleShare = async (taskId: string) => {
+		share(taskId);
+	};
+
 	useEffect(() => {
 		const container: HTMLElement | null =
 			document.querySelector(".react-flow__pane");
@@ -282,7 +347,8 @@ export default function Workflow({
 				e.preventDefault();
 
 				const { x, y, zoom } = getViewport();
-				setViewport({ x: x - e.deltaY, y, zoom }, { duration: 0 });
+				const nextX = clampViewportX(x - e.deltaY);
+				setViewport({ x: nextX, y, zoom }, { duration: 0 });
 			}
 		};
 
@@ -291,11 +357,7 @@ export default function Workflow({
 		return () => {
 			container.removeEventListener("wheel", onWheel);
 		};
-	}, [getViewport, setViewport, isEditMode]);
-
-	const handleShare = async (taskId: string) => {
-		share(taskId);
-	};
+	}, [getViewport, setViewport, isEditMode, clampViewportX]);
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
@@ -343,12 +405,7 @@ export default function Workflow({
 							variant="ghost"
 							size="icon"
 							onClick={() => {
-								const viewport = getViewport();
-								const newX = Math.min(0, viewport.x + 200);
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
+								moveViewport(200);
 							}}
 						>
 							<ChevronLeft className="w-4 h-4 text-icon-primary" />
@@ -356,36 +413,14 @@ export default function Workflow({
 						<Button
 							variant="ghost"
 							size="icon"
-							onClick={() => {
-								const viewport = getViewport();
-								const newX = viewport.x - 200;
-								setViewport(
-									{ x: newX, y: viewport.y, zoom: viewport.zoom },
-									{ duration: 500 }
-								);
-							}}
+							onClick={() => moveViewport(-200)}
 						>
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>
 					</div>
-					{chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-						"finished" && (
-						<div className="flex items-center justify-center p-1 rounded-lg border border-solid border-menutabs-border-active bg-menutabs-bg-default">
-							<Button
-								variant="ghost"
-								size="sm"
-								className="bg-button-fill-information text-button-fill-information-foreground hover:bg-button-fill-information-hover active:bg-button-fill-information-active focus:bg-button-fill-information-hover focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer"
-								onClick={() => {
-									handleShare(chatStore.activeTaskId as string);
-								}}
-							>
-								{t("workforce.share")}
-							</Button>
-						</div>
-					)}
 				</div>
 			</div>
-			<div className="h-full w-full">
+			<div className="h-full w-full" ref={containerRef}>
 				<ReactFlow
 					nodes={nodes}
 					edges={[]}
@@ -400,6 +435,11 @@ export default function Workflow({
 					nodesDraggable={isEditMode}
 					panOnScrollMode={PanOnScrollMode.Horizontal}
 					onMove={(event, viewport) => {
+						const clampedX = clampViewportX(viewport.x);
+						if (clampedX !== viewport.x) {
+							setViewport({ ...viewport, x: clampedX });
+							return;
+						}
 						if (isEditMode) {
 							setLastViewport(viewport);
 						}

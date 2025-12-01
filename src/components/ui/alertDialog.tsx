@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 
+type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "success" | "cuation" | "information" | "warning";
+
 interface ConfirmModalProps {
 	isOpen: boolean;
 	onClose: () => void;
@@ -9,6 +11,7 @@ interface ConfirmModalProps {
 	message?: string;
 	confirmText?: string;
 	cancelText?: string;
+	confirmVariant?: ButtonVariant;
 }
 
 export default function ConfirmModal({
@@ -19,6 +22,7 @@ export default function ConfirmModal({
 	message = "Confirm content?",
 	confirmText = "Confirm",
 	cancelText = "Cancel",
+	confirmVariant = "cuation",
 }: ConfirmModalProps) {
 	return (
 		<AnimatePresence>
@@ -29,7 +33,7 @@ export default function ConfirmModal({
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
-						className="fixed inset-0 bg-black/50 z-100 alert-dialog"
+						className="fixed inset-0 bg-white/5 z-100 alert-dialog"
 						onClick={onClose}
 					/>
 
@@ -38,20 +42,20 @@ export default function ConfirmModal({
 						initial={{ opacity: 0, scale: 0.9, y: 20 }}
 						animate={{ opacity: 1, scale: 1, y: 0 }}
 						exit={{ opacity: 0, scale: 0.9, y: 20 }}
-						className="fixed max-w-md alert-dialog-wrapper rounded-xl backdrop-blur-xl  shadow-lg"
+						className="fixed max-w-md alert-dialog-wrapper rounded-xl  shadow-perfect"
 					>
 						<div className="p-6">
-							<h3 className="text-lg font-bold text-text-primary mb-2">
+							<span className="text-body-lg font-bold text-text-primary mb-2">
 								{title}
-							</h3>
-							<p className="text-text-secondary mb-6">{message}</p>
+							</span>
+							<p className="text-label-md text-text-label mb-6">{message}</p>
 
 							<div className="flex justify-end gap-3">
-								<Button variant="outline" onClick={onClose}>
+								<Button variant="ghost" onClick={onClose}>
 									{cancelText}
 								</Button>
 								<Button
-									variant="cuation"
+									variant={confirmVariant}
 									onClick={() => {
 										onConfirm();
 										onClose();

@@ -12,12 +12,14 @@ from camel.toolkits.hybrid_browser_toolkit_py.actions import ActionExecutor
 from camel.toolkits.hybrid_browser_toolkit_py.snapshot import PageSnapshot
 from camel.toolkits.hybrid_browser_toolkit_py.agent import PlaywrightLLMAgent
 from camel.toolkits.function_tool import FunctionTool
-from loguru import logger
 from app.component.environment import env
 from app.exception.exception import ProgramException
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("hybrid_browser_python_toolkit")
 
 
 class BrowserSession(BaseHybridBrowserSession):
@@ -124,6 +126,7 @@ class BrowserSession(BaseHybridBrowserSession):
                 break
 
 
+@auto_listen_toolkit(BaseHybridBrowserToolkit)
 class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     agent_name: str = Agents.search_agent
 
@@ -134,7 +137,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         headless: bool = False,
         user_data_dir: str | None = None,
         stealth: bool = False,
-        web_agent_model: BaseModelBackend | None = None,
         cache_dir: str = os.path.expanduser("~/.eigent/tmp/"),
         enabled_tools: List[str] | None = None,
         browser_log_to_file: bool = False,
@@ -152,7 +154,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         self._headless = headless
         self._user_data_dir = user_data_dir
         self._stealth = stealth
-        self._web_agent_model = web_agent_model
         self._cache_dir = cache_dir
         self._browser_log_to_file = browser_log_to_file
         self._default_start_url = default_start_url
@@ -224,14 +225,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         self._agent: PlaywrightLLMAgent | None = None
         self._unified_script = self._load_unified_analyzer()
 
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_open)
-    async def browser_open(self) -> Dict[str, str]:
-        return await super().browser_open()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_close)
-    async def browser_close(self) -> str:
-        return await super().browser_close()
-
     @listen_toolkit(BaseHybridBrowserToolkit.browser_visit_page, lambda _, url: url)
     async def browser_visit_page(self, url: str) -> Dict[str, Any]:
         r"""Navigates to a URL.
@@ -282,66 +275,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
         return {"result": nav_result, "snapshot": snapshot, **tab_info}
 
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_back)
-    async def browser_back(self) -> Dict[str, Any]:
-        return await super().browser_back()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_forward)
-    async def browser_forward(self) -> Dict[str, Any]:
-        return await super().browser_forward()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_click)
-    async def browser_click(self, *, ref: str) -> Dict[str, Any]:
-        return await super().browser_click(ref=ref)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_type)
-    async def browser_type(self, *, ref: str, text: str) -> Dict[str, Any]:
-        return await super().browser_type(ref=ref, text=text)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_switch_tab)
-    async def browser_switch_tab(self, *, tab_id: str) -> Dict[str, Any]:
-        return await super().browser_switch_tab(tab_id=tab_id)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_select)
-    async def browser_select(self, *, ref: str, value: str) -> Dict[str, str]:
-        return await super().browser_select(ref=ref, value=value)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_scroll)
-    async def browser_scroll(self, *, direction: str, amount: int) -> Dict[str, str]:
-        return await super().browser_scroll(direction=direction, amount=amount)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_wait_user)
-    async def browser_wait_user(self, timeout_sec: float | None = None) -> Dict[str, str]:
-        return await super().browser_wait_user(timeout_sec)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_enter)
-    async def browser_enter(self) -> Dict[str, str]:
-        return await super().browser_enter()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_solve_task)
-    async def browser_solve_task(self, task_prompt: str, start_url: str, max_steps: int = 15) -> str:
-        return await super().browser_solve_task(task_prompt, start_url, max_steps)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_page_snapshot)
-    async def browser_get_page_snapshot(self) -> str:
-        return await super().browser_get_page_snapshot()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
-    async def browser_get_som_screenshot(self):
-        return await super().browser_get_som_screenshot()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_page_links)
-    async def browser_get_page_links(self, *, ref: List[str]) -> Dict[str, Any]:
-        return await super().browser_get_page_links(ref=ref)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_close_tab)
-    async def browser_close_tab(self, *, tab_id: str) -> Dict[str, Any]:
-        return await super().browser_close_tab(tab_id=tab_id)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_tab_info)
-    async def browser_get_tab_info(self) -> Dict[str, Any]:
-        return await super().browser_get_tab_info()
-
     @classmethod
     def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
         browser = HybridBrowserPythonToolkit(
@@ -367,8 +300,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             # FunctionTool(browser.wait_user),
         ]
 
-        if browser.web_agent_model is not None:
-            base_tools.append(FunctionTool(browser.browser_solve_task))
 
         return base_tools
 
@@ -385,7 +316,6 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             headless=self._headless,
             user_data_dir=self._user_data_dir,
             stealth=self._stealth,
-            web_agent_model=self._web_agent_model,
             cache_dir=f"{self._cache_dir.rstrip('/')}_clone_{new_session_id}/",
             enabled_tools=self.enabled_tools.copy(),
             browser_log_to_file=self._browser_log_to_file,

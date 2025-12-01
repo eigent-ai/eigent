@@ -1,4 +1,11 @@
 from logging.config import fileConfig
+import sys
+import pathlib
+
+# Add project root to Python path to import shared utils
+_project_root = pathlib.Path(__file__).parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context

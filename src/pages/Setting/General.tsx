@@ -6,6 +6,7 @@ import light from "@/assets/light.png";
 import dark from "@/assets/dark.png";
 import transparent from "@/assets/transparent.png";
 import { useAuthStore } from "@/store/authStore";
+import { useInstallationStore } from "@/store/installationStore";
 import { useNavigate } from "react-router-dom";
 import { proxyFetchPut, proxyFetchGet } from "@/api/http";
 import { createRef, RefObject } from "react";
@@ -13,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useChatStore } from "@/store/chatStore";
 import { LocaleEnum, switchLanguage } from "@/i18n";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import {
 	Select,
@@ -23,10 +25,15 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export default function SettingGeneral() {
 	const { t } = useTranslation();
 	const authStore = useAuthStore();
+
+	const resetInstallation = useInstallationStore(state => state.reset);
+	const setNeedsBackendRestart = useInstallationStore(state => state.setNeedsBackendRestart);
+
 	const navigate = useNavigate();
 	const [isLoading, setIsLoading] = useState(false);
 	const setAppearance = authStore.setAppearance;
@@ -36,7 +43,12 @@ export default function SettingGeneral() {
 	const fullNameRef: RefObject<HTMLInputElement> = createRef();
 	const nickNameRef: RefObject<HTMLInputElement> = createRef();
 	const workDescRef: RefObject<HTMLInputElement> = createRef();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 
 	const [themeList, setThemeList] = useState<any>([
 		{
@@ -152,6 +164,10 @@ export default function SettingGeneral() {
 						size="xs"
 						onClick={() => {
 							chatStore.clearTasks();
+
+							resetInstallation(); // Reset installation state for new account
+							setNeedsBackendRestart(true); // Mark that backend is restarting
+
 							authStore.logout();
 							navigate("/login");
 						}}

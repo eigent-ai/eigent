@@ -1,4 +1,5 @@
 from typing_extensions import Any, Literal, TypedDict
+from typing import List, Dict, Optional
 from pydantic import BaseModel
 from app.exception.exception import ProgramException
 from app.model.chat import McpServers, Status, SupplementChat, Chat, UpdateData
@@ -9,13 +10,16 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 import weakref
-from loguru import logger
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("task_service")
 
 
 class Action(str, Enum):
     improve = "improve"  # user -> backend
     update_task = "update_task"  # user -> backend
     task_state = "task_state"  # backend -> user
+    new_task_state = "new_task_state"  # backend -> user
     start = "start"  # user -> backend
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
@@ -36,11 +40,15 @@ class Action(str, Enum):
     resume = "resume"  # user -> backend  user take control
     new_agent = "new_agent"  # user -> backend
     budget_not_enough = "budget_not_enough"  # backend -> user
+    add_task = "add_task"  # user -> backend
+    remove_task = "remove_task"  # user -> backend
+    skip_task = "skip_task"  # user -> backend
 
 
 class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
     data: str
+    new_task_id: str | None = None
 
 
 class ActionStartData(BaseModel):
@@ -54,6 +62,10 @@ class ActionUpdateTaskData(BaseModel):
 
 class ActionTaskStateData(BaseModel):
     action: Literal[Action.task_state] = Action.task_state
+    data: dict[Literal["task_id", "content", "state", "result", "failure_count"], str | int]
+
+class ActionNewTaskStateData(BaseModel):
+    action: Literal[Action.new_task_state] = Action.new_task_state
     data: dict[Literal["task_id", "content", "state", "result", "failure_count"], str | int]
 
 
@@ -169,6 +181,26 @@ class ActionBudgetNotEnough(BaseModel):
     action: Literal[Action.budget_not_enough] = Action.budget_not_enough
 
 
+class ActionAddTaskData(BaseModel):
+    action: Literal[Action.add_task] = Action.add_task
+    content: str
+    project_id: str | None = None
+    task_id: str | None = None
+    additional_info: dict | None = None
+    insert_position: int = -1
+
+
+class ActionRemoveTaskData(BaseModel):
+    action: Literal[Action.remove_task] = Action.remove_task
+    task_id: str
+    project_id: str
+
+
+class ActionSkipTaskData(BaseModel):
+    action: Literal[Action.skip_task] = Action.skip_task
+    project_id: str
+
+
 ActionData = (
     ActionImproveData
     | ActionStartData
@@ -192,6 +224,9 @@ ActionData = (
     | ActionTakeControl
     | ActionNewAgent
     | ActionBudgetNotEnough
+    | ActionAddTaskData
+    | ActionRemoveTaskData
+    | ActionSkipTaskData
 )
 
 
@@ -221,6 +256,18 @@ class TaskLock:
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
 
+    # Context management fields
+    conversation_history: List[Dict[str, Any]]
+    """Store conversation history for context"""
+    last_task_result: str
+    """Store the last task execution result"""
+    question_agent: Optional[Any]
+    """Persistent question confirmation agent"""
+    summary_generated: bool
+    """Track if summary has been generated for this project"""
+    current_task_id: Optional[str]
+    """Current task ID to be used in SSE responses"""
+
     def __init__(self, id: str, queue: asyncio.Queue, human_input: dict) -> None:
         self.id = id
         self.queue = queue
@@ -229,30 +276,46 @@ class TaskLock:
         self.last_accessed = datetime.now()
         self.background_tasks = set()
 
+        # Initialize context management fields
+        self.conversation_history = []
+        self.last_task_result = ""
+        self.last_task_summary = ""
+        self.question_agent = None
+        self.current_task_id = None
+
+        logger.info("Task lock initialized", extra={"task_id": id, "created_at": self.created_at.isoformat()})
+
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
+        logger.debug("Adding item to task queue", extra={"task_id": self.id, "action": data.action})
         await self.queue.put(data)
 
     async def get_queue(self):
         self.last_accessed = datetime.now()
+        logger.debug("Getting item from task queue", extra={"task_id": self.id})
         return await self.queue.get()
 
     async def put_human_input(self, agent: str, data: Any = None):
+        logger.debug("Adding human input", extra={"task_id": self.id, "agent": agent, "has_data": data is not None})
         await self.human_input[agent].put(data)
 
     async def get_human_input(self, agent: str):
+        logger.debug("Getting human input", extra={"task_id": self.id, "agent": agent})
         return await self.human_input[agent].get()
 
     def add_human_input_listen(self, agent: str):
+        logger.debug("Adding human input listener", extra={"task_id": self.id, "agent": agent})
         self.human_input[agent] = asyncio.Queue(1)
 
     def add_background_task(self, task: asyncio.Task) -> None:
         r"""Add a task to track and clean up weak references"""
+        logger.debug("Adding background task", extra={"task_id": self.id, "background_tasks_count": len(self.background_tasks)})
         self.background_tasks.add(task)
         task.add_done_callback(lambda t: self.background_tasks.discard(t))
 
     async def cleanup(self):
         r"""Cancel all background tasks and clean up resources"""
+        logger.info("Starting task lock cleanup", extra={"task_id": self.id, "background_tasks_count": len(self.background_tasks)})
         for task in list(self.background_tasks):
             if not task.done():
                 task.cancel()
@@ -261,6 +324,27 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+        logger.info("Task lock cleanup completed", extra={"task_id": self.id})
+
+    def add_conversation(self, role: str, content: str | dict):
+        """Add a conversation entry to history"""
+        logger.debug("Adding conversation entry", extra={"task_id": self.id, "role": role, "content_length": len(str(content))})
+        self.conversation_history.append({
+            'role': role,
+            'content': content,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    def get_recent_context(self, max_entries: int = None) -> str:
+        """Get recent conversation context as a formatted string"""
+        if not self.conversation_history:
+            return ""
+
+        context = "=== Recent Conversation ===\n"
+        history_to_use = self.conversation_history if max_entries is None else self.conversation_history[-max_entries:]
+        for entry in history_to_use:
+            context += f"{entry['role']}: {entry['content']}\n"
+        return context
 
 
 task_locks = dict[str, TaskLock]()
@@ -271,13 +355,30 @@ task_index: dict[str, weakref.ref[Task]] = {}
 
 def get_task_lock(id: str) -> TaskLock:
     if id not in task_locks:
+        logger.error("Task lock not found", extra={"task_id": id})
         raise ProgramException("Task not found")
+    logger.debug("Task lock retrieved", extra={"task_id": id})
     return task_locks[id]
+
+
+def get_task_lock_if_exists(id: str) -> TaskLock | None:
+    """Get task lock if it exists, otherwise return None"""
+    return task_locks.get(id)
+
+
+def set_current_task_id(project_id: str, task_id: str) -> None:
+    """Set the current task ID for a project's task lock"""
+    task_lock = get_task_lock(project_id)
+    task_lock.current_task_id = task_id
+    logger.info("Updated current task ID", extra={"project_id": project_id, "task_id": task_id})
 
 
 def create_task_lock(id: str) -> TaskLock:
     if id in task_locks:
+        logger.warning("Attempting to create task lock that already exists", extra={"task_id": id})
         raise ProgramException("Task already exists")
+
+    logger.info("Creating new task lock", extra={"task_id": id})
     task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
 
     # Start cleanup task if not running
@@ -285,19 +386,31 @@ def create_task_lock(id: str) -> TaskLock:
     # if _cleanup_task is None or _cleanup_task.done():
     #     _cleanup_task = asyncio.create_task(_periodic_cleanup())
 
+    logger.info("Task lock created successfully", extra={"task_id": id, "total_task_locks": len(task_locks)})
     return task_locks[id]
+
+
+def get_or_create_task_lock(id: str) -> TaskLock:
+    """Get existing task lock or create a new one if it doesn't exist"""
+    if id in task_locks:
+        logger.debug("Using existing task lock", extra={"task_id": id})
+        return task_locks[id]
+    logger.info("Task lock not found, creating new one", extra={"task_id": id})
+    return create_task_lock(id)
 
 
 async def delete_task_lock(id: str):
     if id not in task_locks:
+        logger.warning("Attempting to delete non-existent task lock", extra={"task_id": id})
         raise ProgramException("Task not found")
 
     # Clean up background tasks before deletion
     task_lock = task_locks[id]
+    logger.info("Cleaning up task lock", extra={"task_id": id, "background_tasks": len(task_lock.background_tasks)})
     await task_lock.cleanup()
 
     del task_locks[id]
-    logger.debug(f"Deleted task lock {id}, remaining locks: {len(task_locks)}")
+    logger.info("Task lock deleted successfully", extra={"task_id": id, "remaining_task_locks": len(task_locks)})
 
 
 def get_camel_task(id: str, tasks: list[Task]) -> None | Task:

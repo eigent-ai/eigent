@@ -1,14 +1,10 @@
 import os
-import subprocess
-import time
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
-from loguru import logger
 import websockets
 import websockets.exceptions
 
-from camel.models import BaseModelBackend
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
@@ -16,8 +12,11 @@ from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import WebSocketBrowserWra
 from app.component.command import bun, uv
 from app.component.environment import env
 from app.service.task import Agents
-from app.utils.listen.toolkit_listen import listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("hybrid_browser_toolkit")
 
 
 class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
@@ -45,8 +44,13 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                             future.set_result(response)
                             logger.debug(f"Processed response for message {message_id}")
                     else:
-                        # Log unexpected messages
-                        logger.warning(f"Received unexpected message: {response}")
+                        message_summary = {
+                            "id": response.get("id"),
+                            "success": response.get("success"),
+                            "has_result": "result" in response,
+                            "result_type": type(response.get("result")).__name__ if "result" in response else None
+                        }
+                        logger.debug(f"Received unexpected message: {message_summary}")
 
                 except asyncio.CancelledError:
                     disconnect_reason = "Receive loop cancelled"
@@ -209,7 +213,7 @@ class WebSocketConnectionPool:
 # Global connection pool instance
 websocket_connection_pool = WebSocketConnectionPool()
 
-
+@auto_listen_toolkit(BaseHybridBrowserToolkit)
 class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     agent_name: str = Agents.search_agent
 
@@ -220,7 +224,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         headless: bool = False,
         user_data_dir: str | None = None,
         stealth: bool = True,
-        web_agent_model: BaseModelBackend | None = None,
         cache_dir: Optional[str] = None,
         enabled_tools: List[str] | None = None,
         browser_log_to_file: bool = False,
@@ -240,12 +243,26 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
     ) -> None:
+        logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
         self.api_task_id = api_task_id
+        logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
+        
+        # Set default user_data_dir if not provided
+        if user_data_dir is None:
+            # Use browser port to determine profile directory
+            browser_port = env('browser_port', '9222')
+            user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
+            user_data_dir = os.path.join(user_data_base, f"profile_{browser_port}")
+            os.makedirs(user_data_dir, exist_ok=True)
+            logger.info(f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})")
+        else:
+            logger.info(f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}")
+
+        logger.debug(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}")
         super().__init__(
             headless=headless,
             user_data_dir=user_data_dir,
             stealth=stealth,
-            web_agent_model=web_agent_model,
             cache_dir=cache_dir,
             enabled_tools=enabled_tools,
             browser_log_to_file=browser_log_to_file,
@@ -264,16 +281,24 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
+        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
+        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
         global websocket_connection_pool
 
         # Get session ID from config or use default
         session_id = self._ws_config.get("session_id", "default")
+        logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
+
+        # Log when connecting to browser
+        cdp_url = self._ws_config.get("cdp_url", f"http://localhost:{env('browser_port', '9222')}")
+        logger.info(f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}")
 
         # Get or create connection from pool
         self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
+        logger.info(f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}")
 
         # Additional health check
         if self._ws_wrapper.websocket is None:
@@ -287,12 +312,17 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         if new_session_id is None:
             new_session_id = str(uuid.uuid4())[:8]
 
+        # For cloned sessions, use the same user_data_dir to share login state
+        # This allows multiple agents to use the same browser profile without conflicts
+        logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
+
+        # Use the same session_id to share the same browser instance
+        # This ensures all clones use the same WebSocket connection and browser
         return HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
-            user_data_dir=self._user_data_dir,
+            user_data_dir=self._user_data_dir,  # Use the same user_data_dir
             stealth=self._stealth,
-            web_agent_model=self._web_agent_model,
             cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
             enabled_tools=self.enabled_tools.copy(),
             browser_log_to_file=self._browser_log_to_file,
@@ -336,74 +366,3 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:
             session_id = self._ws_config.get("session_id", "default")
             logger.debug(f"HybridBrowserToolkit for session {session_id} is being garbage collected")
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_open)
-    async def browser_open(self) -> Dict[str, Any]:
-        return await super().browser_open()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_close)
-    async def browser_close(self) -> str:
-        return await super().browser_close()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_visit_page)
-    async def browser_visit_page(self, url: str) -> Dict[str, Any]:
-        logger.debug(f"browser_visit_page called with URL: {url}")
-        try:
-            result = await super().browser_visit_page(url)
-            logger.debug(f"browser_visit_page succeeded for URL: {url}")
-            return result
-        except Exception as e:
-            logger.error(f"browser_visit_page failed for URL {url}: {type(e).__name__}: {e}")
-            raise
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_back)
-    async def browser_back(self) -> Dict[str, Any]:
-        return await super().browser_back()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_forward)
-    async def browser_forward(self) -> Dict[str, Any]:
-        return await super().browser_forward()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_page_snapshot)
-    async def browser_get_page_snapshot(self) -> str:
-        return await super().browser_get_page_snapshot()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_som_screenshot)
-    async def browser_get_som_screenshot(self, read_image: bool = False, instruction: str | None = None) -> str:
-        return await super().browser_get_som_screenshot(read_image, instruction)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_click)
-    async def browser_click(self, *, ref: str) -> Dict[str, Any]:
-        return await super().browser_click(ref=ref)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_type)
-    async def browser_type(self, *, ref: str, text: str) -> Dict[str, Any]:
-        return await super().browser_type(ref=ref, text=text)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_select)
-    async def browser_select(self, *, ref: str, value: str) -> Dict[str, Any]:
-        return await super().browser_select(ref=ref, value=value)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_scroll)
-    async def browser_scroll(self, *, direction: str, amount: int = 500) -> Dict[str, Any]:
-        return await super().browser_scroll(direction=direction, amount=amount)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_enter)
-    async def browser_enter(self) -> Dict[str, Any]:
-        return await super().browser_enter()
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_wait_user)
-    async def browser_wait_user(self, timeout_sec: float | None = None) -> Dict[str, Any]:
-        return await super().browser_wait_user(timeout_sec)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_switch_tab)
-    async def browser_switch_tab(self, *, tab_id: str) -> Dict[str, Any]:
-        return await super().browser_switch_tab(tab_id=tab_id)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_close_tab)
-    async def browser_close_tab(self, *, tab_id: str) -> Dict[str, Any]:
-        return await super().browser_close_tab(tab_id=tab_id)
-
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_get_tab_info)
-    async def browser_get_tab_info(self) -> Dict[str, Any]:
-        return await super().browser_get_tab_info()

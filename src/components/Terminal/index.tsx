@@ -1,9 +1,9 @@
-import { useChatStore } from "@/store/chatStore";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 // Terminal Component Properties Interface
 interface TerminalComponentProps {
@@ -17,7 +17,12 @@ export default function TerminalComponent({
 	instanceId = "default",
 	showWelcome = false,
 }: TerminalComponentProps) {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 
 	// DOM references
 	const terminalContainerRef = useRef<HTMLDivElement>(null); // terminal container reference

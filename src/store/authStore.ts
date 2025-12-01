@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 // type definition
 type InitState = 'permissions' | 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
-type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-sonnet-4-5' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini' | 'gpt-5-nano';
+type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-sonnet-4-5' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini';
 
 // auth info interface
 interface AuthInfo {
@@ -33,12 +33,16 @@ interface AuthState {
 	// shared token
 	share_token?: string | null;
 	
+	// local proxy value recorded at login
+	localProxyValue?: string | null;
+	
 	// worker list data
 	workerListData: { [key: string]: Agent[] };
 	
-	// auth related methods
-	setAuth: (auth: AuthInfo) => void;
-	logout: () => void;
+			// auth related methods
+			setAuth: (auth: AuthInfo) => void;
+			logout: () => void;
+			setLocalProxyValue: (value: string | null) => void;
 	
 	// set related methods
 	setAppearance: (appearance: string) => void;
@@ -69,18 +73,21 @@ const authStore = create<AuthState>()(
 			cloud_model_type: 'gpt-4.1',
 			initState: 'permissions',
 			share_token: null,
+			localProxyValue: null,
 			workerListData: {},
 			
 			// auth related methods
 			setAuth: ({ token, username, email, user_id }) =>
 				set({ token, username, email, user_id }),
-			
-			logout: () => 
-				set({ 
-					token: null, 
-					username: null, 
-					email: null, 
-					user_id: null 
+
+			logout: () =>
+				set({
+					token: null,
+					username: null,
+					email: null,
+					user_id: null,
+					initState: 'carousel',
+					localProxyValue: null
 				}),
 			
 			// set related methods
@@ -98,6 +105,8 @@ const authStore = create<AuthState>()(
 			setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 			
 			setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
+			
+			setLocalProxyValue: (value) => set({ localProxyValue: value }),
 			
 			// worker related methods
 			setWorkerList: (workerList) => {
@@ -152,6 +161,7 @@ const authStore = create<AuthState>()(
 				cloud_model_type: state.cloud_model_type,
 				initState: state.initState,
 				isFirstLaunch: state.isFirstLaunch,
+				localProxyValue: state.localProxyValue,
 				workerListData: state.workerListData,
 			}),
 		}

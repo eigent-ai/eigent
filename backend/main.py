@@ -1,37 +1,58 @@
 import os
+import sys
 import pathlib
 import signal
 import asyncio
 import atexit
+
+# Add project root to Python path to import shared utils
+_project_root = pathlib.Path(__file__).parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+# 1) Load env and init traceroot BEFORE importing modules that get a logger
+from utils import traceroot_wrapper as traceroot
 from app import api
-from loguru import logger
-from app.component.environment import auto_include_routers, env
+
+# Only initialize traceroot if enabled
+if traceroot.is_enabled():
+    from traceroot.integrations.fastapi import connect_fastapi
+    connect_fastapi(api)
+
+# 2) Now safe to import modules that use traceroot.get_logger() at import-time
+from app.component.environment import env
+from app.router import register_routers
 
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
+app_logger = traceroot.get_logger("main")
+
 # Log application startup
-logger.info("Starting Eigent Multi-Agent System API")
-logger.info(f"Python encoding: {os.environ.get('PYTHONIOENCODING')}")
-logger.info(f"Environment: {os.environ.get('ENVIRONMENT', 'development')}")
+app_logger.info("Starting Eigent Multi-Agent System API")
+app_logger.info(f"Python encoding: {os.environ.get('PYTHONIOENCODING')}")
+app_logger.info(f"Environment: {os.environ.get('ENVIRONMENT', 'development')}")
 
 prefix = env("url_prefix", "")
-logger.info(f"Loading routers with prefix: '{prefix}'")
-auto_include_routers(api, prefix, "app/controller")
-logger.info("All routers loaded successfully")
+app_logger.info(f"Loading routers with prefix: '{prefix}'")
+register_routers(api, prefix)
+app_logger.info("All routers loaded successfully")
 
+# Check if debug mode is enabled via environment variable
+if os.environ.get('ENABLE_PYTHON_DEBUG') == 'true':
+    try:
+        import debugpy
+        DEBUG_PORT = int(os.environ.get('DEBUG_PORT', '5678'))
+        app_logger.info(f"Debug mode enabled - Starting debugpy server on port {DEBUG_PORT}")
+        debugpy.listen(("localhost", DEBUG_PORT))
+        app_logger.info(f"Debugger ready for attachment on localhost:{DEBUG_PORT}")
+        #📝 In VS Code: Run 'Debug Python Backend (Attach)' configuration
+        # Don't wait for client automatically - let it attach when ready
+    except ImportError:
+        app_logger.warning("debugpy not available, install with: uv add debugpy")
+    except Exception as e:
+        app_logger.error(f"Failed to start debugpy: {e}")
 
-# Configure Loguru
-log_path = os.path.expanduser("~/.eigent/runtime/log/app.log")
-os.makedirs(os.path.dirname(log_path), exist_ok=True)
-logger.add(
-    log_path,  # Log file
-    rotation="10 MB",  # Log rotation: 10MB per file
-    retention="10 days",  # Retain logs for the last 10 days
-    level="DEBUG",  # Log level
-    encoding="utf-8",
-)
-logger.info(f"Loguru configured with log file: {log_path}")
 
 dir = pathlib.Path(__file__).parent / "runtime"
 dir.mkdir(parents=True, exist_ok=True)
@@ -44,12 +65,12 @@ async def write_pid_file():
 
     async with aiofiles.open(dir / "run.pid", "w") as f:
         await f.write(str(os.getpid()))
-    logger.info(f"PID file written: {os.getpid()}")
+    app_logger.info(f"PID file written: {os.getpid()}")
 
 
 # Create task to write PID
 pid_task = asyncio.create_task(write_pid_file())
-logger.info("PID write task created")
+app_logger.info("PID write task created")
 
 # Graceful shutdown handler
 shutdown_event = asyncio.Event()
@@ -57,8 +78,7 @@ shutdown_event = asyncio.Event()
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
-    logger.info("Starting graceful shutdown...")
-    logger.info("Starting graceful shutdown process")
+    app_logger.info("Starting graceful shutdown process")
 
     from app.service.task import task_locks, _cleanup_task
 
@@ -75,21 +95,19 @@ async def cleanup_resources():
             task_lock = task_locks[task_id]
             await task_lock.cleanup()
         except Exception as e:
-            logger.error(f"Error cleaning up task {task_id}: {e}")
+            app_logger.error(f"Error cleaning up task {task_id}: {e}")
 
     # Remove PID file
     pid_file = dir / "run.pid"
     if pid_file.exists():
         pid_file.unlink()
 
-    logger.info("Graceful shutdown completed")
-    logger.info("All resources cleaned up successfully")
+    app_logger.info("All resources cleaned up successfully")
 
 
 def signal_handler(signum, frame):
     r"""Handle shutdown signals"""
-    logger.info(f"Received signal {signum}")
-    logger.warning(f"Received shutdown signal: {signum}")
+    app_logger.warning(f"Received shutdown signal: {signum}")
     asyncio.create_task(cleanup_resources())
     shutdown_event.set()
 
@@ -97,8 +115,19 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-# Register cleanup on exit
-atexit.register(lambda: asyncio.run(cleanup_resources()))
+# Register cleanup on exit with safe synchronous wrapper
+def sync_cleanup():
+    """Synchronous cleanup for atexit - handles PID file removal"""
+    try:
+        # Only perform synchronous cleanup tasks
+        pid_file = dir / "run.pid"
+        if pid_file.exists():
+            pid_file.unlink()
+            app_logger.info("PID file removed during shutdown")
+    except Exception as e:
+        app_logger.error(f"Error during atexit cleanup: {e}")
+
+atexit.register(sync_cleanup)
 
 # Log successful initialization
-logger.info("Application initialization completed successfully")
+app_logger.info("Application initialization completed successfully")

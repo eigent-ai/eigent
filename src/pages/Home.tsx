@@ -2,7 +2,7 @@ import ChatBox from "@/components/ChatBox";
 import Workflow from "@/components/WorkFlow";
 import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
-import { useChatStore } from "@/store/chatStore";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
@@ -16,15 +16,32 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import SideBar from "@/components/SideBar";
 
 export default function Home() {
 	const { toggle } = useSidebarStore();
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
-	window.ipcRenderer?.on("webview-show", (_event, id: string) => {
-		setActiveWebviewId(id);
-	});
+	// Add webview-show listener in useEffect with cleanup
+	useEffect(() => {
+		const handleWebviewShow = (_event: any, id: string) => {
+			setActiveWebviewId(id);
+		};
+
+		window.ipcRenderer?.on("webview-show", handleWebviewShow);
+
+		// Cleanup: remove listener on unmount
+		return () => {
+			window.ipcRenderer?.off("webview-show", handleWebviewShow);
+		};
+	}, []); // Empty dependency array means this only runs once
+
 	useEffect(() => {
 		let taskAssigning = [
 			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
@@ -58,19 +75,18 @@ export default function Home() {
 
 		// capture webview
 		const captureWebview = async () => {
-			if (
-				chatStore.tasks[chatStore.activeTaskId as string].status === "finished"
-			) {
+			const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
+			if (!activeTask || activeTask.status === "finished") {
 				return;
 			}
 			webviews.map((webview) => {
 				window.ipcRenderer
 					.invoke("capture-webview", webview.id)
 					.then((base64: string) => {
-						if (chatStore.tasks[chatStore.activeTaskId as string].type) return;
+						const currentTask = chatStore.tasks[chatStore.activeTaskId as string];
+						if (!currentTask || currentTask.type) return;
 						let taskAssigning = [
-							...chatStore.tasks[chatStore.activeTaskId as string]
-								.taskAssigning,
+							...currentTask.taskAssigning,
 						];
 						const searchAgentIndex = taskAssigning.findIndex(
 							(agent) => agent.agent_id === webview.agent_id
@@ -138,7 +154,7 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!chatStore.activeTaskId) {
-			chatStore.create();
+			projectStore.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");
@@ -168,43 +184,22 @@ export default function Home() {
 		}
 	};
 
-	return (
-		<div className="h-full">
-			<ReactFlowProvider>
-				<div className="h-full flex flex-col">
-					<div className="flex-1 flex items-center justify-center gap-2 relative">
+		return (
+			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-10 px-2 pb-2">
+				<ReactFlowProvider>
+					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center bg-surface-secondary border-solid border-border-tertiary rounded-2xl gap-2 relative overflow-hidden">
 						<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
-						{/* left transparent area */}
-						<div
-							style={{
-								position: "absolute",
-								left: -8,
-								top: 0,
-								width: "12px",
-								height: "100%",
-								background: "transparent",
-								zIndex: 20,
-								cursor: "pointer",
-							}}
-							onMouseEnter={() => {
-								toggle();
-							}}
-						/>
-						<div
-							className="w-full h-full flex flex-col items-center justify-center transition-all duration-300"
-						>
-							<ChatBox />
-						</div>
+							 <ChatBox />
 						</ResizablePanel>
 							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
 						<ResizablePanel>
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							?.activeWorkSpace && (
-							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 slide-in-from-right-2 duration-300">
+							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
-								]?.taskAssigning.find(
+								]?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
@@ -233,7 +228,7 @@ export default function Home() {
 								)}
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
-								]?.taskAssigning.find(
+								]?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
@@ -258,7 +253,7 @@ export default function Home() {
 								)}
 								{chatStore.tasks[
 									chatStore.activeTaskId as string
-								]?.taskAssigning.find(
+								]?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
@@ -272,7 +267,7 @@ export default function Home() {
 												<Folder
 													data={chatStore.tasks[
 														chatStore.activeTaskId as string
-													]?.taskAssigning.find(
+													]?.taskAssigning?.find(
 														(agent) =>
 															agent.agent_id ===
 															chatStore.tasks[chatStore.activeTaskId as string]
@@ -286,10 +281,13 @@ export default function Home() {
 								<BottomBar />
 							</div>
 						)}
-						</ResizablePanel>
-						</ResizablePanelGroup>
+							</ResizablePanel>
+							{/* Fixed sidebar on the right
+							<div className="h-full z-30">
+								<SideBar />
+							</div>*/}
+							</ResizablePanelGroup>
 					</div>
-				</div>
 			</ReactFlowProvider>
 			<UpdateElectron />
 		</div>

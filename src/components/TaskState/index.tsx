@@ -1,6 +1,6 @@
 import { CircleCheckBig, CircleSlash2, LoaderCircle } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 export type TaskStateType =
 	| "all"
@@ -35,7 +35,12 @@ export const TaskState = ({
 	onStateChange,
 	clickable = true,
 }: TaskStateProps) => {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const { t } = useTranslation();
 	const handleStateClick = (state: TaskStateType) => {
 		if (!clickable || !onStateChange) return;

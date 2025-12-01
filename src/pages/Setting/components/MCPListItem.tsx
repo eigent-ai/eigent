@@ -1,9 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Ellipsis, Settings, Trash2, CircleAlert } from "lucide-react";
-import {
-	TooltipSimple
-} from "@/components/ui/tooltip";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import {
 	Popover,
 	PopoverContent,
@@ -40,17 +38,28 @@ export default function MCPListItem({
 				</div>
 				<div className="flex items-center">
 					<TooltipSimple content={item.mcp_desc}>
-							<CircleAlert className="w-4 h-4 text-icon-secondary" />
+						<CircleAlert className="w-4 h-4 text-icon-secondary" />
 					</TooltipSimple>
 				</div>
 			</div>
 			<div className="flex items-center gap-2">
-				<Switch
+				{/* <Switch
 					checked={item.status === 1}
 					disabled={loading}
 					onCheckedChange={(checked) => onSwitch(item.id, checked)}
-				/>
-				<div className="relative">
+				/> */}
+				<Button
+					variant="ghost"
+					size="sm"
+					className="w-full"
+					onClick={() => {
+						onDelete(item);
+						setShowMenu(false);
+					}}
+				>
+					<Trash2 className="w-4 h-4" /> {t("setting.delete")}
+				</Button>
+				{/* <div className="relative">
 					<Popover>
 						<PopoverTrigger asChild>
 							<Button
@@ -74,26 +83,26 @@ export default function MCPListItem({
                       setShowMenu(false);
                     }}
 									>
-										<Settings className="w-4 h-4 mr-2 text-gray-500" /> {t("setting.setting")}
+										<Settings className="w-4 h-4" /> {t("setting.setting")}
 									</Button>
 								</PopoverClose>
 								<PopoverClose asChild>
 									<Button
 										variant="ghost"
 										size="sm"
-										className="w-full"
+										className="w-full !text-text-cuation"
 										onClick={() => {
 											onDelete(item);
 											setShowMenu(false);
 										}}
 									>
-										<Trash2 className="w-4 h-4 mr-2" /> {t("setting.delete")}
+										<Trash2 className="w-4 h-4" /> {t("setting.delete")}
 									</Button>
 								</PopoverClose>
 							</div>
 						</PopoverContent>
 					</Popover>
-				</div>
+				</div> */}
 			</div>
 		</div>
 	);

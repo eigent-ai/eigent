@@ -3,23 +3,23 @@ name = "backend"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = "==3.10.16"
+requires-python = ">=3.10,<3.11"
 dependencies = [
-    "camel-ai[eigent] @ git+https://github.com/camel-ai/camel.git@8f4d073c49f494ec8801c5f5874fd3dec014f0dc",
+    "camel-ai[eigent]==0.2.80a2",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",
     "pydantic-i18n>=0.4.5",
     "python-dotenv>=1.1.0",
     "httpx[socks]>=0.28.1",
-    "loguru>=0.7.3",
     "pydash>=8.0.5",
     "inflection>=0.5.1",
     "aiofiles>=24.1.0",
     "openai>=1.99.3,<2",
-    "traceroot>=0.0.5a2",
+    "traceroot>=0.0.7",
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
+    "debugpy>=1.8.17",
 ]
 
 

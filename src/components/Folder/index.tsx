@@ -13,11 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import FolderComponent from "./FolderComponent";
 
-import { useChatStore } from "@/store/chatStore";
-import { MarkDown } from "@/components/ChatBox/MarkDown";
+import { MarkDown } from "@/components/ChatBox/MessageItem/MarkDown";
 import { useAuthStore } from "@/store/authStore";
 import { proxyFetchGet } from "@/api/http";
 import { useTranslation } from "react-i18next";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 // Type definitions
 interface FileTreeNode {
@@ -104,7 +104,7 @@ const FileTree: React.FC<FileTreeProps> = ({
 							{!child.isFolder && <span className="w-4" />}
 
 							{child.isFolder ? (
-								<FolderIcon className="w-5 h-5 mr-2flex-shrink-0 text-yellow-600" />
+								<FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
 							) : child.icon ? (
 								<child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
 							) : (
@@ -154,7 +154,12 @@ function downloadByBrowser(url: string) {
 }
 
 export default function Folder({ data }: { data?: Agent }) {
-	const chatStore = useChatStore();
+	//Get Chatstore for the active project's task
+	const { chatStore, projectStore } = useChatStoreAdapter();
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
+	
 	const authStore = useAuthStore();
 	const { t } = useTranslation();
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
@@ -178,7 +183,23 @@ export default function Folder({ data }: { data?: Agent }) {
 		setLoading(true);
 		console.log("file", JSON.parse(JSON.stringify(file)));
 
-		// all files call open-file interface, the backend handles download and parsing
+		// For PDF files, use data URL instead of custom protocol
+		if (file.type === "pdf") {
+			window.ipcRenderer
+				.invoke("read-file-dataurl", file.path)
+				.then((dataUrl: string) => {
+					setSelectedFile({ ...file, content: dataUrl });
+					chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+					setLoading(false);
+				})
+				.catch((error) => {
+					console.error("read-file-dataurl error:", error);
+					setLoading(false);
+				});
+			return;
+		}
+
+		// all other files call open-file interface, the backend handles download and parsing
 		window.ipcRenderer
 			.invoke("open-file", file.type, file.path, isShowSourceCode)
 			.then((res) => {
@@ -201,7 +222,6 @@ export default function Folder({ data }: { data?: Agent }) {
 
 	const [isCollapsed, setIsCollapsed] = useState(false);
 
-	// Build tree structure from flat file list
 	const buildFileTree = (files: FileInfo[]): FileTreeNode => {
 		const root: FileTreeNode = {
 			name: "root",
@@ -210,17 +230,20 @@ export default function Folder({ data }: { data?: Agent }) {
 			isFolder: true,
 		};
 
-		// Create a map for quick access
 		const nodeMap = new Map<string, FileTreeNode>();
 		nodeMap.set("", root);
 
-		// Sort files so folders come before files and by path depth
 		const sortedFiles = [...files].sort((a, b) => {
 			const depthA = (a.relativePath || "").split("/").filter(Boolean).length;
 			const depthB = (b.relativePath || "").split("/").filter(Boolean).length;
 			return depthA - depthB;
 		});
+
 		for (const file of sortedFiles) {
+			const fullRelativePath = file.relativePath
+				? `${file.relativePath}/${file.name}`
+				: file.name;
+
 			const parentPath = file.relativePath || "";
 			const parentNode = nodeMap.get(parentPath) || root;
 
@@ -237,10 +260,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			parentNode.children!.push(node);
 
 			if (file.isFolder) {
-				const folderPath = parentPath
-					? `${parentPath}/${file.name}`
-					: file.name;
-				nodeMap.set(folderPath, node);
+				nodeMap.set(fullRelativePath, node);
 			}
 		}
 
@@ -293,9 +313,9 @@ export default function Folder({ data }: { data?: Agent }) {
 		const setFileList = async () => {
 			let res = null;
 			res = await window.ipcRenderer.invoke(
-				"get-file-list",
+				"get-project-file-list",
 				authStore.email,
-				chatStore.activeTaskId as string
+				projectStore.activeProjectId as string
 			);
 			let tree: any = null;
 			if (
@@ -305,8 +325,9 @@ export default function Folder({ data }: { data?: Agent }) {
 				tree = buildFileTree(res || []);
 			} else {
 				if (!hasFetchedRemote.current) {
+					//TODO(file): rename endpoint to use project_id
 					res = await proxyFetchGet("/api/chat/files", {
-						task_id: chatStore.activeTaskId as string,
+						task_id: projectStore.activeProjectId as string,
 					});
 					hasFetchedRemote.current = true;
 				}
@@ -534,10 +555,7 @@ export default function Folder({ data }: { data?: Agent }) {
 									</div>
 								) : selectedFile.type === "pdf" ? (
 									<iframe
-										src={
-											"localfile://" +
-											encodeURIComponent(selectedFile.content as string)
-										}
+										src={selectedFile.content as string}
 										className="w-full h-full border-0"
 										title={selectedFile.name}
 									/>
@@ -570,18 +588,7 @@ export default function Folder({ data }: { data?: Agent }) {
 										"svg",
 								  ].includes(selectedFile.type.toLowerCase()) ? (
 									<div className="flex items-center justify-center h-full">
-										<img
-											src={
-												selectedFile.isRemote
-													? "localfile://" +
-													  encodeURIComponent(selectedFile.content as string)
-													: `localfile://${encodeURIComponent(
-															selectedFile.path
-													  )}`
-											}
-											alt={selectedFile.name}
-											className="max-w-full max-h-full object-contain"
-										/>
+										<ImageLoader selectedFile={selectedFile} />
 									</div>
 								) : (
 									<pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
@@ -611,4 +618,27 @@ export default function Folder({ data }: { data?: Agent }) {
 			</div>
 		</div>
 	);
+}
+
+function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
+    const [src, setSrc] = useState("");
+
+    useEffect(() => {
+        const filePath = selectedFile.isRemote
+            ? (selectedFile.content as string)
+            : selectedFile.path;
+
+        window.electronAPI
+            .readFileAsDataUrl(filePath)
+            .then(setSrc)
+            .catch((err: any) => console.error("Image load error:", err));
+    }, [selectedFile]);
+
+    return (
+        <img
+            src={src}
+            alt={selectedFile.name}
+            className="max-w-full max-h-full object-contain"
+        />
+    );
 }

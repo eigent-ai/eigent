@@ -1,6 +1,6 @@
 version = 1
-revision = 3
-requires-python = "==3.10.16"
+revision = 2
+requires-python = "==3.10.*"
 
 [[package]]
 name = "aiofiles"
@@ -224,11 +224,11 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "camel-ai", extra = ["eigent"] },
+    { name = "debugpy" },
     { name = "fastapi" },
     { name = "fastapi-babel" },
     { name = "httpx", extra = ["socks"] },
     { name = "inflection" },
-    { name = "loguru" },
     { name = "nodejs-wheel" },
     { name = "numpy" },
     { name = "openai" },
@@ -249,19 +249,19 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=8f4d073c49f494ec8801c5f5874fd3dec014f0dc" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.80a2" },
+    { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "inflection", specifier = ">=0.5.1" },
-    { name = "loguru", specifier = ">=0.7.3" },
     { name = "nodejs-wheel", specifier = ">=22.18.0" },
     { name = "numpy", specifier = ">=1.23.0,<2.0.0" },
     { name = "openai", specifier = ">=1.99.3,<2" },
     { name = "pydantic-i18n", specifier = ">=0.4.5" },
     { name = "pydash", specifier = ">=8.0.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "traceroot", specifier = ">=0.0.5a2" },
+    { name = "traceroot", specifier = ">=0.0.7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.2" },
 ]
 
@@ -333,8 +333,8 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.77"
-source = { git = "https://github.com/camel-ai/camel.git?rev=8f4d073c49f494ec8801c5f5874fd3dec014f0dc#8f4d073c49f494ec8801c5f5874fd3dec014f0dc" }
+version = "0.2.80a2"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
     { name = "colorama" },
@@ -349,6 +349,10 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/04/c4/13f2b7919a31418f4fe30dd081f7c94fcc62e9ba0388f48e9ed2800e445d/camel_ai-0.2.80a2.tar.gz", hash = "sha256:8bb6d777bf04529f829f857c8ea630529f5200c0ceebfc7ac8033d8847fdf160", size = 1004461, upload-time = "2025-11-19T16:16:34.513Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/74/1393ce468e754ac18a1b6ab7a90cb9a266e3ff7523db21b467701d722efb/camel_ai-0.2.80a2-py3-none-any.whl", hash = "sha256:5425b2ebde1272bddc3a176b8076e28a0d709291efc6721a7e95a091525fb45d", size = 1465860, upload-time = "2025-11-19T16:16:31.342Z" },
+]
 
 [package.optional-dependencies]
 eigent = [
@@ -360,6 +364,7 @@ eigent = [
     { name = "google-api-python-client" },
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
+    { name = "httplib2" },
     { name = "imageio", extra = ["pyav"] },
     { name = "markitdown", extra = ["all"] },
     { name = "mcp-server-fetch" },
@@ -574,6 +579,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1a/89/d3d6fef58a488f8569c82fd293ab7cbd4250244d67f425dcae64c63800ea/datasets-3.6.0.tar.gz", hash = "sha256:1b2bf43b19776e2787e181cfd329cb0ca1a358ea014780c3581e0f276375e041", size = 569336, upload-time = "2025-05-07T15:15:02.659Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/34/a08b0ee99715eaba118cbe19a71f7b5e2425c2718ef96007c325944a1152/datasets-3.6.0-py3-none-any.whl", hash = "sha256:25000c4a2c0873a710df127d08a202a06eab7bf42441a6bc278b499c2f72cd1b", size = 491546, upload-time = "2025-05-07T15:14:59.742Z" },
+]
+
+[[package]]
+name = "debugpy"
+version = "1.8.17"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/ad/71e708ff4ca377c4230530d6a7aa7992592648c122a2cd2b321cf8b35a76/debugpy-1.8.17.tar.gz", hash = "sha256:fd723b47a8c08892b1a16b2c6239a8b96637c62a59b94bb5dab4bac592a58a8e", size = 1644129, upload-time = "2025-09-17T16:33:20.633Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/36/b57c6e818d909f6e59c0182252921cf435e0951126a97e11de37e72ab5e1/debugpy-1.8.17-cp310-cp310-macosx_15_0_x86_64.whl", hash = "sha256:c41d2ce8bbaddcc0009cc73f65318eedfa3dbc88a8298081deb05389f1ab5542", size = 2098021, upload-time = "2025-09-17T16:33:22.556Z" },
+    { url = "https://files.pythonhosted.org/packages/be/01/0363c7efdd1e9febd090bb13cee4fb1057215b157b2979a4ca5ccb678217/debugpy-1.8.17-cp310-cp310-manylinux_2_34_x86_64.whl", hash = "sha256:1440fd514e1b815edd5861ca394786f90eb24960eb26d6f7200994333b1d79e3", size = 3087399, upload-time = "2025-09-17T16:33:24.292Z" },
+    { url = "https://files.pythonhosted.org/packages/79/bc/4a984729674aa9a84856650438b9665f9a1d5a748804ac6f37932ce0d4aa/debugpy-1.8.17-cp310-cp310-win32.whl", hash = "sha256:3a32c0af575749083d7492dc79f6ab69f21b2d2ad4cd977a958a07d5865316e4", size = 5230292, upload-time = "2025-09-17T16:33:26.137Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/19/2b9b3092d0cf81a5aa10c86271999453030af354d1a5a7d6e34c574515d7/debugpy-1.8.17-cp310-cp310-win_amd64.whl", hash = "sha256:a3aad0537cf4d9c1996434be68c6c9a6d233ac6f76c2a482c7803295b4e4f99a", size = 5261885, upload-time = "2025-09-17T16:33:27.592Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/d0/89247ec250369fc76db477720a26b2fce7ba079ff1380e4ab4529d2fe233/debugpy-1.8.17-py2.py3-none-any.whl", hash = "sha256:60c7dca6571efe660ccb7a9508d73ca14b8796c4ed484c2002abba714226cfef", size = 5283210, upload-time = "2025-09-17T16:34:25.835Z" },
 ]
 
 [[package]]
@@ -1157,19 +1175,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/74/a633ee74eb36c44aa6d1095e7cc5569bebf04342ee146178e2d36600708b/jsonschema_specifications-2025.9.1.tar.gz", hash = "sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d", size = 32855, upload-time = "2025-09-08T01:34:59.186Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl", hash = "sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe", size = 18437, upload-time = "2025-09-08T01:34:57.871Z" },
-]
-
-[[package]]
-name = "loguru"
-version = "0.7.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c", size = 61595, upload-time = "2024-12-06T11:20:54.538Z" },
 ]
 
 [[package]]
@@ -2534,7 +2539,7 @@ wheels = [
 
 [[package]]
 name = "traceroot"
-version = "0.0.5"
+version = "0.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -2555,9 +2560,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "watchtower" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/5e/8ade61cadecf69b4fa49205640a7424880bc25b5e9615159ba8cf4aff2bf/traceroot-0.0.5.tar.gz", hash = "sha256:0924d9b524a9e59d64c4eec4c812018f2d7583558de17001294ace96874381c0", size = 28066, upload-time = "2025-08-24T03:29:04.966Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/c0/9f047cc761a9f98a2e7a9a8fef4c01ea1eeb7b2383fe1f3ad82d24ac98b3/traceroot-0.0.7.tar.gz", hash = "sha256:7792def0bb466977318f0126756c02e8950a1c208bcec7a8efed1e05e02b189d", size = 25710, upload-time = "2025-10-16T06:17:39.587Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/d4/2777d7c3d0e36b3b2d9f903151991f3e1c21f190788c0e5f537fd762ae34/traceroot-0.0.5-py3-none-any.whl", hash = "sha256:ec27afb4ac33df3109c4c436f3bdfc47e30e2f1ce5eb90ba2215cfebe19e6b2e", size = 24324, upload-time = "2025-08-24T03:29:03.446Z" },
+    { url = "https://files.pythonhosted.org/packages/45/59/8593afb3615fb0c2e0cf6888dc49d9ae05d365c76ee053f43a36519f889c/traceroot-0.0.7-py3-none-any.whl", hash = "sha256:2a20a8e2dfa6b10e1f96bc98d5b84dc40c14c01d47098f86068393ece99a2862", size = 24026, upload-time = "2025-10-16T06:17:38.573Z" },
 ]
 
 [[package]]
@@ -2739,15 +2744,6 @@ dependencies = [
     { name = "requests" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/67/35/25e68fbc99e672127cc6fbb14b8ec1ba3dfef035bf1e4c90f78f24a80b7d/wikipedia-1.4.0.tar.gz", hash = "sha256:db0fad1829fdd441b1852306e9856398204dc0786d2996dd2e0c8bb8e26133b2", size = 27748, upload-time = "2014-11-15T15:59:49.808Z" }
-
-[[package]]
-name = "win32-setctime"
-version = "1.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/705086c9d734d3b663af0e9bb3d4de6578d08f46b1b101c2442fd9aecaa2/win32_setctime-1.2.0.tar.gz", hash = "sha256:ae1fdf948f5640aae05c511ade119313fb6a30d7eabe25fef9764dca5873c4c0", size = 4867, upload-time = "2024-12-07T15:28:28.314Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/07/c6fe3ad3e685340704d314d765b7912993bcb8dc198f0e7a89382d37974b/win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390", size = 4083, upload-time = "2024-12-07T15:28:26.465Z" },
-]
 
 [[package]]
 name = "wrapt"

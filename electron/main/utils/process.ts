@@ -29,12 +29,16 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
     })
 
+    let stderrOutput = '';
+
     nodeProcess.stdout.on('data', (data) => {
       log.info(`Script output: ${data}`)
     })
 
     nodeProcess.stderr.on('data', (data) => {
-      log.error(`Script error: ${data}`)
+      const errorMsg = data.toString();
+      stderrOutput += errorMsg;
+      log.error(`Script error: ${errorMsg}`)
     })
 
     nodeProcess.on('close', (code) => {
@@ -43,7 +47,8 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
         resolve(true)
       } else {
         log.error(`Script exited with code ${code}`)
-        reject(false)
+        const errorMessage = stderrOutput.trim() || `Script exited with code ${code}`;
+        reject(new Error(errorMessage))
       }
     })
   })
@@ -136,4 +141,50 @@ export async function isBinaryExists(name: string): Promise<boolean> {
   const cmd = await getBinaryPath(name)
 
   return await fs.existsSync(cmd)
+}
+
+/**
+ * Get unified UV environment variables for consistent Python environment management.
+ * This ensures both installation and runtime use the same paths.
+ * @param version - The app version for venv path
+ * @returns Environment variables for UV commands
+ */
+export function getUvEnv(version: string): Record<string, string> {
+  return {
+    UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+    UV_TOOL_DIR: getCachePath('uv_tool'),
+    UV_PROJECT_ENVIRONMENT: getVenvPath(version),
+    UV_HTTP_TIMEOUT: '180',
+  }
+}
+
+export async function killProcessByName(name: string): Promise<void> {
+  const platform = process.platform
+  try {
+    if (platform === 'win32') {
+      await new Promise<void>((resolve, reject) => {
+        // /F = force, /IM = image name
+        const cmd = spawn('taskkill', ['/F', '/IM', `${name}.exe`])
+        cmd.on('close', (code) => {
+          // code 0 = success, code 128 = process not found (which is fine)
+          if (code === 0 || code === 128) resolve()
+          else reject(new Error(`taskkill exited with code ${code}`))
+        })
+        cmd.on('error', reject)
+      })
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        const cmd = spawn('pkill', ['-9', name])
+        cmd.on('close', (code) => {
+          // code 0 = success, code 1 = no process found (which is fine)
+          if (code === 0 || code === 1) resolve()
+          else reject(new Error(`pkill exited with code ${code}`))
+        })
+        cmd.on('error', reject)
+      })
+    }
+  } catch (err) {
+    // Ignore errors, just best effort
+    log.warn(`Failed to kill process ${name}:`, err)
+  }
 }

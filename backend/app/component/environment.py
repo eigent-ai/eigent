@@ -1,4 +1,4 @@
-from app.utils import traceroot_wrapper as traceroot
+from utils import traceroot_wrapper as traceroot
 import importlib.util
 import os
 from pathlib import Path
@@ -23,14 +23,21 @@ def set_user_env_path(env_path: str | None = None):
     Set user-specific environment path for current thread.
     If env_path is None, uses default global environment.
     """
+    traceroot_logger.info("Setting user environment path", extra={"env_path": env_path, "exists": env_path and os.path.exists(env_path) if env_path else None})
+
     if env_path and os.path.exists(env_path):
         _thread_local.env_path = env_path
         # Load user-specific environment variables
         load_dotenv(dotenv_path=env_path, override=True)
+        traceroot_logger.info("User-specific environment loaded", extra={"env_path": env_path})
     else:
         # Clear thread-local env_path to fall back to global
         if hasattr(_thread_local, 'env_path'):
             delattr(_thread_local, 'env_path')
+        traceroot_logger.info("Reset to default global environment")
+
+        if env_path and not os.path.exists(env_path):
+            traceroot_logger.warning("User environment path does not exist, falling back to global", extra={"env_path": env_path})
 
 
 def get_current_env_path() -> str:
@@ -54,8 +61,8 @@ def env(key: str, default: Any) -> Any: ...
 
 def env(key: str, default=None):
     """
-    Get environment variable. 
-    First checks thread-local user-specific environment, 
+    Get environment variable.
+    First checks thread-local user-specific environment,
     then falls back to global environment.
     """
     # If we have a user-specific environment path, try to reload it to get latest values
@@ -64,10 +71,14 @@ def env(key: str, default=None):
         from dotenv import dotenv_values
         user_env_values = dotenv_values(_thread_local.env_path)
         if key in user_env_values:
-            return user_env_values[key] or default
-    
+            value = user_env_values[key] or default
+            traceroot_logger.debug("Environment variable retrieved from user-specific config", extra={"key": key, "env_path": _thread_local.env_path, "has_value": value is not None})
+            return value
+
     # Fall back to global environment
-    return os.getenv(key, default)
+    value = os.getenv(key, default)
+    traceroot_logger.debug("Environment variable retrieved from global config", extra={"key": key, "has_value": value is not None, "using_default": value == default})
+    return value
 
 
 def env_or_fail(key: str):

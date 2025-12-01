@@ -49,9 +49,17 @@ export function update(win: Electron.BrowserWindow) {
   autoUpdater.setFeedURL(feed)
   if (!app.isPackaged) {
     console.log('[DEV] setFeedURL:', feed)
-    autoUpdater.checkForUpdates()
+    // In development, check for updates but don't fail if it errors
+    autoUpdater.checkForUpdates().catch((err: Error) => {
+      console.log('[DEV] Update check failed (expected in dev environment):', err.message)
+    })
   }
 
+  // Handle errors globally to prevent crashes
+  autoUpdater.on('error', (error: Error) => {
+    console.error('[AutoUpdater] Update error:', error.message)
+    // Don't crash the app on update errors
+  })
 }
 
 /**

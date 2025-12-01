@@ -3,9 +3,10 @@ import path from 'node:path'
 import log from 'electron-log'
 import { getMainWindow } from './init'
 import fs from 'node:fs'
-import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, cleanupOldVenvs, isBinaryExists, runInstallScript } from './utils/process'
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, cleanupOldVenvs, isBinaryExists, runInstallScript } from './utils/process'
 import { spawn } from 'child_process'
 import { safeMainWindowSend } from './utils/safeWebContentsSend'
+import os from 'node:os'
 
 const userData = app.getPath('userData');
 const versionFile = path.join(userData, 'version.txt');
@@ -57,6 +58,13 @@ Promise<PromiseReturnType> => {
 
   return new Promise(async (resolve, reject) => {
     try {
+      // Clean up cache in production environment BEFORE any checks
+      // This ensures users always get fresh dependencies in production
+      if (app.isPackaged) {
+        log.info('[CACHE CLEANUP] Production environment detected, cleaning cache before dependency check...');
+        cleanupCacheInProduction();
+      }
+
       const versionExists:boolean = checkInstallOperations.getSavedVersion();
 
       // Check if command tools are installed
@@ -121,26 +129,43 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
         }
 
         console.log(`start install ${toolName}`);
-        await runInstallScript(scriptName);
-        const installed = await isBinaryExists(toolName);
+        try {
+          await runInstallScript(scriptName);
+          const installed = await isBinaryExists(toolName);
 
-        if (installed) {
-          safeMainWindowSend('install-dependencies-log', {
-            type: 'stdout',
-            data: `${toolName} installed successfully`,
-          });
-        } else {
+          if (installed) {
+            safeMainWindowSend('install-dependencies-log', {
+              type: 'stdout',
+              data: `${toolName} installed successfully`,
+            });
+            return {
+              message: `${toolName} installed successfully`,
+              success: true
+            };
+          } else {
+            const errorMsg = `${toolName} installation failed: binary not found after installation`;
+            safeMainWindowSend('install-dependencies-complete', {
+              success: false,
+              code: 2,
+              error: errorMsg,
+            });
+            return {
+              message: errorMsg,
+              success: false
+            };
+          }
+        } catch (scriptError) {
+          const errorMsg = `${toolName} installation failed: ${scriptError instanceof Error ? scriptError.message : String(scriptError)}`;
           safeMainWindowSend('install-dependencies-complete', {
             success: false,
             code: 2,
-            error: `${toolName} installation failed (script exit code 2)`,
+            error: errorMsg,
           });
+          return {
+            message: errorMsg,
+            success: false
+          };
         }
-
-        return {
-          message: installed ? `${toolName} installed successfully` : `${toolName} installation failed`,
-          success: installed
-        };
       };
 
       const uvResult = await ensureInstalled('uv', 'install-uv.js');
@@ -155,7 +180,14 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 
       return { message: "Command tools installed successfully", success: true };
   } catch (error) {
-      return { message: `Command tool installation failed: ${error}`, success: false };
+      const errorMessage = `Command tool installation failed: ${error}`;
+      log.error('[DEPS INSTALL] Exception during command tool installation:', error);
+      safeMainWindowSend('install-dependencies-complete', {
+        success: false,
+        code: 2,
+        error: errorMessage
+      });
+      return { message: errorMessage, success: false };
   }
 }
 
@@ -210,7 +242,6 @@ class InstallLogs {
 
   constructor(extraArgs:string[], version: string) {
     console.log('start install dependencies', extraArgs, 'version:', version)
-    const venvPath = getVenvPath(version);
     this.version = version;
 
     this.node_process = spawn(uv_path, [
@@ -221,19 +252,15 @@ class InstallLogs {
         cwd: backendPath,
         env: {
             ...process.env,
-            UV_TOOL_DIR: getCachePath('uv_tool'),
-            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
-            UV_PROJECT_ENVIRONMENT: venvPath,
+            ...getUvEnv(version),
         }
     })
   }
 
   /**Display filtered logs based on severity */
   displayFilteredLogs(data:String) {
-      if (!data) return;
+      if (!data) return;      
       const msg = data.toString().trimEnd();
-      //Detect if uv sync is run
-      detectInstallationLogs(msg);
       if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
           log.error(`BACKEND: [DEPS INSTALL] ${msg}`);
           safeMainWindowSend('install-dependencies-log', { type: 'stderr', data: data.toString() });
@@ -279,6 +306,34 @@ class InstallLogs {
     if (fs.existsSync(installingLockPath)) {
         fs.unlinkSync(installingLockPath);
     }
+  }
+}
+
+/**
+ * Clean up cache directory
+ * This ensures users get fresh dependencies
+ * Note: Only call this in production environment (caller should check app.isPackaged)
+ */
+function cleanupCacheInProduction(): void {
+  try {
+    const cacheBaseDir = path.join(os.homedir(), '.eigent', 'cache');
+
+    if (!fs.existsSync(cacheBaseDir)) {
+      log.info('[CACHE CLEANUP] Cache directory does not exist, nothing to clean');
+      return;
+    }
+
+    log.info('[CACHE CLEANUP] Cleaning cache directory:', cacheBaseDir);
+
+    fs.rmSync(cacheBaseDir, { recursive: true, force: true });
+
+    log.info('[CACHE CLEANUP] Cache directory cleaned successfully');
+
+    fs.mkdirSync(cacheBaseDir, { recursive: true });
+    log.info('[CACHE CLEANUP] Empty cache directory recreated');
+
+  } catch (error) {
+    log.error('[CACHE CLEANUP] Failed to clean cache directory:', error);
   }
 }
 
@@ -356,6 +411,29 @@ export async function installDependencies(version: string): Promise<PromiseRetur
         if (!fs.existsSync(toolkitPath)) {
           log.warn('[DEPS INSTALL] hybrid_browser_toolkit ts directory not found at ' + toolkitPath + ', skipping npm install');
           return true; // Not an error if the toolkit isn't installed
+        }
+
+        // Check if npm dependencies are already installed
+        const npmMarkerPath = path.join(toolkitPath, '.npm_dependencies_installed');
+        const nodeModulesPath = path.join(toolkitPath, 'node_modules');
+        const distPath = path.join(toolkitPath, 'dist');
+
+        // Check if marker exists and verify version
+        if (fs.existsSync(npmMarkerPath) && fs.existsSync(nodeModulesPath) && fs.existsSync(distPath)) {
+          try {
+            const markerContent = JSON.parse(fs.readFileSync(npmMarkerPath, 'utf-8'));
+            if (markerContent.version === version) {
+              log.info('[DEPS INSTALL] hybrid_browser_toolkit npm dependencies already installed for current version, skipping...');
+              return true;
+            } else {
+              log.info('[DEPS INSTALL] npm dependencies installed for different version, will reinstall...');
+              // Clean up old installation
+              fs.unlinkSync(npmMarkerPath);
+            }
+          } catch (error) {
+            log.warn('[DEPS INSTALL] Could not read npm marker file, will reinstall...', error);
+            // If we can't read the marker, assume we need to reinstall
+          }
         }
 
         log.info('[DEPS INSTALL] Installing hybrid_browser_toolkit npm dependencies...');
@@ -515,6 +593,13 @@ export async function installDependencies(version: string): Promise<PromiseRetur
           // Non-critical, continue
         }
 
+        // Create marker file to indicate npm dependencies are installed
+        fs.writeFileSync(npmMarkerPath, JSON.stringify({
+          installedAt: new Date().toISOString(),
+          version: version
+        }));
+        log.info('[DEPS INSTALL] Created npm dependencies marker file');
+
         log.info('[DEPS INSTALL] hybrid_browser_toolkit dependencies installed successfully');
         return true;
       } catch (error) {
@@ -535,12 +620,44 @@ export async function installDependencies(version: string): Promise<PromiseRetur
 
     const isInstalCommandTool = await installCommandTool()
     if (!isInstalCommandTool.success) {
+        log.error('[DEPS INSTALL] Command tool installation failed:', isInstalCommandTool.message);
+        safeMainWindowSend('install-dependencies-complete', {
+          success: false,
+          code: 2,
+          error: isInstalCommandTool.message || 'Command tool installation failed'
+        });
         resolve({ message: "Command tool installation failed", success: false })
         return
     }
 
     // Set Installing Lock Files
     InstallLogs.setLockPath();
+
+    // Clean up npm dependencies marker when reinstalling Python deps
+    // This ensures npm deps are reinstalled when Python environment changes
+    try {
+      let sitePackagesPath: string | null = null;
+      const libPath = path.join(venvPath, 'lib');
+
+      if (fs.existsSync(libPath)) {
+        const libContents = fs.readdirSync(libPath);
+        const pythonDir = libContents.find(name => name.startsWith('python'));
+        if (pythonDir) {
+          sitePackagesPath = path.join(libPath, pythonDir, 'site-packages');
+        }
+      }
+
+      if (sitePackagesPath) {
+        const npmMarkerPath = path.join(sitePackagesPath, 'camel', 'toolkits', 'hybrid_browser_toolkit', 'ts', '.npm_dependencies_installed');
+        if (fs.existsSync(npmMarkerPath)) {
+          fs.unlinkSync(npmMarkerPath);
+          log.info('[DEPS INSTALL] Removed npm dependencies marker for fresh installation');
+        }
+      }
+    } catch (error) {
+      log.warn('[DEPS INSTALL] Could not clean npm marker file:', error);
+      // Non-critical, continue
+    }
 
     // try default install
     const installSuccess = await runInstall([], version)
@@ -587,86 +704,4 @@ export async function installDependencies(version: string): Promise<PromiseRetur
         resolve({ message: "Both default and mirror install failed", success: false })
     }
   })
-}
-
-let dependencyInstallationDetected = false;
-let installationNotificationSent = false;
-export function detectInstallationLogs(msg:string) {
-  // Check for UV dependency installation patterns
-  const installPatterns = [
-      "Resolved", // UV resolving dependencies
-      "Downloaded", // UV downloading packages
-      "Installing", // UV installing packages
-      "Built", // UV building packages
-      "Prepared", // UV preparing virtual environment
-      "Syncing", // UV sync process
-      "Creating virtualenv", // Virtual environment creation
-      "Updating", // UV updating packages
-      "× No solution found when resolving dependencies", // Dependency resolution issues
-      "Audited" // UV auditing dependencies
-  ];
-  
-  // Detect if UV is installing dependencies
-  if (!dependencyInstallationDetected && installPatterns.some(pattern => 
-      msg.includes(pattern) && !msg.includes("Uvicorn running on")
-  )) {
-      dependencyInstallationDetected = true;
-      log.info('[BACKEND STARTUP] UV dependency installation detected during uvicorn startup');
-      
-      // Create installing lock file to maintain consistency with install-deps.ts
-      InstallLogs.setLockPath();
-      log.info('[BACKEND STARTUP] Created uv_installing.lock file');
-      
-      // Notify frontend that installation has started (only once)
-      if (!installationNotificationSent) {
-          installationNotificationSent = true;
-          const notificationSent = safeMainWindowSend('install-dependencies-start');
-          if (notificationSent) {
-              log.info('[BACKEND STARTUP] Notified frontend of dependency installation start');
-          } else {
-              log.warn('[BACKEND STARTUP] Failed to notify frontend of dependency installation start');
-          }
-      }
-  }
-  
-  // Send installation logs to frontend if installation was detected
-  if (dependencyInstallationDetected && !msg.includes("Uvicorn running on")) {
-      safeMainWindowSend('install-dependencies-log', {
-          type: msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback") ? 'stderr' : 'stdout',
-          data: msg
-      });
-  }
-  
-  // Check if installation is complete (uvicorn starts successfully)
-  if (dependencyInstallationDetected && msg.includes("Uvicorn running on")) {
-      log.info('[BACKEND STARTUP] UV dependency installation completed, uvicorn started successfully');
-      
-      // Clean up installing lock and create installed lock
-      InstallLogs.cleanLockPath();
-      fs.writeFileSync(installedLockPath, '');
-      log.info('[BACKEND STARTUP] Created uv_installed.lock file');
-      
-      safeMainWindowSend('install-dependencies-complete', {
-          success: true,
-          message: 'Dependencies installed successfully during backend startup'
-      });
-  }
-  
-  // Handle installation failures
-  if (dependencyInstallationDetected && (
-      msg.toLowerCase().includes("failed to resolve dependencies") ||
-      msg.toLowerCase().includes("installation failed") ||
-      msg.includes("× No solution found when resolving dependencies")
-  )) {
-      log.error('[BACKEND STARTUP] UV dependency installation failed');
-      
-      // Clean up installing lock file
-      InstallLogs.cleanLockPath();
-      log.info('[BACKEND STARTUP] Cleaned up uv_installing.lock file after failure');
-      
-      safeMainWindowSend('install-dependencies-complete', {
-          success: false,
-          error: 'Dependency installation failed during backend startup'
-      });
-  }
 }
