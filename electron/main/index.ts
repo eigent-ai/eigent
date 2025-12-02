@@ -1316,14 +1316,6 @@ async function createWindow() {
       });
     });
   } else {
-    // REMOVED: Previously this block would directly set initState='done' when installation
-    // was already complete, bypassing the backend readiness check.
-    //
-    // This caused a critical bug where:
-    // 1. Frontend would show immediately (initState='done')
-    // 2. Backend would still be starting (10-15 seconds)
-    // 3. Users could interact before backend was ready, causing connection errors
-    //
     // The proper flow is now handled by useInstallationSetup.ts with dual-check mechanism:
     // 1. Installation complete event → installationCompleted.current = true
     // 2. Backend ready event → backendReady.current = true
