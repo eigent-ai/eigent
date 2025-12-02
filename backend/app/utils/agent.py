@@ -293,6 +293,11 @@ class ListenChatAgent(ChatAgent):
         # Handle all sync tools ourselves to maintain ContextVar context
         args = tool_call_request.args
         tool_call_id = tool_call_request.tool_call_id
+
+        # Check if tool is wrapped by @listen_toolkit decorator
+        # If so, the decorator will handle activate/deactivate events
+        has_listen_decorator = hasattr(tool.func, "__wrapped__")
+
         try:
             task_lock = get_task_lock(self.api_task_id)
 
@@ -300,19 +305,22 @@ class ListenChatAgent(ChatAgent):
             traceroot_logger.debug(
                 f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
             )
-            asyncio.create_task(
-                task_lock.put_queue(
-                    ActionActivateToolkitData(
-                        data={
-                            "agent_name": self.agent_name,
-                            "process_task_id": self.process_task_id,
-                            "toolkit_name": toolkit_name,
-                            "method_name": func_name,
-                            "message": json.dumps(args, ensure_ascii=False),
-                        },
+
+            # Only send activate event if tool is NOT wrapped by @listen_toolkit
+            if not has_listen_decorator:
+                asyncio.create_task(
+                    task_lock.put_queue(
+                        ActionActivateToolkitData(
+                            data={
+                                "agent_name": self.agent_name,
+                                "process_task_id": self.process_task_id,
+                                "toolkit_name": toolkit_name,
+                                "method_name": func_name,
+                                "message": json.dumps(args, ensure_ascii=False),
+                            },
+                        )
                     )
                 )
-            )
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)
@@ -338,19 +346,21 @@ class ListenChatAgent(ChatAgent):
                 else:
                     result_msg = result_str
 
-            asyncio.create_task(
-                task_lock.put_queue(
-                    ActionDeactivateToolkitData(
-                        data={
-                            "agent_name": self.agent_name,
-                            "process_task_id": self.process_task_id,
-                            "toolkit_name": toolkit_name,
-                            "method_name": func_name,
-                            "message": result_msg,
-                        },
+            # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
+            if not has_listen_decorator:
+                asyncio.create_task(
+                    task_lock.put_queue(
+                        ActionDeactivateToolkitData(
+                            data={
+                                "agent_name": self.agent_name,
+                                "process_task_id": self.process_task_id,
+                                "toolkit_name": toolkit_name,
+                                "method_name": func_name,
+                                "message": result_msg,
+                            },
+                        )
                     )
                 )
-            )
         except Exception as e:
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
@@ -358,7 +368,11 @@ class ListenChatAgent(ChatAgent):
             mask_flag = False
             traceroot_logger.error(f"Tool execution failed for {func_name}: {e}", exc_info=True)
 
-        return self._record_tool_calling(func_name, args, result, tool_call_id, mask_output=mask_flag)
+        return self._record_tool_calling(
+            func_name, args, result, tool_call_id,
+            mask_output=mask_flag,
+            extra_content=tool_call_request.extra_content,
+        )
 
     @traceroot.trace()
     async def _aexecute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
@@ -370,21 +384,28 @@ class ListenChatAgent(ChatAgent):
         tool_call_id = tool_call_request.tool_call_id
         task_lock = get_task_lock(self.api_task_id)
 
+        # Check if tool is wrapped by @listen_toolkit decorator
+        # If so, the decorator will handle activate/deactivate events
+        has_listen_decorator = hasattr(tool.func, "__wrapped__")
+
         toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
         traceroot_logger.info(
             f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
         )
-        await task_lock.put_queue(
-            ActionActivateToolkitData(
-                data={
-                    "agent_name": self.agent_name,
-                    "process_task_id": self.process_task_id,
-                    "toolkit_name": toolkit_name,
-                    "method_name": func_name,
-                    "message": json.dumps(args, ensure_ascii=False),
-                },
+
+        # Only send activate event if tool is NOT wrapped by @listen_toolkit
+        if not has_listen_decorator:
+            await task_lock.put_queue(
+                ActionActivateToolkitData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "toolkit_name": toolkit_name,
+                        "method_name": func_name,
+                        "message": json.dumps(args, ensure_ascii=False),
+                    },
+                )
             )
-        )
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
@@ -430,18 +451,23 @@ class ListenChatAgent(ChatAgent):
             else:
                 result_msg = result_str
 
-        await task_lock.put_queue(
-            ActionDeactivateToolkitData(
-                data={
-                    "agent_name": self.agent_name,
-                    "process_task_id": self.process_task_id,
-                    "toolkit_name": toolkit_name,
-                    "method_name": func_name,
-                    "message": result_msg,
-                },
+        # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
+        if not has_listen_decorator:
+            await task_lock.put_queue(
+                ActionDeactivateToolkitData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "toolkit_name": toolkit_name,
+                        "method_name": func_name,
+                        "message": result_msg,
+                    },
+                )
             )
+        return self._record_tool_calling(
+            func_name, args, result, tool_call_id,
+            extra_content=tool_call_request.extra_content,
         )
-        return self._record_tool_calling(func_name, args, result, tool_call_id)
 
     @traceroot.trace()
     def clone(self, with_memory: bool = False) -> ChatAgent:
@@ -750,7 +776,7 @@ def search_agent(options: Chat):
             "browser_enter",
             "browser_visit_page",
             "browser_scroll",
-            "browser_get_som_screenshot",
+            # "browser_get_som_screenshot",
         ],
     )
 
@@ -873,9 +899,6 @@ Your approach depends on available search tools:
     interactive elements, not the full page text. To see more content on
     long pages, Navigate with `browser_click`, `browser_back`, and
     `browser_forward`. Manage multiple pages with `browser_switch_tab`.
-- **Analysis**: Use `browser_get_som_screenshot` to understand the page
-    layout and identify interactive elements. Since this is a heavy
-    operation, only use it when visual analysis is necessary.
 - **Interaction**: Use `browser_type` to fill out forms and
     `browser_enter` to submit or confirm search.
 
