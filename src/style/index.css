@@ -93,7 +93,7 @@ body {
 .custom-resizable-handle {
   width: 1px;
   height: 100%;
-  background: rgba(200,200,200,0.3);
+  background: rgba(200, 200, 200, 0.3);
   transition: all 0.2s ease;
   position: relative;
 }
@@ -418,5 +418,6 @@ code {
 
 .markdown-container ol {
   padding-left: 1rem;
-  font-size: 12px; /* text-sm */
+  font-size: 12px;
+  /* text-sm */
 }

@@ -14,6 +14,7 @@ import {
 	ChevronLeft,
 	House,
 	Share,
+	ArrowLeft,
 	MoreHorizontal,
 } from "lucide-react";
 import "./index.css";
@@ -37,7 +38,7 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
- 
+
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -50,7 +51,7 @@ function HeaderWin() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
@@ -220,9 +221,8 @@ function HeaderWin() {
 		>
 			{/* left */}
 			<div
-				className={`${
-					platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
-				} flex items-center justify-center no-drag`}
+				className={`${platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
+					} flex items-center justify-center no-drag`}
 			>
 				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
 			</div>
@@ -230,16 +230,6 @@ function HeaderWin() {
 			{/* center */}
 			<div className="title h-full flex-1 flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
-					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
-					<Button
-						onClick={() => navigate("/history")}
-						variant="ghost"
-						size="icon"
-						className="no-drag p-0 h-6 w-6"
-					>
-						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-					</Button>
-					</div>
 					{location.pathname === "/history" && (
 						<div className="flex items-center mr-1">
 							<Button
@@ -253,39 +243,33 @@ function HeaderWin() {
 						</div>
 					)}
 					{location.pathname !== "/history" && (
-						<div className="flex items-center mr-1">
-						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
-							<Button
-								 variant="ghost"
-								 size="icon"
-								 className="no-drag"
-								 onClick={() => navigate("/history")}
-									>
-									<House className="w-4 h-4" />
-							</Button>
-						</TooltipSimple>
-						<Button
-							 variant="ghost"
-							 size="icon"
-							 className="no-drag"
-							 onClick={createNewProject}
-									>
-								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-									<Plus className="w-4 h-4" />
-								</TooltipSimple>
-						</Button>
+						<div className="flex items-center">
+							<TooltipSimple content={t("layout.home")} side="bottom" align="center">
+								<Button
+									variant="ghost"
+									size="sm"
+									className="no-drag font-bold text-base"
+									onClick={() => navigate("/history")}
+								>
+									<ArrowLeft className="w-4 h-4" />
+									Home
+								</Button>
+							</TooltipSimple>
+							<span>
+								/
+							</span>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("layout.new-project") ? (
-									<Button 
-										id="active-task-title-btn"
-										variant="ghost" 
-											className="font-bold text-base no-drag truncate" 
-										onClick={toggle}
-										size="sm"
-										>
+								<Button
+									id="active-task-title-btn"
+									variant="ghost"
+									className="font-bold text-base no-drag truncate"
+									onClick={toggle}
+									size="sm"
+								>
 									{t("layout.new-project")}
 									<ChevronDown />
 								</Button>
@@ -308,9 +292,8 @@ function HeaderWin() {
 				{/* right */}
 				{location.pathname !== "/history" && (
 					<div
-						className={`${
-							platform === "darwin" && "pr-2"
-						} flex h-full items-center z-50 relative no-drag gap-1`}
+						className={`${platform === "darwin" && "pr-2"
+							} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string] &&
@@ -319,31 +302,31 @@ function HeaderWin() {
 								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
 								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
 							) && (
-							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
-								<Button
-									onClick={() => setEndDialogOpen(true)}
-									variant="outline"
-									size="xs"
-									className="no-drag !text-text-cuation justify-center"
-								>
-									<Power />
-									{t("layout.end-project")}
-								</Button>
-							</TooltipSimple>
-						)}
+								<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
+									<Button
+										onClick={() => setEndDialogOpen(true)}
+										variant="outline"
+										size="xs"
+										className="no-drag !text-text-cuation justify-center"
+									>
+										<Power />
+										{t("layout.end-project")}
+									</Button>
+								</TooltipSimple>
+							)}
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
-								<Button
-									onClick={() => handleShare(chatStore.activeTaskId as string)}
-									variant="ghost"
-									size="xs"
-									className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
-								>
-									{t("layout.share")}
-								</Button>
-							</TooltipSimple>
-						)}
+								<TooltipSimple content={t("layout.share")} side="bottom" align="end">
+									<Button
+										onClick={() => handleShare(chatStore.activeTaskId as string)}
+										variant="ghost"
+										size="xs"
+										className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
+									>
+										{t("layout.share")}
+									</Button>
+								</TooltipSimple>
+							)}
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button
@@ -379,9 +362,8 @@ function HeaderWin() {
 				)}
 				{location.pathname === "/history" && (
 					<div
-						className={`${
-							platform === "darwin" && "pr-2"
-						} flex h-full items-center z-50 relative no-drag gap-1`}
+						className={`${platform === "darwin" && "pr-2"
+							} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 					</div>
 				)}

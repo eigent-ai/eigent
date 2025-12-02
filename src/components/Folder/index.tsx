@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-	ChevronsLeft,
 	Search,
 	FileText,
 	CodeXml,
-	ChevronLeft,
 	Download,
 	Folder as FolderIcon,
 	ChevronRight,
@@ -86,11 +84,10 @@ const FileTree: React.FC<FileTreeProps> = ({
 									onSelectFile(fileInfo);
 								}
 							}}
-							className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
-								selectedFile?.path === child.path
-									? "bg-fill-fill-transparent-active"
-									: ""
-							}`}
+							className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${selectedFile?.path === child.path
+								? "bg-fill-fill-transparent-active"
+								: ""
+								}`}
 						>
 							{child.isFolder && (
 								<span className="w-4 h-4 flex items-center justify-center">
@@ -112,9 +109,8 @@ const FileTree: React.FC<FileTreeProps> = ({
 							)}
 
 							<span
-								className={`truncate text-[13px] leading-5 ${
-									child.isFolder ? "font-semibold" : "font-medium"
-								}`}
+								className={`truncate text-[13px] leading-5 ${child.isFolder ? "font-semibold" : "font-medium"
+									}`}
 							>
 								{child.name}
 							</span>
@@ -159,7 +155,7 @@ export default function Folder({ data }: { data?: Agent }) {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const authStore = useAuthStore();
 	const { t } = useTranslation();
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
@@ -219,8 +215,6 @@ export default function Folder({ data }: { data?: Agent }) {
 		selectedFileChange(selectedFile!, !isShowSourceCode);
 		setIsShowSourceCode(!isShowSourceCode);
 	};
-
-	const [isCollapsed, setIsCollapsed] = useState(false);
 
 	const buildFileTree = (files: FileInfo[]): FileTreeNode => {
 		const root: FileTreeNode = {
@@ -393,117 +387,52 @@ export default function Folder({ data }: { data?: Agent }) {
 	};
 
 	return (
-		<div className="h-full w-full flex overflow-hidden">
+		<div className="h-full w-full flex">
 			{/* fileList */}
-			<div
-				className={`${
-					isCollapsed ? "w-16" : "w-64"
-				} border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
-			>
+			<div className="flex-[0.3] border-y-0 border-l-0 border-r-[0.5px] border-border-secondary border-solid flex flex-col">
 				{/* head */}
-				<div
-					className={` py-2 border-b border-zinc-200 flex-shrink-0 ${
-						isCollapsed ? "px-2" : "pl-4 pr-2"
-					}`}
-				>
-					<div className="flex items-center justify-between">
-						{!isCollapsed && (
-							<div className="flex items-center gap-2">
-								<Button
-									onClick={handleBack}
-									size="sm"
-									variant="ghost"
-									className={`flex items-center gap-2`}
-								>
-									<ChevronLeft />
-								</Button>
-								<span className="text-xl font-bold text-primary whitespace-nowrap">
-									{t("chat.agent-folder")}
-								</span>
-							</div>
-						)}
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() => setIsCollapsed(!isCollapsed)}
-							className={`${
-								isCollapsed ? "w-full" : ""
-							} flex items-center justify-center`}
-							title={isCollapsed ? t("chat.open") : t("chat.close")}
-						>
-							<ChevronsLeft
-								className={`w-6 h-6 text-zinc-500 ${
-									isCollapsed ? "rotate-180" : ""
-								} transition-transform ease-in-out`}
-							/>
-						</Button>
+				<div className="w-full h-ful flex flex-row items-center justify-between px-2 py-2.5">
+					<div className="text-text-body font-bold text-body-base leading-relaxed">
+						{t("chat.agent-folder")}
 					</div>
 				</div>
 
 				{/* Search Input*/}
-				{!isCollapsed && (
-					<div className="px-2 border-b border-zinc-200 flex-shrink-0">
-						<div className="relative">
-							<Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
-							<input
-								type="text"
-								placeholder={t("chat.search")}
-								className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
-							/>
-						</div>
+				<div className="px-2 border-b border-zinc-200 flex-shrink-0">
+					<div className="relative">
+						<Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
+						<input
+							type="text"
+							placeholder={t("chat.search")}
+							className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+						/>
 					</div>
-				)}
+				</div>
 
 				{/* fileList */}
 				<div className="flex-1 overflow-y-auto min-h-0">
-					{!isCollapsed ? (
-						<div className="p-2">
-							<div className="mb-2">
-								<div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
-									{t("chat.files")}
-								</div>
-								<FileTree
-									node={fileTree}
-									selectedFile={selectedFile}
-									expandedFolders={expandedFolders}
-									onToggleFolder={toggleFolder}
-									onSelectFile={(file) =>
-										selectedFileChange(file, isShowSourceCode)
-									}
-									isShowSourceCode={isShowSourceCode}
-								/>
+					<div className="p-2">
+						<div className="mb-2">
+							<div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
+								{t("chat.files")}
 							</div>
+							<FileTree
+								node={fileTree}
+								selectedFile={selectedFile}
+								expandedFolders={expandedFolders}
+								onToggleFolder={toggleFolder}
+								onSelectFile={(file) =>
+									selectedFileChange(file, isShowSourceCode)
+								}
+								isShowSourceCode={isShowSourceCode}
+							/>
 						</div>
-					) : (
-						// Display simplified file icons when collapsed
-						<div className="p-2 space-y-2">
-							{fileGroups.map((group) =>
-								group.files.map((file) => (
-									<button
-										key={file.path}
-										onClick={() => selectedFileChange(file, isShowSourceCode)}
-										className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
-											selectedFile?.name === file.name
-												? "bg-blue-50 text-blue-700"
-												: "text-zinc-600"
-										}`}
-										title={file.name}
-									>
-										{file.icon ? (
-											<file.icon className="w-4 h-4" />
-										) : (
-											<FileText className="w-4 h-4" />
-										)}
-									</button>
-								))
-							)}
-						</div>
-					)}
+					</div>
 				</div>
 			</div>
 
 			{/* content */}
-			<div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+			<div className="flex-[0.7] flex flex-col min-w-0 overflow-hidden">
 				{/* head */}
 				{selectedFile && (
 					<div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
@@ -560,8 +489,8 @@ export default function Folder({ data }: { data?: Agent }) {
 										title={selectedFile.name}
 									/>
 								) : ["csv", "doc", "docx", "pptx", "xlsx"].includes(
-										selectedFile.type
-								  ) ? (
+									selectedFile.type
+								) ? (
 									<FolderComponent selectedFile={selectedFile} />
 								) : selectedFile.type === "html" ? (
 									isShowSourceCode ? (
@@ -579,14 +508,14 @@ export default function Folder({ data }: { data?: Agent }) {
 										</div>
 									</div>
 								) : [
-										"png",
-										"jpg",
-										"jpeg",
-										"gif",
-										"bmp",
-										"webp",
-										"svg",
-								  ].includes(selectedFile.type.toLowerCase()) ? (
+									"png",
+									"jpg",
+									"jpeg",
+									"gif",
+									"bmp",
+									"webp",
+									"svg",
+								].includes(selectedFile.type.toLowerCase()) ? (
 									<div className="flex items-center justify-center h-full">
 										<ImageLoader selectedFile={selectedFile} />
 									</div>
@@ -621,24 +550,24 @@ export default function Folder({ data }: { data?: Agent }) {
 }
 
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
-    const [src, setSrc] = useState("");
+	const [src, setSrc] = useState("");
 
-    useEffect(() => {
-        const filePath = selectedFile.isRemote
-            ? (selectedFile.content as string)
-            : selectedFile.path;
+	useEffect(() => {
+		const filePath = selectedFile.isRemote
+			? (selectedFile.content as string)
+			: selectedFile.path;
 
-        window.electronAPI
-            .readFileAsDataUrl(filePath)
-            .then(setSrc)
-            .catch((err: any) => console.error("Image load error:", err));
-    }, [selectedFile]);
+		window.electronAPI
+			.readFileAsDataUrl(filePath)
+			.then(setSrc)
+			.catch((err: any) => console.error("Image load error:", err));
+	}, [selectedFile]);
 
-    return (
-        <img
-            src={src}
-            alt={selectedFile.name}
-            className="max-w-full max-h-full object-contain"
-        />
-    );
+	return (
+		<img
+			src={src}
+			alt={selectedFile.name}
+			className="max-w-full max-h-full object-contain"
+		/>
+	);
 }

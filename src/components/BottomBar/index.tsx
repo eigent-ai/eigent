@@ -1,9 +1,14 @@
 import { WorkSpaceMenu } from "@/components/WorkSpaceMenu";
 
-function BottomBar() {
+interface BottomBarProps {
+	onToggleChatBox?: () => void;
+	isChatBoxVisible?: boolean;
+}
+
+function BottomBar({ onToggleChatBox, isChatBoxVisible }: BottomBarProps) {
 	return (
-		<div className="flex h-12 items-center justify-center pb-2 z-50 relative">
-			<WorkSpaceMenu />
+		<div className="flex h-12 items-center justify-center z-50 relative">
+			<WorkSpaceMenu onToggleChatBox={onToggleChatBox} isChatBoxVisible={isChatBoxVisible} />
 		</div>
 	);
 }

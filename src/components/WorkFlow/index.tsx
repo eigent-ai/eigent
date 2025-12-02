@@ -16,6 +16,7 @@ import { useWorkerList } from "@/store/authStore";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import folderIcon from "@/assets/Folder.svg";
 
 interface NodeData {
 	agent: Agent;
@@ -38,7 +39,7 @@ export default function Workflow({
 }: {
 	taskAssigning: Agent[];
 }) {
-	const {t} = useTranslation();
+	const { t } = useTranslation();
 	//Get Chatstore for the active project's task
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
@@ -361,63 +362,36 @@ export default function Workflow({
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<div className="flex items-center justify-between w-full ">
-				<div className="text-text-body font-bold text-lg leading-relaxed">
-					{t("workforce.your-ai-workforce")}
+			<div className="flex items-center justify-between w-full px-md py-2.5">
+				<div className="flex items-center gap-xs">
+					<Button
+						variant="ghost"
+						size="icon"
+						className="no-drag p-0 h-6 w-6"
+					>
+						<img className="w-6 h-6 mt-1" src={folderIcon} alt="folder-icon" />
+					</Button>
+					<div className="text-text-body font-bold text-body-base leading-relaxed">
+						{t("workforce.your-ai-workforce")}
+					</div>
 				</div>
-				<div className="flex items-center justify-center gap-sm">
-					{/* <Button
+				<div className="flex items-center justify-center gap-xs">
+					<Button
 						variant="outline"
 						size="icon"
-						className="border border-solid border-menutabs-border-active bg-menutabs-bg-default p-2"
 						onClick={() => {
-							if (isEditMode) {
-								// save current viewport state
-								setLastViewport(getViewport());
-								// restore original state
-								setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 500 });
-								// reset node positions
-								setNodes((nodes: CustomNode[]) => {
-									let currentX = 8;
-									return nodes.map((node: CustomNode) => {
-										const nodeWidth = node.data.isExpanded ? 560 : 280;
-										const newPosition = { x: currentX, y: 16 };
-										currentX += nodeWidth + 20;
-
-										return {
-											...node,
-											position: newPosition,
-										};
-									});
-								});
-								setIsEditMode(false);
-							} else {
-								// enter edit mode
-								setViewport({ x: 0, y: 0, zoom: 0.5 }, { duration: 500 });
-								setIsEditMode(true);
-							}
+							moveViewport(200);
 						}}
 					>
-						<SquareStack />
-					</Button> */}
-					<div className=" p-1 rounded-lg bg-menutabs-bg-default border border-solid border-menutabs-border-active flex items-center justify-cneter gap-1">
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() => {
-								moveViewport(200);
-							}}
-						>
-							<ChevronLeft className="w-4 h-4 text-icon-primary" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() => moveViewport(-200)}
-						>
-							<ChevronRight className="w-4 h-4 text-icon-primary" />
-						</Button>
-					</div>
+						<ChevronLeft className="w-4 h-4 text-icon-primary" />
+					</Button>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => moveViewport(-200)}
+					>
+						<ChevronRight className="w-4 h-4 text-icon-primary" />
+					</Button>
 				</div>
 			</div>
 			<div className="h-full w-full" ref={containerRef}>

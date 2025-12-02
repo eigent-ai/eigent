@@ -1,4 +1,5 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
 import { useWorkerList } from "@/store/authStore";
 import {
 	Bot,
@@ -9,6 +10,9 @@ import {
 	CodeXml,
 	Bird,
 	LayoutGrid,
+	Plus,
+	PanelLeftClose,
+	PanelLeftOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -16,8 +20,14 @@ import { AddWorker } from "@/components/AddWorker";
 import { Badge } from "../ui/badge";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { TooltipSimple } from "@/components/ui/tooltip";
 
-export function WorkSpaceMenu() {
+interface WorkSpaceMenuProps {
+	onToggleChatBox?: () => void;
+	isChatBoxVisible?: boolean;
+}
+
+export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: WorkSpaceMenuProps) {
 	const { t } = useTranslation();
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
@@ -302,44 +312,53 @@ export function WorkSpaceMenu() {
 	};
 
 	return (
-		<div className="h-full">
-			<div className="h-full flex items-center flex-start">
-				<div className="flex items-center flex-start gap-1 mr-3">
-					{chatStore.activeTaskId && (
-						<ToggleGroup
-							type="single"
-							size="sm"
-							value={
-								chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace as string
-							}
-							onValueChange={onValueChange}
-							className="flex items-center gap-2"
-						>
-							<ToggleGroupItem value="workflow" className="!w-10 !h-10 p-2">
-								<LayoutGrid className="!h-6 !w-6" />
-							</ToggleGroupItem>
-							<ToggleGroupItem
-								value="documentWorkSpace"
-								className="!w-10 !h-10 p-2 relative"
+		<div className="w-full">
+			<div className="absolute h-full flex items-center justify-center left-2 z-10 pb-2">
+				<MenuToggleGroup
+					type="single"
+					variant="clear"
+					size="md"
+					orientation="horizontal"
+				>
+					<MenuToggleItem
+						value="toggle-chatbox"
+						onClick={onToggleChatBox}
+						icon={isChatBoxVisible ? <PanelLeftClose className="text-icon-secondary" /> : <PanelLeftOpen className="text-icon-secondary" />}
+						disableIconAnimation={false}
+					/>
+				</MenuToggleGroup>
+			</div>
+			<div className="w-full h-full flex flex-row items-center justify-center relative">
+				<motion.div
+					initial={{ opacity: 0, scale: 0.8, x: -20 }}
+					animate={{ opacity: 1, scale: 1, x: 0 }}
+					exit={{ opacity: 0, scale: 0.8, x: 20 }}
+					transition={{
+						duration: 0.3,
+						ease: "easeInOut",
+					}}
+					layout
+					className="flex flex-row items-center justify-center pb-2"
+				>
+					<div className="flex items-center flex-start gap-1 pr-2">
+						{chatStore.activeTaskId && (
+							<MenuToggleGroup
+								type="single"
+								size="md"
+								orientation="horizontal"
+								className={'flex pr-2 border-[0px] border-solid border-r border-white-100%'}
+								value={
+									chatStore.tasks[chatStore.activeTaskId as string]
+										.activeWorkSpace as string
+								}
+								onValueChange={onValueChange}
 							>
-								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
-									0 && (
-									<Badge
-										className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
-										variant="destructive"
-									>
-										{
-											chatStore.tasks[chatStore.activeTaskId as string]
-												.nuwFileNum
-										}
-									</Badge>
-								)}
-								<Inbox className="!h-6 !w-6" />
-							</ToggleGroupItem>
-						</ToggleGroup>
-					)}
-				</div>
+								<MenuToggleItem value="workflow" icon={<LayoutGrid />} />
+							</MenuToggleGroup>
+						)}
+					</div>
+					<AddWorker />
+				</motion.div>
 				{/* activeAgent */}
 				<AnimatePresence>
 					{agentList.length > 0 && (
@@ -348,16 +367,18 @@ export function WorkSpaceMenu() {
 							animate={{ opacity: 1, x: 0 }}
 							exit={{ opacity: 0, x: -30 }}
 							transition={{ duration: 0.3, ease: "easeInOut" }}
-							className={`px-3 border-[0px] border-solid border-l border-white-100%`}
+							className={`w-fit flex flex-row pl-2 gap-2`}
 						>
-							<ToggleGroup
+							<MenuToggleGroup
 								type="single"
+								size="md"
+								orientation="horizontal"
 								value={
 									chatStore.tasks[chatStore.activeTaskId as string]
 										.activeWorkSpace as string
 								}
 								onValueChange={onValueChange}
-								className="flex items-center gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"
+								className="w-full flex items-center gap-2 pb-2"
 							>
 								<AnimatePresence mode="popLayout">
 									{agentList.map((agent) => (
@@ -372,7 +393,7 @@ export function WorkSpaceMenu() {
 											}}
 											layout
 										>
-											<ToggleGroupItem
+											<MenuToggleItem
 												disabled={
 													![
 														"developer_agent",
@@ -382,29 +403,22 @@ export function WorkSpaceMenu() {
 													agent.tasks.length === 0
 												}
 												value={agent.agent_id}
-												aria-label="Toggle bold"
-												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${
-													agent.tasks.length === 0 && "opacity-30"
-												}`}
-											>
-												<Bot className={`!h-6 !w-6 `} />
-												<div className="absolute top-0 right-1">
-													{
-														agentIconMap[
-															agent.type as keyof typeof agentIconMap
-														]
-													}
-												</div>
-											</ToggleGroupItem>
+												icon={<Bot />}
+												subIcon={
+													agentIconMap[
+													agent.type as keyof typeof agentIconMap
+													]
+												}
+												showSubIcon={true}
+												className={agent.tasks.length === 0 ? "opacity-30" : ""}
+											/>
 										</motion.div>
 									))}
 								</AnimatePresence>
-							</ToggleGroup>
+							</MenuToggleGroup>
 						</motion.div>
 					)}
 				</AnimatePresence>
-				<div className="h-full w-[1px] bg-white-100% mr-3"></div>
-				<AddWorker />
 			</div>
 		</div>
 	);
