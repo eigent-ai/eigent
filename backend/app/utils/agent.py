@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import platform
+import threading
 from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
@@ -69,6 +70,74 @@ from app.service.task import (
 from app.service.task import set_process_task
 
 NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
+
+# Global counter for round-robin browser selection from pool
+_browser_selection_counter = 0
+
+# CDP Browser occupation management
+class CdpBrowserPoolManager:
+    """Manages CDP browser pool occupation to ensure parallel tasks use different browsers."""
+
+    def __init__(self):
+        self._occupied_ports = {}  # port -> session_id mapping
+        self._lock = threading.Lock()
+
+    def acquire_browser(self, cdp_browsers: list[dict], session_id: str) -> dict | None:
+        """
+        Acquire an available browser from the pool.
+
+        Args:
+            cdp_browsers: List of browser configurations
+            session_id: Unique session identifier for this toolkit instance
+
+        Returns:
+            Browser configuration dict or None if no browsers available
+        """
+        with self._lock:
+            # Find first unoccupied browser
+            for browser in cdp_browsers:
+                port = browser.get('port')
+                if port and port not in self._occupied_ports:
+                    self._occupied_ports[port] = session_id
+                    traceroot_logger.info(
+                        f"Acquired browser on port {port} for session {session_id}. "
+                        f"Occupied: {list(self._occupied_ports.keys())}"
+                    )
+                    return browser
+
+            traceroot_logger.warning(
+                f"No available browsers in pool for session {session_id}. "
+                f"All occupied: {list(self._occupied_ports.keys())}"
+            )
+            return None
+
+    def release_browser(self, port: int, session_id: str):
+        """
+        Release a browser back to the pool.
+
+        Args:
+            port: Browser port to release
+            session_id: Session identifier
+        """
+        with self._lock:
+            if port in self._occupied_ports and self._occupied_ports[port] == session_id:
+                del self._occupied_ports[port]
+                traceroot_logger.info(
+                    f"Released browser on port {port} from session {session_id}. "
+                    f"Occupied: {list(self._occupied_ports.keys())}"
+                )
+            else:
+                traceroot_logger.warning(
+                    f"Attempted to release browser on port {port} but it was not occupied by {session_id}"
+                )
+
+    def get_occupied_ports(self) -> list[int]:
+        """Get list of currently occupied ports."""
+        with self._lock:
+            return list(self._occupied_ports.keys())
+
+# Global CDP browser pool manager instance
+_cdp_pool_manager = CdpBrowserPoolManager()
 
 
 class ListenChatAgent(ChatAgent):
@@ -729,15 +798,46 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
+    # Generate unique session ID for this toolkit instance
+    toolkit_session_id = str(uuid.uuid4())[:8]
+
+    # SIMPLIFIED: Use fixed CDP port from environment or first browser in pool
+    # No occupation management - all agents share the same browser connection
+    if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
+        # Use first browser from pool
+        selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
+        selected_is_external = options.cdp_browsers[0].get('isExternal', False)
+        traceroot_logger.info(
+            f"Using CDP browser: port={selected_port}, "
+            f"isExternal={selected_is_external}, "
+            f"name={options.cdp_browsers[0].get('name', 'Unnamed')}"
+        )
+    else:
+        # Use default port from environment
+        selected_port = env('browser_port', '9222')
+        selected_is_external = False
+        traceroot_logger.info(f"Using default CDP port: {selected_port}")
+
+    # IMPORTANT: Always use cdp_keep_current_page=True to preserve browser state
+    # across tasks (both internal and external browsers)
+    use_keep_current_page = True
+
+    # When cdp_keep_current_page=True, don't set default_start_url to avoid
+    # opening a new page and conflicting with keeping the current page
+    default_url = None
+
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
-        session_id=str(uuid.uuid4())[:8],
-        default_start_url="about:blank",
-        cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+        session_id=toolkit_session_id,  # Use the session ID for pool management
+        default_start_url=default_url,
+        connect_over_cdp=True,
+        cdp_url=f"http://localhost:{selected_port}",
+        cdp_keep_current_page=use_keep_current_page,
         enabled_tools=[
+            "browser_open",
             "browser_click",
             "browser_type",
             "browser_back",
@@ -745,8 +845,9 @@ def search_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
-            "browser_scroll",
-            "browser_get_som_screenshot",
+            "browser_get_page_snapshot"
+            # "browser_scroll",
+            # "browser_get_page_snapshot",
         ],
     )
 
@@ -846,30 +947,13 @@ Your capabilities include:
 <web_search_workflow>
 Your approach depends on available search tools:
 
-**If Google Search is Available:**
-- Initial Search: Start with `search_google` to get a list of relevant URLs
-- Browser-Based Exploration: Use the browser tools to investigate the URLs
-
-**If Google Search is NOT Available:**
-- **MUST start with direct website search**: Use `browser_visit_page` to go
-  directly to popular search engines and informational websites such as:
-  * General search: google.com, bing.com, duckduckgo.com
-  * Academic: scholar.google.com, pubmed.ncbi.nlm.nih.gov
-  * News: news.google.com, bbc.com/news, reuters.com
-  * Technical: stackoverflow.com, github.com
-  * Reference: wikipedia.org, britannica.com
-- **Manual search process**: Type your query into the search boxes on these
-  sites using `browser_type` and submit with `browser_enter`
-- **Extract URLs from results**: Only use URLs that appear in the search
-  results on these websites
-
 **Common Browser Operations (both scenarios):**
 - **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
     `browser_visit_page` provides a snapshot of currently visible
     interactive elements, not the full page text. To see more content on
     long pages, Navigate with `browser_click`, `browser_back`, and
     `browser_forward`. Manage multiple pages with `browser_switch_tab`.
-- **Analysis**: Use `browser_get_som_screenshot` to understand the page
+- **Analysis**: Use `browser_get_page_snapshot` to understand the page
     layout and identify interactive elements. Since this is a heavy
     operation, only use it when visual analysis is necessary.
 - **Interaction**: Use `browser_type` to fill out forms and
