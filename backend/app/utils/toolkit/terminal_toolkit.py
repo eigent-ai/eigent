@@ -134,6 +134,27 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 exc_info=True
             )
 
+    def shell_exec(self, id: str, command: str, block: bool = True) -> str:
+        r"""Executes a shell command in blocking or non-blocking mode.
+
+        Args:
+            id (str): A unique identifier for the command's session.
+            command (str): The shell command to execute.
+            block (bool, optional): Determines the execution mode. Defaults to True.
+
+        Returns:
+            str: The output of the command execution.
+        """
+        result = super().shell_exec(id, command, block)
+
+        # If the command executed successfully but returned empty output,
+        # provide a clear success message to help the AI agent understand
+        # that the command completed without error.
+        if block and result == "":
+            return "Command executed successfully (no output)."
+
+        return result
+
     @classmethod
     def shutdown(cls):
         if cls._thread_pool:

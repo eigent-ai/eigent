@@ -107,12 +107,16 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
             print(message_attachment)
         logger.info(f"\nAgent Message:\n{message_title} {message_description} {message_attachment}")
         task_lock = get_task_lock(self.api_task_id)
-        asyncio.create_task(
-            task_lock.put_queue(
-                ActionNoticeData(
-                    process_task_id=process_task.get(""),
-                    data=f"{message_description}",
-                )
+        # Capture ContextVar value before creating async task
+        current_process_task_id = process_task.get("")
+
+        # Use _safe_put_queue to handle both sync and async contexts
+        from app.utils.listen.toolkit_listen import _safe_put_queue
+        _safe_put_queue(
+            task_lock,
+            ActionNoticeData(
+                process_task_id=current_process_task_id,
+                data=f"{message_description}",
             )
         )
 

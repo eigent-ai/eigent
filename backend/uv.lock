@@ -249,7 +249,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.80a2" },
+    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=feature%2Fworkforce-configurable-fail-handling" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -333,8 +333,8 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.80a2"
-source = { registry = "https://pypi.org/simple" }
+version = "0.2.82.dev1"
+source = { git = "https://github.com/camel-ai/camel.git?rev=feature%2Fworkforce-configurable-fail-handling#d84dbec44ecb26add2638857059e2f92d896d308" }
 dependencies = [
     { name = "astor" },
     { name = "colorama" },
@@ -348,10 +348,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "tiktoken" },
     { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/04/c4/13f2b7919a31418f4fe30dd081f7c94fcc62e9ba0388f48e9ed2800e445d/camel_ai-0.2.80a2.tar.gz", hash = "sha256:8bb6d777bf04529f829f857c8ea630529f5200c0ceebfc7ac8033d8847fdf160", size = 1004461, upload-time = "2025-11-19T16:16:34.513Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/74/1393ce468e754ac18a1b6ab7a90cb9a266e3ff7523db21b467701d722efb/camel_ai-0.2.80a2-py3-none-any.whl", hash = "sha256:5425b2ebde1272bddc3a176b8076e28a0d709291efc6721a7e95a091525fb45d", size = 1465860, upload-time = "2025-11-19T16:16:31.342Z" },
 ]
 
 [package.optional-dependencies]
