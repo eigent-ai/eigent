@@ -15,7 +15,7 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
     return (
         <div
             className={cn(
-                "flex flex-col gap-1 items-start justify-center w-full",
+                "flex flex-col gap-1 items-start justify-center w-full mb-2",
                 className
             )}
         >
@@ -59,7 +59,7 @@ export const BoxHeaderConfirm = ({
     return (
         <div
             className={cn(
-                "flex flex-col gap-1 items-start justify-center w-full",
+                "flex flex-col gap-1 items-start justify-center w-full mb-2",
                 className
             )}
         >

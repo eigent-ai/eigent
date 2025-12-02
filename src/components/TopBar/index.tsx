@@ -255,119 +255,109 @@ function HeaderWin() {
 									Home
 								</Button>
 							</TooltipSimple>
-							<span>
-								/
-							</span>
 						</div>
 					)}
-					{location.pathname !== "/history" && (
-						<>
-							{activeTaskTitle === t("layout.new-project") ? (
-								<Button
-									id="active-task-title-btn"
-									variant="ghost"
-									className="font-bold text-base no-drag truncate"
-									onClick={toggle}
-									size="sm"
-								>
-									{t("layout.new-project")}
-									<ChevronDown />
-								</Button>
-							) : (
-								<Button
-									id="active-task-title-btn"
-									variant="ghost"
-									size="sm"
-									className="font-bold text-base no-drag truncate"
-									onClick={toggle}
-								>
-									{activeTaskTitle}
-									<ChevronDown />
-								</Button>
-							)}
-						</>
-					)}
 				</div>
-				<div id="maximize-window" className="flex-1 h-10"></div>
-				{/* right */}
 				{location.pathname !== "/history" && (
-					<div
-						className={`${platform === "darwin" && "pr-2"
-							} flex h-full items-center z-50 relative no-drag gap-1`}
-					>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string] &&
-							(
-								(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
-							) && (
-								<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
-									<Button
-										onClick={() => setEndDialogOpen(true)}
-										variant="outline"
-										size="xs"
-										className="no-drag !text-text-cuation justify-center"
-									>
-										<Power />
-										{t("layout.end-project")}
-									</Button>
-								</TooltipSimple>
-							)}
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-								<TooltipSimple content={t("layout.share")} side="bottom" align="end">
-									<Button
-										onClick={() => handleShare(chatStore.activeTaskId as string)}
-										variant="ghost"
-										size="xs"
-										className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
-									>
-										{t("layout.share")}
-									</Button>
-								</TooltipSimple>
-							)}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="no-drag"
-								>
-									<MoreHorizontal className="w-4 h-4" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-36">
-								{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
-									<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
-										<FileDown className="w-4 h-4" />
-										{t("layout.report-bug")}
-									</DropdownMenuItem>
-								)}
-								<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
-									<img
-										src={giftIcon}
-										alt="gift-icon"
-										className="w-4 h-4"
-									/>
-									{t("layout.refer-friends")}
-								</DropdownMenuItem>
-								<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
-									<Settings className="w-4 h-4" />
-									{t("layout.settings")}
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				)}
-				{location.pathname === "/history" && (
-					<div
-						className={`${platform === "darwin" && "pr-2"
-							} flex h-full items-center z-50 relative no-drag gap-1`}
-					>
+					<div className="absolute left-1/2 -translate-x-1/2 flex items-center no-drag">
+						{activeTaskTitle === t("layout.new-project") ? (
+							<Button
+								id="active-task-title-btn"
+								variant="ghost"
+								className="font-medium text-base no-drag truncate"
+								onClick={toggle}
+								size="sm"
+							>
+								{t("layout.new-project")}
+								<ChevronDown />
+							</Button>
+						) : (
+							<Button
+								id="active-task-title-btn"
+								variant="ghost"
+								size="sm"
+								className="font-medium text-base no-drag truncate"
+								onClick={toggle}
+							>
+								{activeTaskTitle}
+								<ChevronDown />
+							</Button>
+						)}
 					</div>
 				)}
 			</div>
+			{/* right */}
+			{location.pathname !== "/history" && (
+				<div
+					className={`${platform === "darwin" && "pr-2"
+						} flex h-full items-center z-50 relative no-drag gap-1`}
+				>
+					{chatStore.activeTaskId &&
+						chatStore.tasks[chatStore.activeTaskId as string] &&
+						(
+							(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
+							chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
+							chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
+						) && (
+							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
+								<Button
+									onClick={() => setEndDialogOpen(true)}
+									variant="outline"
+									size="xs"
+									className="no-drag !text-text-cuation justify-center"
+								>
+									<Power />
+									{t("layout.end-project")}
+								</Button>
+							</TooltipSimple>
+						)}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+							>
+								<MoreHorizontal className="w-4 h-4" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-36">
+							{chatStore.activeTaskId &&
+								chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+									<DropdownMenuItem onClick={() => handleShare(chatStore.activeTaskId as string)} className="cursor-pointer">
+										<Share className="w-4 h-4" />
+										{t("layout.share")}
+									</DropdownMenuItem>
+								)}
+							{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+								<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
+									<FileDown className="w-4 h-4" />
+									{t("layout.report-bug")}
+								</DropdownMenuItem>
+							)}
+							<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
+								<img
+									src={giftIcon}
+									alt="gift-icon"
+									className="w-4 h-4"
+								/>
+								{t("layout.refer-friends")}
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
+								<Settings className="w-4 h-4" />
+								{t("layout.settings")}
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+			)}
+			{location.pathname === "/history" && (
+				<div
+					className={`${platform === "darwin" && "pr-2"
+						} flex h-full items-center z-50 relative no-drag gap-1`}
+				>
+				</div>
+			)}
 			{platform !== "darwin" && (
 				<div
 					className="window-controls h-full flex items-center"

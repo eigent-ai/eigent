@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { fetchPost, proxyFetchPut, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import BottomBox from "./BottomBox";
+import { HeaderBox } from "./HeaderBox";
 import { ProjectChatContainer } from "./ProjectChatContainer";
 import { TriangleAlert } from "lucide-react";
 import { generateUniqueId } from "@/lib";
@@ -20,7 +21,7 @@ export default function ChatBox(): JSX.Element {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { t } = useTranslation();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -118,7 +119,7 @@ export default function ChatBox(): JSX.Element {
 			});
 			return;
 		}
-		
+
 		if (textareaRef.current) textareaRef.current.style.height = "60px";
 		try {
 			if (requiresHumanReply) {
@@ -130,7 +131,7 @@ export default function ChatBox(): JSX.Element {
 						JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [],
 				});
 				setMessage("");
-		
+
 				// Scroll to bottom after adding user message
 				setTimeout(() => {
 					scrollToBottom();
@@ -242,11 +243,11 @@ export default function ChatBox(): JSX.Element {
 						proxyFetchPut("/api/user/privacy", requestData);
 						setPrivacy(true);
 					}
-					
+
 					setTimeout(() => {
 						scrollToBottom();
 					}, 200);
-					
+
 					// For the very first message, add it to the current chatStore first, then call startTask
 					const attachesToSend = JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) || [];
 					setMessage("");
@@ -399,7 +400,7 @@ export default function ChatBox(): JSX.Element {
 		const taskId = chatStore.activeTaskId as string;
 		const task = chatStore.tasks[taskId];
 		const type = task.status === 'running' ? 'pause' : 'resume';
-		
+
 		setIsPauseResumeLoading(true);
 		if (type === 'pause') {
 			let { taskTime, elapsed } = task;
@@ -412,7 +413,7 @@ export default function ChatBox(): JSX.Element {
 			chatStore.setTaskTime(taskId, Date.now());
 			chatStore.setStatus(taskId, 'running');
 		}
-		
+
 		fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
 			action: type,
 		});
@@ -422,10 +423,10 @@ export default function ChatBox(): JSX.Element {
 	// Stop task handler - triggers Action.skip_task which preserves context
 	const handleSkip = async () => {
 		const taskId = chatStore.activeTaskId as string;
-		console.log("=" .repeat(80));
+		console.log("=".repeat(80));
 		console.log("🛑 [STOP-BUTTON] handleSkip CALLED from frontend");
 		console.log(`[STOP-BUTTON] taskId: ${taskId}, projectId: ${projectStore.activeProjectId}`);
-		console.log("=" .repeat(80));
+		console.log("=".repeat(80));
 		setIsPauseResumeLoading(true);
 
 		try {
@@ -507,7 +508,7 @@ export default function ChatBox(): JSX.Element {
 		if (history_id) {
 			try {
 				await proxyFetchDelete(`/api/chat/history/${history_id}`);
-			} catch(error) {
+			} catch (error) {
 				console.error(`Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`, error);
 			}
 		} else {
@@ -550,14 +551,14 @@ export default function ChatBox(): JSX.Element {
 		// Check for any to_sub_tasks message (confirmed or not)
 		const anyToSubTasksMessage = task.messages.find((m) => m.step === "to_sub_tasks");
 		const toSubTasksMessage = task.messages.find((m) => (m.step === "to_sub_tasks" && !m.isConfirm));
-		
+
 		// Determine if we're in the "splitting in progress" phase (skeleton visible)
 		// Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
 		const isSkeletonPhase = (
 			task.status !== 'finished' &&
-			!anyToSubTasksMessage && 
-			!task.hasWaitComfirm && 
-			task.messages.length > 0) || 
+			!anyToSubTasksMessage &&
+			!task.hasWaitComfirm &&
+			task.messages.length > 0) ||
 			(task.isTakeControl && !anyToSubTasksMessage);
 		if (isSkeletonPhase) {
 			return "splitting";
@@ -623,16 +624,16 @@ export default function ChatBox(): JSX.Element {
 			console.error("No active project ID found");
 			return;
 		}
-		
+
 		// Store the original message before removal for potential restoration
 		const project = projectStore.getProjectById(project_id);
 		const originalMessage = project?.queuedMessages?.find(m => m.task_id === task_id);
-		
+
 		if (!originalMessage) {
 			console.error(`Message with task_id ${task_id} not found`);
 			return;
 		}
-		
+
 		// Create a copy of the original message for restoration
 		const messageBackup = {
 			task_id: originalMessage.task_id,
@@ -640,7 +641,7 @@ export default function ChatBox(): JSX.Element {
 			timestamp: originalMessage.timestamp,
 			attaches: [...originalMessage.attaches]
 		};
-		
+
 		try {
 			//Optimistic Removal
 			projectStore.removeQueuedMessage(project_id, task_id);
@@ -650,7 +651,7 @@ export default function ChatBox(): JSX.Element {
 			// Note: Replay creates a new chatstore, so no conflicts
 			const task = chatStore.tasks[chatStore.activeTaskId as string];
 			// Only skip backend call if task is finished or hasn't started yet (no messages)
-			if(task && task.messages.length > 0 && task.status !== 'finished') {
+			if (task && task.messages.length > 0 && task.status !== 'finished') {
 				try {
 					await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
 						project_id: project_id,
@@ -669,7 +670,7 @@ export default function ChatBox(): JSX.Element {
 	}
 	const getAllChatStoresMemoized = useMemo(() => {
 		const project_id = projectStore.activeProjectId;
-		if(!project_id) return [];
+		if (!project_id) return [];
 
 		return projectStore.getAllChatStores(project_id);
 	}, [projectStore, projectStore.activeProjectId, chatStore])
@@ -685,11 +686,11 @@ export default function ChatBox(): JSX.Element {
 		}
 
 		// Then check all other chat stores in the project
-		return getAllChatStoresMemoized.some(({chatStore: store}) => {
+		return getAllChatStoresMemoized.some(({ chatStore: store }) => {
 			const state = store.getState();
-			return state.activeTaskId && 
-				   state.tasks[state.activeTaskId] && 
-				   (state.tasks[state.activeTaskId].messages.length > 0 || 
+			return state.activeTaskId &&
+				state.tasks[state.activeTaskId] &&
+				(state.tasks[state.activeTaskId].messages.length > 0 ||
 					state.tasks[state.activeTaskId].hasMessages);
 		});
 	}, [chatStore, getAllChatStoresMemoized]);
@@ -699,7 +700,7 @@ export default function ChatBox(): JSX.Element {
 		const task = chatStore.tasks[chatStore.activeTaskId];
 		return (
 			// running or paused
-			task.status === 'running' || 
+			task.status === 'running' ||
 			task.status === 'pause' ||
 			// splitting phase
 			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
@@ -710,9 +711,9 @@ export default function ChatBox(): JSX.Element {
 
 	const isInputDisabled = useMemo(() => {
 		if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId]) return true;
-		
+
 		const task = chatStore.tasks[chatStore.activeTaskId];
-		
+
 		// If ask human is active, allow input
 		if (task.activeAsk) return false;
 
@@ -736,6 +737,15 @@ export default function ChatBox(): JSX.Element {
 		<div className="w-full h-full flex-none items-center justify-center">
 			{hasAnyMessages ? (
 				<div className="w-full h-full flex-1 flex flex-col">
+					{/* Header Box with Tasks title, token count, and replay button */}
+					{chatStore.activeTaskId && (
+						<HeaderBox
+							tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+							status={chatStore.tasks[chatStore.activeTaskId]?.status}
+							replayLoading={isReplayLoading}
+							onReplay={handleReplay}
+						/>
+					)}
 					{/* New Project Chat Container */}
 					<ProjectChatContainer
 						// onPauseResume={handlePauseResume}  // Commented out - temporary not needed
@@ -744,29 +754,25 @@ export default function ChatBox(): JSX.Element {
 					/>
 					{chatStore.activeTaskId && (
 						<BottomBox
-						state={getBottomBoxState()}
-						queuedMessages={isTaskBusy ? [] : projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
-							id: m.task_id,
-							content: m.content,
-							timestamp: m.timestamp
-						})) || []}
-						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-						subtitle={getBottomBoxState() === 'confirm' 
-							? (() => {
-								// Find the last message where role is "user"
-								const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
-								const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
-								return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
-							})()
-							: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
+							state={getBottomBoxState()}
+							queuedMessages={isTaskBusy ? [] : projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
+								id: m.task_id,
+								content: m.content,
+								timestamp: m.timestamp
+							})) || []}
+							onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+							subtitle={getBottomBoxState() === 'confirm'
+								? (() => {
+									// Find the last message where role is "user"
+									const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+									const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
+									return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
+								})()
+								: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
 							onStartTask={() => handleConfirmTask()}
 							onEdit={handleEditQuery}
-							tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
 							taskTime={taskTime}
 							taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-							onReplay={handleReplay}
-							replayDisabled={chatStore.tasks[chatStore.activeTaskId]?.status !== 'finished'}
-							replayLoading={isReplayLoading}
 							onPauseResume={handlePauseResume}
 							pauseResumeLoading={isPauseResumeLoading}
 							loading={loading}
@@ -885,43 +891,43 @@ export default function ChatBox(): JSX.Element {
 								</div>
 							) : null}
 							{privacy && (
-									<div className="mr-2 flex flex-col items-center gap-2">
-										{[
-											{
-												label: t("layout.palm-springs-tennis-trip-planner"),
-												message: t(
-													"layout.palm-springs-tennis-trip-planner-message"
-												),
-											},
-											{
-												label: t(
-													"layout.bank-transfer-csv-analysis"
-												),
-												message: t(
-													"layout.bank-transfer-csv-analysis-message"
-												),
-											},
-											{
-												label: t(
-													"layout.find-duplicate-files"
-												),
-												message: t(
-													"layout.find-duplicate-files-message"
-												),
-											},
-										].map(({ label, message }) => (
-											<div
-												key={label}
-												className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
-												onClick={() => {
-													setMessage(message);
-												}}
-											>
-												<span>{label}</span>
-											</div>
-										))}
-									</div>
-								)}
+								<div className="mr-2 flex flex-col items-center gap-2">
+									{[
+										{
+											label: t("layout.palm-springs-tennis-trip-planner"),
+											message: t(
+												"layout.palm-springs-tennis-trip-planner-message"
+											),
+										},
+										{
+											label: t(
+												"layout.bank-transfer-csv-analysis"
+											),
+											message: t(
+												"layout.bank-transfer-csv-analysis-message"
+											),
+										},
+										{
+											label: t(
+												"layout.find-duplicate-files"
+											),
+											message: t(
+												"layout.find-duplicate-files-message"
+											),
+										},
+									].map(({ label, message }) => (
+										<div
+											key={label}
+											className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
+											onClick={() => {
+												setMessage(message);
+											}}
+										>
+											<span>{label}</span>
+										</div>
+									))}
+								</div>
+							)}
 						</div>
 					</div>
 				</div>
