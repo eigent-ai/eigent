@@ -1354,6 +1354,9 @@ async function createWindow() {
   log.info('Window is ready, processing queued protocol URLs...');
   processQueuedProtocolUrls();
 
+  // Wait for React components to mount and register event listeners
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   // Now check and install dependencies
   let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
