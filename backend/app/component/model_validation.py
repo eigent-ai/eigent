@@ -37,5 +37,6 @@ def create_agent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
         model=model,
         tools=[get_website_content],
+        step_timeout=900,
     )
     return agent

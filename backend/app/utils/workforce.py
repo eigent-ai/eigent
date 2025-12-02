@@ -6,6 +6,7 @@ from camel.societies.workforce.workforce import (
     WorkforceState,
     DEFAULT_WORKER_POOL_SIZE,
 )
+from camel.societies.workforce.utils import FailureHandlingConfig
 from camel.societies.workforce.task_channel import TaskChannel
 from camel.societies.workforce.base import BaseNode
 from camel.societies.workforce.utils import TaskAssignResult
@@ -58,6 +59,9 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
+            failure_handling_config=FailureHandlingConfig(
+                enabled_strategies=["retry", "replan"],
+            ),
         )
         logger.info(f"[WF-LIFECYCLE] ✅ Workforce.__init__ COMPLETED, id={id(self)}")
 

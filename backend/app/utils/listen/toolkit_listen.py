@@ -27,6 +27,13 @@ def _safe_put_queue(task_lock, data):
         task = asyncio.create_task(task_lock.put_queue(data))
         if hasattr(task_lock, "add_background_task"):
             task_lock.add_background_task(task)
+        # Add done callback to handle any exceptions and prevent warnings
+        def handle_task_result(t):
+            try:
+                t.result()  # This will raise any exception that occurred
+            except Exception as e:
+                logger.error(f"[listen_toolkit] Background task failed: {e}")
+        task.add_done_callback(handle_task_result)
     except RuntimeError:
         # No running event loop, we need to handle this differently
         try:

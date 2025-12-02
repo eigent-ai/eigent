@@ -154,7 +154,7 @@ export function getUvEnv(version: string): Record<string, string> {
     UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
     UV_TOOL_DIR: getCachePath('uv_tool'),
     UV_PROJECT_ENVIRONMENT: getVenvPath(version),
-    UV_HTTP_TIMEOUT: '180',
+    UV_HTTP_TIMEOUT: '300',
   }
 }
 

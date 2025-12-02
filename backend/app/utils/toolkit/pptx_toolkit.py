@@ -4,7 +4,7 @@ from camel.toolkits import PPTXToolkit as BasePPTXToolkit
 
 from app.component.environment import env
 from app.service.task import ActionWriteFileData, Agents, get_task_lock
-from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit, _safe_put_queue
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
 
@@ -39,7 +39,12 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
         res = super().create_presentation(content, filename, template)
         if "PowerPoint presentation successfully created" in res:
             task_lock = get_task_lock(self.api_task_id)
-            asyncio.create_task(
-                task_lock.put_queue(ActionWriteFileData(process_task_id=process_task.get(), data=str(file_path)))
+            # Capture ContextVar value before creating async task
+            current_process_task_id = process_task.get("")
+
+            # Use _safe_put_queue to handle both sync and async contexts
+            _safe_put_queue(
+                task_lock,
+                ActionWriteFileData(process_task_id=current_process_task_id, data=str(file_path))
             )
         return res
