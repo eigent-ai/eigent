@@ -1,4 +1,4 @@
-import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, isBinaryExists, runInstallScript } from "./utils/process";
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript, killProcessByName } from "./utils/process";
 import { spawn, exec } from 'child_process'
 import log from 'electron-log'
 import fs from 'fs'
@@ -21,16 +21,16 @@ export function getMainWindow(): BrowserWindow | null {
 export async function checkToolInstalled() {
     return new Promise<PromiseReturnType>(async (resolve, reject) => {
         if (!(await isBinaryExists('uv'))) {
-            resolve({success: false, message: "uv doesn't exist"})
+            resolve({ success: false, message: "uv doesn't exist" })
             return
         }
 
         if (!(await isBinaryExists('bun'))) {
-            resolve({success: false, message: "Bun doesn't exist"})
+            resolve({ success: false, message: "Bun doesn't exist" })
             return
         }
 
-        resolve({success: true, message: "Tools exist already"})
+        resolve({ success: true, message: "Tools exist already" })
     })
 
 }
@@ -177,8 +177,10 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         fs.mkdirSync(npmCacheDir, { recursive: true });
     }
 
+    const uvEnv = getUvEnv(currentVersion);
     const env = {
         ...process.env,
+        ...uvEnv,
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         PYTHONUNBUFFERED: '1',
@@ -221,10 +223,79 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 { cwd: backendPath, env: env }
             );
             log.info(`Python test output: ${pythonTest.trim()}`);
-        } catch (testErr) {
-            log.error(`Pre-flight check failed: ${testErr}`);
-            reject(new Error(`Backend environment check failed: ${testErr}`));
-            return;
+        } catch (testErr: any) {
+            log.warn(`Pre-flight check failed, attempting repair: ${testErr}`);
+
+            try {
+                // Attempt to repair the environment
+                log.info("Attempting to repair environment...");
+
+                // Cleanup stale processes and locks
+                log.info("Cleaning up stale processes and locks...");
+                await killProcessByName('uv');
+                await killProcessByName('python');
+
+                // Try to remove the lock file explicitly if it exists
+                try {
+                    const lockFile = path.join(getCachePath('uv_python'), '.lock');
+                    if (fs.existsSync(lockFile)) {
+                        fs.unlinkSync(lockFile);
+                    }
+                } catch (e) {
+                    log.warn(`Failed to remove lock file: ${e}`);
+                }
+
+                // Cleanup corrupted python cache
+                try {
+                    const pythonCacheDir = getCachePath('uv_python');
+                    if (fs.existsSync(pythonCacheDir)) {
+                        log.info(`Removing potentially corrupted Python cache: ${pythonCacheDir}`);
+                        fs.rmSync(pythonCacheDir, { recursive: true, force: true });
+                    }
+                } catch (e) {
+                    log.warn(`Failed to remove Python cache: ${e}`);
+                }
+
+                // Cleanup corrupted venv (pyvenv.cfg may reference non-existent Python version)
+                try {
+                    if (fs.existsSync(venvPath)) {
+                        log.info(`Removing potentially corrupted venv: ${venvPath}`);
+                        fs.rmSync(venvPath, { recursive: true, force: true });
+                    }
+                } catch (e) {
+                    log.warn(`Failed to remove venv: ${e}`);
+                }
+
+                // Use proxy if in China (simple check based on timezone)
+                // Add official PyPI as fallback for packages not available on mirror
+                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const proxyArgs = timezone === 'Asia/Shanghai'
+                    ? [
+                        '--default-index', 'https://mirrors.aliyun.com/pypi/simple/',
+                        '--index', 'https://pypi.org/simple/'
+                    ]
+                    : [];
+
+                // Step 1: Ensure Python is installed (fixes corrupted/missing Python)
+                log.info("Step 1: Ensuring Python is installed...");
+                await execAsync(`${uv_path} python install 3.10`, { cwd: backendPath, env: env });
+
+                // Step 2: Sync dependencies
+                log.info("Step 2: Syncing dependencies...");
+                const syncArgs = ['sync', '--no-dev', ...proxyArgs];
+                await execAsync(`${uv_path} ${syncArgs.join(' ')}`, { cwd: backendPath, env: env });
+
+                // Retry the check
+                const { stdout: pythonTest } = await execAsync(
+                    `${uv_path} run python -c "print('Python OK')"`,
+                    { cwd: backendPath, env: env }
+                );
+                log.info(`Python test output after repair: ${pythonTest.trim()}`);
+            } catch (repairErr) {
+                log.error(`Repair failed: ${repairErr}`);
+                reject(new Error(`Backend environment check failed: ${testErr}\nRepair failed: ${repairErr}`));
+                return;
+            }
         }
 
         const node_process = spawn(
@@ -284,7 +355,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                         setTimeout(() => {
                             try {
                                 process.kill(-proc.pid, 'SIGKILL');
-                            } catch (e) {}
+                            } catch (e) { }
                         }, 1000);
                     } catch (e) {
                         log.error(`Failed to kill process group: ${e}`);

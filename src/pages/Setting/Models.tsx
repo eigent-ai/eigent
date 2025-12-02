@@ -40,6 +40,8 @@ import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
+const LOCAL_PROVIDER_NAMES = ["ollama", "vllm", "sglang", "lmstudio"];
+
 export default function SettingModels() {
 	const { modelType, cloud_model_type, setModelType, setCloudModelType } =
 		useAuthStore();
@@ -137,12 +139,16 @@ const [errors, setErrors] = useState<
 				);
 				// Handle local model
 				const local = providerList.find(
-					(p: any) => p.provider_name === "Local Model"
+					(p: any) => LOCAL_PROVIDER_NAMES.includes(p.provider_name)
 				);
 				console.log(123123, local);
 				if (local) {
 					setLocalEndpoint(local.endpoint_url || "");
-					setLocalPlatform(local.encrypted_config?.model_platform || "ollama");
+					setLocalPlatform(
+						local.encrypted_config?.model_platform ||
+							local.provider_name ||
+							"ollama"
+					);
 					setLocalType(local.encrypted_config?.model_type || "llama3.2");
 					setLocalEnabled(local.is_valid ?? true);
 					setLocalPrefer(local.prefer ?? false);
@@ -426,10 +432,14 @@ const [errors, setErrors] = useState<
 				(p: any) => p.provider_name === localPlatform
 			);
 			if (local) {
-				handleLocalSwitch(true);
-
 				setLocalProviderId(local.id);
 				setLocalPrefer(local.prefer ?? false);
+				setLocalPlatform(
+					local.encrypted_config?.model_platform ||
+						local.provider_name ||
+						localPlatform
+				);
+				await handleLocalSwitch(true, local.id);
 			}
 		} catch (e: any) {
 			setLocalError(
@@ -487,7 +497,7 @@ const [errors, setErrors] = useState<
 			// Optional: add error message
 		}
 	};
-	const handleLocalSwitch = async (checked: boolean) => {
+	const handleLocalSwitch = async (checked: boolean, providerId?: number) => {
 		if (!checked) {
 			setLocalEnabled(false);
 			return;
@@ -503,15 +513,18 @@ const [errors, setErrors] = useState<
 			});
 		}
 		try {
-			if (localProviderId === undefined) return;
+			const targetProviderId =
+				providerId !== undefined ? providerId : localProviderId;
+			if (targetProviderId === undefined) return;
 			await proxyFetchPost("/api/provider/prefer", {
-				provider_id: localProviderId,
+				provider_id: targetProviderId,
 			});
 			setModelType("local");
 			setLocalEnabled(true);
 			setActiveModelIdx(null);
 			setForm((f) => f.map((fi) => ({ ...fi, prefer: false }))); // Set all others' prefer to false
 			setLocalPrefer(true);
+			setCloudPrefer(false);
 		} catch (e) {
 			// Optional: add error message
 		}

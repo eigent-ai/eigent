@@ -572,23 +572,25 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					const lockedTaskId = getCurrentTaskId();
 					const currentTask = getCurrentChatStore().tasks[lockedTaskId];
 
-					// Only ignore messages if:
-					// 1. The task doesn't exist, OR
-					// 2. The task is finished AND it's not a task-switching event
+					// Only ignore messages if task is finished and not a valid post-completion event
+					// Valid events after task completion:
+					// - Task switching: confirmed, new_task_state, end
+					// - Multi-turn simple answer: wait_confirm
 					const isTaskSwitchingEvent = agentMessages.step === "confirmed" ||
 													agentMessages.step === "new_task_state" ||
 													agentMessages.step === "end";
 
-					// More robust check - only ignore if task doesn't exist OR
-					// task is finished and it's not a legitimate flow-control event
+					const isMultiTurnSimpleAnswer = agentMessages.step === "wait_confirm";
+
 					if (!currentTask) {
 						console.log(`Task ${lockedTaskId} not found, ignoring SSE message for step: ${agentMessages.step}`);
 						return;
 					}
 
-					if (currentTask.status === 'finished' && !isTaskSwitchingEvent) {
-						// Only ignore non-essential messages for finished tasks
-						// Allow flow control messages through even for finished tasks
+					if (currentTask.status === 'finished' && !isTaskSwitchingEvent && !isMultiTurnSimpleAnswer) {
+						// Ignore messages for finished tasks except:
+						// 1. Task switching events (create new chatStore)
+						// 2. Simple answer events (direct response without new chatStore)
 						console.log(`Ignoring SSE message for finished task ${lockedTaskId}, step: ${agentMessages.step}`);
 						return;
 					}

@@ -1,6 +1,6 @@
 version = 1
 revision = 2
-requires-python = "==3.10.16"
+requires-python = "==3.10.*"
 
 [[package]]
 name = "aiofiles"
@@ -249,7 +249,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.80a3" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.80a2" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -333,7 +333,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.80a3"
+version = "0.2.80a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -349,9 +349,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1c/72/691a6126e062b5c5a24b7c5a116f690be1b50127a359c7d53d13435d27ef/camel_ai-0.2.80a3.tar.gz", hash = "sha256:edda7cb0466a63c4d8f92ae4ea2d11ee6946b69146336176346db3227de747d9", size = 1013184, upload-time = "2025-11-20T18:52:25.016Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/c4/13f2b7919a31418f4fe30dd081f7c94fcc62e9ba0388f48e9ed2800e445d/camel_ai-0.2.80a2.tar.gz", hash = "sha256:8bb6d777bf04529f829f857c8ea630529f5200c0ceebfc7ac8033d8847fdf160", size = 1004461, upload-time = "2025-11-19T16:16:34.513Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/2c/a1203a2fa8e432deb4e6a7740a4dff532b79e0129bbf2e60626fca8f4271/camel_ai-0.2.80a3-py3-none-any.whl", hash = "sha256:2f398e648edae57bf23372a9cc812c82bf64f007178cdaf7ba113f2fde6761a6", size = 1473469, upload-time = "2025-11-20T18:52:22.853Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/74/1393ce468e754ac18a1b6ab7a90cb9a266e3ff7523db21b467701d722efb/camel_ai-0.2.80a2-py3-none-any.whl", hash = "sha256:5425b2ebde1272bddc3a176b8076e28a0d709291efc6721a7e95a091525fb45d", size = 1465860, upload-time = "2025-11-19T16:16:31.342Z" },
 ]
 
 [package.optional-dependencies]
