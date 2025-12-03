@@ -47,6 +47,7 @@
         "groups": [
           {
             "group": "Get Started",
+            "icon": "rocket",
             "pages": [
               "/get_started/welcome",
               "/get_started/installation", 
@@ -55,11 +56,14 @@
           },
           {
             "group": "Core",
+            "icon": "key",
             "pages": [
               "/core/concepts",
               "/core/workforce",
               {
                 "group": "Models",
+                "icon": "brain",
+                "expanded": true,
                 "pages": [
                   "/core/models/gemini",
                   "/core/models/local-model"
@@ -71,6 +75,7 @@
           },
           {
             "group": "Troubleshooting",
+            "icon": "question-circle",
             "pages": [
               "/troubleshooting/support",
               "/troubleshooting/bug"
