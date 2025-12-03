@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "Eigent Documentation",
   "theme": "aspen",
-  "defaultPage": "get_started/welcome",
+  "defaultPage": "/get_started/welcome",
   "logo": {
     "light": "images/logo-light.png",
     "dark": "images/logo-dark.png",
