@@ -23,6 +23,7 @@ description: "This guide walks you through setting up your Google Gemini API key
 - Scroll down to the **Custom Model** area.
 - Look for the **Gemini Config** card.
 - 
+
 ![Gemini 2 Pn](/docs/images/gemini_2.png)
 
 **3. Enter API Details** Click on the Gemini Config card and fill in the following fields:
@@ -44,5 +45,4 @@ description: "This guide walks you through setting up your Google Gemini API key
 
 ---
 
-> **Video Tutorial:** Prefer a visual guide? [Watch the full configuration video here](https://www.youtube.com/watch?v=1fMU02kvshM)
->
+> **Video Tutorial:** Prefer a visual guide? **<u>Watch the full configuration video here</u>**
