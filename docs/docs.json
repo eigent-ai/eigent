@@ -8,6 +8,7 @@
     "dark": "images/logo-dark.png",
     "href": "https://www.eigent.ai"
   },
+  "favicon": "images/favicon.png",
   "colors": {
     "primary": "#1d1d1d",
     "light": "#F5F4F0",
@@ -48,36 +49,36 @@
             "group": "Get Started",
             "icon": "rocket",
             "pages": [
-              "get_started/welcome",
-              "get_started/installation",
-              "get_started/quick_start"
+              "/get_started/welcome",
+              "/get_started/installation",
+              "/get_started/quick_start"
             ]
           },
           {
             "group": "Core",
             "icon": "key",
             "pages": [
-              "core/concepts",
-              "core/workforce",
+              "/core/concepts",
+              "/core/workforce",
               {
                 "group": "Models",
                 "icon": "brain",
                 "expanded": true,
                 "pages": [
-                  "core/models/gemini",
-                  "core/models/local-model"
+                  "/core/models/gemini",
+                  "/core/models/local-model"
                 ]
               },
-              "core/tools",
-              "core/workers"
+              "/core/tools",
+              "/core/workers"
             ]
           },
           {
             "group": "Troubleshooting",
             "icon": "question-circle",
             "pages": [
-              "troubleshooting/support",
-              "troubleshooting/bug"
+              "/troubleshooting/support",
+              "/troubleshooting/bug"
             ]
           }
         ]
