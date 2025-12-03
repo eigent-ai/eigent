@@ -3,9 +3,9 @@ import pytest
 from fastapi import Response
 from fastapi.testclient import TestClient
 
-from app.controller.task_controller import start, put, take_control, add_agent, TakeControl
+from app.controller.task_controller import start, put, take_control, add_agent, stop_all, TakeControl
 from app.model.chat import NewAgent, UpdateData, TaskContent
-from app.service.task import Action
+from app.service.task import Action, ActionStartData, ActionUpdateTaskData, ActionTakeControl, ActionNewAgent, ActionStopData
 
 
 @pytest.mark.unit
@@ -44,10 +44,11 @@ class TestTaskController:
             assert response.status_code == 201
             mock_run.assert_called_once()
 
-    def test_take_control_pause_success(self, mock_task_lock):
-        """Test successful task pause control."""
+    @pytest.mark.parametrize("action", [Action.pause, Action.resume])
+    def test_take_control_success(self, mock_task_lock, action):
+        """Test successful task pause/resume control."""
         task_id = "test_task_123"
-        control_data = TakeControl(action=Action.pause)
+        control_data = TakeControl(action=action)
         
         with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
              patch("asyncio.run") as mock_run:
@@ -58,32 +59,28 @@ class TestTaskController:
             assert response.status_code == 204
             mock_run.assert_called_once()
 
-    def test_take_control_resume_success(self, mock_task_lock):
-        """Test successful task resume control."""
-        task_id = "test_task_123"
-        control_data = TakeControl(action=Action.resume)
-        
-        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
-             patch("asyncio.run") as mock_run:
-            
-            response = take_control(task_id, control_data)
-            
-            assert isinstance(response, Response)
-            assert response.status_code == 204
-            mock_run.assert_called_once()
-
-    def test_add_agent_success(self, mock_task_lock):
-        """Test successful agent addition."""
+    @pytest.mark.parametrize(
+        "mcp_tools,env_path",
+        [
+            (None, ".env"),  # Basic agent without MCP tools
+            ({"mcpServers": {"notion": {"config": "test"}}}, ".env"),  # Agent with MCP tools
+            (None, "/custom/path/.env"),  # Custom env path
+        ],
+        ids=["basic", "with_mcp_tools", "custom_env_path"]
+    )
+    def test_add_agent_success(self, mock_task_lock, mcp_tools, env_path):
+        """Test successful agent addition with various configurations."""
         task_id = "test_task_123"
         new_agent = NewAgent(
             name="Test Agent",
             description="A test agent",
             tools=["search", "code"],
-            mcp_tools=None,
-            env_path=".env"
+            mcp_tools=mcp_tools,
+            env_path=env_path
         )
         
         with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("app.controller.task_controller.set_user_env_path") as mock_set_env, \
              patch("app.controller.task_controller.load_dotenv"), \
              patch("asyncio.run") as mock_run:
             
@@ -92,6 +89,8 @@ class TestTaskController:
             assert isinstance(response, Response)
             assert response.status_code == 204
             mock_run.assert_called_once()
+            # Verify set_user_env_path was called with correct path
+            mock_set_env.assert_called_once_with(env_path)
 
     def test_start_task_nonexistent_task(self):
         """Test start task with nonexistent task ID."""
@@ -115,26 +114,99 @@ class TestTaskController:
             assert response.status_code == 201
             mock_run.assert_called_once()
 
-    def test_add_agent_with_mcp_tools(self, mock_task_lock):
-        """Test adding agent with MCP tools."""
-        task_id = "test_task_123"
-        new_agent = NewAgent(
-            name="MCP Agent",
-            description="An agent with MCP tools",
-            tools=["search"],
-            mcp_tools={"mcpServers": {"notion": {"config": "test"}}},
-            env_path=".env"
-        )
+
+    @pytest.mark.parametrize("task_count", [0, 1, 3])
+    def test_stop_all_success(self, task_count):
+        """Test stopping all tasks with varying number of running tasks."""
+        mock_locks_list = [MagicMock() for _ in range(task_count)]
         
-        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
-             patch("app.controller.task_controller.load_dotenv"), \
+        with patch("app.controller.task_controller.task_locks") as mock_locks, \
              patch("asyncio.run") as mock_run:
+            mock_locks.values.return_value = mock_locks_list
+            mock_locks.__len__.return_value = task_count
             
-            response = add_agent(task_id, new_agent)
+            response = stop_all()
             
             assert isinstance(response, Response)
             assert response.status_code == 204
+            assert mock_run.call_count == task_count
+
+    def test_start_task_verifies_action_data(self, mock_task_lock):
+        """Test that start sends correct ActionStartData to queue."""
+        task_id = "test_task_123"
+        
+        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("asyncio.run") as mock_run:
+            
+            start(task_id)
+            
             mock_run.assert_called_once()
+            call_arg = mock_run.call_args[0][0]
+            mock_task_lock.put_queue.assert_called_once()
+
+    def test_update_task_verifies_action_data(self, mock_task_lock):
+        """Test that update sends correct ActionUpdateTaskData with data."""
+        task_id = "test_task_123"
+        update_data = UpdateData(
+            task=[
+                TaskContent(id="subtask_1", content="Content 1"),
+                TaskContent(id="subtask_2", content="Content 2")
+            ]
+        )
+        
+        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("asyncio.run") as mock_run:
+            
+            put(task_id, update_data)
+            
+            mock_run.assert_called_once()
+            mock_task_lock.put_queue.assert_called_once()
+
+    def test_take_control_verifies_action_data(self, mock_task_lock):
+        """Test that take_control sends correct ActionTakeControl."""
+        task_id = "test_task_123"
+        control_data = TakeControl(action=Action.pause)
+        
+        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("asyncio.run") as mock_run:
+            
+            take_control(task_id, control_data)
+            
+            mock_run.assert_called_once()
+            mock_task_lock.put_queue.assert_called_once()
+
+    def test_update_task_nonexistent_task(self):
+        """Test update task with nonexistent task ID."""
+        task_id = "nonexistent_task"
+        update_data = UpdateData(task=[TaskContent(id="1", content="test")])
+        
+        with patch("app.controller.task_controller.get_task_lock", side_effect=KeyError("Task not found")):
+            with pytest.raises(KeyError):
+                put(task_id, update_data)
+
+    def test_take_control_nonexistent_task(self):
+        """Test take control with nonexistent task ID."""
+        task_id = "nonexistent_task"
+        control_data = TakeControl(action=Action.pause)
+        
+        with patch("app.controller.task_controller.get_task_lock", side_effect=KeyError("Task not found")):
+            with pytest.raises(KeyError):
+                take_control(task_id, control_data)
+
+    def test_add_agent_nonexistent_task(self):
+        """Test add agent with nonexistent task ID."""
+        task_id = "nonexistent_task"
+        new_agent = NewAgent(
+            name="Test Agent",
+            description="Test",
+            tools=["search"],
+            mcp_tools=None,
+            env_path=".env"
+        )
+        
+        with patch("app.controller.task_controller.get_task_lock", side_effect=KeyError("Task not found")):
+            with pytest.raises(KeyError):
+                add_agent(task_id, new_agent)
 
 
 @pytest.mark.integration
@@ -175,25 +247,11 @@ class TestTaskControllerIntegration:
             
             assert response.status_code == 201
 
-    def test_take_control_pause_endpoint_integration(self, client: TestClient):
-        """Test take control pause endpoint through FastAPI test client."""
+    @pytest.mark.parametrize("action", ["pause", "resume"])
+    def test_take_control_endpoint_integration(self, client: TestClient, action):
+        """Test take control pause/resume endpoint through FastAPI test client."""
         task_id = "test_task_123"
-        control_data = {"action": "pause"}
-        
-        with patch("app.controller.task_controller.get_task_lock") as mock_get_lock, \
-             patch("asyncio.run"):
-            
-            mock_task_lock = MagicMock()
-            mock_get_lock.return_value = mock_task_lock
-            
-            response = client.put(f"/task/{task_id}/take-control", json=control_data)
-            
-            assert response.status_code == 204
-
-    def test_take_control_resume_endpoint_integration(self, client: TestClient):
-        """Test take control resume endpoint through FastAPI test client."""
-        task_id = "test_task_123"
-        control_data = {"action": "resume"}
+        control_data = {"action": action}
         
         with patch("app.controller.task_controller.get_task_lock") as mock_get_lock, \
              patch("asyncio.run"):
@@ -224,6 +282,20 @@ class TestTaskControllerIntegration:
             mock_get_lock.return_value = mock_task_lock
             
             response = client.post(f"/task/{task_id}/add-agent", json=agent_data)
+            
+            assert response.status_code == 204
+
+    def test_stop_all_endpoint_integration(self, client: TestClient):
+        """Test stop all endpoint through FastAPI test client."""
+        mock_lock_1 = MagicMock()
+        mock_lock_2 = MagicMock()
+        
+        with patch("app.controller.task_controller.task_locks") as mock_locks, \
+             patch("asyncio.run"):
+            mock_locks.values.return_value = [mock_lock_1, mock_lock_2]
+            mock_locks.__len__.return_value = 2
+            
+            response = client.delete("/task/stop-all")
             
             assert response.status_code == 204
 
@@ -321,29 +393,85 @@ class TestTaskControllerErrorCases:
             response = start(task_id)
             assert response.status_code == 201
 
+    def test_stop_all_with_async_error(self):
+        """Test stop_all when async operation fails on one task."""
+        mock_lock_1 = MagicMock()
+        mock_lock_2 = MagicMock()
+        
+        call_count = [0]
+        
+        def mock_run_side_effect(coroutine):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("First task failed to stop")
+            return None
+        
+        with patch("app.controller.task_controller.task_locks") as mock_locks, \
+             patch("asyncio.run", side_effect=mock_run_side_effect):
+            mock_locks.values.return_value = [mock_lock_1, mock_lock_2]
+            mock_locks.__len__.return_value = 2
+            
+            # Should raise exception when first task fails
+            with pytest.raises(Exception, match="First task failed to stop"):
+                stop_all()
 
-@pytest.mark.model_backend
-class TestTaskControllerWithLLM:
-    """Tests that require LLM backend (marked for selective running)."""
-    
-    def test_add_agent_with_real_model_integration(self, mock_task_lock):
-        """Test adding an agent that requires real model integration."""
+    def test_add_agent_verifies_set_user_env_path(self, mock_task_lock):
+        """Test that add_agent always calls set_user_env_path with env_path."""
         task_id = "test_task_123"
+        custom_env_path = "/custom/path/.env"
         new_agent = NewAgent(
-            name="Real Model Agent",
-            description="An agent that uses real models",
-            tools=["search", "code"],
+            name="Test Agent",
+            description="Test",
+            tools=["search"],
             mcp_tools=None,
-            env_path=".env"
+            env_path=custom_env_path
         )
         
-        # This test would involve real model creation and configuration
-        # Marked as model_backend test for selective execution
-        assert True  # Placeholder
+        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("app.controller.task_controller.set_user_env_path") as mock_set_env, \
+             patch("app.controller.task_controller.load_dotenv"), \
+             patch("asyncio.run"):
+            
+            add_agent(task_id, new_agent)
+            
+            # Verify set_user_env_path was called with the custom path
+            mock_set_env.assert_called_once_with(custom_env_path)
 
-    @pytest.mark.very_slow
-    def test_full_task_workflow_integration(self):
-        """Test complete task workflow from start to completion (very slow test)."""
-        # This test would run a complete task workflow including agent interactions
-        # Marked as very_slow for execution only in full test mode
-        assert True  # Placeholder
+    def test_update_task_with_large_dataset(self, mock_task_lock):
+        """Test update task with many TaskContent items."""
+        task_id = "test_task_123"
+        # Create a large update with 100 items
+        task_items = [
+            TaskContent(id=f"task_{i}", content=f"Content {i}")
+            for i in range(100)
+        ]
+        update_data = UpdateData(task=task_items)
+        
+        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("asyncio.run") as mock_run:
+            
+            response = put(task_id, update_data)
+            
+            assert response.status_code == 201
+            mock_run.assert_called_once()
+
+    def test_add_agent_with_special_characters_in_env_path(self, mock_task_lock):
+        """Test add_agent with special characters in env_path."""
+        task_id = "test_task_123"
+        new_agent = NewAgent(
+            name="Test Agent",
+            description="Test",
+            tools=["search"],
+            mcp_tools=None,
+            env_path="/path/with spaces/.env"
+        )
+        
+        with patch("app.controller.task_controller.get_task_lock", return_value=mock_task_lock), \
+             patch("app.controller.task_controller.set_user_env_path") as mock_set_env, \
+             patch("app.controller.task_controller.load_dotenv"), \
+             patch("asyncio.run"):
+            
+            response = add_agent(task_id, new_agent)
+            
+            assert response.status_code == 204
+            mock_set_env.assert_called_once_with("/path/with spaces/.env")
