@@ -87,7 +87,7 @@ export interface ChatStore {
 	setElapsed: (taskId: string, taskTime: number) => void;
 	getFormattedTaskTime: (taskId: string) => string;
 	addTokens: (taskId: string, tokens: number) => void;
-	getTokens: (taskId: string) => void;
+	getTokens: (taskId: string) => number;
 	setUpdateCount: () => void;
 	setCotList: (taskId: string, cotList: string[]) => void;
 	setHasAddWorker: (taskId: string, hasAddWorker: boolean) => void;
@@ -479,6 +479,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					 * instead in history api
 					 */
 					if(project_id && historyId) projectStore.setHistoryId(project_id, historyId);
+					projectStore.refetchProjects();
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
@@ -681,6 +682,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 												 * instead in history api
 												 */
 												if(project_id && historyId) projectStore.setHistoryId(project_id, historyId);
+												projectStore.refetchProjects();
 											})
 										}
 								}
@@ -819,6 +821,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								"tokens": getTokens(currentTaskId)
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
+							projectStore.refetchProjects();
 						}
 						setSummaryTask(currentTaskId, agentMessages.data.summary_task as string)
 						setTaskInfo(currentTaskId, agentMessages.data.sub_tasks as TaskInfo[])
@@ -862,8 +865,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						}
 						return;
 					}
+
+					/**
+					 * Assuming wait_confirm originates from simple direct agent response
+					 */
 					if (agentMessages.step === "wait_confirm") {
-						const {content, question} = agentMessages.data;
+						const {content, question, tokens} = agentMessages.data;
 						setHasWaitComfirm(currentTaskId, true)
 						setIsPending(currentTaskId, false)
 
@@ -883,6 +890,23 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								isConfirm: false,
 							})
 						}
+
+						if (!type && historyId && question) {
+							if(!tokens || tokens < 0) console.warn("No tokens info in wait_confirm step, defaulting to 0")
+
+							//Theoritically currentChatStore tokens should be 0
+							if(tokens && tokens > 0) addTokens(currentTaskId, tokens) 
+							
+							const obj = {
+								"project_name": tasks[currentTaskId].summaryTask.split('|')[0],
+								"summary": tasks[currentTaskId].summaryTask.split('|')[1],
+								"status": 2, //Assume finished
+								"tokens": getTokens(currentTaskId)
+							}
+							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
+							projectStore.refetchProjects();
+						};
+
 						addMessages(currentTaskId, {
 							id: generateUniqueId(),
 							role: "agent",
@@ -1561,6 +1585,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								"tokens": getTokens(currentTaskId)
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
+							projectStore.refetchProjects();
 						}
 						uploadLog(currentTaskId, type)
 
