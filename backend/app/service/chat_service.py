@@ -444,15 +444,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             stream_state["seen_ids"].add(t.id)
                         stream_state["subtasks"].extend(fresh_tasks)
 
-                    def on_stream_text(text_chunk: str):
+                    def on_stream_text(chunk):
                         try:
+                            # Extract content from chunk object (CAMEL now passes chunk instead of accumulated content)
+                            text_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
                             asyncio.run_coroutine_threadsafe(
                                 task_lock.put_queue(
                                     ActionDecomposeTextData(
                                         data={
                                             "project_id": options.project_id,
                                             "task_id": options.task_id,
-                                            "content": text_chunk,
+                                            "content": text_content,
                                         }
                                     )
                                 ),
@@ -775,15 +777,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 stream_state["seen_ids"].add(t.id)
                             stream_state["subtasks"].extend(fresh_tasks)
 
-                        def on_stream_text(text_chunk: str):
+                        def on_stream_text(chunk):
                             try:
+                                # Extract content from chunk object (CAMEL now passes chunk instead of accumulated content)
+                                text_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
                                 asyncio.run_coroutine_threadsafe(
                                     task_lock.put_queue(
                                         ActionDecomposeTextData(
                                             data={
                                                 "project_id": options.project_id,
                                                 "task_id": options.task_id,
-                                                "content": text_chunk,
+                                                "content": text_content,
                                             }
                                         )
                                     ),
