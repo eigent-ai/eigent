@@ -6,6 +6,7 @@ from camel.societies.workforce.workforce import (
     WorkforceState,
     DEFAULT_WORKER_POOL_SIZE,
 )
+from camel.societies.workforce.utils import FailureHandlingConfig
 from camel.societies.workforce.task_channel import TaskChannel
 from camel.societies.workforce.base import BaseNode
 from camel.societies.workforce.utils import TaskAssignResult
@@ -59,6 +60,9 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
+            failure_handling_config=FailureHandlingConfig(
+                enabled_strategies=["retry", "replan"],
+            ),
         )
         logger.info(f"[WF-LIFECYCLE] ✅ Workforce.__init__ COMPLETED, id={id(self)}")
 
@@ -284,8 +288,8 @@ class Workforce(BaseWorkforce):
         return subtasks
 
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
-        # Task assignment phase: send "waiting for execution" notification 
-        # to the frontend, and send "start execution" notification when the 
+        # Task assignment phase: send "waiting for execution" notification
+        # to the frontend, and send "start execution" notification when the
         # task actually begins execution
         assigned = await super()._find_assignee(tasks)
 
@@ -305,6 +309,18 @@ class Workforce(BaseWorkforce):
                 content = ""
             else:
                 content = task_obj.content
+
+            # Skip sending notification if this is a retry/replan for an already assigned task
+            # This prevents the frontend from showing "Reassigned" when a task is being retried
+            # with the same or different worker due to failure recovery
+            if task_obj and task_obj.assigned_worker_id:
+                logger.debug(
+                    f"[WF] ASSIGN Skip notification for task {item.task_id}: "
+                    f"already has assigned_worker_id={task_obj.assigned_worker_id}, "
+                    f"new assignee={item.assignee_id} (retry/replan scenario)"
+                )
+                continue
+
             # Asynchronously send waiting notification
             task = asyncio.create_task(
                 task_lock.put_queue(

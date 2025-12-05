@@ -53,7 +53,9 @@ async function downloadBunBinary(bun_download_url,platform, arch, version = DEFA
   const downloadUrl = `${bun_download_url}/bun-v${version}/${packageName}`
   const tempdir = os.tmpdir()
   // Create a temporary file for the downloaded binary
-  const tempFilename = path.join(tempdir, packageName)
+  // Use unique temp filename to avoid race conditions when multiple processes install simultaneously
+  const uniqueSuffix = `${process.pid}-${Date.now()}`
+  const tempFilename = path.join(tempdir, `${uniqueSuffix}-${packageName}`)
 
   try {
     console.log(`Downloading bun ${version} for ${platformKey}...`)
