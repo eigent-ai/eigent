@@ -398,8 +398,42 @@ class Workforce(BaseWorkforce):
         logger.info(f"🛑 [WF-LIFECYCLE] stop_gracefully() CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Current state before stop_gracefully: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
+
+        # Cleanup all agents before stopping
+        self._cleanup_all_agents()
+
         super().stop_gracefully()
         logger.info(f"[WF-LIFECYCLE] ✅ super().stop_gracefully() completed, new state: {self._state.name}, _running: {self._running}")
+
+    def _cleanup_all_agents(self) -> None:
+        """Call cleanup callbacks for all agents to release resources (e.g., CDP browsers)."""
+        logger.info(f"[WF-CLEANUP] Starting cleanup for all agents in workforce {id(self)}")
+        cleanup_count = 0
+
+        # Cleanup all child workers
+        if hasattr(self, 'children') and self.children:
+            for child in self.children:
+                if hasattr(child, 'worker_agent'):
+                    agent = child.worker_agent
+                    if hasattr(agent, '_cleanup_callback') and callable(agent._cleanup_callback):
+                        try:
+                            agent._cleanup_callback()
+                            cleanup_count += 1
+                            logger.info(f"[WF-CLEANUP] Called cleanup for agent: {getattr(agent, 'agent_name', 'unknown')}")
+                        except Exception as e:
+                            logger.error(f"[WF-CLEANUP] Error in cleanup callback for agent: {e}", exc_info=True)
+
+        # Cleanup coordinator agent
+        if hasattr(self, 'coordinator_agent') and self.coordinator_agent:
+            if hasattr(self.coordinator_agent, '_cleanup_callback') and callable(self.coordinator_agent._cleanup_callback):
+                try:
+                    self.coordinator_agent._cleanup_callback()
+                    cleanup_count += 1
+                    logger.info(f"[WF-CLEANUP] Called cleanup for coordinator agent")
+                except Exception as e:
+                    logger.error(f"[WF-CLEANUP] Error in cleanup callback for coordinator: {e}", exc_info=True)
+
+        logger.info(f"[WF-CLEANUP] ✅ Cleanup completed, {cleanup_count} agent(s) cleaned up")
 
     def skip_gracefully(self) -> None:
         logger.info("=" * 80)

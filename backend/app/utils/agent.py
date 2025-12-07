@@ -562,6 +562,7 @@ def agent_model(
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
+    cleanup_callback: Callable[[], None] | None = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -572,7 +573,7 @@ def agent_model(
         )
     )
 
-    return ListenChatAgent(
+    agent = ListenChatAgent(
         options.project_id,
         agent_name,
         system_message,
@@ -599,6 +600,12 @@ def agent_model(
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
     )
+
+    # Attach cleanup callback if provided
+    if cleanup_callback:
+        agent._cleanup_callback = cleanup_callback
+
+    return agent
 
 
 @traceroot.trace()
@@ -801,22 +808,36 @@ def search_agent(options: Chat):
     # Generate unique session ID for this toolkit instance
     toolkit_session_id = str(uuid.uuid4())[:8]
 
-    # SIMPLIFIED: Use fixed CDP port from environment or first browser in pool
-    # No occupation management - all agents share the same browser connection
+    # CDP POOL MANAGEMENT: Acquire browser from pool for parallel task execution
+    selected_port = None
+    selected_is_external = False
+
     if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
-        # Use first browser from pool
-        selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
-        selected_is_external = options.cdp_browsers[0].get('isExternal', False)
-        traceroot_logger.info(
-            f"Using CDP browser: port={selected_port}, "
-            f"isExternal={selected_is_external}, "
-            f"name={options.cdp_browsers[0].get('name', 'Unnamed')}"
-        )
+        # Try to acquire an available browser from the pool
+        selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, toolkit_session_id)
+
+        if selected_browser:
+            selected_port = selected_browser.get('port', env('browser_port', '9222'))
+            selected_is_external = selected_browser.get('isExternal', False)
+            traceroot_logger.info(
+                f"Acquired CDP browser from pool: port={selected_port}, "
+                f"isExternal={selected_is_external}, "
+                f"name={selected_browser.get('name', 'Unnamed')}, "
+                f"session_id={toolkit_session_id}"
+            )
+        else:
+            # No available browsers in pool, fall back to first browser
+            selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
+            selected_is_external = options.cdp_browsers[0].get('isExternal', False)
+            traceroot_logger.warning(
+                f"No available browsers in pool, using first browser: port={selected_port}, "
+                f"session_id={toolkit_session_id}"
+            )
     else:
         # Use default port from environment
         selected_port = env('browser_port', '9222')
         selected_is_external = False
-        traceroot_logger.info(f"Using default CDP port: {selected_port}")
+        traceroot_logger.info(f"Using default CDP port: {selected_port}, session_id={toolkit_session_id}")
 
     # IMPORTANT: Always use cdp_keep_current_page=True to preserve browser state
     # across tasks (both internal and external browsers)
@@ -850,6 +871,10 @@ def search_agent(options: Chat):
             # "browser_get_page_snapshot",
         ],
     )
+
+    # Store CDP port and session ID on the toolkit for cleanup
+    web_toolkit_custom._cdp_port = selected_port
+    web_toolkit_custom._cdp_session_id = toolkit_session_id
 
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
@@ -966,6 +991,16 @@ Your approach depends on available search tools:
 </web_search_workflow>
     """
 
+    # Define cleanup callback to release CDP browser back to pool
+    def cleanup_cdp_browser():
+        if hasattr(web_toolkit_custom, '_cdp_port') and hasattr(web_toolkit_custom, '_cdp_session_id'):
+            port = web_toolkit_custom._cdp_port
+            session_id = web_toolkit_custom._cdp_session_id
+            _cdp_pool_manager.release_browser(port, session_id)
+            traceroot_logger.info(
+                f"Cleanup: Released CDP browser on port {port} for session {session_id}"
+            )
+
     return agent_model(
         Agents.search_agent,
         BaseMessage.make_assistant_message(
@@ -984,6 +1019,7 @@ Your approach depends on available search tools:
         ],
         toolkits_to_register_agent=[web_toolkit_for_agent_registration],
         enable_snapshot_clean=True,
+        cleanup_callback=cleanup_cdp_browser,
     )
 
 
