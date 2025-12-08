@@ -229,8 +229,8 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
         logger.error(
             "Google search failed",
             extra={
-                "query": query,
-                "search_type": search_type,
+                "query": _redact_secret(query),
+                "search_type": _redact_secret(search_type),
                 "error_type": type(e).__name__,
                 "error": _redact_secret(str(e)),
             },
