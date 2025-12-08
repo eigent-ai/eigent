@@ -81,11 +81,6 @@ class Chat(BaseModel):
             logger.debug("model_type is invalid")
         return model_type
 
-    @field_validator("project_id", "task_id")
-    @classmethod
-    def check_path_component(cls, value: str, info):
-        return safe_component(value, info.field_name)
-
     def get_bun_env(self) -> dict[str, str]:
         return {"NPM_CONFIG_REGISTRY": self.bun_mirror} if self.bun_mirror else {}
 
