@@ -1,4 +1,4 @@
-import json
+from urllib.parse import urlencode, quote
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from app.component.environment import env
@@ -45,24 +45,16 @@ def oauth_callback(app: str, request: Request, code: Optional[str] = None, state
         raise HTTPException(status_code=400, detail="Missing code parameter")
     
     logger.info("OAuth callback received", extra={"provider": app, "has_state": state is not None})
+
+    params = {
+        "provider": app,
+        "code": code,
+        "state": state,
+    }
+    query = urlencode(params, quote_via=quote)
     
-    redirect_url = f"eigent://callback/oauth?provider={app}&code={code}&state={state}"
-    safe_redirect_url = json.dumps(redirect_url)
-    html_content = f"""
-    <html>
-        <head>
-            <title>OAuth Callback</title>
-        </head>
-        <body>
-            <script type='text/javascript'>
-                window.location.href = '{safe_redirect_url}';
-            </script>
-            <p>Redirecting, please wait...</p>
-            <button onclick='window.close()'>Close this window</button>
-        </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+    redirect_url = f"eigent://callback/oauth?{query}"
+    return RedirectResponse(redirect_url)
 
 
 @router.post("/{app}/token", name="OAuth Fetch Token")
