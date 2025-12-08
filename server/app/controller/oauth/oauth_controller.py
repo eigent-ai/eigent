@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from app.component.environment import env
@@ -46,6 +47,7 @@ def oauth_callback(app: str, request: Request, code: Optional[str] = None, state
     logger.info("OAuth callback received", extra={"provider": app, "has_state": state is not None})
     
     redirect_url = f"eigent://callback/oauth?provider={app}&code={code}&state={state}"
+    safe_redirect_url = json.dumps(redirect_url)
     html_content = f"""
     <html>
         <head>
@@ -53,7 +55,7 @@ def oauth_callback(app: str, request: Request, code: Optional[str] = None, state
         </head>
         <body>
             <script type='text/javascript'>
-                window.location.href = '{redirect_url}';
+                window.location.href = '{safe_redirect_url}';
             </script>
             <p>Redirecting, please wait...</p>
             <button onclick='window.close()'>Close this window</button>

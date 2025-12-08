@@ -20,6 +20,15 @@ router = APIRouter(prefix="/proxy", tags=["Mcp Servers"])
 def exa_search(search: ExaSearch, key: Key = Depends(key_must)):
     """Search using Exa API."""
     EXA_API_KEY = env_not_empty("EXA_API_KEY")
+    secrets_to_redact = (EXA_API_KEY,)
+
+    def _redact_secret(text: str) -> str:
+        redacted = text
+        for secret in secrets_to_redact:
+            if secret:
+                redacted = redacted.replace(secret, "[REDACTED]")
+        return redacted
+
     try:
         # Validate input parameters
         if search.num_results is not None and not 0 < search.num_results <= 100:
@@ -81,7 +90,11 @@ def exa_search(search: ExaSearch, key: Key = Depends(key_must)):
         logger.warning("Exa search validation error", extra={"error": str(e)})
         raise HTTPException(status_code=500, detail="Internal server error")
     except Exception as e:
-        logger.error("Exa search failed", extra={"query": search.query, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Exa search failed",
+            extra={"query": search.query, "error_type": type(e).__name__, "error": _redact_secret(str(e))},
+            exc_info=False,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -93,6 +106,14 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
     GOOGLE_API_KEY = env_not_empty("GOOGLE_API_KEY")
     # https://cse.google.com/cse/all
     SEARCH_ENGINE_ID = env_not_empty("SEARCH_ENGINE_ID")
+    secrets_to_redact = (GOOGLE_API_KEY, SEARCH_ENGINE_ID)
+
+    def _redact_secret(text: str) -> str:
+        redacted = text
+        for secret in secrets_to_redact:
+            if secret:
+                redacted = redacted.replace(secret, "[REDACTED]")
+        return redacted
 
     # Using the first page
     start_page_idx = 1
@@ -186,11 +207,28 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
             logger.info("Google search completed", extra={"query": query, "search_type": search_type, "result_count": len(responses)})
         else:
             error_info = data.get("error", {})
-            logger.error("Google search API error", extra={"query": query, "api_error": error_info})
+            sanitized_error = {
+                "code": error_info.get("code"),
+                "reason": (error_info.get("errors") or [{}])[0].get("reason"),
+                "message": _redact_secret(error_info.get("message", "")),
+            }
+            logger.error(
+                "Google search API error",
+                extra={"query": query, "search_type": search_type, "api_error": sanitized_error},
+            )
             raise HTTPException(status_code=500, detail="Internal server error")
 
     except Exception as e:
-        logger.error("Google search failed", extra={"query": query, "search_type": search_type, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Google search failed",
+            extra={
+                "query": query,
+                "search_type": search_type,
+                "error_type": type(e).__name__,
+                "error": _redact_secret(str(e)),
+            },
+            exc_info=False,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
     
     return responses
