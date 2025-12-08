@@ -5,18 +5,19 @@ import { cn } from "@/lib/utils";
 import { AnimateIcon as AnimateIconProvider } from "@/components/animate-ui/icons/icon";
 
 const menuButtonVariants = cva(
-	"relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default border border-solid hover:bg-menubutton-fill-hover data-[state=on]:bg-menubutton-fill-active text-foreground cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg",
+	"relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default hover:bg-menubutton-fill-hover data-[state=on]:bg-menubutton-fill-active cursor-pointer",
 	{
 		variants: {
 			variant: {
-				default: "border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-active data-[state=on]:border-menubutton-border-active",
-				clear: "border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-default",
+				default: "border border-solid text-text-body border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-active data-[state=on]:border-menubutton-border-active data-[state=on]:shadow-button-shadow",
+				clear: "border border-solid text-text-body border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-default data-[state=on]:shadow-button-shadow",
+				info: "text-text-body hover:bg-menubutton-fill-active focus:bg-menubutton-fill-active data-[state=on]:text-text-body data-[state=on]:font-bold",
 			},
 			size: {
-				xs: "px-2 py-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg",
+				xs: "px-2 py-1 text-label-sm font-regular [&_svg]:size-[16px] rounded-lg",
 				sm: "p-2 gap-1 text-label-sm font-bold [&_svg]:size-[20px] rounded-lg",
 				md: "w-10 h-10 text-label-md font-bold [&_svg]:size-[24px] rounded-xl",
-				iconxs: "w-8 h-8 gap-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg",
+				iconxs: "w-8 h-8 gap-1 font-bold [&_svg]:size-[16px] rounded-lg",
 			},
 		},
 		defaultVariants: {
@@ -43,7 +44,7 @@ export const MenuToggleGroup = React.forwardRef<
 		ref={ref}
 		orientation={orientation}
 		className={cn(
-			"flex items-center justify-center gap-2",
+			"flex items-center justify-center",
 			orientation === "vertical" ? "flex-col" : "flex-row",
 			className
 		)}
@@ -83,7 +84,7 @@ export const MenuToggleItem = React.forwardRef<
 			>
 				{showSubIcon && subIcon ? (
 					<>
-						<span className="inline-flex items-center gap-2">
+						<span className="inline-flex items-center gap-1">
 							{iconNode}
 							{children}
 						</span>
@@ -92,7 +93,7 @@ export const MenuToggleItem = React.forwardRef<
 						</span>
 					</>
 				) : (
-					<span className="inline-flex items-center gap-2">
+					<span className="inline-flex items-center gap-1">
 						{iconNode}
 						{children}
 					</span>

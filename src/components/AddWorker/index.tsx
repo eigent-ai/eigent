@@ -51,12 +51,23 @@ interface McpItem {
 export function AddWorker({
 	edit = false,
 	workerInfo = null,
+	variant = "default",
+	isOpen,
+	onOpenChange,
 }: {
 	edit?: boolean;
 	workerInfo?: Agent | null;
+	variant?: "default" | "icon";
+	isOpen?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const { t } = useTranslation();
-	const [dialogOpen, setDialogOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+
+	// Use controlled state if provided, otherwise internal state
+	const isControlled = typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
+	const dialogOpen = isControlled ? isOpen : internalOpen;
+	const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
@@ -355,35 +366,46 @@ export function AddWorker({
 	return (
 		<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
 			<form>
-				<DialogTrigger asChild>
-					{edit ? (
-						<Button
-							variant="ghost"
-							size="sm"
-							className="w-full"
-							onClick={(e) => {
-								e.stopPropagation();
-								setDialogOpen(true);
-								setWorkerName(workerInfo?.workerInfo?.name || "");
-								setWorkerDescription(workerInfo?.workerInfo?.description || "");
-								setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
-							}}
-						>
-							<Edit size={16} />
-							{t("workforce.edit")}
-						</Button>
-					) : (
-						<MenuToggleGroup type="single" value="add-worker">
-							<MenuToggleItem
-								value="add-worker"
-								variant="clear"
-								size="md"
-								icon={<Plus />}
+				{!isControlled && (
+					<DialogTrigger asChild>
+						{edit ? (
+							<Button
+								variant="ghost"
+								size="sm"
+								className="w-full"
+								onClick={(e) => {
+									e.stopPropagation();
+									setDialogOpen(true);
+									setWorkerName(workerInfo?.workerInfo?.name || "");
+									setWorkerDescription(workerInfo?.workerInfo?.description || "");
+									setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
+								}}
+							>
+								<Edit size={16} />
+								{t("workforce.edit")}
+							</Button>
+						) : variant === "icon" ? (
+							<Button
+								variant="ghost"
+								size="icon"
+								className="h-6 w-6 rounded-full bg-surface-tertiary hover:bg-surface-tertiary-hover"
 								onClick={() => setDialogOpen(true)}
-							/>
-						</MenuToggleGroup>
-					)}
-				</DialogTrigger>
+							>
+								<Plus size={12} />
+							</Button>
+						) : (
+							<MenuToggleGroup type="single" value="add-worker">
+								<MenuToggleItem
+									value="add-worker"
+									variant="clear"
+									size="md"
+									icon={<Plus />}
+									onClick={() => setDialogOpen(true)}
+								/>
+							</MenuToggleGroup>
+						)}
+					</DialogTrigger>
+				)}
 				<DialogContent
 					size="sm"
 					className="p-0 gap-0"

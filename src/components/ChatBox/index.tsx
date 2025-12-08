@@ -734,82 +734,50 @@ export default function ChatBox(): JSX.Element {
 	]);
 
 	return (
-		<div className="w-full h-full flex-none items-center justify-center">
-			{hasAnyMessages ? (
-				<div className="w-full h-full flex-1 flex flex-col">
-					{/* Header Box with Tasks title, token count, and replay button */}
-					{chatStore.activeTaskId && (
-						<HeaderBox
-							tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
-							status={chatStore.tasks[chatStore.activeTaskId]?.status}
-							replayLoading={isReplayLoading}
-							onReplay={handleReplay}
-						/>
-					)}
-					{/* New Project Chat Container */}
-					<ProjectChatContainer
-						// onPauseResume={handlePauseResume}  // Commented out - temporary not needed
-						onSkip={handleSkip}
-						isPauseResumeLoading={isPauseResumeLoading}
+		<div className="w-full h-full flex-none items-center justify-center bg-surface-secondary border-solid border-border-tertiary rounded-2xl overflow-hidden">
+			{/* Unified ChatBox Structure */}
+			<div className="w-full h-full flex flex-col relative overflow-hidden">
+				{/* Header Box - Always visible */}
+				{chatStore.activeTaskId && (
+					<HeaderBox
+						tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+						status={chatStore.tasks[chatStore.activeTaskId]?.status}
+						replayLoading={isReplayLoading}
+						onReplay={handleReplay}
 					/>
-					{chatStore.activeTaskId && (
-						<BottomBox
-							state={getBottomBoxState()}
-							queuedMessages={isTaskBusy ? [] : projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
-								id: m.task_id,
-								content: m.content,
-								timestamp: m.timestamp
-							})) || []}
-							onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-							subtitle={getBottomBoxState() === 'confirm'
-								? (() => {
-									// Find the last message where role is "user"
-									const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
-									const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
-									return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
-								})()
-								: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
-							onStartTask={() => handleConfirmTask()}
-							onEdit={handleEditQuery}
-							taskTime={taskTime}
-							taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-							onPauseResume={handlePauseResume}
-							pauseResumeLoading={isPauseResumeLoading}
-							loading={loading}
-							inputProps={{
-								value: message,
-								onChange: setMessage,
-								onSend: handleSend,
-								files: chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(f => ({
-									fileName: f.fileName,
-									filePath: f.filePath
-								})) || [],
-								onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
-								onAddFile: handleFileSelect,
-								placeholder: t("chat.ask-placeholder"),
-								disabled: isInputDisabled,
-								textareaRef: textareaRef,
-								allowDragDrop: true,
-								privacy: privacy,
-								useCloudModelInDev: useCloudModelInDev
-							}}
+				)}
+
+				{/* Main Content Area - Flex 1 to take remaining space */}
+				<div className="flex-1 flex flex-col relative overflow-hidden">
+					{/* Project Chat Container - Show when has messages (absolute, full height) */}
+					<div
+						className={`absolute inset-0 h-full flex flex-col transition-all duration-300 ease-in-out ${hasAnyMessages
+							? 'opacity-100 translate-y-0 pointer-events-auto'
+							: 'opacity-0 -translate-y-4 pointer-events-none'
+							}`}
+					>
+						<ProjectChatContainer
+							onSkip={handleSkip}
+							isPauseResumeLoading={isPauseResumeLoading}
 						/>
-					)}
-				</div>
-			) : (
-				// Init ChatBox
-				<div className="w-full h-[calc(100vh-54px)] flex items-center py-2 relative overflow-hidden">
-					<div className="absolute inset-0 pointer-events-none"></div>
-					<div className=" w-full flex flex-col relative z-10">
-						<div className="flex flex-col items-center gap-1 h-[210px] justify-end">
+					</div>
+
+					{/* Init State Container - Welcome + BottomBox + Suggestions (vertically centered) */}
+					<div
+						className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${hasAnyMessages
+							? 'opacity-0 pointer-events-none absolute inset-0'
+							: 'opacity-100 pointer-events-auto'
+							}`}
+					>
+						{/* Welcome Message - Top area, flex-1 to push content down */}
+						<div className="flex-1 flex flex-col items-center justify-end gap-1 pb-4">
 							<div className="text-body-lg text-text-heading text-center font-bold">
 								{t("layout.welcome-to-eigent")}
 							</div>
-							<div className="text-body-lg leading-7 text-text-label text-center mb-5">
-								{t("layout.how-can-i-help-you")}
-							</div>
 						</div>
 
+
+						{/* Bottom Box - Center (init state only) */}
 						{chatStore.activeTaskId && (
 							<BottomBox
 								state="input"
@@ -832,19 +800,17 @@ export default function ChatBox(): JSX.Element {
 								}}
 							/>
 						)}
-						<div className="h-[210px] flex justify-center items-start gap-2 mt-3 pr-2">
+
+						{/* Suggestion Area - Bottom area, flex-1 to push content up */}
+						<div className="flex-1 flex justify-center items-start gap-2 pt-3 pr-2 bg-surface-primary">
 							{!privacy ? (
 								<div className="flex items-center gap-2">
 									<div
 										onClick={(e) => {
-											// Check if the click target is an anchor tag
 											const target = e.target as HTMLElement;
 											if (target.tagName === "A") {
-												// Let the anchor tag handle the click naturally
 												return;
 											}
-
-											// Enable privacy permissions
 											const API_FIELDS = [
 												"take_screenshot",
 												"access_local_software",
@@ -860,13 +826,13 @@ export default function ChatBox(): JSX.Element {
 											proxyFetchPut("/api/user/privacy", requestData);
 											setPrivacy(true);
 										}}
-										className=" cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
+										className="cursor-pointer flex items-center gap-1 px-sm py-xs rounded-md bg-surface-information"
 									>
 										<TriangleAlert
 											size={20}
 											className="text-icon-information"
 										/>
-										<span className=" flex-1 text-text-information text-xs font-medium leading-[20px]">
+										<span className="flex-1 text-text-information text-xs font-medium leading-[20px]">
 											{t("layout.by-messaging-eigent")}{" "}
 											<a
 												href="https://www.eigent.ai/terms-of-use"
@@ -889,36 +855,25 @@ export default function ChatBox(): JSX.Element {
 										</span>
 									</div>
 								</div>
-							) : null}
-							{privacy && (
+							) : (
 								<div className="mr-2 flex flex-col items-center gap-2">
 									{[
 										{
 											label: t("layout.palm-springs-tennis-trip-planner"),
-											message: t(
-												"layout.palm-springs-tennis-trip-planner-message"
-											),
+											message: t("layout.palm-springs-tennis-trip-planner-message"),
 										},
 										{
-											label: t(
-												"layout.bank-transfer-csv-analysis"
-											),
-											message: t(
-												"layout.bank-transfer-csv-analysis-message"
-											),
+											label: t("layout.bank-transfer-csv-analysis"),
+											message: t("layout.bank-transfer-csv-analysis-message"),
 										},
 										{
-											label: t(
-												"layout.find-duplicate-files"
-											),
-											message: t(
-												"layout.find-duplicate-files-message"
-											),
+											label: t("layout.find-duplicate-files"),
+											message: t("layout.find-duplicate-files-message"),
 										},
 									].map(({ label, message }) => (
 										<div
 											key={label}
-											className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
+											className="cursor-pointer px-sm py-xs rounded-md bg-surface-tertiary opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
 											onClick={() => {
 												setMessage(message);
 											}}
@@ -931,7 +886,51 @@ export default function ChatBox(): JSX.Element {
 						</div>
 					</div>
 				</div>
-			)}
+
+				{/* Bottom Box - Show when has messages */}
+				{chatStore.activeTaskId && hasAnyMessages && (
+					<BottomBox
+						state={hasAnyMessages ? getBottomBoxState() : "input"}
+						queuedMessages={hasAnyMessages && isTaskBusy ? [] : (hasAnyMessages ? projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
+							id: m.task_id,
+							content: m.content,
+							timestamp: m.timestamp
+						})) || [] : [])}
+						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+						subtitle={hasAnyMessages && getBottomBoxState() === 'confirm'
+							? (() => {
+								const messages = chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+								const lastUserMessage = messages.slice().reverse().find(msg => msg.role === "user");
+								return lastUserMessage?.content || chatStore.tasks[chatStore.activeTaskId]?.summaryTask;
+							})()
+							: chatStore.tasks[chatStore.activeTaskId]?.summaryTask}
+						onStartTask={() => handleConfirmTask()}
+						onEdit={handleEditQuery}
+						taskTime={taskTime}
+						taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+						onPauseResume={handlePauseResume}
+						pauseResumeLoading={isPauseResumeLoading}
+						loading={loading}
+						inputProps={{
+							value: message,
+							onChange: setMessage,
+							onSend: handleSend,
+							files: chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(f => ({
+								fileName: f.fileName,
+								filePath: f.filePath
+							})) || [],
+							onFilesChange: (files) => chatStore.setAttaches(chatStore.activeTaskId as string, files as any),
+							onAddFile: handleFileSelect,
+							placeholder: t("chat.ask-placeholder"),
+							disabled: isInputDisabled,
+							textareaRef: textareaRef,
+							allowDragDrop: hasAnyMessages,
+							privacy: hasAnyMessages ? privacy : true,
+							useCloudModelInDev: useCloudModelInDev
+						}}
+					/>
+				)}
+			</div>
 		</div>
 	);
 }

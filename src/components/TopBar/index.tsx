@@ -16,6 +16,8 @@ import {
 	Share,
 	ArrowLeft,
 	MoreHorizontal,
+	PanelLeft,
+	PanelRight,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -38,6 +40,7 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
+import { usePageTabStore } from "@/store/pageTabStore";
 
 function HeaderWin() {
 	const { t } = useTranslation();
@@ -53,6 +56,7 @@ function HeaderWin() {
 	}
 
 	const { toggle } = useSidebarStore();
+	const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
@@ -228,7 +232,7 @@ function HeaderWin() {
 			</div>
 
 			{/* center */}
-			<div className="title h-full flex-1 flex items-center justify-between drag">
+			<div className="title h-full flex-1 flex items-center justify-start drag">
 				<div className="flex h-full items-center z-50 relative">
 					{location.pathname === "/history" && (
 						<div className="flex items-center mr-1">
@@ -238,7 +242,7 @@ function HeaderWin() {
 								className="no-drag"
 								onClick={() => navigate("/")}
 							>
-								<ChevronLeft className="w-4 h-4" />
+								<ChevronLeft className="w-4 h-4 text-text-label" />
 							</Button>
 						</div>
 					)}
@@ -251,32 +255,31 @@ function HeaderWin() {
 									className="no-drag font-bold text-base"
 									onClick={() => navigate("/history")}
 								>
-									<ArrowLeft className="w-4 h-4" />
-									Home
+									<ArrowLeft className="w-4 h-4 text-text-label" />
 								</Button>
 							</TooltipSimple>
 						</div>
 					)}
 				</div>
 				{location.pathname !== "/history" && (
-					<div className="absolute left-1/2 -translate-x-1/2 flex items-center no-drag">
+					<div className="flex items-left no-drag">
 						{activeTaskTitle === t("layout.new-project") ? (
 							<Button
 								id="active-task-title-btn"
 								variant="ghost"
-								className="font-medium text-base no-drag truncate"
+								className="font-semibold text-body-sm !text-text-label no-drag truncate"
 								onClick={toggle}
 								size="sm"
 							>
 								{t("layout.new-project")}
-								<ChevronDown />
+								<ChevronDown className="text-text-label" />
 							</Button>
 						) : (
 							<Button
 								id="active-task-title-btn"
 								variant="ghost"
 								size="sm"
-								className="font-medium text-base no-drag truncate"
+								className="font-semibold text-base no-drag truncate"
 								onClick={toggle}
 							>
 								{activeTaskTitle}
@@ -285,6 +288,7 @@ function HeaderWin() {
 						)}
 					</div>
 				)}
+
 			</div>
 			{/* right */}
 			{location.pathname !== "/history" && (
@@ -302,15 +306,25 @@ function HeaderWin() {
 							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
 									onClick={() => setEndDialogOpen(true)}
-									variant="outline"
+									variant="ghost"
 									size="xs"
-									className="no-drag !text-text-cuation justify-center"
+									className="no-drag !text-text-cuation bg-surface-cuation justify-center rounded-full"
 								>
 									<Power />
 									{t("layout.end-project")}
 								</Button>
 							</TooltipSimple>
 						)}
+					<TooltipSimple content={chatPanelPosition === 'left' ? 'Move panel right' : 'Move panel left'} side="bottom" align="center">
+						<Button
+							variant="ghost"
+							size="icon"
+							className="no-drag"
+							onClick={() => setChatPanelPosition(chatPanelPosition === 'left' ? 'right' : 'left')}
+						>
+							{chatPanelPosition === 'left' ? <PanelLeft className="w-4 h-4 text-text-label" /> : <PanelRight className="w-4 h-4 text-text-label" />}
+						</Button>
+					</TooltipSimple>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -318,7 +332,7 @@ function HeaderWin() {
 								size="icon"
 								className="no-drag"
 							>
-								<MoreHorizontal className="w-4 h-4" />
+								<MoreHorizontal className="w-4 h-4 text-text-label" />
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-36">

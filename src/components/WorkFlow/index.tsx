@@ -13,6 +13,7 @@ import { Node as CustomNodeComponent } from "./node";
 import { SquareStack, ChevronLeft, ChevronRight, Share } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import { useWorkerList } from "@/store/authStore";
+import { useWorkflowViewportStore } from "@/store/workflowViewportStore";
 import { share } from "@/lib/share";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
@@ -36,8 +37,10 @@ const VIEWPORT_ANIMATION_DURATION = 500;
 
 export default function Workflow({
 	taskAssigning,
+	onMoveViewport,
 }: {
 	taskAssigning: Agent[];
+	onMoveViewport?: (direction: 'left' | 'right') => void;
 }) {
 	const { t } = useTranslation();
 	//Get Chatstore for the active project's task
@@ -255,7 +258,7 @@ export default function Workflow({
 						},
 						position: isEditMode
 							? node.position
-							: { x: index * (342 + 20) + 8, y: 16 },
+							: { x: index * (342 + 20) + 8, y: 6 },
 					};
 				} else {
 					return {
@@ -332,11 +335,26 @@ export default function Workflow({
 		setTimeout(() => {
 			setIsAnimating(false);
 		}, VIEWPORT_ANIMATION_DURATION);
+		// Call the callback if provided
+		if (onMoveViewport) {
+			onMoveViewport(dx > 0 ? 'left' : 'right');
+		}
 	};
 
 	const handleShare = async (taskId: string) => {
 		share(taskId);
 	};
+
+	// Register moveViewport callbacks with the store
+	const { setMoveLeft, setMoveRight } = useWorkflowViewportStore();
+	useEffect(() => {
+		setMoveLeft(() => moveViewport(200));
+		setMoveRight(() => moveViewport(-200));
+		return () => {
+			setMoveLeft(null);
+			setMoveRight(null);
+		};
+	}, [setMoveLeft, setMoveRight, isAnimating, clampViewportX]);
 
 	useEffect(() => {
 		const container: HTMLElement | null =
@@ -362,38 +380,8 @@ export default function Workflow({
 
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
-			<div className="flex items-center justify-between w-full px-md py-2.5">
-				<div className="flex items-center gap-xs">
-					<Button
-						variant="ghost"
-						size="icon"
-						className="no-drag p-0 h-6 w-6"
-					>
-						<img className="w-6 h-6 mt-1" src={folderIcon} alt="folder-icon" />
-					</Button>
-					<div className="text-text-body font-bold text-body-base leading-relaxed">
-						{t("workforce.your-ai-workforce")}
-					</div>
-				</div>
-				<div className="flex items-center justify-center gap-xs">
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={() => {
-							moveViewport(200);
-						}}
-					>
-						<ChevronLeft className="w-4 h-4 text-icon-primary" />
-					</Button>
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={() => moveViewport(-200)}
-					>
-						<ChevronRight className="w-4 h-4 text-icon-primary" />
-					</Button>
-				</div>
-			</div>
+
+
 			<div className="h-full w-full" ref={containerRef}>
 				<ReactFlow
 					nodes={nodes}

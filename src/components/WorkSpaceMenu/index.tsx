@@ -6,13 +6,14 @@ import {
 	FileText,
 	Globe,
 	Image,
-	Inbox,
 	CodeXml,
 	Bird,
 	LayoutGrid,
 	Plus,
 	PanelLeftClose,
 	PanelLeftOpen,
+	ChevronLeft,
+	ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -21,6 +22,8 @@ import { Badge } from "../ui/badge";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { TooltipSimple } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { useWorkflowViewportStore } from "@/store/workflowViewportStore";
 
 interface WorkSpaceMenuProps {
 	onToggleChatBox?: () => void;
@@ -30,6 +33,7 @@ interface WorkSpaceMenuProps {
 export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: WorkSpaceMenuProps) {
 	const { t } = useTranslation();
 	const { chatStore } = useChatStoreAdapter();
+	const { moveLeft, moveRight } = useWorkflowViewportStore();
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
@@ -313,21 +317,6 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 
 	return (
 		<div className="w-full">
-			<div className="absolute h-full flex items-center justify-center left-2 z-10 pb-2">
-				<MenuToggleGroup
-					type="single"
-					variant="clear"
-					size="md"
-					orientation="horizontal"
-				>
-					<MenuToggleItem
-						value="toggle-chatbox"
-						onClick={onToggleChatBox}
-						icon={isChatBoxVisible ? <PanelLeftClose className="text-icon-secondary" /> : <PanelLeftOpen className="text-icon-secondary" />}
-						disableIconAnimation={false}
-					/>
-				</MenuToggleGroup>
-			</div>
 			<div className="w-full h-full flex flex-row items-center justify-center relative">
 				<motion.div
 					initial={{ opacity: 0, scale: 0.8, x: -20 }}
@@ -340,23 +329,6 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 					layout
 					className="flex flex-row items-center justify-center pb-2"
 				>
-					<div className="flex items-center flex-start gap-1 pr-2">
-						{chatStore.activeTaskId && (
-							<MenuToggleGroup
-								type="single"
-								size="md"
-								orientation="horizontal"
-								className={'flex pr-2 border-[0px] border-solid border-r border-white-100%'}
-								value={
-									chatStore.tasks[chatStore.activeTaskId as string]
-										.activeWorkSpace as string
-								}
-								onValueChange={onValueChange}
-							>
-								<MenuToggleItem value="workflow" icon={<LayoutGrid />} />
-							</MenuToggleGroup>
-						)}
-					</div>
 					<AddWorker />
 				</motion.div>
 				{/* activeAgent */}
@@ -419,6 +391,27 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 						</motion.div>
 					)}
 				</AnimatePresence>
+				{/* Viewport Navigation Buttons */}
+				{(moveLeft || moveRight) && (
+					<div className="absolute right-2 flex items-center pb-2">
+						<Button
+							variant="ghost"
+							size="md"
+							className="px-2"
+							onClick={moveLeft || undefined}
+						>
+							<ChevronLeft />
+						</Button>
+						<Button
+							variant="ghost"
+							size="md"
+							className="px-2"
+							onClick={moveRight || undefined}
+						>
+							<ChevronRight />
+						</Button>
+					</div>
+				)}
 			</div>
 		</div>
 	);

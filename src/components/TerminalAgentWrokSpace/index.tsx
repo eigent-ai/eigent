@@ -25,7 +25,7 @@ export default function TerminalAgentWrokSpace() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { t } = useTranslation();
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -109,7 +109,7 @@ export default function TerminalAgentWrokSpace() {
 	};
 
 	return isTakeControl ? (
-		<div className="rounded-xl bg-menutabs-bg-default w-full h-full flex flex-col items-center justify-start border border-solid border-border-success">
+		<div className="bg-menutabs-bg-default w-full h-full flex flex-col items-center justify-start border border-solid border-border-success">
 			<div className="flex justify-start items-start w-full p-sm">
 				<div className="p-1 rounded-full bg-transparent border border-solid border-border-primary">
 					<Button
@@ -135,7 +135,7 @@ export default function TerminalAgentWrokSpace() {
 		</div>
 	) : (
 		<div
-			className={`w-full flex-1 h-[calc(100vh-104px)] flex items-center justify-center transition-all duration-300 ease-in-out`}
+			className={`w-full flex-1 h-full flex items-center justify-center transition-all duration-300 ease-in-out`}
 		>
 			<div className="w-full h-full flex flex-col rounded-2xl relative bg-menutabs-bg-default overflow-hidden">
 				<div className="pt-3 pb-2 px-2 rounded-t-2xl flex items-center justify-between flex-shrink-0">
@@ -153,17 +153,15 @@ export default function TerminalAgentWrokSpace() {
 							<ChevronLeft size={16} />
 						</Button>
 						<div
-							className={`h-[26px] px-2 py-0.5 flex items-center gap-xs rounded-lg  ${
-								agentMap[activeAgent?.type as keyof typeof agentMap]
-									?.bgColorLight
-							}`}
+							className={`h-[26px] px-2 py-0.5 flex items-center gap-xs rounded-lg  ${agentMap[activeAgent?.type as keyof typeof agentMap]
+								?.bgColorLight
+								}`}
 						>
 							<Bot className="w-4 h-4 text-icon-primary" />
 							<div
-								className={`text-[10px] leading-17 font-bold ${
-									agentMap[activeAgent?.type as keyof typeof agentMap]
-										?.textColor
-								}`}
+								className={`text-[10px] leading-17 font-bold ${agentMap[activeAgent?.type as keyof typeof agentMap]
+									?.textColor
+									}`}
 							>
 								{agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
 							</div>
@@ -189,23 +187,23 @@ export default function TerminalAgentWrokSpace() {
 						{activeAgent?.tasks.filter(
 							(task) => task?.terminal && task?.terminal.length > 0
 						)[0] && (
-							<div
-								// onClick={() =>
-								// 	handleTakeControl(
-								// 		activeAgent?.activeWebviewIds?.[0]?.id || ""
-								// 	)
-								// }
-								className="cursor-pointer relative h-full w-full group pt-sm rounded-b-2xl"
-							>
-								<Terminal
-									instanceId={activeAgent?.activeWebviewIds?.[0]?.id}
-									content={
-										activeAgent?.tasks.filter(
-											(task) => task?.terminal && task?.terminal.length > 0
-										)[0].terminal
-									}
-								/>
-								{/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
+								<div
+									// onClick={() =>
+									// 	handleTakeControl(
+									// 		activeAgent?.activeWebviewIds?.[0]?.id || ""
+									// 	)
+									// }
+									className="cursor-pointer relative h-full w-full group pt-sm rounded-b-2xl"
+								>
+									<Terminal
+										instanceId={activeAgent?.activeWebviewIds?.[0]?.id}
+										content={
+											activeAgent?.tasks.filter(
+												(task) => task?.terminal && task?.terminal.length > 0
+											)[0].terminal
+										}
+									/>
+									{/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
 									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
 										<Hand size={24} className="text-icon-inverse-primary" />
 										<span className="text-base leading-9 font-medium text-text-inverse-primary">
@@ -213,8 +211,8 @@ export default function TerminalAgentWrokSpace() {
 										</span>
 									</Button>
 								</div> */}
-							</div>
-						)}
+								</div>
+							)}
 					</div>
 				) : (
 					activeAgent?.tasks.filter(
@@ -222,9 +220,8 @@ export default function TerminalAgentWrokSpace() {
 					) && (
 						<div
 							ref={scrollContainerRef}
-							className={`${
-								isSingleMode ? "px-0" : "px-2 pb-2"
-							}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
+							className={`${isSingleMode ? "px-0" : "px-2 pb-2"
+								}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
 						>
 							{activeAgent?.tasks
 								.filter((task) => task?.terminal && task?.terminal.length > 0)
@@ -232,11 +229,10 @@ export default function TerminalAgentWrokSpace() {
 									return (
 										<div
 											key={task.id}
-											className={`cursor-pointer relative card-box rounded-lg  group ${
-												isSingleMode
-													? "h-[calc(100%)] w-[calc(100%)]"
-													: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
-											}`}
+											className={`cursor-pointer relative card-box rounded-lg  group ${isSingleMode
+												? "h-[calc(100%)] w-[calc(100%)]"
+												: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
+												}`}
 										>
 											<Terminal instanceId={task.id} content={task.terminal} />
 											{/* <div
@@ -262,73 +258,73 @@ export default function TerminalAgentWrokSpace() {
 				{activeAgent?.tasks.filter(
 					(task) => task?.terminal && task?.terminal.length > 0
 				).length !== 1 && (
-					<div className="flex items-center gap-1 rounded-lg p-1 absolute bottom-2 right-2 w-auto bg-menutabs-bg-default border border-solid border-border-primary z-[200]">
-						{isSingleMode && (
+						<div className="flex items-center gap-1 rounded-lg p-1 absolute bottom-2 right-2 w-auto bg-menutabs-bg-default border border-solid border-border-primary z-[200]">
+							{isSingleMode && (
+								<Button
+									size="icon"
+									variant="ghost"
+									onClick={() => {
+										if (scrollContainerRef.current) {
+											const container = scrollContainerRef.current;
+											const card = container.querySelector("div.card-box");
+											if (!card) return;
+											const cardHeight = card.getBoundingClientRect().height;
+											const gap = 16;
+											const rowCount = isSingleMode ? 1 : 2;
+											const scrollAmount = (cardHeight + gap) * rowCount;
+											container.scrollTo({
+												top: Math.min(
+													container.scrollHeight - container.clientHeight,
+													container.scrollTop + scrollAmount
+												),
+												behavior: "smooth",
+											});
+										}
+									}}
+								>
+									<ArrowDown size={16} />
+								</Button>
+							)}
+							{isSingleMode && (
+								<Button
+									size="icon"
+									variant="ghost"
+									onClick={() => {
+										if (scrollContainerRef.current) {
+											const container = scrollContainerRef.current;
+											const card = container.querySelector("div.card-box");
+											if (!card) return;
+											const cardHeight = card.getBoundingClientRect().height;
+											const gap = 16;
+											const rowCount = isSingleMode ? 1 : 2;
+											const scrollAmount = (cardHeight + gap) * rowCount;
+											container.scrollTo({
+												top: Math.max(0, container.scrollTop - scrollAmount),
+												behavior: "smooth",
+											});
+										}
+									}}
+								>
+									<ArrowUp size={16} />
+								</Button>
+							)}
 							<Button
 								size="icon"
 								variant="ghost"
 								onClick={() => {
+									setIsSingleMode(!isSingleMode);
 									if (scrollContainerRef.current) {
-										const container = scrollContainerRef.current;
-										const card = container.querySelector("div.card-box");
-										if (!card) return;
-										const cardHeight = card.getBoundingClientRect().height;
-										const gap = 16;
-										const rowCount = isSingleMode ? 1 : 2;
-										const scrollAmount = (cardHeight + gap) * rowCount;
-										container.scrollTo({
-											top: Math.min(
-												container.scrollHeight - container.clientHeight,
-												container.scrollTop + scrollAmount
-											),
+										scrollContainerRef.current.scrollTo({
+											top: 0,
 											behavior: "smooth",
 										});
 									}
 								}}
 							>
-								<ArrowDown size={16} />
+								<GalleryThumbnails size={16} />
 							</Button>
-						)}
-						{isSingleMode && (
-							<Button
-								size="icon"
-								variant="ghost"
-								onClick={() => {
-									if (scrollContainerRef.current) {
-										const container = scrollContainerRef.current;
-										const card = container.querySelector("div.card-box");
-										if (!card) return;
-										const cardHeight = card.getBoundingClientRect().height;
-										const gap = 16;
-										const rowCount = isSingleMode ? 1 : 2;
-										const scrollAmount = (cardHeight + gap) * rowCount;
-										container.scrollTo({
-											top: Math.max(0, container.scrollTop - scrollAmount),
-											behavior: "smooth",
-										});
-									}
-								}}
-							>
-								<ArrowUp size={16} />
-							</Button>
-						)}
-						<Button
-							size="icon"
-							variant="ghost"
-							onClick={() => {
-								setIsSingleMode(!isSingleMode);
-								if (scrollContainerRef.current) {
-									scrollContainerRef.current.scrollTo({
-										top: 0,
-										behavior: "smooth",
-									});
-								}
-							}}
-						>
-							<GalleryThumbnails size={16} />
-						</Button>
-					</div>
-				)}
+						</div>
+					)}
 			</div>
 		</div>
 	);

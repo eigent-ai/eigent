@@ -30,13 +30,13 @@ export function HeaderBox({
     const isReplayDisabled = status === 'running' || status === 'pending' || status === 'pause';
 
     return (
-        <div className={`w-full flex flex-row items-center justify-between p-2 ${className || ""}`}>
+        <div className={`w-full h-[44px] flex flex-row items-center justify-between px-3 ${className || ""}`}>
             <div className="flex items-center gap-md">
                 <div className="text-text-body font-bold text-body-base leading-relaxed">
-                    Tasks
+                    Chat
                 </div>
                 <div className="text-text-information text-xs font-semibold leading-17">
-                    # {t("chat.token")} {tokens || 0}
+                    # {tokens || 0}
                 </div>
             </div>
 
@@ -44,9 +44,9 @@ export function HeaderBox({
                 <Button
                     onClick={onReplay}
                     disabled={isReplayDisabled || replayLoading}
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="no-drag !text-button-fill-information-foreground bg-button-fill-information font-semibold rounded-full"
+                    className="no-drag !text-text-information bg-surface-information font-semibold rounded-full"
                 >
                     <PlayCircle />
                     {replayLoading ? t("common.loading") : t("chat.replay")}

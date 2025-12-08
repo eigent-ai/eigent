@@ -7,7 +7,6 @@ import { useTranslation } from "react-i18next";
 import { useAuthStore } from "@/store/authStore";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
 import Project from "@/pages/Dashboard/Project";
-import Trigger from "@/pages/Dashboard/Trigger";
 import AlertDialog from "@/components/ui/alertDialog";
 import { Settings } from "@/components/animate-ui/icons/settings";
 import { Pin } from "@/components/animate-ui/icons/pin";
