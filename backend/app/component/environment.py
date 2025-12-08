@@ -7,14 +7,20 @@ from dotenv import load_dotenv
 import importlib
 from typing import Any, overload
 import threading
+from utils.path_safety import sanitize_path
 
 traceroot_logger = traceroot.get_logger("env")
 
 # Thread-local storage for user-specific environment
 _thread_local = threading.local()
 
+ALLOWED_ENV_ROOT = Path.home().resolve()
+
+
 # Default global environment path
-default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+default_env_path = (
+    sanitize_path(os.path.join(os.path.expanduser("~"), ".eigent", ".env"), ALLOWED_ENV_ROOT) or Path.home()
+)
 load_dotenv(dotenv_path=default_env_path)
 
 
@@ -23,28 +29,35 @@ def set_user_env_path(env_path: str | None = None):
     Set user-specific environment path for current thread.
     If env_path is None, uses default global environment.
     """
-    traceroot_logger.info("Setting user environment path", extra={"env_path": env_path, "exists": env_path and os.path.exists(env_path) if env_path else None})
+    sanitized_path = sanitize_path(env_path, ALLOWED_ENV_ROOT)
+    traceroot_logger.info(
+        "Setting user environment path",
+        extra={"env_path": sanitized_path or env_path, "exists": sanitized_path.exists() if sanitized_path else None},
+    )
 
-    if env_path and os.path.exists(env_path):
-        _thread_local.env_path = env_path
+    if sanitized_path and sanitized_path.exists():
+        _thread_local.env_path = sanitized_path
         # Load user-specific environment variables
-        load_dotenv(dotenv_path=env_path, override=True)
-        traceroot_logger.info("User-specific environment loaded", extra={"env_path": env_path})
+        load_dotenv(dotenv_path=sanitized_path, override=True)
+        traceroot_logger.info("User-specific environment loaded", extra={"env_path": str(sanitized_path)})
     else:
         # Clear thread-local env_path to fall back to global
         if hasattr(_thread_local, 'env_path'):
             delattr(_thread_local, 'env_path')
         traceroot_logger.info("Reset to default global environment")
 
-        if env_path and not os.path.exists(env_path):
-            traceroot_logger.warning("User environment path does not exist, falling back to global", extra={"env_path": env_path})
+        if env_path and (not sanitized_path or not os.path.exists(env_path)):
+            traceroot_logger.warning(
+                "User environment path does not exist or is invalid, falling back to global", extra={"env_path": env_path}
+            )
 
 
 def get_current_env_path() -> str:
     """
     Get current environment path (either user-specific or default).
     """
-    return getattr(_thread_local, 'env_path', default_env_path)
+    current = getattr(_thread_local, 'env_path', default_env_path)
+    return str(current)
 
 
 @overload

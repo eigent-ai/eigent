@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from camel.types import ModelType, RoleType
 from utils import traceroot_wrapper as traceroot
+from utils.path_safety import safe_component, sanitize_path
 
 logger = traceroot.get_logger("chat_model")
 
@@ -65,6 +66,11 @@ class Chat(BaseModel):
     extra_params: dict | None = None  # For provider-specific parameters like Azure
     search_config: dict[str, str] | None = None  # User-specific search engine configurations (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
 
+    @staticmethod
+    def _safe_email(email: str) -> str:
+        """Sanitize email local part for filesystem use."""
+        return re.sub(r'[\\/*?:"<>|\s]', "_", email.split("@")[0]).strip(".")
+
     @field_validator("model_type")
     @classmethod
     def check_model_type(cls, model_type: str):
@@ -74,6 +80,11 @@ class Chat(BaseModel):
             # raise ValueError("Invalid model type")
             logger.debug("model_type is invalid")
         return model_type
+
+    @field_validator("project_id", "task_id")
+    @classmethod
+    def check_path_component(cls, value: str, info):
+        return safe_component(value, info.field_name)
 
     def get_bun_env(self) -> dict[str, str]:
         return {"NPM_CONFIG_REGISTRY": self.bun_mirror} if self.bun_mirror else {}
@@ -85,14 +96,17 @@ class Chat(BaseModel):
         return self.api_url is not None and "44.247.171.124" in self.api_url
 
     def file_save_path(self, path: str | None = None):
-        email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(".")
+        email = self._safe_email(self.email)
+        project_id = safe_component(self.project_id, "project_id")
+        task_id = safe_component(self.task_id, "task_id")
+        allowed_root = (Path.home() / "eigent").resolve()
         # Use project-based structure: project_{project_id}/task_{task_id}
-        save_path = Path.home() / "eigent" / email / f"project_{self.project_id}" / f"task_{self.task_id}"
-        if path is not None:
-            save_path = save_path / path
-        save_path.mkdir(parents=True, exist_ok=True)
+        base_path = allowed_root / email / f"project_{project_id}" / f"task_{task_id}"
+        target_path = base_path / path if path is not None else base_path
+        safe_path = sanitize_path(target_path, allowed_root) or target_path.resolve()
+        safe_path.mkdir(parents=True, exist_ok=True)
 
-        return str(save_path)
+        return str(safe_path)
 
 
 class SupplementChat(BaseModel):

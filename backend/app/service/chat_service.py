@@ -43,9 +43,24 @@ from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
 from utils import traceroot_wrapper as traceroot
+from utils.path_safety import sanitize_path
 import os
 
 logger = traceroot.get_logger("chat_service")
+ALLOWED_WORKDIR_ROOT = (Path.home() / "eigent").resolve()
+
+
+def _normalize_working_directory(path_value: str | Path | None) -> Path | None:
+    """Normalize and constrain working directory under the allowed root."""
+    sanitized = sanitize_path(path_value, ALLOWED_WORKDIR_ROOT) if path_value else None
+    if sanitized:
+        return sanitized
+    if path_value:
+        logger.warning(
+            "Rejected working directory outside allowed root or invalid",
+            extra={"working_directory": str(path_value)},
+        )
+    return None
 
 
 def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
@@ -66,10 +81,11 @@ def format_task_context(task_data: dict, seen_files: set | None = None, skip_fil
 
     # Skip file listing if requested
     if not skip_files:
-        working_directory = task_data.get('working_directory')
+        working_directory_raw = task_data.get('working_directory')
+        working_directory = _normalize_working_directory(working_directory_raw)
         if working_directory:
             try:
-                if os.path.exists(working_directory):
+                if working_directory.exists():
                     generated_files = []
                     for root, dirs, files in os.walk(working_directory):
                         dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
@@ -193,8 +209,10 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
                 if isinstance(entry['content'], dict):
                     formatted_context = format_task_context(entry['content'], skip_files=True)
                     context += formatted_context + "\n\n"
-                    if entry['content'].get('working_directory'):
-                        working_directories.add(entry['content']['working_directory'])
+            if entry['content'].get('working_directory'):
+                normalized_path = _normalize_working_directory(entry['content']['working_directory'])
+                if normalized_path:
+                    working_directories.add(str(normalized_path))
                 else:
                     context += entry['content'] + "\n"
             elif entry['role'] == 'assistant':
