@@ -40,9 +40,14 @@ def oauth_login(app: str, request: Request, state: Optional[str] = None):
 @traceroot.trace()
 def oauth_callback(app: str, request: Request, code: Optional[str] = None, state: Optional[str] = None):
     """Handle OAuth provider callback and redirect to client app."""
-    if not code:
-        logger.warning("OAuth callback missing code", extra={"provider": app})
-        raise HTTPException(status_code=400, detail="Missing code parameter")
+    import re
+    CODE_STATE_REGEX = re.compile(r'^[A-Za-z0-9_\-]+$')
+    if not code or not CODE_STATE_REGEX.match(code):
+        logger.warning("OAuth callback missing or invalid code", extra={"provider": app, "code": code})
+        raise HTTPException(status_code=400, detail="Missing or invalid code parameter")
+    if state and not CODE_STATE_REGEX.match(state):
+        logger.warning("OAuth callback invalid state", extra={"provider": app, "state": state})
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
     
     logger.info("OAuth callback received", extra={"provider": app, "has_state": state is not None})
 

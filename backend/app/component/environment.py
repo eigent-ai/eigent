@@ -46,7 +46,7 @@ def set_user_env_path(env_path: str | None = None):
             delattr(_thread_local, 'env_path')
         traceroot_logger.info("Reset to default global environment")
 
-        if env_path and (not sanitized_path or not os.path.exists(env_path)):
+        if env_path and (not sanitized_path or not (sanitized_path and sanitized_path.exists())):
             traceroot_logger.warning(
                 "User environment path does not exist or is invalid, falling back to global", extra={"env_path": env_path}
             )

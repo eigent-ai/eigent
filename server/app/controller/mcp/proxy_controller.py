@@ -111,9 +111,20 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
     def _redact_secret(text: str) -> str:
         redacted = text
         for secret in secrets_to_redact:
-            if secret:
+            if secret and isinstance(redacted, str):
                 redacted = redacted.replace(secret, "[REDACTED]")
         return redacted
+
+    def _redact_obj(obj):
+        """Recursively redact secrets from all string fields in a dict/list structure."""
+        if isinstance(obj, dict):
+            return {k: _redact_obj(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_redact_obj(item) for item in obj]
+        elif isinstance(obj, str):
+            return _redact_secret(obj)
+        else:
+            return obj
 
     # Using the first page
     start_page_idx = 1
@@ -207,14 +218,10 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
             logger.info("Google search completed", extra={"query": query, "search_type": search_type, "result_count": len(responses)})
         else:
             error_info = data.get("error", {})
-            sanitized_error = {
-                "code": error_info.get("code"),
-                "reason": (error_info.get("errors") or [{}])[0].get("reason"),
-                "message": _redact_secret(error_info.get("message", "")),
-            }
+            sanitized_error = _redact_obj(error_info)
             logger.error(
                 "Google search API error",
-                extra={"query": query, "search_type": search_type, "api_error": sanitized_error},
+                extra={"query": _redact_secret(query), "search_type": _redact_secret(search_type), "api_error": sanitized_error},
             )
             raise HTTPException(status_code=500, detail="Internal server error")
 
