@@ -1148,7 +1148,7 @@ async function createWindow() {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
       partition: 'persist:main_window',
-      webSecurity: false,
+      webSecurity: true,
       preload,
       nodeIntegration: true,
       contextIsolation: true,
