@@ -3,7 +3,7 @@ import path from 'node:path'
 import log from 'electron-log'
 import { getMainWindow } from './init'
 import fs from 'node:fs'
-import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, cleanupOldVenvs, isBinaryExists, runInstallScript } from './utils/process'
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, cleanupOldVenvs, isBinaryExists, runInstallScript } from './utils/process'
 import { spawn } from 'child_process'
 import { safeMainWindowSend } from './utils/safeWebContentsSend'
 import os from 'node:os'
@@ -242,7 +242,6 @@ class InstallLogs {
 
   constructor(extraArgs:string[], version: string) {
     console.log('start install dependencies', extraArgs, 'version:', version)
-    const venvPath = getVenvPath(version);
     this.version = version;
 
     this.node_process = spawn(uv_path, [
@@ -253,10 +252,7 @@ class InstallLogs {
         cwd: backendPath,
         env: {
             ...process.env,
-            UV_TOOL_DIR: getCachePath('uv_tool'),
-            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
-            UV_PROJECT_ENVIRONMENT: venvPath,
-            UV_HTTP_TIMEOUT: '180', // 3 minutes timeout
+            ...getUvEnv(version),
         }
     })
   }
