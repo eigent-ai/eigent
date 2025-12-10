@@ -408,20 +408,72 @@ class Workforce(BaseWorkforce):
     def _cleanup_all_agents(self) -> None:
         """Call cleanup callbacks for all agents to release resources (e.g., CDP browsers)."""
         logger.info(f"[WF-CLEANUP] Starting cleanup for all agents in workforce {id(self)}")
+
+        # ========== 调试信息开始 ==========
+        logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, 'children'): {hasattr(self, 'children')}")
+        logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, '_children'): {hasattr(self, '_children')}")
+
+        if hasattr(self, 'children'):
+            try:
+                logger.info(f"[WF-CLEANUP-DEBUG] self.children = {self.children}")
+                logger.info(f"[WF-CLEANUP-DEBUG] bool(self.children) = {bool(self.children)}")
+            except AttributeError as e:
+                logger.info(f"[WF-CLEANUP-DEBUG] AttributeError accessing self.children: {e}")
+
+        if hasattr(self, '_children'):
+            logger.info(f"[WF-CLEANUP-DEBUG] self._children exists: {self._children is not None}")
+            if self._children is not None:
+                logger.info(f"[WF-CLEANUP-DEBUG] len(self._children) = {len(self._children)}")
+                for i, child in enumerate(self._children):
+                    logger.info(f"[WF-CLEANUP-DEBUG] _children[{i}]: type={type(child).__name__}, "
+                               f"has_worker_agent={hasattr(child, 'worker_agent')}, "
+                               f"has_agent_pool={hasattr(child, 'agent_pool')}")
+
+        logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, 'coordinator_agent'): {hasattr(self, 'coordinator_agent')}")
+        if hasattr(self, 'coordinator_agent'):
+            logger.info(f"[WF-CLEANUP-DEBUG] self.coordinator_agent is None: {self.coordinator_agent is None}")
+            if self.coordinator_agent is not None:
+                logger.info(f"[WF-CLEANUP-DEBUG] coordinator has _cleanup_callback: {hasattr(self.coordinator_agent, '_cleanup_callback')}")
+        # ========== 调试信息结束 ==========
+
         cleanup_count = 0
 
-        # Cleanup all child workers
-        if hasattr(self, 'children') and self.children:
-            for child in self.children:
+        # Cleanup all child workers - 使用 _children 而不是 children
+        if hasattr(self, '_children') and self._children:
+            logger.info(f"[WF-CLEANUP] Processing {len(self._children)} children")
+            for child in self._children:
+                # Cleanup base agent
                 if hasattr(child, 'worker_agent'):
                     agent = child.worker_agent
                     if hasattr(agent, '_cleanup_callback') and callable(agent._cleanup_callback):
                         try:
                             agent._cleanup_callback()
                             cleanup_count += 1
-                            logger.info(f"[WF-CLEANUP] Called cleanup for agent: {getattr(agent, 'agent_name', 'unknown')}")
+                            logger.info(f"[WF-CLEANUP] Called cleanup for base agent: {getattr(agent, 'agent_name', 'unknown')}")
                         except Exception as e:
-                            logger.error(f"[WF-CLEANUP] Error in cleanup callback for agent: {e}", exc_info=True)
+                            logger.error(f"[WF-CLEANUP] Error in cleanup callback for base agent: {e}", exc_info=True)
+
+                # Cleanup agents in AgentPool (cloned agents that actually hold CDP resources)
+                if hasattr(child, 'agent_pool') and child.agent_pool:
+                    pool = child.agent_pool
+                    logger.info(f"[WF-CLEANUP] Found AgentPool for worker: {getattr(child, 'description', 'unknown')}, "
+                               f"available={len(pool._available_agents)}, in_use={len(pool._in_use_agents)}")
+
+                    # Cleanup available agents
+                    for agent in list(pool._available_agents):
+                        if hasattr(agent, '_cleanup_callback') and callable(agent._cleanup_callback):
+                            try:
+                                agent._cleanup_callback()
+                                cleanup_count += 1
+                                logger.info(f"[WF-CLEANUP] Called cleanup for pooled agent (available): {getattr(agent, 'agent_id', 'unknown')}")
+                            except Exception as e:
+                                logger.error(f"[WF-CLEANUP] Error in cleanup callback for pooled agent: {e}", exc_info=True)
+
+                    # Cleanup in-use agents - they are not directly accessible from AgentPool
+                    # AgentPool only stores agent IDs in _in_use_agents set, not the agent objects
+                    if hasattr(pool, '_in_use_agents') and pool._in_use_agents:
+                        logger.info(f"[WF-CLEANUP] Warning: {len(pool._in_use_agents)} agents still in use")
+                        logger.info(f"[WF-CLEANUP] These agents cannot be directly accessed from pool, but their CDP resources will be force-released")
 
         # Cleanup coordinator agent
         if hasattr(self, 'coordinator_agent') and self.coordinator_agent:
@@ -434,6 +486,26 @@ class Workforce(BaseWorkforce):
                     logger.error(f"[WF-CLEANUP] Error in cleanup callback for coordinator: {e}", exc_info=True)
 
         logger.info(f"[WF-CLEANUP] ✅ Cleanup completed, {cleanup_count} agent(s) cleaned up")
+
+        # Force release all CDP browser resources for this task
+        # This handles the case where agents are still in-use and cannot be accessed from pool
+        try:
+            from app.utils.agent import _cdp_pool_manager
+            logger.info(f"[WF-CLEANUP] Force releasing all CDP resources for task {self.api_task_id}")
+
+            # Get all occupied ports before cleanup
+            occupied_before = _cdp_pool_manager.get_occupied_ports().copy()
+            logger.info(f"[WF-CLEANUP] CDP ports occupied before force release: {occupied_before}")
+
+            # Force release all ports (clear the entire pool)
+            # This is safe because the task is ending, no agents should be using them anymore
+            released_count = len(occupied_before)
+            _cdp_pool_manager._occupied_ports.clear()
+
+            logger.info(f"[WF-CLEANUP] ✅ Force released {released_count} CDP browser(s)")
+            logger.info(f"[WF-CLEANUP] CDP ports after force release: {_cdp_pool_manager.get_occupied_ports()}")
+        except Exception as e:
+            logger.error(f"[WF-CLEANUP] Error during force CDP release: {e}", exc_info=True)
 
     def skip_gracefully(self) -> None:
         logger.info("=" * 80)
