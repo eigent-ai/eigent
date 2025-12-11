@@ -13,6 +13,7 @@ import FolderComponent from "./FolderComponent";
 
 import { MarkDown } from "@/components/ChatBox/MessageItem/MarkDown";
 import { useAuthStore } from "@/store/authStore";
+import { usePageTabStore } from "@/store/pageTabStore";
 import { proxyFetchGet } from "@/api/http";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
@@ -157,6 +158,7 @@ export default function Folder({ data }: { data?: Agent }) {
 	}
 
 	const authStore = useAuthStore();
+	const { setHasAgentFiles } = usePageTabStore();
 	const { t } = useTranslation();
 	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -363,6 +365,12 @@ export default function Folder({ data }: { data?: Agent }) {
 		};
 		setFileList();
 	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+
+	// Update hasAgentFiles when fileGroups changes
+	useEffect(() => {
+		const hasFiles = fileGroups[0]?.files && fileGroups[0].files.length > 0;
+		setHasAgentFiles(hasFiles);
+	}, [fileGroups, setHasAgentFiles]);
 
 	useEffect(() => {
 		const chatStoreSelectedFile =

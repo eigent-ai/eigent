@@ -318,19 +318,6 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 	return (
 		<div className="w-full">
 			<div className="w-full h-full flex flex-row items-center justify-center relative">
-				<motion.div
-					initial={{ opacity: 0, scale: 0.8, x: -20 }}
-					animate={{ opacity: 1, scale: 1, x: 0 }}
-					exit={{ opacity: 0, scale: 0.8, x: 20 }}
-					transition={{
-						duration: 0.3,
-						ease: "easeInOut",
-					}}
-					layout
-					className="flex flex-row items-center justify-center pb-2"
-				>
-					<AddWorker />
-				</motion.div>
 				{/* activeAgent */}
 				<AnimatePresence>
 					{agentList.length > 0 && (

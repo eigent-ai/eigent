@@ -3,19 +3,14 @@ import { AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+
 import { ExpandedInputBox } from "./ExpandedInputBox";
 import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
-import { Paperclip, ArrowRight, X, Image, FileText, UploadCloud, Plus, Zap, Settings2, Maximize, Maximize2 } from "lucide-react";
+import { ArrowRight, X, Image, FileText, UploadCloud, Plus, Zap, Maximize } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import type { Trigger, TriggerInput } from "@/types";
+import type { TriggerInput } from "@/types";
 
 // Module-level singleton to track which InputBox instance has the expanded dialog open
 // This prevents multiple dialogs from opening when Cmd+P is pressed
@@ -59,18 +54,13 @@ export interface InputboxProps {
 	privacy?: boolean;
 	/** Use cloud model in dev */
 	useCloudModelInDev?: boolean;
-	/** List of available triggers */
-	triggers?: Trigger[];
-	/** Currently selected trigger */
-	selectedTrigger?: Trigger | null;
-	/** Callback when a trigger is selected */
-	onTriggerSelect?: (trigger: Trigger) => void;
-	/** Callback when trigger is cleared/removed */
-	onTriggerClear?: () => void;
+
 	/** Callback when trigger is being created (for placeholder) */
 	onTriggerCreating?: (triggerData: TriggerInput) => void;
 	/** Callback when trigger is created successfully */
 	onTriggerCreated?: (triggerData: TriggerInput) => void;
+	/** Hide the expand button (used when InputBox is already inside ExpandedInputBox) */
+	hideExpandButton?: boolean;
 }
 
 /**
@@ -126,12 +116,9 @@ export const Inputbox = ({
 	allowDragDrop = false,
 	privacy = true,
 	useCloudModelInDev = false,
-	triggers = [],
-	selectedTrigger = null,
-	onTriggerSelect,
-	onTriggerClear,
 	onTriggerCreating,
 	onTriggerCreated,
+	hideExpandButton = false,
 }: InputboxProps) => {
 	const { t } = useTranslation();
 	const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -147,6 +134,8 @@ export const Inputbox = ({
 	const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
 	const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
 	const instanceIdRef = useRef<string>(`inputbox-${Math.random().toString(36).substr(2, 9)}`);
+
+
 
 	// Handle dialog open/close with singleton tracking
 	const handleExpandedDialogChange = useCallback((open: boolean) => {
@@ -329,25 +318,7 @@ export const Inputbox = ({
 					<div className="text-sm font-semibold">Drop files to attach</div>
 				</div>
 			)}
-			{/*Trigger Content - Show selected trigger if any */}
-			{selectedTrigger && (
-				<div className="box-border flex items-center gap-2 px-2 py-1.5 w-full">
-					<div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-tertiary border border-border-tertiary">
-						<Zap size={14} className="text-yellow-500" />
-						<span className="text-xs font-medium text-text-body">
-							{selectedTrigger.name}
-						</span>
-						<button
-							type="button"
-							onClick={onTriggerClear}
-							className="ml-1 p-0.5 rounded hover:bg-surface-secondary transition-colors"
-							title="Remove trigger"
-						>
-							<X size={12} className="text-icon-secondary hover:text-icon-primary" />
-						</button>
-					</div>
-				</div>
-			)}
+
 			{/* Text Input Area */}
 			<div className="box-border flex flex-1 gap-2.5 items-start justify-center pb-2 pt-2.5 px-0 relative w-full">
 				<div className="flex-1 box-border flex gap-2.5 items-center justify-center min-h-px min-w-px mx-2 py-0 relative">
@@ -511,82 +482,47 @@ export const Inputbox = ({
 						/>
 					</Button>
 
-					{/* Add Trigger - Button or Dropdown based on triggers count */}
-					{triggers.length === 0 ? (
-						<>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="rounded-lg"
-								disabled={disabled}
-								onClick={() => setTriggerDialogOpen(true)}
-							>
-								<Zap size={16} className="text-icon-primary" />
-								Trigger
-							</Button>
-							<TriggerDialog
-								view="create"
-								selectedTrigger={null}
-								onTriggerCreating={onTriggerCreating || (() => { })}
-								onTriggerCreated={onTriggerCreated || (() => { })}
-								isOpen={triggerDialogOpen}
-								onOpenChange={setTriggerDialogOpen}
-							/>
-						</>
-					) : (
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="rounded-lg"
-									disabled={disabled}
-								>
-									<Zap size={16} className="text-icon-primary" />
-									Trigger
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="start" className="min-w-[200px]">
-								{triggers.map((trigger) => (
-									<DropdownMenuItem
-										key={trigger.id}
-										onClick={() => onTriggerSelect?.(trigger)}
-										className="flex items-center gap-2 cursor-pointer"
-									>
-										<Zap size={14} className="text-icon-secondary" />
-										<div className="flex flex-col">
-											<span className="text-sm font-medium text-text-primary">
-												{trigger.name}
-											</span>
-											{trigger.description && (
-												<span className="text-xs text-text-secondary truncate max-w-[180px]">
-													{trigger.description}
-												</span>
-											)}
-										</div>
-									</DropdownMenuItem>
-								))}
-							</DropdownMenuContent>
-						</DropdownMenu>
-					)}
-				</div>
-
-				{/* Right: Send Button */}
-				<div className="flex items-center gap-1">
-					{/* Expand Input Dialog Button */}
+					{/* Add Trigger Button - opens TriggerDialog */}
 					<Button
 						variant="ghost"
-						size="icon"
+						size="xs"
 						className="rounded-lg"
-						onClick={() => handleExpandedDialogChange(true)}
 						disabled={disabled}
-						title="Expand input (⌘P)"
+						onClick={() => setTriggerDialogOpen(true)}
 					>
-						<Maximize
-							size={16}
-							className="text-icon-primary"
-						/>
+						<Zap size={16} className="text-icon-primary" />
+						Trigger
 					</Button>
+
+					{/* TriggerDialog for adding trigger and task */}
+					<TriggerDialog
+						view="create"
+						selectedTrigger={null}
+						onTriggerCreating={onTriggerCreating || (() => { })}
+						onTriggerCreated={onTriggerCreated || (() => { })}
+						isOpen={triggerDialogOpen}
+						onOpenChange={setTriggerDialogOpen}
+						initialTaskPrompt={value}
+					/>
+				</div>
+
+				<div className="flex items-center gap-1">
+					{/* Expand Input Dialog Button - hidden when inside ExpandedInputBox */}
+					{!hideExpandButton && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="rounded-lg"
+							onClick={() => handleExpandedDialogChange(true)}
+							disabled={disabled}
+							title="Expand input (⌘P)"
+						>
+							<Maximize
+								size={16}
+								className="text-icon-primary"
+							/>
+						</Button>
+					)}
 					<Button
 						size="icon"
 						variant={value.trim().length > 0 ? "success" : "secondary"}
@@ -621,8 +557,6 @@ export const Inputbox = ({
 							disabled,
 							privacy,
 							useCloudModelInDev,
-							triggers,
-							onTriggerSelect,
 						}}
 						onClose={() => handleExpandedDialogChange(false)}
 					/>

@@ -39,32 +39,26 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="bg-surface-primary rounded-xl px-2 py-3 w-full flex flex-col gap-2"
+                className="bg-surface-primary rounded-xl p-3 w-full flex flex-row gap-2 items-center"
             >
                 {/* Description */}
-                <div className="text-text-label text-label-sm font-medium leading-normal mb-sm">
-                    {t('chat.task-complete-description', 'Task completed. You can refine the task prompt or turn it into an automated task with a trigger.')}
+                <div className="flex flex-col w-full">
+                    <div className="text-text-body text-label-sm font-bold leading-normal">
+                        Task completed
+                    </div>
+                    <div className="text-text-label text-label-sm font-medium leading-normal">
+                        Automate your task with a trigger
+                    </div>
                 </div>
-                <div className="flex flex-row w-full gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onRerun}
-                        className="gap-1 flex-1 flex justify-center rounded-lg"
-                    >
-                        <PencilLine className="w-4 h-4" />
-                        {t('chat.rerun', 'Re-edit')}
-                    </Button>
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={handleAddTrigger}
-                        className="gap-1 flex-1 flex justify-center rounded-lg"
-                    >
-                        <Plus className="w-4 h-4" />
-                        {t('triggers.add-trigger', 'Add trigger')}
-                    </Button>
-                </div>
+                <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleAddTrigger}
+                    className="rounded-lg h-fit"
+                >
+                    <Plus className="w-4 h-4" />
+                    Add trigger
+                </Button>
             </motion.div>
 
             {/* Trigger Dialog */}
@@ -75,6 +69,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
                 onTriggerCreated={handleTriggerCreated}
                 isOpen={isTriggerDialogOpen}
                 onOpenChange={setIsTriggerDialogOpen}
+                initialTaskPrompt={taskPrompt}
             />
         </>
     );

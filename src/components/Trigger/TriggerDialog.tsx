@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import ToolSelect from "@/components/AddWorker/ToolSelect";
 import {
     Dialog,
     DialogContent,
@@ -16,6 +17,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,6 +34,8 @@ import {
     Loader2,
     Play,
     Plus,
+    Zap,
+    ChevronLeft,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -45,16 +49,8 @@ import {
     TriggerStatus,
 } from "@/types";
 import { SchedulePicker } from "./SchedulePicker";
-import { TaskEditor } from "./TaskEditor";
-import React from "react";
-import {
-    ReactFlow,
-    Background,
-    Node,
-    Edge,
-    Position,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { TriggerTaskInput } from "./TriggerTaskInput";
+import { ExecutionLogs } from "./ExecutionLogs";
 
 type TriggerDialogProps = {
     view: "create" | "overview";
@@ -67,22 +63,8 @@ type TriggerDialogProps = {
     onTestExecution?: (trigger: Trigger) => void;
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
+    initialTaskPrompt?: string;
 };
-
-// Custom node component for minimal styling
-const TriggerNode = ({ data }: { data: { label: string; active?: boolean } }) => (
-    <div
-        className={`px-4 py-3 rounded-xl border transition-all ${data.active
-                ? "border-border-primary bg-surface-secondary"
-                : "border-border-secondary bg-surface-tertiary"
-            }`}
-        style={{ minWidth: 120, textAlign: "center" }}
-    >
-        <span className="text-sm text-text-body">{data.label}</span>
-    </div>
-);
-
-const nodeTypes = { triggerNode: TriggerNode };
 
 export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     view,
@@ -95,10 +77,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     onTestExecution,
     isOpen,
     onOpenChange,
+    initialTaskPrompt = "",
 }) => {
     const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
-    const [currentStep, setCurrentStep] = useState(1);
     const [selectedExecution, setSelectedExecution] = useState<TriggerExecution | null>(null);
     const [showLogs, setShowLogs] = useState(false);
     const [formData, setFormData] = useState<TriggerInput>({
@@ -114,60 +96,52 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         max_executions_per_day: undefined,
         is_single_execution: false,
     });
+    const [selectedTools, setSelectedTools] = useState<any[]>([]);
+    const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
 
-    // Graph nodes and edges
-    const nodes: Node[] = [
-        {
-            id: "trigger",
-            type: "triggerNode",
-            position: { x: 60, y: 40 },
-            data: { label: "When", active: currentStep === 1 },
-            draggable: false,
-            sourcePosition: Position.Bottom,
-        },
-        {
-            id: "action",
-            type: "triggerNode",
-            position: { x: 60, y: 160 },
-            data: { label: "Do", active: currentStep === 2 },
-            draggable: false,
-            targetPosition: Position.Top,
-        },
-    ];
-
-    const edges: Edge[] = [
-        {
-            id: "trigger-action",
-            source: "trigger",
-            target: "action",
-            style: { stroke: "var(--border-secondary)", strokeWidth: 2 },
-        },
-    ];
-
+    // Reset form when dialog opens
     useEffect(() => {
         if (view === "create" && isOpen) {
-            setCurrentStep(1);
-            setFormData({
-                name: "",
-                description: "",
-                trigger_type: TriggerType.Schedule,
-                custom_cron_expression: "0 */1 * * *",
-                listener_type: ListenerType.ChatAgent,
-                system_message: "",
-                agent_model: "",
-                task_prompt: "",
-                max_executions_per_hour: undefined,
-                max_executions_per_day: undefined,
-                is_single_execution: false,
-            });
+            // If editing an existing trigger, populate the form with its data
+            if (selectedTrigger) {
+                setFormData({
+                    name: selectedTrigger.name || "",
+                    description: selectedTrigger.description || "",
+                    trigger_type: selectedTrigger.trigger_type || TriggerType.Schedule,
+                    custom_cron_expression: selectedTrigger.custom_cron_expression || "0 */1 * * *",
+                    listener_type: selectedTrigger.listener_type || ListenerType.ChatAgent,
+                    system_message: selectedTrigger.system_message || "",
+                    agent_model: selectedTrigger.agent_model || "",
+                    task_prompt: selectedTrigger.task_prompt || "",
+                    max_executions_per_hour: selectedTrigger.max_executions_per_hour,
+                    max_executions_per_day: selectedTrigger.max_executions_per_day,
+                    is_single_execution: selectedTrigger.is_single_execution || false,
+                    webhook_url: selectedTrigger.webhook_url,
+                });
+            } else {
+                // Reset form for new trigger, use initialTaskPrompt if provided
+                setFormData({
+                    name: "",
+                    description: "",
+                    trigger_type: TriggerType.Schedule,
+                    custom_cron_expression: "0 */1 * * *",
+                    listener_type: ListenerType.ChatAgent,
+                    system_message: "",
+                    agent_model: "",
+                    task_prompt: initialTaskPrompt,
+                    max_executions_per_hour: undefined,
+                    max_executions_per_day: undefined,
+                    is_single_execution: false,
+                });
+            }
         }
-    }, [view, isOpen]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]); // Only trigger on isOpen change to capture initialTaskPrompt at open time
 
     const handleClose = () => {
         onOpenChange(false);
         setShowLogs(false);
         setSelectedExecution(null);
-        setCurrentStep(1);
     };
 
     const handleSubmit = async (e?: React.FormEvent) => {
@@ -191,22 +165,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             toast.error(t("triggers.failed-to-create"));
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const handleNext = () => {
-        if (currentStep === 1) {
-            if (!formData.name.trim()) {
-                toast.error(t("triggers.name-required"));
-                return;
-            }
-            setCurrentStep(2);
-        }
-    };
-
-    const handleBack = () => {
-        if (currentStep === 2) {
-            setCurrentStep(1);
         }
     };
 
@@ -376,102 +334,104 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         );
     };
 
-    // Step 1: Trigger settings
-    const renderStep1 = () => (
-        <div className="w-full space-y-5">
-            <div className="space-y-2">
-                <Label htmlFor="name" className="font-medium text-sm">{t("triggers.name")}</Label>
-                <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={t("triggers.name-placeholder")} />
-            </div>
-            <div className="space-y-2">
-                <Label className="font-medium text-sm">{t("triggers.type")}</Label>
-                <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
-                    <TabsList className="w-full">
-                        <TabsTrigger value={TriggerType.Schedule} className="flex-1"><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
-                        <TabsTrigger value={TriggerType.Webhook} className="flex-1"><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value={TriggerType.Schedule}>
-                        <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
-                    </TabsContent>
-                    <TabsContent value={TriggerType.Webhook}>
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="webhook_function">{t("triggers.webhook-function")}</Label>
-                                <Select value={formData.listener_type || ""} onValueChange={(value: ListenerType) => setFormData({ ...formData, listener_type: value })}>
-                                    <SelectTrigger><SelectValue placeholder={t("triggers.select-listener")} /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={ListenerType.ChatAgent}>{t("triggers.get")}</SelectItem>
-                                        <SelectItem value={ListenerType.Workforce}>{t("triggers.post")}</SelectItem>
-                                    </SelectContent>
-                                </Select>
+    const renderCreateContent = () => {
+        return (
+            <div className="flex-1 w-full h-full overflow-y-auto scrollbar-always-visible p-6 space-y-6 bg-surface-disabled">
+                {/* Trigger Name */}
+                <Input
+                    id="name"
+                    value={formData.name}
+                    required
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    title={t("triggers.name")}
+                    placeholder={t("triggers.name-placeholder")}
+                />
+
+                {/* Task Prompt - moved from step 2 */}
+                <TriggerTaskInput
+                    value={formData.task_prompt || ""}
+                    onChange={(value) => setFormData({ ...formData, task_prompt: value })}
+                />
+
+                {/* Trigger Type */}
+                <div className="space-y-3">
+                    <Label className="font-bold text-sm">{t("triggers.type")}</Label>
+                    <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
+                        <TabsList className="w-full">
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1"><Clock className="w-4 h-4 mr-2" />{t("triggers.scheduled")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1"><Globe className="w-4 h-4 mr-2" />{t("triggers.conditional")}</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value={TriggerType.Schedule}>
+                            <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
+                        </TabsContent>
+                        <TabsContent value={TriggerType.Webhook}>
+                            <div className="space-y-4">
+                                <ToolSelect
+                                    onShowEnvConfig={() => { }}
+                                    onSelectedToolsChange={setSelectedTools}
+                                    initialSelectedTools={selectedTools}
+                                    ref={toolSelectRef}
+                                />
+                                <div className="space-y-2">
+                                    <Label htmlFor="webhook_function">{t("triggers.webhook-function")}</Label>
+                                    <Select value={formData.listener_type || ""} onValueChange={(value: ListenerType) => setFormData({ ...formData, listener_type: value })}>
+                                        <SelectTrigger><SelectValue placeholder={t("triggers.select-listener")} /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={ListenerType.ChatAgent}>{t("triggers.get")}</SelectItem>
+                                            <SelectItem value={ListenerType.Workforce}>{t("triggers.post")}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Input
+                                        id="webhook_url" value={formData.webhook_url || ""}
+                                        title={t("triggers.webhook-url")}
+                                        onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })}
+                                        placeholder="https://example.com/webhook" type="url" />
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="webhook_url">{t("triggers.webhook-url")}</Label>
-                                <Input id="webhook_url" value={formData.webhook_url || ""} onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })} placeholder="https://example.com/webhook" type="url" />
-                            </div>
-                        </div>
-                    </TabsContent>
-                </Tabs>
-            </div>
-            <div className="space-y-2">
-                <Label className="font-medium text-sm">Execution Settings</Label>
-                <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="max_per_hour" className="text-xs">{t("triggers.max-per-hour")}</Label>
-                        <Input id="max_per_hour" type="number" value={formData.max_executions_per_hour || ""} onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })} placeholder="10" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="max_per_day" className="text-xs">{t("triggers.max-per-day")}</Label>
-                        <Input id="max_per_day" type="number" value={formData.max_executions_per_day || ""} onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })} placeholder="100" />
-                    </div>
-                    <div className="flex items-end space-x-2 pb-2">
-                        <Switch id="single_execution" checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
-                        <Label htmlFor="single_execution" className="text-xs">{t("triggers.single-execution")}</Label>
-                    </div>
+                        </TabsContent>
+                    </Tabs>
                 </div>
-            </div>
-        </div>
-    );
 
-    // Step 2: Task definition
-    const renderStep2 = () => (
-        <div className="w-full space-y-4">
-            <TaskEditor value={formData.task_prompt || ""} onChange={(value) => setFormData({ ...formData, task_prompt: value })} />
-        </div>
-    );
-
-    const renderCreateContent = () => (
-        <div className="flex flex-row h-full min-h-[400px]">
-            {/* Left: Graph */}
-            <div className="w-[200px] border-r border-border-secondary flex-shrink-0">
-                <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    nodeTypes={nodeTypes}
-                    fitView
-                    panOnDrag={false}
-                    zoomOnScroll={false}
-                    zoomOnPinch={false}
-                    zoomOnDoubleClick={false}
-                    preventScrolling={false}
-                    nodesDraggable={false}
-                    nodesConnectable={false}
-                    elementsSelectable={false}
-                    proOptions={{ hideAttribution: true }}
-                >
-                    <Background color="transparent" />
-                </ReactFlow>
+                {/* Execution Settings - Accordion */}
+                <Accordion type="single" collapsible className="w-full">
+                    <AccordionItem value="execution-settings" className="border-none">
+                        <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
+                            <span className="font-bold text-sm text-text-heading">Execution Settings</span>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <div className="grid grid-cols-3 gap-4 pt-2">
+                                <Input
+                                    id="max_per_hour"
+                                    title={t("triggers.max-per-hour")}
+                                    placeholder={t("triggers.max-per-hour-placeholder")}
+                                    type="number" value={formData.max_executions_per_hour || ""}
+                                    onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
+                                />
+                                <Input
+                                    id="max_per_day"
+                                    title={t("triggers.max-per-day")}
+                                    placeholder={t("triggers.max-per-day-placeholder")}
+                                    type="number" value={formData.max_executions_per_day || ""}
+                                    onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
+                                />
+                                <div className="flex flex-col items-start space-x-2">
+                                    <Label htmlFor="single_execution" className="text-body-md font-bold mb-3">{t("triggers.single-execution")}</Label>
+                                    <Switch id="single_execution" className="my-2" checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
+                                </div>
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
             </div>
-            {/* Right: Form */}
-            <div className="flex-1 px-6 py-4 overflow-auto">
-                {currentStep === 1 && renderStep1()}
-                {currentStep === 2 && renderStep2()}
-            </div>
-        </div>
-    );
+        );
+    };
 
     const getDialogTitle = () => {
-        if (view === "create") return currentStep === 1 ? t("triggers.create-trigger-agent") : t("triggers.define-task");
+        if (view === "create") {
+            return t("triggers.create-trigger-agent");
+        }
         if (selectedTrigger) return selectedTrigger.name;
         return t("triggers.trigger-details");
     };
@@ -480,22 +440,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         if (view !== "create") return null;
         return (
             <DialogFooter>
-                <div className="flex w-full justify-between">
-                    <div>
-                        {currentStep === 2 && (
-                            <Button variant="ghost" onClick={handleBack}>Back</Button>
-                        )}
-                    </div>
-                    <div>
-                        {currentStep === 1 && (
-                            <Button variant="primary" onClick={handleNext}>Next</Button>
-                        )}
-                        {currentStep === 2 && (
-                            <Button variant="primary" onClick={() => handleSubmit()} disabled={isLoading}>
-                                {isLoading ? t("common.creating") : t("common.create")}
-                            </Button>
-                        )}
-                    </div>
+                <div className="flex w-full justify-end">
+                    <Button variant="primary" onClick={() => handleSubmit()} disabled={isLoading}>
+                        {isLoading ? t("common.creating") : t("common.create")}
+                    </Button>
                 </div>
             </DialogFooter>
         );
@@ -507,9 +455,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 size="lg"
                 showCloseButton={true}
                 onClose={handleClose}
-                className={view === "create" ? "max-w-[900px]" : showLogs ? "max-w-[1100px]" : "max-w-[700px]"}
+                className={view === "create" ? "max-w-[600px] h-[600px] overflow-hidden flex flex-col" : showLogs ? "max-w-[1100px]" : "max-w-[700px]"}
+                aria-describedby={undefined}
             >
-                <DialogHeader title={getDialogTitle()}>
+                <DialogHeader
+                    title={getDialogTitle()}
+                    subtitle={view === "create" ? t("triggers.create-trigger-subtitle", { defaultValue: "Set up an automated trigger for your agent" }) : undefined}
+                >
                     {view === "overview" && selectedTrigger && (
                         <div className="flex items-center gap-2">
                             <Button variant="ghost" size="sm" onClick={handleEditClick} className="gap-1"><Pencil className="w-4 h-4" />{t("triggers.edit")}</Button>
@@ -517,7 +469,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         </div>
                     )}
                 </DialogHeader>
-                <DialogContentSection className={view === "create" ? "" : "max-h-[60vh] overflow-auto"}>
+                <DialogContentSection className={view === "create" ? "p-0 flex-1 overflow-hidden" : "max-h-[60vh] overflow-auto"}>
                     {view === "overview" && !selectedTrigger && renderEmptyState()}
                     {view === "overview" && selectedTrigger && renderOverviewContent()}
                     {view === "create" && renderCreateContent()}

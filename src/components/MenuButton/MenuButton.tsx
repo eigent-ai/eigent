@@ -14,7 +14,7 @@ const menuButtonVariants = cva(
 				info: "text-text-body hover:bg-menubutton-fill-active focus:bg-menubutton-fill-active data-[state=on]:text-text-body data-[state=on]:font-bold",
 			},
 			size: {
-				xs: "px-2 py-1 text-label-sm font-regular [&_svg]:size-[16px] rounded-lg",
+				xs: "px-2 py-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg",
 				sm: "p-2 gap-1 text-label-sm font-bold [&_svg]:size-[20px] rounded-lg",
 				md: "w-10 h-10 text-label-md font-bold [&_svg]:size-[24px] rounded-xl",
 				iconxs: "w-8 h-8 gap-1 font-bold [&_svg]:size-[16px] rounded-lg",

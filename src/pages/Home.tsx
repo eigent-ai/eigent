@@ -14,12 +14,11 @@ import {
 	ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import UpdateElectron from "@/components/update";
-import Overview from "./Project/Overview";
+import Overview from "./Project/Triggers";
 import { usePageTabStore } from "@/store/pageTabStore";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
-import { LayoutGrid, Inbox, Pin, Plus, Users, Zap, FileText } from "lucide-react";
+import { LayoutGrid, Inbox, Zap, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import FolderIcon from "@/assets/Folder.svg";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -29,11 +28,23 @@ import {
 import { AddWorker } from "@/components/AddWorker";
 import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
 import { TriggerInput } from "@/types";
+import { useAuthStore } from "@/store/authStore";
 
 export default function Home() {
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
-	const { activeTab, activeWorkspaceTab, setActiveWorkspaceTab, chatPanelPosition } = usePageTabStore();
+	const {
+		activeTab,
+		activeWorkspaceTab,
+		setActiveWorkspaceTab,
+		chatPanelPosition,
+		hasTriggers,
+		setHasTriggers,
+		hasAgentFiles,
+		setHasAgentFiles,
+		unviewedTabs,
+		markTabAsUnviewed
+	} = usePageTabStore();
 
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 	const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
@@ -65,6 +76,11 @@ export default function Home() {
 							fileName: file.name,
 							content: reader.result,
 						});
+						// Mark the inbox tab as having new content
+						setHasAgentFiles(true);
+						if (activeWorkspaceTab !== 'inbox') {
+							markTabAsUnviewed('inbox');
+						}
 					}
 				};
 				reader.readAsArrayBuffer(file);
@@ -84,11 +100,18 @@ export default function Home() {
 	const handleTriggerCreated = (data: TriggerInput) => {
 		console.log('Trigger created:', data);
 		setTriggerDialogOpen(false);
+		// Mark the triggers tab as having new content
+		setHasTriggers(true);
+		if (activeWorkspaceTab !== 'overview') {
+			markTabAsUnviewed('overview');
+		}
 	};
 
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
+
+	const authStore = useAuthStore.getState();
 
 	// Add webview-show listener in useEffect with cleanup
 	useEffect(() => {
@@ -103,6 +126,29 @@ export default function Home() {
 			window.ipcRenderer?.off("webview-show", handleWebviewShow);
 		};
 	}, []); // Empty dependency array means this only runs once
+
+	// Detect files and triggers when project loads
+	useEffect(() => {
+		const detectAgentFiles = async () => {
+			if (!projectStore.activeProjectId || !authStore.email) return;
+			try {
+				const files = await window.ipcRenderer?.invoke(
+					"get-project-file-list",
+					authStore.email,
+					projectStore.activeProjectId
+				);
+				setHasAgentFiles(files && files.length > 0);
+			} catch (error) {
+				console.error('Error detecting agent files:', error);
+			}
+		};
+
+		// For triggers, since we're using mock data, we set hasTriggers to true
+		// When you have real trigger data, replace this with an API call
+		setHasTriggers(true); // Mock data has triggers
+
+		detectAgentFiles();
+	}, [projectStore.activeProjectId, authStore.email, setHasAgentFiles, setHasTriggers]);
 
 	useEffect(() => {
 		let taskAssigning = [
@@ -228,7 +274,6 @@ export default function Home() {
 				width: rect.width,
 				height: rect.height,
 			});
-			console.log("setSize", rect);
 		}
 	};
 
@@ -379,14 +424,6 @@ export default function Home() {
 													className="bg-surface-primary rounded-lg"
 												>
 													<MenuToggleItem
-														value="overview"
-														variant="info"
-														size="xs"
-														icon={<Pin />}
-													>
-														Tasks
-													</MenuToggleItem>
-													<MenuToggleItem
 														value="workforce"
 														variant="info"
 														size="xs"
@@ -399,33 +436,42 @@ export default function Home() {
 														variant="info"
 														size="xs"
 														icon={<Inbox />}
+														showSubIcon={unviewedTabs.has('inbox')}
+														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
 													>
 														Agent Folder
 													</MenuToggleItem>
+													<MenuToggleItem
+														value="overview"
+														variant="info"
+														size="xs"
+														icon={<Zap />}
+														showSubIcon={unviewedTabs.has('overview')}
+														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+													>
+														Triggers
+													</MenuToggleItem>
 												</MenuToggleGroup>
 											</div>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<Button variant="primary" size="sm" className="rounded-lg">
-														<Plus />
-														Add
-													</Button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align="end">
-													<DropdownMenuItem onClick={() => setAddWorkerDialogOpen(true)}>
-														<Users className="h-4 w-4" />
-														Add worker
-													</DropdownMenuItem>
-													<DropdownMenuItem onClick={() => setTriggerDialogOpen(true)}>
-														<Zap className="h-4 w-4" />
-														Add trigger
-													</DropdownMenuItem>
-													<DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-														<FileText className="h-4 w-4" />
-														Upload files
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
+											<Button
+												variant="primary"
+												size="sm"
+												className="rounded-lg"
+												onClick={() => {
+													if (activeWorkspaceTab === 'workforce') {
+														setAddWorkerDialogOpen(true);
+													} else if (activeWorkspaceTab === 'inbox') {
+														fileInputRef.current?.click();
+													} else if (activeWorkspaceTab === 'overview') {
+														setTriggerDialogOpen(true);
+													}
+												}}
+											>
+												<Plus />
+												{activeWorkspaceTab === 'workforce' && 'Add Worker'}
+												{activeWorkspaceTab === 'inbox' && 'Add Files'}
+												{activeWorkspaceTab === 'overview' && 'Add Trigger'}
+											</Button>
 
 											{/* Hidden file input for upload */}
 											<input

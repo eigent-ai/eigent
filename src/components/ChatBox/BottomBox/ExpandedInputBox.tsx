@@ -208,6 +208,7 @@ export const ExpandedInputBox = ({
             <div className="flex-1 px-4">
                 <Inputbox
                     className="min-h-40"
+                    hideExpandButton={true}
                     {...inputProps} />
             </div>
 
