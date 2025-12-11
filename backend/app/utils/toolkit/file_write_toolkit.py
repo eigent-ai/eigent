@@ -5,7 +5,7 @@ from camel.toolkits import FileToolkit as BaseFileToolkit
 from app.component.environment import env
 from app.service.task import process_task
 from app.service.task import ActionWriteFileData, Agents, get_task_lock
-from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
+from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit, _safe_put_queue
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
@@ -46,12 +46,15 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
         res = super().write_to_file(title, content, filename, encoding, use_latex)
         if "Content successfully written to file: " in res:
             task_lock = get_task_lock(self.api_task_id)
-            asyncio.create_task(
-                task_lock.put_queue(
-                    ActionWriteFileData(
-                        process_task_id=process_task.get(),
-                        data=res.replace("Content successfully written to file: ", ""),
-                    )
+            # Capture ContextVar value before creating async task
+            current_process_task_id = process_task.get("")
+
+            # Use _safe_put_queue to handle both sync and async contexts
+            _safe_put_queue(
+                task_lock,
+                ActionWriteFileData(
+                    process_task_id=current_process_task_id,
+                    data=res.replace("Content successfully written to file: ", ""),
                 )
             )
         return res
