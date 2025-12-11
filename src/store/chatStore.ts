@@ -484,9 +484,20 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
 			const use_external_cdp = await window.ipcRenderer.invoke('get-use-external-cdp');
 			const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
-			console.log('[FRONTEND CDP] Project:', project_id, 'Browser port:', browser_port, 'External CDP:', use_external_cdp);
-			console.log('[FRONTEND CDP] CDP Browsers count:', cdp_browsers?.length || 0);
-			console.log('[FRONTEND CDP] CDP Browsers details:', JSON.stringify(cdp_browsers));
+			console.log('[FRONTEND CDP TASK] ========================================');
+			console.log('[FRONTEND CDP TASK] Starting new task, requesting CDP configuration...');
+			console.log('[FRONTEND CDP TASK] Project:', project_id);
+			console.log('[FRONTEND CDP TASK] Browser port:', browser_port);
+			console.log('[FRONTEND CDP TASK] External CDP:', use_external_cdp);
+			console.log('[FRONTEND CDP TASK] CDP Browsers count:', cdp_browsers?.length || 0);
+			if (cdp_browsers && cdp_browsers.length > 0) {
+				cdp_browsers.forEach((browser: any, idx: number) => {
+					console.log(`[FRONTEND CDP TASK]   Browser ${idx + 1}: port=${browser.port}, isExternal=${browser.isExternal}, name="${browser.name}"`);
+				});
+			} else {
+				console.warn('[FRONTEND CDP TASK]   ⚠️  No browsers in pool - all agents will use default port');
+			}
+			console.log('[FRONTEND CDP TASK] ========================================');
 
 			// Lock the chatStore reference at the start of SSE session to prevent focus changes
 			// during active message processing

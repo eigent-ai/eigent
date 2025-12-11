@@ -117,16 +117,20 @@ export default function Browser() {
 	const loadCdpBrowsers = async () => {
 		if (window.electronAPI?.getCdpBrowsers) {
 			try {
+				console.log('[FRONTEND CDP LOAD] Loading CDP browser pool...');
 				const browsers = await window.electronAPI.getCdpBrowsers();
+				console.log('[FRONTEND CDP LOAD] Loaded browsers:', browsers);
+				console.log(`[FRONTEND CDP LOAD] Pool size: ${browsers.length}`);
 				setCdpBrowsers(browsers);
 
 				// Also load running browser ports
 				if (window.electronAPI?.getRunningBrowserPorts) {
 					const ports = await window.electronAPI.getRunningBrowserPorts();
+					console.log('[FRONTEND CDP LOAD] Running browser ports:', ports);
 					setRunningPorts(ports);
 				}
 			} catch (error) {
-				console.error("Failed to load CDP browsers:", error);
+				console.error("[FRONTEND CDP LOAD] Failed to load CDP browsers:", error);
 			}
 		}
 	};
@@ -199,17 +203,22 @@ export default function Browser() {
 		setShowUseExistingDialog(false);
 		if (pendingPort) {
 			try {
+				console.log(`[FRONTEND CDP ADD] Attempting to add external browser on port ${pendingPort}`);
 				// Add browser to pool
 				if (window.electronAPI?.addCdpBrowser) {
 					const result = await window.electronAPI.addCdpBrowser(pendingPort, true, `External Browser (${pendingPort})`);
+					console.log(`[FRONTEND CDP ADD] Result:`, result);
 					if (result.success) {
+						console.log(`[FRONTEND CDP ADD] ✅ Successfully added browser ${result.browser.id} on port ${pendingPort}`);
 						toast.success(`Added external browser on port ${pendingPort} to pool`);
 						await loadCdpBrowsers();
 					} else {
+						console.error(`[FRONTEND CDP ADD] ❌ Failed to add browser:`, result.error);
 						toast.error(result.error || "Failed to add browser to pool");
 					}
 				}
 			} catch (error: any) {
+				console.error(`[FRONTEND CDP ADD] ❌ Exception:`, error);
 				toast.error(error.message || "Failed to add browser to pool");
 			}
 		}
@@ -232,19 +241,26 @@ export default function Browser() {
 				return;
 			}
 
+			console.log(`[FRONTEND CDP LAUNCH] Launching browser on port ${port}...`);
 			toast.loading(`Launching browser on port ${port}...`, { id: 'launch-browser' });
 
 			const result = await window.electronAPI.launchCdpBrowser(port);
+			console.log(`[FRONTEND CDP LAUNCH] Launch result:`, result);
 
 			if (result.success) {
+				console.log(`[FRONTEND CDP LAUNCH] ✅ Browser launched successfully on port ${port}`);
 				toast.success(`Browser launched successfully on port ${port}`, { id: 'launch-browser' });
 
 				// Add launched browser to pool
+				console.log(`[FRONTEND CDP LAUNCH] Adding launched browser to pool...`);
 				if (window.electronAPI?.addCdpBrowser) {
 					const addResult = await window.electronAPI.addCdpBrowser(port, false, `Launched Browser (${port})`);
+					console.log(`[FRONTEND CDP LAUNCH] Add to pool result:`, addResult);
 					if (addResult.success) {
+						console.log(`[FRONTEND CDP LAUNCH] ✅ Browser added to pool: ${addResult.browser.id}`);
 						await loadCdpBrowsers();
 					} else {
+						console.error(`[FRONTEND CDP LAUNCH] ❌ Failed to add to pool:`, addResult.error);
 						toast.error(addResult.error || "Failed to add browser to pool");
 					}
 				}
@@ -256,9 +272,11 @@ export default function Browser() {
 					data: result.data,
 				});
 			} else {
+				console.error(`[FRONTEND CDP LAUNCH] ❌ Launch failed:`, result.error);
 				toast.error(result.error || "Failed to launch browser", { id: 'launch-browser' });
 			}
 		} catch (error: any) {
+			console.error(`[FRONTEND CDP LAUNCH] ❌ Exception:`, error);
 			toast.error(error.message || "Failed to launch browser", { id: 'launch-browser' });
 		}
 	};
