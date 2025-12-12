@@ -20,6 +20,7 @@ let lock = false;
 export default function SignUp() {
 	const app = HAS_STACK_KEYS ? useStackApp() : null;
 	const { setAuth, initState } = useAuthStore();
+	const isLocalMode = import.meta.env.VITE_USE_LOCAL_PROXY === "true";
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
@@ -84,6 +85,10 @@ export default function SignUp() {
 	};
 
 	const handleRegister = async () => {
+		if (!isLocalMode) {
+			window.open("https://www.eigent.ai/signup", "_blank", "noopener,noreferrer");
+			return;
+		}
 		if (!validateForm()) {
 			return;
 		}
@@ -150,6 +155,10 @@ export default function SignUp() {
 	};
 
 	const handleReloadBtn = async (type: string) => {
+		if (!isLocalMode) {
+			window.open("https://www.eigent.ai/signup", "_blank", "noopener,noreferrer");
+			return;
+		}
 		localStorage.setItem("invite_code", formData.invite_code);
 		console.log("handleReloadBtn1", type);
 		const cookies = document.cookie.split("; ");
@@ -228,6 +237,13 @@ export default function SignUp() {
 			window.ipcRenderer?.off("auth-code-received", handleAuthCode);
 		};
 	}, []);
+
+	useEffect(() => {
+		if (!isLocalMode) {
+			window.open("https://www.eigent.ai/signup", "_blank", "noopener,noreferrer");
+			navigate("/login");
+		}
+	}, [isLocalMode, navigate]);
 
 	return (
 		<div className={`p-2 flex items-center justify-center gap-2 h-full`}>
