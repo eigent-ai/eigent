@@ -21,6 +21,7 @@ let lock = false;
 export default function Login() {
 	const app = HAS_STACK_KEYS ? useStackApp() : null;
 	const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
+	const isLocalMode = import.meta.env.VITE_USE_LOCAL_PROXY === "true";
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [hidePassword, setHidePassword] = useState(true);
@@ -152,6 +153,14 @@ export default function Login() {
 		});
 		console.log("handleReloadBtn2", type);
 		await app.signInWithOAuth(type);
+	};
+
+	const handleSignupClick = () => {
+		if (isLocalMode) {
+			navigate("/signup");
+		} else {
+			window.open("https://www.eigent.ai/signup", "_blank", "noopener,noreferrer");
+		}
 	};
 
 	const handleGetToken = async (code: string) => {
@@ -294,7 +303,7 @@ export default function Login() {
 								<Button
 									variant="ghost"
 									size="sm"
-									onClick={() => navigate("/signup")}
+									onClick={handleSignupClick}
 								>
 									{t("layout.sign-up")}
 								</Button>
