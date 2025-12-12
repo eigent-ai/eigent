@@ -1,32 +1,8 @@
 ---
-title: Models
-description: Configure and deploy your preferred LLM models with Eigent.
-icon: server
+title: "Models (Local Model)"
+description: "Configure and deploy your preferred LLM models with Eigent."
+icon: "server"
 ---
-
-Eigent supports flexible integration and deployment of top LLMs and multimodal models. You can follow the steps below to set up your preferred LLM models.
-
-1. Click Settings
-
-![click_settings](/docs/images/models_settings.png)
-
-2. Close Eigent Cloud Version
-
-![close_eigent](/docs/images/models_close.png)
-
-3. Configure your APIKEY and Model Type
-
-![configure_api](/docs/images/models_configure_models.png)
-
-4. Configure the Google Search toolkit
-
-![configure_searchtools](/docs/images/models_configure_tools.png)
-
-![configure_searchtoolsapi](/docs/images/models_configure_tools_key.png)
-
-You can refer to the following document for detailed information on how to configure **GOOGLE_API_KEY** and **SEARCH_ENGINE_ID :** https://developers.google.com/custom-search/v1/overview
-
-Now，start enjoying Eigent！
 
 ## **Self-Host Model**
 
@@ -71,8 +47,7 @@ ollama pull qwen2.5:7b
 
 ![configure_searchtools](/docs/images/models_configure_tools.png)
 
-![configure_searchtoolsapi](/docs/images/models_configure_tools_key.png)
-You can refer to the following document for detailed information on how to configure **GOOGLE_API_KEY** and **SEARCH_ENGINE_ID :** https://developers.google.com/custom-search/v1/overview
+<img src="/docs/images/models_configure_tools_key.png" alt="configure_searchtoolsapi" /> You can refer to the following document for detailed information on how to configure **GOOGLE_API_KEY** and **SEARCH_ENGINE_ID :** https://developers.google.com/custom-search/v1/overview
 
 ## **API KEY Reference**
 

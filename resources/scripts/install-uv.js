@@ -66,7 +66,9 @@ async function downloadUvBinary(
 	// Download URL for the specific binary
 	const downloadUrl = `${uv_download_url}/${version}/${packageName}`;
 	const tempdir = os.tmpdir();
-	const tempFilename = path.join(tempdir, packageName);
+	// Use unique temp filename to avoid race conditions when multiple processes install simultaneously
+	const uniqueSuffix = `${process.pid}-${Date.now()}`;
+	const tempFilename = path.join(tempdir, `${uniqueSuffix}-${packageName}`);
 
 	try {
 		console.log(`Downloading uv ${version} for ${platformKey}...`);

@@ -155,15 +155,6 @@ export const useInstallationSetup = () => {
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
-        } else if (initState !== 'done' && toolResult) {
-          if (toolResult.success && !toolResult.isInstalled) {
-             console.log('[useInstallationSetup] Tools missing and not installing. Starting installation...');
-             try {
-               await performInstallation();
-             } catch (installError) {
-               console.error('[useInstallationSetup] Installation failed:', installError);
-             }
-          }
         }
       } catch (err) {
         console.error('[useInstallationSetup] Failed to check installation status:', err);
