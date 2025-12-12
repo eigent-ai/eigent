@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import platform
+import threading
 from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
@@ -70,6 +71,74 @@ from app.service.task import set_process_task
 
 NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
 
+# Global counter for round-robin browser selection from pool
+_browser_selection_counter = 0
+
+# CDP Browser occupation management
+class CdpBrowserPoolManager:
+    """Manages CDP browser pool occupation to ensure parallel tasks use different browsers."""
+
+    def __init__(self):
+        self._occupied_ports = {}  # port -> session_id mapping
+        self._lock = threading.Lock()
+
+    def acquire_browser(self, cdp_browsers: list[dict], session_id: str) -> dict | None:
+        """
+        Acquire an available browser from the pool.
+
+        Args:
+            cdp_browsers: List of browser configurations
+            session_id: Unique session identifier for this toolkit instance
+
+        Returns:
+            Browser configuration dict or None if no browsers available
+        """
+        with self._lock:
+            # Find first unoccupied browser
+            for browser in cdp_browsers:
+                port = browser.get('port')
+                if port and port not in self._occupied_ports:
+                    self._occupied_ports[port] = session_id
+                    traceroot_logger.info(
+                        f"Acquired browser on port {port} for session {session_id}. "
+                        f"Occupied: {list(self._occupied_ports.keys())}"
+                    )
+                    return browser
+
+            traceroot_logger.warning(
+                f"No available browsers in pool for session {session_id}. "
+                f"All occupied: {list(self._occupied_ports.keys())}"
+            )
+            return None
+
+    def release_browser(self, port: int, session_id: str):
+        """
+        Release a browser back to the pool.
+
+        Args:
+            port: Browser port to release
+            session_id: Session identifier
+        """
+        with self._lock:
+            if port in self._occupied_ports and self._occupied_ports[port] == session_id:
+                del self._occupied_ports[port]
+                traceroot_logger.info(
+                    f"Released browser on port {port} from session {session_id}. "
+                    f"Occupied: {list(self._occupied_ports.keys())}"
+                )
+            else:
+                traceroot_logger.warning(
+                    f"Attempted to release browser on port {port} but it was not occupied by {session_id}"
+                )
+
+    def get_occupied_ports(self) -> list[int]:
+        """Get list of currently occupied ports."""
+        with self._lock:
+            return list(self._occupied_ports.keys())
+
+# Global CDP browser pool manager instance
+_cdp_pool_manager = CdpBrowserPoolManager()
+
 
 class ListenChatAgent(ChatAgent):
     @traceroot.trace()
@@ -133,6 +202,10 @@ class ListenChatAgent(ChatAgent):
         )
         self.api_task_id = api_task_id
         self.agent_name = agent_name
+
+        # CDP management callbacks (set by search_agent)
+        self._cdp_acquire_callback = None  # Called when cloning to acquire new CDP browser
+        self._cdp_release_callback = None  # Called when agent is destroyed to release CDP browser
 
     process_task_id: str = ""
 
@@ -472,11 +545,97 @@ class ListenChatAgent(ChatAgent):
     @traceroot.trace()
     def clone(self, with_memory: bool = False) -> ChatAgent:
         """Please see super.clone()"""
+        import uuid
+
+        # Generate unique clone ID for tracking
+        clone_id = str(uuid.uuid4())[:8]
+
+        # Get clone context (task info if available)
+        task_context = "UNKNOWN"
+        if hasattr(self, 'process_task_id') and self.process_task_id:
+            task_context = f"task_id={self.process_task_id}"
+
+        traceroot_logger.info(
+            f"[CLONE START] Clone ID: {clone_id}, "
+            f"Parent Agent: {self.agent_id}, "
+            f"Agent Name: {self.agent_name}, "
+            f"Context: {task_context}"
+        )
+
         system_message = None if with_memory else self._original_system_message
 
+        # If this agent has CDP acquire callback, acquire CDP BEFORE cloning tools
+        # This ensures HybridBrowserToolkit clones with the correct CDP port
+        new_cdp_port = None
+        new_cdp_session = None
+
+        if hasattr(self, '_cdp_acquire_callback') and callable(self._cdp_acquire_callback):
+            # Temporarily store this for use during toolkit cloning
+            import uuid
+            new_cdp_session = str(uuid.uuid4())[:8]
+
+            # Get the options from the parent agent (stored during agent creation)
+            if hasattr(self, '_cdp_options'):
+                options = self._cdp_options
+                cdp_browsers = options.cdp_browsers if hasattr(options, 'cdp_browsers') else []
+
+                if cdp_browsers:
+                    from app.component.environment import env
+                    selected_browser = _cdp_pool_manager.acquire_browser(cdp_browsers, new_cdp_session)
+
+                    if selected_browser:
+                        new_cdp_port = selected_browser.get('port', env('browser_port', '9222'))
+                        traceroot_logger.info(
+                            f"[CLONE {clone_id}] Pre-acquired CDP browser port={new_cdp_port} for session={new_cdp_session}"
+                        )
+                    else:
+                        new_cdp_port = cdp_browsers[0].get('port', env('browser_port', '9222'))
+                        traceroot_logger.warning(
+                            f"[CLONE {clone_id}] No available browsers, using first: port={new_cdp_port}"
+                        )
+
+                    # Temporarily modify HybridBrowserToolkit's CDP config for cloning
+                    if hasattr(self, '_browser_toolkit'):
+                        toolkit = self._browser_toolkit
+                        # Temporarily override the CDP URL for cloning
+                        original_cdp_url = toolkit.config_loader.get_browser_config().cdp_url
+                        original_ws_config_cdp = toolkit._ws_config.get('cdpUrl') if hasattr(toolkit, '_ws_config') else None
+
+                        # Update both config_loader and _ws_config
+                        toolkit.config_loader.get_browser_config().cdp_url = f"http://localhost:{new_cdp_port}"
+                        if hasattr(toolkit, '_ws_config') and toolkit._ws_config:
+                            toolkit._ws_config['cdpUrl'] = f"http://localhost:{new_cdp_port}"
+
+                        # Store originals for restoration
+                        toolkit._temp_original_cdp_url = original_cdp_url
+                        toolkit._temp_original_ws_config_cdp = original_ws_config_cdp
+
+                        traceroot_logger.info(
+                            f"[CLONE {clone_id}] Temporarily set CDP URL to http://localhost:{new_cdp_port} for cloning "
+                            f"(parent config was {original_cdp_url}, parent ws_config was {original_ws_config_cdp})"
+                        )
+                    else:
+                        traceroot_logger.warning(f"[CLONE {clone_id}] No _browser_toolkit found on agent, CDP URL not modified")
+
         # Clone tools and collect toolkits that need registration
+        traceroot_logger.info(f"[CLONE {clone_id}] Calling _clone_tools()...")
         cloned_tools, toolkits_to_register = self._clone_tools()
-        
+        traceroot_logger.info(f"[CLONE {clone_id}] _clone_tools returned {len(cloned_tools)} tools, {len(toolkits_to_register)} toolkits to register")
+        for idx, tk in enumerate(toolkits_to_register):
+            traceroot_logger.info(f"[CLONE {clone_id}] Toolkit {idx}: {tk.__class__.__name__}, session={getattr(tk, '_session_id', 'N/A')}")
+
+        # Restore original CDP URL in parent toolkit
+        if new_cdp_port is not None and hasattr(self, '_browser_toolkit'):
+            toolkit = self._browser_toolkit
+            if hasattr(toolkit, '_temp_original_cdp_url'):
+                toolkit.config_loader.get_browser_config().cdp_url = toolkit._temp_original_cdp_url
+                delattr(toolkit, '_temp_original_cdp_url')
+            if hasattr(toolkit, '_temp_original_ws_config_cdp'):
+                if toolkit._temp_original_ws_config_cdp and hasattr(toolkit, '_ws_config') and toolkit._ws_config:
+                    toolkit._ws_config['cdpUrl'] = toolkit._temp_original_ws_config_cdp
+                delattr(toolkit, '_temp_original_ws_config_cdp')
+            traceroot_logger.info(f"[CLONE {clone_id}] Restored original CDP URL in parent toolkit")
+
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
             agent_name=self.agent_name,
@@ -502,6 +661,44 @@ class ListenChatAgent(ChatAgent):
 
         new_agent.process_task_id = self.process_task_id
 
+        # Copy CDP management data to cloned agent
+        new_agent._cdp_acquire_callback = self._cdp_acquire_callback
+        new_agent._cdp_release_callback = self._cdp_release_callback
+        if hasattr(self, '_cdp_options'):
+            new_agent._cdp_options = self._cdp_options
+
+        # Find and store the cloned browser toolkit on the new agent
+        if toolkits_to_register:
+            traceroot_logger.info(f"[CLONE {clone_id}] toolkits_to_register has {len(toolkits_to_register)} items")
+            for toolkit in toolkits_to_register:
+                toolkit_class_name = toolkit.__class__.__name__ if hasattr(toolkit, '__class__') else 'UNKNOWN'
+                traceroot_logger.info(f"[CLONE {clone_id}] Checking toolkit: {toolkit_class_name}")
+                if hasattr(toolkit, '__class__') and toolkit.__class__.__name__ == 'HybridBrowserToolkit':
+                    new_agent._browser_toolkit = toolkit
+                    traceroot_logger.info(f"[CLONE {clone_id}] Set _browser_toolkit to cloned HybridBrowserToolkit")
+                    break
+        else:
+            traceroot_logger.warning(f"[CLONE {clone_id}] toolkits_to_register is empty!")
+
+        # Set CDP info on cloned agent if we pre-acquired it
+        if new_cdp_port is not None and new_cdp_session is not None:
+            new_agent._cdp_port = new_cdp_port
+            new_agent._cdp_session_id = new_cdp_session
+            traceroot_logger.info(
+                f"[CLONE {clone_id}] Set CDP info on new agent {new_agent.agent_id}: "
+                f"port={new_cdp_port}, session={new_cdp_session}"
+            )
+
+            # Attach cleanup callback
+            if hasattr(new_agent, '_cdp_release_callback') and callable(new_agent._cdp_release_callback):
+                new_agent._cleanup_callback = lambda: new_agent._cdp_release_callback(new_agent)
+        else:
+            # If no CDP pre-acquisition, copy from parent
+            if hasattr(self, '_cdp_port'):
+                new_agent._cdp_port = self._cdp_port
+            if hasattr(self, '_cdp_session_id'):
+                new_agent._cdp_session_id = self._cdp_session_id
+
         # Copy memory if requested
         if with_memory:
             # Get all records from the current memory
@@ -509,6 +706,12 @@ class ListenChatAgent(ChatAgent):
             # Write them to the new agent's memory
             for context_record in context_records:
                 new_agent.memory.write_record(context_record.memory_record)
+
+        traceroot_logger.info(
+            f"[CLONE COMPLETE] Clone ID: {clone_id}, "
+            f"New Agent ID: {new_agent.agent_id}, "
+            f"CDP Port: {new_cdp_port if new_cdp_port else 'N/A'}"
+        )
 
         return new_agent
 
@@ -523,6 +726,7 @@ def agent_model(
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
+    cleanup_callback: Callable[[], None] | None = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -533,7 +737,7 @@ def agent_model(
         )
     )
 
-    return ListenChatAgent(
+    agent = ListenChatAgent(
         options.project_id,
         agent_name,
         system_message,
@@ -560,6 +764,12 @@ def agent_model(
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
     )
+
+    # Attach cleanup callback if provided
+    if cleanup_callback:
+        agent._cleanup_callback = cleanup_callback
+
+    return agent
 
 
 @traceroot.trace()
@@ -759,15 +969,178 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
+    # Build task-specific log directory path for browser logs
+    import re
+    from pathlib import Path
+    email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_", options.email.split("@")[0]).strip(".")
+    task_log_dir = (
+        Path.home()
+        / ".eigent"
+        / email_sanitized
+        / f"project_{options.project_id}"
+        / f"task_{options.task_id}"
+    )
+
+    # Define CDP acquire callback for cloning
+    def acquire_cdp_for_agent(agent):
+        """Acquire a CDP browser from pool and create new toolkit for the agent."""
+        # Generate unique session ID for this agent clone
+        session_id = str(uuid.uuid4())[:8]
+
+        selected_port = None
+        selected_is_external = False
+
+        if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
+            # Try to acquire an available browser from the pool
+            selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, session_id)
+
+            if selected_browser:
+                selected_port = selected_browser.get('port', env('browser_port', '9222'))
+                selected_is_external = selected_browser.get('isExternal', False)
+                traceroot_logger.info(
+                    f"Acquired CDP browser from pool for agent {agent.agent_id}: "
+                    f"port={selected_port}, isExternal={selected_is_external}, "
+                    f"name={selected_browser.get('name', 'Unnamed')}, session_id={session_id}"
+                )
+            else:
+                # No available browsers in pool, fall back to first browser
+                selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
+                selected_is_external = options.cdp_browsers[0].get('isExternal', False)
+                traceroot_logger.warning(
+                    f"No available browsers in pool for agent {agent.agent_id}, "
+                    f"using first browser: port={selected_port}, session_id={session_id}"
+                )
+        else:
+            # Use default port from environment
+            selected_port = env('browser_port', '9222')
+            selected_is_external = False
+            traceroot_logger.info(
+                f"Using default CDP port for agent {agent.agent_id}: "
+                f"{selected_port}, session_id={session_id}"
+            )
+
+        # Create new HybridBrowserToolkit with the acquired CDP port
+        use_keep_current_page = True
+        default_url = None
+
+        new_toolkit = HybridBrowserToolkit(
+            options.project_id,
+            headless=False,
+            browser_log_to_file=True,
+            stealth=True,
+            session_id=session_id,
+            log_dir=str(task_log_dir),
+            default_start_url=default_url,
+            connect_over_cdp=True,
+            cdp_url=f"http://localhost:{selected_port}",
+            cdp_keep_current_page=use_keep_current_page,
+            enabled_tools=[
+                "browser_open",
+                "browser_click",
+                "browser_type",
+                "browser_back",
+                "browser_forward",
+                "browser_switch_tab",
+                "browser_enter",
+                "browser_visit_page",
+                "browser_get_page_snapshot"
+            ],
+        )
+
+        # Store CDP info on toolkit
+        new_toolkit._cdp_port = selected_port
+        new_toolkit._cdp_session_id = session_id
+
+        # Replace the old toolkit in agent's registered toolkits
+        if hasattr(agent, '_toolkits_to_register_agent') and agent._toolkits_to_register_agent:
+            for i, toolkit in enumerate(agent._toolkits_to_register_agent):
+                if hasattr(toolkit, '__class__') and toolkit.__class__.__name__ == 'HybridBrowserToolkit':
+                    agent._toolkits_to_register_agent[i] = new_toolkit
+                    traceroot_logger.info(
+                        f"Replaced HybridBrowserToolkit for agent {agent.agent_id}: "
+                        f"new port={selected_port}, session_id={session_id}"
+                    )
+                    break
+
+        # Update agent's tools to use the new toolkit
+        new_tools = new_toolkit.get_tools()
+        if hasattr(agent, '_tools') and agent._tools:
+            # Replace browser tools in agent's tool list
+            agent._tools = [
+                tool for tool in agent._tools
+                if not any(name in tool.get_function_name() for name in [
+                    'browser_open', 'browser_click', 'browser_type', 'browser_back',
+                    'browser_forward', 'browser_switch_tab', 'browser_enter',
+                    'browser_visit_page', 'browser_get_page_snapshot'
+                ])
+            ]
+            agent._tools.extend(new_tools)
+            traceroot_logger.info(f"Updated agent {agent.agent_id} tools with new browser toolkit")
+
+        # Store CDP info on agent for cleanup
+        agent._cdp_port = selected_port
+        agent._cdp_session_id = session_id
+
+    # Define CDP release callback
+    def release_cdp_from_agent(agent):
+        """Release CDP browser back to pool."""
+        if hasattr(agent, '_cdp_port') and hasattr(agent, '_cdp_session_id'):
+            port = agent._cdp_port
+            session_id = agent._cdp_session_id
+            _cdp_pool_manager.release_browser(port, session_id)
+            traceroot_logger.info(
+                f"Released CDP browser for agent {agent.agent_id}: "
+                f"port={port}, session_id={session_id}"
+            )
+
+    # Acquire CDP for initial agent
+    toolkit_session_id = str(uuid.uuid4())[:8]
+    selected_port = None
+    selected_is_external = False
+
+    if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
+        selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, toolkit_session_id)
+        if selected_browser:
+            selected_port = selected_browser.get('port', env('browser_port', '9222'))
+            selected_is_external = selected_browser.get('isExternal', False)
+            traceroot_logger.info(
+                f"Acquired CDP browser from pool (initial): port={selected_port}, "
+                f"isExternal={selected_is_external}, "
+                f"name={selected_browser.get('name', 'Unnamed')}, session_id={toolkit_session_id}"
+            )
+        else:
+            selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
+            selected_is_external = options.cdp_browsers[0].get('isExternal', False)
+            traceroot_logger.warning(
+                f"No available browsers in pool (initial), using first browser: "
+                f"port={selected_port}, session_id={toolkit_session_id}"
+            )
+    else:
+        selected_port = env('browser_port', '9222')
+        selected_is_external = False
+        traceroot_logger.info(f"Using default CDP port (initial): {selected_port}, session_id={toolkit_session_id}")
+
+    # IMPORTANT: Always use cdp_keep_current_page=True to preserve browser state
+    # across tasks (both internal and external browsers)
+    use_keep_current_page = True
+
+    # When cdp_keep_current_page=True, don't set default_start_url to avoid
+    # opening a new page and conflicting with keeping the current page
+    default_url = None
+
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
-        session_id=str(uuid.uuid4())[:8],
-        default_start_url="about:blank",
-        cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+        session_id=toolkit_session_id,  # Use the session ID for pool management
+        log_dir=str(task_log_dir),
+        default_start_url=default_url,
+        connect_over_cdp=True,
+        cdp_url=f"http://localhost:{selected_port}",
+        cdp_keep_current_page=use_keep_current_page,
         enabled_tools=[
+            "browser_open",
             "browser_click",
             "browser_type",
             "browser_back",
@@ -775,14 +1148,22 @@ def search_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
-            "browser_scroll",
-            # "browser_get_som_screenshot",
+            "browser_get_page_snapshot"
+            # "browser_scroll",
+            # "browser_get_page_snapshot",
         ],
     )
 
-    # Save reference before registering for toolkits_to_register_agent
+    # Store CDP port and session ID on the toolkit for cleanup
+    web_toolkit_custom._cdp_port = selected_port
+    web_toolkit_custom._cdp_session_id = toolkit_session_id
+
+    # Register toolkit with message_integration
+    # DISABLED: message_integration causes parameter mismatch errors after fixing clone
+    # The wrapper is lost during toolkit cloning, causing tools to reject message_title parameter
+    # web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
+    # Use the registered (wrapped) toolkit for both tools and agent registration
     web_toolkit_for_agent_registration = web_toolkit_custom
-    web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
     note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
@@ -876,29 +1257,17 @@ Your capabilities include:
 <web_search_workflow>
 Your approach depends on available search tools:
 
-**If Google Search is Available:**
-- Initial Search: Start with `search_google` to get a list of relevant URLs
-- Browser-Based Exploration: Use the browser tools to investigate the URLs
-
-**If Google Search is NOT Available:**
-- **MUST start with direct website search**: Use `browser_visit_page` to go
-  directly to popular search engines and informational websites such as:
-  * General search: google.com, bing.com, duckduckgo.com
-  * Academic: scholar.google.com, pubmed.ncbi.nlm.nih.gov
-  * News: news.google.com, bbc.com/news, reuters.com
-  * Technical: stackoverflow.com, github.com
-  * Reference: wikipedia.org, britannica.com
-- **Manual search process**: Type your query into the search boxes on these
-  sites using `browser_type` and submit with `browser_enter`
-- **Extract URLs from results**: Only use URLs that appear in the search
-  results on these websites
-
 **Common Browser Operations (both scenarios):**
 - **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
     `browser_visit_page` provides a snapshot of currently visible
     interactive elements, not the full page text. To see more content on
     long pages, Navigate with `browser_click`, `browser_back`, and
     `browser_forward`. Manage multiple pages with `browser_switch_tab`.
+
+- **Analysis**: Use `browser_get_page_snapshot` to understand the page
+    layout and identify interactive elements. Since this is a heavy
+    operation, only use it when visual analysis is necessary.
+
 - **Interaction**: Use `browser_type` to fill out forms and
     `browser_enter` to submit or confirm search.
 
@@ -909,7 +1278,17 @@ Your approach depends on available search tools:
 </web_search_workflow>
     """
 
-    return agent_model(
+    # Define cleanup callback to release CDP browser back to pool
+    def cleanup_cdp_browser():
+        if hasattr(web_toolkit_custom, '_cdp_port') and hasattr(web_toolkit_custom, '_cdp_session_id'):
+            port = web_toolkit_custom._cdp_port
+            session_id = web_toolkit_custom._cdp_session_id
+            _cdp_pool_manager.release_browser(port, session_id)
+            traceroot_logger.info(
+                f"Cleanup: Released CDP browser on port {port} for session {session_id}"
+            )
+
+    agent = agent_model(
         Agents.search_agent,
         BaseMessage.make_assistant_message(
             role_name="Search Agent",
@@ -927,7 +1306,20 @@ Your approach depends on available search tools:
         ],
         toolkits_to_register_agent=[web_toolkit_for_agent_registration],
         enable_snapshot_clean=True,
+        cleanup_callback=cleanup_cdp_browser,
     )
+
+    # Attach CDP management callbacks to the agent for clone support
+    agent._cdp_acquire_callback = acquire_cdp_for_agent
+    agent._cdp_release_callback = release_cdp_from_agent
+    agent._cdp_port = selected_port
+    agent._cdp_session_id = toolkit_session_id
+    # Store options for use during cloning
+    agent._cdp_options = options
+    # Store browser toolkit reference for CDP URL modification during cloning
+    agent._browser_toolkit = web_toolkit_for_agent_registration
+
+    return agent
 
 
 @traceroot.trace()
