@@ -24,7 +24,7 @@ export default function Home() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +39,7 @@ export default function Home() {
 			bgColorLight: "bg-emerald-200",
 		},
 		search_agent: {
-			name: "Search Agent",
+			name: "Browser Agent",
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -201,9 +201,8 @@ export default function Home() {
 							<ChevronLeft size={16} />
 						</Button>
 						<div
-							className={`text-base leading-snug font-bold ${
-								agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
-							}`}
+							className={`text-base leading-snug font-bold ${agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
+								}`}
 						>
 							{agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
 						</div>
@@ -286,9 +285,8 @@ export default function Home() {
 				) : (
 					<div
 						ref={scrollContainerRef}
-						className={`${
-							isSingleMode ? "px-0" : "px-2 pb-2"
-						}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
+						className={`${isSingleMode ? "px-0" : "px-2 pb-2"
+							}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
 					>
 						{activeAgent?.activeWebviewIds
 							?.filter((item) => item?.img)
@@ -297,11 +295,10 @@ export default function Home() {
 									<div
 										key={index}
 										onClick={() => handleTakeControl(item.id)}
-										className={`cursor-pointer relative card-box rounded-lg  group ${
-											isSingleMode
-												? "h-[calc(100%)] w-[calc(100%)]"
-												: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
-										}`}
+										className={`cursor-pointer relative card-box rounded-lg  group ${isSingleMode
+											? "h-[calc(100%)] w-[calc(100%)]"
+											: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
+											}`}
 									>
 										{item.img && (
 											<img

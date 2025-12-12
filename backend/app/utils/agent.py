@@ -912,7 +912,7 @@ Your approach depends on available search tools:
     return agent_model(
         Agents.search_agent,
         BaseMessage.make_assistant_message(
-            role_name="Search Agent",
+            role_name="Browser Agent",
             content=system_message,
         ),
         options,
