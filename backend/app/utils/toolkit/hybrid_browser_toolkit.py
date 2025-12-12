@@ -247,7 +247,10 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
         self.api_task_id = api_task_id
         logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
-        
+
+        # Store log_dir for use in clone()
+        self._log_dir = log_dir
+
         # Set default user_data_dir if not provided
         if user_data_dir is None:
             # Use browser port to determine profile directory
@@ -267,6 +270,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cache_dir=cache_dir,
             enabled_tools=enabled_tools,
             browser_log_to_file=browser_log_to_file,
+            log_dir=log_dir,
             session_id=session_id,
             default_start_url=default_start_url,
             default_timeout=default_timeout,
@@ -340,7 +344,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
             enabled_tools=getattr(self, '_enabled_tools', None).copy() if getattr(self, '_enabled_tools', None) else None,
             browser_log_to_file=self._browser_log_to_file,
-            log_dir=self.config_loader.get_toolkit_config().log_dir,
+            log_dir=self._log_dir,  # Use the same log_dir as parent
             session_id=new_session_id,
             default_start_url=start_url,
             default_timeout=self._default_timeout,

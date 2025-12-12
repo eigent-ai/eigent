@@ -969,6 +969,18 @@ def search_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
     )
 
+    # Build task-specific log directory path for browser logs
+    import re
+    from pathlib import Path
+    email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_", options.email.split("@")[0]).strip(".")
+    task_log_dir = (
+        Path.home()
+        / ".eigent"
+        / email_sanitized
+        / f"project_{options.project_id}"
+        / f"task_{options.task_id}"
+    )
+
     # Define CDP acquire callback for cloning
     def acquire_cdp_for_agent(agent):
         """Acquire a CDP browser from pool and create new toolkit for the agent."""
@@ -1017,6 +1029,7 @@ def search_agent(options: Chat):
             browser_log_to_file=True,
             stealth=True,
             session_id=session_id,
+            log_dir=str(task_log_dir),
             default_start_url=default_url,
             connect_over_cdp=True,
             cdp_url=f"http://localhost:{selected_port}",
@@ -1121,6 +1134,7 @@ def search_agent(options: Chat):
         browser_log_to_file=True,
         stealth=True,
         session_id=toolkit_session_id,  # Use the session ID for pool management
+        log_dir=str(task_log_dir),
         default_start_url=default_url,
         connect_over_cdp=True,
         cdp_url=f"http://localhost:{selected_port}",
