@@ -36,7 +36,7 @@ export function WorkSpaceMenu() {
 		{
 			tasks: [],
 			agent_id: "search_agent",
-			name: t("layout.search-agent"),
+			name: t("layout.browser-agent"),
 			type: "search_agent",
 			log: [],
 			activeWebviewIds: [],
@@ -223,7 +223,7 @@ export function WorkSpaceMenu() {
 			bgColorLight: "bg-emerald-200",
 		},
 		search_agent: {
-			name: t("layout.search-agent"),
+			name: t("layout.browser-agent"),
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -325,16 +325,16 @@ export function WorkSpaceMenu() {
 							>
 								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
 									0 && (
-									<Badge
-										className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
-										variant="destructive"
-									>
-										{
-											chatStore.tasks[chatStore.activeTaskId as string]
-												.nuwFileNum
-										}
-									</Badge>
-								)}
+										<Badge
+											className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
+											variant="destructive"
+										>
+											{
+												chatStore.tasks[chatStore.activeTaskId as string]
+													.nuwFileNum
+											}
+										</Badge>
+									)}
 								<Inbox className="!h-6 !w-6" />
 							</ToggleGroupItem>
 						</ToggleGroup>
@@ -383,15 +383,14 @@ export function WorkSpaceMenu() {
 												}
 												value={agent.agent_id}
 												aria-label="Toggle bold"
-												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${
-													agent.tasks.length === 0 && "opacity-30"
-												}`}
+												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${agent.tasks.length === 0 && "opacity-30"
+													}`}
 											>
 												<Bot className={`!h-6 !w-6 `} />
 												<div className="absolute top-0 right-1">
 													{
 														agentIconMap[
-															agent.type as keyof typeof agentIconMap
+														agent.type as keyof typeof agentIconMap
 														]
 													}
 												</div>

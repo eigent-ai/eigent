@@ -19,7 +19,7 @@
 	"search-emoji": "絵文字を検索",
 	"calculator": "計算機",
 	"developer-agent": "開発者エージェント",
-	"search-agent": "検索エージェント",
+	"browser-agent": "ブラウザエージェント",
 	"document-agent": "ドキュメントエージェント",
 	"multi-modal-agent": "マルチモーダルエージェント",
 	"social-media-agent": "ソーシャルメディアエージェント",

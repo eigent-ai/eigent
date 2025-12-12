@@ -38,7 +38,7 @@ export default function Workflow({
 }: {
 	taskAssigning: Agent[];
 }) {
-	const {t} = useTranslation();
+	const { t } = useTranslation();
 	//Get Chatstore for the active project's task
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
@@ -69,7 +69,7 @@ export default function Workflow({
 		{
 			tasks: [],
 			agent_id: "search_agent",
-			name: "Search Agent",
+			name: "Browser Agent",
 			type: "search_agent",
 			tools: [
 				"Search Toolkit",

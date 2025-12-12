@@ -1234,7 +1234,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         developer,
     )
     workforce.add_single_agent_worker(
-        "Search Agent: Can search the web, extract webpage content, "
+        "Browser Agent: Can search the web, extract webpage content, "
         "simulate browser actions, and provide relevant information to "
         "solve the given task.",
         searcher,

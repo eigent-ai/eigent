@@ -12,7 +12,7 @@ export const createSSESequence = (events: Array<{ event: any; delay: number }>) 
   return async (onMessage: (data: any) => void) => {
     for (let i = 0; i < events.length; i++) {
       const { event, delay } = events[i]
-      
+
       await new Promise<void>((resolve) => {
         setTimeout(() => {
           console.log(`Sending SSE Event ${i + 1}:`, event.step);
@@ -51,7 +51,7 @@ export const issue619SseSequence = [
         ]
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -64,7 +64,7 @@ export const issue619SseSequence = [
         tokens: 357
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -75,7 +75,7 @@ export const issue619SseSequence = [
         tools: []
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -86,7 +86,7 @@ export const issue619SseSequence = [
         tools: ['Search Toolkit', 'Browser Toolkit', 'Human Toolkit', 'Note Taking Toolkit', 'Terminal Toolkit']
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -99,7 +99,7 @@ export const issue619SseSequence = [
         message: 'null'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -110,7 +110,7 @@ export const issue619SseSequence = [
         tools: ['File Toolkit', 'Pptx Toolkit', 'Human Toolkit', 'Mark It Down Toolkit', 'Excel Toolkit', 'Note Taking Toolkit', 'Terminal Toolkit', 'Google Drive Mcp Toolkit']
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -123,7 +123,7 @@ export const issue619SseSequence = [
         message: '[object Object]'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -133,10 +133,10 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-5)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-5)'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -147,7 +147,7 @@ export const issue619SseSequence = [
         tools: []
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -157,10 +157,10 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-5)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-5)'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -172,7 +172,7 @@ export const issue619SseSequence = [
         message: '=== Previous Conversation ===\nPrevious Task: Please help me check Google Calendar when is the next meeting, what kind of meeting it is, and who is attending the meeting.\n\n\nUser Query: Please help me check Google Calendar when is the next meeting, what kind of meeting it is, and who is attending the meeting.\n\nDetermine if this user query is a complex task or a simple question.\n\nComplex task (answer "yes"): Requires tools, code execution, file operations, multi-step planning, or creating/modifying content\n- Examples: "create a file", "search for X", "implement feature Y", "write code", "analyze data", "build something"\n\nSimple question (answer "no"): Can be answered directly with knowledge or conversation history, no action needed\n- Examples: greetings ("hello", "hi"), fact queries ("what is X?"), clarifications ("what did you mean?"), status checks ("how are you?")\n\nAnswer only "yes" or "no". Do not provide any explanation.\n\nIs this a complex task? (yes/no):'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -183,7 +183,7 @@ export const issue619SseSequence = [
         tools: []
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -194,7 +194,7 @@ export const issue619SseSequence = [
         tools: []
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -204,10 +204,10 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-4.1)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-4.1)'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -218,7 +218,7 @@ export const issue619SseSequence = [
         tools: ['Human Toolkit', 'Terminal Toolkit', 'Note Taking Toolkit', 'Web Deploy Toolkit']
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -231,7 +231,7 @@ export const issue619SseSequence = [
         message: '[object Object]'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -242,7 +242,7 @@ export const issue619SseSequence = [
         tools: ['Video Downloader Toolkit', 'Audio Analysis Toolkit', 'Image Analysis Toolkit', 'Open Ai Image Toolkit', 'Human Toolkit', 'Terminal Toolkit', 'Note Taking Toolkit', 'Search Toolkit']
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -255,7 +255,7 @@ export const issue619SseSequence = [
         message: 'null'
       }
     },
-    delay:  100
+    delay: 100
   },
   {
     event: {
@@ -266,7 +266,7 @@ export const issue619SseSequence = [
         tools: ['Google Calendar Toolkit']
       }
     },
-    delay:  1100
+    delay: 1100
   },
   {
     event: {
@@ -276,10 +276,10 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-4.1)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-4.1)'
       }
     },
-    delay:  1100
+    delay: 1100
   },
   {
     event: {
@@ -292,7 +292,7 @@ export const issue619SseSequence = [
         message: 'Failed to retrieve calendar details'
       }
     },
-    delay:  1100
+    delay: 1100
   },
   {
     event: {
@@ -305,7 +305,7 @@ export const issue619SseSequence = [
         message: '{"error": "Failed to retrieve events: timed out"}'
       }
     },
-    delay:  1100
+    delay: 1100
   },
   {
     event: {
@@ -315,13 +315,13 @@ export const issue619SseSequence = [
         sub_tasks: []
       }
     },
-    delay:  1100
+    delay: 1100
   },
   {
     event: {
       step: 'end',
       data: ''
     },
-    delay:  1100
+    delay: 1100
   }
 ];

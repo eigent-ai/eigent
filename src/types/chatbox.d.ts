@@ -38,7 +38,7 @@ declare global {
 			toolkitStatus?: AgentStatus;
 		}[];
 		failure_count?: number;
-		reAssignTo?:string;
+		reAssignTo?: string;
 	}
 
 	interface File {
@@ -66,7 +66,7 @@ declare global {
 		log: AgentMessage[];
 		img?: string[];
 		activeWebviewIds?: ActiveWebView[];
-		tools?:string[];
+		tools?: string[];
 		workerInfo?: {
 			name: string;
 			description: string;
@@ -94,13 +94,13 @@ declare global {
 		task_id?: string;
 		summary?: string;
 		agent_name?: string;
-		attaches?:File[]
+		attaches?: File[]
 	}
 
 	interface AgentMessage {
 		step: string;
 		data: {
-			project_id?:string;
+			project_id?: string;
 			failure_count?: number;
 			tokens?: number;
 			sub_tasks?: TaskInfo[];
@@ -139,7 +139,7 @@ declare global {
 
 	interface AgentNameMap {
 		developer_agent: "Developer Agent";
-		search_agent: "Search Agent";
+		search_agent: "Browser Agent";
 		document_agent: "Document Agent";
 		multi_modal_agent: "Multi Modal Agent";
 		social_medium_agent: "Social Media Agent";
