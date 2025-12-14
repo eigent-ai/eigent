@@ -334,7 +334,7 @@
     --menubutton-border-default: var(--border-transparent);
     --menubutton-border-hover: var(--border-disabled);
     --menubutton-disabled: 1.25rem;
-    
+
     /* Dropdown Component */
     --dropdown-bg: var(--fill-default);
     --dropdown-border: var(--border-secondary);
@@ -446,7 +446,7 @@
     --text-developer: var(--colors-emerald-default);
     --text-multimodal: var(--colors-fuchsia-default);
     --text-on-hover: var(--colors-primary-2);
-    --surface-primary: var(--colors-off-white-80);
+    --surface-primary: var(--colors-off-white-10);
     --surface-secondary: var(--colors-off-white-50);
     --surface-success: var(--colors-green-50);
     --surface-information: var(--colors-blue-50);
