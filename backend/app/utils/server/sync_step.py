@@ -24,12 +24,23 @@ def sync_step(func):
                 value_json_str = value[len("data: ") :].strip()
             else:
                 value_json_str = value
-            json_data = json.loads(value_json_str)
-            
+
+            try:
+                json_data = json.loads(value_json_str)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON in sync_step: {e}. Value: {value_json_str}")
+                yield value
+                continue
+
+            if "step" not in json_data or "data" not in json_data:
+                logger.error(f"Missing 'step' or 'data' key in sync_step JSON. Keys: {list(json_data.keys())}")
+                yield value
+                continue
+
             # Dynamic task_id extraction - prioritize runtime data over static args
             chat: Chat = args[0] if args and hasattr(args[0], 'task_id') else None
             task_id = None
-            
+
             if chat is not None:
                 task_lock = get_task_lock_if_exists(chat.project_id)
                 if task_lock is not None:
@@ -38,7 +49,7 @@ def sync_step(func):
                 else:
                     logger.warning(f"Task lock not found for project_id {chat.project_id}, using chat.task_id")
                     task_id = chat.task_id
-            
+
             if task_id:
                 asyncio.create_task(
                     send_to_api(
@@ -62,4 +73,4 @@ async def send_to_api(url, data):
             res = await client.post(url, json=data)
             # logger.info(res)
         except Exception as e:
-            logger.error(e)
+            logger.error(f"Failed to sync step to {url}: {type(e).__name__}: {e}")
