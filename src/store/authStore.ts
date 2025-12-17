@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 // type definition
 type InitState = 'permissions' | 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
-type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-sonnet-4-5' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini';
+type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-3-flash-preview' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-sonnet-4-5' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini';
 
 // auth info interface
 interface AuthInfo {
@@ -21,7 +21,7 @@ interface AuthState {
 	username: string | null;
 	email: string | null;
 	user_id: number | null;
-	
+
 	// application settings
 	appearance: string;
 	language: string;
@@ -29,21 +29,21 @@ interface AuthState {
 	modelType: ModelType;
 	cloud_model_type: CloudModelType;
 	initState: InitState;
-	
+
 	// shared token
 	share_token?: string | null;
-	
+
 	// local proxy value recorded at login
 	localProxyValue?: string | null;
-	
+
 	// worker list data
 	workerListData: { [key: string]: Agent[] };
-	
-			// auth related methods
-			setAuth: (auth: AuthInfo) => void;
-			logout: () => void;
-			setLocalProxyValue: (value: string | null) => void;
-	
+
+	// auth related methods
+	setAuth: (auth: AuthInfo) => void;
+	logout: () => void;
+	setLocalProxyValue: (value: string | null) => void;
+
 	// set related methods
 	setAppearance: (appearance: string) => void;
 	setLanguage: (language: string) => void;
@@ -51,7 +51,7 @@ interface AuthState {
 	setModelType: (modelType: ModelType) => void;
 	setCloudModelType: (cloud_model_type: CloudModelType) => void;
 	setIsFirstLaunch: (isFirstLaunch: boolean) => void;
-	
+
 	// worker related methods
 	setWorkerList: (workerList: Agent[]) => void;
 	checkAgentTool: (tool: string) => void;
@@ -75,7 +75,7 @@ const authStore = create<AuthState>()(
 			share_token: null,
 			localProxyValue: null,
 			workerListData: {},
-			
+
 			// auth related methods
 			setAuth: ({ token, username, email, user_id }) =>
 				set({ token, username, email, user_id }),
@@ -89,25 +89,25 @@ const authStore = create<AuthState>()(
 					initState: 'carousel',
 					localProxyValue: null
 				}),
-			
+
 			// set related methods
 			setAppearance: (appearance) => set({ appearance }),
-			
+
 			setLanguage: (language) => set({ language }),
-			
+
 			setInitState: (initState) => {
 				console.log('set({ initState })', initState);
 				set({ initState });
 			},
-			
+
 			setModelType: (modelType) => set({ modelType }),
-			
+
 			setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
-			
+
 			setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
-			
+
 			setLocalProxyValue: (value) => set({ localProxyValue: value }),
-			
+
 			// worker related methods
 			setWorkerList: (workerList) => {
 				const { email } = get();
@@ -119,15 +119,15 @@ const authStore = create<AuthState>()(
 					}
 				}));
 			},
-			
+
 			checkAgentTool: (tool) => {
 				const { email } = get();
 				set((state) => {
 					const currentEmail = email as string;
 					const originalList = state.workerListData[currentEmail] ?? [];
-					
+
 					console.log("tool!!!", tool);
-					
+
 					const updatedList = originalList
 						.map((worker) => {
 							const filteredTools = worker.tools?.filter((t) => t !== tool) ?? [];
@@ -135,9 +135,9 @@ const authStore = create<AuthState>()(
 							return { ...worker, tools: filteredTools };
 						})
 						.filter((worker) => worker.tools.length > 0);
-					
+
 					console.log("updatedList", updatedList);
-					
+
 					return {
 						...state,
 						workerListData: {
