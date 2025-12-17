@@ -1183,6 +1183,15 @@ def search_agent(options: Chat):
         *search_tools,
     ]
 
+    # Build external browser connection notice if using external CDP
+    external_browser_notice = ""
+    if selected_is_external:
+        external_browser_notice = """
+<external_browser_connection>
+**IMPORTANT**: You are connected to an external browser instance. The browser may already be open with active sessions and logged-in websites. When you use `browser_open`, you will connect to this existing browser and can immediately access its current state and pages. The user may have already logged into required websites, so you can leverage these authenticated sessions.
+</external_browser_connection>
+"""
+
     system_message = f"""
 <role>
 You are a Senior Research Analyst, a key member of a multi-agent team. Your
@@ -1256,7 +1265,7 @@ Your capabilities include:
 
 <web_search_workflow>
 Your approach depends on available search tools:
-
+{external_browser_notice}
 **Common Browser Operations (both scenarios):**
 - **Navigation and Exploration**: Use `browser_visit_page` to open URLs.
     `browser_visit_page` provides a snapshot of currently visible
