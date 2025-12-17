@@ -241,6 +241,7 @@ ActionData = (
     | ActionRemoveTaskData
     | ActionSkipTaskData
     | ActionDecomposeTextData
+    | ActionDecomposeProgressData
 )
 
 

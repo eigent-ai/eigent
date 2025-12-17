@@ -66,16 +66,16 @@ export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionPro
   const messages = task.messages || [];
 
   // Create a stable key based on messages content to prevent excessive re-renders
+  const lastMessage = messages[messages.length - 1];
   const messagesKey = React.useMemo(() => {
     // Only re-compute when message count or last message changes
-    const lastMsg = messages[messages.length - 1];
-    return `${messages.length}-${lastMsg?.id || ''}-${lastMsg?.content?.length || 0}`;
-  }, [messages.length, messages[messages.length - 1]?.id, messages[messages.length - 1]?.content?.length]);
+    return `${messages.length}-${lastMessage?.id || ''}-${lastMessage?.content?.length || 0}`;
+  }, [messages.length, lastMessage?.id, lastMessage?.content?.length]);
 
   // Memoize grouping to prevent re-creating objects on every render
   const queryGroups = React.useMemo(() => {
     return groupMessagesByQuery(messages);
-  }, [messagesKey, messages]);
+  }, [messagesKey]);
 
   return (
     <motion.div
