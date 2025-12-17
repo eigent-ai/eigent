@@ -3,7 +3,7 @@ import datetime
 import json
 from pathlib import Path
 import platform
-from typing import Literal
+from typing import Any, Literal
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -464,7 +464,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             logger.warning(f"Failed to stream decomposition text: {e}")
 
                     async def run_decomposition():
-                        nonlocal camel_task
+                        nonlocal camel_task, summary_task_content
                         try:
                             sub_tasks = await asyncio.to_thread(
                                 workforce.eigent_make_sub_tasks,
