@@ -23,39 +23,7 @@ export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionPro
   onSkip,
   isPauseResumeLoading
 }, ref) => {
-  // Subscribe to store changes with throttling to prevent excessive re-renders
-  const [chatState, setChatState] = React.useState(() => chatStore.getState());
-
-  React.useEffect(() => {
-    let timeoutId: NodeJS.Timeout | null = null;
-    let latestState: any = null;
-
-    const unsubscribe = chatStore.subscribe((state) => {
-      latestState = state;
-
-      // Throttle updates to max once per 100ms
-      if (!timeoutId) {
-        timeoutId = setTimeout(() => {
-          if (latestState) {
-            setChatState(latestState);
-          }
-          timeoutId = null;
-        }, 100);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        // Apply final state on cleanup
-        if (latestState) {
-          setChatState(latestState);
-        }
-      }
-    };
-  }, [chatStore]);
-
+  const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
 
   if (!activeTaskId || !chatState.tasks[activeTaskId]) {
@@ -65,17 +33,8 @@ export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionPro
   const task = chatState.tasks[activeTaskId];
   const messages = task.messages || [];
 
-  // Create a stable key based on messages content to prevent excessive re-renders
-  const lastMessage = messages[messages.length - 1];
-  const messagesKey = React.useMemo(() => {
-    // Only re-compute when message count or last message changes
-    return `${messages.length}-${lastMessage?.id || ''}-${lastMessage?.content?.length || 0}`;
-  }, [messages.length, lastMessage?.id, lastMessage?.content?.length]);
-
-  // Memoize grouping to prevent re-creating objects on every render
-  const queryGroups = React.useMemo(() => {
-    return groupMessagesByQuery(messages);
-  }, [messagesKey]);
+  // Group messages by query cycles and show in chronological order (oldest first)
+  const queryGroups = groupMessagesByQuery(messages);
 
   return (
     <motion.div
@@ -193,7 +152,7 @@ function groupMessagesByQuery(messages: any[]) {
           otherMessages: []
         };
       }
-    } else {
+  } else {
       // Other messages (assistant responses, errors, etc.)
       if (currentGroup) {
         currentGroup.otherMessages.push(message);
