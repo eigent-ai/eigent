@@ -215,13 +215,13 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
                     }
                     responses.append(response)
             
-            logger.info("Google search completed", extra={"query": query, "search_type": search_type, "result_count": len(responses)})
+            logger.info("Google search completed", extra={"query": _redact_secret(query), "search_type": _redact_secret(search_type), "result_count": len(responses)})
         else:
             error_info = data.get("error", {})
             sanitized_error = _redact_obj(error_info)
             logger.error(
                 "Google search API error",
-                extra={"query": _redact_secret(query), "search_type": _redact_secret(search_type), "api_error": sanitized_error},
+                extra={"query": _redact_secret(query), "search_type": _redact_secret(search_type)},
             )
             raise HTTPException(status_code=500, detail="Internal server error")
 

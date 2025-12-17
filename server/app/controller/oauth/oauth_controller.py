@@ -35,13 +35,18 @@ def oauth_login(app: str, request: Request, state: Optional[str] = None):
         logger.error("OAuth login failed", extra={"provider": app, "error": str(e)}, exc_info=True)
         raise HTTPException(status_code=400, detail="OAuth login failed")
 
-
+ALLOWED_OAUTH_PROVIDERS = {"slack", "notion", "x", "googlesuite"}
 @router.get("/{app}/callback", name="OAuth Callback")
 @traceroot.trace()
 def oauth_callback(app: str, request: Request, code: Optional[str] = None, state: Optional[str] = None):
     """Handle OAuth provider callback and redirect to client app."""
     import re
     CODE_STATE_REGEX = re.compile(r'^[A-Za-z0-9_\-]+$')
+    from starlette.datastructures import URL
+
+    if app not in ALLOWED_OAUTH_PROVIDERS:
+        logger.warning("Invalid OAuth provider", extra={"provider": app, "code": code})
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
     if not code or not CODE_STATE_REGEX.match(code):
         logger.warning("OAuth callback missing or invalid code", extra={"provider": app, "code": code})
         raise HTTPException(status_code=400, detail="Missing or invalid code parameter")
@@ -51,15 +56,14 @@ def oauth_callback(app: str, request: Request, code: Optional[str] = None, state
     
     logger.info("OAuth callback received", extra={"provider": app, "has_state": state is not None})
 
-    params = {
-        "provider": app,
-        "code": code,
-        "state": state,
-    }
-    query = urlencode(params, quote_via=quote)
-    
-    redirect_url = f"eigent://callback/oauth?{query}"
-    return RedirectResponse(redirect_url)
+    base_url = URL("eigent://callback/oauth")
+    redirect_url = base_url.include_query_params(
+        provider=app,
+        code=code,
+        state=state or "",
+    )
+
+    return RedirectResponse(str(redirect_url))
 
 
 @router.post("/{app}/token", name="OAuth Fetch Token")
