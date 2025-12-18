@@ -325,16 +325,16 @@ export function WorkSpaceMenu() {
 							>
 								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
 									0 && (
-										<Badge
-											className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
-											variant="destructive"
-										>
-											{
-												chatStore.tasks[chatStore.activeTaskId as string]
-													.nuwFileNum
-											}
-										</Badge>
-									)}
+									<Badge
+										className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
+										variant="destructive"
+									>
+										{
+											chatStore.tasks[chatStore.activeTaskId as string]
+												.nuwFileNum
+										}
+									</Badge>
+								)}
 								<Inbox className="!h-6 !w-6" />
 							</ToggleGroupItem>
 						</ToggleGroup>
