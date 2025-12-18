@@ -598,7 +598,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					console.log("agentMessages", agentMessages);
 					const agentNameMap = {
 						developer_agent: "Developer Agent",
-						browser_agent: "Browser Agent",
+						search_agent: "Browser agent",
 						document_agent: "Document Agent",
 						multi_modal_agent: "Multi Modal Agent",
 						social_medium_agent: "Social Media Agent",
@@ -837,7 +837,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							if (!hasAgent) {
 								let activeWebviewIds: any = [];
-								if (agent_name == 'browser_agent') {
+								if (agent_name == 'search_agent') {
 									snapshots.forEach((item: any) => {
 										const imgurl = !item.image_path.includes('/public') ? item.image_path : (import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL) + item.image_path
 										activeWebviewIds.push({
@@ -908,7 +908,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							// destroy webview
 							tasks[currentTaskId].taskAssigning = tasks[currentTaskId].taskAssigning.map((item) => {
-								if (item.type === "browser_agent" && item.activeWebviewIds?.length && item.activeWebviewIds?.length > 0) {
+								if (item.type === "search_agent" && item.activeWebviewIds?.length && item.activeWebviewIds?.length > 0) {
 									let removeList: number[] = []
 									item.activeWebviewIds.map((webview, index) => {
 										if (webview.processTaskId === task_id) {

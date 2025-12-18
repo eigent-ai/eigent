@@ -132,19 +132,19 @@ declare global {
 
 	type AgentNameType =
 		| "developer_agent"
-		| "browser_agent"
+		| "search_agent"
 		| "document_agent"
 		| "multi_modal_agent"
 		| "social_medium_agent";
 
 	interface AgentNameMap {
 		developer_agent: "Developer Agent";
-		browser_agent: "Browser Agent";
+		search_agent: "Browser agent";
 		document_agent: "Document Agent";
 		multi_modal_agent: "Multi Modal Agent";
 		social_medium_agent: "Social Media Agent";
 	}
-	type WorkspaceType = 'workflow' | 'developer_agent' | 'browser_agent' | 'document_agent' | 'multi_modal_agent' | 'social_medium_agent' | null;
+	type WorkspaceType = 'workflow' | 'developer_agent' | 'search_agent' | 'document_agent' | 'multi_modal_agent' | 'social_medium_agent' | null;
 }
 
 

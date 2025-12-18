@@ -40,8 +40,8 @@ export default function TerminalAgentWrokSpace() {
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		browser_agent: {
-			name: "Browser Agent",
+		search_agent: {
+			name: "Browser agent",
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
