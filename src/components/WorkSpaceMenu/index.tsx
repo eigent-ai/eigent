@@ -37,7 +37,7 @@ export function WorkSpaceMenu() {
 			tasks: [],
 			agent_id: "browser_agent",
 			name: t("layout.browser-agent"),
-			type: "browser_agent",
+			type: "search_agent",
 			log: [],
 			activeWebviewIds: [],
 		},
@@ -101,7 +101,7 @@ export function WorkSpaceMenu() {
 					);
 
 					if (activeAgentIndex === -1) {
-						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
 						if (searchAgentIndex !== -1) {
 							taskAssigning[searchAgentIndex].activeWebviewIds?.push({
 								id,
@@ -135,7 +135,7 @@ export function WorkSpaceMenu() {
 					]);
 				} else {
 					// If no URL match found, also try to add to browser_agent
-					const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+					const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
 					if (searchAgentIndex !== -1 && webViewUrls.length > 0) {
 						taskAssigning[searchAgentIndex].activeWebviewIds?.push({
 							id,
@@ -153,7 +153,7 @@ export function WorkSpaceMenu() {
 
 			let webviews: { id: string; agent_id: string; index: number }[] = [];
 			taskAssigning.map((item) => {
-				if (item.type === "browser_agent") {
+				if (item.type === "search_agent") {
 					item.activeWebviewIds?.map((webview, index) => {
 						// console.log("@@@@@@", webview);
 						if (webview.id === id) {
@@ -383,14 +383,15 @@ export function WorkSpaceMenu() {
 												}
 												value={agent.agent_id}
 												aria-label="Toggle bold"
-												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${agent.tasks.length === 0 && "opacity-30"
-													}`}
+												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${
+													agent.tasks.length === 0 && "opacity-30"
+												}`}
 											>
 												<Bot className={`!h-6 !w-6 `} />
 												<div className="absolute top-0 right-1">
 													{
 														agentIconMap[
-														agent.type as keyof typeof agentIconMap
+															agent.type as keyof typeof agentIconMap
 														]
 													}
 												</div>
