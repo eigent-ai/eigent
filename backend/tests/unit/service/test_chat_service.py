@@ -612,7 +612,7 @@ class TestChatServiceAgentOperations:
         
         with patch("app.service.chat_service.agent_model") as mock_agent_model, \
              patch("app.service.chat_service.Workforce", return_value=mock_workforce), \
-             patch("app.service.chat_service.search_agent"), \
+             patch("app.service.chat_service.browser_agent"), \
              patch("app.service.chat_service.developer_agent"), \
              patch("app.service.chat_service.document_agent"), \
              patch("app.service.chat_service.multi_modal_agent"), \

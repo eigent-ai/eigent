@@ -72,8 +72,8 @@ export default function Project() {
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		search_agent: {
-			name: t("dashboard.search-agent"),
+		browser_agent: {
+			name: t("dashboard.browser-agent"),
 
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -116,9 +116,9 @@ export default function Project() {
 				className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`}
 			/>
 		),
-		search_agent: (
+		browser_agent: (
 			<Globe
-				className={`!h-[10px] !w-[10px] ${agentMap.search_agent.textColor}`}
+				className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`}
 			/>
 		),
 		document_agent: (
