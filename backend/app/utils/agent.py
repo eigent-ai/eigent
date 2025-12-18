@@ -752,11 +752,11 @@ these tips to maximize your effectiveness:
 
 
 @traceroot.trace()
-def search_agent(options: Chat):
+def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating search agent for project: {options.project_id} in directory: {working_directory}")
+    traceroot_logger.info(f"Creating browser agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
+        message_handler=HumanToolkit(options.project_id, Agents.browser_agent).send_message_to_user
     )
 
     web_toolkit_custom = HybridBrowserToolkit(
@@ -783,9 +783,9 @@ def search_agent(options: Chat):
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
-    terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
+    terminal_toolkit = TerminalToolkit(options.project_id, Agents.browser_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
-    note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(options.project_id, Agents.browser_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
     # Only register search tools if any are available
@@ -795,7 +795,7 @@ def search_agent(options: Chat):
         search_tools = []
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.search_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.browser_agent),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
@@ -910,7 +910,7 @@ Your approach depends on available search tools:
     """
 
     return agent_model(
-        Agents.search_agent,
+        Agents.browser_agent,
         BaseMessage.make_assistant_message(
             role_name="Browser Agent",
             content=system_message,
@@ -1382,7 +1382,7 @@ Your integrated toolkits enable you to:
    - Communicate with other agents using messaging tools when collaboration
    is needed. Use `list_available_agents` to see available team members and
    `send_message` to coordinate with them, especially when you need content
-   from document agents or research from search agents.
+   from document agents or research from browser agents.
 
 9. File System Access:
    - You can use terminal tools to interact with the local file system in

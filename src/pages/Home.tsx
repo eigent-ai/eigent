@@ -49,7 +49,7 @@ export default function Home() {
 		];
 		let webviews: { id: string; agent_id: string; index: number }[] = [];
 		taskAssigning.map((item) => {
-			if (item.type === "search_agent") {
+			if (item.type === "browser_agent") {
 				item.activeWebviewIds?.map((webview, index) => {
 					webviews.push({ ...webview, agent_id: item.agent_id, index });
 				});
@@ -61,7 +61,7 @@ export default function Home() {
 		}
 		
 		if (webviews.length === 0) {
-			const searchAgent = taskAssigning.find(agent => agent.type === 'search_agent');
+			const searchAgent = taskAssigning.find(agent => agent.type === 'browser_agent');
 			if (searchAgent && searchAgent.activeWebviewIds && searchAgent.activeWebviewIds.length > 0) {
 				searchAgent.activeWebviewIds.forEach((webview, index) => {
 					webviews.push({ ...webview, agent_id: searchAgent.agent_id, index });
@@ -204,7 +204,7 @@ export default function Home() {
 										agent.agent_id ===
 										chatStore.tasks[chatStore.activeTaskId as string]
 											.activeWorkSpace
-								)?.type === "search_agent" && (
+								)?.type === "browser_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<SearchAgentWrokSpace />
 									</div>

@@ -48,9 +48,9 @@ import GroupedHistoryView from "@/components/GroupedHistoryView";
 
 
 export default function Project() {
-	const { t } = useTranslation()
+	const {t} = useTranslation()
 	const navigate = useNavigate();
-	const [deleteCallback, setDeleteCallback] = useState<() => void>(() => { });
+  const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore || !projectStore) {
 		return <div>Loading...</div>;
@@ -72,8 +72,8 @@ export default function Project() {
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		search_agent: {
-			name: t("dashboard.browser-agent"),
+		browser_agent: {
+			name: t("dashboard.search-agent"),
 
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -116,9 +116,9 @@ export default function Project() {
 				className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`}
 			/>
 		),
-		search_agent: (
+		browser_agent: (
 			<Globe
-				className={`!h-[10px] !w-[10px] ${agentMap.search_agent.textColor}`}
+				className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`}
 			/>
 		),
 		document_agent: (
@@ -148,7 +148,7 @@ export default function Project() {
 	const handleDelete = (id: string, callback?: () => void) => {
 		setCurHistoryId(id);
 		setDeleteModalOpen(true);
-		if (callback) setDeleteCallback(callback);
+    if(callback) setDeleteCallback(callback);
 	};
 
 	const confirmDelete = async () => {
@@ -165,7 +165,7 @@ export default function Project() {
 		} finally {
 			setCurHistoryId("");
 			setDeleteModalOpen(false);
-			deleteCallback();
+      deleteCallback();
 		}
 	};
 
@@ -178,7 +178,7 @@ export default function Project() {
 	const confirmProjectDelete = async () => {
 		const projectId = curProjectId;
 		if (!projectId || !projectDeleteCallback) return;
-
+		
 		try {
 			// Execute the deletion callback provided by GroupedHistoryView
 			await projectDeleteCallback();
@@ -242,30 +242,30 @@ export default function Project() {
 	const TABLE_VIEW_ENABLED = false;
 
 	return (
-		<div className="flex-1 h-auto m-auto">
-			{/* alert dialog for task deletion */}
-			<AlertDialog
-				isOpen={deleteModalOpen}
-				onClose={() => setDeleteModalOpen(false)}
-				onConfirm={confirmDelete}
-				title={t("layout.delete-task")}
-				message={t("layout.delete-task-confirmation")}
-				confirmText={t("layout.delete")}
-				cancelText={t("layout.cancel")}
-			/>
+      <div className="flex-1 h-auto m-auto">
+      {/* alert dialog for task deletion */}
+        <AlertDialog
+          isOpen={deleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          onConfirm={confirmDelete}
+          title={t("layout.delete-task")}
+          message={t("layout.delete-task-confirmation")}
+          confirmText={t("layout.delete")}
+          cancelText={t("layout.cancel")}
+        />
 
-			{/* alert dialog for project deletion */}
-			<AlertDialog
-				isOpen={deleteProjectModalOpen}
-				onClose={() => setDeleteProjectModalOpen(false)}
-				onConfirm={confirmProjectDelete}
-				title={t("layout.delete-project") || "Delete Project"}
-				message={t("layout.delete-project-confirmation") || "Are you sure you want to delete this project and all its tasks? This action cannot be undone."}
-				confirmText={t("layout.delete")}
-				cancelText={t("layout.cancel")}
-			/>
+      {/* alert dialog for project deletion */}
+        <AlertDialog
+          isOpen={deleteProjectModalOpen}
+          onClose={() => setDeleteProjectModalOpen(false)}
+          onConfirm={confirmProjectDelete}
+          title={t("layout.delete-project") || "Delete Project"}
+          message={t("layout.delete-project-confirmation") || "Are you sure you want to delete this project and all its tasks? This action cannot be undone."}
+          confirmText={t("layout.delete")}
+          cancelText={t("layout.cancel")}
+        />
 
-			{/* Header Section */}
+      {/* Header Section */}
 			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
 				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
 					<div className="flex flex-row items-center justify-between w-full gap-4">
@@ -276,26 +276,26 @@ export default function Project() {
 				</div>
 			</div>
 
-			<div className="flex w-full">
-				<div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-start">
-					<GroupedHistoryView
-						onTaskSelect={handleSetActive}
-						onTaskDelete={handleDelete}
-						onTaskShare={handleShare}
-						activeTaskId={chatStore.activeTaskId || undefined}
-						ongoingTasks={chatStore.tasks}
-						onOngoingTaskClick={(taskId) => {
-							chatStore.setActiveTaskId(taskId);
-							navigate(`/`);
-						}}
-						onOngoingTaskPause={(taskId) => handleTakeControl("pause", taskId)}
-						onOngoingTaskResume={(taskId) => handleTakeControl("resume", taskId)}
-						onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
-						onProjectDelete={handleProjectDelete}
-						refreshTrigger={refreshTrigger}
-					/>
-				</div>
-			</div>
-		</div>
-	);
+      <div className="flex w-full">
+      <div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-start">
+        <GroupedHistoryView
+          onTaskSelect={handleSetActive}
+          onTaskDelete={handleDelete}
+          onTaskShare={handleShare}
+          activeTaskId={chatStore.activeTaskId || undefined}
+          ongoingTasks={chatStore.tasks}
+          onOngoingTaskClick={(taskId) => {
+            chatStore.setActiveTaskId(taskId);
+            navigate(`/`);
+          }}
+          onOngoingTaskPause={(taskId) => handleTakeControl("pause", taskId)}
+          onOngoingTaskResume={(taskId) => handleTakeControl("resume", taskId)}
+          onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
+          onProjectDelete={handleProjectDelete}
+          refreshTrigger={refreshTrigger}
+        />
+      </div>
+    </div>
+    </div>
+  );
 }

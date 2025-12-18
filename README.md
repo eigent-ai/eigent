@@ -214,16 +214,23 @@ Analyze the UK healthcare industry to support the planning of my next company. P
 
 ### 4. German Electric Skateboard Market Feasibility [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2NTI4MjY3ODctNjk2Ig.aIjGiA.t-qIXxk_BZ4ENqa-yVIm0wMVyXU__1753652826787-696)
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>We are a company that produces high-end electric skateboards ... <kbd></summary>
-<br>
-We are a company that produces high-end electric skateboards, and we are considering entering the German market. Please prepare a detailed market entry feasibility report for me. The report needs to cover the following aspects:
-1. Market Size & Regulations: Research the market size, annual growth rate, key players, and market share for Personal Light Electric Vehicles (PLEVs) in Germany. Simultaneously, provide a detailed breakdown and summary of German laws and regulations concerning the use of electric skateboards on public roads, including certification requirements (such as ABE certification) and insurance policies.
-2. Consumer Profile: Analyze the profile of potential German consumers, including their age, income level, primary usage scenarios (commuting, recreation), key purchasing decision drivers (price, performance, brand, design), and the channels they typically use to gather information (forums, social media, offline retail stores).
-3. Channels & Distribution: Investigate Germany’s mainstream online electronics sales platforms (e.g., Amazon.de, MediaMarkt.de) and high-end sporting goods offline retail chains. List the top 5 potential online and offline distribution partners and find the contact information for their purchasing departments, if possible.
-4. Costing & Pricing: Based on the product cost structure in my Product_Cost.csv file on my desktop, and taking into account German customs duties, Value Added Tax (VAT), logistics and warehousing costs, and potential marketing expenses, estimate a Manufacturer’s Suggested Retail Price (MSRP) and analyze its competitiveness in the market.
-5. Comprehensive Report & Presentation: Summarize all research findings into an HTML report file. The content should include data charts, key findings, and a final market entry strategy recommendation (Recommended / Not Recommended / Recommended with Conditions).
-</details>
+**Prompt:**  
+We are a company that produces high-end electric skateboards and are considering entering the German market. Please prepare a detailed market entry feasibility report for me. The report needs:
+
+1. **Market Size & Regulations:**  
+   Research the market size, annual growth rate, key players, and market share for Personal Light Electric Vehicles (PLEVs) in Germany. Provide a detailed summary of German government policies, regulations, and legal requirements for such vehicles.
+
+2. **Consumer Profile:**  
+   Analyze the profile of potential German consumers, including age, income, usage scenarios (commuting, recreation), key decision drivers (price, brand, features, safety, after-sale).
+
+3. **Channels & Distribution:**  
+   List Germany’s major electronics sales sites (e.g., Amazon.de, MediaMarkt.de) and relevant sporting goods retailers.
+
+4. **Costing & Pricing:**  
+   Based on Product_Cost.csv, estimate product cost structure, factor in German taxes, logistics, pricing strategies.
+
+5. **Comprehensive Report & Presentation:**  
+   Summarize findings into an HTML report. Include data charts, key findings, and a recommended market entry strategy.
 
 <br>
 
