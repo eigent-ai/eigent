@@ -118,6 +118,40 @@ const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
 
+const normalizeToolkitMessage = (value: unknown) => {
+	if (typeof value === "string") return value;
+	if (value == null) return "";
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+};
+
+const resolveProcessTaskIdForToolkitEvent = (
+	tasksById: Record<string, Task>,
+	currentTaskId: string,
+	agentName: string | undefined,
+	processTaskId: unknown
+) => {
+	const direct = typeof processTaskId === "string" ? processTaskId : "";
+	if (direct) return direct;
+
+	const running = tasksById[currentTaskId]?.taskRunning ?? [];
+	// Prefer a task owned by the same agent
+	const match = running.findLast(
+		(t: any) =>
+			typeof t?.id === "string" &&
+			t.id &&
+			(agentName ? t.agent?.type === agentName : true)
+	);
+	if (match?.id) return match.id as string;
+	// Fallback to the latest running task id
+	const last = running.at(-1);
+	if (typeof last?.id === "string" && last.id) return last.id;
+	return "";
+};
+
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
 		activeTaskId: null,
@@ -1152,12 +1186,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					}
 					// Activate Toolkit
 					if (agentMessages.step === "activate_toolkit") {
-						if (agentMessages.data.method_name === 'send message to user') {
-							return
-						}
 						// add log
 						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
+						const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+							tasks,
+							currentTaskId,
+							agentMessages.data.agent_name,
+							agentMessages.data.process_task_id
+						);
+						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
 							if (message) {
@@ -1169,20 +1206,20 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'browser visit page') {
 							console.log('match success')
-							addWebViewUrl(currentTaskId, agentMessages.data.message?.replace(/url=/g, '').replace(/'/g, '') as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message).replace(/url=/g, '').replace(/'/g, '') as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'visit page') {
 							console.log('match success')
-							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'ElectronToolkit' && agentMessages.data.method_name === 'browse_url') {
-							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.method_name === 'browser_navigate' && agentMessages.data.message?.startsWith('{"url"')) {
 							try {
-								const urlData = JSON.parse(agentMessages.data.message);
+								const urlData = JSON.parse(normalizeToolkitMessage(agentMessages.data.message));
 								if (urlData?.url) {
-									addWebViewUrl(currentTaskId, urlData.url as string, agentMessages.data.process_task_id as string)
+									addWebViewUrl(currentTaskId, urlData.url as string, resolvedProcessTaskId)
 								}
 							} catch (error) {
 								console.error('Failed to parse browser_navigate URL:', error);
@@ -1191,21 +1228,21 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						}
 						let taskRunning = [...tasks[currentTaskId].taskRunning]
 
-						const taskIndex = taskRunning.findIndex((task) => task.id === agentMessages.data.process_task_id);
+						const taskIndex = taskRunning.findIndex((task) => task.id === resolvedProcessTaskId);
 
 						if (taskIndex !== -1) {
 							const { toolkit_name, method_name } = agentMessages.data;
 							if (toolkit_name && method_name && assigneeAgentIndex !== -1) {
 
 								if (assigneeAgentIndex !== -1) {
-									const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
+									const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
 									const message = filterMessage(agentMessages)
 									if (message) {
 										const toolkit = {
 											toolkitId: generateUniqueId(),
 											toolkitName: toolkit_name,
 											toolkitMethods: method_name,
-											message: message.data.message as string,
+											message: normalizeToolkitMessage(message.data.message),
 											toolkitStatus: "running" as AgentStatus,
 										}
 										if (task) {
@@ -1230,18 +1267,24 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						// add log
 						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
+						const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+							tasks,
+							currentTaskId,
+							agentMessages.data.agent_name,
+							agentMessages.data.process_task_id
+						);
+						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
 							if (message) {
-								const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
+								const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
 								if (task) {
-									let index = task.toolkits?.findIndex((toolkit) => {
+									let index = task.toolkits?.findIndex((toolkit: any) => {
 										return toolkit.toolkitName === agentMessages.data.toolkit_name && toolkit.toolkitMethods === agentMessages.data.method_name && toolkit.toolkitStatus === 'running'
 									})
 
 									if (task.toolkits && index !== -1 && index !== undefined) {
-										task.toolkits[index].message += '\n' + message.data.message as string
+										task.toolkits[index].message = `${normalizeToolkitMessage(task.toolkits[index].message)}\n${normalizeToolkitMessage(message.data.message)}`.trim()
 										task.toolkits[index].toolkitStatus = "completed"
 									}
 									// task.toolkits?.unshift({
@@ -1280,7 +1323,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									taskRunning![taskIndex].toolkits?.unshift({
 										toolkitName: toolkit_name,
 										toolkitMethods: method_name,
-										message: targetMessage.data.message as string,
+										message: normalizeToolkitMessage(targetMessage.data.message),
 										toolkitStatus: "completed",
 									});
 								}
@@ -2447,11 +2490,13 @@ const filterMessage = (message: AgentMessage) => {
 		message.data.method_name = 'search'
 	}
 
+	message.data.message = normalizeToolkitMessage(message.data.message);
+
 	if (message.data.toolkit_name === 'Note Taking Toolkit') {
-		message.data.message = message.data.message!.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
+		message.data.message = message.data.message.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
 	}
 	if (message.data.method_name === 'scrape') {
-		message.data.message = message.data.message!.replace(/url='/g, '').slice(0, -1)
+		message.data.message = message.data.message.replace(/url='/g, '').slice(0, -1)
 	}
 	return message
 }
