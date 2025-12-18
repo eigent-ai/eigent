@@ -1512,7 +1512,6 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
             res.extend(toolkit_tools)
         else:
-            logger.warning(f"Toolkit {item} not found, please check your configuration.")
             traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")
     return res
 
