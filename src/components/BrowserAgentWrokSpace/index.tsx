@@ -38,7 +38,7 @@ export default function Home() {
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		search_agent: {
+		browser_agent: {
 			name: "Browser agent",
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",

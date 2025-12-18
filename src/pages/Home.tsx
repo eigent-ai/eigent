@@ -6,7 +6,7 @@ import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
-import SearchAgentWrokSpace from "@/components/SearchAgentWrokSpace";
+import BrowserAgentWrokSpace from "@/components/BrowserAgentWrokSpace";
 import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
 import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
@@ -61,10 +61,10 @@ export default function Home() {
 		}
 		
 		if (webviews.length === 0) {
-			const searchAgent = taskAssigning.find(agent => agent.type === 'browser_agent');
-			if (searchAgent && searchAgent.activeWebviewIds && searchAgent.activeWebviewIds.length > 0) {
-				searchAgent.activeWebviewIds.forEach((webview, index) => {
-					webviews.push({ ...webview, agent_id: searchAgent.agent_id, index });
+			const browserAgent = taskAssigning.find(agent => agent.type === 'browser_agent');
+			if (browserAgent && browserAgent.activeWebviewIds && browserAgent.activeWebviewIds.length > 0) {
+				browserAgent.activeWebviewIds.forEach((webview, index) => {
+					webviews.push({ ...webview, agent_id: browserAgent.agent_id, index });
 				});
 			}
 		}
@@ -88,15 +88,15 @@ export default function Home() {
 						let taskAssigning = [
 							...currentTask.taskAssigning,
 						];
-						const searchAgentIndex = taskAssigning.findIndex(
+						const browserAgentIndex = taskAssigning.findIndex(
 							(agent) => agent.agent_id === webview.agent_id
 						);
 
 						if (
-							searchAgentIndex !== -1 &&
+							browserAgentIndex !== -1 &&
 							base64 !== "data:image/jpeg;base64,"
 						) {
-							taskAssigning[searchAgentIndex].activeWebviewIds![
+							taskAssigning[browserAgentIndex].activeWebviewIds![
 								webview.index
 							].img = base64;
 							chatStore.setTaskAssigning(
@@ -104,7 +104,7 @@ export default function Home() {
 								taskAssigning
 							);
 							const { processTaskId, url } =
-								taskAssigning[searchAgentIndex].activeWebviewIds![
+								taskAssigning[browserAgentIndex].activeWebviewIds![
 									webview.index
 								];
 							chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
@@ -206,9 +206,9 @@ export default function Home() {
 											.activeWorkSpace
 								)?.type === "browser_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<SearchAgentWrokSpace />
+										<BrowserAgentWrokSpace />
 									</div>
-								)}
+								)}	
 								{chatStore.tasks[chatStore.activeTaskId as string]
 									?.activeWorkSpace === "workflow" && (
 									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">

@@ -234,7 +234,7 @@ export function Node({ id, data }: NodeProps) {
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		search_agent: {
+		browser_agent: {
 			name: "Browser agent",
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
@@ -278,7 +278,7 @@ export function Node({ id, data }: NodeProps) {
 			"# Web Deployment ",
 			"# Screen Capture ",
 		],
-		search_agent: ["# Web Browser ", "# Search Engines "],
+		browser_agent: ["# Web Browser ", "# Search Engines "],
 		multi_modal_agent: [
 			"# Image Analysis ",
 			"# Video Processing ",
