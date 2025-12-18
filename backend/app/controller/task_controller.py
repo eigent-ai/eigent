@@ -64,8 +64,8 @@ def add_agent(id: str, data: NewAgent):
     logger.info("Adding new agent to task", extra={"task_id": id, "agent_name": data.name})
     logger.debug("New agent data", extra={"task_id": id, "agent_data": data.model_dump_json()})
     # Set user-specific environment path for this thread
-    set_user_env_path(data.env_path)
-    load_dotenv(dotenv_path=data.env_path)
+    env_path = set_user_env_path(data.env_path)
+    load_dotenv(dotenv_path=env_path)
     asyncio.run(get_task_lock(id).put_queue(ActionNewAgent(**data.model_dump())))
     logger.info("Agent added to task", extra={"task_id": id, "agent_name": data.name})
     return Response(status_code=204)
