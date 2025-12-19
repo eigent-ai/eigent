@@ -349,7 +349,7 @@ function HeaderWin() {
 								<Button
 									variant="ghost"
 									size="icon"
-									className="no-drag"
+									className="no-drag rounded-full"
 								>
 									<MoreHorizontal className="w-4 h-4" />
 								</Button>
