@@ -21,6 +21,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
 import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import { setVibrancy, setRoundedCorners, setTransparentTitlebar } from './native/macos-window'
 
 const userData = app.getPath('userData');
 
@@ -143,7 +144,7 @@ const setupProtocolHandlers = () => {
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
   log.info('enter handleProtocolUrl', url);
-  
+
   // If window is not ready, queue the URL
   if (!isWindowReady || !win || win.isDestroyed()) {
     log.info('Window not ready, queuing protocol URL:', url);
@@ -291,21 +292,21 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
-  
+
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
     log.info('[RESTART] Restarting app to apply user profile changes');
-    
+
     // Clean up Python process first
     await cleanupPythonProcess();
-    
+
     // Schedule relaunch after a short delay
     setTimeout(() => {
       app.relaunch();
       app.quit();
     }, 100);
   });
-  
+
   ipcMain.handle('restart-backend', async () => {
     try {
       if (backendPort) {
@@ -650,7 +651,7 @@ function registerIpcHandlers() {
 
   // ==================== window control handler ====================
   ipcMain.on('window-close', (_, data) => {
-    if(data.isForceQuit) {
+    if (data.isForceQuit) {
       return app?.quit()
     }
     return win?.close()
@@ -824,7 +825,7 @@ function registerIpcHandlers() {
     let lines = content.split(/\r?\n/);
     lines = updateEnvBlock(lines, { [key]: value });
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
-    
+
     // Also write to global .env file for backend process to read
     const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
     let globalContent = '';
@@ -841,7 +842,7 @@ function registerIpcHandlers() {
     } catch (error) {
       log.error("global env-write error:", error);
     }
-    
+
     return { success: true };
   });
 
@@ -858,7 +859,7 @@ function registerIpcHandlers() {
     lines = removeEnvKey(lines, key);
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
     log.info("env-remove success", ENV_PATH);
-    
+
     // Also remove from global .env file
     const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
     try {
@@ -870,7 +871,7 @@ function registerIpcHandlers() {
     } catch (error) {
       log.error("global env-remove error:", error);
     }
-    
+
     return { success: true };
   });
 
@@ -1010,7 +1011,7 @@ function registerIpcHandlers() {
   // ==================== dependency install handler ====================
   ipcMain.handle('install-dependencies', async () => {
     try {
-      if(win === null) throw new Error("Window is null");
+      if (win === null) throw new Error("Window is null");
 
       // Prevent concurrent installations
       if (isInstallationInProgress) {
@@ -1023,7 +1024,7 @@ function registerIpcHandlers() {
 
       // Set lock
       isInstallationInProgress = true;
-      installationLock = checkAndInstallDepsOnUpdate({win, forceInstall: true})
+      installationLock = checkAndInstallDepsOnUpdate({ win, forceInstall: true })
         .finally(() => {
           isInstallationInProgress = false;
         });
@@ -1066,9 +1067,9 @@ function registerIpcHandlers() {
   ipcMain.handle('get-installation-status', async () => {
     try {
       const { isInstalling, hasLockFile } = await getInstallationStatus();
-      return { 
-        success: true, 
-        isInstalling, 
+      return {
+        success: true,
+        isInstalling,
         hasLockFile,
         timestamp: Date.now()
       };
@@ -1128,7 +1129,7 @@ async function createWindow() {
   log.info(`[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`);
   log.info(`[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath('userData')}`);
   log.info(`[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue('user-data-dir')}`);
-  
+
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -1137,13 +1138,10 @@ async function createWindow() {
     minHeight: 650,
     frame: false,
     transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    backgroundColor: '#00000000',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    roundedCorners: true,
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
@@ -1156,6 +1154,28 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // Apply native macOS effects
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+          setVibrancy(win, 'HUDWindow');
+
+          // Apply rounded corners
+          setRoundedCorners(win, 20);
+
+          // Make titlebar transparent
+          setTransparentTitlebar(win);
+
+          log.info('[MacOS] Applied native visual effects');
+        } catch (error) {
+          log.error('[MacOS] Failed to apply native visual effects:', error);
+        }
+      }
+    });
+  }
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1350,7 +1370,7 @@ async function createWindow() {
   await new Promise(resolve => setTimeout(resolve, 500));
 
   // Now check and install dependencies
-  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
+  let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
     log.info("[DEPS INSTALL] Dependency Error: ", res.message);
     // Note: install-dependencies-complete failure event is already sent by installDependencies function
@@ -1579,18 +1599,18 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-    let isQuitting = false;
-    
-    app.on('before-quit', () => {
-      isQuitting = true;
-    });
-    
-    win?.on("close", (event) => {
-      if (!isQuitting) {
-        event.preventDefault();
-        win?.webContents.send("before-close");
-      }
-    })
+  let isQuitting = false;
+
+  app.on('before-quit', () => {
+    isQuitting = true;
+  });
+
+  win?.on("close", (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win?.webContents.send("before-close");
+    }
+  })
 }
 
 // ==================== app event handle ====================
@@ -1693,18 +1713,18 @@ app.whenReady().then(async () => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-  
+
   // Clean up WebView manager
   if (webViewManager) {
     webViewManager.destroy();
     webViewManager = null;
   }
-  
+
   // Reset window state
   win = null;
   isWindowReady = false;
   protocolUrlQueue = [];
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }

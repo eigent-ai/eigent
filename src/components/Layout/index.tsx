@@ -41,7 +41,7 @@ const Layout = () => {
 	useEffect(() => {
 		const handleBeforeClose = () => {
 			const currentStatus = chatStore.tasks[chatStore.activeTaskId as string]?.status;
-			if(["running", "pause"].includes(currentStatus)) {
+			if (["running", "pause"].includes(currentStatus)) {
 				setNoticeOpen(true);
 			} else {
 				window.electronAPI.closeWindow(true);
@@ -99,9 +99,8 @@ const Layout = () => {
 					onOpenChange={setNoticeOpen}
 					open={noticeOpen}
 				/>
-				<Halo />
 			</div>
-			</div>
+		</div>
 	);
 };
 

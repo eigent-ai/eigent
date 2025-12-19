@@ -162,7 +162,7 @@ export default function Browser() {
 			setDeletingDomain(null);
 		}
 	};
-4
+	4
 	const handleDeleteAll = async () => {
 		setDeletingAll(true);
 		try {
@@ -209,18 +209,18 @@ export default function Browser() {
 			/>
 
 			{/* Header Section */}
-			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+			<div className="flex w-full">
 				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
 					<div className="flex flex-row items-center justify-between w-full gap-4">
 						<div className="flex flex-col">
 							<div className="text-heading-sm font-bold text-text-heading">{t("layout.browser-management")}</div>
 							<p className="text-body-sm text-text-label max-w-[700px]">
-							{t("layout.browser-management-description")}.</p>
+								{t("layout.browser-management-description")}.</p>
 						</div>
 					</div>
 				</div>
 			</div>
-      
+
 			{/* Content Section */}
 			<div className="flex w-full">
 				<div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
@@ -235,11 +235,10 @@ export default function Browser() {
 							>
 								<RefreshCw className="flex-shrink-0" />
 								<span
-									className={`overflow-hidden transition-all duration-300 ease-in-out ${
-										hasUnsavedChanges
+									className={`overflow-hidden transition-all duration-300 ease-in-out ${hasUnsavedChanges
 											? "max-w-[150px] opacity-100 pl-2"
 											: "max-w-0 opacity-0 ml-0"
-									}`}
+										}`}
 								>
 									{t("layout.restart-to-apply")}
 								</span>
@@ -293,7 +292,7 @@ export default function Browser() {
 										{loginLoading ? t("layout.opening") : t("layout.open-browser")}
 									</Button>
 								</div>
-							</div>	
+							</div>
 
 							{cookieDomains.length > 0 ? (
 								<div className="flex flex-col gap-2">
@@ -335,11 +334,11 @@ export default function Browser() {
 							)}
 						</div>
 					</div>
-          
+
 					<div className="flex-1 w-full items-center justify-center text-label-xs text-text-label text-center">
-						For more information, check out our 
-					<a href="https://www.eigent.ai/privacy-policy" target="_blank" className="text-text-information underline ml-1">{t("layout.privacy-policy")}</a>
-          </div>
+						For more information, check out our
+						<a href="https://www.eigent.ai/privacy-policy" target="_blank" className="text-text-information underline ml-1">{t("layout.privacy-policy")}</a>
+					</div>
 
 				</div>
 			</div>
