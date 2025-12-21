@@ -185,7 +185,7 @@ export default function GroupedHistoryView({
 
   useEffect(() => {
     loadProjects();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, projectStore.refetchCounter]);
 
   // Filter projects based on search value
   const filteredProjects = projects.filter(project => {
