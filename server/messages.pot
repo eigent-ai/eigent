@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-08-06 09:56+0800\n"
+"POT-Creation-Date: 2025-10-16 15:49+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -122,8 +122,8 @@ msgid "Edit mcp category"
 msgstr ""
 
 #: app/controller/chat/snapshot_controller.py:34
-#: app/controller/chat/snapshot_controller.py:68
-#: app/controller/chat/snapshot_controller.py:81
+#: app/controller/chat/snapshot_controller.py:65
+#: app/controller/chat/snapshot_controller.py:78
 msgid "Chat snapshot not found"
 msgstr ""
 
@@ -152,25 +152,25 @@ msgstr ""
 msgid "Invalid configuration group"
 msgstr ""
 
-#: app/controller/mcp/mcp_controller.py:70
+#: app/controller/mcp/mcp_controller.py:112
 msgid "Mcp not found"
 msgstr ""
 
-#: app/controller/mcp/mcp_controller.py:73
-#: app/controller/mcp/user_controller.py:44
+#: app/controller/mcp/mcp_controller.py:115
+#: app/controller/mcp/user_controller.py:87
 msgid "mcp is installed"
 msgstr ""
 
-#: app/controller/mcp/user_controller.py:34
+#: app/controller/mcp/user_controller.py:77
 msgid "McpUser not found"
 msgstr ""
 
-#: app/controller/mcp/user_controller.py:61
-#: app/controller/mcp/user_controller.py:75
+#: app/controller/mcp/user_controller.py:122
+#: app/controller/mcp/user_controller.py:136
 msgid "Mcp Info not found"
 msgstr ""
 
-#: app/controller/mcp/user_controller.py:63
+#: app/controller/mcp/user_controller.py:124
 msgid "current user have no permission to modify"
 msgstr ""
 
