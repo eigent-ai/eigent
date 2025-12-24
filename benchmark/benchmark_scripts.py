@@ -171,7 +171,7 @@ def main():
 	parser.add_argument("--api-base", default="https://dev.eigent.ai/api")
 	parser.add_argument("--chat-base", default=None)
 	parser.add_argument("--token", default="")
-	parser.add_argument("--email", required=True)
+	parser.add_argument("--email", default="benchmark@example.com")
 	parser.add_argument("--password", default="")
 	parser.add_argument("--task-file", default=default_task_file())
 	parser.add_argument("--category", default="")
@@ -191,13 +191,17 @@ def main():
 	headers_api = {}
 	headers_chat = {}
 	token = args.token
-	if not token and args.password:
-		token = login_and_get_token(api_base, args.email, args.password)
+	needs_api = args.model_source == "provider" or not args.skip_history
+	if needs_api:
+		if not token and args.password:
+			token = login_and_get_token(api_base, args.email, args.password)
+		if not token:
+			raise RuntimeError("Token is required for provider lookup or history. Provide --token or --password.")
+	if token:
+		headers_api["Authorization"] = f"Bearer {token}"
+		headers_chat["Authorization"] = f"Bearer {token}"
 
-	if not token:
-		raise RuntimeError("Token is required. Provide --token or --password for auto-login.")
-	headers_api["Authorization"] = f"Bearer {token}"
-	headers_chat["Authorization"] = f"Bearer {token}"
+	chat_email = args.email or "benchmark@example.com"
 
 	if args.model_source == "provider":
 		model_platform, model_type, api_key, api_url = pick_provider(api_base, headers_api)
@@ -246,7 +250,7 @@ def main():
 			"task_id": task_id,
 			"project_id": project_id,
 			"question": question,
-			"email": args.email,
+			"email": chat_email,
 			"attaches": [],
 			"model_platform": model_platform,
 			"model_type": model_type,
