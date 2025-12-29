@@ -352,13 +352,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     try:
                         simple_resp = question_agent.step(simple_answer_prompt)
                         answer_content = simple_resp.msgs[0].content if simple_resp and simple_resp.msgs else "I understand your question, but I'm having trouble generating a response right now."
+                        
+                        # Extract token usage from the response
+                        total_tokens = 0
+                        if simple_resp and hasattr(simple_resp, 'info') and simple_resp.info:
+                            usage_info = simple_resp.info.get("usage") or simple_resp.info.get("token_usage")
+                            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
 
                         task_lock.add_conversation('assistant', answer_content)
 
-                        yield sse_json("wait_confirm", {"content": answer_content, "question": question})
+                        yield sse_json("wait_confirm", {"content": answer_content, "question": question, "tokens": total_tokens})
                     except Exception as e:
                         logger.error(f"Error generating simple answer: {e}")
-                        yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": question})
+                        yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": question, "tokens": 0})
 
                     # Clean up empty folder if it was created for this task
                     if hasattr(task_lock, 'new_folder_path') and task_lock.new_folder_path:
@@ -675,14 +681,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             try:
                                 simple_resp = question_agent.step(simple_answer_prompt)
                                 answer_content = simple_resp.msgs[0].content if simple_resp and simple_resp.msgs else "I understand your question, but I'm having trouble generating a response right now."
+                                
+                                # Extract token usage from the response
+                                total_tokens = 0
+                                if simple_resp and hasattr(simple_resp, 'info') and simple_resp.info:
+                                    usage_info = simple_resp.info.get("usage") or simple_resp.info.get("token_usage")
+                                    total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
 
                                 task_lock.add_conversation('assistant', answer_content)
 
                                 # Send response to user (don't send confirmed if simple response)
-                                yield sse_json("wait_confirm", {"content": answer_content, "question": new_task_content})
+                                yield sse_json("wait_confirm", {"content": answer_content, "question": new_task_content, "tokens": total_tokens})
                             except Exception as e:
                                 logger.error(f"Error generating simple answer in multi-turn: {e}")
-                                yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": new_task_content})
+                                yield sse_json("wait_confirm", {"content": "I encountered an error while processing your question.", "question": new_task_content, "tokens": 0})
 
                             logger.info(f"[LIFECYCLE] Multi-turn: simple answer provided, resuming workforce")
                             workforce.resume()

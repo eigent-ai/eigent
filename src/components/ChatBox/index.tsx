@@ -507,6 +507,7 @@ export default function ChatBox(): JSX.Element {
 		if (history_id) {
 			try {
 				await proxyFetchDelete(`/api/chat/history/${history_id}`);
+				projectStore.refetchProjects();
 			} catch(error) {
 				console.error(`Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`, error);
 			}
