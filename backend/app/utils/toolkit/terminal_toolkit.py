@@ -65,6 +65,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             safe_mode=safe_mode,
             allowed_commands=allowed_commands,
             clone_current_env=clone_current_env,
+            install_dependencies=[
+                "pandas",
+                "numpy",
+                "matplotlib",
+                "requests",
+                "openpyxl",
+            ],
         )
 
     def _write_to_log(self, log_file: str, content: str) -> None:
@@ -134,18 +141,25 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 exc_info=True
             )
 
-    def shell_exec(self, id: str, command: str, block: bool = True) -> str:
+    def shell_exec(
+        self,
+        id: str,
+        command: str,
+        block: bool = True,
+        timeout: float = 20.0,
+    ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
 
         Args:
             id (str): A unique identifier for the command's session.
             command (str): The shell command to execute.
             block (bool, optional): Determines the execution mode. Defaults to True.
+            timeout (float, optional): Timeout in seconds for blocking mode. Defaults to 20.0.
 
         Returns:
             str: The output of the command execution.
         """
-        result = super().shell_exec(id, command, block)
+        result = super().shell_exec(id, command, block, timeout)
 
         # If the command executed successfully but returned empty output,
         # provide a clear success message to help the AI agent understand
