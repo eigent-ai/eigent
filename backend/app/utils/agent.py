@@ -184,9 +184,49 @@ class ListenChatAgent(ChatAgent):
             total_tokens = 0
 
         if res is not None:
+            if isinstance(res, StreamingChatAgentResponse):
+                def _stream_with_deactivate():
+                    last_response: ChatAgentResponse | None = None
+                    try:
+                        for chunk in res:
+                            last_response = chunk
+                            yield chunk
+                    finally:
+                        final_message = ""
+                        total_tokens = 0
+                        if last_response:
+                            final_message = (
+                                last_response.msg.content if last_response.msg else ""
+                            )
+                            usage_info = (
+                                last_response.info.get("usage")
+                                or last_response.info.get("token_usage")
+                                or {}
+                            )
+                            if usage_info:
+                                total_tokens = usage_info.get("total_tokens", 0)
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionDeactivateAgentData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "message": final_message,
+                                        "tokens": total_tokens,
+                                    },
+                                )
+                            )
+                        )
+
+                return StreamingChatAgentResponse(_stream_with_deactivate())
+
             message = res.msg.content if res.msg else ""
-            total_tokens = res.info["usage"]["total_tokens"]
-            traceroot_logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
+            usage_info = res.info.get("usage") or res.info.get("token_usage") or {}
+            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
+            traceroot_logger.info(
+                f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
+            )
 
         assert message is not None
 
