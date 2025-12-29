@@ -769,7 +769,8 @@ these tips to maximize your effectiveness:
   - **Piping**: Use `|` to pass output from one command to another.
   - **Permissions**: Use `ls -F` to check file permissions.
   - **Installation**: Use `pip3 install` or `apt-get install` for new
-    packages.
+    packages.If you encounter `ModuleNotFoundError` or `ImportError`, install 
+    the missing package with `pip install <package>`.
 
 - Stop a Process: If a process needs to be terminated, use
     `shell_kill_process(id="...")`.
