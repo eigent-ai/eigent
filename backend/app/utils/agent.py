@@ -108,6 +108,7 @@ class ListenChatAgent(ChatAgent):
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
         step_timeout: float | None = 900,
+        **kwargs: Any,
     ) -> None:
         super().__init__(
             system_message=system_message,
@@ -130,6 +131,7 @@ class ListenChatAgent(ChatAgent):
             prune_tool_calls_from_memory=prune_tool_calls_from_memory,
             enable_snapshot_clean=enable_snapshot_clean,
             step_timeout=step_timeout,
+            **kwargs,
         )
         self.api_task_id = api_task_id
         self.agent_name = agent_name
@@ -182,9 +184,49 @@ class ListenChatAgent(ChatAgent):
             total_tokens = 0
 
         if res is not None:
+            if isinstance(res, StreamingChatAgentResponse):
+                def _stream_with_deactivate():
+                    last_response: ChatAgentResponse | None = None
+                    try:
+                        for chunk in res:
+                            last_response = chunk
+                            yield chunk
+                    finally:
+                        final_message = ""
+                        total_tokens = 0
+                        if last_response:
+                            final_message = (
+                                last_response.msg.content if last_response.msg else ""
+                            )
+                            usage_info = (
+                                last_response.info.get("usage")
+                                or last_response.info.get("token_usage")
+                                or {}
+                            )
+                            if usage_info:
+                                total_tokens = usage_info.get("total_tokens", 0)
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionDeactivateAgentData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "message": final_message,
+                                        "tokens": total_tokens,
+                                    },
+                                )
+                            )
+                        )
+
+                return StreamingChatAgentResponse(_stream_with_deactivate())
+
             message = res.msg.content if res.msg else ""
-            total_tokens = res.info["usage"]["total_tokens"]
-            traceroot_logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
+            usage_info = res.info.get("usage") or res.info.get("token_usage") or {}
+            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
+            traceroot_logger.info(
+                f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
+            )
 
         assert message is not None
 
@@ -533,6 +575,21 @@ def agent_model(
         )
     )
 
+    # Build model config, defaulting to streaming for planner
+    extra_params = options.extra_params or {}
+    model_config: dict[str, Any] = {}
+    if options.is_cloud():
+        model_config["user"] = str(options.project_id)
+    model_config.update(
+        {
+            k: v
+            for k, v in extra_params.items()
+            if k not in ["model_platform", "model_type", "api_key", "url"]
+        }
+    )
+    if agent_name == Agents.task_agent:
+        model_config["stream"] = True
+
     return ListenChatAgent(
         options.project_id,
         agent_name,
@@ -542,16 +599,7 @@ def agent_model(
             model_type=options.model_type,
             api_key=options.api_key,
             url=options.api_url,
-            model_config_dict={
-                "user": str(options.project_id),
-            }
-            if options.is_cloud()
-            else None,
-            **{
-                k: v
-                for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
-            },
+            model_config_dict=model_config or None,
         ),
         # output_language=options.language,
         tools=tools,
@@ -559,6 +607,7 @@ def agent_model(
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
+        stream_accumulate=False,
     )
 
 
