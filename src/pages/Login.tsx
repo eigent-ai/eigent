@@ -65,6 +65,35 @@ export default function Login() {
 		return !newErrors.email && !newErrors.password;
 	};
 
+	const getLoginErrorMessage = (data: any) => {
+		if (!data || typeof data !== "object" || typeof data.code !== "number") {
+			return "";
+		}
+
+		if (data.code === 0) {
+			return "";
+		}
+
+		if (data.code === 10) {
+			return data.text || t("layout.login-failed-please-check-your-email-and-password");
+		}
+
+		if (data.code === 1 && Array.isArray(data.error) && data.error.length > 0) {
+			const firstError = data.error[0];
+			if (typeof firstError === "string") {
+				return firstError;
+			}
+			if (typeof firstError?.msg === "string") {
+				return firstError.msg;
+			}
+			if (typeof firstError?.message === "string") {
+				return firstError.message;
+			}
+		}
+
+		return data.text || t("layout.login-failed-please-try-again");
+	};
+
 	const handleInputChange = (field: string, value: string) => {
 		setFormData((prev) => ({
 			...prev,
@@ -97,8 +126,9 @@ export default function Login() {
 				password: formData.password,
 			});
 
-			if (data.code === 10) {
-				setGeneralError(data.text || t("layout.login-failed-please-try-again"));
+			const errorMessage = getLoginErrorMessage(data);
+			if (errorMessage) {
+				setGeneralError(errorMessage);
 				return;
 			}
 
@@ -122,8 +152,9 @@ export default function Login() {
 				token: token,
 			});
 
-			if (data.code === 10) {
-				setGeneralError(data.text || t("layout.login-failed-please-try-again"));
+			const errorMessage = getLoginErrorMessage(data);
+			if (errorMessage) {
+				setGeneralError(errorMessage);
 				return;
 			}
 			console.log("data", data);
@@ -294,7 +325,13 @@ export default function Login() {
 								<Button
 									variant="ghost"
 									size="sm"
-									onClick={() => navigate("/signup")}
+									onClick={() =>
+										window.open(
+											"https://www.eigent.ai/signup",
+											"_blank",
+											"noopener,noreferrer"
+										)
+									}
 								>
 									{t("layout.sign-up")}
 								</Button>
