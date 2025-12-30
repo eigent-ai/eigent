@@ -5,6 +5,7 @@ import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
 import { TaskCard } from './TaskBox/TaskCard';
+import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { VanillaChatStore } from '@/store/chatStore';
 import { FileText } from 'lucide-react';
 
@@ -391,16 +392,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {/* Streaming Decompose Text - rendered separately to avoid flickering */}
       {isLastUserQuery && streamingDecomposeText && (
-        <div className="flex flex-col pl-3 gap-4">
-          <div className="flex items-center gap-2 text-text-label text-sm font-medium">
-            <span className="animate-pulse">Splitting Tasks</span>
-          </div>
-          <div className="bg-message-fill-default/50 rounded-lg p-3 overflow-hidden">
-            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-secondary leading-relaxed">
-              {streamingDecomposeText}
-            </pre>
-          </div>
-        </div>
+        <StreamingTaskList streamingText={streamingDecomposeText} />
       )}
 
       {/* Skeleton for loading state */}
