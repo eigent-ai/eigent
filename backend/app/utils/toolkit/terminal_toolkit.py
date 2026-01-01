@@ -143,22 +143,28 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     def shell_exec(
         self,
-        id: str,
         command: str,
+        id: str | None = None,
         block: bool = True,
         timeout: float = 20.0,
     ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
 
         Args:
-            id (str): A unique identifier for the command's session.
             command (str): The shell command to execute.
+            id (str, optional): A unique identifier for the command's session.
+                If not provided, a unique ID will be automatically generated.
             block (bool, optional): Determines the execution mode. Defaults to True.
             timeout (float, optional): Timeout in seconds for blocking mode. Defaults to 20.0.
 
         Returns:
             str: The output of the command execution.
         """
+        # Auto-generate ID if not provided
+        if id is None:
+            import time
+            id = f"auto_{int(time.time() * 1000)}"
+
         result = super().shell_exec(id, command, block, timeout)
 
         # If the command executed successfully but returned empty output,

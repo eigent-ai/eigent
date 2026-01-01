@@ -5,6 +5,7 @@ import json
 from typing import Any, Callable, Type, TypeVar
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 from app.service.task import (
     ActionActivateToolkitData,
@@ -37,6 +38,9 @@ def _safe_put_queue(task_lock, data):
     except RuntimeError:
         # No running event loop, we need to handle this differently
         try:
+            import queue
+            result_queue = queue.Queue()
+
             # Create a new event loop in a separate thread to avoid conflicts
             def run_in_thread():
                 try:
@@ -45,14 +49,30 @@ def _safe_put_queue(task_lock, data):
                     asyncio.set_event_loop(new_loop)
                     try:
                         new_loop.run_until_complete(task_lock.put_queue(data))
+                        result_queue.put(("success", None))
+                    except Exception as e:
+                        result_queue.put(("error", e))
                     finally:
                         new_loop.close()
                 except Exception as e:
                     logger.error(f"[listen_toolkit] Failed to send data in thread: {e}")
+                    result_queue.put(("error", e))
 
-            # Run in a separate thread to avoid blocking
-            thread = threading.Thread(target=run_in_thread, daemon=True)
+            # Run in a separate non-daemon thread to ensure completion
+            thread = threading.Thread(target=run_in_thread, daemon=False)
             thread.start()
+
+            # Wait briefly to ensure the thread starts and completes
+            try:
+                status, error = result_queue.get(timeout=1.0)
+                if status == "error":
+                    logger.error(f"[listen_toolkit] Thread execution failed: {error}")
+                else:
+                    logger.info(f"[listen_toolkit] Thread execution succeeded for {data.__class__.__name__}")
+            except queue.Empty:
+                # Thread is still running, but we can't wait forever
+                logger.warning(f"[listen_toolkit] Thread execution timeout after 1s for {data.__class__.__name__}, continuing anyway")
+
         except Exception as e:
             logger.error(f"[listen_toolkit] Failed to send data to queue: {e}")
 
@@ -95,10 +115,29 @@ def listen_toolkit(
 
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
+
+                # Multi-layer fallback to get process_task_id
+                process_task_id = process_task.get("")
+                if not process_task_id:
+                    # Fallback 1: Try to get from toolkit.api_task_id
+                    process_task_id = getattr(toolkit, 'api_task_id', "")
+                    if process_task_id:
+                        logger.warning(f"[toolkit_listen] ContextVar process_task is empty, using toolkit.api_task_id: {process_task_id}")
+                    else:
+                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
+
+                activate_timestamp = datetime.now().isoformat()
+
+                # Debug logging
+                logger.info(f"[TOOLKIT DEBUG] About to log ACTIVATE for {toolkit_name}.{method_name}")
+
+                # Log toolkit activation
+                logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Timestamp: {activate_timestamp}")
+
                 activate_data = ActionActivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
+                        "process_task_id": process_task_id,
                         "toolkit_name": toolkit_name,
                         "method_name": method_name,
                         "message": args_str,
@@ -132,10 +171,16 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
+                deactivate_timestamp = datetime.now().isoformat()
+                status = "ERROR" if error is not None else "SUCCESS"
+
+                # Log toolkit deactivation
+                logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
+
                 deactivate_data = ActionDeactivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
+                        "process_task_id": process_task_id,
                         "toolkit_name": toolkit_name,
                         "method_name": method_name,
                         "message": res_msg,
@@ -178,10 +223,26 @@ def listen_toolkit(
 
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
+
+                # Multi-layer fallback to get process_task_id
+                process_task_id = process_task.get("")
+                if not process_task_id:
+                    # Fallback 1: Try to get from toolkit.api_task_id
+                    process_task_id = getattr(toolkit, 'api_task_id', "")
+                    if process_task_id:
+                        logger.warning(f"[toolkit_listen] ContextVar process_task is empty, using toolkit.api_task_id: {process_task_id}")
+                    else:
+                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
+
+                activate_timestamp = datetime.now().isoformat()
+
+                # Log toolkit activation (sync)
+                logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Timestamp: {activate_timestamp}")
+
                 activate_data = ActionActivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
+                        "process_task_id": process_task_id,
                         "toolkit_name": toolkit_name,
                         "method_name": method_name,
                         "message": args_str,
@@ -222,10 +283,16 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
+                deactivate_timestamp = datetime.now().isoformat()
+                status = "ERROR" if error is not None else "SUCCESS"
+
+                # Log toolkit deactivation (sync)
+                logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
+
                 deactivate_data = ActionDeactivateToolkitData(
                     data={
                         "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
+                        "process_task_id": process_task_id,
                         "toolkit_name": toolkit_name,
                         "method_name": method_name,
                         "message": res_msg,
@@ -290,7 +357,27 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
                     base_methods[name] = attr
 
         for method_name, base_method in base_methods.items():
+            # Check if method is overridden in the subclass
             if method_name in cls.__dict__:
+                # Method is overridden, check if it already has @listen_toolkit decorator
+                overridden_method = cls.__dict__[method_name]
+
+                # Check if already decorated by looking for the wrapper attributes
+                # that listen_toolkit adds (like __wrapped__ or specific markers)
+                is_already_decorated = (
+                    hasattr(overridden_method, '__wrapped__') or
+                    (hasattr(overridden_method, '__name__') and
+                     hasattr(getattr(overridden_method, '__code__', None), 'co_freevars') and
+                     'toolkit' in getattr(overridden_method.__code__, 'co_freevars', []))
+                )
+
+                if is_already_decorated:
+                    # Already has @listen_toolkit, skip
+                    continue
+
+                # Not decorated, wrap the overridden method
+                decorated_override = listen_toolkit(base_method)(overridden_method)
+                setattr(cls, method_name, decorated_override)
                 continue
 
             sig = signature(base_method)

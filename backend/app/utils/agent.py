@@ -426,17 +426,42 @@ class ListenChatAgent(ChatAgent):
         tool_call_id = tool_call_request.tool_call_id
         task_lock = get_task_lock(self.api_task_id)
 
-        # Check if tool is wrapped by @listen_toolkit decorator
-        # If so, the decorator will handle activate/deactivate events
-        has_listen_decorator = hasattr(tool.func, "__wrapped__")
+        # Try to get the real toolkit name
+        toolkit_name = None
 
-        toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
+        # Method 1: Check _toolkit_name attribute
+        if hasattr(tool, "_toolkit_name"):
+            toolkit_name = tool._toolkit_name
+
+        # Method 2: For MCP tools, check if func has __self__ (the toolkit instance)
+        if not toolkit_name and hasattr(tool, "func") and hasattr(tool.func, "__self__"):
+            toolkit_instance = tool.func.__self__
+            if hasattr(toolkit_instance, "toolkit_name") and callable(toolkit_instance.toolkit_name):
+                toolkit_name = toolkit_instance.toolkit_name()
+
+        # Method 3: Check if tool.func is a bound method with toolkit
+        if not toolkit_name and hasattr(tool, "func"):
+            if hasattr(tool.func, "func") and hasattr(tool.func.func, "__self__"):
+                toolkit_instance = tool.func.func.__self__
+                if hasattr(toolkit_instance, "toolkit_name") and callable(toolkit_instance.toolkit_name):
+                    toolkit_name = toolkit_instance.toolkit_name()
+
+        # Default fallback
+        if not toolkit_name:
+            toolkit_name = "mcp_toolkit"
+
         traceroot_logger.info(
             f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
         )
 
-        # Only send activate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
+        # Always send activate event from agent to ensure consistent logging
+        # This ensures all tool calls are logged, regardless of decorator detection issues
+        if True:  # Always send (removed decorator check)
+            # Log toolkit activation
+            from datetime import datetime
+            activate_timestamp = datetime.now().isoformat()
+            traceroot_logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {func_name} | Task ID: {self.process_task_id} | Agent: {self.agent_name} | Timestamp: {activate_timestamp}")
+
             await task_lock.put_queue(
                 ActionActivateToolkitData(
                     data={
@@ -451,17 +476,24 @@ class ListenChatAgent(ChatAgent):
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
+                # Log message_integration status before calling
+                has_enhanced_flag = getattr(tool.func, '__message_integration_enhanced__', False) if hasattr(tool, 'func') else False
+                traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] About to call {func_name} | has_enhanced_flag={has_enhanced_flag} | args_keys={list(args.keys())}")
+
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
+                    traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.func.async_call for {func_name}")
                     result = await tool.func.async_call(**args)
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
+                    traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.async_call for {func_name}")
                     result = await tool.async_call(**args)
 
                 elif hasattr(tool, "func") and asyncio.iscoroutinefunction(tool.func):
                     # Case: tool wraps a direct async function
+                    traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via await tool.func for {func_name}")
                     result = await tool.func(**args)
 
                 elif asyncio.iscoroutinefunction(tool):
@@ -493,8 +525,13 @@ class ListenChatAgent(ChatAgent):
             else:
                 result_msg = result_str
 
-        # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
+        # Always send deactivate event from agent to ensure consistent logging
+        if True:  # Always send (removed decorator check)
+            # Log toolkit deactivation
+            from datetime import datetime
+            deactivate_timestamp = datetime.now().isoformat()
+            traceroot_logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {func_name} | Task ID: {self.process_task_id} | Agent: {self.agent_name} | Status: SUCCESS | Timestamp: {deactivate_timestamp}")
+
             await task_lock.put_queue(
                 ActionDeactivateToolkitData(
                     data={
@@ -646,7 +683,15 @@ async def developer_agent(options: Chat):
     screenshot_toolkit = message_integration.register_toolkits(screenshot_toolkit)
 
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
+
+    # Log before message_integration registration (developer_agent)
+    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] [developer_agent] Registering terminal_toolkit via register_toolkits")
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+    tools_from_terminal = terminal_toolkit.get_tools()
+    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] [developer_agent] Registered {len(tools_from_terminal)} tools from terminal_toolkit")
+    for i, tool in enumerate(tools_from_terminal):
+        traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] [developer_agent] Tool {i}: name={tool.func.__name__}, type={type(tool)}, func_type={type(tool.func).__name__}, has_enhanced_flag={getattr(tool.func, '__message_integration_enhanced__', False)}")
+
     tools = [
         *HumanToolkit.get_can_use_tools(options.project_id, Agents.developer_agent),
         *note_toolkit.get_tools(),
@@ -683,11 +728,29 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 <mandatory_instructions>
 - You MUST use the `read_note` tool to read the ALL notes from other agents.
 
+- You MUST use the `send_message_to_user` tool to keep the user informed throughout your work:
+  * Before starting a major task or phase
+  * After completing each significant step
+  * When creating or modifying important files
+  * When encountering issues or making key decisions
+
+  Format your messages as:
+  - **message_title**: Short and specific (e.g., "Starting Code Analysis", "File Created")
+  - **message_description**: One clear sentence explaining what happened or what you're doing
+  - **message_attachment**: File path when you create/modify a file (optional)
+
+  Example:
+  send_message_to_user(
+      message_title="Analysis Complete",
+      message_description="Identified the bug in authentication module at line 145.",
+      message_attachment="/path/to/fixed_file.py"
+  )
+
 - When you complete your task, your final response must be a comprehensive
 summary of your work and the outcome, presented in a clear, detailed, and
 easy-to-read format. Avoid using markdown tables for presenting data; use
 plain text formatting instead.
-<mandatory_instructions>
+</mandatory_instructions>
 
 <capabilities>
 Your capabilities are extensive and powerful:
@@ -834,7 +897,15 @@ def search_agent(options: Chat):
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
-    terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
+
+    # Log before message_integration registration
+    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] Registering terminal_toolkit.shell_exec")
+    terminal_tools = message_integration.register_functions([terminal_toolkit.shell_exec])
+    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] Registered {len(terminal_tools)} tools from terminal_toolkit")
+    for i, tool in enumerate(terminal_tools):
+        traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] Tool {i}: type={type(tool)}, func={type(tool.func).__name__}, has_enhanced_flag={getattr(tool.func, '__message_integration_enhanced__', False)}")
+    terminal_toolkit = terminal_tools
+
     note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
@@ -901,6 +972,22 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     3. URLs provided by the user in their request
     Fabricating or guessing URLs is considered a critical error and must
     never be done under any circumstances.
+
+- You SHOULD use the `send_message_to_user` tool to keep the user informed during your research:
+    * When starting a new search query
+    * After finding relevant information
+    * When encountering issues or switching strategies
+    * When completing major research milestones
+
+    Format:
+    - **message_title**: Brief description of the action (e.g., "Starting Search", "Results Found")
+    - **message_description**: One sentence explaining what you're doing or what you found
+
+    Example:
+    send_message_to_user(
+        message_title="Search Complete",
+        message_description="Found 10 relevant sources about machine learning trends in 2025."
+    )
 
 - You MUST NOT answer from your own knowledge. All information
     MUST be sourced from the web using the available tools. If you don't know

@@ -751,7 +751,12 @@ export function Node({ id, data }: NodeProps) {
 							{selectedTask &&
 								selectedTask.toolkits &&
 								selectedTask.toolkits.length > 0 &&
-								selectedTask.toolkits.map((toolkit: any, index: number) => (
+								selectedTask.toolkits.map((toolkit: any, index: number) => {
+									// Log toolkit render
+									const renderTimestamp = new Date().toISOString();
+									console.log(`[FRONTEND TOOLKIT RENDER] Rendering toolkit | Toolkit: ${toolkit.toolkitName} | Method: ${toolkit.toolkitMethods} | Task ID: ${selectedTask.id} | Toolkit ID: ${toolkit.toolkitId} | Status: ${toolkit.toolkitStatus} | Timestamp: ${renderTimestamp}`);
+
+									return (
 									<div key={`toolkit-${toolkit.toolkitId}`}>
 										{toolkit.toolkitName === "notice" ? (
 											<div
@@ -845,8 +850,14 @@ export function Node({ id, data }: NodeProps) {
 											</Tooltip>
 										)}
 									</div>
-								))}
-							{selectedTask?.report && (
+									);
+								})}
+							{selectedTask?.report && (() => {
+								// Log completion report render
+								const reportTimestamp = new Date().toISOString();
+								console.log(`[FRONTEND COMPLETION REPORT RENDER] Rendering completion report | Task ID: ${selectedTask.id} | Task Content: ${selectedTask.content} | Timestamp: ${reportTimestamp}`);
+
+								return (
 								<div
 									ref={rePortRef}
 									onWheel={(e) => {
@@ -864,7 +875,8 @@ export function Node({ id, data }: NodeProps) {
 										olPadding="pl-0"
 									/>
 								</div>
-							)}
+								);
+							})()}
 						</div>
 					</div>
 				)}

@@ -102,13 +102,22 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         Returns:
             str: Confirmation that the message was successfully sent.
         """
+        import sys
+
         print(f"\nAgent Message:\n{message_title} \n{message_description}\n")
         if message_attachment:
             print(message_attachment)
-        logger.info(f"\nAgent Message:\n{message_title} {message_description} {message_attachment}")
+
         task_lock = get_task_lock(self.api_task_id)
         # Capture ContextVar value before creating async task
         current_process_task_id = process_task.get("")
+
+        # DEBUG: Use both logger and stderr to ensure output
+        sys.stderr.write(f"[SEND_MESSAGE_DEBUG] process_task_id from ContextVar: '{current_process_task_id}' | title: {message_title}\n")
+        sys.stderr.flush()
+        logger.info(f"[SEND_MESSAGE_DEBUG] process_task_id from ContextVar: '{current_process_task_id}' | title: {message_title}")
+
+        logger.info(f"\nAgent Message:\n{message_title} {message_description} {message_attachment}")
 
         # Use _safe_put_queue to handle both sync and async contexts
         from app.utils.listen.toolkit_listen import _safe_put_queue
@@ -119,6 +128,10 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
                 data=f"{message_description}",
             )
         )
+
+        sys.stderr.write(f"[SEND_MESSAGE_DEBUG] ActionNoticeData sent with process_task_id='{current_process_task_id}'\n")
+        sys.stderr.flush()
+        logger.info(f"[SEND_MESSAGE_DEBUG] ActionNoticeData sent with process_task_id='{current_process_task_id}'")
 
         attachment_info = f" {message_attachment}" if message_attachment else ""
         return f"Message successfully sent to user: '{message_title} {message_description}{attachment_info}'"
@@ -141,4 +154,5 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         human = cls(api_task_id, agent_name)
         return [
             FunctionTool(human.ask_human_via_gui),
+            FunctionTool(human.send_message_to_user),
         ]
