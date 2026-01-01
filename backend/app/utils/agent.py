@@ -748,9 +748,12 @@ def agent_model(
             url=options.api_url,
             model_config_dict={
                 "user": str(options.project_id),
+                "parallel_tool_calls": False,
             }
             if options.is_cloud()
-            else None,
+            else {
+                "parallel_tool_calls": False,
+            },
             **{
                 k: v
                 for k, v in (options.extra_params or {}).items()
@@ -1285,7 +1288,9 @@ Your approach depends on available search tools:
 - When encountering verification challenges (like login, CAPTCHAs or
     robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>
-    """
+<Details in interaction>
+When you select name in salesforce new event, please select the corresponding option after input to confirm, If you only input the name, it would not been confirmed.
+</Details in interaction>rest    """
 
     # Define cleanup callback to release CDP browser back to pool
     def cleanup_cdp_browser():
@@ -1863,9 +1868,12 @@ async def mcp_agent(options: Chat):
             url=options.api_url,
             model_config_dict={
                 "user": str(options.project_id),
+                "parallel_tool_calls": False,
             }
             if options.is_cloud()
-            else None,
+            else {
+                "parallel_tool_calls": False,
+            },
             **{
                 k: v
                 for k, v in (options.extra_params or {}).items()
