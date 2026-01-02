@@ -1263,7 +1263,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							agentMessages.data.agent_name,
 							agentMessages.data.process_task_id
 						);
-						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
+						let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
+
+						// Fallback: if task ID not found, try finding by agent type
+						if (assigneeAgentIndex === -1 && agentMessages.data.agent_name) {
+							assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.type === agentMessages.data.agent_name);
+						}
+
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
 							if (message) {
@@ -1271,10 +1277,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								setTaskAssigning(currentTaskId, [...taskAssigning]);
 							}
 						}
-						console.log('agentMessages.data', agentMessages.data.toolkit_name, agentMessages.data.method_name)
 
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'browser visit page') {
-							console.log('match success')
 							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message).replace(/url=/g, '').replace(/'/g, '') as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'visit page') {
@@ -1301,31 +1305,33 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						if (taskIndex !== -1) {
 							const { toolkit_name, method_name } = agentMessages.data;
-							if (toolkit_name && method_name && assigneeAgentIndex !== -1) {
+							if (toolkit_name && method_name) {
+								const message = filterMessage(agentMessages)
+								if (message) {
+									const toolkit = {
+										toolkitId: generateUniqueId(),
+										toolkitName: toolkit_name,
+										toolkitMethods: method_name,
+										message: normalizeToolkitMessage(message.data.message),
+										toolkitStatus: "running" as AgentStatus,
+									}
 
-								if (assigneeAgentIndex !== -1) {
-									const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
-									const message = filterMessage(agentMessages)
-									if (message) {
-										const toolkit = {
-											toolkitId: generateUniqueId(),
-											toolkitName: toolkit_name,
-											toolkitMethods: method_name,
-											message: normalizeToolkitMessage(message.data.message),
-											toolkitStatus: "running" as AgentStatus,
-										}
+									// Update taskAssigning if we found the agent
+									if (assigneeAgentIndex !== -1) {
+										const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
 										if (task) {
 											task.toolkits ??= []
 											task.toolkits.push({ ...toolkit });
 											task.status = "running";
 											setTaskAssigning(currentTaskId, [...taskAssigning]);
 										}
-										taskRunning![taskIndex].status = "running";
-										taskRunning![taskIndex].toolkits ??= [];
-										taskRunning![taskIndex].toolkits.push({ ...toolkit });
 									}
-								}
 
+									// Always update taskRunning (even if assigneeAgentIndex is -1)
+									taskRunning![taskIndex].status = "running";
+									taskRunning![taskIndex].toolkits ??= [];
+									taskRunning![taskIndex].toolkits.push({ ...toolkit });
+								}
 							}
 						}
 						setTaskRunning(currentTaskId, taskRunning);
@@ -1342,6 +1348,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							agentMessages.data.agent_name,
 							agentMessages.data.process_task_id
 						);
+
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
@@ -1784,7 +1791,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								addMessages(currentTaskId, newMessage)
 							}
 							setCotList(currentTaskId, [...tasks[currentTaskId].cotList, agentMessages.data.notice as string])
-							// addMessages(currentTaskId, newMessage);
 						}
 						return
 
