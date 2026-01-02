@@ -488,13 +488,32 @@ class ListenChatAgent(ChatAgent):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
-                    traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.func.async_call for {func_name}")
-                    result = await tool.func.async_call(**args)
+                    # Check if the wrapped tool is sync to avoid run_in_executor
+                    if hasattr(tool, 'is_async') and not tool.is_async:
+                        # Sync tool: call directly to preserve ContextVar
+                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Sync tool detected (wrapped), calling directly: {func_name}")
+                        result = tool(**args)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                    else:
+                        # Async tool: use async_call
+                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.func.async_call for {func_name}")
+                        result = await tool.func.async_call(**args)
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
-                    traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.async_call for {func_name}")
-                    result = await tool.async_call(**args)
+                    # Check if this is a sync tool to avoid run_in_executor (which breaks ContextVar)
+                    if hasattr(tool, 'is_async') and not tool.is_async:
+                        # Sync tool: call directly to preserve ContextVar in same thread
+                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Sync tool detected, calling directly: {func_name}")
+                        result = tool(**args)
+                        # Handle case where synchronous call returns a coroutine
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                    else:
+                        # Async tool: use async_call
+                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.async_call for {func_name}")
+                        result = await tool.async_call(**args)
 
                 elif hasattr(tool, "func") and asyncio.iscoroutinefunction(tool.func):
                     # Case: tool wraps a direct async function

@@ -145,6 +145,10 @@ def listen_toolkit(
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
 
+                # Skip WorkFlow display for send_message_to_user (called by message_integration)
+                # It still executes normally and sends notice, just doesn't show as a tool call
+                skip_workflow_display = func.__name__ == "send_message_to_user"
+
                 # Multi-layer fallback to get process_task_id
                 process_task_id_from_contextvar = process_task.get("")
                 logger.info(f"[LISTEN_TOOLKIT_CONTEXTVAR] In wrapper for {func.__name__}: ContextVar = '{process_task_id_from_contextvar}'")
@@ -163,19 +167,20 @@ def listen_toolkit(
                 # Debug logging
                 logger.info(f"[TOOLKIT DEBUG] About to log ACTIVATE for {toolkit_name}.{method_name}")
 
-                # Log toolkit activation
+                # Log toolkit activation (only send to WorkFlow if not skipped)
                 logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Timestamp: {activate_timestamp}")
 
-                activate_data = ActionActivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": args_str,
-                    },
-                )
-                await task_lock.put_queue(activate_data)
+                if not skip_workflow_display:
+                    activate_data = ActionActivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": args_str,
+                        },
+                    )
+                    await task_lock.put_queue(activate_data)
                 error = None
                 res = None
                 try:
@@ -206,19 +211,20 @@ def listen_toolkit(
                 deactivate_timestamp = datetime.now().isoformat()
                 status = "ERROR" if error is not None else "SUCCESS"
 
-                # Log toolkit deactivation
+                # Log toolkit deactivation (only send to WorkFlow if not skipped)
                 logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
 
-                deactivate_data = ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": res_msg,
-                    },
-                )
-                await task_lock.put_queue(deactivate_data)
+                if not skip_workflow_display:
+                    deactivate_data = ActionDeactivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": res_msg,
+                        },
+                    )
+                    await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
                 return res
@@ -263,6 +269,10 @@ def listen_toolkit(
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
 
+                # Skip WorkFlow display for send_message_to_user (called by message_integration)
+                # It still executes normally and sends notice, just doesn't show as a tool call
+                skip_workflow_display = func.__name__ == "send_message_to_user"
+
                 # Multi-layer fallback to get process_task_id
                 process_task_id_from_contextvar = process_task.get("")
                 logger.info(f"[LISTEN_TOOLKIT_CONTEXTVAR] In wrapper for {func.__name__}: ContextVar = '{process_task_id_from_contextvar}'")
@@ -278,21 +288,22 @@ def listen_toolkit(
 
                 activate_timestamp = datetime.now().isoformat()
 
-                # Log toolkit activation (sync)
+                # Log toolkit activation (sync) (only send to WorkFlow if not skipped)
                 logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Timestamp: {activate_timestamp}")
 
-                activate_data = ActionActivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": args_str,
-                    },
-                )
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] Sending ActionActivateToolkitData via _safe_put_queue")
-                _safe_put_queue(task_lock, activate_data)
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] ActionActivateToolkitData sent")
+                if not skip_workflow_display:
+                    activate_data = ActionActivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": args_str,
+                        },
+                    )
+                    logger.info(f"[LISTEN_TOOLKIT_SYNC] Sending ActionActivateToolkitData via _safe_put_queue")
+                    _safe_put_queue(task_lock, activate_data)
+                    logger.info(f"[LISTEN_TOOLKIT_SYNC] ActionActivateToolkitData sent")
 
                 error = None
                 res = None
@@ -333,21 +344,22 @@ def listen_toolkit(
                 deactivate_timestamp = datetime.now().isoformat()
                 status = "ERROR" if error is not None else "SUCCESS"
 
-                # Log toolkit deactivation (sync)
+                # Log toolkit deactivation (sync) (only send to WorkFlow if not skipped)
                 logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
 
-                deactivate_data = ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": res_msg,
-                    },
-                )
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] Sending ActionDeactivateToolkitData")
-                _safe_put_queue(task_lock, deactivate_data)
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] ActionDeactivateToolkitData sent")
+                if not skip_workflow_display:
+                    deactivate_data = ActionDeactivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": res_msg,
+                        },
+                    )
+                    logger.info(f"[LISTEN_TOOLKIT_SYNC] Sending ActionDeactivateToolkitData")
+                    _safe_put_queue(task_lock, deactivate_data)
+                    logger.info(f"[LISTEN_TOOLKIT_SYNC] ActionDeactivateToolkitData sent")
                 logger.info(f"[LISTEN_TOOLKIT_SYNC] ========== WRAPPER END for {func.__name__} ==========")
 
                 if error is not None:
