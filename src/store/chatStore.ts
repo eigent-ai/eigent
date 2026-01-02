@@ -1267,17 +1267,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						// Fallback: if task ID not found, try finding by agent type
 						if (assigneeAgentIndex === -1 && agentMessages.data.agent_name) {
-							console.warn(`[FRONTEND TOOLKIT DEBUG] Task ID ${resolvedProcessTaskId} not found, trying agent_name fallback: ${agentMessages.data.agent_name}`);
 							assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.type === agentMessages.data.agent_name);
-							if (assigneeAgentIndex !== -1) {
-								console.log(`[FRONTEND TOOLKIT DEBUG] Found agent by type: ${agentMessages.data.agent_name} at index ${assigneeAgentIndex}`);
-							}
-						}
-
-						// Debug logging for assigneeAgentIndex
-						if (assigneeAgentIndex === -1) {
-							console.warn(`[FRONTEND TOOLKIT DEBUG] assigneeAgentIndex is -1 for ${agentMessages.data.toolkit_name}.${agentMessages.data.method_name} | Task ID: ${resolvedProcessTaskId} | Agent: ${agentMessages.data.agent_name} | taskAssigning length: ${taskAssigning?.length}`);
-							console.warn('[FRONTEND TOOLKIT DEBUG] taskAssigning:', taskAssigning?.map((a: Agent) => ({ type: a.type, taskIds: a.tasks?.map((t: TaskInfo) => t.id) })));
 						}
 
 						if (assigneeAgentIndex !== -1) {
@@ -1288,13 +1278,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							}
 						}
 
-						// Log toolkit activation in frontend
-						const activateTimestamp = new Date().toISOString();
-						console.log(`[FRONTEND TOOLKIT ACTIVATE] Toolkit: ${agentMessages.data.toolkit_name} | Method: ${agentMessages.data.method_name} | Task ID: ${resolvedProcessTaskId} | Agent: ${agentMessages.data.agent_name} | Timestamp: ${activateTimestamp}`);
-						console.log('agentMessages.data', agentMessages.data.toolkit_name, agentMessages.data.method_name)
-
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'browser visit page') {
-							console.log('match success')
 							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message).replace(/url=/g, '').replace(/'/g, '') as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'visit page') {

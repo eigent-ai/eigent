@@ -21,89 +21,59 @@ logger = traceroot.get_logger("toolkit_listen")
 
 def _safe_put_queue(task_lock, data):
     """Safely put data to the queue, handling both sync and async contexts"""
-    logger.info(f"[SAFE_PUT_QUEUE] ========== START ==========")
-    logger.info(f"[SAFE_PUT_QUEUE] data type: {data.__class__.__name__}")
-    logger.info(f"[SAFE_PUT_QUEUE] data content: {data}")
-
     try:
         # Try to get current event loop
-        logger.info(f"[SAFE_PUT_QUEUE] Attempting to get running event loop")
         loop = asyncio.get_running_loop()
-        logger.info(f"[SAFE_PUT_QUEUE] Got running loop: {loop} - ASYNC CONTEXT")
 
         # We're in an async context, create a task
-        logger.info(f"[SAFE_PUT_QUEUE] Creating async task for put_queue")
         task = asyncio.create_task(task_lock.put_queue(data))
 
         if hasattr(task_lock, "add_background_task"):
-            logger.info(f"[SAFE_PUT_QUEUE] Adding to background tasks")
             task_lock.add_background_task(task)
 
-        # Add done callback to handle any exceptions and prevent warnings
+        # Add done callback to handle any exceptions
         def handle_task_result(t):
             try:
-                t.result()  # This will raise any exception that occurred
-                logger.info(f"[SAFE_PUT_QUEUE] Async task completed successfully")
+                t.result()
             except Exception as e:
                 logger.error(f"[SAFE_PUT_QUEUE] Background task failed: {e}")
         task.add_done_callback(handle_task_result)
-        logger.info(f"[SAFE_PUT_QUEUE] Async task created and callback added")
 
-    except RuntimeError as re:
-        logger.info(f"[SAFE_PUT_QUEUE] No running event loop (RuntimeError: {re}) - SYNC CONTEXT")
-        # No running event loop, we need to handle this differently
+    except RuntimeError:
+        # No running event loop, run in a separate thread
         try:
             import queue
             result_queue = queue.Queue()
-            logger.info(f"[SAFE_PUT_QUEUE] Created result queue for thread communication")
 
-            # Create a new event loop in a separate thread to avoid conflicts
             def run_in_thread():
                 try:
-                    logger.info(f"[SAFE_PUT_QUEUE_THREAD] Thread started")
-                    # Create a new event loop for this thread
                     new_loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(new_loop)
-                    logger.info(f"[SAFE_PUT_QUEUE_THREAD] Created new event loop: {new_loop}")
-
                     try:
-                        logger.info(f"[SAFE_PUT_QUEUE_THREAD] Running task_lock.put_queue in new loop")
                         new_loop.run_until_complete(task_lock.put_queue(data))
-                        logger.info(f"[SAFE_PUT_QUEUE_THREAD] put_queue completed successfully")
                         result_queue.put(("success", None))
                     except Exception as e:
-                        logger.error(f"[SAFE_PUT_QUEUE_THREAD] put_queue failed: {e}")
+                        logger.error(f"[SAFE_PUT_QUEUE] put_queue failed: {e}")
                         result_queue.put(("error", e))
                     finally:
                         new_loop.close()
-                        logger.info(f"[SAFE_PUT_QUEUE_THREAD] Event loop closed")
                 except Exception as e:
-                    logger.error(f"[SAFE_PUT_QUEUE_THREAD] Thread failed: {e}")
+                    logger.error(f"[SAFE_PUT_QUEUE] Thread failed: {e}")
                     result_queue.put(("error", e))
 
-            # Run in a separate non-daemon thread to ensure completion
-            logger.info(f"[SAFE_PUT_QUEUE] Starting new thread for put_queue")
             thread = threading.Thread(target=run_in_thread, daemon=False)
             thread.start()
-            logger.info(f"[SAFE_PUT_QUEUE] Thread started, waiting for result (timeout=1.0s)")
 
-            # Wait briefly to ensure the thread starts and completes
+            # Wait briefly for completion
             try:
                 status, error = result_queue.get(timeout=1.0)
-                logger.info(f"[SAFE_PUT_QUEUE] Thread result: status={status}, error={error}")
-
                 if status == "error":
                     logger.error(f"[SAFE_PUT_QUEUE] Thread execution failed: {error}")
-                else:
-                    logger.info(f"[SAFE_PUT_QUEUE] Thread execution succeeded for {data.__class__.__name__}")
             except queue.Empty:
-                # Thread is still running, but we can't wait forever
-                logger.warning(f"[SAFE_PUT_QUEUE] Thread execution timeout after 1s for {data.__class__.__name__}, continuing anyway")
+                logger.warning(f"[SAFE_PUT_QUEUE] Thread timeout after 1s for {data.__class__.__name__}")
 
         except Exception as e:
             logger.error(f"[SAFE_PUT_QUEUE] Failed to send data to queue: {e}")
-
-    logger.info(f"[SAFE_PUT_QUEUE] ========== END ==========")
 
 
 def listen_toolkit(
@@ -150,25 +120,11 @@ def listen_toolkit(
                 skip_workflow_display = func.__name__ == "send_message_to_user"
 
                 # Multi-layer fallback to get process_task_id
-                process_task_id_from_contextvar = process_task.get("")
-                logger.info(f"[LISTEN_TOOLKIT_CONTEXTVAR] In wrapper for {func.__name__}: ContextVar = '{process_task_id_from_contextvar}'")
-
-                process_task_id = process_task_id_from_contextvar
+                process_task_id = process_task.get("")
                 if not process_task_id:
-                    # Fallback 1: Try to get from toolkit.api_task_id
                     process_task_id = getattr(toolkit, 'api_task_id', "")
-                    if process_task_id:
-                        logger.warning(f"[toolkit_listen] ContextVar process_task is empty, using toolkit.api_task_id: {process_task_id}")
-                    else:
+                    if not process_task_id:
                         logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
-
-                activate_timestamp = datetime.now().isoformat()
-
-                # Debug logging
-                logger.info(f"[TOOLKIT DEBUG] About to log ACTIVATE for {toolkit_name}.{method_name}")
-
-                # Log toolkit activation (only send to WorkFlow if not skipped)
-                logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Timestamp: {activate_timestamp}")
 
                 if not skip_workflow_display:
                     activate_data = ActionActivateToolkitData(
@@ -235,20 +191,14 @@ def listen_toolkit(
             # sync function wrapper
             @wraps(wrap)
             def sync_wrapper(*args, **kwargs):
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] ========== WRAPPER START for {func.__name__} ==========")
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] args count: {len(args)}, kwargs: {list(kwargs.keys())}")
-
                 toolkit: AbstractToolkit = args[0]
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] toolkit type: {toolkit.__class__.__name__}")
 
                 # Check if api_task_id exists
                 if not hasattr(toolkit, 'api_task_id'):
                     logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_task_id, calling method directly")
                     return func(*args, **kwargs)
 
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] api_task_id: {toolkit.api_task_id}")
                 task_lock = get_task_lock(toolkit.api_task_id)
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] Got task_lock: {task_lock}")
 
                 if inputs is not None:
                     args_str = inputs(*args, **kwargs)
@@ -270,26 +220,14 @@ def listen_toolkit(
                 method_name = func.__name__.replace("_", " ")
 
                 # Skip WorkFlow display for send_message_to_user (called by message_integration)
-                # It still executes normally and sends notice, just doesn't show as a tool call
                 skip_workflow_display = func.__name__ == "send_message_to_user"
 
                 # Multi-layer fallback to get process_task_id
-                process_task_id_from_contextvar = process_task.get("")
-                logger.info(f"[LISTEN_TOOLKIT_CONTEXTVAR] In wrapper for {func.__name__}: ContextVar = '{process_task_id_from_contextvar}'")
-
-                process_task_id = process_task_id_from_contextvar
+                process_task_id = process_task.get("")
                 if not process_task_id:
-                    # Fallback 1: Try to get from toolkit.api_task_id
                     process_task_id = getattr(toolkit, 'api_task_id', "")
-                    if process_task_id:
-                        logger.warning(f"[toolkit_listen] ContextVar process_task is empty, using toolkit.api_task_id: {process_task_id}")
-                    else:
+                    if not process_task_id:
                         logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
-
-                activate_timestamp = datetime.now().isoformat()
-
-                # Log toolkit activation (sync) (only send to WorkFlow if not skipped)
-                logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Timestamp: {activate_timestamp}")
 
                 if not skip_workflow_display:
                     activate_data = ActionActivateToolkitData(
@@ -301,16 +239,12 @@ def listen_toolkit(
                             "message": args_str,
                         },
                     )
-                    logger.info(f"[LISTEN_TOOLKIT_SYNC] Sending ActionActivateToolkitData via _safe_put_queue")
                     _safe_put_queue(task_lock, activate_data)
-                    logger.info(f"[LISTEN_TOOLKIT_SYNC] ActionActivateToolkitData sent")
 
                 error = None
                 res = None
                 try:
-                    logger.info(f"[LISTEN_TOOLKIT_SYNC] ===>>> Calling actual function {func.__name__} <<<===")
                     res = func(*args, **kwargs)
-                    logger.info(f"[LISTEN_TOOLKIT_SYNC] ===>>> Function {func.__name__} returned <<<===")
                     # Safety check: if the result is a coroutine, this is a programming error
                     if asyncio.iscoroutine(res):
                         error_msg = f"Async function {func.__name__} was incorrectly called in sync context. This is a bug - the function should be marked as async or should not return a coroutine."
@@ -341,12 +275,6 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
-                deactivate_timestamp = datetime.now().isoformat()
-                status = "ERROR" if error is not None else "SUCCESS"
-
-                # Log toolkit deactivation (sync) (only send to WorkFlow if not skipped)
-                logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
-
                 if not skip_workflow_display:
                     deactivate_data = ActionDeactivateToolkitData(
                         data={
@@ -357,13 +285,9 @@ def listen_toolkit(
                             "message": res_msg,
                         },
                     )
-                    logger.info(f"[LISTEN_TOOLKIT_SYNC] Sending ActionDeactivateToolkitData")
                     _safe_put_queue(task_lock, deactivate_data)
-                    logger.info(f"[LISTEN_TOOLKIT_SYNC] ActionDeactivateToolkitData sent")
-                logger.info(f"[LISTEN_TOOLKIT_SYNC] ========== WRAPPER END for {func.__name__} ==========")
 
                 if error is not None:
-                    logger.error(f"[LISTEN_TOOLKIT_SYNC] Raising error: {error}")
                     raise error
                 return res
 

@@ -481,9 +481,6 @@ class ListenChatAgent(ChatAgent):
                 current_process_task_id = process_task.get("")
                 traceroot_logger.info(f"[AGENT_CONTEXTVAR_CHECK] ContextVar process_task inside 'with' block: '{current_process_task_id}' | self.process_task_id: '{self.process_task_id}'")
 
-                # Log message_integration status before calling
-                has_enhanced_flag = getattr(tool.func, '__message_integration_enhanced__', False) if hasattr(tool, 'func') else False
-                traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] About to call {func_name} | has_enhanced_flag={has_enhanced_flag} | args_keys={list(args.keys())}")
 
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
@@ -491,13 +488,11 @@ class ListenChatAgent(ChatAgent):
                     # Check if the wrapped tool is sync to avoid run_in_executor
                     if hasattr(tool, 'is_async') and not tool.is_async:
                         # Sync tool: call directly to preserve ContextVar
-                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Sync tool detected (wrapped), calling directly: {func_name}")
                         result = tool(**args)
                         if asyncio.iscoroutine(result):
                             result = await result
                     else:
                         # Async tool: use async_call
-                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.func.async_call for {func_name}")
                         result = await tool.func.async_call(**args)
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
@@ -505,19 +500,16 @@ class ListenChatAgent(ChatAgent):
                     # Check if this is a sync tool to avoid run_in_executor (which breaks ContextVar)
                     if hasattr(tool, 'is_async') and not tool.is_async:
                         # Sync tool: call directly to preserve ContextVar in same thread
-                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Sync tool detected, calling directly: {func_name}")
                         result = tool(**args)
                         # Handle case where synchronous call returns a coroutine
                         if asyncio.iscoroutine(result):
                             result = await result
                     else:
                         # Async tool: use async_call
-                        traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via tool.async_call for {func_name}")
                         result = await tool.async_call(**args)
 
                 elif hasattr(tool, "func") and asyncio.iscoroutinefunction(tool.func):
                     # Case: tool wraps a direct async function
-                    traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] Calling via await tool.func for {func_name}")
                     result = await tool.func(**args)
 
                 elif asyncio.iscoroutinefunction(tool):
@@ -707,14 +699,7 @@ async def developer_agent(options: Chat):
     screenshot_toolkit = message_integration.register_toolkits(screenshot_toolkit)
 
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
-
-    # Log before message_integration registration (developer_agent)
-    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] [developer_agent] Registering terminal_toolkit via register_toolkits")
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
-    tools_from_terminal = terminal_toolkit.get_tools()
-    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] [developer_agent] Registered {len(tools_from_terminal)} tools from terminal_toolkit")
-    for i, tool in enumerate(tools_from_terminal):
-        traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] [developer_agent] Tool {i}: name={tool.func.__name__}, type={type(tool)}, func_type={type(tool.func).__name__}, has_enhanced_flag={getattr(tool.func, '__message_integration_enhanced__', False)}")
 
     tools = [
         *HumanToolkit.get_can_use_tools(options.project_id, Agents.developer_agent),
@@ -921,14 +906,7 @@ def search_agent(options: Chat):
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
-
-    # Log before message_integration registration
-    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] Registering terminal_toolkit.shell_exec")
-    terminal_tools = message_integration.register_functions([terminal_toolkit.shell_exec])
-    traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] Registered {len(terminal_tools)} tools from terminal_toolkit")
-    for i, tool in enumerate(terminal_tools):
-        traceroot_logger.info(f"[MESSAGE_INTEGRATION_WRAPPER] Tool {i}: type={type(tool)}, func={type(tool.func).__name__}, has_enhanced_flag={getattr(tool.func, '__message_integration_enhanced__', False)}")
-    terminal_toolkit = terminal_tools
+    terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
 
     note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
