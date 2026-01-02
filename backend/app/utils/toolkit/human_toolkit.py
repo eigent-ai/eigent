@@ -104,37 +104,57 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         """
         import sys
 
+        logger.info(f"[SEND_MESSAGE_ENTRY] ========== Function body START ==========")
+        logger.info(f"[SEND_MESSAGE_ENTRY] title='{message_title}', desc='{message_description}', attach='{message_attachment}'")
+        logger.info(f"[SEND_MESSAGE_ENTRY] api_task_id='{self.api_task_id}', agent_name='{self.agent_name}'")
+
         print(f"\nAgent Message:\n{message_title} \n{message_description}\n")
         if message_attachment:
             print(message_attachment)
 
+        logger.info(f"[SEND_MESSAGE_STEP1] Getting task_lock for api_task_id={self.api_task_id}")
         task_lock = get_task_lock(self.api_task_id)
+        logger.info(f"[SEND_MESSAGE_STEP1] Got task_lock: {task_lock}")
+
         # Capture ContextVar value before creating async task
+        logger.info(f"[SEND_MESSAGE_STEP2] Getting process_task_id from ContextVar")
         current_process_task_id = process_task.get("")
+        logger.info(f"[SEND_MESSAGE_STEP2] process_task_id from ContextVar='{current_process_task_id}'")
+
+        # Multi-layer fallback (same as @listen_toolkit decorator)
+        if not current_process_task_id:
+            current_process_task_id = self.api_task_id
+            logger.info(f"[SEND_MESSAGE_STEP2] ContextVar empty, using api_task_id as fallback: '{current_process_task_id}'")
+        else:
+            logger.info(f"[SEND_MESSAGE_STEP2] Using process_task_id from ContextVar: '{current_process_task_id}'")
 
         # DEBUG: Use both logger and stderr to ensure output
         sys.stderr.write(f"[SEND_MESSAGE_DEBUG] process_task_id from ContextVar: '{current_process_task_id}' | title: {message_title}\n")
         sys.stderr.flush()
-        logger.info(f"[SEND_MESSAGE_DEBUG] process_task_id from ContextVar: '{current_process_task_id}' | title: {message_title}")
 
         logger.info(f"\nAgent Message:\n{message_title} {message_description} {message_attachment}")
 
         # Use _safe_put_queue to handle both sync and async contexts
+        logger.info(f"[SEND_MESSAGE_STEP3] Creating ActionNoticeData with process_task_id='{current_process_task_id}'")
         from app.utils.listen.toolkit_listen import _safe_put_queue
-        _safe_put_queue(
-            task_lock,
-            ActionNoticeData(
-                process_task_id=current_process_task_id,
-                data=f"{message_description}",
-            )
+
+        notice_data = ActionNoticeData(
+            process_task_id=current_process_task_id,
+            data=f"{message_description}",
         )
+        logger.info(f"[SEND_MESSAGE_STEP3] ActionNoticeData created: {notice_data}")
+
+        logger.info(f"[SEND_MESSAGE_STEP4] Calling _safe_put_queue")
+        _safe_put_queue(task_lock, notice_data)
+        logger.info(f"[SEND_MESSAGE_STEP4] _safe_put_queue returned")
 
         sys.stderr.write(f"[SEND_MESSAGE_DEBUG] ActionNoticeData sent with process_task_id='{current_process_task_id}'\n")
         sys.stderr.flush()
-        logger.info(f"[SEND_MESSAGE_DEBUG] ActionNoticeData sent with process_task_id='{current_process_task_id}'")
 
         attachment_info = f" {message_attachment}" if message_attachment else ""
-        return f"Message successfully sent to user: '{message_title} {message_description}{attachment_info}'"
+        result = f"Message successfully sent to user: '{message_title} {message_description}{attachment_info}'"
+        logger.info(f"[SEND_MESSAGE_EXIT] ========== Function body END ========== Returning: {result}")
+        return result
 
     def get_tools(self) -> list[FunctionTool]:
         r"""Returns a list of FunctionTool objects representing the
@@ -154,5 +174,6 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         human = cls(api_task_id, agent_name)
         return [
             FunctionTool(human.ask_human_via_gui),
-            FunctionTool(human.send_message_to_user),
+            # Note: send_message_to_user is not included in get_can_use_tools
+            # It is only available via get_tools() if needed
         ]

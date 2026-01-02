@@ -476,6 +476,11 @@ class ListenChatAgent(ChatAgent):
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
+                # Verify ContextVar is set
+                from app.service.task import process_task
+                current_process_task_id = process_task.get("")
+                traceroot_logger.info(f"[AGENT_CONTEXTVAR_CHECK] ContextVar process_task inside 'with' block: '{current_process_task_id}' | self.process_task_id: '{self.process_task_id}'")
+
                 # Log message_integration status before calling
                 has_enhanced_flag = getattr(tool.func, '__message_integration_enhanced__', False) if hasattr(tool, 'func') else False
                 traceroot_logger.info(f"[MESSAGE_INTEGRATION_CALL] About to call {func_name} | has_enhanced_flag={has_enhanced_flag} | args_keys={list(args.keys())}")
