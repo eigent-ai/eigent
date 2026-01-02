@@ -456,32 +456,20 @@ class ListenChatAgent(ChatAgent):
 
         # Always send activate event from agent to ensure consistent logging
         # This ensures all tool calls are logged, regardless of decorator detection issues
-        if True:  # Always send (removed decorator check)
-            # Log toolkit activation
-            from datetime import datetime
-            activate_timestamp = datetime.now().isoformat()
-            traceroot_logger.info(f"[TOOLKIT ACTIVATE] Toolkit: {toolkit_name} | Method: {func_name} | Task ID: {self.process_task_id} | Agent: {self.agent_name} | Timestamp: {activate_timestamp}")
-
-            await task_lock.put_queue(
-                ActionActivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": json.dumps(args, ensure_ascii=False),
-                    },
-                )
+        await task_lock.put_queue(
+            ActionActivateToolkitData(
+                data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": json.dumps(args, ensure_ascii=False),
+                },
             )
+        )
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
-                # Verify ContextVar is set
-                from app.service.task import process_task
-                current_process_task_id = process_task.get("")
-                traceroot_logger.info(f"[AGENT_CONTEXTVAR_CHECK] ContextVar process_task inside 'with' block: '{current_process_task_id}' | self.process_task_id: '{self.process_task_id}'")
-
-
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
@@ -542,23 +530,17 @@ class ListenChatAgent(ChatAgent):
                 result_msg = result_str
 
         # Always send deactivate event from agent to ensure consistent logging
-        if True:  # Always send (removed decorator check)
-            # Log toolkit deactivation
-            from datetime import datetime
-            deactivate_timestamp = datetime.now().isoformat()
-            traceroot_logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {func_name} | Task ID: {self.process_task_id} | Agent: {self.agent_name} | Status: SUCCESS | Timestamp: {deactivate_timestamp}")
-
-            await task_lock.put_queue(
-                ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": result_msg,
-                    },
-                )
+        await task_lock.put_queue(
+            ActionDeactivateToolkitData(
+                data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": result_msg,
+                },
             )
+        )
         return self._record_tool_calling(
             func_name, args, result, tool_call_id,
             extra_content=tool_call_request.extra_content,

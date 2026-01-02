@@ -165,7 +165,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             import time
             id = f"auto_{int(time.time() * 1000)}"
 
-        result = super().shell_exec(id, command, block, timeout)
+        result = super().shell_exec(id=id, command=command, block=block, timeout=timeout)
 
         # If the command executed successfully but returned empty output,
         # provide a clear success message to help the AI agent understand

@@ -1323,13 +1323,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 											task.toolkits ??= []
 											task.toolkits.push({ ...toolkit });
 											task.status = "running";
-
-											// Log toolkit added to task
-											console.log(`[FRONTEND TOOLKIT ADDED] Toolkit added to task | Toolkit ID: ${toolkit.toolkitId} | Task ID: ${task.id} | Task Content: ${task.content}`);
-
 											setTaskAssigning(currentTaskId, [...taskAssigning]);
-										} else {
-											console.warn(`[FRONTEND TOOLKIT DEBUG] Task ${resolvedProcessTaskId} not found in agent ${taskAssigning[assigneeAgentIndex].type}`);
 										}
 									}
 
@@ -1337,7 +1331,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									taskRunning![taskIndex].status = "running";
 									taskRunning![taskIndex].toolkits ??= [];
 									taskRunning![taskIndex].toolkits.push({ ...toolkit });
-									console.log(`[FRONTEND TOOLKIT ADDED TO RUNNING] Toolkit added to taskRunning | Toolkit ID: ${toolkit.toolkitId} | Task ID: ${resolvedProcessTaskId}`);
 								}
 							}
 						}
@@ -1356,10 +1349,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							agentMessages.data.process_task_id
 						);
 
-						// Log toolkit deactivation in frontend
-						const deactivateTimestamp = new Date().toISOString();
-						console.log(`[FRONTEND TOOLKIT DEACTIVATE] Toolkit: ${agentMessages.data.toolkit_name} | Method: ${agentMessages.data.method_name} | Task ID: ${resolvedProcessTaskId} | Agent: ${agentMessages.data.agent_name} | Timestamp: ${deactivateTimestamp}`);
-
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
@@ -1373,9 +1362,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									if (task.toolkits && index !== -1 && index !== undefined) {
 										task.toolkits[index].message = `${normalizeToolkitMessage(task.toolkits[index].message)}\n${normalizeToolkitMessage(message.data.message)}`.trim()
 										task.toolkits[index].toolkitStatus = "completed"
-
-										// Log toolkit completion
-										console.log(`[FRONTEND TOOLKIT COMPLETED] Toolkit completed | Toolkit ID: ${task.toolkits[index].toolkitId} | Task ID: ${task.id} | Status: completed`);
 									}
 									// task.toolkits?.unshift({
 									// 	toolkitName: agentMessages.data.toolkit_name as string,
@@ -1775,10 +1761,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "notice") {
-						console.log('[NOTICE_DEBUG] Received notice:', agentMessages.data);
-
 						if (agentMessages.data.process_task_id !== '') {
-							console.log('[NOTICE_DEBUG] Adding to WorkFlow (process_task_id:', agentMessages.data.process_task_id, ')');
 							let taskAssigning = [...tasks[currentTaskId].taskAssigning]
 
 							const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
@@ -1793,13 +1776,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							if (assigneeAgentIndex !== -1 && task) {
 								task.toolkits ??= []
 								task.toolkits.push({ ...toolkit });
-								console.log('[NOTICE_DEBUG] Added to WorkFlow panel');
-							} else {
-								console.warn('[NOTICE_DEBUG] Failed: agent/task not found');
 							}
 							setTaskAssigning(currentTaskId, [...taskAssigning]);
 						} else {
-							console.log('[NOTICE_DEBUG] Adding to Chat panel (cotList)');
 							const messages = [...tasks[currentTaskId].messages]
 							const noticeCardIndex = messages.findLastIndex((message) => message.step === 'notice_card')
 							if (noticeCardIndex === -1) {
@@ -1812,8 +1791,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								addMessages(currentTaskId, newMessage)
 							}
 							setCotList(currentTaskId, [...tasks[currentTaskId].cotList, agentMessages.data.notice as string])
-							console.log('[NOTICE_DEBUG] Added to Chat panel, cotList length:', tasks[currentTaskId].cotList.length + 1);
-							// addMessages(currentTaskId, newMessage);
 						}
 						return
 
