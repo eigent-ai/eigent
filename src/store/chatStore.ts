@@ -42,6 +42,8 @@ interface Task {
 	isTakeControl: boolean;
 	isTaskEdit: boolean;
 	isContextExceeded?: boolean;
+	// Streaming decompose text - stored separately to avoid frequent re-renders
+	streamingDecomposeText: string;
 }
 
 export interface ChatStore {
@@ -56,9 +58,10 @@ export interface ChatStore {
 	setActiveTaskId: (taskId: string) => void;
 	replay: (taskId: string, question: string, time: number) => Promise<void>;
 	startTask: (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => Promise<void>;
-	handleConfirmTask: (project_id:string, taskId: string, type?: string) => void;
+	handleConfirmTask: (project_id: string, taskId: string, type?: string) => void;
 	addMessages: (taskId: string, messages: Message) => void;
 	setMessages: (taskId: string, messages: Message[]) => void;
+	updateMessage: (taskId: string, messageId: string, message: Message) => void;
 	removeMessage: (taskId: string, messageId: string) => void;
 	setAttaches: (taskId: string, attaches: File[]) => void;
 	setSummaryTask: (taskId: string, summaryTask: string) => void;
@@ -102,6 +105,8 @@ export interface ChatStore {
 	clearTasks: () => void,
 	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
 	setNextTaskId: (taskId: string | null) => void;
+	setStreamingDecomposeText: (taskId: string, text: string) => void;
+	clearStreamingDecomposeText: (taskId: string) => void;
 }
 
 export type VanillaChatStore = {
@@ -117,6 +122,43 @@ const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
+
+const normalizeToolkitMessage = (value: unknown) => {
+	if (typeof value === "string") return value;
+	if (value == null) return "";
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+};
+
+const resolveProcessTaskIdForToolkitEvent = (
+	tasksById: Record<string, Task>,
+	currentTaskId: string,
+	agentName: string | undefined,
+	processTaskId: unknown
+) => {
+	const direct = typeof processTaskId === "string" ? processTaskId : "";
+	if (direct) return direct;
+
+	const running = tasksById[currentTaskId]?.taskRunning ?? [];
+	// Prefer a task owned by the same agent
+	const match = running.findLast(
+		(t: any) =>
+			typeof t?.id === "string" &&
+			t.id &&
+			(agentName ? t.agent?.type === agentName : true)
+	);
+	if (match?.id) return match.id as string;
+	// Fallback to the latest running task id
+	const last = running.at(-1);
+	if (typeof last?.id === "string" && last.id) return last.id;
+	return "";
+};
+// Throttle streaming decompose text updates to prevent excessive re-renders
+const streamingDecomposeTextBuffer: Record<string, string> = {};
+const streamingDecomposeTextTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
@@ -162,6 +204,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						snapshotsTemp: [],
 						isTakeControl: false,
 						isTaskEdit: false,
+						streamingDecomposeText: '',
 					},
 				}
 			}))
@@ -211,6 +254,27 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					},
 				})
 			})
+		},
+		updateMessage(taskId: string, messageId: string, message: Message) {
+			set((state) => {
+				const task = state.tasks[taskId];
+				if (!task) return state;
+				const messages = task.messages.map((m) => {
+					if (m.id === messageId) {
+						return message;
+					}
+					return m;
+				});
+				return {
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...task,
+							messages,
+						},
+					},
+				};
+			});
 		},
 		stopTask(taskId: string) {
 			// Abort the SSE connection for this task
@@ -305,7 +369,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			/**
 			 * Replay creates its own chatStore for each task with replayProject
 			 */
-			if(project_id && type !== "replay") {
+			if (project_id && type !== "replay") {
 				console.log("Creating a new Chat Instance for current project on end")
 				const newChatResult = projectStore.appendInitChatStore(project_id);
 
@@ -313,7 +377,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					newTaskId = newChatResult.taskId;
 					targetChatStore = newChatResult.chatStore;
 					targetChatStore.getState().setIsPending(newTaskId, true);
-					
+
 					//From handleSend if message is given
 					// Add the message to the new chatStore if provided
 					if (messageContent) {
@@ -329,11 +393,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}
 
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
-			const api = type == 'share' ? 
-			`${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}` 
-			: type == 'replay' ? 
-				`${base_Url}/api/chat/steps/playback/${newTaskId}?delay_time=${delayTime}` 
-				: `${baseURL}/chat`
+			const api = type == 'share' ?
+				`${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}`
+				: type == 'replay' ?
+					`${base_Url}/api/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+					: `${baseURL}/chat`
 
 			const { tasks } = get()
 			let historyId: string | null = projectStore.getHistoryId(project_id);
@@ -387,9 +451,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				apiModel = {
 					api_key: res.value,
 					model_type: cloud_model_type,
-					model_platform: cloud_model_type.includes('gpt') ? 'openai' : 
-									cloud_model_type.includes('claude') ? 'anthropic' :
-									cloud_model_type.includes('gemini') ? 'gemini' : 'openai-compatible-model',
+					model_platform: cloud_model_type.includes('gpt') ? 'openai' :
+						cloud_model_type.includes('claude') ? 'anthropic' :
+							cloud_model_type.includes('gemini') ? 'gemini' : 'openai-compatible-model',
 					api_url: res.api_url,
 					extra_params: {}
 				}
@@ -451,7 +515,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			} catch (error) {
 				console.log('get-env-path error', error)
 			}
-			
+
 			// create history
 			if (!type) {
 				const authStore = getAuthStore();
@@ -478,10 +542,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					 * TODO(history): Remove historyId handling to support per projectId 
 					 * instead in history api
 					 */
-					if(project_id && historyId) projectStore.setHistoryId(project_id, historyId);
+					if (project_id && historyId) projectStore.setHistoryId(project_id, historyId);
 				})
 			}
 			const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+
 			const use_external_cdp = await window.ipcRenderer.invoke('get-use-external-cdp');
 			const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
 			console.log('[FRONTEND CDP TASK] ========================================');
@@ -498,6 +563,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.warn('[FRONTEND CDP TASK]   ⚠️  No browsers in pool - all agents will use default port');
 			}
 			console.log('[FRONTEND CDP TASK] ========================================');
+
 
 			// Lock the chatStore reference at the start of SSE session to prevent focus changes
 			// during active message processing
@@ -595,8 +661,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					// - Task switching: confirmed, new_task_state, end
 					// - Multi-turn simple answer: wait_confirm
 					const isTaskSwitchingEvent = agentMessages.step === "confirmed" ||
-													agentMessages.step === "new_task_state" ||
-													agentMessages.step === "end";
+						agentMessages.step === "new_task_state" ||
+						agentMessages.step === "end";
 
 					const isMultiTurnSimpleAnswer = agentMessages.step === "wait_confirm";
 
@@ -630,78 +696,78 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					 */
 					let currentTaskId = getCurrentTaskId();
 					const previousChatStore = getCurrentChatStore()
-					if(agentMessages.step === "confirmed") {
+					if (agentMessages.step === "confirmed") {
 						const { question } = agentMessages.data;
 						const shouldCreateNewChat = project_id && (question || messageContent);
-						
+
 						//All except first confirmed event to reuse the existing chatStore
-						if(shouldCreateNewChat && !skipFirstConfirm) {
-								/**
-								 * For Tasks where appended to existing project by
-								 * reusing same projectId. Need to create new chatStore
-								 * as it has been skipped earlier in startTask.
-								*/
-								const nextTaskId = previousChatStore.nextTaskId || undefined;
-								const newChatResult = projectStore.appendInitChatStore(project_id || projectStore.activeProjectId!, nextTaskId);
-								
-								if (newChatResult) {
-										const { taskId: newTaskId, chatStore: newChatStore } = newChatResult;
-										
-										// Update references for both scenarios
-										updateLockedReferences(newChatStore, newTaskId);
-										newChatStore.getState().setIsPending(newTaskId, false);
-										
-										if(type === "replay") {
-												newChatStore.getState().setDelayTime(newTaskId, delayTime as number);
-												newChatStore.getState().setType(newTaskId, "replay");
-										}
+						if (shouldCreateNewChat && !skipFirstConfirm) {
+							/**
+							 * For Tasks where appended to existing project by
+							 * reusing same projectId. Need to create new chatStore
+							 * as it has been skipped earlier in startTask.
+							*/
+							const nextTaskId = previousChatStore.nextTaskId || undefined;
+							const newChatResult = projectStore.appendInitChatStore(project_id || projectStore.activeProjectId!, nextTaskId);
 
-										const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
-										if(lastMessage?.role === "user" && lastMessage?.id) {
-											previousChatStore.removeMessage(currentTaskId, lastMessage.id);
-										}
-										
-										//Trick: by the time the question is retrieved from event, 
-										//the last message from previous chatStore is at display
-										newChatStore.getState().addMessages(newTaskId, {
-												id: generateUniqueId(),
-												role: "user",
-												content: question || messageContent as string,
-												//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-												attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || []), ...(messageAttaches || [])],
-										});
-										console.log("[NEW CHATSTORE] Created for ", project_id);
+							if (newChatResult) {
+								const { taskId: newTaskId, chatStore: newChatStore } = newChatResult;
 
-										//Create a new history point
-										if (!type) {
-											const authStore = getAuthStore();
+								// Update references for both scenarios
+								updateLockedReferences(newChatStore, newTaskId);
+								newChatStore.getState().setIsPending(newTaskId, false);
 
-											const obj = {
-												"project_id": project_id,
-												"task_id": newTaskId,
-												"user_id": authStore.user_id,
-												"question": question || messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
-												"language": systemLanguage,
-												"model_platform": apiModel.model_platform,
-												"model_type": apiModel.model_type,
-												"api_url": modelType === 'cloud' ? "cloud" : apiModel.api_url,
-												"max_retries": 3,
-												"file_save_path": "string",
-												"installed_mcp": "string",
-												"status": 1,
-												"tokens": 0
-											}
-											await proxyFetchPost(`/api/chat/history`, obj).then(res => {
-												historyId = res.id;
-
-												/**Save history id for replay reuse purposes.
-												 * TODO(history): Remove historyId handling to support per projectId 
-												 * instead in history api
-												 */
-												if(project_id && historyId) projectStore.setHistoryId(project_id, historyId);
-											})
-										}
+								if (type === "replay") {
+									newChatStore.getState().setDelayTime(newTaskId, delayTime as number);
+									newChatStore.getState().setType(newTaskId, "replay");
 								}
+
+								const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
+								if (lastMessage?.role === "user" && lastMessage?.id) {
+									previousChatStore.removeMessage(currentTaskId, lastMessage.id);
+								}
+
+								//Trick: by the time the question is retrieved from event, 
+								//the last message from previous chatStore is at display
+								newChatStore.getState().addMessages(newTaskId, {
+									id: generateUniqueId(),
+									role: "user",
+									content: question || messageContent as string,
+									//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
+									attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || []), ...(messageAttaches || [])],
+								});
+								console.log("[NEW CHATSTORE] Created for ", project_id);
+
+								//Create a new history point
+								if (!type) {
+									const authStore = getAuthStore();
+
+									const obj = {
+										"project_id": project_id,
+										"task_id": newTaskId,
+										"user_id": authStore.user_id,
+										"question": question || messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
+										"language": systemLanguage,
+										"model_platform": apiModel.model_platform,
+										"model_type": apiModel.model_type,
+										"api_url": modelType === 'cloud' ? "cloud" : apiModel.api_url,
+										"max_retries": 3,
+										"file_save_path": "string",
+										"installed_mcp": "string",
+										"status": 1,
+										"tokens": 0
+									}
+									await proxyFetchPost(`/api/chat/history`, obj).then(res => {
+										historyId = res.id;
+
+										/**Save history id for replay reuse purposes.
+										 * TODO(history): Remove historyId handling to support per projectId 
+										 * instead in history api
+										 */
+										if (project_id && historyId) projectStore.setHistoryId(project_id, historyId);
+									})
+								}
+							}
 						} else {
 							//NOTE: Triggered only with first "confirmed" in the project
 							//Handle Original cases - with old chatStore
@@ -714,18 +780,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return
 					}
 
-					const { 
-						setNuwFileNum, 
-						setCotList, 
-						getTokens, 
-						setUpdateCount, 
-						addTokens, 
-						setStatus, 
-						addWebViewUrl, 
-						setIsPending, 
-						addMessages, 
-						setHasWaitComfirm, 
-						setSummaryTask, 
+					const {
+						setNuwFileNum,
+						setCotList,
+						getTokens,
+						setUpdateCount,
+						addTokens,
+						setStatus,
+						addWebViewUrl,
+						setIsPending,
+						addMessages,
+						setHasWaitComfirm,
+						setSummaryTask,
 						setTaskAssigning,
 						setTaskInfo,
 						setTaskRunning,
@@ -739,11 +805,50 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setElapsed,
 						setActiveTaskId,
 						setIsContextExceeded,
-						setIsTaskEdit} = getCurrentChatStore()
+						setStreamingDecomposeText,
+						clearStreamingDecomposeText,
+						setIsTaskEdit } = getCurrentChatStore()
 
 					currentTaskId = getCurrentTaskId();
 					// if (tasks[currentTaskId].status === 'finished') return
+					if (agentMessages.step === "decompose_text") {
+						const { content } = agentMessages.data;
+						const text = content;
+						const currentId = getCurrentTaskId();
+
+						// Get current buffer or task state
+						const currentContent = streamingDecomposeTextBuffer[currentId] ||
+							getCurrentChatStore().tasks[currentId]?.streamingDecomposeText || "";
+						const newContent = text || "";
+						let updatedContent = newContent;
+
+						if (newContent.startsWith(currentContent)) {
+							// Accumulated format: new content contains old content -> Replace
+							updatedContent = newContent;
+						} else {
+							// Delta format: new content is a chunk -> Append
+							updatedContent = currentContent + newContent;
+						}
+
+						// Store in buffer immediately
+						streamingDecomposeTextBuffer[currentId] = updatedContent;
+
+						// Throttle store updates to every 50ms for smoother streaming display
+						if (!streamingDecomposeTextTimers[currentId]) {
+							streamingDecomposeTextTimers[currentId] = setTimeout(() => {
+								const bufferedText = streamingDecomposeTextBuffer[currentId];
+								if (bufferedText !== undefined) {
+									setStreamingDecomposeText(currentId, bufferedText);
+								}
+								delete streamingDecomposeTextTimers[currentId];
+							}, 16);
+						}
+						return;
+					}
+
 					if (agentMessages.step === "to_sub_tasks") {
+						// Clear streaming decompose text when task splitting is done
+						clearStreamingDecomposeText(currentTaskId);
 						// Check if this is a multi-turn scenario after task completion
 						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
@@ -881,18 +986,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						return;
 					}
 					if (agentMessages.step === "wait_confirm") {
-						const {content, question} = agentMessages.data;
+						const { content, question } = agentMessages.data;
 						setHasWaitComfirm(currentTaskId, true)
 						setIsPending(currentTaskId, false)
 
 						const currentChatStore = getCurrentChatStore();
 						//Make sure to add user Message on replay and avoid duplication of first msg						
-						if(question && !(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+						if (question && !(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
 							//Replace the optimistic update if existent.
 							const lastMessage = currentChatStore.tasks[currentTaskId]?.messages.at(-1);
-							if(lastMessage?.role === "user" && lastMessage.id && lastMessage.content === question) {
+							if (lastMessage?.role === "user" && lastMessage.id && lastMessage.content === question) {
 								currentChatStore.removeMessage(currentTaskId, lastMessage.id)
-							} 
+							}
 							addMessages(currentTaskId, {
 								id: generateUniqueId(),
 								role: "user",
@@ -1093,7 +1198,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (target) {
 							const { agentIndex, taskIndex } = target
 							const agentName = taskAssigning.find((agent: Agent) => agent.agent_id === assignee_id)?.name
-							if(agentName!==taskAssigning[agentIndex].name){
+							if (agentName !== taskAssigning[agentIndex].name) {
 								taskAssigning[agentIndex].tasks[taskIndex].reAssignTo = agentName
 							}
 						}
@@ -1144,7 +1249,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Only update or add to taskRunning, never duplicate
 						if (taskRunningIndex === -1) {
 							// Task not in taskRunning, add it
-							if(task){
+							if (task) {
 								task.status = taskState === "waiting" ? "waiting" : "running";
 							}
 							taskRunning!.push(
@@ -1170,12 +1275,21 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					}
 					// Activate Toolkit
 					if (agentMessages.step === "activate_toolkit") {
-						if (agentMessages.data.method_name === 'send message to user') {
-							return
-						}
 						// add log
 						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
+						const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+							tasks,
+							currentTaskId,
+							agentMessages.data.agent_name,
+							agentMessages.data.process_task_id
+						);
+						let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
+
+						// Fallback: if task ID not found, try finding by agent type
+						if (assigneeAgentIndex === -1 && agentMessages.data.agent_name) {
+							assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.type === agentMessages.data.agent_name);
+						}
+
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
 							if (message) {
@@ -1183,24 +1297,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								setTaskAssigning(currentTaskId, [...taskAssigning]);
 							}
 						}
-						console.log('agentMessages.data', agentMessages.data.toolkit_name, agentMessages.data.method_name)
 
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'browser visit page') {
-							console.log('match success')
-							addWebViewUrl(currentTaskId, agentMessages.data.message?.replace(/url=/g, '').replace(/'/g, '') as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message).replace(/url=/g, '').replace(/'/g, '') as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'visit page') {
 							console.log('match success')
-							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'ElectronToolkit' && agentMessages.data.method_name === 'browse_url') {
-							addWebViewUrl(currentTaskId, agentMessages.data.message as string, agentMessages.data.process_task_id as string)
+							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.method_name === 'browser_navigate' && agentMessages.data.message?.startsWith('{"url"')) {
 							try {
-								const urlData = JSON.parse(agentMessages.data.message);
+								const urlData = JSON.parse(normalizeToolkitMessage(agentMessages.data.message));
 								if (urlData?.url) {
-									addWebViewUrl(currentTaskId, urlData.url as string, agentMessages.data.process_task_id as string)
+									addWebViewUrl(currentTaskId, urlData.url as string, resolvedProcessTaskId)
 								}
 							} catch (error) {
 								console.error('Failed to parse browser_navigate URL:', error);
@@ -1209,35 +1321,37 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						}
 						let taskRunning = [...tasks[currentTaskId].taskRunning]
 
-						const taskIndex = taskRunning.findIndex((task) => task.id === agentMessages.data.process_task_id);
+						const taskIndex = taskRunning.findIndex((task) => task.id === resolvedProcessTaskId);
 
 						if (taskIndex !== -1) {
 							const { toolkit_name, method_name } = agentMessages.data;
-							if (toolkit_name && method_name && assigneeAgentIndex !== -1) {
+							if (toolkit_name && method_name) {
+								const message = filterMessage(agentMessages)
+								if (message) {
+									const toolkit = {
+										toolkitId: generateUniqueId(),
+										toolkitName: toolkit_name,
+										toolkitMethods: method_name,
+										message: normalizeToolkitMessage(message.data.message),
+										toolkitStatus: "running" as AgentStatus,
+									}
 
-								if (assigneeAgentIndex !== -1) {
-									const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
-									const message = filterMessage(agentMessages)
-									if (message) {
-										const toolkit = {
-											toolkitId: generateUniqueId(),
-											toolkitName: toolkit_name,
-											toolkitMethods: method_name,
-											message: message.data.message as string,
-											toolkitStatus: "running" as AgentStatus,
-										}
+									// Update taskAssigning if we found the agent
+									if (assigneeAgentIndex !== -1) {
+										const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
 										if (task) {
 											task.toolkits ??= []
 											task.toolkits.push({ ...toolkit });
 											task.status = "running";
 											setTaskAssigning(currentTaskId, [...taskAssigning]);
 										}
-										taskRunning![taskIndex].status = "running";
-										taskRunning![taskIndex].toolkits ??= [];
-										taskRunning![taskIndex].toolkits.push({ ...toolkit });
 									}
-								}
 
+									// Always update taskRunning (even if assigneeAgentIndex is -1)
+									taskRunning![taskIndex].status = "running";
+									taskRunning![taskIndex].toolkits ??= [];
+									taskRunning![taskIndex].toolkits.push({ ...toolkit });
+								}
 							}
 						}
 						setTaskRunning(currentTaskId, taskRunning);
@@ -1248,18 +1362,25 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						// add log
 						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
+						const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+							tasks,
+							currentTaskId,
+							agentMessages.data.agent_name,
+							agentMessages.data.process_task_id
+						);
+
+						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
 						if (assigneeAgentIndex !== -1) {
 							const message = filterMessage(agentMessages)
 							if (message) {
-								const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
+								const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
 								if (task) {
-									let index = task.toolkits?.findIndex((toolkit) => {
+									let index = task.toolkits?.findIndex((toolkit: any) => {
 										return toolkit.toolkitName === agentMessages.data.toolkit_name && toolkit.toolkitMethods === agentMessages.data.method_name && toolkit.toolkitStatus === 'running'
 									})
 
 									if (task.toolkits && index !== -1 && index !== undefined) {
-										task.toolkits[index].message += '\n' + message.data.message as string
+										task.toolkits[index].message = `${normalizeToolkitMessage(task.toolkits[index].message)}\n${normalizeToolkitMessage(message.data.message)}`.trim()
 										task.toolkits[index].toolkitStatus = "completed"
 									}
 									// task.toolkits?.unshift({
@@ -1298,7 +1419,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									taskRunning![taskIndex].toolkits?.unshift({
 										toolkitName: toolkit_name,
 										toolkitMethods: method_name,
-										message: targetMessage.data.message as string,
+										message: normalizeToolkitMessage(targetMessage.data.message),
 										toolkitStatus: "completed",
 									});
 								}
@@ -1340,27 +1461,27 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					}
 
 
-				if (agentMessages.step === "context_too_long") {
-					console.error('Context too long:', agentMessages.data)
-					const currentLength = agentMessages.data.current_length || 0;
-					const maxLength = agentMessages.data.max_length || 100000;
-					
-					// Show toast notification
-					toast.dismiss();
-					toast.error(
-						`⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new project to continue your work.`,
-						{
-							duration: Infinity,
-							closeButton: true,
-						}
-					);
+					if (agentMessages.step === "context_too_long") {
+						console.error('Context too long:', agentMessages.data)
+						const currentLength = agentMessages.data.current_length || 0;
+						const maxLength = agentMessages.data.max_length || 100000;
 
-					// Set flag to block input and set status to pause
-					setIsContextExceeded(currentTaskId, true);
-					setStatus(currentTaskId, "pause");
-					uploadLog(currentTaskId, type);
-					return
-				}
+						// Show toast notification
+						toast.dismiss();
+						toast.error(
+							`⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new project to continue your work.`,
+							{
+								duration: Infinity,
+								closeButton: true,
+							}
+						);
+
+						// Set flag to block input and set status to pause
+						setIsContextExceeded(currentTaskId, true);
+						setStatus(currentTaskId, "pause");
+						uploadLog(currentTaskId, type);
+						return
+					}
 
 					if (agentMessages.step === "error") {
 						try {
@@ -1373,8 +1494,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							// Safely extract error message with fallback chain
 							const errorMessage = agentMessages.data?.message ||
-							                     (typeof agentMessages.data === 'string' ? agentMessages.data : null) ||
-							                     'An error occurred while processing your request';
+								(typeof agentMessages.data === 'string' ? agentMessages.data : null) ||
+								'An error occurred while processing your request';
 
 							// Mark all incomplete tasks as failed
 							let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -1456,10 +1577,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							const taskIdToRemove = agentMessages.data.task_id as string;
 							const projectStore = useProjectStore.getState();
 							//Remove the task from the queue on error
-							if(project_id) {
+							if (project_id) {
 								const project = projectStore.getProjectById(project_id);
 								if (project && project.queuedMessages) {
-									const messageToRemove = project.queuedMessages.find(msg => 
+									const messageToRemove = project.queuedMessages.find(msg =>
 										msg.task_id === taskIdToRemove || msg.content.includes(taskIdToRemove)
 									);
 									if (messageToRemove) {
@@ -1485,7 +1606,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									// Find and remove the message with matching task ID
 									const project = projectStore.getProjectById(project_id);
 									if (project && project.queuedMessages) {
-										const messageToRemove = project.queuedMessages.find(msg => 
+										const messageToRemove = project.queuedMessages.find(msg =>
 											msg.task_id === taskIdToRemove || msg.content.includes(taskIdToRemove)
 										);
 										if (messageToRemove) {
@@ -1690,7 +1811,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								addMessages(currentTaskId, newMessage)
 							}
 							setCotList(currentTaskId, [...tasks[currentTaskId].cotList, agentMessages.data.notice as string])
-							// addMessages(currentTaskId, newMessage);
 						}
 						return
 
@@ -1791,7 +1911,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const { create, setHasMessages, addMessages, startTask, setActiveTaskId, handleConfirmTask } = get();
 			//get project id
 			const project_id = useProjectStore.getState().activeProjectId
-			if(!project_id) {
+			if (!project_id) {
 				console.error("Can't replay task because no project id provided")
 				return;
 			}
@@ -2014,7 +2134,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				},
 			}))
 		},
-		handleConfirmTask: async (project_id:string, taskId: string, type?: string) => {
+		handleConfirmTask: async (project_id: string, taskId: string, type?: string) => {
 			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning, setIsTaskEdit } = get();
 			if (!taskId) return;
 
@@ -2040,7 +2160,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					task: taskInfo,
 				});
 				await fetchPost(`/task/${project_id}/start`, {});
-				
+
 				setActiveWorkSpace(taskId, 'workflow')
 				setStatus(taskId, 'running')
 			}
@@ -2453,6 +2573,43 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				...state,
 				nextTaskId: taskId,
 			}))
+		},
+		setStreamingDecomposeText: (taskId, text) => {
+			set((state) => {
+				if (!state.tasks[taskId]) return state;
+				return {
+					...state,
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...state.tasks[taskId],
+							streamingDecomposeText: text,
+						},
+					},
+				};
+			});
+		},
+		clearStreamingDecomposeText: (taskId) => {
+			// Clear buffer and any pending timer
+			delete streamingDecomposeTextBuffer[taskId];
+			if (streamingDecomposeTextTimers[taskId]) {
+				clearTimeout(streamingDecomposeTextTimers[taskId]);
+				delete streamingDecomposeTextTimers[taskId];
+			}
+
+			set((state) => {
+				if (!state.tasks[taskId]) return state;
+				return {
+					...state,
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...state.tasks[taskId],
+							streamingDecomposeText: '',
+						},
+					},
+				};
+			});
 		}
 	})
 );
@@ -2465,11 +2622,13 @@ const filterMessage = (message: AgentMessage) => {
 		message.data.method_name = 'search'
 	}
 
+	message.data.message = normalizeToolkitMessage(message.data.message);
+
 	if (message.data.toolkit_name === 'Note Taking Toolkit') {
-		message.data.message = message.data.message!.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
+		message.data.message = message.data.message.replace(/content='/g, '').replace(/', update=False/g, '').replace(/', update=True/g, '')
 	}
 	if (message.data.method_name === 'scrape') {
-		message.data.message = message.data.message!.replace(/url='/g, '').slice(0, -1)
+		message.data.message = message.data.message.replace(/url='/g, '').slice(0, -1)
 	}
 	return message
 }
