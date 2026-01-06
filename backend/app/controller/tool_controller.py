@@ -339,10 +339,47 @@ async def uninstall_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to uninstall {tool}: {str(e)}"
             )
+    elif tool == "google_gmail":
+        try:
+            # Clean up Google Gmail token directories (user-scoped + legacy)
+            token_dirs = set()
+            try:
+                token_dirs.add(os.path.dirname(GoogleGmailNativeToolkit._build_canonical_token_path()))
+            except Exception as e:
+                logger.warning(f"Failed to resolve canonical Google Gmail token path: {e}")
+
+            token_dirs.add(os.path.join(os.path.expanduser("~"), ".eigent", "tokens", "google_gmail"))
+
+            for token_dir in token_dirs:
+                if os.path.exists(token_dir):
+                    shutil.rmtree(token_dir)
+                    logger.info(f"Removed Google Gmail token directory: {token_dir}")
+
+            # Clear OAuth state manager cache (this is the key fix!)
+            # This removes the cached credentials from memory
+            state = oauth_state_manager.get_state("google_gmail")
+            if state:
+                if state.status in ["pending", "authorizing"]:
+                    state.cancel()
+                    logger.info("Cancelled ongoing Google Gmail authorization")
+                # Clear the state completely to remove cached credentials
+                oauth_state_manager._states.pop("google_gmail", None)
+                logger.info("Cleared Google Gmail OAuth state cache")
+
+            return {
+                "success": True,
+                "message": f"Successfully uninstalled {tool} and cleaned up authentication tokens"
+            }
+        except Exception as e:
+            logger.error(f"Failed to uninstall {tool}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to uninstall {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'google_gmail']"
         )
 
 
