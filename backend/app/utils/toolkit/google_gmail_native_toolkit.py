@@ -4,13 +4,15 @@ import threading
 
 from camel.toolkits import GmailToolkit as BaseGmailToolkit
 from camel.toolkits.function_tool import FunctionTool
-from loguru import logger
 
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
+from utils import traceroot_wrapper as traceroot
+
+logger = traceroot.get_logger("main")
 
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
@@ -19,7 +21,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.compose',
     'https://www.googleapis.com/auth/gmail.labels',
     'https://www.googleapis.com/auth/contacts.readonly',
-    'https://www.googleapis.com/auth/people.readonly'
 ]
 
 
@@ -41,16 +42,26 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         """
         self.api_task_id = api_task_id
         self._token_path = (
-            os.environ.get("GOOGLE_GMAIL_TOKEN_PATH")
+            env("GOOGLE_GMAIL_TOKEN_PATH")
             or os.path.join(
                 os.path.expanduser("~"),
                 ".eigent",
                 "tokens",
                 "google_gmail",
-                f"google_gmail_token_{api_task_id}.json",
+                "google_gmail_token.json",
             )
         )
         super().__init__(timeout=timeout)
+    
+    @classmethod
+    def _build_canonical_token_path(cls) -> str:
+        return env("GOOGLE_GMAIL_TOKEN_PATH") or os.path.join(
+            os.path.expanduser("~"),
+            ".eigent",
+            "tokens",
+            "google_gmail",
+            "google_gmail_token.json",
+        )
 
     # Email Sending Operations
     @listen_toolkit(
@@ -159,8 +170,9 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         max_results: int = 10,
         include_spam_trash: bool = False,
         label_ids: Optional[List[str]] = None,
+        page_token: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return super().list_threads(query, max_results, include_spam_trash, label_ids)
+        return super().list_threads(query, max_results, include_spam_trash, label_ids, page_token)
 
     # Label Management
     @listen_toolkit(
@@ -303,10 +315,10 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
 
         # If no token file, try environment variables
         if not creds:
-            client_id = os.environ.get("GOOGLE_CLIENT_ID")
-            client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-            refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
-            token_uri = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
+            client_id = env("GOOGLE_CLIENT_ID")
+            client_secret = env("GOOGLE_CLIENT_SECRET")
+            refresh_token = env("GOOGLE_REFRESH_TOKEN")
+            token_uri = env("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
             
             if refresh_token and client_id and client_secret:
                 logger.info("Creating credentials from environment variables")
@@ -378,9 +390,9 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
                 state.status = "authorizing"
                 oauth_state_manager.update_status("google_gmail", "authorizing")
                 
-                client_id = os.environ.get("GOOGLE_CLIENT_ID")
-                client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-                token_uri = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
+                client_id = env("GOOGLE_CLIENT_ID")
+                client_secret = env("GOOGLE_CLIENT_SECRET")
+                token_uri = env("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
                 
                 logger.info(f"Google Gmail auth - client_id present: {bool(client_id)}, client_secret present: {bool(client_secret)}")
                 
@@ -437,7 +449,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
                     ".eigent",
                     "tokens",
                     "google_gmail",
-                    f"google_gmail_token_{api_task_id}.json",
+                    f"google_gmail_token.json",
                 )
                 
                 try:
