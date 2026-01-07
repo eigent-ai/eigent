@@ -168,7 +168,7 @@ const ToolSelect = forwardRef<
                                 }
                             };
 														
-						} else if (key.toLowerCase() === 'google gmail') {
+						} else if (key.toLowerCase() === 'google gmail mcp') {
 					onInstall = async () => {
 						try {
 					const response = await fetchPost("/install/tool/google_gmail");
@@ -177,13 +177,13 @@ const ToolSelect = forwardRef<
 						const existingConfigs = await proxyFetchGet("/api/configs");
 						const existing = Array.isArray(existingConfigs)
 							? existingConfigs.find((c: any) =>
-								c.config_group?.toLowerCase() === "google gmail" &&
+								c.config_group?.toLowerCase() === "google gmail mcp" &&
 								c.config_name === "GOOGLE_REFRESH_TOKEN"
 							)
 							: null;
 						
 						const configPayload = {
-							config_group: "Google Gmail",
+							config_group: "Google Gmail MCP", //According to backend config
 							config_name: "GOOGLE_REFRESH_TOKEN",
 							config_value: "exists",
 						};
@@ -197,7 +197,7 @@ const ToolSelect = forwardRef<
 						console.log("Google Gmail installed successfully");
 								// After successful installation, add to selected tools
 								const gmailItem = {
-									id: 0, // Use 0 for integration items
+									id: 1, // Use 1 for integration items
 									key: key,
 									name: key,
 									description: "Google Gmail integration for managing emails and contacts",
@@ -244,7 +244,7 @@ const ToolSelect = forwardRef<
 									? t("layout.notion-workspace-integration")
 									: key.toLowerCase() === 'google calendar'
 									? t("layout.google-calendar-integration")
-									: key.toLowerCase() === 'google gmail'
+									: key.toLowerCase() === 'google gmail mcp'
 									? "Google Gmail integration for managing emails and contacts"
 									: "",
 							onInstall,
@@ -522,7 +522,7 @@ const ToolSelect = forwardRef<
 		}
 
 		// Trigger instantiation for Gmail
-		if (activeMcp.key === "Gmail") {
+		if (activeMcp.key === "Google Gmail MCP") {
 			console.log("[ToolSelect installMcp] Starting Gmail installation");
 			try {
 				const response = await fetchPost("/install/tool/google_gmail");
@@ -533,13 +533,13 @@ const ToolSelect = forwardRef<
 					const existingConfigs = await proxyFetchGet("/api/configs");
 					const existing = Array.isArray(existingConfigs)
 						? existingConfigs.find((c: any) =>
-							c.config_group?.toLowerCase() === "gmail" &&
+							c.config_group?.toLowerCase() === "google gmail mcp" &&
 							c.config_name === "GOOGLE_REFRESH_TOKEN"
 						)
 						: null;
 
 					const configPayload = {
-						config_group: "Gmail",
+						config_group: "Google Gmail MCP",
 						config_name: "GOOGLE_REFRESH_TOKEN",
 						config_value: "exists",
 					};
@@ -558,7 +558,7 @@ const ToolSelect = forwardRef<
 						key: activeMcp.key,
 						name: activeMcp.name,
 						description: "Gmail integration for managing emails, drafts, labels, and contacts",
-						toolkit: "google_gmail_toolkit",
+						toolkit: "google_gmail_native_toolkit",
 						isLocal: true
 					};
 					addOption(selectedItem, true);
@@ -585,13 +585,13 @@ const ToolSelect = forwardRef<
 									const existingConfigs = await proxyFetchGet("/api/configs");
 									const existing = Array.isArray(existingConfigs)
 										? existingConfigs.find((c: any) =>
-											c.config_group?.toLowerCase() === "gmail" &&
+											c.config_group?.toLowerCase() === "google gmail mcp" &&
 											c.config_name === "GOOGLE_REFRESH_TOKEN"
 										)
 										: null;
 
 									const configPayload = {
-										config_group: "Gmail",
+										config_group: "Google Gmail MCP",
 										config_name: "GOOGLE_REFRESH_TOKEN",
 										config_value: "exists",
 									};
