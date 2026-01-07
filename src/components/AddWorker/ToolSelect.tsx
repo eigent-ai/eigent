@@ -18,7 +18,6 @@ import { getProxyBaseURL } from "@/lib";
 import { capitalizeFirstLetter } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
-import { GMAIL_CONFIG } from "@/pages/Setting/MCP";
 interface McpItem {
 	id: number;
 	name: string;
@@ -59,10 +58,6 @@ const ToolSelect = forwardRef<
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object" && !res.error) {
 				const baseURL = getProxyBaseURL();
-				if (typeof res === "object" && res !== null) {
-					Object.assign(res, GMAIL_CONFIG);
-					console.log("Modified config info with Gmail:", res);
-				}
 				const list = Object.entries(res)
 					.filter(([key]) => {
 						if (!keyword) return true;

@@ -3,7 +3,6 @@ import { Input } from "@/components/ui/input";
 import { Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { proxyFetchGet, proxyFetchPost } from "@/api/http";
-import { GMAIL_CONFIG } from "./MCP";
 import { useTranslation } from "react-i18next";
 
 interface ConfigItem {
@@ -19,11 +18,7 @@ export default function SettingAPI() {
 	const [errors, setErrors] = useState<Record<string, string>>({});
 
 	useEffect(() => {
-		proxyFetchGet("/api/config/info").then((res) => {			
-			if (typeof res === "object" && res !== null) {
-				Object.assign(res, GMAIL_CONFIG);
-				console.log("Modified config info with Gmail:", res);
-			}
+		proxyFetchGet("/api/config/info").then((res) => {
 			const configs = Object.entries(res || {})
 				.map(([name, v]: [string, any]) => ({ name, env_vars: v.env_vars }))
 				.filter((item) => Array.isArray(item.env_vars) && item.env_vars.length > 0);
