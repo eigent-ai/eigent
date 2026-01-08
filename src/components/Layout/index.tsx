@@ -100,7 +100,7 @@ const Layout = () => {
 					open={noticeOpen}
 				/>
 			</div>
-		</div>
+			</div>
 	);
 };
 

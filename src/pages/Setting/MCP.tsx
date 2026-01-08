@@ -196,11 +196,11 @@ export default function SettingMCP() {
 										const existingConfigs = await proxyFetchGet("/api/configs");
 										const existing = Array.isArray(existingConfigs)
 											? existingConfigs.find(
-												(c: any) =>
-													c.config_group?.toLowerCase() ===
-													"google calendar" &&
-													c.config_name === "GOOGLE_REFRESH_TOKEN"
-											)
+													(c: any) =>
+														c.config_group?.toLowerCase() ===
+															"google calendar" &&
+														c.config_name === "GOOGLE_REFRESH_TOKEN"
+											  )
 											: null;
 
 										const configPayload = {
@@ -249,11 +249,11 @@ export default function SettingMCP() {
 													const configs = await proxyFetchGet("/api/configs");
 													const existing = Array.isArray(configs)
 														? configs.find(
-															(c: any) =>
-																c.config_group?.toLowerCase() ===
-																"google calendar" &&
-																c.config_name === "GOOGLE_REFRESH_TOKEN"
-														)
+																(c: any) =>
+																	c.config_group?.toLowerCase() ===
+																		"google calendar" &&
+																	c.config_name === "GOOGLE_REFRESH_TOKEN"
+														  )
 														: null;
 
 													const payload = {
@@ -300,14 +300,14 @@ export default function SettingMCP() {
 								} else {
 									toast.error(
 										response.error ||
-										response.message ||
-										t("setting.failed-to-install-google-calendar")
+											response.message ||
+											t("setting.failed-to-install-google-calendar")
 									);
 								}
 							} catch (error: any) {
 								toast.error(
 									error.message ||
-									t("setting.failed-to-install-google-calendar")
+										t("setting.failed-to-install-google-calendar")
 								);
 							}
 						};
@@ -326,13 +326,13 @@ export default function SettingMCP() {
 						desc:
 							value.env_vars && value.env_vars.length > 0
 								? `${t(
-									"setting.environmental-variables-required"
-								)}: ${value.env_vars.join(", ")}`
+										"setting.environmental-variables-required"
+								  )}: ${value.env_vars.join(", ")}`
 								: key.toLowerCase() === "notion"
-									? t("setting.notion-workspace-integration")
-									: key.toLowerCase() === "google calendar"
-										? t("setting.google-calendar-integration")
-										: "",
+								? t("setting.notion-workspace-integration")
+								: key.toLowerCase() === "google calendar"
+								? t("setting.google-calendar-integration")
+								: "",
 						onInstall,
 					};
 				});
@@ -670,7 +670,7 @@ export default function SettingMCP() {
 													config_name: "DEFAULT_SEARCH_ENGINE",
 													config_value: value,
 												});
-											} catch (e) { }
+											} catch (e) {}
 										}}
 										onConfigClick={(item) => {
 											if (item.key === "Search") {

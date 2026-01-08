@@ -1599,18 +1599,18 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-  let isQuitting = false;
-
-  app.on('before-quit', () => {
-    isQuitting = true;
-  });
-
-  win?.on("close", (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      win?.webContents.send("before-close");
-    }
-  })
+    let isQuitting = false;
+    
+    app.on('before-quit', () => {
+      isQuitting = true;
+    });
+    
+    win?.on("close", (event) => {
+      if (!isQuitting) {
+        event.preventDefault();
+        win?.webContents.send("before-close");
+      }
+    })
 }
 
 // ==================== app event handle ====================
@@ -1703,7 +1703,7 @@ app.whenReady().then(async () => {
   mainSession.protocol.handle('localfile', protocolHandler);
 
   log.info('[PROTOCOL] Registered localfile protocol on both default and main_window sessions');
-
+  
   // ==================== initialize app ====================
   initializeApp();
   registerIpcHandlers();
@@ -1713,7 +1713,7 @@ app.whenReady().then(async () => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-
+  
   // Clean up WebView manager
   if (webViewManager) {
     webViewManager.destroy();
