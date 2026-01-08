@@ -35,32 +35,36 @@ def oauth_login(app: str, request: Request, state: Optional[str] = None):
         raise HTTPException(status_code=400, detail="OAuth login failed")
 
 
+ALLOWED_OAUTH_PROVIDERS = {"slack", "notion", "x", "googlesuite"}
+
 @router.get("/{app}/callback", name="OAuth Callback")
 @traceroot.trace()
 def oauth_callback(app: str, request: Request, code: Optional[str] = None, state: Optional[str] = None):
     """Handle OAuth provider callback and redirect to client app."""
-    if not code:
-        logger.warning("OAuth callback missing code", extra={"provider": app})
-        raise HTTPException(status_code=400, detail="Missing code parameter")
-    
+    import re
+    CODE_STATE_REGEX = re.compile(r'^[A-Za-z0-9_\-]+$')
+    from starlette.datastructures import URL
+
+    if app not in ALLOWED_OAUTH_PROVIDERS:
+        logger.warning("Invalid OAuth provider", extra={"provider": app, "code": code})
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+    if not code or not CODE_STATE_REGEX.match(code):
+        logger.warning("OAuth callback missing or invalid code", extra={"provider": app, "code": code})
+        raise HTTPException(status_code=400, detail="Missing or invalid code parameter")
+    if state and not CODE_STATE_REGEX.match(state):
+        logger.warning("OAuth callback invalid state", extra={"provider": app, "state": state})
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
+
     logger.info("OAuth callback received", extra={"provider": app, "has_state": state is not None})
-    
-    redirect_url = f"eigent://callback/oauth?provider={app}&code={code}&state={state}"
-    html_content = f"""
-    <html>
-        <head>
-            <title>OAuth Callback</title>
-        </head>
-        <body>
-            <script type='text/javascript'>
-                window.location.href = '{redirect_url}';
-            </script>
-            <p>Redirecting, please wait...</p>
-            <button onclick='window.close()'>Close this window</button>
-        </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+
+    base_url = URL("eigent://callback/oauth")
+    redirect_url = base_url.include_query_params(
+        provider=app,
+        code=code,
+        state=state or "",
+    )
+
+    return RedirectResponse(str(redirect_url))
 
 
 @router.post("/{app}/token", name="OAuth Fetch Token")
