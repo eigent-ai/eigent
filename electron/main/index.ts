@@ -1703,7 +1703,7 @@ app.whenReady().then(async () => {
   mainSession.protocol.handle('localfile', protocolHandler);
 
   log.info('[PROTOCOL] Registered localfile protocol on both default and main_window sessions');
-  
+
   // ==================== initialize app ====================
   initializeApp();
   registerIpcHandlers();
@@ -1719,12 +1719,12 @@ app.on('window-all-closed', () => {
     webViewManager.destroy();
     webViewManager = null;
   }
-
+  
   // Reset window state
   win = null;
   isWindowReady = false;
   protocolUrlQueue = [];
-
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }

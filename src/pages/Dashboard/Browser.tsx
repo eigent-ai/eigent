@@ -215,7 +215,7 @@ export default function Browser() {
 						<div className="flex flex-col">
 							<div className="text-heading-sm font-bold text-text-heading">{t("layout.browser-management")}</div>
 							<p className="text-body-sm text-text-label max-w-[700px]">
-								{t("layout.browser-management-description")}.</p>
+							  	{t("layout.browser-management-description")}.</p>
 						</div>
 					</div>
 				</div>
@@ -335,7 +335,7 @@ export default function Browser() {
 							)}
 						</div>
 					</div>
-
+          
 					<div className="flex-1 w-full items-center justify-center text-label-xs text-text-label text-center">
 						For more information, check out our 
 					<a href="https://www.eigent.ai/privacy-policy" target="_blank" className="text-text-information underline ml-1">{t("layout.privacy-policy")}</a>
