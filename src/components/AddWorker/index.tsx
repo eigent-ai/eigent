@@ -23,6 +23,8 @@ import { fetchPost } from "@/api/http";
 import { useAuthStore, useWorkerList } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
+import { TooltipSimple } from "@/components/ui/tooltip";
 
 interface EnvValue {
 	value: string;
@@ -49,12 +51,23 @@ interface McpItem {
 export function AddWorker({
 	edit = false,
 	workerInfo = null,
+	variant = "default",
+	isOpen,
+	onOpenChange,
 }: {
 	edit?: boolean;
 	workerInfo?: Agent | null;
+	variant?: "default" | "icon";
+	isOpen?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const { t } = useTranslation();
-	const [dialogOpen, setDialogOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+
+	// Use controlled state if provided, otherwise internal state
+	const isControlled = typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
+	const dialogOpen = isControlled ? isOpen : internalOpen;
+	const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	if (!chatStore) {
 		return <div>Loading...</div>;
@@ -76,7 +89,7 @@ export function AddWorker({
 	const [workerName, setWorkerName] = useState("");
 	const [workerDescription, setWorkerDescription] = useState("");
 	const [selectedTools, setSelectedTools] = useState<McpItem[]>([]);
-	
+
 	// error status management
 	const [nameError, setNameError] = useState<string>("");
 
@@ -238,7 +251,7 @@ export function AddWorker({
 	const handleAddWorker = async () => {
 		// clear previous errors
 		setNameError("");
-		
+
 		if (!workerName) {
 			setNameError(t("workforce.worker-name-cannot-be-empty"));
 			return;
@@ -263,7 +276,7 @@ export function AddWorker({
 		});
 		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
 		if (mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object') {
-			for(const key of Object.keys(mcpLocal.mcpServers)) {
+			for (const key of Object.keys(mcpLocal.mcpServers)) {
 				if (!mcpList.includes(key)) {
 					delete mcpLocal.mcpServers[key];
 				}
@@ -353,32 +366,46 @@ export function AddWorker({
 	return (
 		<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
 			<form>
-				<DialogTrigger asChild>
-					{edit ? (
-						<Button
-							variant="ghost"
-							size="sm"
-							className="w-full"
-							onClick={(e) => {
-								e.stopPropagation();
-								setDialogOpen(true);
-								setWorkerName(workerInfo?.workerInfo?.name || "");
-								setWorkerDescription(workerInfo?.workerInfo?.description || "");
-								setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
-							}}
-						>
-							<Edit size={16} />
-							{t("workforce.edit")}
-						</Button>
-					) : (
-						<Button onClick={() => setDialogOpen(true)} variant="ghost">
-							<Plus className="w-6 h-6 text-icon-primary" />
-							<span className="text-text-body text-[13px] leading-13 font-bold">
-								{t("workforce.new-worker")}
-							</span>
-						</Button>
-					)}
-				</DialogTrigger>
+				{!isControlled && (
+					<DialogTrigger asChild>
+						{edit ? (
+							<Button
+								variant="ghost"
+								size="sm"
+								className="w-full"
+								onClick={(e) => {
+									e.stopPropagation();
+									setDialogOpen(true);
+									setWorkerName(workerInfo?.workerInfo?.name || "");
+									setWorkerDescription(workerInfo?.workerInfo?.description || "");
+									setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
+								}}
+							>
+								<Edit size={16} />
+								{t("workforce.edit")}
+							</Button>
+						) : variant === "icon" ? (
+							<Button
+								variant="ghost"
+								size="icon"
+								className="h-6 w-6 rounded-full bg-surface-tertiary hover:bg-surface-tertiary-hover"
+								onClick={() => setDialogOpen(true)}
+							>
+								<Plus size={12} />
+							</Button>
+						) : (
+							<MenuToggleGroup type="single" value="add-worker">
+								<MenuToggleItem
+									value="add-worker"
+									variant="clear"
+									size="md"
+									icon={<Plus />}
+									onClick={() => setDialogOpen(true)}
+								/>
+							</MenuToggleGroup>
+						)}
+					</DialogTrigger>
+				)}
 				<DialogContent
 					size="sm"
 					className="p-0 gap-0"
@@ -456,7 +483,7 @@ export function AddWorker({
 									))}
 								</div>
 							</DialogContentSection>
-							<DialogFooter 
+							<DialogFooter
 								className="bg-white-100% !rounded-b-xl p-md"
 								showCancelButton={true}
 								showConfirmButton={true}
@@ -485,7 +512,7 @@ export function AddWorker({
 								<div className="flex flex-col gap-4">
 									<div className="flex items-center gap-sm">
 										<div className="flex w-16 h-16 items-center justify-center">
-										<Bot size={32} className="text-icon-primary" />
+											<Bot size={32} className="text-icon-primary" />
 										</div>
 										<Input
 											size="sm"
@@ -505,12 +532,12 @@ export function AddWorker({
 								</div>
 
 								<Textarea
-									  variant="enhanced"
-										size="sm"
-										title={t("workforce.description-optional")}
-										placeholder={t("layout.im-an-agent-specially-designed-for")}
-										value={workerDescription}
-										onChange={(e) => setWorkerDescription(e.target.value)}
+									variant="enhanced"
+									size="sm"
+									title={t("workforce.description-optional")}
+									placeholder={t("layout.im-an-agent-specially-designed-for")}
+									value={workerDescription}
+									onChange={(e) => setWorkerDescription(e.target.value)}
 								/>
 
 								<ToolSelect
@@ -520,7 +547,7 @@ export function AddWorker({
 									ref={toolSelectRef}
 								/>
 							</DialogContentSection>
-							<DialogFooter 
+							<DialogFooter
 								className="bg-white-100% !rounded-b-xl p-md"
 								showCancelButton={true}
 								showConfirmButton={true}

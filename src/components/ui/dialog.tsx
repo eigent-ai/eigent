@@ -24,7 +24,7 @@ const DialogOverlay = React.forwardRef<
 	<DialogPrimitive.Overlay
 		ref={ref}
 		className={cn(
-			"fixed inset-0 z-50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+			"fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
 			className
 		)}
 		{...props}
@@ -52,7 +52,7 @@ const dialogContentVariants = cva(
 // Enhanced Dialog Content with size variants
 interface DialogContentProps
 	extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
-		VariantProps<typeof dialogContentVariants> {
+	VariantProps<typeof dialogContentVariants> {
 	showCloseButton?: boolean;
 	closeButtonClassName?: string;
 	closeButtonIcon?: React.ReactNode;
@@ -181,8 +181,8 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
-	({ 
-		className, 
+	({
+		className,
 		showConfirmButton = false,
 		showCancelButton = false,
 		confirmButtonText = "Confirm",
@@ -194,7 +194,7 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
 		confirmButtonDisabled = false,
 		cancelButtonDisabled = false,
 		children,
-		...props 
+		...props
 	}, ref) => (
 		<div
 			ref={ref}

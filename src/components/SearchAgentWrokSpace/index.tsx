@@ -24,7 +24,7 @@ export default function Home() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -183,7 +183,7 @@ export default function Home() {
 		</div>
 	) : (
 		<div
-			className={`w-full flex-1 h-[calc(100vh-104px)] flex items-center justify-center transition-all duration-300 ease-in-out`}
+			className={`w-full flex-1 h-full flex items-center justify-center transition-all duration-300 ease-in-out`}
 		>
 			<div className="w-full h-full flex flex-col rounded-2xl relative bg-menutabs-bg-default overflow-hidden">
 				<div className="pt-3 pb-2 px-2 rounded-t-2xl flex items-center justify-between flex-shrink-0">
@@ -201,9 +201,8 @@ export default function Home() {
 							<ChevronLeft size={16} />
 						</Button>
 						<div
-							className={`text-base leading-snug font-bold ${
-								agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
-							}`}
+							className={`text-base leading-snug font-bold ${agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
+								}`}
 						>
 							{agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
 						</div>
@@ -286,9 +285,8 @@ export default function Home() {
 				) : (
 					<div
 						ref={scrollContainerRef}
-						className={`${
-							isSingleMode ? "px-0" : "px-2 pb-2"
-						}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
+						className={`${isSingleMode ? "px-0" : "px-2 pb-2"
+							}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
 					>
 						{activeAgent?.activeWebviewIds
 							?.filter((item) => item?.img)
@@ -297,11 +295,10 @@ export default function Home() {
 									<div
 										key={index}
 										onClick={() => handleTakeControl(item.id)}
-										className={`cursor-pointer relative card-box rounded-lg  group ${
-											isSingleMode
-												? "h-[calc(100%)] w-[calc(100%)]"
-												: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
-										}`}
+										className={`cursor-pointer relative card-box rounded-lg  group ${isSingleMode
+											? "h-[calc(100%)] w-[calc(100%)]"
+											: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
+											}`}
 									>
 										{item.img && (
 											<img

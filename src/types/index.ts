@@ -94,6 +94,7 @@ export type TriggerInput = {
   description?: string
   trigger_type: TriggerType
   custom_cron_expression?: string
+  webhook_url?: string
   listener_type?: ListenerType
   system_message?: string
   agent_model?: string

@@ -1,0 +1,133 @@
+import { Trigger, TriggerType, TriggerStatus } from "@/types";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Zap, Clock, MoreHorizontal, Edit, Copy, Trash2, Globe, MessageSquare } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+type TriggerListItemProps = {
+    trigger: Trigger;
+    isSelected: boolean;
+    onSelect: (id: number) => void;
+    onEdit: (trigger: Trigger) => void;
+    onDuplicate: (id: number) => void;
+    onDelete: (id: number) => void;
+    onToggleActive: (trigger: Trigger) => void;
+};
+
+export const TriggerListItem: React.FC<TriggerListItemProps> = ({
+    trigger,
+    isSelected,
+    onSelect,
+    onEdit,
+    onDuplicate,
+    onDelete,
+    onToggleActive,
+}) => {
+    const { t } = useTranslation();
+    const isActive = trigger.status === TriggerStatus.Active;
+
+    const getTriggerTypeIcon = () => {
+        switch (trigger.trigger_type) {
+            case TriggerType.Schedule:
+                return <Clock className="w-3.5 h-3.5" />;
+            case TriggerType.Webhook:
+                return <Globe className="w-3.5 h-3.5" />;
+            case TriggerType.SlackTrigger:
+                return <MessageSquare className="w-3.5 h-3.5" />;
+            default:
+                return <Clock className="w-3.5 h-3.5" />;
+        }
+    };
+
+    const getTriggerTypeLabel = () => {
+        switch (trigger.trigger_type) {
+            case TriggerType.Schedule:
+                return t("triggers.schedule");
+            case TriggerType.Webhook:
+                return t("triggers.webhook");
+            case TriggerType.SlackTrigger:
+                return t("triggers.slack");
+            default:
+                return trigger.trigger_type;
+        }
+    };
+
+    const formatLastExecution = (dateString?: string) => {
+        if (!dateString) return t("triggers.never");
+        const date = new Date(dateString);
+        return `${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+    };
+
+    return (
+        <div
+            onClick={() => onSelect(trigger.id)}
+            className={`group flex items-center gap-3 p-3 bg-surface-tertiary rounded-xl border transition-all duration-200 cursor-pointer ${isSelected
+                ? 'border-border-action bg-surface-tertiary-hover'
+                : 'border-border-tertiary hover:border-border-secondary hover:bg-surface-tertiary-hover'
+                }`}
+        >
+            {/* 1. Zap Icon */}
+            <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-amber-500/10 rounded-lg">
+                <Zap className="w-5 h-5 text-amber-500" />
+            </div>
+
+            {/* 2. Trigger Name + Task Prompt */}
+            <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-text-heading truncate group-hover:text-text-action transition-colors">
+                    {trigger.name}
+                </div>
+                <div className="text-xs text-text-label truncate mt-0.5">
+                    {trigger.task_prompt || trigger.description || t("triggers.no-task-prompt")}
+                </div>
+            </div>
+
+            {/* 3. Trigger Type */}
+            <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[80px]">
+                {getTriggerTypeIcon()}
+                <span>{getTriggerTypeLabel()}</span>
+            </div>
+
+            {/* 4. Last Execution Time */}
+            <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[100px]">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{formatLastExecution(trigger.last_executed_at)}</span>
+            </div>
+
+            {/* 5. Activation Switch */}
+            <Switch
+                checked={isActive}
+                onCheckedChange={() => onToggleActive(trigger)}
+                onClick={(e) => e.stopPropagation()}
+            />
+
+            {/* 6. More Icon Dropdown */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                        <MoreHorizontal className="w-4 h-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem className="gap-2" onSelect={() => onEdit(trigger)}>
+                        <Edit className="h-4 w-4" />
+                        {t("triggers.edit")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="gap-2" onSelect={() => onDuplicate(trigger.id)}>
+                        <Copy className="h-4 w-4" />
+                        {t("triggers.duplicate")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onSelect={() => onDelete(trigger.id)}>
+                        <Trash2 className="h-4 w-4" />
+                        {t("triggers.delete")}
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    );
+};

@@ -24,7 +24,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
 
   // Get all chat stores for the active project
   const activeProjectId = projectStore.activeProjectId;
-  const chatStores = activeProjectId 
+  const chatStores = activeProjectId
     ? projectStore.getAllChatStores(activeProjectId)
     : [];
 
@@ -54,17 +54,17 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     if (!task) return;
 
     const currentMessageCount = task.messages.length;
-    
+
     // Check if a new user message was added
     if (currentMessageCount > lastMessageCount) {
       const lastMessage = task.messages[task.messages.length - 1];
-      
+
       // If the last message is from user, scroll to bottom
       if (lastMessage && lastMessage.role === 'user') {
         scrollToBottom();
       }
     }
-    
+
     setLastMessageCount(currentMessageCount);
   }, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages, lastMessageCount, scrollToBottom, activeProjectId]);
 
@@ -135,25 +135,25 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   }, []);
 
   return (
-    <div 
+    <div
       ref={containerRef}
-      className={`flex-1 relative z-10 flex flex-col mt-sm overflow-y-auto scrollbar ${className}`}
+      className={`flex-1 relative z-10 flex flex-col overflow-y-scroll scrollbar-always-visible ${className}`}
     >
       <AnimatePresence mode="popLayout">
         {chatStores.map(({ chatId, chatStore }) => {
           const chatState = chatStore.getState();
           const activeTaskId = chatState.activeTaskId;
-          
+
           if (!activeTaskId || !chatState.tasks[activeTaskId]) {
             return null;
           }
 
           const task = chatState.tasks[activeTaskId];
           const messages = task.messages || [];
-          
+
           // Only render if there are actual user messages (not just empty or system messages)
           const hasUserMessages = messages.some((msg: any) => msg.role === 'user' && msg.content);
-          
+
           if (!hasUserMessages) {
             return null;
           }

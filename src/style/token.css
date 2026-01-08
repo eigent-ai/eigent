@@ -334,7 +334,7 @@
     --menubutton-border-default: var(--border-transparent);
     --menubutton-border-hover: var(--border-disabled);
     --menubutton-disabled: 1.25rem;
-    
+
     /* Dropdown Component */
     --dropdown-bg: var(--fill-default);
     --dropdown-border: var(--border-secondary);
@@ -430,7 +430,7 @@
   [data-theme="transparent"] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
-    --text-label: var(--colors-primary-7);
+    --text-label: var(--colors-primary-6);
     --text-action: var(--colors-primary-default);
     --text-action-hover: var(--colors-primary-10);
     --text-disabled: var(--colors-primary-3);
@@ -548,7 +548,7 @@
   [data-theme="light"] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
-    --text-label: var(--colors-primary-7);
+    --text-label: var(--colors-primary-6);
     --text-action: var(--colors-primary-default);
     --text-action-hover: var(--colors-primary-10);
     --text-disabled: var(--colors-primary-3);

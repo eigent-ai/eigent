@@ -1,11 +1,20 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Paperclip, ArrowRight, X, Image, FileText, UploadCloud, Plus } from "lucide-react";
+
+import { ExpandedInputBox } from "./ExpandedInputBox";
+import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
+import { ArrowRight, X, Image, FileText, UploadCloud, Plus, Zap, Maximize } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import type { TriggerInput } from "@/types";
+
+// Module-level singleton to track which InputBox instance has the expanded dialog open
+// This prevents multiple dialogs from opening when Cmd+P is pressed
+let activeExpandedDialogId: string | null = null;
 
 /**
  * File attachment object
@@ -45,6 +54,13 @@ export interface InputboxProps {
 	privacy?: boolean;
 	/** Use cloud model in dev */
 	useCloudModelInDev?: boolean;
+
+	/** Callback when trigger is being created (for placeholder) */
+	onTriggerCreating?: (triggerData: TriggerInput) => void;
+	/** Callback when trigger is created successfully */
+	onTriggerCreated?: (triggerData: TriggerInput) => void;
+	/** Hide the expand button (used when InputBox is already inside ExpandedInputBox) */
+	hideExpandButton?: boolean;
 }
 
 /**
@@ -100,6 +116,9 @@ export const Inputbox = ({
 	allowDragDrop = false,
 	privacy = true,
 	useCloudModelInDev = false,
+	onTriggerCreating,
+	onTriggerCreated,
+	hideExpandButton = false,
 }: InputboxProps) => {
 	const { t } = useTranslation();
 	const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -111,6 +130,25 @@ export const Inputbox = ({
 	const [isRemainingOpen, setIsRemainingOpen] = useState(false);
 	const hoverCloseTimerRef = useRef<number | null>(null);
 	const [isComposing, setIsComposing] = useState(false);
+	const [isExpandedDialogOpen, setIsExpandedDialogOpen] = useState(false);
+	const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
+	const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
+	const instanceIdRef = useRef<string>(`inputbox-${Math.random().toString(36).substr(2, 9)}`);
+
+
+
+	// Handle dialog open/close with singleton tracking
+	const handleExpandedDialogChange = useCallback((open: boolean) => {
+		if (open) {
+			activeExpandedDialogId = instanceIdRef.current;
+			setIsExpandedDialogOpen(true);
+		} else {
+			if (activeExpandedDialogId === instanceIdRef.current) {
+				activeExpandedDialogId = null;
+			}
+			setIsExpandedDialogOpen(false);
+		}
+	}, []);
 
 	const openRemainingPopover = () => {
 		if (hoverCloseTimerRef.current) {
@@ -129,6 +167,29 @@ export const Inputbox = ({
 			hoverCloseTimerRef.current = null;
 		}, 150);
 	};
+
+	// Keyboard shortcut handler for Cmd+P / Ctrl+P
+	// Opens dialog if none is open, or closes if this instance owns the open dialog
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+				e.preventDefault();
+
+				// If this instance has the dialog open, close it
+				if (isExpandedDialogOpen && activeExpandedDialogId === instanceIdRef.current) {
+					handleExpandedDialogChange(false);
+				}
+				// If no dialog is open, open this one
+				else if (activeExpandedDialogId === null) {
+					handleExpandedDialogChange(true);
+				}
+				// Otherwise another instance has it open, do nothing
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [isExpandedDialogOpen, handleExpandedDialogChange]);
 
 	// Auto-resize textarea on value changes (hug content up to max height)
 	useEffect(() => {
@@ -257,75 +318,76 @@ export const Inputbox = ({
 					<div className="text-sm font-semibold">Drop files to attach</div>
 				</div>
 			)}
+
 			{/* Text Input Area */}
-			<div className="box-border flex gap-2.5 items-center justify-center pb-2 pt-2.5 px-0 relative w-full">
+			<div className="box-border flex flex-1 gap-2.5 items-start justify-center pb-2 pt-2.5 px-0 relative w-full">
 				<div className="flex-1 box-border flex gap-2.5 items-center justify-center min-h-px min-w-px mx-2 py-0 relative">
-				<Textarea
-				  variant="none"
-					size="default"
-					ref={textareaRef}
-					value={value}
-					onChange={(e) => handleTextChange(e.target.value)}
-					onKeyDown={handleKeyDown}
-					onCompositionStart={() => setIsComposing(true)}
-					onCompositionEnd={() => setIsComposing(false)}
-					onFocus={() => setIsFocused(true)}
-					onBlur={() => setIsFocused(false)}
-					disabled={disabled}
-					placeholder= {t("chat.ask-placeholder")}
-					className={cn(
-						"flex-1 resize-none",
-						"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
-						"px-0 py-0 min-h-[40px] max-h-[200px]",
-						"scrollbar overflow-auto",
-						isActive ? "text-input-text-focus" : "text-input-text-default"
-					)}
-					style={{
-						fontFamily: "Inter",
-					}}
-					rows={1}
-					onInput={(e) => {
-						const el = e.currentTarget;
-						el.style.height = "auto";
-						el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-					}}
-				/>
+					<Textarea
+						variant="none"
+						size="default"
+						ref={textareaRef}
+						value={value}
+						onChange={(e) => handleTextChange(e.target.value)}
+						onKeyDown={handleKeyDown}
+						onCompositionStart={() => setIsComposing(true)}
+						onCompositionEnd={() => setIsComposing(false)}
+						onFocus={() => setIsFocused(true)}
+						onBlur={() => setIsFocused(false)}
+						disabled={disabled}
+						placeholder={t("chat.ask-placeholder")}
+						className={cn(
+							"flex-1 resize-none",
+							"border-none shadow-none focus-visible:ring-0 focus-visible:outline-none",
+							"px-0 py-0 min-h-[40px] max-h-[200px]",
+							"scrollbar overflow-auto",
+							isActive ? "text-input-text-focus" : "text-input-text-default"
+						)}
+						style={{
+							fontFamily: "Inter",
+						}}
+						rows={1}
+						onInput={(e) => {
+							const el = e.currentTarget;
+							el.style.height = "auto";
+							el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+						}}
+					/>
 				</div>
 			</div>
 
 			{/* File Attachments (only show if has files) */}
 			{files.length > 0 && (
-				<div className="box-border flex flex-wrap gap-1 items-start pb-2 pt-0 px-2 relative w-full">
+				<div className="box-border flex flex-wrap gap-1 items-start pb-2 pt-0 relative w-full">
 					{visibleFiles.map((file) => {
 						const isHovered = hoveredFilePath === file.filePath;
 						return (
 							<div
 								key={file.filePath}
 								className={cn(
-									"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto"
+									"bg-tag-surface box-border flex gap-0.5 items-center relative rounded-lg max-w-32 h-auto pr-1"
 								)}
 								onMouseEnter={() => setHoveredFilePath(file.filePath)}
 								onMouseLeave={() => setHoveredFilePath((prev) => (prev === file.filePath ? null : prev))}
 							>
-							{/* File icon as a link that turns into remove on hover */}
-							<a
-								href="#"
-								className={cn(
-									"rounded-md cursor-pointer flex items-center justify-center w-6 h-6"
-								)}
-								onClick={(e) => {
-									e.preventDefault();
-									e.stopPropagation();
-									handleRemoveFile(file.filePath);
-								}}
-								title={isHovered ? "Remove file" : file.fileName}
-							>
-								{isHovered ? (
-									<X className="text-icon-secondary size-4" />
-								) : (
-									getFileIcon(file.fileName)
-								)}
-							</a>
+								{/* File icon as a link that turns into remove on hover */}
+								<a
+									href="#"
+									className={cn(
+										"rounded-md cursor-pointer flex items-center justify-center w-6 h-6"
+									)}
+									onClick={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										handleRemoveFile(file.filePath);
+									}}
+									title={isHovered ? "Remove file" : file.fileName}
+								>
+									{isHovered ? (
+										<X className="text-icon-secondary size-4" />
+									) : (
+										getFileIcon(file.fileName)
+									)}
+								</a>
 
 								{/* File Name */}
 								<p
@@ -405,12 +467,12 @@ export const Inputbox = ({
 
 			{/* Action Buttons */}
 			<div className="flex items-center justify-between relative w-full">
-				{/* Left: Add File Button */}
-				<div className="flex items-center relative">
+				{/* Left: Add File Button and Add Trigger Button */}
+				<div className="flex items-center relative gap-1">
 					<Button
-						variant="ghost"
+						variant="outline"
 						size="icon"
-						className="rounded-full"
+						className="shadow-none rounded-lg"
 						onClick={onAddFile}
 						disabled={disabled || !privacy || useCloudModelInDev}
 					>
@@ -419,27 +481,87 @@ export const Inputbox = ({
 							className="text-icon-primary"
 						/>
 					</Button>
+
+					{/* Add Trigger Button - opens TriggerDialog */}
+					<Button
+						variant="ghost"
+						size="xs"
+						className="rounded-lg"
+						disabled={disabled}
+						onClick={() => setTriggerDialogOpen(true)}
+					>
+						<Zap size={16} className="text-icon-primary" />
+						Trigger
+					</Button>
+
+					{/* TriggerDialog for adding trigger and task */}
+					<TriggerDialog
+						view="create"
+						selectedTrigger={null}
+						onTriggerCreating={onTriggerCreating || (() => { })}
+						onTriggerCreated={onTriggerCreated || (() => { })}
+						isOpen={triggerDialogOpen}
+						onOpenChange={setTriggerDialogOpen}
+						initialTaskPrompt={value}
+					/>
 				</div>
 
-				{/* Right: Send Button */}
-			<Button
-				size="icon"
-				variant={value.trim().length > 0 ? "success" : "secondary"}
-				className="rounded-full"
-				onClick={handleSend}
-				disabled={disabled || value.trim().length === 0}
-			>
-				<ArrowRight
-					size={16}
-					className={cn(
-						"text-button-primary-icon-default transition-transform duration-200",
-						value.trim().length > 0 && "rotate-[-90deg]"
+				<div className="flex items-center gap-1">
+					{/* Expand Input Dialog Button - hidden when inside ExpandedInputBox */}
+					{!hideExpandButton && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="rounded-lg"
+							onClick={() => handleExpandedDialogChange(true)}
+							disabled={disabled}
+							title="Expand input (⌘P)"
+						>
+							<Maximize
+								size={16}
+								className="text-icon-primary"
+							/>
+						</Button>
 					)}
-				/>
-				{/* Inner shadow highlight (from Figma design) */}
-				<div className="absolute inset-0 pointer-events-none shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
-			</Button>
+					<Button
+						size="icon"
+						variant={value.trim().length > 0 ? "success" : "secondary"}
+						className="rounded-full"
+						onClick={handleSend}
+						disabled={disabled || value.trim().length === 0}
+					>
+						<ArrowRight
+							size={16}
+							className={cn(
+								"text-button-primary-icon-default transition-transform duration-200",
+								value.trim().length > 0 && "rotate-[-90deg]"
+							)}
+						/>
+						{/* Inner shadow highlight (from Figma design) */}
+						<div className="absolute inset-0 pointer-events-none shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
+					</Button>
+				</div>
 			</div>
+
+			{/* Expanded Input Box */}
+			<AnimatePresence>
+				{isExpandedDialogOpen && (
+					<ExpandedInputBox
+						inputProps={{
+							value,
+							onChange,
+							onSend,
+							files,
+							onFilesChange,
+							onAddFile,
+							disabled,
+							privacy,
+							useCloudModelInDev,
+						}}
+						onClose={() => handleExpandedDialogChange(false)}
+					/>
+				)}
+			</AnimatePresence>
 		</div>
 	);
 };

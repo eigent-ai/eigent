@@ -14,7 +14,10 @@ import {
 	ChevronLeft,
 	House,
 	Share,
+	ArrowLeft,
 	MoreHorizontal,
+	PanelLeft,
+	PanelRight,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
@@ -37,7 +40,8 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
- 
+import { usePageTabStore } from "@/store/pageTabStore";
+
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -50,8 +54,9 @@ function HeaderWin() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { toggle } = useSidebarStore();
+	const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
@@ -220,26 +225,15 @@ function HeaderWin() {
 		>
 			{/* left */}
 			<div
-				className={`${
-					platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
-				} flex items-center justify-center no-drag`}
+				className={`${platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
+					} flex items-center justify-center no-drag`}
 			>
 				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
 			</div>
 
 			{/* center */}
-			<div className="title h-full flex-1 flex items-center justify-between drag">
+			<div className="title h-full flex-1 flex items-center justify-start drag">
 				<div className="flex h-full items-center z-50 relative">
-					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
-					<Button
-						onClick={() => navigate("/history")}
-						variant="ghost"
-						size="icon"
-						className="no-drag p-0 h-6 w-6"
-					>
-						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-					</Button>
-					</div>
 					{location.pathname === "/history" && (
 						<div className="flex items-center mr-1">
 							<Button
@@ -248,144 +242,136 @@ function HeaderWin() {
 								className="no-drag"
 								onClick={() => navigate("/")}
 							>
-								<ChevronLeft className="w-4 h-4" />
+								<ChevronLeft className="w-4 h-4 text-text-label" />
 							</Button>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
-						<div className="flex items-center mr-1">
-						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
-							<Button
-								 variant="ghost"
-								 size="icon"
-								 className="no-drag"
-								 onClick={() => navigate("/history")}
-									>
-									<House className="w-4 h-4" />
-							</Button>
-						</TooltipSimple>
-						<Button
-							 variant="ghost"
-							 size="icon"
-							 className="no-drag"
-							 onClick={createNewProject}
-									>
-								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-									<Plus className="w-4 h-4" />
-								</TooltipSimple>
-						</Button>
-						</div>
-					)}
-					{location.pathname !== "/history" && (
-						<>
-							{activeTaskTitle === t("layout.new-project") ? (
-									<Button 
-										id="active-task-title-btn"
-										variant="ghost" 
-											className="font-bold text-base no-drag truncate" 
-										onClick={toggle}
-										size="sm"
-										>
-									{t("layout.new-project")}
-									<ChevronDown />
-								</Button>
-							) : (
+						<div className="flex items-center">
+							<TooltipSimple content={t("layout.home")} side="bottom" align="center">
 								<Button
-									id="active-task-title-btn"
 									variant="ghost"
 									size="sm"
-									className="font-bold text-base no-drag truncate"
-									onClick={toggle}
+									className="no-drag font-bold text-base"
+									onClick={() => navigate("/history")}
 								>
-									{activeTaskTitle}
-									<ChevronDown />
+									<ArrowLeft className="w-4 h-4 text-text-label" />
 								</Button>
-							)}
-						</>
+							</TooltipSimple>
+						</div>
 					)}
 				</div>
-				<div id="maximize-window" className="flex-1 h-10"></div>
-				{/* right */}
 				{location.pathname !== "/history" && (
-					<div
-						className={`${
-							platform === "darwin" && "pr-2"
+					<div className="flex items-left no-drag">
+						{activeTaskTitle === t("layout.new-project") ? (
+							<Button
+								id="active-task-title-btn"
+								variant="ghost"
+								className="font-semibold text-body-sm !text-text-label no-drag truncate"
+								onClick={toggle}
+								size="sm"
+							>
+								{t("layout.new-project")}
+								<ChevronDown className="text-text-label" />
+							</Button>
+						) : (
+							<Button
+								id="active-task-title-btn"
+								variant="ghost"
+								size="sm"
+								className="font-semibold text-base no-drag truncate"
+								onClick={toggle}
+							>
+								{activeTaskTitle}
+								<ChevronDown />
+							</Button>
+						)}
+					</div>
+				)}
+
+			</div>
+			{/* right */}
+			{location.pathname !== "/history" && (
+				<div
+					className={`${platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
-					>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string] &&
-							(
-								(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
-							) && (
+				>
+					{chatStore.activeTaskId &&
+						chatStore.tasks[chatStore.activeTaskId as string] &&
+						(
+							(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
+							chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
+							chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
+						) && (
 							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
 									onClick={() => setEndDialogOpen(true)}
-									variant="outline"
+									variant="ghost"
 									size="xs"
-									className="no-drag !text-text-cuation justify-center"
+									className="no-drag !text-text-cuation bg-surface-cuation justify-center rounded-full"
 								>
 									<Power />
 									{t("layout.end-project")}
 								</Button>
 							</TooltipSimple>
 						)}
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
-								<Button
-									onClick={() => handleShare(chatStore.activeTaskId as string)}
-									variant="ghost"
-									size="xs"
-									className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
-								>
-									{t("layout.share")}
-								</Button>
-							</TooltipSimple>
-						)}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="no-drag"
-								>
-									<MoreHorizontal className="w-4 h-4" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-36">
-								{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
-									<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
-										<FileDown className="w-4 h-4" />
-										{t("layout.report-bug")}
+					<TooltipSimple content={chatPanelPosition === 'left' ? 'Move panel right' : 'Move panel left'} side="bottom" align="center">
+						<Button
+							variant="ghost"
+							size="icon"
+							className="no-drag"
+							onClick={() => setChatPanelPosition(chatPanelPosition === 'left' ? 'right' : 'left')}
+						>
+							{chatPanelPosition === 'left' ? <PanelLeft className="w-4 h-4 text-text-label" /> : <PanelRight className="w-4 h-4 text-text-label" />}
+						</Button>
+					</TooltipSimple>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+							>
+								<MoreHorizontal className="w-4 h-4 text-text-label" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-36">
+							{chatStore.activeTaskId &&
+								chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+									<DropdownMenuItem onClick={() => handleShare(chatStore.activeTaskId as string)} className="cursor-pointer">
+										<Share className="w-4 h-4" />
+										{t("layout.share")}
 									</DropdownMenuItem>
 								)}
-								<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
-									<img
-										src={giftIcon}
-										alt="gift-icon"
-										className="w-4 h-4"
-									/>
-									{t("layout.refer-friends")}
+							{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+								<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
+									<FileDown className="w-4 h-4" />
+									{t("layout.report-bug")}
 								</DropdownMenuItem>
-								<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
-									<Settings className="w-4 h-4" />
-									{t("layout.settings")}
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				)}
-				{location.pathname === "/history" && (
-					<div
-						className={`${
-							platform === "darwin" && "pr-2"
+							)}
+							<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
+								<img
+									src={giftIcon}
+									alt="gift-icon"
+									className="w-4 h-4"
+								/>
+								{t("layout.refer-friends")}
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
+								<Settings className="w-4 h-4" />
+								{t("layout.settings")}
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+			)}
+			{location.pathname === "/history" && (
+				<div
+					className={`${platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
-					>
-					</div>
-				)}
-			</div>
+				>
+				</div>
+			)}
 			{platform !== "darwin" && (
 				<div
 					className="window-controls h-full flex items-center"
