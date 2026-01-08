@@ -261,7 +261,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.83a1" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.83a3" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -346,7 +346,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.83a1"
+version = "0.2.83a3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -363,9 +363,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/94/0c555a250bebbd28129a3472eb610ec2eacc15f826169b7a4abacf7e67df/camel_ai-0.2.83a1.tar.gz", hash = "sha256:a7f7b0ddff0477e268bf6709e3ea7b60da69c96e2c1c3827f0df47ab0f6c25ca", size = 1111297, upload-time = "2026-01-02T23:23:33.314Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/1e/6d8906f6633141c47996eddb25c55f34fdbe8a8f6131e8e6325fefb04ba3/camel_ai-0.2.83a3.tar.gz", hash = "sha256:7e04d38c48077abedd0d1287422c124aabb25cc9b6c2ce2c495a1016ad91de8e", size = 1112671, upload-time = "2026-01-08T14:42:44.329Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/40/b9cebab31f24864d6a05f7e3a4537a12f73d6e86a411fd7beb61eba73b68/camel_ai-0.2.83a1-py3-none-any.whl", hash = "sha256:5b20ca87f185578e2c24cd7eafe80bdb24a0363dc0812a6ae3a6de988b7f8272", size = 1579696, upload-time = "2026-01-02T23:23:31.157Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/dd/e0daf3b80be6247a3cde55917bd674cfa02d7e47a7dacf10d13e1b06a688/camel_ai-0.2.83a3-py3-none-any.whl", hash = "sha256:f12c9087511f1a99c348efaf44d98a1edf2863a668eb6c5cc864b7715e87360d", size = 1581075, upload-time = "2026-01-08T14:42:41.606Z" },
 ]
 
 [package.optional-dependencies]
