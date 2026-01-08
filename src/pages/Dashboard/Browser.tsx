@@ -215,7 +215,7 @@ export default function Browser() {
 						<div className="flex flex-col">
 							<div className="text-heading-sm font-bold text-text-heading">{t("layout.browser-management")}</div>
 							<p className="text-body-sm text-text-label max-w-[700px]">
-							  	{t("layout.browser-management-description")}.</p>
+							{t("layout.browser-management-description")}.</p>
 						</div>
 					</div>
 				</div>
