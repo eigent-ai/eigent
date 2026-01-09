@@ -187,17 +187,18 @@ class ListenChatAgent(ChatAgent):
             if isinstance(res, StreamingChatAgentResponse):
                 def _stream_with_deactivate():
                     last_response: ChatAgentResponse | None = None
+                    # With stream_accumulate=False, we need to accumulate delta content
+                    accumulated_content = ""
                     try:
                         for chunk in res:
                             last_response = chunk
+                            # Accumulate content from each chunk (delta mode)
+                            if chunk.msg and chunk.msg.content:
+                                accumulated_content += chunk.msg.content
                             yield chunk
                     finally:
-                        final_message = ""
                         total_tokens = 0
                         if last_response:
-                            final_message = (
-                                last_response.msg.content if last_response.msg else ""
-                            )
                             usage_info = (
                                 last_response.info.get("usage")
                                 or last_response.info.get("token_usage")
@@ -212,7 +213,7 @@ class ListenChatAgent(ChatAgent):
                                         "agent_name": self.agent_name,
                                         "process_task_id": self.process_task_id,
                                         "agent_id": self.agent_id,
-                                        "message": final_message,
+                                        "message": accumulated_content,
                                         "tokens": total_tokens,
                                     },
                                 )
