@@ -140,14 +140,6 @@ class ConfigInfo:
             "env_vars": [],
             "toolkit": "pptx_toolkit",
         },
-        ConfigGroup.REDDIT.value: {
-            "env_vars": [
-                "REDDIT_CLIENT_ID",
-                "REDDIT_CLIENT_SECRET",
-                "REDDIT_USER_AGENT",
-            ],
-            "toolkit": "reddit_toolkit",
-        },
     }
 
     @classmethod

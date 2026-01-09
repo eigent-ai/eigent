@@ -63,11 +63,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 		const map: { [key: string]: boolean } = {};
 		
 		items.forEach((item) => {
-			if (item.key === "Google Calendar") {
+			if (item.key === "Google Calendar" || item.key === "Google Gmail MCP") {
 				// Only mark installed when refresh token is present (auth completed)
 				const hasRefreshToken = configs.some(
 					(c: any) =>
-						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_group?.toLowerCase() === item.key.toLowerCase() &&
 						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
 						c.config_value && String(c.config_value).length > 0
 				);
@@ -240,13 +240,20 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 				}
 			}
 			
-			// Clean up authentication tokens for Google Calendar and Notion
+			// Clean up authentication tokens for Google Calendar, Google Gmail, and Notion
 			if (item.key === "Google Calendar") {
 				try {
 					await fetchDelete("/uninstall/tool/google_calendar");
 					console.log("Cleaned up Google Calendar authentication tokens");
 				} catch (e) {
 					console.log("Failed to clean up Google Calendar tokens:", e);
+				}
+			} else if (item.key === "Google Gmail MCP") {
+				try {
+					await fetchDelete("/uninstall/tool/google_gmail");
+					console.log("Cleaned up Google Gmail authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Google Gmail tokens:", e);
 				}
 			} else if (item.key === "Notion") {
 				try {
