@@ -109,11 +109,12 @@ class SingleAgentWorker(BaseSingleAgentWorker):
 
                 # Handle streaming response
                 if isinstance(response, AsyncStreamingChatAgentResponse):
-                    content = ""
+                    # With stream_accumulate=False, we need to accumulate delta content
+                    accumulated_content = ""
                     async for chunk in response:
-                        if chunk.msg:
-                            content = chunk.msg.content
-                    response_content = content
+                        if chunk.msg and chunk.msg.content:
+                            accumulated_content += chunk.msg.content
+                    response_content = accumulated_content
                 else:
                     # Regular ChatAgentResponse
                     response_content = response.msg.content if response.msg else ""
@@ -133,10 +134,15 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 # Handle streaming response for native output
                 if isinstance(response, AsyncStreamingChatAgentResponse):
                     task_result = None
+                    # With stream_accumulate=False, we need to accumulate delta content
+                    accumulated_content = ""
                     async for chunk in response:
-                        if chunk.msg and chunk.msg.parsed:
-                            task_result = chunk.msg.parsed
-                            response_content = chunk.msg.content
+                        if chunk.msg:
+                            if chunk.msg.content:
+                                accumulated_content += chunk.msg.content
+                            if chunk.msg.parsed:
+                                task_result = chunk.msg.parsed
+                    response_content = accumulated_content
                     # If no parsed result found in streaming, create fallback
                     if task_result is None:
                         task_result = TaskResult(
