@@ -64,6 +64,8 @@ class Workforce(BaseWorkforce):
                 enabled_strategies=["retry", "replan"],
             ),
         )
+        self.task_agent.stream_accumulate = True
+        self.task_agent._stream_accumulate_explicit = True
         logger.info(f"[WF-LIFECYCLE] ✅ Workforce.__init__ COMPLETED, id={id(self)}")
 
     def eigent_make_sub_tasks(
@@ -260,6 +262,10 @@ class Workforce(BaseWorkforce):
                     except Exception as e:
                         logger.warning(f"Streaming callback failed: {e}")
             logger.info(f"[DECOMPOSE] Collected {len(subtasks)} subtasks from generator")
+
+            # After consuming the generator, check task.subtasks for final result as fallback
+            if not subtasks and task.subtasks:
+                subtasks = task.subtasks
         else:
             subtasks = subtasks_result
             logger.info(f"[DECOMPOSE] Got {len(subtasks) if subtasks else 0} subtasks directly")
