@@ -590,7 +590,7 @@ export default function SettingMCP() {
 	return (
 		<div className="flex-1 h-auto m-auto">
 			{/* Header Section */}
-			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+			<div className="flex w-full">
 				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
 					<div className="flex w-full items-center justify-between">
 						{showMarket ? (

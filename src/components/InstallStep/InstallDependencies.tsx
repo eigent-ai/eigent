@@ -16,7 +16,7 @@ export const InstallDependencies: React.FC = () => {
 	} = useInstallationUI();
 
 	return (
-		<div className="fixed !z-[100] inset-0 !bg-bg-page  bg-opacity-80 h-full w-full  flex items-center justify-center backdrop-blur-sm">
+		<div className="fixed !z-[100] inset-0  bg-opacity-80 h-full w-full  flex items-center justify-center backdrop-blur-sm">
 			<div className="w-[1200px] p-[40px] h-full flex flex-col justify-center gap-xl">
 				<div className="relative">
 					{/* {isInstalling.toString()} */}

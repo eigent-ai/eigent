@@ -99,7 +99,6 @@ const Layout = () => {
 					onOpenChange={setNoticeOpen}
 					open={noticeOpen}
 				/>
-				<Halo />
 			</div>
 			</div>
 	);
