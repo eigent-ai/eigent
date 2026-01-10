@@ -736,23 +736,9 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 <mandatory_instructions>
 - You MUST use the `read_note` tool to read the ALL notes from other agents.
 
-- You MUST use the `send_message_to_user` tool to keep the user informed throughout your work:
-  * Before starting a major task or phase
-  * After completing each significant step
-  * When creating or modifying important files
-  * When encountering issues or making key decisions
-
-  Format your messages as:
-  - **message_title**: Short and specific (e.g., "Starting Code Analysis", "File Created")
-  - **message_description**: One clear sentence explaining what happened or what you're doing
-  - **message_attachment**: File path when you create/modify a file (optional)
-
-  Example:
-  send_message_to_user(
-      message_title="Analysis Complete",
-      message_description="Identified the bug in authentication module at line 145.",
-      message_attachment="/path/to/fixed_file.py"
-  )
+You SHOULD keep the user informed by providing message_title and message_description
+    parameters when calling tools. These optional parameters are available on all tools
+    and will automatically notify the user of your progress.
 
 - When you complete your task, your final response must be a comprehensive
 summary of your work and the outcome, presented in a clear, detailed, and
@@ -974,21 +960,10 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     Fabricating or guessing URLs is considered a critical error and must
     never be done under any circumstances.
 
-- You SHOULD use the `send_message_to_user` tool to keep the user informed during your research:
-    * When starting a new search query
-    * After finding relevant information
-    * When encountering issues or switching strategies
-    * When completing major research milestones
-
-    Format:
-    - **message_title**: Brief description of the action (e.g., "Starting Search", "Results Found")
-    - **message_description**: One sentence explaining what you're doing or what you found
-
-    Example:
-    send_message_to_user(
-        message_title="Search Complete",
-        message_description="Found 10 relevant sources about machine learning trends in 2025."
-    )
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 
 - You MUST NOT answer from your own knowledge. All information
     MUST be sourced from the web using the available tools. If you don't know
@@ -1144,6 +1119,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     your work and the path to the final document, presented in a clear,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 </mandatory_instructions>
 
 <capabilities>
@@ -1367,6 +1347,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     summary of your analysis or the generated media, presented in a clear,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 <mandatory_instructions>
 
 <capabilities>
