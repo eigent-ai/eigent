@@ -98,8 +98,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         max_executions_per_day: undefined,
         is_single_execution: false,
     });
-    const [selectedTools, setSelectedTools] = useState<any[]>([]);
-    const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
+    // const [selectedTools, setSelectedTools] = useState<any[]>([]);
+    // const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
 
     //Get projectStore for the active project's task
 	const { projectStore } = useChatStoreAdapter();
@@ -381,20 +381,20 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <Label className="font-bold text-sm">{t("triggers.type")}</Label>
                     <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
                         <TabsList className="w-full">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1"><Clock className="w-4 h-4 mr-2" />{t("triggers.scheduled")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1"><Globe className="w-4 h-4 mr-2" />{t("triggers.conditional")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1"><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1"><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule}>
                             <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
                         </TabsContent>
                         <TabsContent value={TriggerType.Webhook}>
                             <div className="space-y-4">
-                                <ToolSelect
+                                {/* <ToolSelect
                                     onShowEnvConfig={() => { }}
                                     onSelectedToolsChange={setSelectedTools}
                                     initialSelectedTools={selectedTools}
                                     ref={toolSelectRef}
-                                />
+                                /> */}
                                 <div className="space-y-2">
                                     <Label htmlFor="webhook_function">{t("triggers.webhook-function")}</Label>
                                     <Select value={formData.listener_type || ""} onValueChange={(value: ListenerType) => setFormData({ ...formData, listener_type: value })}>
