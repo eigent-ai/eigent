@@ -76,7 +76,25 @@ export function useExecutionSubscription(enabled: boolean = true) {
     const { addLog } = useActivityLogStore();
     const { emitWebSocketEvent, triggers } = useTriggerStore();
 
+    // Store latest values in refs to avoid recreating connect function
+    const triggersRef = useRef(triggers);
+    const addLogRef = useRef(addLog);
+    const emitWebSocketEventRef = useRef(emitWebSocketEvent);
+
+    // Update refs on every render
+    useEffect(() => {
+        triggersRef.current = triggers;
+        addLogRef.current = addLog;
+        emitWebSocketEventRef.current = emitWebSocketEvent;
+    });
+
     const connect = useCallback(() => {
+        // Prevent duplicate connections
+        if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+            console.log('[ExecutionSubscription] Connection already exists, skipping');
+            return;
+        }
+
         if (!enabled || !token) {
             console.log('[ExecutionSubscription] Skipping connection - enabled:', enabled, 'hasToken:', !!token);
             return;
@@ -124,7 +142,8 @@ export function useExecutionSubscription(enabled: boolean = true) {
                             break;
 
                         case 'execution_created': {
-                            const trigger = triggers.find(t => t.id === message.trigger_id);
+                            // Use ref to access latest triggers without adding to dependencies
+                            const trigger = triggersRef.current.find(t => t.id === message.trigger_id);
                             const triggerName = trigger?.name || `Trigger #${message.trigger_id}`;
                             
                             console.log(`[ExecutionSubscription] Execution created: ${message.execution_id}`);
@@ -137,7 +156,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
                                 }));
                             }
 
-                            addLog({
+                            addLogRef.current({
                                 type: ActivityType.TriggerExecuted,
                                 message: `"${triggerName}" execution started`,
                                 triggerId: message.trigger_id,
@@ -146,7 +165,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
                             });
 
                             if (trigger) {
-                                emitWebSocketEvent({
+                                emitWebSocketEventRef.current({
                                     triggerId: message.trigger_id,
                                     triggerName: triggerName,
                                     taskPrompt: trigger.task_prompt || '',
@@ -164,13 +183,14 @@ export function useExecutionSubscription(enabled: boolean = true) {
                             break;
 
                         case 'execution_updated': {
-                            const trigger = triggers.find(t => t.id === message.trigger_id);
+                            // Use ref to access latest triggers without adding to dependencies
+                            const trigger = triggersRef.current.find(t => t.id === message.trigger_id);
                             const triggerName = trigger?.name || `Trigger #${message.trigger_id}`;
                             
                             console.log(`[ExecutionSubscription] Execution updated: ${message.execution_id} - ${message.status}`);
                             
                             if (message.status === 'completed') {
-                                addLog({
+                                addLogRef.current({
                                     type: ActivityType.ExecutionSuccess,
                                     message: `"${triggerName}" execution completed`,
                                     triggerId: message.trigger_id,
@@ -179,7 +199,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
                                 });
                                 toast.success(`Execution completed: ${triggerName}`);
                             } else if (message.status === 'failed') {
-                                addLog({
+                                addLogRef.current({
                                     type: ActivityType.ExecutionFailed,
                                     message: `"${triggerName}" execution failed`,
                                     triggerId: message.trigger_id,
@@ -246,7 +266,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
         } catch (error) {
             console.error('[ExecutionSubscription] Failed to establish connection:', error);
         }
-    }, [enabled, token, triggers, addLog, emitWebSocketEvent]);
+    }, [enabled, token]); // Only depend on enabled and token - primitives that rarely change
 
     const disconnect = useCallback(() => {
         if (reconnectTimeoutRef.current) {
@@ -273,7 +293,8 @@ export function useExecutionSubscription(enabled: boolean = true) {
         return () => {
             disconnect();
         };
-    }, [enabled, token, connect, disconnect]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enabled, token]); // Only reconnect when enabled or token changes
 
     return {
         isConnected: wsRef.current?.readyState === WebSocket.OPEN,

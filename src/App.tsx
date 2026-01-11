@@ -6,6 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { AnimationJson } from "@/components/AnimationJson";
 import animationData from "@/assets/animation/openning_animaiton.json";
 import { useAuthStore } from "./store/authStore";
+import { useTriggerStore } from "./store/triggerStore";
+import { useExecutionSubscription } from "./hooks/useExecutionSubscription";
 import { Toaster } from "sonner";
 import { hasStackKeys } from "./lib";
 
@@ -15,7 +17,12 @@ function App() {
 	const navigate = useNavigate();
 	const { setInitState } = useAuthStore();
 	const [animationFinished, setAnimationFinished] = useState(false);
-	const { isFirstLaunch } = useAuthStore();
+	const { isFirstLaunch, token } = useAuthStore();
+	const { triggers } = useTriggerStore();
+
+	// Subscribe to execution events when user is authenticated and has triggers
+	const shouldSubscribe = !!token && triggers.length > 0;
+	useExecutionSubscription(shouldSubscribe);
 
 	useEffect(() => {
 		const handleShareCode = (event: any, share_token: string) => {
