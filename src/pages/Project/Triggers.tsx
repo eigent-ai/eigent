@@ -174,6 +174,15 @@ export default function Overview() {
         }
     };
 
+    const setSelectedTriggerIdWrapper = (triggerId: number) => {
+        //Double Click to Edit
+        if(triggerId === selectedTriggerId) {
+            handleEdit(triggers.find(t => t.id === triggerId)!);
+            return;
+        };
+        setSelectedTriggerId(triggerId);
+    }
+
     const handleEdit = (trigger: Trigger) => {
         setEditingTrigger(trigger);
         setEditDialogOpen(true);
@@ -319,7 +328,7 @@ export default function Overview() {
                                         key={trigger.id}
                                         trigger={trigger}
                                         isSelected={selectedTriggerId === trigger.id}
-                                        onSelect={setSelectedTriggerId}
+                                        onSelect={setSelectedTriggerIdWrapper}
                                         onEdit={handleEdit}
                                         onDuplicate={handleDuplicate}
                                         onDelete={handleDelete}
