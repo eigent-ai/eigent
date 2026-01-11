@@ -38,10 +38,8 @@ export enum TriggerType {
 }
 
 export enum TriggerStatus {
-  Inactive = 0,
-  Active = 1,
-  Stale = 2,
-  Completed = 3
+  Inactive = "inactive",
+  Active = "active",
 }
 
 export enum ListenerType {
@@ -77,6 +75,7 @@ export type Trigger = {
   webhook_url?: string
   custom_cron_expression?: string
   listener_type?: ListenerType
+  webhook_method?: RequestType
   agent_model?: string
   task_prompt?: string
   custom_task?: Record<string, any>
@@ -94,9 +93,11 @@ export type Trigger = {
 export type TriggerInput = {
   name: string
   description?: string
+  project_id?: string
   trigger_type: TriggerType
   custom_cron_expression?: string
   webhook_url?: string
+  webhook_method?: RequestType
   listener_type?: ListenerType
   agent_model?: string
   task_prompt?: string
@@ -112,6 +113,7 @@ export type TriggerUpdate = {
   status?: TriggerStatus
   custom_cron_expression?: string
   listener_type?: ListenerType
+  webhook_method?: RequestType
   agent_model?: string
   task_prompt?: string
   custom_task?: Record<string, any>

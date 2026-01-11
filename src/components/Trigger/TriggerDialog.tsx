@@ -54,6 +54,7 @@ import { TriggerTaskInput } from "./TriggerTaskInput";
 import { proxyFetchPost } from "@/api/http";
 import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
 
 type TriggerDialogProps = {
     view: "create" | "overview";
@@ -94,6 +95,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         trigger_type: TriggerType.Schedule,
         custom_cron_expression: "0 */1 * * *",
         listener_type: ListenerType.Workforce,
+        webhook_method: RequestType.POST,
         agent_model: "",
         task_prompt: "",
         max_executions_per_hour: undefined,
@@ -106,7 +108,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     //Get projectStore for the active project's task
 	const { projectStore } = useChatStoreAdapter();
 
-    const { addTrigger } = useTriggerStore();
+    const { addTrigger, updateTrigger } = useTriggerStore();
 
     // Reset form when dialog opens
     useEffect(() => {
@@ -119,6 +121,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     trigger_type: selectedTrigger.trigger_type || TriggerType.Schedule,
                     custom_cron_expression: selectedTrigger.custom_cron_expression || "0 */1 * * *",
                     listener_type: selectedTrigger.listener_type || ListenerType.Workforce,
+                    webhook_method: RequestType.POST,
                     agent_model: selectedTrigger.agent_model || "",
                     task_prompt: selectedTrigger.task_prompt || "",
                     max_executions_per_hour: selectedTrigger.max_executions_per_hour,
@@ -134,6 +137,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     trigger_type: TriggerType.Schedule,
                     custom_cron_expression: "0 */1 * * *",
                     listener_type: ListenerType.Workforce,
+                    webhook_method: RequestType.POST,
                     agent_model: "",
                     task_prompt: initialTaskPrompt,
                     max_executions_per_hour: undefined,
@@ -142,8 +146,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 });
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen]); // Only trigger on isOpen change to capture initialTaskPrompt at open time
+    }, [isOpen, selectedTrigger, view, initialTaskPrompt]); // React to dialog state and trigger changes
 
     const handleClose = () => {
         onOpenChange(false);
@@ -158,32 +161,65 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             toast.error(t("triggers.name-required"));
             return;
         }
+        if (!formData.task_prompt?.trim()) {
+            toast.error(t("triggers.task-prompt-required"));
+            return;
+        }
 
         setIsLoading(true);
         onTriggerCreating(formData);
 
         try {
-            const response = await proxyFetchPost("/api/trigger", {
-                name: formData.name,
-                description: formData.description,
-                trigger_type: formData.trigger_type,
-                custom_cron_expression: formData.custom_cron_expression,
-                listener_type: formData.listener_type,
-                agent_model: formData.agent_model,
-                task_prompt: formData.task_prompt,
-                max_executions_per_hour: formData.max_executions_per_hour,
-                max_executions_per_day: formData.max_executions_per_day,
-                is_single_execution: formData.is_single_execution,
-                project_id: projectStore.activeProjectId,
-            });
-            toast.success(t("triggers.created-successfully"));
-            onTriggerCreated(formData);
-            addTrigger(response)
+            //Make sure we have an active project
+            //TODO: Also make sure project is created in database
+            if(!projectStore.activeProjectId) {
+                toast.error(t("triggers.project-id-required"));
+                return;
+            }
 
+            let response: Trigger;
+
+            if (selectedTrigger) {
+                // Editing existing trigger
+                response = await proxyUpdateTrigger(selectedTrigger.id, {
+                    name: formData.name,
+                    description: formData.description,
+                    custom_cron_expression: formData.custom_cron_expression,
+                    listener_type: formData.listener_type,
+                    webhook_method: formData.webhook_method,
+                    agent_model: formData.agent_model,
+                    task_prompt: formData.task_prompt,
+                    max_executions_per_hour: formData.max_executions_per_hour,
+                    max_executions_per_day: formData.max_executions_per_day,
+                    is_single_execution: formData.is_single_execution,
+                });
+                toast.success(t("triggers.updated-successfully"));
+                updateTrigger(selectedTrigger.id, response);
+            } else {
+                // Creating new trigger
+                response = await proxyCreateTrigger({
+                    name: formData.name,
+                    description: formData.description,
+                    trigger_type: formData.trigger_type,
+                    custom_cron_expression: formData.custom_cron_expression,
+                    listener_type: formData.listener_type,
+                    webhook_method: formData.webhook_method,
+                    agent_model: formData.agent_model,
+                    task_prompt: formData.task_prompt,
+                    max_executions_per_hour: formData.max_executions_per_hour,
+                    max_executions_per_day: formData.max_executions_per_day,
+                    is_single_execution: formData.is_single_execution,
+                    project_id: projectStore.activeProjectId,
+                });
+                toast.success(t("triggers.created-successfully"));
+                addTrigger(response);
+            }
+
+            onTriggerCreated(formData);
             handleClose();
             
-            // Display the webhook url in a success dialog
-            if(formData.trigger_type === TriggerType.Webhook && response.webhook_url) {
+            // Display the webhook url in a success dialog (only for new webhooks)
+            if(!selectedTrigger && formData.trigger_type === TriggerType.Webhook && response.webhook_url) {
                 setCreatedWebhookUrl(response.webhook_url);
                 setIsWebhookSuccessOpen(true);
             }
@@ -208,8 +244,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         switch (status) {
             case TriggerStatus.Active: return "text-text-success bg-surface-success";
             case TriggerStatus.Inactive: return "text-text-label bg-surface-secondary";
-            case TriggerStatus.Stale: return "text-text-warning bg-surface-warning";
-            case TriggerStatus.Completed: return "text-text-body bg-surface-primary";
             default: return "text-text-label bg-surface-secondary";
         }
     };
@@ -219,6 +253,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             case ExecutionStatus.Completed: return <CheckCircle2 className="w-4 h-4 text-text-success" />;
             case ExecutionStatus.Failed: return <XCircle className="w-4 h-4 text-text-cuation" />;
             case ExecutionStatus.Running: return <Loader2 className="w-4 h-4 text-text-information animate-spin" />;
+            //TODO: Reconform Missed icon
+            case ExecutionStatus.Missed: return <XCircle className="w-4 h-4 text-text-cuation" />;
             default: return <Clock className="w-4 h-4 text-text-label" />;
         }
     };
@@ -308,8 +344,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             <span className={`text-xs px-2 py-1 rounded ${getStatusColor(selectedTrigger.status)}`}>
                                                 {selectedTrigger.status === TriggerStatus.Active && t("triggers.status.active")}
                                                 {selectedTrigger.status === TriggerStatus.Inactive && t("triggers.status.inactive")}
-                                                {selectedTrigger.status === TriggerStatus.Stale && t("triggers.status.stale")}
-                                                {selectedTrigger.status === TriggerStatus.Completed && t("triggers.status.completed")}
                                             </span>
                                         </div>
                                         <div className="flex items-center justify-between">
@@ -409,9 +443,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     ref={toolSelectRef}
                                 /> */}
                                 <div className="space-y-2">
-                                    <Label htmlFor="webhook_function">{t("triggers.webhook-function")}</Label>
-                                    <Select value={formData.listener_type || ""} onValueChange={(value: ListenerType) => setFormData({ ...formData, listener_type: value })}>
-                                        <SelectTrigger><SelectValue placeholder={t("triggers.select-listener")} /></SelectTrigger>
+                                    <Label htmlFor="webhook_method">{t("triggers.webhook-method")}</Label>
+                                    <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
+                                        <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
                                         <SelectContent>
                                             {/* <SelectItem value={RequestType.GET}>{t("webhook.get")}</SelectItem> */}
                                             <SelectItem value={RequestType.POST}>{t("webhook.post")}</SelectItem>
@@ -441,6 +475,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     type="number" value={formData.max_executions_per_hour || ""}
                                     onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
                                     min={0}
+                                    disabled={formData.is_single_execution}
                                 />
                                 <Input
                                     id="max_per_day"
@@ -449,6 +484,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     type="number" value={formData.max_executions_per_day || ""}
                                     onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
                                     min={0}
+                                    disabled={formData.is_single_execution}
                                 />
                                 <div className="flex flex-col items-start space-x-2">
                                     <Label htmlFor="single_execution" className="text-body-md font-bold mb-3">{t("triggers.single-execution")}</Label>
@@ -476,7 +512,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             <DialogFooter>
                 <div className="flex w-full justify-end">
                     <Button variant="primary" onClick={() => handleSubmit()} disabled={isLoading}>
-                        {isLoading ? t("common.creating") : t("common.create")}
+                        {isLoading 
+                            ? (selectedTrigger ? t("common.updating") : t("common.creating"))
+                            : (selectedTrigger ? t("common.update") : t("common.create"))
+                        }
                     </Button>
                 </div>
             </DialogFooter>

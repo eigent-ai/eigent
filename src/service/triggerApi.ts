@@ -90,6 +90,7 @@ export const proxyDeactivateTrigger = async (triggerId: number): Promise<Trigger
   }
 };
 
+// Trigger Executions
 export const proxyFetchTriggerExecutions = async (
   triggerId: number,
   page: number = 1,
