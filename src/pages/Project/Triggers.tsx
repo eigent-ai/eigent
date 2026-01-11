@@ -192,6 +192,7 @@ export default function Overview() {
         const trigger = triggers.find(t => t.id === triggerId);
         const triggerName = trigger?.name || 'Unknown';
         
+        //TODO UPDATE DIALOG
         if (window.confirm(`Are you sure you want to delete "${triggerName}"? This action cannot be undone.`)) {
             try {
                 const response = await proxyDeleteTrigger(triggerId);

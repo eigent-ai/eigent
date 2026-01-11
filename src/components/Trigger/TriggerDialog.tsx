@@ -86,6 +86,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [isLoading, setIsLoading] = useState(false);
     const [selectedExecution, setSelectedExecution] = useState<TriggerExecution | null>(null);
     const [showLogs, setShowLogs] = useState(false);
+    const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
+    const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>("");
     const [formData, setFormData] = useState<TriggerInput>({
         name: "",
         description: "",
@@ -178,16 +180,27 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             onTriggerCreated(formData);
             addTrigger(response)
 
+            handleClose();
+            
+            // Display the webhook url in a success dialog
             if(formData.trigger_type === TriggerType.Webhook && response.webhook_url) {
-                setFormData((prev) => ({ ...prev, webhook_url: response.webhook_url }));
-            } else {
-                handleClose();
+                setCreatedWebhookUrl(response.webhook_url);
+                setIsWebhookSuccessOpen(true);
             }
         } catch (error) {
             console.error("Failed to create trigger:", error);
             toast.error(t("triggers.failed-to-create"));
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleCopyWebhookUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(createdWebhookUrl);
+            toast.success(t("triggers.webhook-url-copied"));
+        } catch (err) {
+            toast.error(t("triggers.failed-to-copy"));
         }
     };
 
@@ -381,8 +394,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <Label className="font-bold text-sm">{t("triggers.type")}</Label>
                     <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
                         <TabsList className="w-full">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1"><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1"><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule}>
                             <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
@@ -405,13 +418,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="space-y-2">
-                                    <Input
-                                        id="webhook_url" value={formData.webhook_url || ""}
-                                        title={t("triggers.webhook-url")}
-                                        onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })}
-                                        placeholder="https://dev.eigent.ai/api/webhook/..." type="url"
-                                        disabled/>
+                                <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
+                                    {t("triggers.webhook-url-after-creation")}
                                 </div>
                             </div>
                         </TabsContent>
@@ -432,6 +440,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     placeholder={t("triggers.max-per-hour-placeholder")}
                                     type="number" value={formData.max_executions_per_hour || ""}
                                     onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
+                                    min={0}
                                 />
                                 <Input
                                     id="max_per_day"
@@ -439,6 +448,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     placeholder={t("triggers.max-per-day-placeholder")}
                                     type="number" value={formData.max_executions_per_day || ""}
                                     onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
+                                    min={0}
                                 />
                                 <div className="flex flex-col items-start space-x-2">
                                     <Label htmlFor="single_execution" className="text-body-md font-bold mb-3">{t("triggers.single-execution")}</Label>
@@ -474,6 +484,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     };
 
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent
                 size="lg"
@@ -501,6 +512,80 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 {renderFooter()}
             </DialogContent>
         </Dialog>
+
+        {/* Webhook Success Dialog */}
+        <Dialog open={isWebhookSuccessOpen} onOpenChange={setIsWebhookSuccessOpen}>
+            <DialogContent
+                size="md"
+                showCloseButton={true}
+                onClose={() => setIsWebhookSuccessOpen(false)}
+                className="max-w-[550px]"
+                aria-describedby={undefined}
+            >
+                <DialogHeader
+                    title={t("triggers.webhook-created-title")}
+                    subtitle={t("triggers.webhook-created-subtitle")}
+                />
+                <DialogContentSection className="space-y-4">
+                    <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                        <div className="w-16 h-16 rounded-full bg-surface-success flex items-center justify-center">
+                            <Zap className="w-8 h-8 text-text-success" />
+                        </div>
+                        <div className="text-center space-y-2">
+                            <h3 className="text-text-heading font-semibold text-lg">
+                                {t("triggers.webhook-ready")}
+                            </h3>
+                            <p className="text-text-label text-sm max-w-md">
+                                {t("triggers.webhook-instructions")}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <Label className="text-text-label text-xs font-semibold">{t("triggers.your-webhook-url")}</Label>
+                        <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-surface-secondary rounded-lg p-3 border border-border-secondary">
+                                <code className="text-sm font-mono text-text-body break-all">
+                                    {createdWebhookUrl}
+                                </code>
+                            </div>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={handleCopyWebhookUrl}
+                                className="shrink-0"
+                            >
+                                {t("common.copy")}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="bg-surface-information rounded-lg p-4 space-y-2">
+                        <div className="flex items-start gap-2">
+                            <Globe className="w-4 h-4 text-text-information mt-0.5 shrink-0" />
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium text-text-information">
+                                    {t("triggers.webhook-tip-title")}
+                                </p>
+                                <p className="text-xs text-text-information opacity-90">
+                                    {t("triggers.webhook-tip-description")}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </DialogContentSection>
+                <DialogFooter>
+                    <Button 
+                        variant="primary" 
+                        onClick={() => setIsWebhookSuccessOpen(false)}
+                        className="w-full"
+                    >
+                        {t("common.got-it")}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 };
 

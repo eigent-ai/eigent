@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { Trigger, TriggerInput } from '@/types';
-import { mockTriggers as initialMockTriggers, mockExecutions, createMockTrigger, deleteMockTrigger } from '@/mocks/triggerMockData';
 
 export interface WebSocketEvent {
     triggerId: number;
@@ -17,7 +16,7 @@ interface TriggerStore {
 
     // Actions
     setTriggers: (triggers: Trigger[]) => void;
-    addTrigger: (triggerData: TriggerInput) => Trigger;
+    addTrigger: (triggerData: Partial<Trigger>) => Trigger;
     updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => void;
     deleteTrigger: (triggerId: number) => void;
     duplicateTrigger: (triggerId: number) => Trigger | null;
@@ -28,27 +27,18 @@ interface TriggerStore {
 
 export const useTriggerStore = create<TriggerStore>((set, get) => ({
     // Initialize with mock data
-    triggers: [...initialMockTriggers],
+    triggers: [],
     webSocketEvent: null,
 
     setTriggers: (triggers: Trigger[]) => {
         set({ triggers });
     },
 
-    addTrigger: (triggerData: TriggerInput) => {
-        const newTrigger = createMockTrigger({
-            name: triggerData.name,
-            description: triggerData.description,
-            trigger_type: triggerData.trigger_type,
-            custom_cron_expression: triggerData.custom_cron_expression,
-            webhook_url: triggerData.webhook_url,
-            listener_type: triggerData.listener_type,
-            task_prompt: triggerData.task_prompt,
-            agent_model: triggerData.agent_model,
-            max_executions_per_hour: triggerData.max_executions_per_hour,
-            max_executions_per_day: triggerData.max_executions_per_day,
-            is_single_execution: triggerData.is_single_execution,
-        });
+    addTrigger: (triggerData: Partial<Trigger>) => {
+        const newTrigger: Trigger = {
+            id: triggerData.id || Date.now(),
+            ...triggerData,
+        } as Trigger;
 
         set((state) => ({
             triggers: [...state.triggers, newTrigger]
@@ -68,7 +58,6 @@ export const useTriggerStore = create<TriggerStore>((set, get) => ({
     },
 
     deleteTrigger: (triggerId: number) => {
-        deleteMockTrigger(triggerId);
         set((state) => ({
             triggers: state.triggers.filter((trigger) => trigger.id !== triggerId)
         }));
@@ -78,25 +67,11 @@ export const useTriggerStore = create<TriggerStore>((set, get) => ({
         const originalTrigger = get().triggers.find((t) => t.id === triggerId);
         if (!originalTrigger) return null;
 
-        const duplicatedTrigger = createMockTrigger({
-            name: `${originalTrigger.name} (Copy)`,
-            description: originalTrigger.description,
-            trigger_type: originalTrigger.trigger_type,
-            custom_cron_expression: originalTrigger.custom_cron_expression,
-            webhook_url: originalTrigger.webhook_url,
-            listener_type: originalTrigger.listener_type,
-            task_prompt: originalTrigger.task_prompt,
-            agent_model: originalTrigger.agent_model,
-            max_executions_per_hour: originalTrigger.max_executions_per_hour,
-            max_executions_per_day: originalTrigger.max_executions_per_day,
-            is_single_execution: originalTrigger.is_single_execution,
-        });
-
         set((state) => ({
-            triggers: [...state.triggers, duplicatedTrigger]
+            triggers: [...state.triggers, originalTrigger]
         }));
 
-        return duplicatedTrigger;
+        return originalTrigger;
     },
 
     getTriggerById: (triggerId: number) => {
