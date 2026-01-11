@@ -1,5 +1,5 @@
-import { fetchGet, fetchPost, fetchPut, fetchDelete, proxyFetchGet, proxyFetchPost, proxyFetchPut, proxyFetchDelete } from "@/api/http";
-import { Trigger, TriggerInput, TriggerUpdate, TriggerExecution, TriggerType, TriggerStatus } from "@/types";
+import { proxyFetchGet, proxyFetchPost, proxyFetchPut, proxyFetchDelete } from "@/api/http";
+import { Trigger, TriggerInput, TriggerUpdate, TriggerType, TriggerStatus } from "@/types";
 
 // ==== Proxy API calls (for server) ====
 
@@ -105,114 +105,6 @@ export const proxyFetchTriggerExecutions = async (
     return res;
   } catch (error) {
     console.error("Failed to fetch trigger executions:", error);
-    throw error;
-  }
-};
-
-// ==== Local backend API calls ====
-
-export const fetchTriggers = async (
-  triggerType?: TriggerType,
-  status?: TriggerStatus,
-  page: number = 1,
-  size: number = 20
-) => {
-  try {
-    const params: Record<string, any> = {
-      page,
-      size
-    };
-    
-    if (triggerType !== undefined) {
-      params.trigger_type = triggerType;
-    }
-    
-    if (status !== undefined) {
-      params.status = status;
-    }
-    
-    const res = await fetchGet(`/api/trigger/`, params);
-    return res;
-  } catch (error) {
-    console.error("Failed to fetch triggers from local backend:", error);
-    throw error;
-  }
-};
-
-export const fetchTrigger = async (triggerId: number): Promise<Trigger> => {
-  try {
-    const res = await fetchGet(`/api/trigger/${triggerId}`);
-    return res;
-  } catch (error) {
-    console.error("Failed to fetch trigger from local backend:", error);
-    throw error;
-  }
-};
-
-export const createTrigger = async (triggerData: TriggerInput): Promise<Trigger> => {
-  try {
-    const res = await fetchPost(`/api/trigger/`, triggerData);
-    return res;
-  } catch (error) {
-    console.error("Failed to create trigger on local backend:", error);
-    throw error;
-  }
-};
-
-export const updateTrigger = async (triggerId: number, updateData: TriggerUpdate): Promise<Trigger> => {
-  try {
-    const res = await fetchPut(`/api/trigger/${triggerId}`, updateData);
-    return res;
-  } catch (error) {
-    console.error("Failed to update trigger on local backend:", error);
-    throw error;
-  }
-};
-
-export const deleteTrigger = async (triggerId: number): Promise<void> => {
-  try {
-    await fetchDelete(`/api/trigger/${triggerId}`);
-  } catch (error) {
-    console.error("Failed to delete trigger on local backend:", error);
-    throw error;
-  }
-};
-
-export const activateTrigger = async (triggerId: number): Promise<Trigger> => {
-  try {
-    const res = await fetchPost(`/api/trigger/${triggerId}/activate`);
-    return res;
-  } catch (error) {
-    console.error("Failed to activate trigger on local backend:", error);
-    throw error;
-  }
-};
-
-export const deactivateTrigger = async (triggerId: number): Promise<Trigger> => {
-  try {
-    const res = await fetchPost(`/api/trigger/${triggerId}/deactivate`);
-    return res;
-  } catch (error) {
-    console.error("Failed to deactivate trigger on local backend:", error);
-    throw error;
-  }
-};
-
-export const fetchTriggerExecutions = async (
-  triggerId: number,
-  page: number = 1,
-  size: number = 20
-) => {
-  try {
-    const params = {
-      page,
-      size
-    };
-    
-    const res = await fetchGet(`/api/trigger/${triggerId}/executions`, params);
-    return res;
-  } catch (error) {
-    console.error("Failed to fetch trigger executions from local backend:", error);
     throw error;
   }
 };

@@ -47,10 +47,13 @@ import {
     TriggerExecution,
     ExecutionStatus,
     TriggerStatus,
+    RequestType,
 } from "@/types";
 import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
-import { ExecutionLogs } from "./ExecutionLogs";
+import { proxyFetchPost } from "@/api/http";
+import { useTriggerStore } from "@/store/triggerStore";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 type TriggerDialogProps = {
     view: "create" | "overview";
@@ -88,8 +91,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         description: "",
         trigger_type: TriggerType.Schedule,
         custom_cron_expression: "0 */1 * * *",
-        listener_type: ListenerType.ChatAgent,
-        system_message: "",
+        listener_type: ListenerType.Workforce,
         agent_model: "",
         task_prompt: "",
         max_executions_per_hour: undefined,
@@ -98,6 +100,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     });
     const [selectedTools, setSelectedTools] = useState<any[]>([]);
     const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
+
+    //Get projectStore for the active project's task
+	const { projectStore } = useChatStoreAdapter();
+
+    const { addTrigger } = useTriggerStore();
 
     // Reset form when dialog opens
     useEffect(() => {
@@ -109,8 +116,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     description: selectedTrigger.description || "",
                     trigger_type: selectedTrigger.trigger_type || TriggerType.Schedule,
                     custom_cron_expression: selectedTrigger.custom_cron_expression || "0 */1 * * *",
-                    listener_type: selectedTrigger.listener_type || ListenerType.ChatAgent,
-                    system_message: selectedTrigger.system_message || "",
+                    listener_type: selectedTrigger.listener_type || ListenerType.Workforce,
                     agent_model: selectedTrigger.agent_model || "",
                     task_prompt: selectedTrigger.task_prompt || "",
                     max_executions_per_hour: selectedTrigger.max_executions_per_hour,
@@ -125,8 +131,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     description: "",
                     trigger_type: TriggerType.Schedule,
                     custom_cron_expression: "0 */1 * * *",
-                    listener_type: ListenerType.ChatAgent,
-                    system_message: "",
+                    listener_type: ListenerType.Workforce,
                     agent_model: "",
                     task_prompt: initialTaskPrompt,
                     max_executions_per_hour: undefined,
@@ -156,10 +161,28 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         onTriggerCreating(formData);
 
         try {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            const response = await proxyFetchPost("/api/trigger", {
+                name: formData.name,
+                description: formData.description,
+                trigger_type: formData.trigger_type,
+                custom_cron_expression: formData.custom_cron_expression,
+                listener_type: formData.listener_type,
+                agent_model: formData.agent_model,
+                task_prompt: formData.task_prompt,
+                max_executions_per_hour: formData.max_executions_per_hour,
+                max_executions_per_day: formData.max_executions_per_day,
+                is_single_execution: formData.is_single_execution,
+                project_id: projectStore.activeProjectId,
+            });
             toast.success(t("triggers.created-successfully"));
             onTriggerCreated(formData);
-            handleClose();
+            addTrigger(response)
+
+            if(formData.trigger_type === TriggerType.Webhook && response.webhook_url) {
+                setFormData((prev) => ({ ...prev, webhook_url: response.webhook_url }));
+            } else {
+                handleClose();
+            }
         } catch (error) {
             console.error("Failed to create trigger:", error);
             toast.error(t("triggers.failed-to-create"));
@@ -377,8 +400,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     <Select value={formData.listener_type || ""} onValueChange={(value: ListenerType) => setFormData({ ...formData, listener_type: value })}>
                                         <SelectTrigger><SelectValue placeholder={t("triggers.select-listener")} /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value={ListenerType.ChatAgent}>{t("triggers.get")}</SelectItem>
-                                            <SelectItem value={ListenerType.Workforce}>{t("triggers.post")}</SelectItem>
+                                            {/* <SelectItem value={RequestType.GET}>{t("webhook.get")}</SelectItem> */}
+                                            <SelectItem value={RequestType.POST}>{t("webhook.post")}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -387,7 +410,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         id="webhook_url" value={formData.webhook_url || ""}
                                         title={t("triggers.webhook-url")}
                                         onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })}
-                                        placeholder="https://example.com/webhook" type="url" />
+                                        placeholder="https://dev.eigent.ai/api/webhook/..." type="url"
+                                        disabled/>
                                 </div>
                             </div>
                         </TabsContent>

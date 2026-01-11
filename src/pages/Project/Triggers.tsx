@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLeft } from "lucide-react";
+import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLeft, Trash2, PlayCircle, PauseCircle, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { proxyFetchGet } from "@/api/http";
+import { proxyActivateTrigger, proxyDeleteTrigger } from "@/service/triggerApi";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -12,48 +14,57 @@ import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
 import { TriggerListItem } from "@/components/Trigger/TriggerListItem";
 import { usePageTabStore } from "@/store/pageTabStore";
 import { useTriggerStore } from "@/store/triggerStore";
-import { Trigger, TriggerInput, TriggerType, TriggerStatus } from "@/types";
-import { mockExecutions } from "@/mocks/triggerMockData";
+import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
+import { Trigger, TriggerInput, TriggerStatus } from "@/types";
 import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
 
-// Mock notifications data for the live stream
-const liveNotifications = [
-    {
-        id: 1,
-        type: "success",
-        message: "Task 'API Integration' completed successfully",
-        timestamp: "Just now",
-        icon: CheckCircle2
-    },
-    {
-        id: 2,
-        type: "info",
-        message: "Agent 'DataProcessor' started new task",
-        timestamp: "2 min ago",
-        icon: Bot
-    },
-    {
-        id: 3,
-        type: "warning",
-        message: "Trigger 'Daily Report' scheduled for 6:00 PM",
-        timestamp: "5 min ago",
-        icon: Zap
-    },
-    {
-        id: 4,
-        type: "info",
-        message: "New file 'analysis_v2.pdf' generated",
-        timestamp: "12 min ago",
-        icon: FileText
-    },
-    {
-        id: 5,
-        type: "success",
-        message: "Database sync completed",
-        timestamp: "15 min ago",
-        icon: Activity
+// Helper function to get icon for activity type
+const getActivityIcon = (activityType: ActivityType) => {
+    switch (activityType) {
+        case ActivityType.TriggerCreated:
+        case ActivityType.TriggerUpdated:
+            return Zap;
+        case ActivityType.TriggerDeleted:
+            return Trash2;
+        case ActivityType.TriggerActivated:
+            return PlayCircle;
+        case ActivityType.TriggerDeactivated:
+            return PauseCircle;
+        case ActivityType.ExecutionSuccess:
+        case ActivityType.TaskCompleted:
+            return CheckCircle2;
+        case ActivityType.ExecutionFailed:
+            return XCircle;
+        case ActivityType.WebhookTriggered:
+        case ActivityType.TriggerExecuted:
+            return Activity;
+        case ActivityType.AgentStarted:
+            return Bot;
+        case ActivityType.FileGenerated:
+            return FileText;
+        default:
+            return Bell;
     }
-];
+};
+
+// Helper function to get type for activity (for styling)
+const getActivityNotificationType = (activityType: ActivityType): string => {
+    switch (activityType) {
+        case ActivityType.ExecutionSuccess:
+        case ActivityType.TaskCompleted:
+        case ActivityType.TriggerCreated:
+        case ActivityType.TriggerActivated:
+            return "success";
+        case ActivityType.ExecutionFailed:
+        case ActivityType.TriggerDeleted:
+            return "error";
+        case ActivityType.TriggerDeactivated:
+            return "warning";
+        default:
+            return "info";
+    }
+};
 
 const getNotificationStyles = (type: string) => {
     switch (type) {
@@ -89,7 +100,27 @@ export default function Overview() {
     const { setHasTriggers } = usePageTabStore();
 
     // Use trigger store
-    const { triggers, deleteTrigger, duplicateTrigger, updateTrigger, addTrigger } = useTriggerStore();
+    const { triggers, deleteTrigger, duplicateTrigger, updateTrigger, addTrigger, setTriggers } = useTriggerStore();
+    
+    // Use activity log store
+    const { logs: activityLogs, addLog } = useActivityLogStore();
+
+    // Fetch triggers from API on mount
+    useEffect(() => {
+        const fetchTriggers = async () => {
+            try {
+                const response = await proxyFetchGet('/api/trigger');
+                console.log('Fetched triggers:', response);
+
+                setTriggers(response.items || []);
+            } catch (error) {
+                console.error('Failed to fetch triggers:', error);
+                toast.error('Failed to load triggers');
+            }
+        };
+        
+        fetchTriggers();
+    }, []);
 
     // Update hasTriggers based on the trigger list
     useEffect(() => {
@@ -103,9 +134,6 @@ export default function Overview() {
                 return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
             case "lastExecutionTime":
                 return new Date(b.last_executed_at || 0).getTime() - new Date(a.last_executed_at || 0).getTime();
-            case "tokens":
-                // For now, sort by execution count as proxy for token usage
-                return (b.execution_count || 0) - (a.execution_count || 0);
             default:
                 return 0;
         }
@@ -122,10 +150,28 @@ export default function Overview() {
         }
     };
 
-    const handleToggleActive = (trigger: Trigger) => {
+    const handleToggleActive = async (trigger: Trigger) => {
         const newStatus = trigger.status === TriggerStatus.Active ? TriggerStatus.Inactive : TriggerStatus.Active;
-        updateTrigger(trigger.id, { status: newStatus });
-        toast.success(newStatus === TriggerStatus.Active ? "Trigger activated" : "Trigger paused");
+        try {
+            const response = await proxyActivateTrigger(trigger.id);
+            console.log("Trigger activation response:", response);
+
+            updateTrigger(trigger.id, { status: newStatus });
+            const isActivating = newStatus === TriggerStatus.Active;
+            toast.success(isActivating ? "Trigger activated" : "Trigger paused");
+            
+            // Add activity log
+            addLog({
+                type: isActivating ? ActivityType.TriggerActivated : ActivityType.TriggerDeactivated,
+                message: `Trigger "${trigger.name}" ${isActivating ? 'activated' : 'deactivated'}`,
+                triggerId: trigger.id,
+                triggerName: trigger.name,
+            });
+        } catch(error) {
+            console.error("Failed to update trigger status:", error);
+            toast.error("Failed to update trigger status");
+            return;
+        }
     };
 
     const handleEdit = (trigger: Trigger) => {
@@ -133,19 +179,48 @@ export default function Overview() {
         setEditDialogOpen(true);
     };
 
-    const handleDelete = (triggerId: number) => {
-        if (window.confirm("Are you sure you want to delete this trigger?")) {
-            deleteTrigger(triggerId);
-            if (selectedTriggerId === triggerId) {
-                setSelectedTriggerId(null);
+    const handleDelete = async (triggerId: number) => {
+        const trigger = triggers.find(t => t.id === triggerId);
+        const triggerName = trigger?.name || 'Unknown';
+        
+        if (window.confirm(`Are you sure you want to delete "${triggerName}"? This action cannot be undone.`)) {
+            try {
+                const response = await proxyDeleteTrigger(triggerId);
+                console.debug("Trigger deletion response:", response);
+                
+                deleteTrigger(triggerId);
+                if (selectedTriggerId === triggerId) {
+                    setSelectedTriggerId(null);
+                }
+                
+                // Add activity log
+                addLog({
+                    type: ActivityType.TriggerDeleted,
+                    message: `Trigger "${triggerName}" deleted`,
+                    triggerId: triggerId,
+                    triggerName: triggerName,
+                });
+                
+                toast.success("Trigger deleted successfully");
+            } catch (error) {
+                console.error("Failed to delete trigger:", error);
+                toast.error("Failed to delete trigger");
+                return;
             }
-            toast.success("Trigger deleted successfully");
         }
     };
 
     const handleDuplicate = (triggerId: number) => {
         const duplicated = duplicateTrigger(triggerId);
         if (duplicated) {
+            // Add activity log
+            addLog({
+                type: ActivityType.TriggerCreated,
+                message: `Trigger "${duplicated.name}" created (duplicated)`,
+                triggerId: duplicated.id,
+                triggerName: duplicated.name,
+            });
+            
             toast.success(`Trigger duplicated as "${duplicated.name}"`);
         }
     };
@@ -162,15 +237,31 @@ export default function Overview() {
                 listener_type: triggerData.listener_type,
                 task_prompt: triggerData.task_prompt,
                 agent_model: triggerData.agent_model,
-                system_message: triggerData.system_message,
                 max_executions_per_hour: triggerData.max_executions_per_hour,
                 max_executions_per_day: triggerData.max_executions_per_day,
                 is_single_execution: triggerData.is_single_execution,
             });
+            
+            // Add activity log
+            addLog({
+                type: ActivityType.TriggerUpdated,
+                message: `Trigger "${triggerData.name}" updated`,
+                triggerId: editingTrigger.id,
+                triggerName: triggerData.name,
+            });
+            
             toast.success("Trigger updated successfully");
         } else {
             // Add new trigger via store
-            addTrigger(triggerData);
+            const newTrigger = addTrigger(triggerData);
+            
+            // Add activity log
+            addLog({
+                type: ActivityType.TriggerCreated,
+                message: `Trigger "${triggerData.name}" created`,
+                triggerId: newTrigger.id,
+                triggerName: triggerData.name,
+            });
         }
         setEditingTrigger(null);
     };
@@ -275,25 +366,39 @@ export default function Overview() {
                             </div>
                             {/* Live Activity Content */}
                             <div className="flex-1 overflow-y-auto scrollbar">
-                                <div className="divide-y divide-border-tertiary">
-                                    {liveNotifications.map((notification, index) => (
-                                        <div
-                                            key={notification.id}
-                                            className={`flex items-center gap-2.5 px-4 py-2 border-l-2 transition-all duration-300 hover:bg-surface-tertiary-hover ${getNotificationStyles(notification.type)}`}
-                                            style={{ animationDelay: `${index * 100}ms` }}
-                                        >
-                                            <notification.icon className={`h-4 w-4 flex-shrink-0 ${getNotificationIconColor(notification.type)}`} />
-                                            <div className="flex flex-col w-full min-w-0">
-                                                <span className="text-label-xs text-text-body leading-relaxed">
-                                                    {notification.message}
-                                                </span>
-                                                <span className="text-label-xs text-text-label">
-                                                    {notification.timestamp}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                {activityLogs.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                                        <Bell className="w-10 h-10 text-text-label mb-2" />
+                                        <p className="text-text-label text-xs">No activity yet</p>
+                                        <p className="text-text-label text-xs mt-1">Activity will appear here</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-border-tertiary">
+                                        {activityLogs.slice(0, 50).map((log, index) => {
+                                            const Icon = getActivityIcon(log.type);
+                                            const notificationType = getActivityNotificationType(log.type);
+                                            const timeAgo = formatDistanceToNow(log.timestamp, { addSuffix: true });
+                                            
+                                            return (
+                                                <div
+                                                    key={log.id}
+                                                    className={`flex items-center gap-2.5 px-4 py-2 border-l-2 transition-all duration-300 hover:bg-surface-tertiary-hover ${getNotificationStyles(notificationType)}`}
+                                                    style={{ animationDelay: `${index * 50}ms` }}
+                                                >
+                                                    <Icon className={`h-4 w-4 flex-shrink-0 ${getNotificationIconColor(notificationType)}`} />
+                                                    <div className="flex flex-col w-full min-w-0">
+                                                        <span className="text-label-xs text-text-body leading-relaxed">
+                                                            {log.message}
+                                                        </span>
+                                                        <span className="text-label-xs text-text-label">
+                                                            {timeAgo}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </>
                     )}

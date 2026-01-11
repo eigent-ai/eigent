@@ -46,22 +46,25 @@ export enum TriggerStatus {
 
 export enum ListenerType {
   Workforce = "workforce",
-  ChatAgent = "chat_agent"
 }
 
 export enum ExecutionType {
   Scheduled = "scheduled",
   Webhook = "webhook",
-  Manual = "manual",
-  Slack = "slack"
+}
+
+export enum RequestType {
+  GET = "GET",
+  POST = "POST"
 }
 
 export enum ExecutionStatus {
-  Pending = 0,
-  Running = 1,
-  Completed = 2,
-  Failed = 3,
-  Cancelled = 4
+  Pending = "pending",
+  Running = "running",
+  Completed = "completed",
+  Failed = "failed",
+  Cancelled = "cancelled",
+  Missed = "missed",
 }
 
 export type Trigger = {
@@ -74,7 +77,6 @@ export type Trigger = {
   webhook_url?: string
   custom_cron_expression?: string
   listener_type?: ListenerType
-  system_message?: string
   agent_model?: string
   task_prompt?: string
   custom_task?: Record<string, any>
@@ -83,10 +85,10 @@ export type Trigger = {
   is_single_execution: boolean
   last_executed_at?: string
   last_execution_status?: string
-  execution_count: number
-  error_count: number
+  next_run_at?: string
   created_at?: string
   updated_at?: string
+  execution_count?: number
 }
 
 export type TriggerInput = {
@@ -96,7 +98,6 @@ export type TriggerInput = {
   custom_cron_expression?: string
   webhook_url?: string
   listener_type?: ListenerType
-  system_message?: string
   agent_model?: string
   task_prompt?: string
   custom_task?: Record<string, any>
@@ -111,7 +112,6 @@ export type TriggerUpdate = {
   status?: TriggerStatus
   custom_cron_expression?: string
   listener_type?: ListenerType
-  system_message?: string
   agent_model?: string
   task_prompt?: string
   custom_task?: Record<string, any>
@@ -132,11 +132,10 @@ export type TriggerExecution = {
   input_data?: Record<string, any>
   output_data?: Record<string, any>
   error_message?: string
-  retry_count: number
+  attempts: number
   max_retries: number
   tokens_used?: number
   tools_executed?: Record<string, any>
-  worker_id?: string
   created_at?: string
   updated_at?: string
 }
