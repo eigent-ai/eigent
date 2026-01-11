@@ -51,10 +51,9 @@ import {
 } from "@/types";
 import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
-import { proxyFetchPost } from "@/api/http";
 import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
+import { proxyCreateTrigger, proxyUpdateTrigger, proxyDeleteTrigger } from "@/service/triggerApi";
 
 type TriggerDialogProps = {
     view: "create" | "overview";
@@ -270,10 +269,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     const handleDeleteClick = () => {
         if (onDelete && selectedTrigger) {
-            if (window.confirm(t("triggers.confirm-delete-trigger"))) {
-                onDelete(selectedTrigger);
-                handleClose();
-            }
+            onDelete(selectedTrigger);
         }
     };
 
@@ -443,7 +439,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     ref={toolSelectRef}
                                 /> */}
                                 <div className="space-y-2">
-                                    <Label htmlFor="webhook_method">{t("triggers.webhook-method")}</Label>
+                                    <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
                                     <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
                                         <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
                                         <SelectContent>

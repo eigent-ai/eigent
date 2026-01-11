@@ -16,7 +16,7 @@ type TriggerListItemProps = {
     onSelect: (id: number) => void;
     onEdit: (trigger: Trigger) => void;
     onDuplicate: (id: number) => void;
-    onDelete: (id: number) => void;
+    onDelete: (trigger: Trigger) => void;
     onToggleActive: (trigger: Trigger) => void;
 };
 
@@ -113,16 +113,16 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
                         <MoreHorizontal className="w-4 h-4" />
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem className="gap-2" onSelect={() => onEdit(trigger)}>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem className="gap-2" onSelect={(e) => { e.preventDefault(); onEdit(trigger); }}>
                         <Edit className="h-4 w-4" />
                         {t("triggers.edit")}
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2" onSelect={() => onDuplicate(trigger.id)}>
+                    <DropdownMenuItem className="gap-2" onSelect={(e) => { e.preventDefault(); onDuplicate(trigger.id); }}>
                         <Copy className="h-4 w-4" />
                         {t("triggers.duplicate")}
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onSelect={() => onDelete(trigger.id)}>
+                    <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onSelect={(e) => { e.preventDefault(); onDelete(trigger); }}>
                         <Trash2 className="h-4 w-4" />
                         {t("triggers.delete")}
                     </DropdownMenuItem>

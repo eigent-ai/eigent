@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLeft, Trash2, PlayCircle, PauseCircle, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogContentSection, DialogFooter } from "@/components/ui/dialog";
 import { proxyFetchGet } from "@/api/http";
 import { proxyActivateTrigger, proxyDeleteTrigger } from "@/service/triggerApi";
 import {
@@ -97,6 +98,9 @@ export default function Overview() {
     const [selectedTriggerId, setSelectedTriggerId] = useState<number | null>(null);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [deletingTrigger, setDeletingTrigger] = useState<Trigger | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
     const { setHasTriggers } = usePageTabStore();
 
     // Use trigger store
@@ -188,35 +192,39 @@ export default function Overview() {
         setEditDialogOpen(true);
     };
 
-    const handleDelete = async (triggerId: number) => {
-        const trigger = triggers.find(t => t.id === triggerId);
-        const triggerName = trigger?.name || 'Unknown';
+    const handleDelete = (trigger: Trigger) => {
+        setDeletingTrigger(trigger);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deletingTrigger) return;
         
-        //TODO UPDATE DIALOG
-        if (window.confirm(`Are you sure you want to delete "${triggerName}"? This action cannot be undone.`)) {
-            try {
-                const response = await proxyDeleteTrigger(triggerId);
-                console.debug("Trigger deletion response:", response);
-                
-                deleteTrigger(triggerId);
-                if (selectedTriggerId === triggerId) {
-                    setSelectedTriggerId(null);
-                }
-                
-                // Add activity log
-                addLog({
-                    type: ActivityType.TriggerDeleted,
-                    message: `Trigger "${triggerName}" deleted`,
-                    triggerId: triggerId,
-                    triggerName: triggerName,
-                });
-                
-                toast.success("Trigger deleted successfully");
-            } catch (error) {
-                console.error("Failed to delete trigger:", error);
-                toast.error("Failed to delete trigger");
-                return;
+        setIsDeleting(true);
+        try {
+            await proxyDeleteTrigger(deletingTrigger.id);
+            deleteTrigger(deletingTrigger.id);
+            
+            if (selectedTriggerId === deletingTrigger.id) {
+                setSelectedTriggerId(null);
             }
+            
+            // Add activity log
+            addLog({
+                type: ActivityType.TriggerDeleted,
+                message: `Trigger "${deletingTrigger.name}" deleted`,
+                triggerId: deletingTrigger.id,
+                triggerName: deletingTrigger.name,
+            });
+            
+            toast.success("Trigger deleted successfully");
+            setIsDeleteDialogOpen(false);
+            setDeletingTrigger(null);
+        } catch (error) {
+            console.error("Failed to delete trigger:", error);
+            toast.error("Failed to delete trigger");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -424,6 +432,44 @@ export default function Overview() {
                 onTriggerCreating={() => { }}
                 onTriggerCreated={handleTriggerCreated}
             />
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <DialogContent
+                    size="md"
+                    showCloseButton={true}
+                    onClose={() => setIsDeleteDialogOpen(false)}
+                    className="max-w-[500px]"
+                    aria-describedby={undefined}
+                >
+                    <DialogHeader
+                        title="Delete Trigger"
+                    />
+                    <DialogContentSection className="space-y-4">
+                        <p className="text-text-body text-sm">
+                            Are you sure you want to delete "{deletingTrigger?.name}"? This action cannot be undone.
+                        </p>
+                    </DialogContentSection>
+                    <DialogFooter>
+                        <Button 
+                            variant="ghost" 
+                            size="md" 
+                            onClick={() => setIsDeleteDialogOpen(false)}
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            size="md" 
+                            onClick={handleConfirmDelete} 
+                            variant="cuation"
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? "Deleting..." : "Delete Trigger"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
