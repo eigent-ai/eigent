@@ -27,3 +27,12 @@
 .mac .titlebar {
   padding-left: 80px;
 }
+
+.task-title-clamp {
+  display: inline-block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}

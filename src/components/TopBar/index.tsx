@@ -279,27 +279,31 @@ function HeaderWin() {
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("layout.new-project") ? (
+								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
 									<Button 
 										id="active-task-title-btn"
 										variant="ghost" 
-											className="font-bold text-base no-drag truncate" 
+										className="font-bold text-base no-drag" 
 										onClick={toggle}
 										size="sm"
-										>
-									{t("layout.new-project")}
-									<ChevronDown />
-								</Button>
+									>
+									<span className="task-title-clamp">{t("layout.new-project")}</span>
+										<ChevronDown />
+									</Button>
+								</TooltipSimple>
 							) : (
-								<Button
-									id="active-task-title-btn"
-									variant="ghost"
-									size="sm"
-									className="font-bold text-base no-drag truncate"
-									onClick={toggle}
-								>
-									{activeTaskTitle}
-									<ChevronDown />
-								</Button>
+								<TooltipSimple content={activeTaskTitle} side="bottom" align="center">
+									<Button
+										id="active-task-title-btn"
+										variant="ghost"
+										size="sm"
+										className="font-bold text-base no-drag"
+										onClick={toggle}
+									>
+										<span className="task-title-clamp">{activeTaskTitle}</span>
+										<ChevronDown />
+									</Button>
+								</TooltipSimple>
 							)}
 						</>
 					)}
