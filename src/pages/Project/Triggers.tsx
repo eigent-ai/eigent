@@ -3,7 +3,7 @@ import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLef
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogContentSection, DialogFooter } from "@/components/ui/dialog";
 import { proxyFetchGet } from "@/api/http";
-import { proxyActivateTrigger, proxyDeleteTrigger } from "@/service/triggerApi";
+import { proxyActivateTrigger, proxyDeleteTrigger, proxyFetchProjectTriggers } from "@/service/triggerApi";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,6 +19,7 @@ import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
 import { Trigger, TriggerInput, TriggerStatus } from "@/types";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 
 // Helper function to get icon for activity type
 const getActivityIcon = (activityType: ActivityType) => {
@@ -109,11 +110,14 @@ export default function Overview() {
     // Use activity log store
     const { logs: activityLogs, addLog } = useActivityLogStore();
 
+    //Get projectStore for the active project's task
+	const { projectStore } = useChatStoreAdapter();
+
     // Fetch triggers from API on mount
     useEffect(() => {
         const fetchTriggers = async () => {
             try {
-                const response = await proxyFetchGet('/api/trigger');
+                const response = await proxyFetchProjectTriggers(projectStore.activeProjectId);
                 console.log('Fetched triggers:', response);
 
                 setTriggers(response.items || []);
@@ -124,7 +128,7 @@ export default function Overview() {
         };
         
         fetchTriggers();
-    }, []);
+    }, [projectStore.activeProjectId]);
 
     // Update hasTriggers based on the trigger list
     useEffect(() => {

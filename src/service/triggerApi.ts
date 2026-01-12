@@ -31,6 +31,39 @@ export const proxyFetchTriggers = async (
   }
 };
 
+export const proxyFetchProjectTriggers = async (
+  project_id: string | null,
+  triggerType?: TriggerType,
+  status?: TriggerStatus,
+  page: number = 1,
+  size: number = 50
+) => {
+  try {
+    const params: Record<string, any> = {
+      page,
+      size
+    };
+    
+    if (triggerType !== undefined) {
+      params.trigger_type = triggerType;
+    }
+    
+    if (status !== undefined) {
+      params.status = status;
+    }
+
+    if(!project_id) {
+      throw new Error("Project ID is required to fetch project triggers.");
+    }
+    
+    const res = await proxyFetchGet(`/api/trigger/project/${project_id}`, params);
+    return res;
+  } catch (error) {
+    console.error("Failed to fetch triggers:", error);
+    throw error;
+  }
+};
+
 export const proxyFetchTrigger = async (triggerId: number): Promise<Trigger> => {
   try {
     const res = await proxyFetchGet(`/api/trigger/${triggerId}`);
