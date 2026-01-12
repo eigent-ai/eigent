@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +37,8 @@ import {
     Plus,
     Zap,
     ChevronLeft,
+    Copy,
+    CircleAlert,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -54,6 +57,7 @@ import { TriggerTaskInput } from "./TriggerTaskInput";
 import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { proxyCreateTrigger, proxyUpdateTrigger, proxyDeleteTrigger } from "@/service/triggerApi";
+import { TooltipSimple } from "../ui/tooltip";
 
 type TriggerDialogProps = {
     view: "create" | "overview";
@@ -232,7 +236,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     const handleCopyWebhookUrl = async () => {
         try {
-            await navigator.clipboard.writeText(createdWebhookUrl);
+            await navigator.clipboard.writeText(`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`);
             toast.success(t("triggers.webhook-url-copied"));
         } catch (err) {
             toast.error(t("triggers.failed-to-copy"));
@@ -328,7 +332,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         {selectedTrigger.trigger_type === TriggerType.Webhook && selectedTrigger.webhook_url && (
                                             <div className="flex items-center justify-between">
                                                 <Label className="text-text-label text-xs">{t("triggers.webhook-url")}</Label>
-                                                <code className="text-xs font-mono bg-surface-secondary px-2 py-1 rounded max-w-[180px] truncate">{selectedTrigger.webhook_url}</code>
+                                                <code className="text-xs font-mono bg-surface-secondary px-2 py-1 rounded max-w-[180px] truncate">{`${import.meta.env.VITE_PROXY_URL}/api${selectedTrigger.webhook_url}`}</code>
                                             </div>
                                         )}
                                         <div className="flex items-center justify-between">
@@ -443,8 +447,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
                                         <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
                                         <SelectContent>
-                                            {/* <SelectItem value={RequestType.GET}>{t("webhook.get")}</SelectItem> */}
-                                            <SelectItem value={RequestType.POST}>{t("webhook.post")}</SelectItem>
+                                            <SelectItem value={RequestType.GET}>{t("triggers.webhook-get")}</SelectItem>
+                                            <SelectItem value={RequestType.POST}>{t("triggers.webhook-post")}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -554,70 +558,94 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 size="md"
                 showCloseButton={true}
                 onClose={() => setIsWebhookSuccessOpen(false)}
-                className="max-w-[550px]"
+                className="max-w-[550px] p-0 gap-0"
                 aria-describedby={undefined}
             >
                 <DialogHeader
+                    className="!bg-popup-surface !rounded-t-xl p-md border-b border-border-secondary"
                     title={t("triggers.webhook-created-title")}
-                    subtitle={t("triggers.webhook-created-subtitle")}
                 />
-                <DialogContentSection className="space-y-4">
-                    <div className="flex flex-col items-center justify-center py-6 space-y-4">
-                        <div className="w-16 h-16 rounded-full bg-surface-success flex items-center justify-center">
-                            <Zap className="w-8 h-8 text-text-success" />
+                
+                <div className="bg-popup-bg">
+                    {/* Trigger Details Section */}
+                    <div className="flex flex-col items-center justify-center py-6 px-md border-b border-border-secondary bg-surface-tertiary">
+                        <div className="w-12 h-12 rounded-full bg-surface-success flex items-center justify-center mb-3 shadow-sm">
+                            <Zap className="w-6 h-6 text-text-success" />
                         </div>
-                        <div className="text-center space-y-2">
-                            <h3 className="text-text-heading font-semibold text-lg">
-                                {t("triggers.webhook-ready")}
-                            </h3>
-                            <p className="text-text-label text-sm max-w-md">
-                                {t("triggers.webhook-instructions")}
+                        <h3 className="text-text-heading font-bold text-lg mb-1">
+                            {formData.name}
+                        </h3>
+                        {formData.description && (
+                            <p className="text-text-label text-sm text-center max-w-md line-clamp-2 px-4">
+                                {formData.description}
                             </p>
-                        </div>
+                        )}
+                        <Badge variant="outline" className="mt-3 bg-white/50">
+                            {formData.webhook_method}
+                        </Badge>
                     </div>
                     
-                    <div className="space-y-2">
-                        <Label className="text-text-label text-xs font-semibold">{t("triggers.your-webhook-url")}</Label>
-                        <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-surface-secondary rounded-lg p-3 border border-border-secondary">
-                                <code className="text-sm font-mono text-text-body break-all">
-                                    {createdWebhookUrl}
-                                </code>
+                    {/* Webhook URL Section */}
+                    <div className="px-md py-6 space-y-3">
+                        <div className="flex items-center justify-start gap-2">
+                            <Label className="text-text-heading text-sm font-semibold">
+                                {t("triggers.your-webhook-url")}
+                            </Label>
+                            <TooltipSimple content={t("triggers.webhook-instructions")}>
+                                <CircleAlert
+                                    className="w-4 h-4 text-icon-primary cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            </TooltipSimple>
+                        </div>
+                        
+                        <div className="relative groups">
+                            <div className="w-full bg-surface-secondary rounded-xl p-4 pr-24 border border-border-secondary font-mono text-sm text-text-body break-all shadow-sm">
+                                {`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`}
                             </div>
                             <Button 
                                 variant="outline" 
                                 size="sm" 
                                 onClick={handleCopyWebhookUrl}
-                                className="shrink-0"
+                                className="absolute right-2 top-2 bg-white"
                             >
-                                {t("common.copy")}
+                                <Copy className="w-3 h-3 mr-1.5" />
+                                {t("copy")}
                             </Button>
                         </div>
                     </div>
 
-                    <div className="bg-surface-information rounded-lg p-4 space-y-2">
-                        <div className="flex items-start gap-2">
-                            <Globe className="w-4 h-4 text-text-information mt-0.5 shrink-0" />
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium text-text-information">
-                                    {t("triggers.webhook-tip-title")}
-                                </p>
-                                <p className="text-xs text-text-information opacity-90">
-                                    {t("triggers.webhook-tip-description")}
-                                </p>
+                    {/* Info Tip Section */}
+                    <div className="px-md pb-md">
+                        <div className="bg-surface-information/10 border border-surface-information/20 rounded-xl p-4">
+                            <div className="flex items-start gap-3">
+                                <div className="p-1.5 bg-surface-information/20 rounded-md shrink-0">
+                                    <Globe className="w-4 h-4 text-text-information" />
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-text-heading">
+                                        {t("triggers.webhook-tip-title")}
+                                    </p>
+                                    <p className="text-sm text-text-label leading-relaxed">
+                                        {t("triggers.webhook-tip-description")}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </DialogContentSection>
-                <DialogFooter>
-                    <Button 
-                        variant="primary" 
-                        onClick={() => setIsWebhookSuccessOpen(false)}
-                        className="w-full"
-                    >
-                        {t("common.got-it")}
-                    </Button>
-                </DialogFooter>
+
+                    {/* Footer */}
+                    <div className="p-md bg-surface-secondary border-t border-border-secondary">
+                        <Button 
+                            variant="primary" 
+                            size="md"
+                            onClick={() => setIsWebhookSuccessOpen(false)}
+                            className="w-full font-semibold shadow-sm"
+                        >
+                            {t("common.got-it")}
+                        </Button>
+                    </div>
+                </div>
             </DialogContent>
         </Dialog>
         </>
