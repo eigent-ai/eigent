@@ -5,7 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
 dependencies = [
-    "camel-ai[eigent] @ git+https://github.com/camel-ai/camel.git@feature/workforce-configurable-fail-handling",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",
@@ -20,6 +19,7 @@ dependencies = [
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
     "debugpy>=1.8.17",
+    "camel-ai>=0.2.82",
 ]
 
 
@@ -44,6 +44,3 @@ pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-
-[tool.uv.sources]
-camel-ai = { git = "https://github.com/camel-ai/camel.git", rev = "feat-trigger" }
