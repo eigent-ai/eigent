@@ -7,6 +7,15 @@ export interface WebSocketEvent {
     taskPrompt: string;
     executionId: string;
     timestamp: number;
+    /** Type of trigger: webhook or scheduled */
+    triggerType: 'webhook' | 'schedule';
+    /** 
+     * Target project ID where this task should run.
+     * Future: triggers will be associated with specific projects.
+     */
+    projectId: string | null;
+    /** Input data from webhook request or scheduled context */
+    inputData: Record<string, any>;
 }
 
 interface TriggerStore {

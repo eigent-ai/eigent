@@ -8,6 +8,7 @@ import animationData from "@/assets/animation/openning_animaiton.json";
 import { useAuthStore } from "./store/authStore";
 import { useTriggerStore } from "./store/triggerStore";
 import { useExecutionSubscription } from "./hooks/useExecutionSubscription";
+import { useTriggerTaskExecutor } from "./hooks/useTriggerTaskExecutor";
 import { Toaster } from "sonner";
 import { hasStackKeys } from "./lib";
 
@@ -20,9 +21,13 @@ function App() {
 	const { isFirstLaunch, token } = useAuthStore();
 	const { triggers } = useTriggerStore();
 
-	// Subscribe to execution events when user is authenticated and has triggers
-	const shouldSubscribe = !!token && triggers.length > 0;
+	// Subscribe to execution events when user is authenticated
+	// Note: Removed triggers.length check to prevent reconnection on every trigger update
+	const shouldSubscribe = !!token;
 	useExecutionSubscription(shouldSubscribe);
+	
+	// Execute triggered tasks automatically when WebSocket events are received
+	useTriggerTaskExecutor();
 
 	useEffect(() => {
 		const handleShareCode = (event: any, share_token: string) => {

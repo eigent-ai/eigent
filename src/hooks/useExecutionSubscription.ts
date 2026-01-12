@@ -8,11 +8,12 @@ interface ExecutionCreatedMessage {
     type: 'execution_created';
     execution_id: string;
     trigger_id: number;
-    trigger_type: 'webhook' | 'scheduled';
+    trigger_type: 'webhook' | 'schedule';
     status: string;
-    execution_type: 'webhook' | 'scheduled';
+    execution_type: 'webhook' | 'schedule';
     input_data: any;
     user_id: number;
+    project_id: string;
     timestamp: string;
 }
 
@@ -23,7 +24,18 @@ interface ExecutionUpdatedMessage {
     status: 'completed' | 'failed' | 'running';
     updated_fields: string[];
     user_id: number;
+    project_id: string;
     timestamp: string;
+}
+
+interface ProjectCreatedMessage {
+    type: 'project_created';
+    project_id: string;
+    project_name: string;
+    chat_history_id: number;
+    trigger_name: string;
+    user_id: string;
+    created_at: string | null;
 }
 
 interface AckConfirmedMessage {
@@ -55,6 +67,7 @@ interface PongMessage {
 type WebSocketMessage = 
     | ExecutionCreatedMessage 
     | ExecutionUpdatedMessage 
+    | ProjectCreatedMessage 
     | AckConfirmedMessage 
     | ConnectedMessage 
     | HeartbeatMessage 
@@ -89,9 +102,9 @@ export function useExecutionSubscription(enabled: boolean = true) {
     });
 
     const connect = useCallback(() => {
-        // Prevent duplicate connections
-        if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-            console.log('[ExecutionSubscription] Connection already exists, skipping');
+        // Prevent duplicate connections - check all non-closed states
+        if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
+            console.log('[ExecutionSubscription] Connection already exists (state:', wsRef.current.readyState, '), skipping');
             return;
         }
 
@@ -165,12 +178,17 @@ export function useExecutionSubscription(enabled: boolean = true) {
                             });
 
                             if (trigger) {
+                                // Emit WebSocket event with full context for task execution
                                 emitWebSocketEventRef.current({
                                     triggerId: message.trigger_id,
                                     triggerName: triggerName,
                                     taskPrompt: trigger.task_prompt || '',
                                     executionId: message.execution_id,
-                                    timestamp: Date.now()
+                                    timestamp: Date.now(),
+                                    // New fields for programmatic task execution
+                                    triggerType: message.execution_type || 'webhook',
+                                    projectId: message.project_id, // Future: triggers will be associated with projects
+                                    inputData: message.input_data || {},
                                 });
                             }
 
@@ -210,6 +228,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
                             }
                             break;
                         }
+
+                        case 'project_created':
+                            console.log(`[ExecutionSubscription] Project created: ${message.project_id} - ${message.project_name}`);
+                            break;
 
                         case 'heartbeat':
                             // Server is alive - optional response
@@ -284,12 +306,21 @@ export function useExecutionSubscription(enabled: boolean = true) {
     }, []);
 
     useEffect(() => {
+        // Always disconnect first to prevent duplicate connections
+        disconnect();
+        
         if (enabled && token) {
-            connect();
-        } else {
-            disconnect();
+            // Small delay to ensure previous connection is fully closed
+            const connectTimer = setTimeout(() => {
+                connect();
+            }, 100);
+            
+            return () => {
+                clearTimeout(connectTimer);
+                disconnect();
+            };
         }
-
+        
         return () => {
             disconnect();
         };

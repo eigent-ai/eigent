@@ -3,7 +3,7 @@ import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLef
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogContentSection, DialogFooter } from "@/components/ui/dialog";
 import { proxyFetchGet } from "@/api/http";
-import { proxyActivateTrigger, proxyDeleteTrigger, proxyFetchProjectTriggers } from "@/service/triggerApi";
+import { proxyActivateTrigger, proxyDeactivateTrigger, proxyDeleteTrigger, proxyFetchProjectTriggers } from "@/service/triggerApi";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -160,13 +160,16 @@ export default function Overview() {
 
     const handleToggleActive = async (trigger: Trigger) => {
         const newStatus = trigger.status === TriggerStatus.Active ? TriggerStatus.Inactive : TriggerStatus.Active;
+        const isActivating = newStatus === TriggerStatus.Active;
+        
         try {
-            const response = await proxyActivateTrigger(trigger.id);
-            console.log("Trigger activation response:", response);
+            const response = isActivating 
+                ? await proxyActivateTrigger(trigger.id)
+                : await proxyDeactivateTrigger(trigger.id);
+            console.log(`Trigger ${isActivating ? 'activation' : 'deactivation'} response:`, response);
 
             updateTrigger(trigger.id, { status: newStatus });
-            const isActivating = newStatus === TriggerStatus.Active;
-            toast.success(isActivating ? "Trigger activated" : "Trigger paused");
+            toast.success(isActivating ? "Trigger activated" : "Trigger deactivated");
             
             // Add activity log
             addLog({
