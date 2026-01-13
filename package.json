@@ -112,6 +112,7 @@
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.0",
     "electron-builder": "^24.13.3",
+    "electron-devtools-installer": "^4.0.0",
     "i18next": "^25.4.2",
     "jsdom": "^26.1.0",
     "postcss": "^8.4.49",

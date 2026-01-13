@@ -56,7 +56,7 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
-    id: 'bedrock',
+    id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
     apiHost: '',

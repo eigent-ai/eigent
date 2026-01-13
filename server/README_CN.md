@@ -21,10 +21,15 @@
 ---
 
 ### 快速开始（Docker 推荐）
-前置要求：已安装 Docker Desktop。
+
+#### 前置要求
+- **Docker Desktop**：已安装并运行
+- **Python**：3.10.*（推荐使用 3.10.15）
+- **Node.js**：>=18.0.0 <23.0.0
+
+#### 启动步骤
 
 1) 启动服务
-- 
 ```bash
 cd server
 # 复制 .env.example 为 .env(或者按照.env.example的格式创建.env)
@@ -83,8 +88,11 @@ docker logs -f eigent_postgres | cat
 # 1) 停止容器中的 API 服务，仅保留数据库
  docker stop eigent_api
 
-# 2) 本地启动（需提供数据库连接串）
+# 2) 初始化数据库（首次或数据库结构变更时）
  cd server
+ uv run alembic upgrade head
+
+# 3) 本地启动（需提供数据库连接串）
  # 方式 A：在当前 shell 导出环境变量
  export database_url=postgresql://postgres:123456@localhost:5432/eigent
  uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
