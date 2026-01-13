@@ -44,6 +44,8 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 <br/>
 
+[![][image-join-us]][join-us]
+
 <details>
 <summary><kbd>Table of contents</kbd></summary>
 
