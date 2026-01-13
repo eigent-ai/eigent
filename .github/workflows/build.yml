@@ -27,7 +27,7 @@ jobs:
         include:
           - os: macos-latest
             arch: arm64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x64
           - os: windows-latest
             arch: x64
@@ -103,7 +103,7 @@ jobs:
       - name: Download mac-x64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: release-macos-13-x64
+          name: release-macos-15-intel-x64
           path: temp-mac-x64
 
       - name: Download mac-arm64 artifact

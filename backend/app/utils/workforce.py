@@ -12,6 +12,7 @@ from camel.societies.workforce.base import BaseNode
 from camel.societies.workforce.utils import TaskAssignResult
 from camel.societies.workforce.workforce_metrics import WorkforceMetrics
 from camel.societies.workforce.events import WorkerCreatedEvent
+from camel.societies.workforce.prompts import TASK_DECOMPOSE_PROMPT
 from camel.tasks.task import Task, TaskState, validate_task_content
 from app.component import code
 from app.exception.exception import UserException
@@ -63,9 +64,17 @@ class Workforce(BaseWorkforce):
                 enabled_strategies=["retry", "replan"],
             ),
         )
+        self.task_agent.stream_accumulate = True
+        self.task_agent._stream_accumulate_explicit = True
         logger.info(f"[WF-LIFECYCLE] ✅ Workforce.__init__ COMPLETED, id={id(self)}")
 
-    def eigent_make_sub_tasks(self, task: Task, coordinator_context: str = ""):
+    def eigent_make_sub_tasks(
+        self,
+        task: Task,
+        coordinator_context: str = "",
+        on_stream_batch=None,
+        on_stream_text=None,
+    ):
         """
         Split process_task method to eigent_make_sub_tasks and eigent_start method.
 
@@ -73,6 +82,8 @@ class Workforce(BaseWorkforce):
             task: The main task to decompose
             coordinator_context: Optional context ONLY for coordinator agent during decomposition.
                                 This context will NOT be passed to subtasks or worker agents.
+            on_stream_batch: Optional callback for streaming batches signature (List[Task], bool)
+            on_stream_text: Optional callback for raw streaming text chunks
         """
         logger.info("=" * 80)
         logger.info("🧩 [DECOMPOSE] eigent_make_sub_tasks CALLED", extra={
@@ -103,7 +114,15 @@ class Workforce(BaseWorkforce):
         logger.info(f"[DECOMPOSE] Workforce reset complete, state: {self._state.name}")
 
         logger.info(f"[DECOMPOSE] Calling handle_decompose_append_task")
-        subtasks = asyncio.run(self.handle_decompose_append_task(task, reset=False, coordinator_context=coordinator_context))
+        subtasks = asyncio.run(
+            self.handle_decompose_append_task(
+                task, 
+                reset=False, 
+                coordinator_context=coordinator_context,
+                on_stream_batch=on_stream_batch, 
+                on_stream_text=on_stream_text
+            )
+        )
         logger.info("=" * 80)
         logger.info(f"✅ [DECOMPOSE] Task decomposition COMPLETED", extra={
             "api_task_id": self.api_task_id,
@@ -142,8 +161,45 @@ class Workforce(BaseWorkforce):
                 self._state = WorkforceState.IDLE
                 logger.info(f"[WF-LIFECYCLE] Workforce state set to IDLE")
 
+    def _decompose_task(self, task: Task, stream_callback=None):
+        """Decompose task with optional streaming text callback."""
+
+        decompose_prompt = str(
+            TASK_DECOMPOSE_PROMPT.format(
+                content=task.content,
+                child_nodes_info=self._get_child_nodes_info(),
+                additional_info=task.additional_info,
+            )
+        )
+        self.task_agent.reset()
+        result = task.decompose(
+            self.task_agent, decompose_prompt, stream_callback=stream_callback
+        )
+
+        if isinstance(result, Generator):
+            def streaming_with_dependencies():
+                all_subtasks = []
+                for new_tasks in result:
+                    all_subtasks.extend(new_tasks)
+                    if new_tasks:
+                        self._update_dependencies_for_decomposition(
+                            task, all_subtasks
+                        )
+                    yield new_tasks
+            return streaming_with_dependencies()
+        else:
+            subtasks = result
+            if subtasks:
+                self._update_dependencies_for_decomposition(task, subtasks)
+            return subtasks
+
     async def handle_decompose_append_task(
-        self, task: Task, reset: bool = True, coordinator_context: str = ""
+        self,
+        task: Task,
+        reset: bool = True,
+        coordinator_context: str = "",
+        on_stream_batch=None,
+        on_stream_text=None,
     ) -> List[Task]:
         """
         Override to support coordinator_context parameter.
@@ -153,6 +209,8 @@ class Workforce(BaseWorkforce):
             task: The task to be processed
             reset: Should trigger workforce reset (Workforce must not be running)
             coordinator_context: Optional context ONLY for coordinator during decomposition
+            on_stream_batch: Optional callback for streaming batches signature (List[Task], bool)
+            on_stream_text: Optional callback for raw streaming text chunks
 
         Returns:
             List[Task]: The decomposed subtasks or the original task
@@ -186,19 +244,28 @@ class Workforce(BaseWorkforce):
             task.content = task_with_context
 
             logger.info(f"[DECOMPOSE] Calling _decompose_task with context")
-            subtasks_result = self._decompose_task(task)
+            subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
 
             task.content = original_content
         else:
             logger.info(f"[DECOMPOSE] Calling _decompose_task without context")
-            subtasks_result = self._decompose_task(task)
+            subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
 
         logger.info(f"[DECOMPOSE] _decompose_task returned, processing results")
         if isinstance(subtasks_result, Generator):
             subtasks = []
             for new_tasks in subtasks_result:
                 subtasks.extend(new_tasks)
+                if on_stream_batch:
+                    try:
+                        on_stream_batch(new_tasks, False)
+                    except Exception as e:
+                        logger.warning(f"Streaming callback failed: {e}")
             logger.info(f"[DECOMPOSE] Collected {len(subtasks)} subtasks from generator")
+
+            # After consuming the generator, check task.subtasks for final result as fallback
+            if not subtasks and task.subtasks:
+                subtasks = task.subtasks
         else:
             subtasks = subtasks_result
             logger.info(f"[DECOMPOSE] Got {len(subtasks) if subtasks else 0} subtasks directly")
@@ -217,6 +284,12 @@ class Workforce(BaseWorkforce):
             task.subtasks = [fallback_task]
             subtasks = [fallback_task]
             logger.info(f"[DECOMPOSE] Created fallback task: {fallback_task.id}")
+
+        if on_stream_batch:
+            try:
+                on_stream_batch(subtasks, True)
+            except Exception as e:
+                logger.warning(f"Final streaming callback failed: {e}")
 
         return subtasks
 

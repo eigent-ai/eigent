@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useSyncExternalStore } from 'react';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
@@ -6,6 +6,7 @@ import { NoticeCard } from './MessageItem/NoticeCard';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
 import { TaskCard } from './TaskBox/TaskCard';
+import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { VanillaChatStore } from '@/store/chatStore';
 import { FileText } from 'lucide-react';
 
@@ -39,6 +40,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
 
+  // Subscribe to streaming decompose text separately for efficient updates
+  const streamingDecomposeText = useSyncExternalStore(
+    (callback) => chatStore.subscribe(callback),
+    () => {
+      const state = chatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId || !state.tasks[taskId]) return '';
+      return state.tasks[taskId].streamingDecomposeText || '';
+    }
+  );
+
   // Show task if this query group has a task message OR if it's the most recent user query during splitting
   // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
   // Exclude human-reply scenarios (when user is replying to an activeAsk)
@@ -69,8 +81,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
   // Only show the fallback task box for the newest query while the agent is still splitting work.
   // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
+  // Also, do not show fallback task if we are currently decomposing (streaming text).
+  const isDecomposing = streamingDecomposeText.length > 0;
   const shouldShowFallbackTask =
-    isLastUserQuery && activeTaskId && !chatState.tasks[activeTaskId].hasWaitComfirm;
+    isLastUserQuery && activeTaskId && !chatState.tasks[activeTaskId].hasWaitComfirm && !isDecomposing;
 
   const task =
     (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
@@ -337,6 +351,45 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 />
               </motion.div>
             );
+          } else if (message.content === "skip") {
+            return (
+              <motion.div
+                key={`skip-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex flex-col pl-3 gap-4"
+              >
+                <AgentMessageCard
+                  key={message.id}
+                  id={message.id}
+                  content="No reply received, task continues..."
+                  onTyping={() => { }}
+                />
+              </motion.div>
+            );
+          } else {
+            return (
+              <motion.div
+                key={`message-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex flex-col pl-3 gap-4"
+              >
+                <AgentMessageCard
+                  key={message.id}
+                  typewriter={
+                    task?.type !== "replay" ||
+                    (task?.type === "replay" && task?.delayTime !== 0)
+                  }
+                  id={message.id}
+                  content={message.content}
+                  onTyping={() => { }}
+                  attaches={message.attaches}
+                />
+              </motion.div>
+            );
           }
         } else if (message.step === "end" && message.content === "") {
           return (
@@ -390,6 +443,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         return null;
       })}
 
+      {/* Streaming Decompose Text - rendered separately to avoid flickering */}
+      {isLastUserQuery && streamingDecomposeText && (
+        <StreamingTaskList streamingText={streamingDecomposeText} />
+      )}
+
       {/* Skeleton for loading state */}
       {isSkeletonPhase && (
         <motion.div
@@ -400,7 +458,6 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           <TypeCardSkeleton isTakeControl={task?.isTakeControl || false} />
         </motion.div>
       )}
-
     </motion.div>
   );
 };

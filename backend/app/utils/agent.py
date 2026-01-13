@@ -108,6 +108,7 @@ class ListenChatAgent(ChatAgent):
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
         step_timeout: float | None = 900,
+        **kwargs: Any,
     ) -> None:
         super().__init__(
             system_message=system_message,
@@ -130,6 +131,7 @@ class ListenChatAgent(ChatAgent):
             prune_tool_calls_from_memory=prune_tool_calls_from_memory,
             enable_snapshot_clean=enable_snapshot_clean,
             step_timeout=step_timeout,
+            **kwargs,
         )
         self.api_task_id = api_task_id
         self.agent_name = agent_name
@@ -182,9 +184,50 @@ class ListenChatAgent(ChatAgent):
             total_tokens = 0
 
         if res is not None:
+            if isinstance(res, StreamingChatAgentResponse):
+                def _stream_with_deactivate():
+                    last_response: ChatAgentResponse | None = None
+                    # With stream_accumulate=False, we need to accumulate delta content
+                    accumulated_content = ""
+                    try:
+                        for chunk in res:
+                            last_response = chunk
+                            # Accumulate content from each chunk (delta mode)
+                            if chunk.msg and chunk.msg.content:
+                                accumulated_content += chunk.msg.content
+                            yield chunk
+                    finally:
+                        total_tokens = 0
+                        if last_response:
+                            usage_info = (
+                                last_response.info.get("usage")
+                                or last_response.info.get("token_usage")
+                                or {}
+                            )
+                            if usage_info:
+                                total_tokens = usage_info.get("total_tokens", 0)
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionDeactivateAgentData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "message": accumulated_content,
+                                        "tokens": total_tokens,
+                                    },
+                                )
+                            )
+                        )
+
+                return StreamingChatAgentResponse(_stream_with_deactivate())
+
             message = res.msg.content if res.msg else ""
-            total_tokens = res.info["usage"]["total_tokens"]
-            traceroot_logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
+            usage_info = res.info.get("usage") or res.info.get("token_usage") or {}
+            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
+            traceroot_logger.info(
+                f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
+            )
 
         assert message is not None
 
@@ -384,39 +427,75 @@ class ListenChatAgent(ChatAgent):
         tool_call_id = tool_call_request.tool_call_id
         task_lock = get_task_lock(self.api_task_id)
 
-        # Check if tool is wrapped by @listen_toolkit decorator
-        # If so, the decorator will handle activate/deactivate events
-        has_listen_decorator = hasattr(tool.func, "__wrapped__")
+        # Try to get the real toolkit name
+        toolkit_name = None
 
-        toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
+        # Method 1: Check _toolkit_name attribute
+        if hasattr(tool, "_toolkit_name"):
+            toolkit_name = tool._toolkit_name
+
+        # Method 2: For MCP tools, check if func has __self__ (the toolkit instance)
+        if not toolkit_name and hasattr(tool, "func") and hasattr(tool.func, "__self__"):
+            toolkit_instance = tool.func.__self__
+            if hasattr(toolkit_instance, "toolkit_name") and callable(toolkit_instance.toolkit_name):
+                toolkit_name = toolkit_instance.toolkit_name()
+
+        # Method 3: Check if tool.func is a bound method with toolkit
+        if not toolkit_name and hasattr(tool, "func"):
+            if hasattr(tool.func, "func") and hasattr(tool.func.func, "__self__"):
+                toolkit_instance = tool.func.func.__self__
+                if hasattr(toolkit_instance, "toolkit_name") and callable(toolkit_instance.toolkit_name):
+                    toolkit_name = toolkit_instance.toolkit_name()
+
+        # Default fallback
+        if not toolkit_name:
+            toolkit_name = "mcp_toolkit"
+
         traceroot_logger.info(
             f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
         )
 
-        # Only send activate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
-            await task_lock.put_queue(
-                ActionActivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": json.dumps(args, ensure_ascii=False),
-                    },
-                )
+        # Always send activate event from agent to ensure consistent logging
+        # This ensures all tool calls are logged, regardless of decorator detection issues
+        await task_lock.put_queue(
+            ActionActivateToolkitData(
+                data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": json.dumps(args, ensure_ascii=False),
+                },
             )
+        )
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
-                    result = await tool.func.async_call(**args)
+                    # Check if the wrapped tool is sync to avoid run_in_executor
+                    if hasattr(tool, 'is_async') and not tool.is_async:
+                        # Sync tool: call directly to preserve ContextVar
+                        result = tool(**args)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                    else:
+                        # Async tool: use async_call
+                        result = await tool.func.async_call(**args)
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
-                    result = await tool.async_call(**args)
+                    # Check if this is a sync tool to avoid run_in_executor (which breaks ContextVar)
+                    if hasattr(tool, 'is_async') and not tool.is_async:
+                        # Sync tool: call directly to preserve ContextVar in same thread
+                        result = tool(**args)
+                        # Handle case where synchronous call returns a coroutine
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                    else:
+                        # Async tool: use async_call
+                        result = await tool.async_call(**args)
 
                 elif hasattr(tool, "func") and asyncio.iscoroutinefunction(tool.func):
                     # Case: tool wraps a direct async function
@@ -451,19 +530,18 @@ class ListenChatAgent(ChatAgent):
             else:
                 result_msg = result_str
 
-        # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
-            await task_lock.put_queue(
-                ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": result_msg,
-                    },
-                )
+        # Always send deactivate event from agent to ensure consistent logging
+        await task_lock.put_queue(
+            ActionDeactivateToolkitData(
+                data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": result_msg,
+                },
             )
+        )
         return self._record_tool_calling(
             func_name, args, result, tool_call_id,
             extra_content=tool_call_request.extra_content,
@@ -533,6 +611,21 @@ def agent_model(
         )
     )
 
+    # Build model config, defaulting to streaming for planner
+    extra_params = options.extra_params or {}
+    model_config: dict[str, Any] = {}
+    if options.is_cloud():
+        model_config["user"] = str(options.project_id)
+    model_config.update(
+        {
+            k: v
+            for k, v in extra_params.items()
+            if k not in ["model_platform", "model_type", "api_key", "url"]
+        }
+    )
+    if agent_name == Agents.task_agent:
+        model_config["stream"] = True
+
     return ListenChatAgent(
         options.project_id,
         agent_name,
@@ -542,16 +635,7 @@ def agent_model(
             model_type=options.model_type,
             api_key=options.api_key,
             url=options.api_url,
-            model_config_dict={
-                "user": str(options.project_id),
-            }
-            if options.is_cloud()
-            else None,
-            **{
-                k: v
-                for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
-            },
+            model_config_dict=model_config or None,
         ),
         # output_language=options.language,
         tools=tools,
@@ -559,6 +643,7 @@ def agent_model(
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
+        stream_accumulate=False,
     )
 
 
@@ -598,6 +683,7 @@ async def developer_agent(options: Chat):
 
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+
     tools = [
         *HumanToolkit.get_can_use_tools(options.project_id, Agents.developer_agent),
         *note_toolkit.get_tools(),
@@ -634,11 +720,15 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 <mandatory_instructions>
 - You MUST use the `read_note` tool to read the ALL notes from other agents.
 
+You SHOULD keep the user informed by providing message_title and message_description
+    parameters when calling tools. These optional parameters are available on all tools
+    and will automatically notify the user of your progress.
+
 - When you complete your task, your final response must be a comprehensive
 summary of your work and the outcome, presented in a clear, detailed, and
 easy-to-read format. Avoid using markdown tables for presenting data; use
 plain text formatting instead.
-<mandatory_instructions>
+</mandatory_instructions>
 
 <capabilities>
 Your capabilities are extensive and powerful:
@@ -720,7 +810,8 @@ these tips to maximize your effectiveness:
   - **Piping**: Use `|` to pass output from one command to another.
   - **Permissions**: Use `ls -F` to check file permissions.
   - **Installation**: Use `pip3 install` or `apt-get install` for new
-    packages.
+    packages.If you encounter `ModuleNotFoundError` or `ImportError`, install 
+    the missing package with `pip install <package>`.
 
 - Stop a Process: If a process needs to be terminated, use
     `shell_kill_process(id="...")`.
@@ -785,6 +876,7 @@ def search_agent(options: Chat):
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
     terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
+
     note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
@@ -851,6 +943,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     3. URLs provided by the user in their request
     Fabricating or guessing URLs is considered a critical error and must
     never be done under any circumstances.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 
 - You MUST NOT answer from your own knowledge. All information
     MUST be sourced from the web using the available tools. If you don't know
@@ -1006,6 +1103,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     your work and the path to the final document, presented in a clear,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 </mandatory_instructions>
 
 <capabilities>
@@ -1229,6 +1331,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     summary of your analysis or the generated media, presented in a clear,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 <mandatory_instructions>
 
 <capabilities>
@@ -1512,7 +1619,6 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
             res.extend(toolkit_tools)
         else:
-            logger.warning(f"Toolkit {item} not found, please check your configuration.")
             traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")
     return res
 

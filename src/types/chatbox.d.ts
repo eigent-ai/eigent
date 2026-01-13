@@ -125,7 +125,8 @@ declare global {
 			tools?: string[];
 			//Context Length
 			current_length?: number;
-			max_length?: number
+			max_length?: number;
+			text?: string;
 		};
 		status?: 'running' | 'filled' | 'completed';
 	}
