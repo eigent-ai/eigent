@@ -4,7 +4,7 @@
 
 [![][image-seperator]][eigent-site]
 
-### Eigent: The World's First Multi-agent Workforce to Unlock Your Exceptional Productivity
+### Eigent: The Open Source Cowork Desktop to Unlock Your Exceptional Productivity
 
 <!-- SHIELD GROUP -->
 
@@ -28,7 +28,7 @@
 </div>
 <br/>
 
-**Eigent** is the world’s first **Multi-agent Workforce** desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. 
+**Eigent** is the open source cowork desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. 
 
 Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection.
 
