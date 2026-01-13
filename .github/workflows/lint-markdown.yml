@@ -1,0 +1,38 @@
+name: Lint Markdown
+
+# SECURITY: Use pull_request (not pull_request_target) for workflows that
+# checkout and execute code from PRs. This ensures fork PRs run with
+# read-only permissions and no access to repository secrets.
+#
+# See: https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.md'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint Markdown
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get changed markdown files
+        id: changed-files
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            **.md
+
+      - name: Lint markdown
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: npx markdownlint-cli@0.43.0 $CHANGED_FILES --ignore node_modules
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}

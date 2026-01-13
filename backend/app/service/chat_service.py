@@ -455,7 +455,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     # Stream decomposition in background so queue items (decompose_text) are processed immediately
                     logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
-                    stream_state = {"subtasks": [], "seen_ids": set()}
+                    stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
                     state_holder: dict[str, Any] = {"sub_tasks": [], "summary_task": ""}
 
                     def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
@@ -466,20 +466,32 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     def on_stream_text(chunk):
                         try:
-                            # Extract content from chunk object (CAMEL now passes chunk instead of accumulated content)
-                            text_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
-                            asyncio.run_coroutine_threadsafe(
-                                task_lock.put_queue(
-                                    ActionDecomposeTextData(
-                                        data={
-                                            "project_id": options.project_id,
-                                            "task_id": options.task_id,
-                                            "content": text_content,
-                                        }
-                                    )
-                                ),
-                                event_loop,
-                            )
+                            # With task_agent using stream_accumulate=True, chunk.msg.content is accumulated content
+                            # We need to calculate the delta to send only new content to frontend
+                            accumulated_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
+                            last_content = stream_state["last_content"]
+
+                            # Calculate delta: new content that wasn't in the previous chunk
+                            if accumulated_content.startswith(last_content):
+                                delta_content = accumulated_content[len(last_content):]
+                            else:
+                                delta_content = accumulated_content
+
+                            stream_state["last_content"] = accumulated_content
+
+                            if delta_content:
+                                asyncio.run_coroutine_threadsafe(
+                                    task_lock.put_queue(
+                                        ActionDecomposeTextData(
+                                            data={
+                                                "project_id": options.project_id,
+                                                "task_id": options.task_id,
+                                                "content": delta_content,
+                                            }
+                                        )
+                                    ),
+                                    event_loop,
+                                )
                         except Exception as e:
                             logger.warning(f"Failed to stream decomposition text: {e}")
 
@@ -789,7 +801,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
                         logger.info(f"[LIFECYCLE] Multi-turn: calling workforce.handle_decompose_append_task for new task decomposition")
-                        stream_state = {"subtasks": [], "seen_ids": set()}
+                        stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
 
                         def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
                             fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
@@ -799,20 +811,31 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         def on_stream_text(chunk):
                             try:
-                                # Extract content from chunk object (CAMEL now passes chunk instead of accumulated content)
-                                text_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
-                                asyncio.run_coroutine_threadsafe(
-                                    task_lock.put_queue(
-                                        ActionDecomposeTextData(
-                                            data={
-                                                "project_id": options.project_id,
-                                                "task_id": options.task_id,
-                                                "content": text_content,
-                                            }
-                                        )
-                                    ),
-                                    event_loop,
-                                )
+                                # With task_agent using stream_accumulate=True, chunk.msg.content is accumulated content
+                                # We need to calculate the delta to send only new content to frontend
+                                accumulated_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
+                                last_content = stream_state["last_content"]
+
+                                if accumulated_content.startswith(last_content):
+                                    delta_content = accumulated_content[len(last_content):]
+                                else:
+                                    delta_content = accumulated_content
+
+                                stream_state["last_content"] = accumulated_content
+
+                                if delta_content:
+                                    asyncio.run_coroutine_threadsafe(
+                                        task_lock.put_queue(
+                                            ActionDecomposeTextData(
+                                                data={
+                                                    "project_id": options.project_id,
+                                                    "task_id": options.task_id,
+                                                    "content": delta_content,
+                                                }
+                                            )
+                                        ),
+                                        event_loop,
+                                    )
                             except Exception as e:
                                 logger.warning(f"Failed to stream decomposition text: {e}")
                         new_sub_tasks = await workforce.handle_decompose_append_task(
