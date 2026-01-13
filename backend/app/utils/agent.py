@@ -1383,9 +1383,7 @@ Your approach depends on available search tools:
 - When encountering verification challenges (like login, CAPTCHAs or
     robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>
-<Details in interaction>
-When you select name in salesforce new event, please select the corresponding option after input to confirm, If you only input the name, it would not been confirmed.
-</Details in interaction>rest    """
+"""
 
     # Define cleanup callback to release CDP browser back to pool
     def cleanup_cdp_browser():
