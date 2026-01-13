@@ -5,6 +5,7 @@ import json
 from typing import Any, Callable, Type, TypeVar
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 from app.service.task import (
     ActionActivateToolkitData,
@@ -23,38 +24,56 @@ def _safe_put_queue(task_lock, data):
     try:
         # Try to get current event loop
         loop = asyncio.get_running_loop()
+
         # We're in an async context, create a task
         task = asyncio.create_task(task_lock.put_queue(data))
+
         if hasattr(task_lock, "add_background_task"):
             task_lock.add_background_task(task)
-        # Add done callback to handle any exceptions and prevent warnings
+
+        # Add done callback to handle any exceptions
         def handle_task_result(t):
             try:
-                t.result()  # This will raise any exception that occurred
+                t.result()
             except Exception as e:
-                logger.error(f"[listen_toolkit] Background task failed: {e}")
+                logger.error(f"[SAFE_PUT_QUEUE] Background task failed: {e}")
         task.add_done_callback(handle_task_result)
+
     except RuntimeError:
-        # No running event loop, we need to handle this differently
+        # No running event loop, run in a separate thread
         try:
-            # Create a new event loop in a separate thread to avoid conflicts
+            import queue
+            result_queue = queue.Queue()
+
             def run_in_thread():
                 try:
-                    # Create a new event loop for this thread
                     new_loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(new_loop)
                     try:
                         new_loop.run_until_complete(task_lock.put_queue(data))
+                        result_queue.put(("success", None))
+                    except Exception as e:
+                        logger.error(f"[SAFE_PUT_QUEUE] put_queue failed: {e}")
+                        result_queue.put(("error", e))
                     finally:
                         new_loop.close()
                 except Exception as e:
-                    logger.error(f"[listen_toolkit] Failed to send data in thread: {e}")
+                    logger.error(f"[SAFE_PUT_QUEUE] Thread failed: {e}")
+                    result_queue.put(("error", e))
 
-            # Run in a separate thread to avoid blocking
-            thread = threading.Thread(target=run_in_thread, daemon=True)
+            thread = threading.Thread(target=run_in_thread, daemon=False)
             thread.start()
+
+            # Wait briefly for completion
+            try:
+                status, error = result_queue.get(timeout=1.0)
+                if status == "error":
+                    logger.error(f"[SAFE_PUT_QUEUE] Thread execution failed: {error}")
+            except queue.Empty:
+                logger.warning(f"[SAFE_PUT_QUEUE] Thread timeout after 1s for {data.__class__.__name__}")
+
         except Exception as e:
-            logger.error(f"[listen_toolkit] Failed to send data to queue: {e}")
+            logger.error(f"[SAFE_PUT_QUEUE] Failed to send data to queue: {e}")
 
 
 def listen_toolkit(
@@ -95,16 +114,29 @@ def listen_toolkit(
 
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                activate_data = ActionActivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": args_str,
-                    },
-                )
-                await task_lock.put_queue(activate_data)
+
+                # Skip WorkFlow display for send_message_to_user (called by message_integration)
+                # It still executes normally and sends notice, just doesn't show as a tool call
+                skip_workflow_display = func.__name__ == "send_message_to_user"
+
+                # Multi-layer fallback to get process_task_id
+                process_task_id = process_task.get("")
+                if not process_task_id:
+                    process_task_id = getattr(toolkit, 'api_task_id', "")
+                    if not process_task_id:
+                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
+
+                if not skip_workflow_display:
+                    activate_data = ActionActivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": args_str,
+                        },
+                    )
+                    await task_lock.put_queue(activate_data)
                 error = None
                 res = None
                 try:
@@ -132,16 +164,23 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
-                deactivate_data = ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": res_msg,
-                    },
-                )
-                await task_lock.put_queue(deactivate_data)
+                deactivate_timestamp = datetime.now().isoformat()
+                status = "ERROR" if error is not None else "SUCCESS"
+
+                # Log toolkit deactivation (only send to WorkFlow if not skipped)
+                logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
+
+                if not skip_workflow_display:
+                    deactivate_data = ActionDeactivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": res_msg,
+                        },
+                    )
+                    await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
                 return res
@@ -153,11 +192,12 @@ def listen_toolkit(
             @wraps(wrap)
             def sync_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
+
                 # Check if api_task_id exists
                 if not hasattr(toolkit, 'api_task_id'):
                     logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_task_id, calling method directly")
                     return func(*args, **kwargs)
-                    
+
                 task_lock = get_task_lock(toolkit.api_task_id)
 
                 if inputs is not None:
@@ -178,16 +218,29 @@ def listen_toolkit(
 
                 toolkit_name = toolkit.toolkit_name()
                 method_name = func.__name__.replace("_", " ")
-                activate_data = ActionActivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": args_str,
-                    },
-                )
-                _safe_put_queue(task_lock, activate_data)
+
+                # Skip WorkFlow display for send_message_to_user (called by message_integration)
+                skip_workflow_display = func.__name__ == "send_message_to_user"
+
+                # Multi-layer fallback to get process_task_id
+                process_task_id = process_task.get("")
+                if not process_task_id:
+                    process_task_id = getattr(toolkit, 'api_task_id', "")
+                    if not process_task_id:
+                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
+
+                if not skip_workflow_display:
+                    activate_data = ActionActivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": args_str,
+                        },
+                    )
+                    _safe_put_queue(task_lock, activate_data)
+
                 error = None
                 res = None
                 try:
@@ -222,16 +275,18 @@ def listen_toolkit(
                     else:
                         res_msg = str(error)
 
-                deactivate_data = ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": toolkit.agent_name,
-                        "process_task_id": process_task.get(""),
-                        "toolkit_name": toolkit_name,
-                        "method_name": method_name,
-                        "message": res_msg,
-                    },
-                )
-                _safe_put_queue(task_lock, deactivate_data)
+                if not skip_workflow_display:
+                    deactivate_data = ActionDeactivateToolkitData(
+                        data={
+                            "agent_name": toolkit.agent_name,
+                            "process_task_id": process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": method_name,
+                            "message": res_msg,
+                        },
+                    )
+                    _safe_put_queue(task_lock, deactivate_data)
+
                 if error is not None:
                     raise error
                 return res
@@ -290,7 +345,27 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
                     base_methods[name] = attr
 
         for method_name, base_method in base_methods.items():
+            # Check if method is overridden in the subclass
             if method_name in cls.__dict__:
+                # Method is overridden, check if it already has @listen_toolkit decorator
+                overridden_method = cls.__dict__[method_name]
+
+                # Check if already decorated by looking for the wrapper attributes
+                # that listen_toolkit adds (like __wrapped__ or specific markers)
+                is_already_decorated = (
+                    hasattr(overridden_method, '__wrapped__') or
+                    (hasattr(overridden_method, '__name__') and
+                     hasattr(getattr(overridden_method, '__code__', None), 'co_freevars') and
+                     'toolkit' in getattr(overridden_method.__code__, 'co_freevars', []))
+                )
+
+                if is_already_decorated:
+                    # Already has @listen_toolkit, skip
+                    continue
+
+                # Not decorated, wrap the overridden method
+                decorated_override = listen_toolkit(base_method)(overridden_method)
+                setattr(cls, method_name, decorated_override)
                 continue
 
             sig = signature(base_method)
