@@ -337,10 +337,31 @@ const ToolSelect = forwardRef<
 				// Continue anyway to trigger installation
 			}
 			
-		// Trigger instantiation for Google Calendar
-		if (activeMcp.key === "Google Calendar") {
-			console.log("[ToolSelect installMcp] Starting Google Calendar installation");
-			try {
+			if (activeMcp.key !== "Google Calendar") {
+				const integrationItem = integrations.find(
+					(item) => item.key === activeMcp.key
+				);
+				addOption(
+					{
+						id: activeMcp.id,
+						key: activeMcp.key,
+						name: activeMcp.name ?? activeMcp.key,
+						description:
+							typeof integrationItem?.desc === "string"
+								? integrationItem.desc
+								: "",
+						toolkit: integrationItem?.toolkit,
+						isLocal: true,
+					},
+					true
+				);
+				return;
+			}
+
+			// Trigger instantiation for Google Calendar
+			if (activeMcp.key === "Google Calendar") {
+				console.log("[ToolSelect installMcp] Starting Google Calendar installation");
+				try {
 				const response = await fetchPost("/install/tool/google_calendar");
 				
 				if (response.success) {
