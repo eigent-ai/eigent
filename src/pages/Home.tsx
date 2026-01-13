@@ -5,6 +5,7 @@ import Terminal from "@/components/Terminal";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState, useRef } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
+import { AnimatePresence, motion } from "framer-motion";
 import BottomBar from "@/components/BottomBar";
 import SearchAgentWrokSpace from "@/components/SearchAgentWrokSpace";
 import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
@@ -16,7 +17,7 @@ import {
 import UpdateElectron from "@/components/update";
 import Overview from "./Project/Triggers";
 import { usePageTabStore } from "@/store/pageTabStore";
-import { ToggleGroupSlide } from "@/components/ui/toggle-group-slide";
+import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
 import { LayoutGrid, Inbox, Zap, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -284,8 +285,8 @@ export default function Home() {
 				return <Overview />;
 			case 'inbox':
 				return (
-					<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-						<div className="w-full h-full relative z-10 border-solid border-border-secondary border-x-0 border-b-0 border-t-[0.5px]">
+					<div className="w-full h-full flex-1 flex items-center justify-center">
+						<div className="w-full h-full relative z-10">
 							<Folder />
 						</div>
 					</div>
@@ -302,13 +303,13 @@ export default function Home() {
 								chatStore.tasks[chatStore.activeTaskId as string]
 									.activeWorkSpace
 						)?.type === "search_agent" && (
-								<div className="w-full h-full flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+								<div className="w-full h-full flex-1 flex">
 									<SearchAgentWrokSpace />
 								</div>
 							)}
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							?.activeWorkSpace === "workflow" && (
-								<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+								<div className="w-full h-full flex-1 flex items-center justify-center">
 									<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid relative">
 										{/*filter blur */}
 										<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
@@ -331,14 +332,14 @@ export default function Home() {
 								chatStore.tasks[chatStore.activeTaskId as string]
 									.activeWorkSpace
 						)?.type === "developer_agent" && (
-								<div className="w-full h-full flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+								<div className="w-full h-full flex-1 flex">
 									<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
 									{/* <Terminal content={[]} /> */}
 								</div>
 							)}
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							.activeWorkSpace === "documentWorkSpace" && (
-								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center">
 									<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
 										{/*filter blur */}
 										<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
@@ -356,7 +357,7 @@ export default function Home() {
 								chatStore.tasks[chatStore.activeTaskId as string]
 									.activeWorkSpace
 						)?.type === "document_agent" && (
-								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center">
 									<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
 										{/*filter blur */}
 										<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
@@ -378,7 +379,7 @@ export default function Home() {
 						{/* Inbox Workspace - kept for backward compatibility */}
 						{chatStore.tasks[chatStore.activeTaskId as string]
 							.activeWorkSpace === "inbox" && (
-								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center">
 									<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
 										{/*filter blur */}
 										<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
@@ -411,35 +412,51 @@ export default function Home() {
 						<ResizablePanel className="h-full w-full">
 							{chatStore.tasks[chatStore.activeTaskId as string]
 								?.activeWorkSpace && (
-									<div className="w-full h-full flex flex-col bg-surface-secondary border-solid border-border-tertiary rounded-2xl animate-in fade-in-0 slide-in-from-right-2 duration-300">
+									<div className="w-full h-full flex flex-col bg-surface-secondary border-solid border-border-tertiary rounded-2xl">
 										{/* Header with workspace tabs */}
-										<div className="w-full px-4 py-2 flex items-center justify-between">
+										<div className="w-full px-2 py-2 flex items-center justify-between">
 											<div className="w-full flex flex-row items-center justify-start gap-4">
-												<ToggleGroupSlide
+												<MenuToggleGroup
+													type="single"
+													variant="info"
+													size="xs"
+													orientation="horizontal"
 													value={activeWorkspaceTab}
 													onValueChange={(val) => val && setActiveWorkspaceTab(val as 'overview' | 'workforce' | 'inbox')}
-													items={[
-														{
-															value: "workforce",
-															label: "Workspace",
-															icon: <LayoutGrid className="w-4 h-4" />,
-														},
-														{
-															value: "inbox",
-															label: "Agent Folder",
-															icon: <Inbox className="w-4 h-4" />,
-															showSubIcon: unviewedTabs.has('inbox'),
-															subIcon: <span className="w-2 h-2 bg-red-500 rounded-full" />,
-														},
-														{
-															value: "overview",
-															label: "Triggers",
-															icon: <Zap className="w-4 h-4" />,
-															showSubIcon: unviewedTabs.has('overview'),
-															subIcon: <span className="w-2 h-2 bg-red-500 rounded-full" />,
-														},
-													]}
-												/>
+													className="bg-surface-primary rounded-lg"
+												>
+													<MenuToggleItem
+														value="workforce"
+														variant="info"
+														size="xs"
+														icon={<LayoutGrid />}
+														className="w-32"
+													>
+														Workspace
+													</MenuToggleItem>
+													<MenuToggleItem
+														value="inbox"
+														variant="info"
+														size="xs"
+														icon={<Inbox />}
+														showSubIcon={unviewedTabs.has('inbox')}
+														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+														className="w-32"
+													>
+														Agent Folder
+													</MenuToggleItem>
+													<MenuToggleItem
+														value="overview"
+														variant="info"
+														size="xs"
+														icon={<Zap />}
+														showSubIcon={unviewedTabs.has('overview')}
+														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+														className="w-32"
+													>
+														Triggers
+													</MenuToggleItem>
+												</MenuToggleGroup>
 											</div>
 											<Button
 												variant="primary"
@@ -456,9 +473,9 @@ export default function Home() {
 												}}
 											>
 												<Plus />
-												{activeWorkspaceTab === 'workforce' && 'Add Worker'}
-												{activeWorkspaceTab === 'inbox' && 'Add Files'}
-												{activeWorkspaceTab === 'overview' && 'Add Trigger'}
+												{activeWorkspaceTab === 'workforce' && 'Add'}
+												{activeWorkspaceTab === 'inbox' && 'Add'}
+												{activeWorkspaceTab === 'overview' && 'Add'}
 											</Button>
 
 											{/* Hidden file input for upload */}
@@ -486,7 +503,18 @@ export default function Home() {
 											/>
 										</div>
 										<div className="flex-1 min-h-0 w-full">
-											{renderWorkspaceContent()}
+											<AnimatePresence mode="wait">
+												<motion.div
+													key={activeWorkspaceTab}
+													initial={{ opacity: 0, filter: "blur(4px)" }}
+													animate={{ opacity: 1, filter: "blur(0px)" }}
+													exit={{ opacity: 0, filter: "blur(4px)" }}
+													transition={{ duration: 0.2 }}
+													className="w-full h-full"
+												>
+													{renderWorkspaceContent()}
+												</motion.div>
+											</AnimatePresence>
 										</div>
 										{activeWorkspaceTab === 'workforce' && (
 											<BottomBar onToggleChatBox={toggleChatBox} isChatBoxVisible={isChatBoxVisible} />

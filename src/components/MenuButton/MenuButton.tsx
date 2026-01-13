@@ -11,7 +11,7 @@ const menuButtonVariants = cva(
 			variant: {
 				default: "border border-solid text-text-body border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-active data-[state=on]:border-menubutton-border-active data-[state=on]:shadow-button-shadow",
 				clear: "border border-solid text-text-body border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-default data-[state=on]:shadow-button-shadow",
-				info: "text-text-body hover:bg-menubutton-fill-active focus:bg-menubutton-fill-active data-[state=on]:text-text-body data-[state=on]:font-bold",
+				info: "text-text-body !font-medium hover:bg-menubutton-fill-active focus:bg-menubutton-fill-active data-[state=on]:text-text-body data-[state=on]:!font-bold",
 			},
 			size: {
 				xs: "px-2 py-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg",
@@ -73,13 +73,59 @@ export const MenuToggleItem = React.forwardRef<
 	MenuToggleItemProps
 >(({ className, children, variant, size, icon, subIcon, showSubIcon = false, disableIconAnimation = false, iconAnimateOnHover = true, ...props }, ref) => {
 	const context = React.useContext(MenuToggleGroupContext);
-	const iconNode = icon;
+	const [isSelected, setIsSelected] = React.useState(false);
+	const itemRef = React.useRef<HTMLButtonElement | null>(null);
+	
+	const combinedRef = React.useCallback(
+		(node: HTMLButtonElement | null) => {
+			itemRef.current = node;
+			if (typeof ref === "function") {
+				ref(node);
+			} else if (ref) {
+				// Use Object.defineProperty to bypass readonly restriction
+				Object.defineProperty(ref, "current", {
+					writable: true,
+					value: node,
+				});
+			}
+		},
+		[ref]
+	);
+
+	React.useEffect(() => {
+		const checkSelected = () => {
+			if (itemRef.current) {
+				const selected = itemRef.current.getAttribute("data-state") === "on";
+				setIsSelected(selected);
+			}
+		};
+
+		checkSelected();
+		const observer = new MutationObserver(checkSelected);
+		if (itemRef.current) {
+			observer.observe(itemRef.current, {
+				attributes: true,
+				attributeFilter: ["data-state"],
+			});
+		}
+
+		return () => observer.disconnect();
+	}, []);
+
+	const currentVariant = context.variant || variant;
+	const isInfoVariant = currentVariant === "info";
+	
+	const iconNode = React.isValidElement(icon) && isInfoVariant
+		? React.cloneElement(icon as React.ReactElement<any>, {
+			strokeWidth: isSelected ? 2.5 : 2,
+		})
+		: icon;
 
 	return (
 		<AnimateIconProvider animateOnHover={disableIconAnimation ? false : (iconAnimateOnHover as unknown as string | boolean)} asChild>
 			<ToggleGroupPrimitive.Item
-				ref={ref}
-				className={cn("group", menuButtonVariants({ variant: context.variant || variant, size: context.size || size }), className)}
+				ref={combinedRef}
+				className={cn("group", menuButtonVariants({ variant: currentVariant, size: context.size || size }), className)}
 				{...props}
 			>
 				{showSubIcon && subIcon ? (

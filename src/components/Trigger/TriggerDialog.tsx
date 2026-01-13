@@ -66,6 +66,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [isLoading, setIsLoading] = useState(false);
     const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
     const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>("");
+    const [nameError, setNameError] = useState<string>("");
     const [formData, setFormData] = useState<TriggerInput>({
         name: "",
         description: "",
@@ -90,6 +91,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     // Reset form when dialog opens
     useEffect(() => {
         if (isOpen) {
+            // Clear validation errors when dialog opens
+            setNameError("");
+            
             // If editing an existing trigger, populate the form with its data
             if (selectedTrigger) {
                 setFormData({
@@ -133,9 +137,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         e?.preventDefault();
 
         if (!formData.name.trim()) {
-            toast.error(t("triggers.name-required"));
+            setNameError(t("triggers.name-required"));
             return;
         }
+        
+        // Clear name error if validation passes
+        setNameError("");
         if (!formData.task_prompt?.trim()) {
             toast.error(t("triggers.task-prompt-required"));
             return;
@@ -223,7 +230,15 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     id="name"
                     value={formData.name}
                     required
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    state={nameError ? "error" : "default"}
+                    note={nameError || undefined}
+                    onChange={(e) => {
+                        setFormData({ ...formData, name: e.target.value });
+                        // Clear error when user starts typing
+                        if (nameError) {
+                            setNameError("");
+                        }
+                    }}
                     title={t("triggers.name")}
                     placeholder={t("triggers.name-placeholder")}
                 />

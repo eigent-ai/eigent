@@ -118,7 +118,8 @@ export default function Home() {
 			>
 				<div className="flex flex-row justify-between items-center w-full mx-auto">
 					<div className="flex items-center gap-2">
-						<MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
+						<MenuToggleGroup type="single" variant="default" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}
+							className="gap-2">
 							<MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Sparkle />}>{t("layout.projects")}</MenuToggleItem>
 							<MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer />}>{t("layout.mcp-tools")}</MenuToggleItem>
 							<MenuToggleItem size="xs" value="browser" iconAnimateOnHover="default" icon={<Compass />}>{t("layout.browser")}</MenuToggleItem>

@@ -395,34 +395,30 @@ export default function Folder({ data }: { data?: Agent }) {
 	};
 
 	return (
-		<div className="h-full w-full flex">
+		<div className="h-full w-full flex p-2">
 			{/* fileList */}
-			<div className="flex-[0.3] border-y-0 border-l-0 border-r-[0.5px] border-border-secondary border-solid flex flex-col">
+			<div className="flex-[0.3] flex flex-col bg-surface-primary rounded-2xl">
 				{/* head */}
-				<div className="w-full h-ful flex flex-row items-center justify-between px-6 py-2.5">
-					<div className="text-text-body font-bold text-body-base leading-relaxed">
+				<div className="w-full h-[52px] flex flex-row items-center justify-between pt-2 pb-4 px-4 border-b-[0.5px] border-solid border-t-0 border-x-0 border-border-secondary">
+					<div className="text-text-body font-bold text-label-sm leading-relaxed">
 						{t("chat.agent-folder")}
 					</div>
 				</div>
 
 				{/* Search Input*/}
-				<div className="px-4 border-b border-zinc-200 flex-shrink-0">
+				<div className="px-4 py-2 flex-shrink-0">
 					<div className="relative">
 						<Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
 						<input
 							type="text"
 							placeholder={t("chat.search")}
-							className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-lg border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full pl-9 pr-2 py-2 text-sm border-[0.5px] border-border-secondary rounded-lg border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
 						/>
 					</div>
 				</div>
 
 				{/* fileList */}
 				<div className="flex-1 overflow-y-auto min-h-0">
-					<div className="pt-2 px-4">
-						<div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
-							{t("chat.files")}
-						</div>
 						<FileTree
 							node={fileTree}
 							selectedFile={selectedFile}
@@ -433,7 +429,6 @@ export default function Folder({ data }: { data?: Agent }) {
 							}
 							isShowSourceCode={isShowSourceCode}
 						/>
-					</div>
 				</div>
 			</div>
 

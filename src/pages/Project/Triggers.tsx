@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLeft, Trash2, PlayCircle, PauseCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLeft, Trash2, PlayCircle, PauseCircle, XCircle, AlertTriangle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogContentSection, DialogFooter } from "@/components/ui/dialog";
 import { proxyFetchGet } from "@/api/http";
@@ -20,6 +20,7 @@ import { Trigger, TriggerInput, TriggerStatus } from "@/types";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { AnimatePresence, motion } from "framer-motion";
 
 // Helper function to get icon for activity type
 const getActivityIcon = (activityType: ActivityType) => {
@@ -300,64 +301,10 @@ export default function Overview() {
 
     return (
         <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full">
-            <div className="flex flex-row h-full bg-surface-secondary pt-2 px-2 gap-4">
-                {/* Left Side: Trigger List (2/3 width) */}
-                <div className="flex w-2/3 flex-col">
-                    {/* Header */}
-                    <div className="flex items-center justify-between mx-3 pr-1 pb-4 pt-2">
-                        <div className="text-body-sm font-bold text-text-heading">Triggers</div>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" className="text-text-label font-semibold text-label-sm">
-                                        {getSortLabel()}
-                                        <ArrowUpDown className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setSortBy("createdAt")}>
-                                    Created Time
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setSortBy("lastExecutionTime")}>
-                                    Last Execution
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setSortBy("tokens")}>
-                                    Token Cost
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
+            <div className="flex flex-row h-full bg-surface-secondary pt-2 px-2">
 
-                    {/* List View Section */}
-                    <div className="flex flex-col h-full mx-3 overflow-auto scrollbar-always-visible">
-                        <div className="flex flex-col gap-2 pb-2 pr-2">
-                            {sortedTriggers.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-12 text-center">
-                                    <Zap className="w-12 h-12 text-text-label mb-3" />
-                                    <p className="text-text-label text-sm">No triggers yet</p>
-                                    <p className="text-text-label text-xs mt-1">Create a trigger to automate your tasks</p>
-                                </div>
-                            ) : (
-                                sortedTriggers.map((trigger) => (
-                                    <TriggerListItem
-                                        key={trigger.id}
-                                        trigger={trigger}
-                                        isSelected={selectedTriggerId === trigger.id}
-                                        onSelect={setSelectedTriggerIdWrapper}
-                                        onEdit={handleEdit}
-                                        onDuplicate={handleDuplicate}
-                                        onDelete={handleDelete}
-                                        onToggleActive={handleToggleActive}
-                                    />
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Side: Live Activity or Execution Logs (1/3 width) */}
-                <div className="w-1/3 flex flex-col bg-surface-primary rounded-xl overflow-hidden mb-2 relative">
+                {/* Left Side: Live Activity or Execution Logs (1/3 width) */}
+                <div className="flex-[0.3] flex-col bg-surface-primary rounded-xl overflow-hidden mb-2 relative">
                     {/* Live Activity - Always rendered but slides out to the right when logs are shown */}
                     <div 
                         className={`absolute inset-0 flex flex-col bg-surface-primary rounded-xl transition-transform duration-300 ease-in-out ${
@@ -365,7 +312,7 @@ export default function Overview() {
                         }`}
                     >
                         {/* Live Activity Header */}
-                        <div className="flex items-center justify-between h-[52px] pt-2 pb-4 px-4 border-solid border-t-0 border-x-0 border-border-secondary">
+                        <div className="flex items-center justify-between h-[52px] pt-2 pb-4 px-4 border-b-[0.5px] border-solid border-t-0 border-x-0 border-border-secondary">
                             <span className="text-label-sm font-bold text-text-heading">
                                 Live Activity
                             </span>
@@ -380,29 +327,36 @@ export default function Overview() {
                                 </div>
                             ) : (
                                 <div className="divide-y divide-border-tertiary">
-                                    {activityLogs.slice(0, 50).map((log, index) => {
-                                        const Icon = getActivityIcon(log.type);
-                                        const notificationType = getActivityNotificationType(log.type);
-                                        const timeAgo = formatDistanceToNow(log.timestamp, { addSuffix: true });
-                                        
-                                        return (
-                                            <div
-                                                key={log.id}
-                                                className={`flex items-center gap-2.5 px-4 py-2 border-l-2 transition-all duration-300 hover:bg-surface-tertiary-hover ${getNotificationStyles(notificationType)}`}
-                                                style={{ animationDelay: `${index * 50}ms` }}
-                                            >
-                                                <Icon className={`h-4 w-4 flex-shrink-0 ${getNotificationIconColor(notificationType)}`} />
-                                                <div className="flex flex-col w-full min-w-0">
-                                                    <span className="text-label-xs text-text-body leading-relaxed">
-                                                        {log.message}
-                                                    </span>
-                                                    <span className="text-label-xs text-text-label">
-                                                        {timeAgo}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                    <AnimatePresence initial={false}>
+                                        {activityLogs.slice(0, 50).map((log) => {
+                                            const Icon = getActivityIcon(log.type);
+                                            const notificationType = getActivityNotificationType(log.type);
+                                            const timeAgo = formatDistanceToNow(log.timestamp, { addSuffix: true });
+                                            
+                                            return (
+                                                <motion.div
+                                                    key={log.id}
+                                                    initial={{ opacity: 0, y: -20 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, y: -20 }}
+                                                    transition={{ duration: 0.2 }}
+                                                    className={`flex items-center px-4 py-2 transition-all duration-300 hover:bg-surface-tertiary ${getNotificationStyles(notificationType)}`}
+                                                >
+                                                    <div className="flex-shrink-0 flex w-full py-1 items-center justify-center gap-2">
+                                                    <Icon className={`h-4 w-4 flex-shrink-0 ${getNotificationIconColor(notificationType)}`} />
+                                                    <div className="flex flex-row justify-between w-full min-w-0">
+                                                        <span className="text-label-xs text-text-body">
+                                                            {log.message}
+                                                        </span>
+                                                        <span className="text-label-xs text-text-label">
+                                                            {timeAgo}
+                                                        </span>
+                                                    </div>
+                                                    </div>
+                                                </motion.div>
+                                            );
+                                        })}
+                                    </AnimatePresence>
                                 </div>
                             )}
                         </div>
@@ -429,6 +383,81 @@ export default function Overview() {
                         </div>
                         <div className="flex-1 min-h-0">
                             {selectedTriggerId && <ExecutionLogs triggerId={selectedTriggerId} />}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Side: Trigger List (2/3 width) */}
+                <div className="flex-[0.7] flex-col">
+                    {/* Header */}
+                    <div className="w-full flex items-center justify-between pl-4 pb-4 pt-2">
+                        <div className="text-body-sm font-bold text-text-heading">Triggers</div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm" className="text-text-label font-semibold text-label-sm">
+                                        {getSortLabel()}
+                                        <ArrowUpDown className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setSortBy("createdAt")}>
+                                    Created Time
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setSortBy("lastExecutionTime")}>
+                                    Last Execution
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setSortBy("tokens")}>
+                                    Token Cost
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+
+                    {/* List View Section */}
+                    <div className="flex flex-col h-full pl-3 overflow-auto scrollbar-always-visible">
+                        <div className="flex flex-col">
+                            {sortedTriggers.length === 0 ? (
+                                <div
+                                    onClick={() => {
+                                        setEditingTrigger(null);
+                                        setEditDialogOpen(true);
+                                    }}
+                                    className="group flex items-center justify-center gap-3 p-3 bg-surface-primary rounded-xl border border-border-tertiary hover:border-border-secondary hover:bg-surface-tertiary transition-all duration-200 cursor-pointer"
+                                >
+                                    {/* Zap Icon */}
+                                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-amber-500/10 rounded-lg">
+                                        <Plus className="w-5 h-5 text-amber-500" />
+                                    </div>
+
+                                    {/* Create Trigger Text */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-semibold text-text-heading truncate group-hover:text-text-action transition-colors">
+                                            Create a trigger to automate your tasks
+                                        </div>
+                                    </div>
+
+                                    {/* Empty space for alignment */}
+                                    <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[80px]"></div>
+                                    <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[100px]"></div>
+                                    <div className="w-10"></div>
+                                    <div className="w-8"></div>
+                                </div>
+                            ) : (
+                                sortedTriggers.map((trigger) => (
+                                    <TriggerListItem
+                                        key={trigger.id}
+                                        trigger={trigger}
+                                        isSelected={selectedTriggerId === trigger.id}
+                                        onSelect={setSelectedTriggerIdWrapper}
+                                        onEdit={handleEdit}
+                                        onDuplicate={handleDuplicate}
+                                        onDelete={handleDelete}
+                                        onToggleActive={handleToggleActive}
+                                    />
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>
