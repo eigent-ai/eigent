@@ -185,6 +185,52 @@ class ListenChatAgent(ChatAgent):
 
         if res is not None:
             if isinstance(res, StreamingChatAgentResponse):
+                # Check if stream_accumulate is enabled - if so, consume the stream
+                # and return a non-streaming response for compatibility with workforce
+                # task analysis which expects to access response.msg directly
+                if getattr(self, 'stream_accumulate', False) or getattr(self, '_stream_accumulate_explicit', False):
+                    # Consume the streaming response to get the final result
+                    last_response: ChatAgentResponse | None = None
+                    accumulated_content = ""
+                    for chunk in res:
+                        last_response = chunk
+                        if chunk.msg and chunk.msg.content:
+                            # In accumulate mode, chunk.msg.content is already accumulated
+                            accumulated_content = chunk.msg.content
+
+                    total_tokens = 0
+                    if last_response:
+                        usage_info = (
+                            last_response.info.get("usage")
+                            or last_response.info.get("token_usage")
+                            or {}
+                        )
+                        if usage_info:
+                            total_tokens = usage_info.get("total_tokens", 0)
+
+                    traceroot_logger.info(
+                        f"Agent {self.agent_name} completed step (stream consumed), tokens used: {total_tokens}"
+                    )
+
+                    asyncio.create_task(
+                        task_lock.put_queue(
+                            ActionDeactivateAgentData(
+                                data={
+                                    "agent_name": self.agent_name,
+                                    "process_task_id": self.process_task_id,
+                                    "agent_id": self.agent_id,
+                                    "message": accumulated_content,
+                                    "tokens": total_tokens,
+                                },
+                            )
+                        )
+                    )
+
+                    if error_info is not None:
+                        raise error_info
+                    # Return the last response which has .msg accessible
+                    return last_response if last_response else res
+
                 def _stream_with_deactivate():
                     last_response: ChatAgentResponse | None = None
                     # With stream_accumulate=False, we need to accumulate delta content
