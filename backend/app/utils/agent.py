@@ -1266,7 +1266,7 @@ def search_agent(options: Chat):
     # Register toolkit with message_integration
     # DISABLED: message_integration causes parameter mismatch errors after fixing clone
     # The wrapper is lost during toolkit cloning, causing tools to reject message_title parameter
-    # web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
+    web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     # Use the registered (wrapped) toolkit for both tools and agent registration
     web_toolkit_for_agent_registration = web_toolkit_custom
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
