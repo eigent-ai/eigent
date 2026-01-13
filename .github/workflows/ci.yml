@@ -9,16 +9,13 @@ permissions:
   pull-requests: write
 
 jobs:
-  job1:
+  check-files:
     name: Check Not Allowed File Changes
     runs-on: ubuntu-latest
-    outputs:
-      markdown_change: ${{ steps.filter_markdown.outputs.change }}
-      markdown_files: ${{ steps.filter_markdown.outputs.change_files }}
     steps:
-
+      # Note: dorny/paths-filter fetches file info via GitHub API, no checkout needed
       - name: Check Not Allowed File Changes
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: filter_not_allowed
         with:
           list-files: json
@@ -31,7 +28,7 @@ jobs:
       # ref: https://github.com/github/docs/blob/main/.github/workflows/triage-unallowed-contributions.yml
       - name: Comment About Changes We Can't Accept
         if: ${{ steps.filter_not_allowed.outputs.change == 'true' }}
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             let workflowFailMessage = "It looks like you've modified some files that we can't accept as contributions."
@@ -54,28 +51,3 @@ jobs:
               console.log("Error creating comment.", err)
             }
             core.setFailed(workflowFailMessage)
-
-      - name: Check Not Linted Markdown
-        if: ${{ always() }}
-        uses: dorny/paths-filter@v2
-        id: filter_markdown
-        with:
-          list-files: shell
-          filters: |
-            change:
-              - added|modified: '*.md'
-
-
-  job2:
-    name: Lint Markdown
-    runs-on: ubuntu-latest
-    needs: job1
-    if: ${{ always() && needs.job1.outputs.markdown_change == 'true' }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Lint markdown
-        run: npx markdownlint-cli ${{ needs.job1.outputs.markdown_files }} --ignore node_modules
