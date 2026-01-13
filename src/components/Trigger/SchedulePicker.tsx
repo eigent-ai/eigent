@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
@@ -7,6 +6,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Calendar } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -150,14 +150,13 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     const minutes = Array.from({ length: 60 }, (_, i) => i.toString());
 
     return (
-        <div className="w-full space-y-4">
+        <div className="w-full space-y-4 bg-surface-disabled rounded-lg p-4">
             <div className="space-y-2">
-                <Label htmlFor="frequency">{t("triggers.schedule-frequency")}</Label>
                 <Select
                     value={frequency}
                     onValueChange={(value: FrequencyType) => setFrequency(value)}
                 >
-                    <SelectTrigger>
+                    <SelectTrigger title={t("triggers.schedule-frequency")}>
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -180,9 +179,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             {(frequency === "daily" || frequency === "weekly") && (
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="hour">{t("triggers.schedule-time")} (Hour)</Label>
                         <Select value={hour} onValueChange={setHour}>
-                            <SelectTrigger>
+                            <SelectTrigger title={t("triggers.schedule-time")}>
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -195,9 +193,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="minute">Minute</Label>
                         <Select value={minute} onValueChange={setMinute}>
-                            <SelectTrigger>
+                            <SelectTrigger title={t("triggers.schedule-time")}>
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -213,30 +210,23 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             )}
 
             {frequency === "custom" && (
-                <div className="space-y-2">
-                    <Label htmlFor="custom-cron">{t("triggers.cron-expression")}</Label>
-                    <input
-                        id="custom-cron"
-                        type="text"
-                        value={value}
-                        onChange={(e) => onChange(e.target.value)}
-                        placeholder="0 */1 * * *"
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        {t("triggers.cron-help")}
-                    </p>
-                </div>
+                <Input
+                    title={t("triggers.cron-expression")}
+                    type="text"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder="0 */1 * * *"
+                    note={t("triggers.cron-help")}
+                />
             )}
             {/* Scheduled Times Preview */}
             <div className="space-y-2">
-                <div className="flex items-center gap-2 text-text-label text-xs">
-                    <Calendar className="w-3 h-3" />
-                    <span>{t("triggers.upcoming-executions")}</span>
+                <div className="flex items-center gap-2 text-text-heading text-label-sm">
+                    <span className="font-bold">{t("triggers.upcoming-executions")}</span>
                 </div>
-                <div className="bg-surface-tertiary rounded-lg p-3 space-y-1">
+                <div className="bg-surface-primary rounded-lg p-4 space-y-2">
                     {nextScheduledTimes.map((time, index) => (
-                        <div key={index} className="flex items-center gap-2 text-sm text-text-body">
+                        <div key={index} className="flex items-center gap-2 text-text-body text-label-sm">
                             <span className="text-text-label font-mono text-xs w-5">
                                 {String(index + 1).padStart(2, '0')}
                             </span>

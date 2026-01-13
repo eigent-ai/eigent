@@ -16,7 +16,7 @@ import {
 import UpdateElectron from "@/components/update";
 import Overview from "./Project/Triggers";
 import { usePageTabStore } from "@/store/pageTabStore";
-import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
+import { ToggleGroupSlide } from "@/components/ui/toggle-group-slide";
 import { LayoutGrid, Inbox, Zap, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -415,43 +415,31 @@ export default function Home() {
 										{/* Header with workspace tabs */}
 										<div className="w-full px-4 py-2 flex items-center justify-between">
 											<div className="w-full flex flex-row items-center justify-start gap-4">
-												<MenuToggleGroup
-													type="single"
-													size="xs"
-													orientation="horizontal"
+												<ToggleGroupSlide
 													value={activeWorkspaceTab}
 													onValueChange={(val) => val && setActiveWorkspaceTab(val as 'overview' | 'workforce' | 'inbox')}
-													className="bg-surface-primary rounded-lg"
-												>
-													<MenuToggleItem
-														value="workforce"
-														variant="info"
-														size="xs"
-														icon={<LayoutGrid />}
-													>
-														Workspace
-													</MenuToggleItem>
-													<MenuToggleItem
-														value="inbox"
-														variant="info"
-														size="xs"
-														icon={<Inbox />}
-														showSubIcon={unviewedTabs.has('inbox')}
-														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
-													>
-														Agent Folder
-													</MenuToggleItem>
-													<MenuToggleItem
-														value="overview"
-														variant="info"
-														size="xs"
-														icon={<Zap />}
-														showSubIcon={unviewedTabs.has('overview')}
-														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
-													>
-														Triggers
-													</MenuToggleItem>
-												</MenuToggleGroup>
+													items={[
+														{
+															value: "workforce",
+															label: "Workspace",
+															icon: <LayoutGrid className="w-4 h-4" />,
+														},
+														{
+															value: "inbox",
+															label: "Agent Folder",
+															icon: <Inbox className="w-4 h-4" />,
+															showSubIcon: unviewedTabs.has('inbox'),
+															subIcon: <span className="w-2 h-2 bg-red-500 rounded-full" />,
+														},
+														{
+															value: "overview",
+															label: "Triggers",
+															icon: <Zap className="w-4 h-4" />,
+															showSubIcon: unviewedTabs.has('overview'),
+															subIcon: <span className="w-2 h-2 bg-red-500 rounded-full" />,
+														},
+													]}
+												/>
 											</div>
 											<Button
 												variant="primary"
@@ -490,7 +478,6 @@ export default function Home() {
 
 											{/* TriggerDialog */}
 											<TriggerDialog
-												view="create"
 												selectedTrigger={null}
 												onTriggerCreating={handleTriggerCreating}
 												onTriggerCreated={handleTriggerCreated}
