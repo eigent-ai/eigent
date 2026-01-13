@@ -37,6 +37,7 @@ class ModelProviders(Enum):
     NETMIND = "netmind"
     NOVITA = "novita"
     WATSONX = "watsonx"
+    MINIMAX = "minimax"
 
     @classmethod
     def get_all_values(cls) -> List[str]:
