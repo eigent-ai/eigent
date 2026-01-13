@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
+from typing_extensions import TypedDict
 import websockets
 import websockets.exceptions
 
@@ -17,6 +18,12 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("hybrid_browser_toolkit")
+
+
+class SheetCell(TypedDict):
+    row: int
+    col: int
+    text: str
 
 
 class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
@@ -342,6 +349,12 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
             full_visual_mode=self._full_visual_mode,
         )
+
+        return cloned_toolkit
+
+    async def browser_sheet_input(self, *, cells: List[SheetCell]) -> Dict[str, Any]:
+        # Use typing_extensions.TypedDict for Pydantic <3.12 compatibility.
+        return await super().browser_sheet_input(cells=cells)
 
     @classmethod
     def toolkit_name(cls) -> str:
