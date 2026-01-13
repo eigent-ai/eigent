@@ -498,7 +498,7 @@ class Workforce(BaseWorkforce):
         """Call cleanup callbacks for all agents to release resources (e.g., CDP browsers)."""
         logger.info(f"[WF-CLEANUP] Starting cleanup for all agents in workforce {id(self)}")
 
-        # ========== 调试信息开始 ==========
+        # ========== DEBUG INFO START ==========
         logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, 'children'): {hasattr(self, 'children')}")
         logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, '_children'): {hasattr(self, '_children')}")
 
@@ -523,11 +523,11 @@ class Workforce(BaseWorkforce):
             logger.info(f"[WF-CLEANUP-DEBUG] self.coordinator_agent is None: {self.coordinator_agent is None}")
             if self.coordinator_agent is not None:
                 logger.info(f"[WF-CLEANUP-DEBUG] coordinator has _cleanup_callback: {hasattr(self.coordinator_agent, '_cleanup_callback')}")
-        # ========== 调试信息结束 ==========
+        # ========== DEBUG INFO END ==========
 
         cleanup_count = 0
 
-        # Cleanup all child workers - 使用 _children 而不是 children
+        # Cleanup all child workers - use _children instead of children
         if hasattr(self, '_children') and self._children:
             logger.info(f"[WF-CLEANUP] Processing {len(self._children)} children")
             for child in self._children:

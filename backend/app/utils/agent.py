@@ -1253,8 +1253,6 @@ def search_agent(options: Chat):
     web_toolkit_custom._cdp_session_id = toolkit_session_id
 
     # Register toolkit with message_integration
-    # DISABLED: message_integration causes parameter mismatch errors after fixing clone
-    # The wrapper is lost during toolkit cloning, causing tools to reject message_title parameter
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     # Use the registered (wrapped) toolkit for both tools and agent registration
     web_toolkit_for_agent_registration = web_toolkit_custom
@@ -1976,26 +1974,14 @@ async def mcp_agent(options: Chat):
             url=options.api_url,
             model_config_dict={
                 "user": str(options.project_id),
-                # "parallel_tool_calls": False,
             }
             if options.is_cloud()
-            else {
-                # "
-                #         for tool in original_tools:
-                #             method_name = tool.func.__name__
-                #             enhanced_func = self._add_messaging_to_tool(tool.func)
-                #             enhanced_func = self._create_bound_method_wrapper(
-                #                 enhanced_func,
-                #                 toolkit,
-                #             )
-                #             enhanced_methods[method_name] = enhanced_func
-                #             setattr(toolkit, method_name, enhanced_func)
-                #         original_get_tools_method = toolkit.get_toolsparallel_tool_calls": False,
-            },
+            else None,
             **{
                 k: v
                 for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
+                if
+                k not in ["model_platform", "model_type", "api_key", "url"]
             },
         ),
         # output_language=options.language,
