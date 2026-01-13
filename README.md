@@ -311,7 +311,7 @@ Eigent is built on top of [CAMEL-AI.org][camel-ai-org-github]'s research and inf
 
 ## **📄 Open Source License**
 
-This repository is licensed under the [**Eigent Open Source License**](LICENSE), based on Apache 2.0 with additional conditions.
+This repository is licensed under the [Apache License 2.0](LICENSE).
 
 ## 🌐 Community & Contact
 For more information please contact info@eigent.ai
