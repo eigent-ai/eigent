@@ -496,7 +496,6 @@ export const Inputbox = ({
 
 					{/* TriggerDialog for adding trigger and task */}
 					<TriggerDialog
-						view="create"
 						selectedTrigger={null}
 						onTriggerCreating={onTriggerCreating || (() => { })}
 						onTriggerCreated={onTriggerCreated || (() => { })}

@@ -183,7 +183,9 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
                 
                 // Fetch executions
                 const executionsResponse = await proxyFetchTriggerExecutions(triggerId, 1, 50);
-                const executionsData = executionsResponse.items || executionsResponse || [];
+                const executionsData = Array.isArray(executionsResponse) 
+                    ? executionsResponse 
+                    : (Array.isArray(executionsResponse?.items) ? executionsResponse.items : []);
                 setExecutions(executionsData);
             } catch (err) {
                 console.error("Failed to fetch execution data:", err);
@@ -206,7 +208,9 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
             if ([ActivityType.TriggerExecuted, ActivityType.ExecutionSuccess, ActivityType.ExecutionFailed].includes(latestLog.type)) {
                 proxyFetchTriggerExecutions(triggerId, 1, 50)
                     .then(executionsResponse => {
-                        const executionsData = executionsResponse.items || executionsResponse || [];
+                        const executionsData = Array.isArray(executionsResponse) 
+                            ? executionsResponse 
+                            : (Array.isArray(executionsResponse?.items) ? executionsResponse.items : []);
                         setExecutions(executionsData);
                     })
                     .catch(err => console.error("Failed to refresh executions:", err));
@@ -233,13 +237,13 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
     }
 
     // Transform executions to log entries
-    const logs = executions.map(transformToLogEntry);
+    const logs = Array.isArray(executions) ? executions.map(transformToLogEntry) : [];
 
     // Calculate success rate
-    const completedExecutions = executions.filter(e => 
+    const completedExecutions = Array.isArray(executions) ? executions.filter(e => 
         e.status === ExecutionStatus.Completed || e.status === ExecutionStatus.Failed
-    );
-    const successfulExecutions = executions.filter(e => e.status === ExecutionStatus.Completed);
+    ) : [];
+    const successfulExecutions = Array.isArray(executions) ? executions.filter(e => e.status === ExecutionStatus.Completed) : [];
     const successRate = completedExecutions.length > 0 
         ? Math.round((successfulExecutions.length / completedExecutions.length) * 100)
         : 0;

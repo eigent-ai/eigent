@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import ToolSelect from "@/components/AddWorker/ToolSelect";
+import { useState, useEffect } from "react";
 import {
     Dialog,
     DialogContent,
@@ -24,19 +23,9 @@ import { Input } from "@/components/ui/input";
 import {
     Clock,
     Globe,
-    MessageSquare,
-    FileText,
     X,
-    Pencil,
-    Trash2,
-    ChevronRight,
-    CheckCircle2,
-    XCircle,
-    Loader2,
-    Play,
     Plus,
     Zap,
-    ChevronLeft,
     Copy,
     CircleAlert,
 } from "lucide-react";
@@ -47,9 +36,6 @@ import {
     TriggerInput,
     TriggerType,
     Trigger,
-    TriggerExecution,
-    ExecutionStatus,
-    TriggerStatus,
     RequestType,
 } from "@/types";
 import { SchedulePicker } from "./SchedulePicker";
@@ -60,38 +46,27 @@ import { proxyCreateTrigger, proxyUpdateTrigger, proxyDeleteTrigger } from "@/se
 import { TooltipSimple } from "../ui/tooltip";
 
 type TriggerDialogProps = {
-    view: "create" | "overview";
     selectedTrigger: Trigger | null;
-    executions?: TriggerExecution[];
     onTriggerCreating: (triggerData: TriggerInput) => void;
     onTriggerCreated: (triggerData: TriggerInput) => void;
-    onEdit?: (trigger: Trigger) => void;
-    onDelete?: (trigger: Trigger) => void;
-    onTestExecution?: (trigger: Trigger) => void;
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     initialTaskPrompt?: string;
 };
 
 export const TriggerDialog: React.FC<TriggerDialogProps> = ({
-    view,
     selectedTrigger,
-    executions = [],
     onTriggerCreating,
     onTriggerCreated,
-    onEdit,
-    onDelete,
-    onTestExecution,
     isOpen,
     onOpenChange,
     initialTaskPrompt = "",
 }) => {
     const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
-    const [selectedExecution, setSelectedExecution] = useState<TriggerExecution | null>(null);
-    const [showLogs, setShowLogs] = useState(false);
     const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
     const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>("");
+    const [nameError, setNameError] = useState<string>("");
     const [formData, setFormData] = useState<TriggerInput>({
         name: "",
         description: "",
@@ -115,7 +90,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     // Reset form when dialog opens
     useEffect(() => {
-        if (view === "create" && isOpen) {
+        if (isOpen) {
+            // Clear validation errors when dialog opens
+            setNameError("");
+            
             // If editing an existing trigger, populate the form with its data
             if (selectedTrigger) {
                 setFormData({
@@ -149,21 +127,22 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 });
             }
         }
-    }, [isOpen, selectedTrigger, view, initialTaskPrompt]); // React to dialog state and trigger changes
+    }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
 
     const handleClose = () => {
         onOpenChange(false);
-        setShowLogs(false);
-        setSelectedExecution(null);
     };
 
     const handleSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
 
         if (!formData.name.trim()) {
-            toast.error(t("triggers.name-required"));
+            setNameError(t("triggers.name-required"));
             return;
         }
+        
+        // Clear name error if validation passes
+        setNameError("");
         if (!formData.task_prompt?.trim()) {
             toast.error(t("triggers.task-prompt-required"));
             return;
@@ -243,176 +222,23 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
     };
 
-    const getStatusColor = (status: TriggerStatus) => {
-        switch (status) {
-            case TriggerStatus.Active: return "text-text-success bg-surface-success";
-            case TriggerStatus.Inactive: return "text-text-label bg-surface-secondary";
-            default: return "text-text-label bg-surface-secondary";
-        }
-    };
-
-    const getExecutionStatusIcon = (status: ExecutionStatus) => {
-        switch (status) {
-            case ExecutionStatus.Completed: return <CheckCircle2 className="w-4 h-4 text-text-success" />;
-            case ExecutionStatus.Failed: return <XCircle className="w-4 h-4 text-text-cuation" />;
-            case ExecutionStatus.Running: return <Loader2 className="w-4 h-4 text-text-information animate-spin" />;
-            //TODO: Reconform Missed icon
-            case ExecutionStatus.Missed: return <XCircle className="w-4 h-4 text-text-cuation" />;
-            default: return <Clock className="w-4 h-4 text-text-label" />;
-        }
-    };
-
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return "-";
-        return new Date(dateString).toLocaleString();
-    };
-
-    const handleEditClick = () => {
-        if (onEdit && selectedTrigger) onEdit(selectedTrigger);
-    };
-
-    const handleDeleteClick = () => {
-        if (onDelete && selectedTrigger) {
-            onDelete(selectedTrigger);
-        }
-    };
-
-    const handleExecutionClick = (execution: TriggerExecution) => {
-        setSelectedExecution(execution);
-        setShowLogs(true);
-    };
-
-    const renderEmptyState = () => (
-        <div className="w-full h-full flex flex-col items-center justify-center text-center px-md py-lg min-h-[300px]">
-            <FileText className="w-12 h-12 text-icon-secondary mb-sm" />
-            <h3 className="text-text-heading font-semibold text-body-base mb-xs">
-                {t("triggers.no-trigger-selected")}
-            </h3>
-            <p className="text-text-label text-sm max-w-sm">
-                {t("triggers.select-trigger-hint")}
-            </p>
-        </div>
-    );
-
-    const renderOverviewContent = () => {
-        if (!selectedTrigger) return null;
-        return (
-            <div className="w-full flex flex-col overflow-hidden">
-                <div className={`flex-1 flex flex-row ${showLogs ? 'border-r border-border-secondary' : ''}`}>
-                    <div className="flex-1 flex flex-col overflow-auto">
-                        <div className="flex-1 flex-col space-y-4">
-                            <div className="flex flex-col bg-surface-tertiary rounded-2xl p-4 gap-md">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-text-body font-bold text-sm">{t("triggers.trigger-overview")}</div>
-                                    <Button variant="primary" size="sm" onClick={() => onTestExecution?.(selectedTrigger)} className="gap-1">
-                                        <Play className="w-4 h-4" />{t("triggers.run-test")}
-                                    </Button>
-                                </div>
-                                <div className="w-full flex flex-row gap-4">
-                                    <div className="flex-1 w-full h-full">
-                                        <div className="text-text-body text-sm whitespace-pre-wrap bg-surface-secondary rounded-lg p-3 min-h-[100px]">
-                                            {selectedTrigger.task_prompt || "-"}
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 w-full space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <Label className="text-text-label text-xs">{t("triggers.type")}</Label>
-                                            <div className="flex items-center gap-1 text-sm">
-                                                {selectedTrigger.trigger_type === TriggerType.Schedule && <><Clock className="w-4 h-4" />{t("triggers.schedule")}</>}
-                                                {selectedTrigger.trigger_type === TriggerType.Webhook && <><Globe className="w-4 h-4" />{t("triggers.webhook")}</>}
-                                                {selectedTrigger.trigger_type === TriggerType.SlackTrigger && <><MessageSquare className="w-4 h-4" />{t("triggers.slack")}</>}
-                                            </div>
-                                        </div>
-                                        {selectedTrigger.trigger_type === TriggerType.Schedule && (
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-text-label text-xs">{t("triggers.period")}</Label>
-                                                <code className="text-xs font-mono bg-surface-secondary px-2 py-1 rounded">{selectedTrigger.custom_cron_expression}</code>
-                                            </div>
-                                        )}
-                                        {selectedTrigger.trigger_type === TriggerType.Webhook && selectedTrigger.webhook_url && (
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-text-label text-xs">{t("triggers.webhook-url")}</Label>
-                                                <code className="text-xs font-mono bg-surface-secondary px-2 py-1 rounded max-w-[180px] truncate">{`${import.meta.env.VITE_PROXY_URL}/api${selectedTrigger.webhook_url}`}</code>
-                                            </div>
-                                        )}
-                                        <div className="flex items-center justify-between">
-                                            <Label className="text-text-label text-xs">{t("triggers.executions")}</Label>
-                                            <span className="text-sm">{selectedTrigger.execution_count}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <Label className="text-text-label text-xs">{t("triggers.status")}</Label>
-                                            <span className={`text-xs px-2 py-1 rounded ${getStatusColor(selectedTrigger.status)}`}>
-                                                {selectedTrigger.status === TriggerStatus.Active && t("triggers.status.active")}
-                                                {selectedTrigger.status === TriggerStatus.Inactive && t("triggers.status.inactive")}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <Label className="text-text-label text-xs">{t("triggers.created-at")}</Label>
-                                            <span className="text-xs text-text-label">{formatDate(selectedTrigger.created_at)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-surface-tertiary rounded-2xl p-4">
-                                <div className="text-text-body font-bold text-sm mb-3">{t("triggers.execution-history")}</div>
-                                {executions.length === 0 ? (
-                                    <div className="text-text-label text-sm text-center py-4">{t("triggers.no-executions-yet")}</div>
-                                ) : (
-                                    <div className="space-y-2 max-h-[200px] overflow-auto">
-                                        {executions.map((execution) => (
-                                            <div key={execution.id} onClick={() => handleExecutionClick(execution)} className="flex items-center justify-between p-3 bg-surface-secondary rounded-lg hover:bg-surface-primary cursor-pointer transition-colors">
-                                                <div className="flex items-center gap-3">
-                                                    {getExecutionStatusIcon(execution.status)}
-                                                    <div>
-                                                        <div className="text-sm font-medium">{execution.execution_id.slice(0, 8)}...</div>
-                                                        <div className="text-xs text-text-label">{formatDate(execution.started_at)}</div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-text-label">{execution.duration_seconds ? `${execution.duration_seconds}s` : "-"}</span>
-                                                    <ChevronRight className="w-4 h-4 text-icon-secondary" />
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    {showLogs && selectedExecution && (
-                        <div className="w-[320px] flex flex-col bg-fill-default border-l border-border-secondary">
-                            <div className="flex items-center justify-between px-md py-sm border-b border-border-secondary">
-                                <div className="text-text-body font-bold text-sm">{t("triggers.logs")}</div>
-                                <Button variant="ghost" size="icon" onClick={() => setShowLogs(false)}><X className="w-4 h-4" /></Button>
-                            </div>
-                            <div className="flex-1 overflow-auto p-4 space-y-3">
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between"><Label className="text-text-label text-xs">Execution ID</Label><code className="text-xs font-mono">{selectedExecution.execution_id}</code></div>
-                                    <div className="flex items-center justify-between"><Label className="text-text-label text-xs">Status</Label><div className="flex items-center gap-1">{getExecutionStatusIcon(selectedExecution.status)}<span className="text-xs">{selectedExecution.status}</span></div></div>
-                                    <div className="flex items-center justify-between"><Label className="text-text-label text-xs">{t("triggers.started")}</Label><span className="text-xs">{formatDate(selectedExecution.started_at)}</span></div>
-                                    {selectedExecution.duration_seconds && <div className="flex items-center justify-between"><Label className="text-text-label text-xs">{t("triggers.duration")}</Label><span className="text-xs">{selectedExecution.duration_seconds}s</span></div>}
-                                    {selectedExecution.tokens_used && <div className="flex items-center justify-between"><Label className="text-text-label text-xs">{t("triggers.tokens")}</Label><span className="text-xs">{selectedExecution.tokens_used}</span></div>}
-                                </div>
-                                {selectedExecution.error_message && <div className="space-y-1"><Label className="text-text-label text-xs">Error</Label><div className="text-xs text-text-cuation bg-surface-cuation p-2 rounded">{selectedExecution.error_message}</div></div>}
-                                {selectedExecution.output_data && <div className="space-y-1"><Label className="text-text-label text-xs">{t("triggers.output-tasks")}</Label><pre className="text-xs bg-surface-tertiary p-2 rounded overflow-auto max-h-[150px]">{JSON.stringify(selectedExecution.output_data, null, 2)}</pre></div>}
-                                {selectedExecution.tools_executed && <div className="space-y-1"><Label className="text-text-label text-xs">Tools Executed</Label><pre className="text-xs bg-surface-tertiary p-2 rounded overflow-auto max-h-[150px]">{JSON.stringify(selectedExecution.tools_executed, null, 2)}</pre></div>}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
     const renderCreateContent = () => {
         return (
-            <div className="flex-1 w-full h-full overflow-y-auto scrollbar-always-visible p-6 space-y-6 bg-surface-disabled">
+            <div className="flex flex-col w-full h-full overflow-y-auto scrollbar-always-visible p-6 gap-6">
                 {/* Trigger Name */}
                 <Input
                     id="name"
                     value={formData.name}
                     required
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    state={nameError ? "error" : "default"}
+                    note={nameError || undefined}
+                    onChange={(e) => {
+                        setFormData({ ...formData, name: e.target.value });
+                        // Clear error when user starts typing
+                        if (nameError) {
+                            setNameError("");
+                        }
+                    }}
                     title={t("triggers.name")}
                     placeholder={t("triggers.name-placeholder")}
                 />
@@ -423,43 +249,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     onChange={(value) => setFormData({ ...formData, task_prompt: value })}
                 />
 
-                {/* Trigger Type */}
-                <div className="space-y-3">
-                    <Label className="font-bold text-sm">{t("triggers.type")}</Label>
-                    <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
-                        <TabsList className="w-full">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value={TriggerType.Schedule}>
-                            <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
-                        </TabsContent>
-                        <TabsContent value={TriggerType.Webhook}>
-                            <div className="space-y-4">
-                                {/* <ToolSelect
-                                    onShowEnvConfig={() => { }}
-                                    onSelectedToolsChange={setSelectedTools}
-                                    initialSelectedTools={selectedTools}
-                                    ref={toolSelectRef}
-                                /> */}
-                                <div className="space-y-2">
-                                    <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
-                                    <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
-                                        <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={RequestType.GET}>{t("triggers.webhook-get")}</SelectItem>
-                                            <SelectItem value={RequestType.POST}>{t("triggers.webhook-post")}</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
-                                    {t("triggers.webhook-url-after-creation")}
-                                </div>
-                            </div>
-                        </TabsContent>
-                    </Tabs>
-                </div>
-
                 {/* Execution Settings - Accordion */}
                 <Accordion type="single" collapsible className="w-full">
                     <AccordionItem value="execution-settings" className="border-none">
@@ -467,7 +256,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             <span className="font-bold text-sm text-text-heading">Execution Settings</span>
                         </AccordionTrigger>
                         <AccordionContent>
-                            <div className="grid grid-cols-3 gap-4 pt-2">
+                            <div className="flex flex-col gap-4 pt-2 bg-surface-disabled rounded-lg p-4">
+                                <div className="flex items-center gap-2 my-2">
+                                    <Label htmlFor="single_execution" className="text-body-md font-bold">{t("triggers.single-execution")}</Label>
+                                    <Switch id="single_execution" 
+                                    size="sm"
+                                    checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
+                                </div>
+                                <div className="flex items-center gap-2">
                                 <Input
                                     id="max_per_hour"
                                     title={t("triggers.max-per-hour")}
@@ -486,28 +282,60 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     min={0}
                                     disabled={formData.is_single_execution}
                                 />
-                                <div className="flex flex-col items-start space-x-2">
-                                    <Label htmlFor="single_execution" className="text-body-md font-bold mb-3">{t("triggers.single-execution")}</Label>
-                                    <Switch id="single_execution" className="my-2" checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
                                 </div>
                             </div>
                         </AccordionContent>
                     </AccordionItem>
                 </Accordion>
+
+                {/* Trigger Type */}
+                <div className="space-y-3">
+                    <Label className="font-bold text-sm">{t("triggers.type")}</Label>
+                    <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
+                        <TabsList className="w-full">
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
+
+                        </TabsList>
+                        <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
+                            <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
+                        </TabsContent>
+                        <TabsContent value={TriggerType.Webhook} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
+                            <div className="space-y-4">
+                                {/* <ToolSelect
+                                    onShowEnvConfig={() => { }}
+                                    onSelectedToolsChange={setSelectedTools}
+                                    initialSelectedTools={selectedTools}
+                                    ref={toolSelectRef}
+                                /> */}
+                                <div className="space-y-2">
+                                    <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
+                                    <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
+                                        <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={RequestType.GET}>GET</SelectItem>
+                                            <SelectItem value={RequestType.POST}>POST</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
+                                    {t("triggers.webhook-url-after-creation")}
+                                </div>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                </div>
             </div>
         );
     };
 
     const getDialogTitle = () => {
-        if (view === "create") {
-            return t("triggers.create-trigger-agent");
-        }
-        if (selectedTrigger) return selectedTrigger.name;
-        return t("triggers.trigger-details");
+        return selectedTrigger 
+            ? t("triggers.edit-trigger-agent", { defaultValue: "Edit Trigger Agent" })
+            : t("triggers.create-trigger-agent");
     };
 
     const renderFooter = () => {
-        if (view !== "create") return null;
         return (
             <DialogFooter>
                 <div className="flex w-full justify-end">
@@ -526,27 +354,16 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         <>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent
-                size="lg"
+                size="md"
                 showCloseButton={true}
                 onClose={handleClose}
-                className={view === "create" ? "max-w-[600px] h-[600px] overflow-hidden flex flex-col" : showLogs ? "max-w-[1100px]" : "max-w-[700px]"}
                 aria-describedby={undefined}
             >
                 <DialogHeader
                     title={getDialogTitle()}
-                    subtitle={view === "create" ? t("triggers.create-trigger-subtitle", { defaultValue: "Set up an automated trigger for your agent" }) : undefined}
-                >
-                    {view === "overview" && selectedTrigger && (
-                        <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={handleEditClick} className="gap-1"><Pencil className="w-4 h-4" />{t("triggers.edit")}</Button>
-                            <Button variant="ghost" size="sm" onClick={handleDeleteClick}><Trash2 className="w-4 h-4" />{t("triggers.delete")}</Button>
-                        </div>
-                    )}
-                </DialogHeader>
-                <DialogContentSection className={view === "create" ? "p-0 flex-1 overflow-hidden" : "max-h-[60vh] overflow-auto"}>
-                    {view === "overview" && !selectedTrigger && renderEmptyState()}
-                    {view === "overview" && selectedTrigger && renderOverviewContent()}
-                    {view === "create" && renderCreateContent()}
+                />
+                <DialogContentSection className="p-0 flex-1 overflow-auto min-h-0">
+                    {renderCreateContent()}
                 </DialogContentSection>
                 {renderFooter()}
             </DialogContent>
@@ -654,35 +471,27 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
 // Trigger button component
 type TriggerDialogButtonProps = {
-    view?: "create" | "overview";
     selectedTrigger?: Trigger | null;
-    executions?: TriggerExecution[];
     onTriggerCreating: (triggerData: TriggerInput) => void;
     onTriggerCreated: (triggerData: TriggerInput) => void;
-    onEdit?: (trigger: Trigger) => void;
-    onDelete?: (trigger: Trigger) => void;
-    onTestExecution?: (trigger: Trigger) => void;
     buttonVariant?: "primary" | "secondary" | "outline" | "ghost";
     buttonSize?: "xxs" | "xs" | "sm" | "md" | "lg" | "icon";
     buttonText?: string;
     buttonIcon?: React.ReactNode;
     className?: string;
+    initialTaskPrompt?: string;
 };
 
 export const TriggerDialogButton: React.FC<TriggerDialogButtonProps> = ({
-    view = "create",
     selectedTrigger = null,
-    executions = [],
     onTriggerCreating,
     onTriggerCreated,
-    onEdit,
-    onDelete,
-    onTestExecution,
     buttonVariant = "primary",
     buttonSize = "md",
     buttonText,
     buttonIcon,
     className,
+    initialTaskPrompt = "",
 }) => {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
@@ -694,16 +503,12 @@ export const TriggerDialogButton: React.FC<TriggerDialogButtonProps> = ({
                 {buttonText || t("triggers.add-trigger")}
             </Button>
             <TriggerDialog
-                view={view}
                 selectedTrigger={selectedTrigger}
-                executions={executions}
                 onTriggerCreating={onTriggerCreating}
                 onTriggerCreated={onTriggerCreated}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onTestExecution={onTestExecution}
                 isOpen={isOpen}
                 onOpenChange={setIsOpen}
+                initialTaskPrompt={initialTaskPrompt}
             />
         </>
     );

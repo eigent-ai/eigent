@@ -17,32 +17,8 @@ interface PromptExample {
     prompt: string;
 }
 
-const defaultPromptExamples: PromptExample[] = [
-    {
-        title: "Analyze Data",
-        prompt: "Analyze the data in my spreadsheet and create a summary report",
-    },
-    {
-        title: "Write Code",
-        prompt: "Write a Python script to automate file organization",
-    },
-    {
-        title: "Research Topic",
-        prompt: "Research the latest trends in AI and summarize key findings",
-    },
-    {
-        title: "Create Document",
-        prompt: "Create a project proposal document with executive summary",
-    },
-    {
-        title: "Debug Issue",
-        prompt: "Debug the authentication issue in my application",
-    },
-    {
-        title: "Optimize Performance",
-        prompt: "Optimize the database queries for better performance",
-    },
-];
+// TODO: Add prompt examples here
+const defaultPromptExamples: PromptExample[] = [];
 
 /**
  * ExpandedInputBox Props

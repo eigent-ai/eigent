@@ -26,10 +26,12 @@ export const TriggerTaskInput: React.FC<TriggerTaskInputProps> = ({
             {/* Task input area */}
             <Textarea
                 id="task"
+                variant="enhanced"
+                size="sm"
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder || t("triggers.task-prompt-placeholder")}
-                className="flex-1 resize-none bg-surface-secondary border-border-secondary min-h-[200px]"
+                className="flex-1 resize-none min-h-[100px]"
             />
         </div>
     );

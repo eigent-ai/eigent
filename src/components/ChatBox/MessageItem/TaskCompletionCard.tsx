@@ -63,7 +63,6 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
 
             {/* Trigger Dialog */}
             <TriggerDialog
-                view="create"
                 selectedTrigger={null}
                 onTriggerCreating={handleTriggerCreating}
                 onTriggerCreated={handleTriggerCreated}

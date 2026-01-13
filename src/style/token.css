@@ -199,7 +199,7 @@
     /* Menu Tabs Component */
     --menutabs-fill-default: var(--fill-fill-transparent);
     --menutabs-fill-hover: var(--fill-fill-tertiary-hover);
-    --menutabs-fill-active: var(--fill-fill-tertiary);
+    --menutabs-fill-active: var(--fill-default);
     --menutabs-fill-disabled: var(--fill-fill-tertiary-disabled);
     --menutabs-border-disabled: var(--fill-fill-tertiary-disabled);
     --menutabs-border-active: var(--fill-fill-tertiary-active);
@@ -213,7 +213,7 @@
     --menutabs-icon-default: var(--icon-disabled);
     --menutabs-icon-disabled: var(--icon-disabled);
     --menutabs-icon-active: var(--icon-action);
-    --menutabs-bg-default: var(--fill-default);
+    --menutabs-bg-default: var(--surface-primary);
 
     /* Progress Component */
     --progress-fill-default: var(--fill-fill-success);
@@ -309,7 +309,7 @@
     --badge-splitting-surface: var(--surface-information);
 
     /* Switch Component */
-    --switch-off-fill-track-fill: var(--fill-fill-primary);
+    --switch-off-fill-track-fill: var(--fill-fill-secondary);
     --switch-off-fill-track-border: var(--border-primary);
     --switch-off-fill-thumb-border: var(--border-primary);
     --switch-off-fill-thumb-fill: var(--fill-default);

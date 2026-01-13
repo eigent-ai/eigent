@@ -91,5 +91,7 @@
         "stale": "Stale",
         "completed": "Completed",
         "unknown": "Unknown"
-    }
+    },
+    "webhook-url-after-creation": "You can find your webhook URL in the trigger details after creation.",
+    "webhook-method": "Request Method"
 }
