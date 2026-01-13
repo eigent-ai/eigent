@@ -1,19 +1,34 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, dialog, nativeTheme, protocol, session } from 'electron'
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
-import os, { homedir } from 'node:os'
-import log from 'electron-log'
-import { update, registerUpdateIpcHandlers } from './update'
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
-import { WebViewManager } from './webview'
-import { FileReader } from './fileReader'
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
-import fs, { existsSync, readFileSync } from 'node:fs'
-import fsp from 'fs/promises'
-import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig'
-import { getEnvPath, updateEnvBlock, removeEnvKey, getEmailFolderPath } from './utils/envUtil'
-import { copyBrowserData } from './copy'
-import { findAvailablePort } from './init'
+import {
+  app,
+  BrowserWindow,
+  shell,
+  ipcMain,
+  Menu,
+  dialog,
+  nativeTheme,
+  protocol,
+  session,
+} from 'electron';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import os, { homedir } from 'node:os';
+import log from 'electron-log';
+import { update, registerUpdateIpcHandlers } from './update';
+import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
+import { WebViewManager } from './webview';
+import { FileReader } from './fileReader';
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import fs, { existsSync, readFileSync } from 'node:fs';
+import fsp from 'fs/promises';
+import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig';
+import {
+  getEnvPath,
+  updateEnvBlock,
+  removeEnvKey,
+  getEmailFolderPath,
+} from './utils/envUtil';
+import { copyBrowserData } from './copy';
+import { findAvailablePort } from './init';
 import kill from 'tree-kill';
 import { zipFolder } from './utils/log'
 import mime from "mime";
