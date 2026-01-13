@@ -57,7 +57,7 @@ export default function Login() {
 
     if (!formData.password) {
       newErrors.password = t('layout.please-enter-password');
-    } else if (formData.password.length < 6) {
+    } else if (formData.password.length < 8) {
       newErrors.password = t('layout.password-must-be-at-least-8-characters');
     }
 
@@ -180,6 +180,10 @@ export default function Login() {
   };
 
   const handleReloadBtn = async (type: string) => {
+    if (!app) {
+      console.error('Stack app not initialized');
+      return;
+    }
     console.log('handleReloadBtn1', type);
     const cookies = document.cookie.split('; ');
     cookies.forEach((cookie) => {

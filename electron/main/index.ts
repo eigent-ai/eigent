@@ -13,9 +13,6 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os, { homedir } from 'node:os';
 import log from 'electron-log';
-import installExtension, {
-  REACT_DEVELOPER_TOOLS,
-} from 'electron-devtools-installer';
 import { update, registerUpdateIpcHandlers } from './update';
 import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
 import { WebViewManager } from './webview';
@@ -1784,6 +1781,10 @@ app.whenReady().then(async () => {
   if (VITE_DEV_SERVER_URL) {
     try {
       log.info('[DEVTOOLS] Installing React DevTools extension...');
+      // Dynamic import to avoid bundling in production
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
+        'electron-devtools-installer'
+      );
       const name = await installExtension(REACT_DEVELOPER_TOOLS, {
         loadExtensionOptions: { allowFileAccess: true },
       });
