@@ -417,7 +417,7 @@ export default function Overview() {
 
                     {/* List View Section */}
                     <div className="flex flex-col h-full pl-3 overflow-auto scrollbar-always-visible">
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-2">
                             {sortedTriggers.length === 0 ? (
                                 <div
                                     onClick={() => {

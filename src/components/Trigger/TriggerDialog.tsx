@@ -313,8 +313,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                     <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
                                         <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value={RequestType.GET}>{t("triggers.webhook-get")}</SelectItem>
-                                            <SelectItem value={RequestType.POST}>{t("triggers.webhook-post")}</SelectItem>
+                                            <SelectItem value={RequestType.GET}>GET</SelectItem>
+                                            <SelectItem value={RequestType.POST}>POST</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
