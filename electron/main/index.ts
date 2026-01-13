@@ -54,7 +54,7 @@ let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
-let browser_port = 9222;
+let browser_port = 9223;
 let use_external_cdp = false;  // Flag to track if using external CDP browser
 
 // CDP Browser Pool
