@@ -18,7 +18,7 @@ import { useTriggerStore } from "@/store/triggerStore";
 import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
 import { Trigger, TriggerInput, TriggerStatus } from "@/types";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelativeTime } from "@/lib/utils";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -331,7 +331,7 @@ export default function Overview() {
                                         {activityLogs.slice(0, 50).map((log) => {
                                             const Icon = getActivityIcon(log.type);
                                             const notificationType = getActivityNotificationType(log.type);
-                                            const timeAgo = formatDistanceToNow(log.timestamp, { addSuffix: true });
+                                            const timeAgo = formatRelativeTime(log.timestamp.toISOString());
                                             
                                             return (
                                                 <motion.div

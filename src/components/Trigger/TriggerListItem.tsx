@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Zap, Clock, MoreHorizontal, Edit, Copy, Trash2, Globe, MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { formatDateTime } from "@/lib/utils";
 
 type TriggerListItemProps = {
     trigger: Trigger;
@@ -60,8 +61,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
 
     const formatLastExecution = (dateString?: string) => {
         if (!dateString) return t("triggers.never");
-        const date = new Date(dateString);
-        return `${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+        return formatDateTime(dateString, "HH:mm MMM dd");
     };
 
     return (
