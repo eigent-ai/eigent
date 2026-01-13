@@ -64,8 +64,6 @@ class Workforce(BaseWorkforce):
                 enabled_strategies=["retry", "replan"],
             ),
         )
-        self.task_agent.stream_accumulate = True
-        self.task_agent._stream_accumulate_explicit = True
         logger.info(f"[WF-LIFECYCLE] ✅ Workforce.__init__ COMPLETED, id={id(self)}")
 
     def eigent_make_sub_tasks(
@@ -113,16 +111,54 @@ class Workforce(BaseWorkforce):
         task.state = TaskState.OPEN
         logger.info(f"[DECOMPOSE] Workforce reset complete, state: {self._state.name}")
 
+        model = getattr(self.task_agent, "model", None)
+        model_stream_attr = None
+        model_stream_prev = None
+        model_stream_had_key = False
+        model_stream_created = False
+        if model is not None:
+            for attr in ("model_config_dict", "model_config"):
+                if hasattr(model, attr):
+                    config = getattr(model, attr)
+                    if config is None:
+                        config = {}
+                        setattr(model, attr, config)
+                        model_stream_created = True
+                    if isinstance(config, dict):
+                        model_stream_attr = attr
+                        model_stream_had_key = "stream" in config
+                        model_stream_prev = config.get("stream")
+                        config["stream"] = True
+                    break
+
+        stream_accumulate_prev = getattr(self.task_agent, "stream_accumulate", False)
+        stream_explicit_prev = getattr(self.task_agent, "_stream_accumulate_explicit", False)
+        self.task_agent.stream_accumulate = True
+        self.task_agent._stream_accumulate_explicit = True
+
         logger.info(f"[DECOMPOSE] Calling handle_decompose_append_task")
-        subtasks = asyncio.run(
-            self.handle_decompose_append_task(
-                task, 
-                reset=False, 
-                coordinator_context=coordinator_context,
-                on_stream_batch=on_stream_batch, 
-                on_stream_text=on_stream_text
+        try:
+            subtasks = asyncio.run(
+                self.handle_decompose_append_task(
+                    task,
+                    reset=False,
+                    coordinator_context=coordinator_context,
+                    on_stream_batch=on_stream_batch,
+                    on_stream_text=on_stream_text,
+                )
             )
-        )
+        finally:
+            self.task_agent.stream_accumulate = stream_accumulate_prev
+            self.task_agent._stream_accumulate_explicit = stream_explicit_prev
+            if model is not None and model_stream_attr:
+                config = getattr(model, model_stream_attr, None)
+                if isinstance(config, dict):
+                    if model_stream_had_key:
+                        config["stream"] = model_stream_prev
+                    else:
+                        config.pop("stream", None)
+                    if model_stream_created and set(config.keys()) <= {"stream"}:
+                        setattr(model, model_stream_attr, None)
         logger.info("=" * 80)
         logger.info(f"✅ [DECOMPOSE] Task decomposition COMPLETED", extra={
             "api_task_id": self.api_task_id,
