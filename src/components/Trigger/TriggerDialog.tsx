@@ -295,11 +295,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         <TabsList className="w-full">
                             <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
                             <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
+
                         </TabsList>
-                        <TabsContent value={TriggerType.Schedule} className="min-h-[280px]">
+                        <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
                         </TabsContent>
-                        <TabsContent value={TriggerType.Webhook} className="min-h-[280px]">
+                        <TabsContent value={TriggerType.Webhook} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <div className="space-y-4">
                                 {/* <ToolSelect
                                     onShowEnvConfig={() => { }}

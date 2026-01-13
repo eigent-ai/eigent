@@ -150,7 +150,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     const minutes = Array.from({ length: 60 }, (_, i) => i.toString());
 
     return (
-        <div className="w-full space-y-4 bg-surface-disabled rounded-lg p-4">
+        <div className="w-full space-y-4">
             <div className="space-y-2">
                 <Select
                     value={frequency}
