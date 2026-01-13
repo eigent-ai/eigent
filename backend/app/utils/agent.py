@@ -684,9 +684,6 @@ def agent_model(
             if k not in init_param_keys and k not in ["model_platform", "model_type", "api_key", "url"]
         }
     )
-    if agent_name == Agents.task_agent:
-        model_config["stream"] = True
-
     return ListenChatAgent(
         options.project_id,
         agent_name,
