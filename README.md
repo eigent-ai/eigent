@@ -44,17 +44,16 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 <br/>
 
-[![][image-join-us]][join-us]
-
 <details>
 <summary><kbd>Table of contents</kbd></summary>
 
 #### TOC
 
 - [🚀 Getting Started](#-getting-started)
-  - [☁️ Cloud Version](#️-cloud-version)
-  - [🏠 Self-Hosting (Community Edition)](#-self-hosting-community-edition)
+  - [🏠 Local Deployment (Recommended)](#-local-deployment-recommended)
+  - [⚡ Quick Start (Cloud-Connected)](#-quick-start-cloud-connected)
   - [🏢 Enterprise](#-enterprise)
+  - [☁️ Cloud Version](#️-cloud-version)
 - [✨ Key features](#-key-features)
   - [🏭 Workforce](#-workforce)
   - [🧠 Comprehensive Model Support](#-comprehensive-model-support)
@@ -82,11 +81,52 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 ## **🚀 Getting Started**
 
-There are three ways to get started with Eigent:
+> **🔓 Build in Public** — Eigent is **100% open source** from day one. Every feature, every commit, every decision is transparent. We believe the best AI tools should be built openly with the community, not behind closed doors.
+
+### 🏠 Local Deployment (Recommended)
+
+The recommended way to run Eigent — fully standalone with complete control over your data, no cloud account required.
+
+👉 **[Full Local Deployment Guide](./server/README_EN.md)**
+
+This setup includes:
+- Local backend server with full API
+- Local model integration (vLLM, Ollama, LM Studio, etc.)
+- Complete isolation from cloud services
+- Zero external dependencies
+
+### ⚡ Quick Start (Cloud-Connected)
+
+For a quick preview using our cloud backend — get started in seconds:
+
+#### Prerequisites
+
+- Node.js (version 18-22) and npm
+
+#### Steps
+
+```bash
+git clone https://github.com/eigent-ai/eigent.git
+cd eigent
+npm install
+npm run dev
+```
+
+> Note: This mode connects to Eigent cloud services and requires account registration. For a fully standalone experience, use [Local Deployment](#-local-deployment-recommended) instead.
+
+### 🏢 Enterprise
+
+For organizations requiring maximum security, customization, and control:
+
+- **Exclusive Features** (like SSO & custom development)
+- **Scalable Enterprise Deployment**
+- **Negotiated SLAs** & implementation services
+
+📧 For further details, please contact us at [info@eigent.ai](mailto:info@eigent.ai).
 
 ### ☁️ Cloud Version
 
-The fastest way to experience Eigent's multi-agent AI capabilities is through our cloud platform, perfect for teams and individuals who want immediate access without setup complexity. We'll host the models, APIs, and cloud storage, ensuring Eigent runs flawlessly.
+For teams who prefer managed infrastructure, we also offer a cloud platform. The fastest way to experience Eigent's multi-agent AI capabilities without setup complexity. We'll host the models, APIs, and cloud storage, ensuring Eigent runs flawlessly.
 
 - **Instant Access** - Start building multi-agent workflows in minutes.
 - **Managed Infrastructure** - We handle scaling, updates, and maintenance.
@@ -99,41 +139,6 @@ The fastest way to experience Eigent's multi-agent AI capabilities is through ou
 <div align="right">
 <a href="https://www.eigent.ai/download">Get started at Eigent.ai →</a>
 </div>
-
-### 🏠 Self-Hosting (Community Edition)
-
-For users who prefer local control, data privacy, or customization, this option is ideal for organizations requiring:
-
-- **Data Privacy** - Keep sensitive data within your infrastructure.
-- **Customization** - Modify and extend the platform to fit your needs.
-- **Cost Control** - Avoid recurring cloud fees for large-scale deployments.
-
-#### 1. Prerequisites
-
-- Node.js (version 18-22) and npm
-
-#### 2. Quick Start
-
-```bash
-git clone https://github.com/eigent-ai/eigent.git
-cd eigent
-npm install
-npm run dev
-```
-
-#### 3. Local Development (Use the version that is completely separated from the cloud service)
-[server/README_EN.md](./server/README_EN.md)
-
-### 🏢 Enterprise
-
-For organizations requiring maximum security, customization, and control:
-
-- **Commercial License** - [Check our license →](LICENSE)
-- **Exclusive Features** (like SSO & custom development)
-- **Scalable Enterprise Deployment**
-- **Negotiated SLAs** & implementation services
-
-📧 For further details, please contact us at [info@eigent.ai](mailto:info@eigent.ai).
 
 ## **✨ Key features**
 Unlock the full potential of exceptional productivity with Eigent’s powerful features—built for seamless integration, smarter task execution, and boundless automation.
@@ -306,7 +311,7 @@ Eigent is built on top of [CAMEL-AI.org][camel-ai-org-github]'s research and inf
 
 ## **📄 Open Source License**
 
-This repository is licensed under the [**Eigent Open Source License**](LICENSE), based on Apache 2.0 with additional conditions.
+This repository is licensed under the [Apache License 2.0](LICENSE).
 
 ## 🌐 Community & Contact
 For more information please contact info@eigent.ai
