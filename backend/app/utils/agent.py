@@ -804,6 +804,7 @@ def agent_model(
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
     cleanup_callback: Callable[[], None] | None = None,
+    extra_model_config: dict | None = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -828,11 +829,11 @@ def agent_model(
 
             model_config_dict={
                 "user": str(options.project_id),
-                # "parallel_tool_calls": False,
+                **(extra_model_config or {}),
             }
             if options.is_cloud()
             else {
-                # "parallel_tool_calls": False,
+                **(extra_model_config or {}),
             },
             **{
                 k: v
@@ -1440,6 +1441,7 @@ When you select name in salesforce new event, please select the corresponding op
         toolkits_to_register_agent=[web_toolkit_for_agent_registration],
         enable_snapshot_clean=True,
         cleanup_callback=cleanup_cdp_browser,
+        extra_model_config={"parallel_tool_calls": False},
     )
 
     # Attach CDP management callbacks to the agent for clone support
@@ -1991,7 +1993,17 @@ async def mcp_agent(options: Chat):
             }
             if options.is_cloud()
             else {
-                # "parallel_tool_calls": False,
+                # "
+                #         for tool in original_tools:
+                #             method_name = tool.func.__name__
+                #             enhanced_func = self._add_messaging_to_tool(tool.func)
+                #             enhanced_func = self._create_bound_method_wrapper(
+                #                 enhanced_func,
+                #                 toolkit,
+                #             )
+                #             enhanced_methods[method_name] = enhanced_func
+                #             setattr(toolkit, method_name, enhanced_func)
+                #         original_get_tools_method = toolkit.get_toolsparallel_tool_calls": False,
             },
             **{
                 k: v
