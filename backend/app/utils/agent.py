@@ -828,11 +828,11 @@ def agent_model(
 
             model_config_dict={
                 "user": str(options.project_id),
-                "parallel_tool_calls": False,
+                # "parallel_tool_calls": False,
             }
             if options.is_cloud()
             else {
-                "parallel_tool_calls": False,
+                # "parallel_tool_calls": False,
             },
             **{
                 k: v
@@ -1987,11 +1987,11 @@ async def mcp_agent(options: Chat):
             url=options.api_url,
             model_config_dict={
                 "user": str(options.project_id),
-                "parallel_tool_calls": False,
+                # "parallel_tool_calls": False,
             }
             if options.is_cloud()
             else {
-                "parallel_tool_calls": False,
+                # "parallel_tool_calls": False,
             },
             **{
                 k: v
