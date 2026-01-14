@@ -47,7 +47,16 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
-    id: 'bedrock',
+    id: 'minimax',
+    name: 'Minimax',
+    apiKey: '',
+    apiHost: 'https://api.minimax.io/v1',
+    description: "Minimax model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
+    id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
     apiHost: '',

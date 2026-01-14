@@ -48,6 +48,7 @@ from app.utils.toolkit.twitter_toolkit import TwitterToolkit
 from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.toolkit.reddit_toolkit import RedditToolkit
 from app.utils.toolkit.slack_toolkit import SlackToolkit
+from app.utils.toolkit.lark_toolkit import LarkToolkit
 from camel.types import ModelPlatformType, ModelType
 from camel.toolkits import MCPToolkit, ToolkitMessageIntegration
 import datetime
@@ -805,6 +806,7 @@ def agent_model(
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
     cleanup_callback: Callable[[], None] | None = None,
+    extra_model_config: dict | None = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -829,11 +831,11 @@ def agent_model(
 
             model_config_dict={
                 "user": str(options.project_id),
-                "parallel_tool_calls": False,
+                **(extra_model_config or {}),
             }
             if options.is_cloud()
             else {
-                "parallel_tool_calls": False,
+                **(extra_model_config or {}),
             },
             **{
                 k: v
@@ -931,23 +933,9 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 <mandatory_instructions>
 - You MUST use the `read_note` tool to read the ALL notes from other agents.
 
-- You MUST use the `send_message_to_user` tool to keep the user informed throughout your work:
-  * Before starting a major task or phase
-  * After completing each significant step
-  * When creating or modifying important files
-  * When encountering issues or making key decisions
-
-  Format your messages as:
-  - **message_title**: Short and specific (e.g., "Starting Code Analysis", "File Created")
-  - **message_description**: One clear sentence explaining what happened or what you're doing
-  - **message_attachment**: File path when you create/modify a file (optional)
-
-  Example:
-  send_message_to_user(
-      message_title="Analysis Complete",
-      message_description="Identified the bug in authentication module at line 145.",
-      message_attachment="/path/to/fixed_file.py"
-  )
+You SHOULD keep the user informed by providing message_title and message_description
+    parameters when calling tools. These optional parameters are available on all tools
+    and will automatically notify the user of your progress.
 
 - When you complete your task, your final response must be a comprehensive
 summary of your work and the outcome, presented in a clear, detailed, and
@@ -1265,9 +1253,7 @@ def search_agent(options: Chat):
     web_toolkit_custom._cdp_session_id = toolkit_session_id
 
     # Register toolkit with message_integration
-    # DISABLED: message_integration causes parameter mismatch errors after fixing clone
-    # The wrapper is lost during toolkit cloning, causing tools to reject message_title parameter
-    # web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
+    web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
     # Use the registered (wrapped) toolkit for both tools and agent registration
     web_toolkit_for_agent_registration = web_toolkit_custom
     terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
@@ -1349,21 +1335,10 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     Fabricating or guessing URLs is considered a critical error and must
     never be done under any circumstances.
 
-- You SHOULD use the `send_message_to_user` tool to keep the user informed during your research:
-    * When starting a new search query
-    * After finding relevant information
-    * When encountering issues or switching strategies
-    * When completing major research milestones
-
-    Format:
-    - **message_title**: Brief description of the action (e.g., "Starting Search", "Results Found")
-    - **message_description**: One sentence explaining what you're doing or what you found
-
-    Example:
-    send_message_to_user(
-        message_title="Search Complete",
-        message_description="Found 10 relevant sources about machine learning trends in 2025."
-    )
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 
 - You MUST NOT answer from your own knowledge. All information
     MUST be sourced from the web using the available tools. If you don't know
@@ -1408,9 +1383,7 @@ Your approach depends on available search tools:
 - When encountering verification challenges (like login, CAPTCHAs or
     robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>
-<Details in interaction>
-When you select name in salesforce new event, please select the corresponding option after input to confirm, If you only input the name, it would not been confirmed.
-</Details in interaction>rest    """
+"""
 
     # Define cleanup callback to release CDP browser back to pool
     def cleanup_cdp_browser():
@@ -1441,6 +1414,7 @@ When you select name in salesforce new event, please select the corresponding op
         toolkits_to_register_agent=[web_toolkit_for_agent_registration],
         enable_snapshot_clean=True,
         cleanup_callback=cleanup_cdp_browser,
+        extra_model_config={"parallel_tool_calls": False},
     )
 
     # Attach CDP management callbacks to the agent for clone support
@@ -1532,6 +1506,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     your work and the path to the final document, presented in a clear,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 </mandatory_instructions>
 
 <capabilities>
@@ -1755,6 +1734,11 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     summary of your analysis or the generated media, presented in a clear,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
+
+- You SHOULD keep the user informed by providing message_title and 
+    message_description
+    parameters when calling tools. These optional parameters are available on 
+    all tools and will automatically notify the user of your progress.
 <mandatory_instructions>
 
 <capabilities>
@@ -1988,16 +1972,14 @@ async def mcp_agent(options: Chat):
             url=options.api_url,
             model_config_dict={
                 "user": str(options.project_id),
-                "parallel_tool_calls": False,
             }
             if options.is_cloud()
-            else {
-                "parallel_tool_calls": False,
-            },
+            else None,
             **{
                 k: v
                 for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
+                if
+                k not in ["model_platform", "model_type", "api_key", "url"]
             },
         ),
         # output_language=options.language,
@@ -2020,6 +2002,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
+        "lark_toolkit": LarkToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
         "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,

@@ -1,26 +1,45 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, dialog, nativeTheme, protocol, session } from 'electron'
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
-import os, { homedir } from 'node:os'
-import log from 'electron-log'
-import { update, registerUpdateIpcHandlers } from './update'
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init'
-import { WebViewManager } from './webview'
-import { FileReader } from './fileReader'
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
-import fs, { existsSync, readFileSync } from 'node:fs'
-import fsp from 'fs/promises'
-import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig'
-import { getEnvPath, updateEnvBlock, removeEnvKey, getEmailFolderPath } from './utils/envUtil'
-import { copyBrowserData } from './copy'
-import { findAvailablePort } from './init'
+import {
+  app,
+  BrowserWindow,
+  shell,
+  ipcMain,
+  Menu,
+  dialog,
+  nativeTheme,
+  protocol,
+  session,
+} from 'electron';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import os, { homedir } from 'node:os';
+import log from 'electron-log';
+import { update, registerUpdateIpcHandlers } from './update';
+import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
+import { WebViewManager } from './webview';
+import { FileReader } from './fileReader';
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import fs, { existsSync, readFileSync } from 'node:fs';
+import fsp from 'fs/promises';
+import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig';
+import {
+  getEnvPath,
+  updateEnvBlock,
+  removeEnvKey,
+  getEmailFolderPath,
+} from './utils/envUtil';
+import { copyBrowserData } from './copy';
+import { findAvailablePort } from './init';
 import kill from 'tree-kill';
-import { zipFolder } from './utils/log'
-import mime from "mime";
+import { zipFolder } from './utils/log';
+import mime from 'mime';
 import axios from 'axios';
 import FormData from 'form-data';
-import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import {
+  checkAndInstallDepsOnUpdate,
+  PromiseReturnType,
+  getInstallationStatus,
+} from './install-deps';
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
 
 const userData = app.getPath('userData');
 
@@ -39,7 +58,7 @@ let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
-let browser_port = 9222;
+let browser_port = 9223;
 let use_external_cdp = false;  // Flag to track if using external CDP browser
 
 // CDP Browser Pool
@@ -73,12 +92,16 @@ let profileInitPromise: Promise<void>;
 // 2. WebView: partition 'persist:user_login' in app userData → will import cookies from tool_controller via session API
 // 3. tool_controller: ~/.eigent/browser_profiles/profile_user_login → source of truth for login cookies
 // 4. CDP browser: uses separate profile (doesn't share with main app)
-profileInitPromise = findAvailablePort(browser_port).then(async port => {
+profileInitPromise = findAvailablePort(browser_port).then(async (port) => {
   browser_port = port;
   app.commandLine.appendSwitch('remote-debugging-port', port + '');
 
   // Create isolated profile for CDP browser only
-  const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
+  const browserProfilesBase = path.join(
+    os.homedir(),
+    '.eigent',
+    'browser_profiles'
+  );
   const cdpProfile = path.join(browserProfilesBase, `cdp_profile_${port}`);
 
   try {
@@ -132,22 +155,26 @@ log.transports.console.format = '[{level}]{text}';
 log.transports.file.format = '[{level}]{text}';
 
 // Disable GPU Acceleration for Windows 7
-if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
+if (os.release().startsWith('6.1')) app.disableHardwareAcceleration();
 
 // Set application name for Windows 10+ notifications
-if (process.platform === 'win32') app.setAppUserModelId(app.getName())
+if (process.platform === 'win32') app.setAppUserModelId(app.getName());
 
 if (!app.requestSingleInstanceLock()) {
-  app.quit()
-  process.exit(0)
+  app.quit();
+  process.exit(0);
 }
 
 // ==================== protocol config ====================
 const setupProtocolHandlers = () => {
   if (process.env.NODE_ENV === 'development') {
-    const isDefault = app.isDefaultProtocolClient('eigent', process.execPath, [path.resolve(process.argv[1])]);
+    const isDefault = app.isDefaultProtocolClient('eigent', process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
     if (!isDefault) {
-      app.setAsDefaultProtocolClient('eigent', process.execPath, [path.resolve(process.argv[1])]);
+      app.setAsDefaultProtocolClient('eigent', process.execPath, [
+        path.resolve(process.argv[1]),
+      ]);
     }
   } else {
     app.setAsDefaultProtocolClient('eigent');
@@ -157,7 +184,7 @@ const setupProtocolHandlers = () => {
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
   log.info('enter handleProtocolUrl', url);
-  
+
   // If window is not ready, queue the URL
   if (!isWindowReady || !win || win.isDestroyed()) {
     log.info('Window not ready, queuing protocol URL:', url);
@@ -185,7 +212,7 @@ function processProtocolUrl(url: string) {
       log.info('oauth');
       const provider = urlObj.searchParams.get('provider');
       const code = urlObj.searchParams.get('code');
-      log.info("protocol oauth", provider, code);
+      log.info('protocol oauth', provider, code);
       win.webContents.send('oauth-authorized', { provider, code });
       return;
     }
@@ -210,14 +237,16 @@ function processQueuedProtocolUrls() {
 
     // Verify window is ready before processing
     if (!win || win.isDestroyed() || !isWindowReady) {
-      log.warn('Window not ready for processing queued URLs, keeping URLs in queue');
+      log.warn(
+        'Window not ready for processing queued URLs, keeping URLs in queue'
+      );
       return;
     }
 
     const urls = [...protocolUrlQueue];
     protocolUrlQueue = [];
 
-    urls.forEach(url => {
+    urls.forEach((url) => {
       processProtocolUrl(url);
     });
   }
@@ -227,18 +256,18 @@ function processQueuedProtocolUrls() {
 const setupSingleInstanceLock = () => {
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
-    log.info("no-lock");
+    log.info('no-lock');
     app.quit();
   } else {
     app.on('second-instance', (event, argv) => {
-      log.info("second-instance", argv);
-      const url = argv.find(arg => arg.startsWith('eigent://'));
+      log.info('second-instance', argv);
+      const url = argv.find((arg) => arg.startsWith('eigent://'));
       if (url) handleProtocolUrl(url);
       if (win) win.show();
     });
 
     app.on('open-url', (event, url) => {
-      log.info("open-url");
+      log.info('open-url');
       event.preventDefault();
       handleProtocolUrl(url);
     });
@@ -258,9 +287,9 @@ const initializeApp = () => {
  */
 // Get backup log path
 const getBackupLogPath = () => {
-  const userDataPath = app.getPath('userData')
-  return path.join(userDataPath, 'logs', 'main.log')
-}
+  const userDataPath = app.getPath('userData');
+  return path.join(userDataPath, 'logs', 'main.log');
+};
 // Constants define
 const BROWSER_PATHS = {
   win32: {
@@ -268,10 +297,16 @@ const BROWSER_PATHS = {
     edge: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     firefox: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
     qq: 'C:\\Program Files\\Tencent\\QQBrowser\\QQBrowser.exe',
-    '360': path.join(homedir(), 'AppData\\Local\\360Chrome\\Chrome\\Application\\360chrome.exe'),
+    '360': path.join(
+      homedir(),
+      'AppData\\Local\\360Chrome\\Chrome\\Application\\360chrome.exe'
+    ),
     arc: path.join(homedir(), 'AppData\\Local\\Arc\\User Data\\Arc.exe'),
     dia: path.join(homedir(), 'AppData\\Local\\Dia\\Application\\dia.exe'),
-    fellou: path.join(homedir(), 'AppData\\Local\\Fellou\\Application\\fellou.exe'),
+    fellou: path.join(
+      homedir(),
+      'AppData\\Local\\Fellou\\Application\\fellou.exe'
+    ),
   },
   darwin: {
     chrome: '/Applications/Google Chrome.app',
@@ -300,8 +335,8 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
-    log.info('Getting browser port')
-    return browser_port
+    log.info('Getting browser port');
+    return browser_port;
   });
 
   // Set browser port
@@ -720,21 +755,21 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
-  
+
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
     log.info('[RESTART] Restarting app to apply user profile changes');
-    
+
     // Clean up Python process first
     await cleanupPythonProcess();
-    
+
     // Schedule relaunch after a short delay
     setTimeout(() => {
       app.relaunch();
       app.quit();
     }, 100);
   });
-  
+
   ipcMain.handle('restart-backend', async () => {
     try {
       if (backendPort) {
@@ -760,94 +795,98 @@ function registerIpcHandlers() {
     return platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
   });
 
-
   // ==================== command execution handler ====================
   ipcMain.handle('get-email-folder-path', async (event, email: string) => {
     return getEmailFolderPath(email);
   });
-  ipcMain.handle('execute-command', async (event, command: string, email: string) => {
-    log.info("execute-command", command);
-    const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
+  ipcMain.handle(
+    'execute-command',
+    async (event, command: string, email: string) => {
+      log.info('execute-command', command);
+      const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
 
-    try {
-      const { spawn } = await import('child_process');
+      try {
+        const { spawn } = await import('child_process');
 
-      // Add --host parameter
-      const commandWithHost = `${command} --debug --host dev.eigent.ai/api/oauth/notion/callback?code=1`;
-      // const commandWithHost = `${command}`;
+        // Add --host parameter
+        const commandWithHost = `${command} --debug --host dev.eigent.ai/api/oauth/notion/callback?code=1`;
+        // const commandWithHost = `${command}`;
 
-      log.info(' start execute command:', commandWithHost);
+        log.info(' start execute command:', commandWithHost);
 
-      // Parse command and arguments
-      const [cmd, ...args] = commandWithHost.split(' ');
-      log.info('start execute command:', commandWithHost.split(' '));
-      console.log(cmd, args)
-      return new Promise((resolve) => {
-        const child = spawn(cmd, args, {
-          cwd: process.cwd(),
-          env: { ...process.env, MCP_REMOTE_CONFIG_DIR },
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
+        // Parse command and arguments
+        const [cmd, ...args] = commandWithHost.split(' ');
+        log.info('start execute command:', commandWithHost.split(' '));
+        console.log(cmd, args);
+        return new Promise((resolve) => {
+          const child = spawn(cmd, args, {
+            cwd: process.cwd(),
+            env: { ...process.env, MCP_REMOTE_CONFIG_DIR },
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
 
-        let stdout = '';
-        let stderr = '';
+          let stdout = '';
+          let stderr = '';
 
-        // Realtime listen standard output
-        child.stdout.on('data', (data) => {
-          const output = data.toString();
-          stdout += output;
-          log.info('Real-time output:', output.trim());
-        });
+          // Realtime listen standard output
+          child.stdout.on('data', (data) => {
+            const output = data.toString();
+            stdout += output;
+            log.info('Real-time output:', output.trim());
+          });
 
-        // Realtime listen error output
-        child.stderr.on('data', (data) => {
-          const output = data.toString();
-          stderr += output;
-          if (output.includes('OAuth callback server running at')) {
-            const url = output.split('OAuth callback server running at')[1].trim();
-            log.info('detect OAuth callback URL:', url);
+          // Realtime listen error output
+          child.stderr.on('data', (data) => {
+            const output = data.toString();
+            stderr += output;
+            if (output.includes('OAuth callback server running at')) {
+              const url = output
+                .split('OAuth callback server running at')[1]
+                .trim();
+              log.info('detect OAuth callback URL:', url);
 
-            // Notify frontend to callback URL
-            if (win && !win.isDestroyed()) {
-              const match = url.match(/^https?:\/\/[^:\n]+:\d+/);
-              const cleanedUrl = match ? match[0] : null;
-              log.info('cleanedUrl', cleanedUrl);
-              win.webContents.send('oauth-callback-url', {
-                url: cleanedUrl,
-                provider: 'notion' // TODO: can be set dynamically according to actual situation
-              });
-
+              // Notify frontend to callback URL
+              if (win && !win.isDestroyed()) {
+                const match = url.match(/^https?:\/\/[^:\n]+:\d+/);
+                const cleanedUrl = match ? match[0] : null;
+                log.info('cleanedUrl', cleanedUrl);
+                win.webContents.send('oauth-callback-url', {
+                  url: cleanedUrl,
+                  provider: 'notion', // TODO: can be set dynamically according to actual situation
+                });
+              }
             }
-          }
-          if (output.includes('Press Ctrl+C to exit')) {
-            child.kill();
-          }
-          log.info(' real-time error output:', output.trim());
-        });
+            if (output.includes('Press Ctrl+C to exit')) {
+              child.kill();
+            }
+            log.info(' real-time error output:', output.trim());
+          });
 
-        // Listen process exit
-        child.on('close', (code) => {
-          log.info(` command execute complete, exit code: ${code}`);
-          resolve({ success: code === null, stdout, stderr });
-        });
+          // Listen process exit
+          child.on('close', (code) => {
+            log.info(` command execute complete, exit code: ${code}`);
+            resolve({ success: code === null, stdout, stderr });
+          });
 
-        // Listen process error
-        child.on('error', (error) => {
-          log.error(' command execute error:', error);
-          resolve({ success: false, error: error.message });
+          // Listen process error
+          child.on('error', (error) => {
+            log.error(' command execute error:', error);
+            resolve({ success: false, error: error.message });
+          });
         });
-      });
-    } catch (error: any) {
-      log.error(' command execute failed:', error);
-      return { success: false, error: error.message };
+      } catch (error: any) {
+        log.error(' command execute failed:', error);
+        return { success: false, error: error.message };
+      }
     }
-  });
+  );
 
-  ipcMain.handle("read-file-dataurl", async (event, filePath) => {
+  ipcMain.handle('read-file-dataurl', async (event, filePath) => {
     try {
       const file = fs.readFileSync(filePath);
-      const mimeType = mime.getType(path.extname(filePath)) || "application/octet-stream";
-      return `data:${mimeType};base64,${file.toString("base64")}`;
+      const mimeType =
+        mime.getType(path.extname(filePath)) || 'application/octet-stream';
+      return `data:${mimeType};base64,${file.toString('base64')}`;
     } catch (error: any) {
       log.error('Failed to read file as data URL:', filePath, error);
       throw new Error(`Failed to read file: ${error.message}`);
@@ -886,7 +925,7 @@ function registerIpcHandlers() {
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'save log file',
         defaultPath: defaultFileName,
-        filters: [{ name: 'log file', extensions: ['log', 'txt'] }]
+        filters: [{ name: 'log file', extensions: ['log', 'txt'] }],
       });
 
       if (canceled || !filePath) {
@@ -900,71 +939,84 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('upload-log', async (event, email: string, taskId: string, baseUrl: string, token: string) => {
-    let zipPath: string | null = null;
+  ipcMain.handle(
+    'upload-log',
+    async (
+      event,
+      email: string,
+      taskId: string,
+      baseUrl: string,
+      token: string
+    ) => {
+      let zipPath: string | null = null;
 
-    try {
-      // Validate required parameters
-      if (!email || !taskId || !baseUrl || !token) {
-        return { success: false, error: 'Missing required parameters' };
-      }
+      try {
+        // Validate required parameters
+        if (!email || !taskId || !baseUrl || !token) {
+          return { success: false, error: 'Missing required parameters' };
+        }
 
-      // Sanitize taskId to prevent path traversal attacks
-      const sanitizedTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, '');
-      if (!sanitizedTaskId) {
-        return { success: false, error: 'Invalid task ID' };
-      }
+        // Sanitize taskId to prevent path traversal attacks
+        const sanitizedTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!sanitizedTaskId) {
+          return { success: false, error: 'Invalid task ID' };
+        }
 
-      const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
-      const logFolderName = `task_${sanitizedTaskId}`;
-      const logFolderPath = path.join(MCP_REMOTE_CONFIG_DIR, logFolderName);
+        const { MCP_REMOTE_CONFIG_DIR } = getEmailFolderPath(email);
+        const logFolderName = `task_${sanitizedTaskId}`;
+        const logFolderPath = path.join(MCP_REMOTE_CONFIG_DIR, logFolderName);
 
-      // Check if log folder exists
-      if (!fs.existsSync(logFolderPath)) {
-        return { success: false, error: 'Log folder not found' };
-      }
+        // Check if log folder exists
+        if (!fs.existsSync(logFolderPath)) {
+          return { success: false, error: 'Log folder not found' };
+        }
 
-      zipPath = path.join(MCP_REMOTE_CONFIG_DIR, `${logFolderName}.zip`);
-      await zipFolder(logFolderPath, zipPath);
+        zipPath = path.join(MCP_REMOTE_CONFIG_DIR, `${logFolderName}.zip`);
+        await zipFolder(logFolderPath, zipPath);
 
-      // Create form data with file stream
-      const formData = new FormData();
-      const fileStream = fs.createReadStream(zipPath);
-      formData.append('file', fileStream);
-      formData.append('task_id', sanitizedTaskId);
+        // Create form data with file stream
+        const formData = new FormData();
+        const fileStream = fs.createReadStream(zipPath);
+        formData.append('file', fileStream);
+        formData.append('task_id', sanitizedTaskId);
 
-      // Upload with timeout
-      const response = await axios.post(baseUrl + '/api/chat/logs', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 60000, // 60 second timeout
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity
-      });
+        // Upload with timeout
+        const response = await axios.post(
+          baseUrl + '/api/chat/logs',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              Authorization: `Bearer ${token}`,
+            },
+            timeout: 60000, // 60 second timeout
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+          }
+        );
 
-      fileStream.destroy();
+        fileStream.destroy();
 
-      if (response.status === 200) {
-        return { success: true, data: response.data };
-      } else {
-        return { success: false, error: response.data };
-      }
-    } catch (error: any) {
-      log.error('Failed to upload log:', error);
-      return { success: false, error: error.message || 'Upload failed' };
-    } finally {
-      // Clean up zip file
-      if (zipPath && fs.existsSync(zipPath)) {
-        try {
-          fs.unlinkSync(zipPath);
-        } catch (cleanupError) {
-          log.error('Failed to clean up zip file:', cleanupError);
+        if (response.status === 200) {
+          return { success: true, data: response.data };
+        } else {
+          return { success: false, error: response.data };
+        }
+      } catch (error: any) {
+        log.error('Failed to upload log:', error);
+        return { success: false, error: error.message || 'Upload failed' };
+      } finally {
+        // Clean up zip file
+        if (zipPath && fs.existsSync(zipPath)) {
+          try {
+            fs.unlinkSync(zipPath);
+          } catch (cleanupError) {
+            log.error('Failed to clean up zip file:', cleanupError);
+          }
         }
       }
     }
-  });
+  );
 
   // ==================== MCP manage handler ====================
   ipcMain.handle('mcp-install', async (event, name, mcp) => {
@@ -974,7 +1026,10 @@ function registerIpcHandlers() {
         mcp.args = JSON.parse(mcp.args);
       } catch (e) {
         // If parsing fails, split by comma as fallback
-        mcp.args = mcp.args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+        mcp.args = mcp.args
+          .split(',')
+          .map((arg: string) => arg.trim())
+          .filter((arg: string) => arg !== '');
       }
     }
     addMcp(name, mcp);
@@ -993,7 +1048,10 @@ function registerIpcHandlers() {
         mcp.args = JSON.parse(mcp.args);
       } catch (e) {
         // If parsing fails, split by comma as fallback
-        mcp.args = mcp.args.split(',').map((arg: string) => arg.trim()).filter((arg: string) => arg !== '');
+        mcp.args = mcp.args
+          .split(',')
+          .map((arg: string) => arg.trim())
+          .filter((arg: string) => arg !== '');
       }
     }
     updateMcp(name, mcp);
@@ -1079,10 +1137,10 @@ function registerIpcHandlers() {
 
   // ==================== window control handler ====================
   ipcMain.on('window-close', (_, data) => {
-    if(data.isForceQuit) {
-      return app?.quit()
+    if (data.isForceQuit) {
+      return app?.quit();
     }
-    return win?.close()
+    return win?.close();
   });
   ipcMain.on('window-minimize', () => win?.minimize());
   ipcMain.on('window-toggle-maximize', () => {
@@ -1097,38 +1155,40 @@ function registerIpcHandlers() {
   ipcMain.handle('select-file', async (event, options = {}) => {
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openFile', 'multiSelections'],
-      ...options
+      ...options,
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
-      const files = result.filePaths.map(filePath => ({
+      const files = result.filePaths.map((filePath) => ({
         filePath,
-        fileName: filePath.split(/[/\\]/).pop() || ''
+        fileName: filePath.split(/[/\\]/).pop() || '',
       }));
 
       return {
         success: true,
         files,
-        fileCount: files.length
+        fileCount: files.length,
       };
     }
 
     return {
       success: false,
-      canceled: result.canceled
+      canceled: result.canceled,
     };
   });
 
-  ipcMain.handle("reveal-in-folder", async (event, filePath: string) => {
+  ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
     try {
-      const stats = await fs.promises.stat(filePath.replace(/\/$/, '')).catch(() => null);
+      const stats = await fs.promises
+        .stat(filePath.replace(/\/$/, ''))
+        .catch(() => null);
       if (stats && stats.isDirectory()) {
         shell.openPath(filePath);
       } else {
         shell.showItemInFolder(filePath);
       }
     } catch (e) {
-      log.error("reveal in folder failed", e);
+      log.error('reveal in folder failed', e);
     }
   });
 
@@ -1157,13 +1217,13 @@ function registerIpcHandlers() {
       return {
         success: true,
         data: fileContent,
-        size: fileContent.length
+        size: fileContent.length,
       };
     } catch (error: any) {
       log.error('Failed to read file:', filePath, error);
       return {
         success: false,
-        error: error.message || 'Failed to read file'
+        error: error.message || 'Failed to read file',
       };
     }
   });
@@ -1193,13 +1253,13 @@ function registerIpcHandlers() {
 
       return {
         success: true,
-        message: 'Folder deleted successfully'
+        message: 'Folder deleted successfully',
       };
     } catch (error: any) {
       log.error('Failed to delete folder:', MCP_REMOTE_CONFIG_DIR, error);
       return {
         success: false,
-        error: error.message || 'Failed to delete folder'
+        error: error.message || 'Failed to delete folder',
       };
     }
   });
@@ -1219,7 +1279,7 @@ function registerIpcHandlers() {
       log.error('Failed to get MCP config path:', error);
       return {
         success: false,
-        error: error.message || 'Failed to get MCP config path'
+        error: error.message || 'Failed to get MCP config path',
       };
     }
   });
@@ -1234,33 +1294,39 @@ function registerIpcHandlers() {
     const ENV_PATH = getEnvPath(email);
     let content = '';
     try {
-      content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf-8') : '';
+      content = fs.existsSync(ENV_PATH)
+        ? fs.readFileSync(ENV_PATH, 'utf-8')
+        : '';
     } catch (error) {
-      log.error("env-remove error:", error);
+      log.error('env-remove error:', error);
     }
     let lines = content.split(/\r?\n/);
-    return { success: lines.some(line => line.startsWith(key + '=')) };
+    return { success: lines.some((line) => line.startsWith(key + '=')) };
   });
 
   ipcMain.handle('env-write', async (_event, email, { key, value }) => {
     const ENV_PATH = getEnvPath(email);
     let content = '';
     try {
-      content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf-8') : '';
+      content = fs.existsSync(ENV_PATH)
+        ? fs.readFileSync(ENV_PATH, 'utf-8')
+        : '';
     } catch (error) {
-      log.error("env-write error:", error);
+      log.error('env-write error:', error);
     }
     let lines = content.split(/\r?\n/);
     lines = updateEnvBlock(lines, { [key]: value });
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
-    
+
     // Also write to global .env file for backend process to read
     const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
     let globalContent = '';
     try {
-      globalContent = fs.existsSync(GLOBAL_ENV_PATH) ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8') : '';
+      globalContent = fs.existsSync(GLOBAL_ENV_PATH)
+        ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8')
+        : '';
     } catch (error) {
-      log.error("global env-write read error:", error);
+      log.error('global env-write read error:', error);
     }
     let globalLines = globalContent.split(/\r?\n/);
     globalLines = updateEnvBlock(globalLines, { [key]: value });
@@ -1268,38 +1334,44 @@ function registerIpcHandlers() {
       fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
       log.info(`env-write: wrote ${key} to both user and global .env files`);
     } catch (error) {
-      log.error("global env-write error:", error);
+      log.error('global env-write error:', error);
     }
-    
+
     return { success: true };
   });
 
   ipcMain.handle('env-remove', async (_event, email, key) => {
-    log.info("env-remove", key);
+    log.info('env-remove', key);
     const ENV_PATH = getEnvPath(email);
     let content = '';
     try {
-      content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf-8') : '';
+      content = fs.existsSync(ENV_PATH)
+        ? fs.readFileSync(ENV_PATH, 'utf-8')
+        : '';
     } catch (error) {
-      log.error("env-remove error:", error);
+      log.error('env-remove error:', error);
     }
     let lines = content.split(/\r?\n/);
     lines = removeEnvKey(lines, key);
     fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
-    log.info("env-remove success", ENV_PATH);
-    
+    log.info('env-remove success', ENV_PATH);
+
     // Also remove from global .env file
     const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
     try {
-      let globalContent = fs.existsSync(GLOBAL_ENV_PATH) ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8') : '';
+      let globalContent = fs.existsSync(GLOBAL_ENV_PATH)
+        ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8')
+        : '';
       let globalLines = globalContent.split(/\r?\n/);
       globalLines = removeEnvKey(globalLines, key);
       fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
-      log.info(`env-remove: removed ${key} from both user and global .env files`);
+      log.info(
+        `env-remove: removed ${key} from both user and global .env files`
+      );
     } catch (error) {
-      log.error("global env-remove error:", error);
+      log.error('global env-remove error:', error);
     }
-    
+
     return { success: true };
   });
 
@@ -1321,10 +1393,13 @@ function registerIpcHandlers() {
   });
 
   // ==================== FileReader handler ====================
-  ipcMain.handle('open-file', async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.openFile(type, filePath, isShowSourceCode);
-  });
+  ipcMain.handle(
+    'open-file',
+    async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.openFile(type, filePath, isShowSourceCode);
+    }
+  );
 
   ipcMain.handle('download-file', async (_, url: string) => {
     try {
@@ -1374,41 +1449,59 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('get-file-list', async (_, email: string, taskId: string, projectId?: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getFileList(email, taskId, projectId);
-  });
+  ipcMain.handle(
+    'get-file-list',
+    async (_, email: string, taskId: string, projectId?: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.getFileList(email, taskId, projectId);
+    }
+  );
 
-  ipcMain.handle('delete-task-files', async (_, email: string, taskId: string, projectId?: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.deleteTaskFiles(email, taskId, projectId);
-  });
+  ipcMain.handle(
+    'delete-task-files',
+    async (_, email: string, taskId: string, projectId?: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.deleteTaskFiles(email, taskId, projectId);
+    }
+  );
 
   // New project management handlers
-  ipcMain.handle('create-project-structure', async (_, email: string, projectId: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.createProjectStructure(email, projectId);
-  });
+  ipcMain.handle(
+    'create-project-structure',
+    async (_, email: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.createProjectStructure(email, projectId);
+    }
+  );
 
   ipcMain.handle('get-project-list', async (_, email: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     return manager.getProjectList(email);
   });
 
-  ipcMain.handle('get-tasks-in-project', async (_, email: string, projectId: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getTasksInProject(email, projectId);
-  });
+  ipcMain.handle(
+    'get-tasks-in-project',
+    async (_, email: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.getTasksInProject(email, projectId);
+    }
+  );
 
-  ipcMain.handle('move-task-to-project', async (_, email: string, taskId: string, projectId: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.moveTaskToProject(email, taskId, projectId);
-  });
+  ipcMain.handle(
+    'move-task-to-project',
+    async (_, email: string, taskId: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.moveTaskToProject(email, taskId, projectId);
+    }
+  );
 
-  ipcMain.handle('get-project-file-list', async (_, email: string, projectId: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getProjectFileList(email, projectId);
-  });
+  ipcMain.handle(
+    'get-project-file-list',
+    async (_, email: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.getProjectFileList(email, projectId);
+    }
+  );
 
   ipcMain.handle('get-log-folder', async (_, email: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
@@ -1439,23 +1532,28 @@ function registerIpcHandlers() {
   // ==================== dependency install handler ====================
   ipcMain.handle('install-dependencies', async () => {
     try {
-      if(win === null) throw new Error("Window is null");
+      if (win === null) throw new Error('Window is null');
 
       // Prevent concurrent installations
       if (isInstallationInProgress) {
         log.info('[DEPS INSTALL] Installation already in progress, waiting...');
         await installationLock;
-        return { success: true, message: 'Installation completed by another process' };
+        return {
+          success: true,
+          message: 'Installation completed by another process',
+        };
       }
 
       log.info('[DEPS INSTALL] Manual installation/retry triggered');
 
       // Set lock
       isInstallationInProgress = true;
-      installationLock = checkAndInstallDepsOnUpdate({win, forceInstall: true})
-        .finally(() => {
-          isInstallationInProgress = false;
-        });
+      installationLock = checkAndInstallDepsOnUpdate({
+        win,
+        forceInstall: true,
+      }).finally(() => {
+        isInstallationInProgress = false;
+      });
 
       const result = await installationLock;
 
@@ -1469,8 +1567,13 @@ function registerIpcHandlers() {
 
       // IMPORTANT: Send install-dependencies-complete success event
       if (!win.isDestroyed()) {
-        win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-        log.info('[DEPS INSTALL] Sent install-dependencies-complete event after retry');
+        win.webContents.send('install-dependencies-complete', {
+          success: true,
+          code: 0,
+        });
+        log.info(
+          '[DEPS INSTALL] Sent install-dependencies-complete event after retry'
+        );
       }
 
       // Start backend after retry with cleanup
@@ -1495,11 +1598,11 @@ function registerIpcHandlers() {
   ipcMain.handle('get-installation-status', async () => {
     try {
       const { isInstalling, hasLockFile } = await getInstallationStatus();
-      return { 
-        success: true, 
-        isInstalling, 
+      return {
+        success: true,
+        isInstalling,
         hasLockFile,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     } catch (error) {
       return { success: false, error: (error as Error).message };
@@ -1538,14 +1641,17 @@ const startBackendAfterInstall = async () => {
   log.info('[DEPS INSTALL] Starting backend...');
 
   // Add a small delay to ensure any previous processes are fully cleaned up
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   await checkAndStartBackend();
 };
 
 // ==================== installation lock ====================
 let isInstallationInProgress = false;
-let installationLock: Promise<PromiseReturnType> = Promise.resolve({ message: "No installation needed", success: true });
+let installationLock: Promise<PromiseReturnType> = Promise.resolve({
+  message: 'No installation needed',
+  success: true,
+});
 
 // ==================== window create ====================
 async function createWindow() {
@@ -1554,10 +1660,20 @@ async function createWindow() {
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
 
-  log.info(`[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`);
-  log.info(`[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath('userData')}`);
-  log.info(`[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue('user-data-dir')}`);
-  
+  log.info(
+    `[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`
+  );
+  log.info(
+    `[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath(
+      'userData'
+    )}`
+  );
+  log.info(
+    `[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue(
+      'user-data-dir'
+    )}`
+  );
+
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -1592,14 +1708,31 @@ async function createWindow() {
   // ==================== Import cookies from tool_controller to WebView BEFORE creating WebViews ====================
   // Copy partition data files before any session accesses them
   try {
-    const browserProfilesBase = path.join(os.homedir(), '.eigent', 'browser_profiles');
-    const toolControllerProfile = path.join(browserProfilesBase, 'profile_user_login');
-    const toolControllerPartitionPath = path.join(toolControllerProfile, 'Partitions', 'user_login');
+    const browserProfilesBase = path.join(
+      os.homedir(),
+      '.eigent',
+      'browser_profiles'
+    );
+    const toolControllerProfile = path.join(
+      browserProfilesBase,
+      'profile_user_login'
+    );
+    const toolControllerPartitionPath = path.join(
+      toolControllerProfile,
+      'Partitions',
+      'user_login'
+    );
 
     if (fs.existsSync(toolControllerPartitionPath)) {
-      log.info('[COOKIE SYNC] Found tool_controller partition, copying to WebView partition...');
+      log.info(
+        '[COOKIE SYNC] Found tool_controller partition, copying to WebView partition...'
+      );
 
-      const targetPartitionPath = path.join(app.getPath('userData'), 'Partitions', 'user_login');
+      const targetPartitionPath = path.join(
+        app.getPath('userData'),
+        'Partitions',
+        'user_login'
+      );
       log.info('[COOKIE SYNC] From:', toolControllerPartitionPath);
       log.info('[COOKIE SYNC] To:', targetPartitionPath);
 
@@ -1611,7 +1744,7 @@ async function createWindow() {
       // Copy the entire partition directory
       fs.cpSync(toolControllerPartitionPath, targetPartitionPath, {
         recursive: true,
-        force: true
+        force: true,
       });
       log.info('[COOKIE SYNC] Successfully copied partition data to WebView');
 
@@ -1622,7 +1755,9 @@ async function createWindow() {
         log.info(`[COOKIE SYNC] Cookies file size: ${stats.size} bytes`);
       }
     } else {
-      log.info('[COOKIE SYNC] No tool_controller partition found, WebView will start fresh');
+      log.info(
+        '[COOKIE SYNC] No tool_controller partition found, WebView will start fresh'
+      );
     }
   } catch (error) {
     log.error('[COOKIE SYNC] Failed to sync partition data:', error);
@@ -1633,7 +1768,9 @@ async function createWindow() {
   webViewManager = new WebViewManager(win);
 
   // create multiple webviews
-  log.info(`[PROJECT BROWSER] Creating WebViews with partition: persist:user_login`);
+  log.info(
+    `[PROJECT BROWSER] Creating WebViews with partition: persist:user_login`
+  );
   for (let i = 1; i <= 8; i++) {
     webViewManager.createWebview(i === 1 ? undefined : i.toString());
   }
@@ -1672,7 +1809,13 @@ async function createWindow() {
   const venvPath = getVenvPath(currentVersion);
   const venvExists = fs.existsSync(venvPath);
 
-  const needsInstallation = !versionExists || savedVersion !== currentVersion || !uvExists || !bunExists || !installationCompleted || !venvExists;
+  const needsInstallation =
+    !versionExists ||
+    savedVersion !== currentVersion ||
+    !uvExists ||
+    !bunExists ||
+    !installationCompleted ||
+    !venvExists;
 
   log.info('Installation check result:', {
     needsInstallation,
@@ -1682,23 +1825,31 @@ async function createWindow() {
     bunExists,
     installationCompleted,
     venvExists,
-    venvPath
+    venvPath,
   });
 
   // Handle localStorage based on installation state
   if (needsInstallation) {
-    log.info('Installation needed - resetting initState to carousel while preserving auth data');
+    log.info(
+      'Installation needed - resetting initState to carousel while preserving auth data'
+    );
 
     // Instead of deleting the entire localStorage, we'll update only the initState
     // This preserves login information while resetting the initialization flow
     // Set up the injection for when page loads
     win.webContents.once('dom-ready', () => {
       if (!win || win.isDestroyed()) {
-        log.warn('Window destroyed before DOM ready - skipping localStorage injection');
+        log.warn(
+          'Window destroyed before DOM ready - skipping localStorage injection'
+        );
         return;
       }
-      log.info('DOM ready - updating initState to carousel while preserving auth data');
-      win.webContents.executeJavaScript(`
+      log.info(
+        'DOM ready - updating initState to carousel while preserving auth data'
+      );
+      win.webContents
+        .executeJavaScript(
+          `
         (function() {
           try {
             const authStorage = localStorage.getItem('auth-storage');
@@ -1740,9 +1891,11 @@ async function createWindow() {
             console.error('[ELECTRON PRE-INJECT] Failed to update storage:', e);
           }
         })();
-      `).catch(err => {
-        log.error('Failed to inject script:', err);
-      });
+      `
+        )
+        .catch((err) => {
+          log.error('Failed to inject script:', err);
+        });
     });
   } else {
     // The proper flow is now handled by useInstallationSetup.ts with dual-check mechanism:
@@ -1751,7 +1904,9 @@ async function createWindow() {
     // 3. Only when BOTH are true → setInitState('done')
     //
     // This ensures frontend never shows before backend is ready.
-    log.info('Installation already complete - letting useInstallationSetup handle state transitions');
+    log.info(
+      'Installation already complete - letting useInstallationSetup handle state transitions'
+    );
   }
 
   // Load content
@@ -1763,9 +1918,11 @@ async function createWindow() {
   }
 
   // Wait for window to be ready
-  await new Promise<void>(resolve => {
+  await new Promise<void>((resolve) => {
     win!.webContents.once('did-finish-load', () => {
-      log.info('Window content loaded, starting dependency check immediately...');
+      log.info(
+        'Window content loaded, starting dependency check immediately...'
+      );
       resolve();
     });
   });
@@ -1776,28 +1933,33 @@ async function createWindow() {
   processQueuedProtocolUrls();
 
   // Wait for React components to mount and register event listeners
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Now check and install dependencies
-  let res:PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
+  let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
   if (!res.success) {
-    log.info("[DEPS INSTALL] Dependency Error: ", res.message);
+    log.info('[DEPS INSTALL] Dependency Error: ', res.message);
     // Note: install-dependencies-complete failure event is already sent by installDependencies function
     // in install-deps.ts, so we don't send it again here to avoid duplicate events
     return;
   }
-  log.info("[DEPS INSTALL] Dependency Success: ", res.message);
+  log.info('[DEPS INSTALL] Dependency Success: ', res.message);
 
   // IMPORTANT: Wait a bit to ensure React components have mounted and registered event listeners
   // This prevents race condition where events are sent before listeners are ready
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // IMPORTANT: Always send install-dependencies-complete event when installation check succeeds
   // This includes both cases: actual installation completed AND installation was skipped (already installed)
   // The frontend needs this event to properly transition from installation screen to main app
   if (!win.isDestroyed()) {
-    win.webContents.send('install-dependencies-complete', { success: true, code: 0 });
-    log.info("[DEPS INSTALL] Sent install-dependencies-complete event to frontend");
+    win.webContents.send('install-dependencies-complete', {
+      success: true,
+      code: 0,
+    });
+    log.info(
+      '[DEPS INSTALL] Sent install-dependencies-complete event to frontend'
+    );
   }
 
   // Start backend after dependencies are ready
@@ -1825,12 +1987,22 @@ const setupDevToolsShortcuts = () => {
     }
 
     // Ctrl+Shift+I (Windows/Linux) or Cmd+Shift+I (Mac)
-    if (input.control && input.shift && input.key.toLowerCase() === 'i' && input.type === 'keyDown') {
+    if (
+      input.control &&
+      input.shift &&
+      input.key.toLowerCase() === 'i' &&
+      input.type === 'keyDown'
+    ) {
       toggleDevTools();
     }
 
     // Mac Cmd+Shift+I
-    if (input.meta && input.shift && input.key.toLowerCase() === 'i' && input.type === 'keyDown') {
+    if (
+      input.meta &&
+      input.shift &&
+      input.key.toLowerCase() === 'i' &&
+      input.type === 'keyDown'
+    ) {
       toggleDevTools();
     }
   });
@@ -1906,7 +2078,7 @@ const checkAndStartBackend = async () => {
         log.info('Backend is ready, notifying frontend...');
         win.webContents.send('backend-ready', {
           success: true,
-          port: backendPort
+          port: backendPort,
         });
       }
 
@@ -1919,17 +2091,17 @@ const checkAndStartBackend = async () => {
       if (win && !win.isDestroyed()) {
         win.webContents.send('backend-ready', {
           success: false,
-          error: 'Tools not installed'
+          error: 'Tools not installed',
         });
       }
     }
   } catch (error) {
-    log.error("Failed to start backend:", error);
+    log.error('Failed to start backend:', error);
     // Notify frontend of backend startup failure
     if (win && !win.isDestroyed()) {
       win.webContents.send('backend-ready', {
         success: false,
-        error: String(error)
+        error: String(error),
       });
     }
   }
@@ -2008,19 +2180,19 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-    let isQuitting = false;
-    
-    app.on('before-quit', () => {
-      isQuitting = true;
-    });
-    
-    win?.on("close", (event) => {
-      if (!isQuitting) {
-        event.preventDefault();
-        win?.webContents.send("before-close");
-      }
-    })
-}
+  let isQuitting = false;
+
+  app.on('before-quit', () => {
+    isQuitting = true;
+  });
+
+  win?.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win?.webContents.send('before-close');
+    }
+  });
+};
 
 // ==================== app event handle ====================
 app.whenReady().then(async () => {
@@ -2031,6 +2203,25 @@ app.whenReady().then(async () => {
     log.info('[MAIN] Profile initialization completed');
   } catch (error) {
     log.error('[MAIN] Profile initialization failed:', error);
+  }
+
+  // ==================== install React DevTools ====================
+  // Only install in development mode
+  if (VITE_DEV_SERVER_URL) {
+    try {
+      log.info('[DEVTOOLS] Installing React DevTools extension...');
+      // Dynamic import to avoid bundling in production
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
+        'electron-devtools-installer'
+      );
+      const name = await installExtension(REACT_DEVELOPER_TOOLS, {
+        loadExtensionOptions: { allowFileAccess: true },
+      });
+      log.info(`[DEVTOOLS] Successfully installed extension: ${name}`);
+    } catch (err) {
+      log.error('[DEVTOOLS] Failed to install React DevTools:', err);
+      // Don't throw - allow app to continue even if extension installation fails
+    }
   }
 
   // ==================== download handle ====================
@@ -2051,7 +2242,10 @@ app.whenReady().then(async () => {
 
     try {
       // Check if file exists
-      const fileExists = await fsp.access(filePath).then(() => true).catch(() => false);
+      const fileExists = await fsp
+        .access(filePath)
+        .then(() => true)
+        .catch(() => false);
       if (!fileExists) {
         log.error(`[PROTOCOL] File not found: ${filePath}`);
         return new Response('File Not Found', { status: 404 });
@@ -2111,7 +2305,9 @@ app.whenReady().then(async () => {
   const mainSession = session.fromPartition('persist:main_window');
   mainSession.protocol.handle('localfile', protocolHandler);
 
-  log.info('[PROTOCOL] Registered localfile protocol on both default and main_window sessions');
+  log.info(
+    '[PROTOCOL] Registered localfile protocol on both default and main_window sessions'
+  );
 
   // ==================== initialize app ====================
   initializeApp();
@@ -2122,18 +2318,18 @@ app.whenReady().then(async () => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
-  
+
   // Clean up WebView manager
   if (webViewManager) {
     webViewManager.destroy();
     webViewManager = null;
   }
-  
+
   // Reset window state
   win = null;
   isWindowReady = false;
   protocolUrlQueue = [];
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -2200,4 +2396,3 @@ app.on('before-quit', async (event) => {
     app.exit(0);
   }
 });
-

@@ -46,8 +46,8 @@ export default function Browser() {
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
 	// CDP port configuration
-	const [cdpPort, setCdpPort] = useState<number>(9222);
-	const [customPort, setCustomPort] = useState<string>("9222");
+	const [cdpPort, setCdpPort] = useState<number>(9223);
+	const [customPort, setCustomPort] = useState<string>("9223");
 	const [portStatus, setPortStatus] = useState<CdpPortStatus>({
 		checking: false,
 		available: null,
