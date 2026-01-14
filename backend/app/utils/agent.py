@@ -47,6 +47,7 @@ from app.utils.toolkit.twitter_toolkit import TwitterToolkit
 from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.toolkit.reddit_toolkit import RedditToolkit
 from app.utils.toolkit.slack_toolkit import SlackToolkit
+from app.utils.toolkit.lark_toolkit import LarkToolkit
 from camel.types import ModelPlatformType, ModelType
 from camel.toolkits import MCPToolkit, ToolkitMessageIntegration
 import datetime
@@ -1657,6 +1658,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
+        "lark_toolkit": LarkToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
         "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
