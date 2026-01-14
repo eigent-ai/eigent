@@ -59,7 +59,15 @@ const ToolSelect = forwardRef<
 			if (res && typeof res === "object" && !res.error) {
 				const baseURL = getProxyBaseURL();
 
-				const list = Object.entries(res)
+				const integrationInfo: Record<string, any> = { ...res };
+				if (!integrationInfo.Lark) {
+					integrationInfo.Lark = {
+						env_vars: ["LARK_APP_ID", "LARK_APP_SECRET"],
+						toolkit: "lark_toolkit",
+					};
+				}
+
+				const list = Object.entries(integrationInfo)
 					.filter(([key]) => {
 						if (!keyword) return true;
 						return key.toLowerCase().includes(keyword.toLowerCase());

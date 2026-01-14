@@ -137,8 +137,16 @@ export default function SettingMCP() {
 	useEffect(() => {
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object") {
+				const integrationInfo: Record<string, any> = { ...res };
+				if (!integrationInfo.Lark) {
+					integrationInfo.Lark = {
+						env_vars: ["LARK_APP_ID", "LARK_APP_SECRET"],
+						toolkit: "lark_toolkit",
+					};
+				}
 				const baseURL = getProxyBaseURL();
-				const list = Object.entries(res).map(([key, value]: [string, any]) => {
+				const list = Object.entries(integrationInfo).map(
+					([key, value]: [string, any]) => {
 					let onInstall = null;
 
 					// Special handling for Notion MCP
@@ -319,23 +327,24 @@ export default function SettingMCP() {
 						};
 					}
 
-					return {
-						key,
-						name: key,
-						env_vars: value.env_vars,
-						desc:
-							value.env_vars && value.env_vars.length > 0
-								? `${t(
-										"setting.environmental-variables-required"
-								  )}: ${value.env_vars.join(", ")}`
-								: key.toLowerCase() === "notion"
-								? t("setting.notion-workspace-integration")
-								: key.toLowerCase() === "google calendar"
-								? t("setting.google-calendar-integration")
-								: "",
-						onInstall,
-					};
-				});
+						return {
+							key,
+							name: key,
+							env_vars: value.env_vars,
+							desc:
+								value.env_vars && value.env_vars.length > 0
+									? `${t(
+											"setting.environmental-variables-required"
+									  )}: ${value.env_vars.join(", ")}`
+									: key.toLowerCase() === "notion"
+									? t("setting.notion-workspace-integration")
+									: key.toLowerCase() === "google calendar"
+									? t("setting.google-calendar-integration")
+									: "",
+							onInstall,
+						};
+					}
+				);
 				console.log("API response:", res);
 				console.log("Generated list:", list);
 				console.log("Essential integrations:", essentialIntegrations);
