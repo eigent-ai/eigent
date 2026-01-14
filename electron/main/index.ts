@@ -62,7 +62,7 @@ let browser_port = 9223;
 let use_external_cdp = false;  // Flag to track if using external CDP browser
 
 // CDP Browser Pool
-interface CdpBrowser {
+export interface CdpBrowser {
   id: string;
   port: number;
   isExternal: boolean;
