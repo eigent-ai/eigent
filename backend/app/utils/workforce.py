@@ -293,6 +293,18 @@ class Workforce(BaseWorkforce):
 
         return subtasks
 
+    def _get_agent_id_from_node_id(self, node_id: str) -> str | None:
+        """Map worker node_id to the actual agent_id for frontend communication.
+
+        The CAMEL base class uses node_id for task assignment, but the frontend
+        uses agent_id to identify agents. This method provides the mapping.
+        """
+        for child in self._children:
+            if hasattr(child, 'node_id') and child.node_id == node_id:
+                if hasattr(child, 'worker') and hasattr(child.worker, 'agent_id'):
+                    return child.worker.agent_id
+        return None
+
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification
         # to the frontend, and send "start execution" notification when the
@@ -327,13 +339,25 @@ class Workforce(BaseWorkforce):
                 )
                 continue
 
+            # Map node_id to agent_id for frontend communication
+            # The CAMEL base class returns node_id as assignee_id, but the frontend
+            # uses agent_id to identify agents
+            agent_id = self._get_agent_id_from_node_id(item.assignee_id)
+            if agent_id is None:
+                logger.error(
+                    f"[WF] ERROR: Could not find agent_id for node_id={item.assignee_id}. "
+                    f"Task {item.task_id} will not be properly tracked on frontend. "
+                    f"Available workers: {[c.node_id for c in self._children if hasattr(c, 'node_id')]}"
+                )
+                continue  # Skip sending notification for unmapped worker
+
             # Asynchronously send waiting notification
             task = asyncio.create_task(
                 task_lock.put_queue(
                     ActionAssignTaskData(
                         action=Action.assign_task,
                         data={
-                            "assignee_id": item.assignee_id,
+                            "assignee_id": agent_id,
                             "task_id": item.task_id,
                             "content": content,
                             "state": "waiting",  # Mark as waiting state
@@ -353,18 +377,26 @@ class Workforce(BaseWorkforce):
         # When the dependency check is passed and the task is about to be published to the execution queue, send a notification to the frontend
         task_lock = get_task_lock(self.api_task_id)
         if self._task and task.id != self._task.id:  # Skip the main task itself
-            await task_lock.put_queue(
-                ActionAssignTaskData(
-                    action=Action.assign_task,
-                    data={
-                        "assignee_id": assignee_id,
-                        "task_id": task.id,
-                        "content": task.content,
-                        "state": "running",  # running state
-                        "failure_count": task.failure_count,
-                    },
+            # Map node_id to agent_id for frontend communication
+            agent_id = self._get_agent_id_from_node_id(assignee_id)
+            if agent_id is None:
+                logger.error(
+                    f"[WF] ERROR: Could not find agent_id for node_id={assignee_id}. "
+                    f"Task {task.id} will not be properly tracked on frontend. "
+                    f"Available workers: {[c.node_id for c in self._children if hasattr(c, 'node_id')]}"
                 )
-            )
+                await task_lock.put_queue(
+                    ActionAssignTaskData(
+                        action=Action.assign_task,
+                        data={
+                            "assignee_id": agent_id,
+                            "task_id": task.id,
+                            "content": task.content,
+                            "state": "running",  # running state
+                            "failure_count": task.failure_count,
+                        },
+                    )
+                )
         # Call the parent class method to continue the normal task publishing process
         await super()._post_task(task, assignee_id)
 
