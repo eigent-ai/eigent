@@ -146,7 +146,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
             ws.onmessage = (event) => {
                 try {
                     const message: WebSocketMessage = JSON.parse(event.data);
-                    console.log('[ExecutionSubscription] Received:', message);
 
                     switch (message.type) {
                         case 'connected':
@@ -235,7 +234,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
                         case 'heartbeat':
                             // Server is alive - optional response
-                            console.debug('[ExecutionSubscription] Heartbeat received');
                             break;
 
                         case 'pong':

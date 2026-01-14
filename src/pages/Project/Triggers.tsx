@@ -465,6 +465,7 @@ export default function Overview() {
 
             {/* Edit Trigger Dialog */}
             <TriggerDialog
+                key={editingTrigger?.id || 'new'}
                 selectedTrigger={editingTrigger}
                 isOpen={editDialogOpen}
                 onOpenChange={handleDialogClose}

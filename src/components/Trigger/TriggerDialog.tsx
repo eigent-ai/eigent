@@ -68,17 +68,18 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>("");
     const [nameError, setNameError] = useState<string>("");
     const [formData, setFormData] = useState<TriggerInput>({
-        name: "",
-        description: "",
-        trigger_type: TriggerType.Schedule,
-        custom_cron_expression: "0 */1 * * *",
-        listener_type: ListenerType.Workforce,
-        webhook_method: RequestType.POST,
-        agent_model: "",
-        task_prompt: "",
-        max_executions_per_hour: undefined,
-        max_executions_per_day: undefined,
-        is_single_execution: false,
+        name: selectedTrigger?.name || "",
+        description: selectedTrigger?.description || "",
+        trigger_type: selectedTrigger?.trigger_type || TriggerType.Schedule,
+        custom_cron_expression: selectedTrigger?.custom_cron_expression || "0 */1 * * *",
+        listener_type: selectedTrigger?.listener_type || ListenerType.Workforce,
+        webhook_method: selectedTrigger?.webhook_method || RequestType.POST,
+        agent_model: selectedTrigger?.agent_model || "",
+        task_prompt: selectedTrigger?.task_prompt || initialTaskPrompt || "",
+        max_executions_per_hour: selectedTrigger?.max_executions_per_hour,
+        max_executions_per_day: selectedTrigger?.max_executions_per_day,
+        is_single_execution: selectedTrigger?.is_single_execution || false,
+        webhook_url: selectedTrigger?.webhook_url,
     });
     // const [selectedTools, setSelectedTools] = useState<any[]>([]);
     // const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
@@ -102,7 +103,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     trigger_type: selectedTrigger.trigger_type || TriggerType.Schedule,
                     custom_cron_expression: selectedTrigger.custom_cron_expression || "0 */1 * * *",
                     listener_type: selectedTrigger.listener_type || ListenerType.Workforce,
-                    webhook_method: RequestType.POST,
+                    webhook_method: selectedTrigger.webhook_method || RequestType.POST,
                     agent_model: selectedTrigger.agent_model || "",
                     task_prompt: selectedTrigger.task_prompt || "",
                     max_executions_per_hour: selectedTrigger.max_executions_per_hour,
@@ -120,7 +121,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     listener_type: ListenerType.Workforce,
                     webhook_method: RequestType.POST,
                     agent_model: "",
-                    task_prompt: initialTaskPrompt,
+                    task_prompt: initialTaskPrompt || "",
                     max_executions_per_hour: undefined,
                     max_executions_per_day: undefined,
                     is_single_execution: false,
@@ -215,7 +216,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     const handleCopyWebhookUrl = async () => {
         try {
-            await navigator.clipboard.writeText(`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`);
+            await navigator.clipboard.writeText(`${import.meta.env.VITE_PROXY_URL}/api/${formData.webhook_url || createdWebhookUrl}`);
             toast.success(t("triggers.webhook-url-copied"));
         } catch (err) {
             toast.error(t("triggers.failed-to-copy"));
@@ -318,9 +319,26 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
-                                    {t("triggers.webhook-url-after-creation")}
-                                </div>
+                                {
+                                    !selectedTrigger || !formData.webhook_url ? (
+                                        <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
+                                            {t("triggers.webhook-url-after-creation")}
+                                        </div>) : (
+                                        <div className="relative groups">
+                                            <div className="w-full bg-surface-secondary rounded-xl p-4 pr-24 border border-border-secondary font-mono text-sm text-text-body break-all shadow-sm">
+                                                {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
+                                            </div>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                onClick={handleCopyWebhookUrl}
+                                                className="absolute right-2 top-2 bg-white"
+                                            >
+                                                <Copy className="w-3 h-3 mr-1.5" />
+                                                {t("copy")}
+                                            </Button>
+                                        </div>)
+                                }
                             </div>
                         </TabsContent>
                     </Tabs>

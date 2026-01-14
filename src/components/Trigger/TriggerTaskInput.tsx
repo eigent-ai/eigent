@@ -14,7 +14,6 @@ export const TriggerTaskInput: React.FC<TriggerTaskInputProps> = ({
     placeholder,
 }) => {
     const { t } = useTranslation();
-    console.log('[TriggerTaskInput] Received value:', value);
 
     return (
         <div className="w-full flex flex-col gap-2">
