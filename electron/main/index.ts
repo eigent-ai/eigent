@@ -376,7 +376,7 @@ function registerIpcHandlers() {
   // Get running browser processes
   ipcMain.handle('get-running-browser-ports', () => {
     const runningPorts = Array.from(cdp_browser_processes.keys());
-    log.info(`Getting running browser ports: ${runningPorts.join(', ')}`)
+    log.debug(`Getting running browser ports: ${runningPorts.join(', ')}`)
     return runningPorts;
   });
 
@@ -399,7 +399,7 @@ function registerIpcHandlers() {
     }
 
     const newBrowser: CdpBrowser = {
-      id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `cdp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       port,
       isExternal,
       name,
