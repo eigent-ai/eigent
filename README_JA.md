@@ -190,7 +190,7 @@ Eigentは完全にオープンソースです。コードをダウンロード�
 ### 1. パームスプリングステニス旅行の旅程とSlackサマリー [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>私たちは2人のテニスファンで、パームスプリングス2026のテニストーナメントを見に行きたいです... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>私たちは2人のテニスファンで、パームスプリングス2026のテニストーナメントを見に行きたいです...</kbd></summary>
 <br>
 私たちは2人のテニスファンで、パームスプリングス2026のテニストーナメントを見に行きたいです。私はサンフランシスコに住んでいます。準決勝/決勝の時期に合わせて、3日間のフライト、ホテル、アクティビティを含む詳細な旅程を準備してください。私たちはハイキング、ヴィーガン料理、スパが好きです。予算は5,000ドルです。旅程は、時間、アクティビティ、コスト、その他の詳細、および該当する場合はチケット購入/予約リンクを含む詳細なタイムラインにしてください。スパへのアクセスはあれば嬉しいですが、必須ではありません。このタスクが完了したら、この旅行に関するHTMLレポートを生成し、計画の要約とレポートHTMLリンクをSlackの#tennis-trip-sfチャンネルに送信してください。
 </details>
@@ -200,7 +200,7 @@ Eigentは完全にオープンソースです。コードをダウンロード�
 ### 2. CSVバンクデータからQ2レポートを生成 [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTM1MjY4OTE4MDgtODczOSI.aIjJmQ.WTdoX9mATwrcBr_w53BmGEHPo8U__1753526891808-8739)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>銀行振込記録ファイルに基づいてQ2財務諸表を準備してください... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>銀行振込記録ファイルに基づいてQ2財務諸表を準備してください...</kbd></summary>
 <br>
 デスクトップにあるbank_transacation.csvの銀行振込記録ファイルに基づいて、投資家向けに支出額をチャート付きHTMLレポートにまとめたQ2財務諸表を準備してください。
 </details>
@@ -210,7 +210,7 @@ Eigentは完全にオープンソースです。コードをダウンロード�
 ### 3. 英国ヘルスケア市場調査レポートの自動化 [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTMzOTM1NTg3OTctODcwNyI.aIey-Q.Jh9QXzYrRYarY0kz_qsgoj3ewX0__1753393558797-8707)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>次の会社の計画をサポートするために、英国のヘルスケア業界を分析してください... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>次の会社の計画をサポートするために、英国のヘルスケア業界を分析してください...</kbd></summary>
 <br>
 次の会社の計画をサポートするために、英国のヘルスケア業界を分析してください。現在のトレンド、成長予測、関連規制を含む包括的な市場概要を提供してください。市場内の主要な機会、ギャップ、またはサービスが行き届いていないセグメントのトップ5-10を特定してください。すべての調査結果を、よく構成されたプロフェッショナルなHTMLレポートで提示してください。その後、タスクが完了したらSlackの#eigentr-product-testチャンネルにメッセージを送信し、チームメイトとレポート内容を共有してください。
 </details>
@@ -220,7 +220,7 @@ Eigentは完全にオープンソースです。コードをダウンロード�
 ### 4. ドイツの電動スケートボード市場実現可能性調査 [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2NTI4MjY3ODctNjk2Ig.aIjGiA.t-qIXxk_BZ4ENqa-yVIm0wMVyXU__1753652826787-696)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>私たちは高級電動スケートボードを製造する会社で、ドイツ市場への参入を検討しています... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>私たちは高級電動スケートボードを製造する会社で、ドイツ市場への参入を検討しています...</kbd></summary>
 <br>
 私たちは高級電動スケートボードを製造する会社で、ドイツ市場への参入を検討しています。詳細な市場参入実現可能性レポートを準備してください。レポートは以下の側面をカバーする必要があります：
 1. 市場規模と規制：ドイツにおける個人用軽量電動車両（PLEV）の市場規模、年間成長率、主要プレーヤー、市場シェアを調査してください。同時に、ABE認証などの認証要件や保険ポリシーを含む、公道での電動スケートボード使用に関するドイツの法律と規制の詳細な内訳と要約を提供してください。
@@ -235,7 +235,7 @@ Eigentは完全にオープンソースです。コードをダウンロード�
 ### 5. Workforce Multiagentローンチ向けSEO監査 [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2OTk5NzExNDQtNTY5NiI.aIex0w.jc_NIPmfIf9e3zGt-oG9fbMi3K4__1753699971144-5696)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>新しいWorkforce Multiagent製品のローンチをサポートするために... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>新しいWorkforce Multiagent製品のローンチをサポートするために...</kbd></summary>
 <br>
 新しいWorkforce Multiagent製品のローンチをサポートするために、公式ウェブサイト（https://www.camel-ai.org/）で徹底的なSEO監査を実行し、実行可能な推奨事項を含む詳細な最適化レポートを提供してください。
 </details>
@@ -245,7 +245,7 @@ Eigentは完全にオープンソースです。コードをダウンロード�
 ### 6. ダウンロード内の重複ファイルを特定 [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTM3NjAzODgxNzEtMjQ4Ig.aIhKLQ.epOG--0Nj0o4Bqjtdqm9OZdaqRQ__1753760388171-248)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>Documentsディレクトリにmydocsというフォルダがあります... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>Documentsディレクトリにmydocsというフォルダがあります...</kbd></summary>
 <br>
 Documentsディレクトリにmydocsというフォルダがあります。スキャンして、完全一致または類似した重複ファイルをすべて特定してください — ファイル名や拡張子が異なっていても、同一のコンテンツ、ファイルサイズ、または形式を持つファイルを含みます。類似性でグループ化して明確にリストしてください。
 </details>
@@ -255,7 +255,7 @@ Documentsディレクトリにmydocsというフォルダがあります。ス�
 ### 7. PDFに署名を追加 [リプレイ ▶️](https://www.eigent.ai/download?share_token=IjE3NTQwOTU0ODM0NTItNTY2MSI.aJCHrA.Mg5yPOFqj86H_GQvvRNditzepXc__1754095483452-5661)
 
 <details>
-<summary><strong>プロンプト:</strong> <kbd>この署名画像をPDFの署名エリアに追加してください... <kbd></summary>
+<summary><strong>プロンプト:</strong> <kbd>この署名画像をPDFの署名エリアに追加してください...</kbd></summary>
 <br>
 この署名画像をPDFの署名エリアに追加してください。このタスクを完了するために、CLIツール'tesseract'（OCRを介した'署名エリア'の信頼性の高い位置特定に必要）をインストールできます。
 </details>
