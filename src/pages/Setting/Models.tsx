@@ -733,19 +733,21 @@ export default function SettingModels() {
 														? t("setting.claude-sonnet-4")
 														: cloud_model_type === "claude-3-5-haiku-20241022"
 															? t("setting.claude-3.5-haiku")
-															: cloud_model_type === "gemini-3-pro-preview"
-																? t("setting.gemini-3-pro-preview")
-																: cloud_model_type === "gpt-5"
-																	? t("setting.gpt-5")
-																	: cloud_model_type === "gpt-5.1"
+															: cloud_model_type === "claude-4-5-haiku-20251001"
+																? t("setting.claude-4.5-haiku")
+																: cloud_model_type === "gemini-3-pro-preview"
+																	? t("setting.gemini-3-pro-preview")
+																	: cloud_model_type === "gpt-5"
 																		? t("setting.gpt-5")
-																		: cloud_model_type === "gpt-5.2"
+																		: cloud_model_type === "gpt-5.1"
 																			? t("setting.gpt-5")
-																	: cloud_model_type === "gpt-5-mini"
-																		? t("setting.gpt-5-mini")
-																		: cloud_model_type === "gemini-3-flash-preview"
-																			? t("setting.gemini-3-flash-preview")
-																			: t("setting.gemini-2.5-pro")}
+																			: cloud_model_type === "gpt-5.2"
+																				? t("setting.gpt-5")
+																				: cloud_model_type === "gpt-5-mini"
+																					? t("setting.gpt-5-mini")
+																					: cloud_model_type === "gemini-3-flash-preview"
+																						? t("setting.gemini-3-flash-preview")
+																						: t("setting.gemini-2.5-pro")}
 									</span>
 								</TooltipContent>
 							</Tooltip>
@@ -777,6 +779,9 @@ export default function SettingModels() {
 									</SelectItem>
 									<SelectItem value="claude-3-5-haiku-20241022">
 										Claude 3.5 Haiku
+									</SelectItem>
+									<SelectItem value="claude-4-5-haiku-20251001">
+										Claude 4.5 Haiku
 									</SelectItem>
 								</SelectContent>
 							</Select>
