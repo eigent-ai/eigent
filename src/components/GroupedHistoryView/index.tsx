@@ -4,7 +4,7 @@ import { ProjectGroup as ProjectGroupType } from "@/types/history";
 import { fetchGroupedHistoryTasks } from "@/service/historyApi";
 import ProjectGroup from "./ProjectGroup";
 import { useTranslation } from "react-i18next";
-import { Loader2, FolderOpen, Pin, Hash, LayoutGrid, List, Sparkles, Sparkle } from "lucide-react";
+import { FolderOpen, Pin, Hash, LayoutGrid, List, Sparkle } from "lucide-react";
 import { Tag } from "@/components/ui/tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGlobalStore } from "@/store/globalStore";
@@ -48,7 +48,7 @@ export default function GroupedHistoryView({
   const [loading, setLoading] = useState(true);
   const { history_type, setHistoryType } = useGlobalStore();
   const projectStore = useProjectStore();
-  
+
   // Default to list view if not set
   const viewType = history_type || "list";
 
@@ -63,7 +63,7 @@ export default function GroupedHistoryView({
     }
   };
 
-  const onDelete = (historyId: string ) => {
+  const onDelete = (historyId: string) => {
     try {
       onTaskDelete(historyId, () => {
         setProjects(prevProjects => {
@@ -102,15 +102,15 @@ export default function GroupedHistoryView({
 
         if (targetProject && targetProject.tasks && targetProject.tasks.length > 0) {
           console.log(`Deleting project ${projectId} with ${targetProject.tasks.length} tasks`);
-          
+
           // Delete each task one by one
           for (const history of targetProject.tasks) {
             try {
               await proxyFetchDelete(`/api/chat/history/${history.id}`);
               console.log(`Successfully deleted task ${history.task_id}`);
-              
+
               // Also delete local files for this task if available (via Electron IPC)
-              const {email} = getAuthStore();
+              const { email } = getAuthStore();
               if (history.task_id && (window as any).ipcRenderer) {
                 try {
                   await (window as any).ipcRenderer.invoke('delete-task-files', email, history.task_id, history.project_id ?? undefined);
@@ -123,13 +123,13 @@ export default function GroupedHistoryView({
               console.error(`Failed to delete task ${history.task_id}:`, error);
             }
           }
-          
+
           // Remove from projectStore
           projectStore.removeProject(projectId);
-          
+
           // Update local state to remove the project
           setProjects(prevProjects => prevProjects.filter(project => project.project_id !== projectId));
-          
+
           console.log(`Completed deletion of project ${projectId}`);
         } else if (targetProject) {
           // Project exists but has no tasks, just remove from store
@@ -190,12 +190,12 @@ export default function GroupedHistoryView({
   // Filter projects based on search value
   const filteredProjects = projects.filter(project => {
     if (!searchValue) return true;
-    
+
     // Check if project name matches
     if (project.project_name?.toLowerCase().includes(searchValue.toLowerCase())) {
       return true;
     }
-    
+
     // Check if any task in the project matches
     return project.tasks.some(task =>
       task.question?.toLowerCase().includes(searchValue.toLowerCase())
@@ -205,13 +205,14 @@ export default function GroupedHistoryView({
   // Get all projects from projectStore and find empty ones
   const allProjectsFromStore = projectStore.getAllProjects();
   const emptyProjects = allProjectsFromStore.filter(project => projectStore.isEmptyProject(project));
-  
+
   // Convert empty projects from projectStore format to ProjectGroup format
   const emptyProjectGroups: ProjectGroupType[] = emptyProjects.map(project => ({
     project_id: project.id,
     project_name: project.name,
     total_tokens: 0,
     task_count: 0,
+    trigger_count: 0,
     latest_task_date: new Date(project.updatedAt).toISOString(),
     last_prompt: "",
     tasks: [],
@@ -219,15 +220,90 @@ export default function GroupedHistoryView({
     total_ongoing_tasks: 0,
     average_tokens_per_task: 0
   }));
-  
+
   // Combine filtered projects with empty projects from store
   const allProjects = [...emptyProjectGroups, ...filteredProjects];
 
+  // Shimmer animation styles
+  const shimmerStyle = {
+    background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s infinite',
+  };
+
+  // Skeleton component for list card loading state
+  const ListCardSkeleton = () => (
+    <div className="rounded-xl bg-surface-secondary overflow-hidden">
+      <div className="flex items-center justify-between w-full px-6 py-4">
+        {/* Start: Folder icon and project name skeleton */}
+        <div className="flex items-center gap-3 w-48 flex-shrink-0">
+          <div className="w-5 h-5 rounded bg-surface-primary flex-shrink-0 overflow-hidden relative">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+          <div className="h-5 w-32 rounded bg-surface-primary overflow-hidden relative">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+        </div>
+
+        {/* Middle: Tags skeleton */}
+        <div className="flex items-center gap-4 flex-1 justify-end">
+          <div className="h-6 w-16 rounded-full bg-surface-primary overflow-hidden relative">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+          <div className="h-6 w-12 rounded-full bg-surface-primary overflow-hidden relative">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+          <div className="h-6 w-12 rounded-full bg-surface-primary overflow-hidden relative">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+        </div>
+
+        {/* End: Menu skeleton */}
+        <div className="flex items-center gap-2 min-w-32 justify-end ml-4 pl-4">
+          <div className="w-8 h-8 rounded-md bg-surface-primary overflow-hidden relative">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="w-6 h-6 animate-spin text-icon-secondary" />
-        <span className="ml-2 text-text-secondary">{t("layout.loading")}</span>
+      <div className="flex flex-col gap-4 w-full pb-40">
+        {/* Keyframe animation for shimmer effect */}
+        <style>
+          {`
+            @keyframes shimmer {
+              0% { background-position: 200% 0; }
+              100% { background-position: -200% 0; }
+            }
+          `}
+        </style>
+
+        {/* Summary skeleton */}
+        <div className="flex justify-between items-center pb-4">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-28 rounded-full bg-surface-tertiary overflow-hidden relative">
+              <div className="absolute inset-0" style={shimmerStyle} />
+            </div>
+            <div className="h-7 w-32 rounded-full bg-surface-tertiary overflow-hidden relative">
+              <div className="absolute inset-0" style={shimmerStyle} />
+            </div>
+          </div>
+          <div className="flex items-center gap-md">
+            <div className="h-9 w-40 rounded-lg bg-surface-tertiary overflow-hidden relative">
+              <div className="absolute inset-0" style={shimmerStyle} />
+            </div>
+          </div>
+        </div>
+
+        {/* List skeleton cards */}
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <ListCardSkeleton key={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -237,8 +313,8 @@ export default function GroupedHistoryView({
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <FolderOpen className="w-12 h-12 text-icon-tertiary mb-4" />
         <div className="text-text-secondary text-sm">
-          {searchValue 
-            ? t("dashboard.no-projects-match-search") 
+          {searchValue
+            ? t("dashboard.no-projects-match-search")
             : t("dashboard.no-projects-found")
           }
         </div>
@@ -263,7 +339,7 @@ export default function GroupedHistoryView({
               {allProjects.length}
             </span>
           </Tag>
-          
+
           <Tag variant="default" size="sm" className="gap-2">
             <Pin />
             <span className="text-body-sm"> {t("layout.total-tasks")}</span>
@@ -296,7 +372,7 @@ export default function GroupedHistoryView({
           </Tabs>
         </div>
       </div>
-      
+
       <AnimatePresence mode="wait">
         <motion.div
           key={viewType}
@@ -307,7 +383,7 @@ export default function GroupedHistoryView({
         >
           {viewType === "grid" ? (
             // Grid layout for project cards
-            <motion.div 
+            <motion.div
               className="grid grid-cols-1 md:grid-cols-2 gap-4 auto-rows-fr"
               initial="hidden"
               animate="visible"
@@ -327,9 +403,9 @@ export default function GroupedHistoryView({
                     key={project.project_id}
                     variants={{
                       hidden: { opacity: 0, y: 20, scale: 0.95 },
-                      visible: { 
-                        opacity: 1, 
-                        y: 0, 
+                      visible: {
+                        opacity: 1,
+                        y: 0,
                         scale: 1,
                         transition: {
                           duration: 0.3,
@@ -337,8 +413,8 @@ export default function GroupedHistoryView({
                         }
                       }
                     }}
-                    exit={{ 
-                      opacity: 0, 
+                    exit={{
+                      opacity: 0,
                       scale: 0.9,
                       transition: {
                         duration: 0.2
@@ -367,7 +443,7 @@ export default function GroupedHistoryView({
             </motion.div>
           ) : (
             // List layout for projects
-            <motion.div 
+            <motion.div
               className="flex flex-col gap-3"
               initial="hidden"
               animate="visible"
@@ -387,8 +463,8 @@ export default function GroupedHistoryView({
                     key={project.project_id}
                     variants={{
                       hidden: { opacity: 0, x: -20 },
-                      visible: { 
-                        opacity: 1, 
+                      visible: {
+                        opacity: 1,
                         x: 0,
                         transition: {
                           duration: 0.3,
@@ -396,8 +472,8 @@ export default function GroupedHistoryView({
                         }
                       }
                     }}
-                    exit={{ 
-                      opacity: 0, 
+                    exit={{
+                      opacity: 0,
                       x: -20,
                       transition: {
                         duration: 0.2

@@ -1,5 +1,6 @@
 import { CheckCircle2, XCircle, Clock, Play, AlertTriangle, Terminal, ArrowRight, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { proxyFetchTrigger, proxyFetchTriggerExecutions } from "@/service/triggerApi";
 import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
 import { Trigger, TriggerExecution, ExecutionStatus } from "@/types";
@@ -54,38 +55,38 @@ const formatDuration = (seconds?: number): string | undefined => {
 };
 
 // Helper function to transform TriggerExecution to ExecutionLogEntry
-const transformToLogEntry = (execution: TriggerExecution): ExecutionLogEntry => {
+const transformToLogEntry = (execution: TriggerExecution, t: any): ExecutionLogEntry => {
     const status = mapExecutionStatus(execution.status);
     const duration = formatDuration(execution.duration_seconds);
-    
+
     let message = "";
     switch (execution.status) {
         case ExecutionStatus.Completed:
-            message = "Execution completed successfully";
+            message = t("triggers.execution-completed-success");
             break;
         case ExecutionStatus.Failed:
-            message = execution.error_message || "Execution failed";
+            message = execution.error_message || t("triggers.execution-failed-message");
             break;
         case ExecutionStatus.Running:
-            message = "Execution in progress...";
+            message = t("triggers.execution-in-progress");
             break;
         case ExecutionStatus.Pending:
-            message = "Waiting to execute...";
+            message = t("triggers.waiting-to-execute");
             break;
         case ExecutionStatus.Cancelled:
-            message = "Execution was cancelled";
+            message = t("triggers.execution-cancelled");
             break;
         case ExecutionStatus.Missed:
-            message = "Execution was missed";
+            message = t("triggers.execution-missed");
             break;
         default:
-            message = "Unknown status";
+            message = t("triggers.unknown-status");
     }
-    
-    const details = execution.error_message && execution.status === ExecutionStatus.Failed 
-        ? execution.error_message 
+
+    const details = execution.error_message && execution.status === ExecutionStatus.Failed
+        ? execution.error_message
         : undefined;
-    
+
     return {
         id: execution.id,
         timestamp: formatTime(execution.started_at || execution.created_at),
@@ -135,6 +136,7 @@ interface ExecutionLogsProps {
 }
 
 export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
+    const { t } = useTranslation();
     const [trigger, setTrigger] = useState<Trigger | null>(null);
     const [executions, setExecutions] = useState<TriggerExecution[]>([]);
     const [loading, setLoading] = useState(true);
@@ -146,20 +148,20 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
             try {
                 setLoading(true);
                 setError(null);
-                
+
                 // Fetch trigger details
                 const triggerData = await proxyFetchTrigger(triggerId);
                 setTrigger(triggerData);
-                
+
                 // Fetch executions
                 const executionsResponse = await proxyFetchTriggerExecutions(triggerId, 1, 50);
-                const executionsData = Array.isArray(executionsResponse) 
-                    ? executionsResponse 
+                const executionsData = Array.isArray(executionsResponse)
+                    ? executionsResponse
                     : (Array.isArray(executionsResponse?.items) ? executionsResponse.items : []);
                 setExecutions(executionsData);
             } catch (err) {
                 console.error("Failed to fetch execution data:", err);
-                setError("Failed to load execution data");
+                setError(t("triggers.failed-to-load-executions"));
             } finally {
                 setLoading(false);
             }
@@ -171,15 +173,15 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
     // Listen to activity logs for real-time updates
     useEffect(() => {
         const relevantLogs = activityLogs.filter(log => log.triggerId === triggerId);
-        
+
         if (relevantLogs.length > 0) {
             // Refresh execution data when there's a new relevant activity
             const latestLog = relevantLogs[0];
             if ([ActivityType.TriggerExecuted, ActivityType.ExecutionSuccess, ActivityType.ExecutionFailed].includes(latestLog.type)) {
                 proxyFetchTriggerExecutions(triggerId, 1, 50)
                     .then(executionsResponse => {
-                        const executionsData = Array.isArray(executionsResponse) 
-                            ? executionsResponse 
+                        const executionsData = Array.isArray(executionsResponse)
+                            ? executionsResponse
                             : (Array.isArray(executionsResponse?.items) ? executionsResponse.items : []);
                         setExecutions(executionsData);
                     })
@@ -192,7 +194,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-text-label">
                 <Loader2 className="h-8 w-8 mb-2 animate-spin" />
-                <span className="text-sm">Loading execution data...</span>
+                <span className="text-sm">{t('triggers.loading-executions')}</span>
             </div>
         );
     }
@@ -201,44 +203,48 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-text-label">
                 <Terminal className="h-8 w-8 mb-2 opacity-50" />
-                <span className="text-sm">{error || "No execution data available"}</span>
+                <span className="text-sm">{error || t("triggers.no-execution-data")}</span>
             </div>
         );
     }
 
     // Transform executions to log entries
-    const logs = Array.isArray(executions) ? executions.map(transformToLogEntry) : [];
+    const logs = Array.isArray(executions) ? executions.map(e => transformToLogEntry(e, t)) : [];
 
     // Calculate success rate
-    const completedExecutions = Array.isArray(executions) ? executions.filter(e => 
+    const completedExecutions = Array.isArray(executions) ? executions.filter(e =>
         e.status === ExecutionStatus.Completed || e.status === ExecutionStatus.Failed
     ) : [];
     const successfulExecutions = Array.isArray(executions) ? executions.filter(e => e.status === ExecutionStatus.Completed) : [];
-    const successRate = completedExecutions.length > 0 
+    const successRate = completedExecutions.length > 0
         ? Math.round((successfulExecutions.length / completedExecutions.length) * 100)
         : 0;
 
     return (
         <div className="flex flex-col h-full">
             {/* Stats */}
-            <div className="flex items-center gap-4 px-4 py-3 bg-surface-primary border-b border-border-tertiary">
-                <div className="flex flex-col">
-                    <span className="text-label-xs text-text-label">Trigger</span>
+            <div className="flex flex-col items-start justify-start px-4 pb-4 bg-surface-tertiary overflow-hidden">
+                <div className="flex flex-row w-full items-center justify-between mb-4">
                     <span className="text-label-sm font-medium text-text-heading truncate max-w-[150px]" title={trigger.name}>
                         {trigger.name}
                     </span>
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-label-xs text-text-label">Total Runs</span>
-                    <span className="text-label-sm font-medium text-text-heading">
-                        {trigger.execution_count || 0}
+                    <span className="text-label-xs text-text-label">
+                        {trigger.trigger_type === "schedule" ? t("triggers.schedule") : trigger.trigger_type === "webhook" ? t("triggers.webhook") : trigger.trigger_type.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
                     </span>
                 </div>
-                <div className="flex flex-col">
-                    <span className="text-label-xs text-text-label">Success Rate</span>
-                    <span className={`text-label-sm font-medium ${successRate >= 90 ? 'text-emerald-600' : successRate >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
-                        {successRate}%
-                    </span>
+                <div className="flex flex-row">
+                    <div className="flex flex-col pr-4 mr-4 border-solid border-r-1 border-y-0 border-l-0 border-border-tertiary">
+                        <span className="text-label-sm font-medium text-text-heading">
+                            {trigger.execution_count || 0}
+                        </span>
+                        <span className="text-label-xs text-text-label">{t('triggers.total-runs')}</span>
+                    </div>
+                    <div className="flex flex-col pr-4 mr-4 border-solid border-r-1 border-y-0 border-l-0 border-border-tertiary">
+                        <span className={`text-label-sm font-medium ${successRate >= 90 ? 'text-icon-success' : successRate >= 70 ? 'text-icon-warning' : 'text-icon-cuation'}`}>
+                            {successRate}%
+                        </span>
+                        <span className="text-label-xs text-text-label">{t('triggers.success-rate')}</span>
+                    </div>
                 </div>
             </div>
 
@@ -247,14 +253,14 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
                 {logs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-text-label py-8">
                         <Terminal className="h-8 w-8 mb-2 opacity-50" />
-                        <span className="text-sm">No executions yet</span>
+                        <span className="text-sm">{t('triggers.no-executions-yet')}</span>
                     </div>
                 ) : (
                     <div className="divide-y divide-border-tertiary">
                         {logs.map((log) => (
                             <div
                                 key={log.id}
-                                className={`flex items-start gap-2.5 px-4 py-2.5 border-l-2 hover:bg-surface-tertiary-hover transition-colors ${getStatusColor(log.status)}`}
+                                className={`flex items-start gap-2.5 px-4 py-2.5 hover:bg-surface-tertiary-hover transition-colors ${getStatusColor(log.status)}`}
                             >
                                 <div className="flex-shrink-0 mt-0.5">
                                     {getStatusIcon(log.status)}
@@ -273,13 +279,13 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
                                             </>
                                         )}
                                     </div>
-                                    <p className="text-label-xs text-text-body mt-0.5">
+                                    <div className="text-label-xs text-text-body mt-0.5">
                                         {log.message}
-                                    </p>
+                                    </div>
                                     {log.details && (
-                                        <p className="text-label-xs text-text-label mt-0.5 font-mono">
+                                        <div className="text-label-xs text-text-label mt-0.5 font-mono">
                                             {log.details}
-                                        </p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -289,9 +295,9 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
             </div>
 
             {/* Footer */}
-            <div className="px-4 py-2 border-t border-border-tertiary bg-surface-primary">
+            <div className="flex flex-row items-center justify-start px-4 py-2">
                 <span className="text-label-xs text-text-label">
-                    Last run: {formatRelativeTime(trigger.last_executed_at)}
+                    {t('triggers.last-run-label')}: {formatRelativeTime(trigger.last_executed_at)}
                 </span>
             </div>
         </div>

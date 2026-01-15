@@ -203,9 +203,9 @@ export default function Tasks() {
                                     {chatStore.tasks[chatStore.activeTaskId as string]
                                         ?.activeWorkSpace === "workflow" && (
                                             <div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-                                                <div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid relative">
+                                                <div className="w-full h-full flex flex-col relative">
                                                     {/*filter blur */}
-                                                    <div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
+                                                    <div className="absolute inset-0 pointer-events-none bg-transparent"></div>
                                                     <div className="w-full h-full relative z-10">
                                                         <Workflow
                                                             taskAssigning={
@@ -233,9 +233,9 @@ export default function Tasks() {
                                     {chatStore.tasks[chatStore.activeTaskId as string]
                                         .activeWorkSpace === "documentWorkSpace" && (
                                             <div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-                                                <div className="w-full h-full pb-2 flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+                                                <div className="w-full h-full pb-2 flex flex-col relative">
                                                     {/*filter blur */}
-                                                    <div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+                                                    <div className="absolute inset-0 blur-bg pointer-events-none bg-surface-secondary rounded-xl"></div>
                                                     <div className="w-full h-full relative z-10">
                                                         <Folder />
                                                     </div>
@@ -251,9 +251,9 @@ export default function Tasks() {
                                                 .activeWorkSpace
                                     )?.type === "document_agent" && (
                                             <div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-                                                <div className="w-full h-full flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+                                                <div className="w-full h-full flex flex-col relative">
                                                     {/*filter blur */}
-                                                    <div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+                                                    <div className="absolute inset-0 blur-bg pointer-events-none bg-surface-secondary rounded-xl"></div>
                                                     <div className="w-full h-full relative z-10">
                                                         <Folder
                                                             data={chatStore.tasks[
@@ -273,9 +273,9 @@ export default function Tasks() {
                                     {chatStore.tasks[chatStore.activeTaskId as string]
                                         .activeWorkSpace === "inbox" && (
                                             <div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-                                                <div className="w-full h-full flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+                                                <div className="w-full h-full flex flex-col relative">
                                                     {/*filter blur */}
-                                                    <div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+                                                    <div className="absolute inset-0 blur-bg pointer-events-none bg-surface-secondary rounded-xl"></div>
                                                     <div className="w-full h-full relative z-10">
                                                         <Folder />
                                                     </div>

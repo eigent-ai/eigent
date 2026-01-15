@@ -20,6 +20,7 @@ export interface ActivityLog {
     type: ActivityType;
     message: string;
     timestamp: Date;
+    projectId?: string;
     triggerId?: number;
     triggerName?: string;
     executionId?: string;
@@ -30,7 +31,9 @@ interface ActivityLogStore {
     logs: ActivityLog[];
     addLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => void;
     clearLogs: () => void;
+    clearLogsForProject: (projectId: string) => void;
     getRecentLogs: (count?: number) => ActivityLog[];
+    getLogsForProject: (projectId: string, count?: number) => ActivityLog[];
 }
 
 let logIdCounter = 1;
@@ -54,7 +57,17 @@ export const useActivityLogStore = create<ActivityLogStore>((set, get) => ({
         set({ logs: [] });
     },
 
+    clearLogsForProject: (projectId: string) => {
+        set((state) => ({
+            logs: state.logs.filter(log => log.projectId !== projectId)
+        }));
+    },
+
     getRecentLogs: (count = 10) => {
         return get().logs.slice(0, count);
+    },
+
+    getLogsForProject: (projectId: string, count = 100) => {
+        return get().logs.filter(log => log.projectId === projectId).slice(0, count);
     },
 }));

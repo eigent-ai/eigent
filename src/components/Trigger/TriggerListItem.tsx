@@ -7,7 +7,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Zap, Clock, MoreHorizontal, Edit, Copy, Trash2, Globe, MessageSquare } from "lucide-react";
+import { Zap, Clock, MoreHorizontal, Edit, Copy, Trash2, Globe, MessageSquare, AlarmClockIcon, WebhookIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatDateTime } from "@/lib/utils";
 
@@ -36,9 +36,9 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
     const getTriggerTypeIcon = () => {
         switch (trigger.trigger_type) {
             case TriggerType.Schedule:
-                return <Clock className="w-3.5 h-3.5" />;
+                return <AlarmClockIcon className="w-3.5 h-3.5" />;
             case TriggerType.Webhook:
-                return <Globe className="w-3.5 h-3.5" />;
+                return <WebhookIcon className="w-3.5 h-3.5" />;
             case TriggerType.SlackTrigger:
                 return <MessageSquare className="w-3.5 h-3.5" />;
             default:
@@ -74,7 +74,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
         >
             {/* 1. Zap Icon */}
             <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-amber-500/10 rounded-lg">
-                <Zap className="w-5 h-5 text-amber-500" />
+                <Zap className="w-5 h-5 text-icon-primary" />
             </div>
 
             {/* 2. Trigger Name + Task Prompt */}
@@ -91,12 +91,6 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[80px]">
                 {getTriggerTypeIcon()}
                 <span>{getTriggerTypeLabel()}</span>
-            </div>
-
-            {/* 4. Last Execution Time */}
-            <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[100px]">
-                <Clock className="w-3.5 h-3.5" />
-                <span>{formatLastExecution(trigger.last_executed_at)}</span>
             </div>
 
             {/* 5. Activation Switch */}

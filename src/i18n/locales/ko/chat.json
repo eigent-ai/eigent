@@ -35,7 +35,7 @@
 	"reassigned": "재할당",
 	"ongoing": "진행 중",
 	"pending": "대기 중",
-	"failed": "실패", 
+	"failed": "실패",
 	"all": "모두",
 	"in-progress": "진행 중",
 	"unfinished": "미완료",
@@ -47,6 +47,14 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "클라우드 스토리지가 현재 플랜의 한도에 도달했습니다.",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "트래픽이 많습니다. 잠시 후 다시 시도해 주세요.",
 	"new-project": "새 프로젝트",
-	"no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다."
+	"no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다.",
+	"splitting-tasks": "작업 분할 중",
+	"start-task": "작업 시작",
+	"message-cannot-be-empty": "메시지는 비워둘 수 없습니다",
+	"remove-file": "파일 제거",
+	"drop-files-to-attach": "파일을 드롭하여 첨부",
+	"expand-input": "입력창 확장 (⌘P)",
+	"queued-tasks": "대기 중인 작업",
+	"remove-queued-message": "대기열에서 메시지 제거",
+	"no-agents-added": "추가된 에이전트 없음"
 }
-	 

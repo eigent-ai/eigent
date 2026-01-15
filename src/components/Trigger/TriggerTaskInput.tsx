@@ -6,33 +6,33 @@ type TriggerTaskInputProps = {
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
+    state?: "default" | "hover" | "input" | "error" | "success" | "disabled";
+    note?: string;
 };
 
 export const TriggerTaskInput: React.FC<TriggerTaskInputProps> = ({
     value,
     onChange,
     placeholder,
+    state = "default",
+    note,
 }) => {
     const { t } = useTranslation();
 
     return (
-        <div className="w-full flex flex-col gap-2">
-            {/* Header */}
-            <Label htmlFor="task" className="text-sm font-bold text-text-heading">
-                {t("triggers.trigger-task")}
-            </Label>
-
-            {/* Task input area */}
             <Textarea
                 id="task"
                 variant="enhanced"
                 size="sm"
+                required
+                title={t("triggers.task-prompt")}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder || t("triggers.task-prompt-placeholder")}
                 className="flex-1 resize-none min-h-[100px]"
-            />
-        </div>
+                state={state}
+                note={note}
+        />
     );
 };
 

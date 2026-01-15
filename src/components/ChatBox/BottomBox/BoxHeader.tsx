@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimateIcon } from "@/components/animate-ui/icons/icon";
 import { Orbit } from "@/components/animate-ui/icons/orbit";
+import { useTranslation } from "react-i18next";
 
 /**
  * Variant: Splitting
@@ -12,6 +13,7 @@ export interface BoxHeaderSplittingProps {
 }
 
 export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
+    const { t } = useTranslation();
     return (
         <div
             className={cn(
@@ -32,7 +34,7 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
 
                 <div className="flex-1 flex gap-0.5 items-center min-h-px min-w-px relative">
                     <span className="font-bold text-text-information text-sm whitespace-nowrap">
-                        Splitting Tasks
+                        {t("chat.splitting-tasks")}
                     </span>
                 </div>
             </div>
@@ -56,6 +58,7 @@ export const BoxHeaderConfirm = ({
     onEdit,
     className,
 }: BoxHeaderConfirmProps) => {
+    const { t } = useTranslation();
     return (
         <div
             className={cn(
@@ -89,7 +92,7 @@ export const BoxHeaderConfirm = ({
                     className="rounded-full"
                     onClick={onStartTask}
                 >
-                    Start Task
+                    {t("chat.start-task")}
                 </Button>
             </div>
         </div>

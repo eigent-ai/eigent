@@ -4,6 +4,7 @@ import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { ReactFlowProvider } from "@xyflow/react";
 import { AnimatePresence, motion } from "framer-motion";
 import BottomBar from "@/components/BottomBar";
@@ -32,6 +33,7 @@ import { TriggerInput } from "@/types";
 import { useAuthStore } from "@/store/authStore";
 
 export default function Home() {
+	const { t } = useTranslation();
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
 	const {
@@ -103,13 +105,13 @@ export default function Home() {
 		setTriggerDialogOpen(false);
 		// Mark the triggers tab as having new content
 		setHasTriggers(true);
-		if (activeWorkspaceTab !== 'overview') {
-			markTabAsUnviewed('overview');
+		if (activeWorkspaceTab !== 'triggers') {
+			markTabAsUnviewed('triggers');
 		}
 	};
 
 	if (!chatStore) {
-		return <div>Loading...</div>;
+		return <div>{t('triggers.loading')}</div>;
 	}
 
 	const authStore = useAuthStore.getState();
@@ -249,7 +251,7 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!chatStore.activeTaskId) {
-			projectStore.createProject("new project");
+			projectStore.createProject(t("layout.new-project"));
 		}
 
 		const webviewContainer = document.getElementById("webview-container");
@@ -280,8 +282,11 @@ export default function Home() {
 
 	// Render workspace content based on active workspace tab
 	const renderWorkspaceContent = () => {
+		const activeTask = chatStore.activeTaskId ? chatStore.tasks[chatStore.activeTaskId] : null;
+		const activeWorkSpace = activeTask?.activeWorkSpace;
+
 		switch (activeWorkspaceTab) {
-			case 'overview':
+			case 'triggers':
 				return <Overview />;
 			case 'inbox':
 				return (
@@ -293,83 +298,76 @@ export default function Home() {
 				);
 			case 'workforce':
 			default:
+				// If no active task, show default workflow view
+				if (!activeTask || !activeWorkSpace) {
+					return (
+						<div className="w-full h-full flex-1 flex items-center justify-center">
+							<div className="w-full h-full flex flex-col relative">
+								<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
+								<div className="w-full h-full relative z-10">
+									<Workflow taskAssigning={[]} />
+								</div>
+							</div>
+						</div>
+					);
+				}
+
 				return (
 					<>
-						{chatStore.tasks[
-							chatStore.activeTaskId as string
-						]?.taskAssigning?.find(
+						{activeTask.taskAssigning?.find(
 							(agent) =>
-								agent.agent_id ===
-								chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace
+								agent.agent_id === activeWorkSpace
 						)?.type === "search_agent" && (
 								<div className="w-full h-full flex-1 flex">
 									<SearchAgentWrokSpace />
 								</div>
 							)}
-						{chatStore.tasks[chatStore.activeTaskId as string]
-							?.activeWorkSpace === "workflow" && (
-								<div className="w-full h-full flex-1 flex items-center justify-center">
-									<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid relative">
-										{/*filter blur */}
-										<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
-										<div className="w-full h-full relative z-10">
-											<Workflow
-												taskAssigning={
-													chatStore.tasks[chatStore.activeTaskId as string]
-														?.taskAssigning || []
-												}
-											/>
-										</div>
+						{activeWorkSpace === "workflow" && (
+							<div className="w-full h-full flex-1 flex items-center justify-center">
+								<div className="w-full h-full flex flex-col relative">
+									{/*filter blur */}
+									<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
+									<div className="w-full h-full relative z-10">
+										<Workflow
+											taskAssigning={activeTask.taskAssigning || []}
+										/>
 									</div>
 								</div>
-							)}
-						{chatStore.tasks[
-							chatStore.activeTaskId as string
-						]?.taskAssigning?.find(
+							</div>
+						)}
+						{activeTask.taskAssigning?.find(
 							(agent) =>
-								agent.agent_id ===
-								chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace
+								agent.agent_id === activeWorkSpace
 						)?.type === "developer_agent" && (
 								<div className="w-full h-full flex-1 flex">
 									<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
 									{/* <Terminal content={[]} /> */}
 								</div>
 							)}
-						{chatStore.tasks[chatStore.activeTaskId as string]
-							.activeWorkSpace === "documentWorkSpace" && (
-								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center">
-									<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
-										{/*filter blur */}
-										<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
-										<div className="w-full h-full relative z-10">
-											<Folder />
-										</div>
+						{activeWorkSpace === "documentWorkSpace" && (
+							<div className="w-full h-full flex-1 flex items-center justify-center">
+								<div className="w-full h-full flex flex-col relative">
+									{/*filter blur */}
+									<div className="absolute inset-0 blur-bg pointer-events-none bg-surface-secondary rounded-xl"></div>
+									<div className="w-full h-full relative z-10">
+										<Folder />
 									</div>
 								</div>
-							)}
-						{chatStore.tasks[
-							chatStore.activeTaskId as string
-						]?.taskAssigning?.find(
+							</div>
+						)}
+						{activeTask.taskAssigning?.find(
 							(agent) =>
-								agent.agent_id ===
-								chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace
+								agent.agent_id === activeWorkSpace
 						)?.type === "document_agent" && (
-								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center">
-									<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
+								<div className="w-full h-full flex-1 flex items-center justify-center">
+									<div className="w-full h-full flex flex-col relative">
 										{/*filter blur */}
-										<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+										<div className="absolute inset-0 blur-bg pointer-events-none bg-surface-secondary rounded-xl"></div>
 										<div className="w-full h-full relative z-10">
 											<Folder
-												data={chatStore.tasks[
-													chatStore.activeTaskId as string
-												]?.taskAssigning?.find(
+												data={activeTask.taskAssigning?.find(
 													(agent) =>
-														agent.agent_id ===
-														chatStore.tasks[chatStore.activeTaskId as string]
-															.activeWorkSpace
+														agent.agent_id === activeWorkSpace
 												)}
 											/>
 										</div>
@@ -377,18 +375,17 @@ export default function Home() {
 								</div>
 							)}
 						{/* Inbox Workspace - kept for backward compatibility */}
-						{chatStore.tasks[chatStore.activeTaskId as string]
-							.activeWorkSpace === "inbox" && (
-								<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center">
-									<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
-										{/*filter blur */}
-										<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
-										<div className="w-full h-full relative z-10">
-											<Folder />
-										</div>
+						{activeWorkSpace === "inbox" && (
+							<div className="w-full h-full flex-1 flex items-center justify-center">
+								<div className="w-full h-full flex flex-col relative">
+									{/*filter blur */}
+									<div className="absolute inset-0 blur-bg pointer-events-none bg-surface-secondary rounded-xl"></div>
+									<div className="w-full h-full relative z-10">
+										<Folder />
 									</div>
 								</div>
-							)}
+							</div>
+						)}
 					</>
 				);
 		}
@@ -410,117 +407,226 @@ export default function Home() {
 							</>
 						)}
 						<ResizablePanel className="h-full w-full">
-							{chatStore.tasks[chatStore.activeTaskId as string]
-								?.activeWorkSpace && (
-									<div className="w-full h-full flex flex-col bg-surface-secondary border-solid border-border-tertiary rounded-2xl">
-										{/* Header with workspace tabs */}
-										<div className="w-full px-2 py-2 flex items-center justify-between">
-											<div className="w-full flex flex-row items-center justify-start gap-4">
-												<MenuToggleGroup
-													type="single"
+							{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]?.activeWorkSpace ? (
+								<div className="w-full h-full flex flex-col bg-surface-secondary border-solid border-border-tertiary rounded-2xl">
+									{/* Header with workspace tabs */}
+									<div className="w-full px-2 py-2 flex items-center justify-between">
+										<div className="w-full flex flex-row items-center justify-start gap-4">
+											<MenuToggleGroup
+												type="single"
+												variant="info"
+												size="xs"
+												orientation="horizontal"
+												value={activeWorkspaceTab}
+												onValueChange={(val) => val && setActiveWorkspaceTab(val as 'triggers' | 'workforce' | 'inbox')}
+												className="bg-surface-primary rounded-lg"
+											>
+												<MenuToggleItem
+													value="workforce"
 													variant="info"
 													size="xs"
-													orientation="horizontal"
-													value={activeWorkspaceTab}
-													onValueChange={(val) => val && setActiveWorkspaceTab(val as 'overview' | 'workforce' | 'inbox')}
-													className="bg-surface-primary rounded-lg"
+													icon={<LayoutGrid />}
+													className="w-32"
 												>
-													<MenuToggleItem
-														value="workforce"
-														variant="info"
-														size="xs"
-														icon={<LayoutGrid />}
-														className="w-32"
-													>
-														Workspace
-													</MenuToggleItem>
-													<MenuToggleItem
-														value="inbox"
-														variant="info"
-														size="xs"
-														icon={<Inbox />}
-														showSubIcon={unviewedTabs.has('inbox')}
-														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
-														className="w-32"
-													>
-														Agent Folder
-													</MenuToggleItem>
-													<MenuToggleItem
-														value="overview"
-														variant="info"
-														size="xs"
-														icon={<Zap />}
-														showSubIcon={unviewedTabs.has('overview')}
-														subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
-														className="w-32"
-													>
-														Triggers
-													</MenuToggleItem>
-												</MenuToggleGroup>
-											</div>
-											<Button
-												variant="primary"
-												size="sm"
-												className="rounded-lg"
-												onClick={() => {
-													if (activeWorkspaceTab === 'workforce') {
-														setAddWorkerDialogOpen(true);
-													} else if (activeWorkspaceTab === 'inbox') {
-														fileInputRef.current?.click();
-													} else if (activeWorkspaceTab === 'overview') {
-														setTriggerDialogOpen(true);
-													}
-												}}
-											>
-												<Plus />
-												{activeWorkspaceTab === 'workforce' && 'Add'}
-												{activeWorkspaceTab === 'inbox' && 'Add'}
-												{activeWorkspaceTab === 'overview' && 'Add'}
-											</Button>
-
-											{/* Hidden file input for upload */}
-											<input
-												type="file"
-												ref={fileInputRef}
-												onChange={handleFileUpload}
-												multiple
-												className="hidden"
-											/>
-
-											{/* AddWorker Dialog */}
-											<AddWorker
-												isOpen={addWorkerDialogOpen}
-												onOpenChange={setAddWorkerDialogOpen}
-											/>
-
-											{/* TriggerDialog */}
-											<TriggerDialog
-												selectedTrigger={null}
-												onTriggerCreating={handleTriggerCreating}
-												onTriggerCreated={handleTriggerCreated}
-												isOpen={triggerDialogOpen}
-												onOpenChange={setTriggerDialogOpen}
-											/>
-										</div>
-										<div className="flex-1 min-h-0 w-full">
-											<AnimatePresence mode="wait">
-												<motion.div
-													key={activeWorkspaceTab}
-													initial={{ opacity: 0, filter: "blur(4px)" }}
-													animate={{ opacity: 1, filter: "blur(0px)" }}
-													exit={{ opacity: 0, filter: "blur(4px)" }}
-													transition={{ duration: 0.2 }}
-													className="w-full h-full"
+													{t('triggers.workspace')}
+												</MenuToggleItem>
+												<MenuToggleItem
+													value="inbox"
+													variant="info"
+													size="xs"
+													icon={<Inbox />}
+													showSubIcon={unviewedTabs.has('inbox')}
+													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+													className="w-32"
 												>
-													{renderWorkspaceContent()}
-												</motion.div>
-											</AnimatePresence>
+													{t('triggers.agent-folder')}
+												</MenuToggleItem>
+												<MenuToggleItem
+													value="triggers"
+													variant="info"
+													size="xs"
+													icon={<Zap />}
+													showSubIcon={unviewedTabs.has('triggers')}
+													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+													className="w-32"
+												>
+													{t('triggers.title')}
+												</MenuToggleItem>
+											</MenuToggleGroup>
 										</div>
-										{activeWorkspaceTab === 'workforce' && (
-											<BottomBar onToggleChatBox={toggleChatBox} isChatBoxVisible={isChatBoxVisible} />
-										)}
+										<Button
+											variant="primary"
+											size="sm"
+											className="rounded-lg w-24 items-center justify-center"
+											onClick={() => {
+												if (activeWorkspaceTab === 'workforce') {
+													setAddWorkerDialogOpen(true);
+												} else if (activeWorkspaceTab === 'inbox') {
+													fileInputRef.current?.click();
+												} else if (activeWorkspaceTab === 'triggers') {
+													setTriggerDialogOpen(true);
+												}
+											}}
+										>
+											<Plus />
+											{activeWorkspaceTab === 'workforce' && t('triggers.add')}
+											{activeWorkspaceTab === 'inbox' && t('triggers.upload')}
+											{activeWorkspaceTab === 'triggers' && t('triggers.create')}
+										</Button>
+
+										{/* Hidden file input for upload */}
+										<input
+											type="file"
+											ref={fileInputRef}
+											onChange={handleFileUpload}
+											multiple
+											className="hidden"
+										/>
+
+										{/* AddWorker Dialog */}
+										<AddWorker
+											isOpen={addWorkerDialogOpen}
+											onOpenChange={setAddWorkerDialogOpen}
+										/>
+
+										{/* TriggerDialog */}
+										<TriggerDialog
+											selectedTrigger={null}
+											onTriggerCreating={handleTriggerCreating}
+											onTriggerCreated={handleTriggerCreated}
+											isOpen={triggerDialogOpen}
+											onOpenChange={setTriggerDialogOpen}
+										/>
 									</div>
-								)}
+									<div className="flex-1 min-h-0 w-full">
+										<AnimatePresence mode="wait">
+											<motion.div
+												key={activeWorkspaceTab}
+												initial={{ opacity: 0, filter: "blur(4px)" }}
+												animate={{ opacity: 1, filter: "blur(0px)" }}
+												exit={{ opacity: 0, filter: "blur(4px)" }}
+												transition={{ duration: 0.2 }}
+												className="w-full h-full"
+											>
+												{renderWorkspaceContent()}
+											</motion.div>
+										</AnimatePresence>
+									</div>
+									{activeWorkspaceTab === 'workforce' && (
+										<BottomBar onToggleChatBox={toggleChatBox} isChatBoxVisible={isChatBoxVisible} />
+									)}
+								</div>
+							) : (
+								// Show default workspace when activeTaskId is null or task doesn't exist
+								<div className="w-full h-full flex flex-col bg-surface-secondary border-solid border-border-tertiary rounded-2xl">
+									{/* Header with workspace tabs */}
+									<div className="w-full px-2 py-2 flex items-center justify-between">
+										<div className="w-full flex flex-row items-center justify-start gap-4">
+											<MenuToggleGroup
+												type="single"
+												variant="info"
+												size="xs"
+												orientation="horizontal"
+												value={activeWorkspaceTab}
+												onValueChange={(val) => val && setActiveWorkspaceTab(val as 'triggers' | 'workforce' | 'inbox')}
+												className="bg-surface-primary rounded-lg"
+											>
+												<MenuToggleItem
+													value="workforce"
+													variant="info"
+													size="xs"
+													icon={<LayoutGrid />}
+													className="w-32"
+												>
+													{t('triggers.workspace')}
+												</MenuToggleItem>
+												<MenuToggleItem
+													value="inbox"
+													variant="info"
+													size="xs"
+													icon={<Inbox />}
+													showSubIcon={unviewedTabs.has('inbox')}
+													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+													className="w-32"
+												>
+													{t('triggers.agent-folder')}
+												</MenuToggleItem>
+												<MenuToggleItem
+													value="triggers"
+													variant="info"
+													size="xs"
+													icon={<Zap />}
+													showSubIcon={unviewedTabs.has('triggers')}
+													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+													className="w-32"
+												>
+													{t('triggers.triggers')}
+												</MenuToggleItem>
+											</MenuToggleGroup>
+										</div>
+										<Button
+											variant="primary"
+											size="sm"
+											className="rounded-lg"
+											onClick={() => {
+												if (activeWorkspaceTab === 'workforce') {
+													setAddWorkerDialogOpen(true);
+												} else if (activeWorkspaceTab === 'inbox') {
+													fileInputRef.current?.click();
+												} else if (activeWorkspaceTab === 'triggers') {
+													setTriggerDialogOpen(true);
+												}
+											}}
+										>
+											<Plus />
+											{activeWorkspaceTab === 'workforce' && t('triggers.add')}
+											{activeWorkspaceTab === 'inbox' && t('triggers.add')}
+											{activeWorkspaceTab === 'triggers' && t('triggers.add')}
+										</Button>
+
+										{/* Hidden file input for upload */}
+										<input
+											type="file"
+											ref={fileInputRef}
+											onChange={handleFileUpload}
+											multiple
+											className="hidden"
+										/>
+
+										{/* AddWorker Dialog */}
+										<AddWorker
+											isOpen={addWorkerDialogOpen}
+											onOpenChange={setAddWorkerDialogOpen}
+										/>
+
+										{/* TriggerDialog */}
+										<TriggerDialog
+											selectedTrigger={null}
+											onTriggerCreating={handleTriggerCreating}
+											onTriggerCreated={handleTriggerCreated}
+											isOpen={triggerDialogOpen}
+											onOpenChange={setTriggerDialogOpen}
+										/>
+									</div>
+									<div className="flex-1 min-h-0 w-full">
+										<AnimatePresence mode="wait">
+											<motion.div
+												key={activeWorkspaceTab}
+												initial={{ opacity: 0, filter: "blur(4px)" }}
+												animate={{ opacity: 1, filter: "blur(0px)" }}
+												exit={{ opacity: 0, filter: "blur(4px)" }}
+												transition={{ duration: 0.2 }}
+												className="w-full h-full"
+											>
+												{renderWorkspaceContent()}
+											</motion.div>
+										</AnimatePresence>
+									</div>
+									{activeWorkspaceTab === 'workforce' && (
+										<BottomBar onToggleChatBox={toggleChatBox} isChatBoxVisible={isChatBoxVisible} />
+									)}
+								</div>
+							)}
 						</ResizablePanel>
 						{/* ChatBox Panel - Right side */}
 						{isChatBoxVisible && chatPanelPosition === 'right' && (

@@ -160,7 +160,7 @@ export const ExpandedInputBox = ({
                             </div>
                         )}
                         {agentList.length === 0 && (
-                            <span className="text-xs text-text-label italic">No agents added</span>
+                            <span className="text-xs text-text-label italic">{t("chat.no-agents-added")}</span>
                         )}
                         {/* Add Worker Button */}
                         <AddWorker variant="icon" />

@@ -185,7 +185,7 @@ export default function Home() {
 		<div
 			className={`w-full flex-1 h-full flex items-center justify-center transition-all duration-300 ease-in-out`}
 		>
-			<div className="w-full h-full flex flex-col rounded-2xl relative bg-menutabs-bg-default overflow-hidden">
+			<div className="w-full h-full flex flex-col relative bg-surface-secondary rounded-xl blur-bg overflow-hidden">
 				<div className="pt-3 pb-2 px-2 rounded-t-2xl flex items-center justify-between flex-shrink-0">
 					<div className="flex items-center justify-start gap-sm">
 						<Button

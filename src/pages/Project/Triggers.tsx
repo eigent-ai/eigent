@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Zap, CheckCircle2, Bot, FileText, Activity, Bell, ArrowUpDown, ArrowLeft, Trash2, PlayCircle, PauseCircle, XCircle, AlertTriangle, Plus } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { Bell, ArrowUpDown, ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogContentSection, DialogFooter } from "@/components/ui/dialog";
 import { proxyFetchGet } from "@/api/http";
@@ -13,89 +14,17 @@ import {
 import { ExecutionLogs } from "@/components/Trigger/ExecutionLogs";
 import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
 import { TriggerListItem } from "@/components/Trigger/TriggerListItem";
+import { ActivityLogItem } from "@/components/Trigger/ActivityLogItem";
 import { usePageTabStore } from "@/store/pageTabStore";
 import { useTriggerStore } from "@/store/triggerStore";
 import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
 import { Trigger, TriggerInput, TriggerStatus } from "@/types";
 import { toast } from "sonner";
-import { formatRelativeTime } from "@/lib/utils";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { AnimatePresence, motion } from "framer-motion";
-
-// Helper function to get icon for activity type
-const getActivityIcon = (activityType: ActivityType) => {
-    switch (activityType) {
-        case ActivityType.TriggerCreated:
-        case ActivityType.TriggerUpdated:
-            return Zap;
-        case ActivityType.TriggerDeleted:
-            return Trash2;
-        case ActivityType.TriggerActivated:
-            return PlayCircle;
-        case ActivityType.TriggerDeactivated:
-            return PauseCircle;
-        case ActivityType.ExecutionSuccess:
-        case ActivityType.TaskCompleted:
-            return CheckCircle2;
-        case ActivityType.ExecutionFailed:
-            return XCircle;
-        case ActivityType.WebhookTriggered:
-        case ActivityType.TriggerExecuted:
-            return Activity;
-        case ActivityType.AgentStarted:
-            return Bot;
-        case ActivityType.FileGenerated:
-            return FileText;
-        default:
-            return Bell;
-    }
-};
-
-// Helper function to get type for activity (for styling)
-const getActivityNotificationType = (activityType: ActivityType): string => {
-    switch (activityType) {
-        case ActivityType.ExecutionSuccess:
-        case ActivityType.TaskCompleted:
-        case ActivityType.TriggerCreated:
-        case ActivityType.TriggerActivated:
-            return "success";
-        case ActivityType.ExecutionFailed:
-        case ActivityType.TriggerDeleted:
-            return "error";
-        case ActivityType.TriggerDeactivated:
-            return "warning";
-        default:
-            return "info";
-    }
-};
-
-const getNotificationStyles = (type: string) => {
-    switch (type) {
-        case "success":
-            return "border-l-emerald-500 bg-emerald-500/5";
-        case "warning":
-            return "border-l-amber-500 bg-amber-500/5";
-        case "error":
-            return "border-l-red-500 bg-red-500/5";
-        default:
-            return "border-l-blue-500 bg-blue-500/5";
-    }
-};
-
-const getNotificationIconColor = (type: string) => {
-    switch (type) {
-        case "success":
-            return "text-emerald-500";
-        case "warning":
-            return "text-amber-500";
-        case "error":
-            return "text-red-500";
-        default:
-            return "text-blue-500";
-    }
-};
+import { AnimatePresence } from "framer-motion";
 
 export default function Overview() {
+    const { t } = useTranslation();
     const [sortBy, setSortBy] = useState<"createdAt" | "lastExecutionTime" | "tokens">("createdAt");
     const [selectedTriggerId, setSelectedTriggerId] = useState<number | null>(null);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -103,16 +32,35 @@ export default function Overview() {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [deletingTrigger, setDeletingTrigger] = useState<Trigger | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
     const { setHasTriggers } = usePageTabStore();
+
+    const toggleLogExpanded = (logId: string) => {
+        setExpandedLogs(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(logId)) {
+                newSet.delete(logId);
+            } else {
+                newSet.add(logId);
+            }
+            return newSet;
+        });
+    };
 
     // Use trigger store
     const { triggers, deleteTrigger, duplicateTrigger, updateTrigger, addTrigger, setTriggers } = useTriggerStore();
-    
-    // Use activity log store
-    const { logs: activityLogs, addLog } = useActivityLogStore();
 
-    //Get projectStore for the active project's task
-	const { projectStore } = useChatStoreAdapter();
+    // Get projectStore for the active project's task
+    const { projectStore } = useChatStoreAdapter();
+
+    // Use activity log store - subscribe to logs for reactivity
+    const { logs: allLogs, addLog } = useActivityLogStore();
+
+    // Get project-specific activity logs using useMemo for performance
+    const activityLogs = useMemo(() => {
+        if (!projectStore.activeProjectId) return [];
+        return allLogs.filter(log => log.projectId === projectStore.activeProjectId).slice(0, 50);
+    }, [allLogs, projectStore.activeProjectId]);
 
     // Fetch triggers from API on mount
     useEffect(() => {
@@ -124,10 +72,10 @@ export default function Overview() {
                 setTriggers(response.items || []);
             } catch (error) {
                 console.error('Failed to fetch triggers:', error);
-                toast.error('Failed to load triggers');
+                toast.error(t('triggers.failed-to-load'));
             }
         };
-        
+
         fetchTriggers();
     }, [projectStore.activeProjectId]);
 
@@ -151,44 +99,45 @@ export default function Overview() {
     const getSortLabel = () => {
         switch (sortBy) {
             case "createdAt":
-                return "Created Time";
+                return t('triggers.created-time');
             case "lastExecutionTime":
-                return "Last Execution";
+                return t('triggers.last-execution-label');
             case "tokens":
-                return "Token Cost";
+                return t('triggers.token-cost');
         }
     };
 
     const handleToggleActive = async (trigger: Trigger) => {
         const newStatus = trigger.status === TriggerStatus.Active ? TriggerStatus.Inactive : TriggerStatus.Active;
         const isActivating = newStatus === TriggerStatus.Active;
-        
+
         try {
-            const response = isActivating 
+            const response = isActivating
                 ? await proxyActivateTrigger(trigger.id)
                 : await proxyDeactivateTrigger(trigger.id);
             console.log(`Trigger ${isActivating ? 'activation' : 'deactivation'} response:`, response);
 
             updateTrigger(trigger.id, { status: newStatus });
-            toast.success(isActivating ? "Trigger activated" : "Trigger deactivated");
-            
+            toast.success(isActivating ? t("triggers.activated") : t("triggers.deactivated"));
+
             // Add activity log
             addLog({
                 type: isActivating ? ActivityType.TriggerActivated : ActivityType.TriggerDeactivated,
                 message: `Trigger "${trigger.name}" ${isActivating ? 'activated' : 'deactivated'}`,
+                projectId: projectStore.activeProjectId || undefined,
                 triggerId: trigger.id,
                 triggerName: trigger.name,
             });
-        } catch(error) {
+        } catch (error) {
             console.error("Failed to update trigger status:", error);
-            toast.error("Failed to update trigger status");
+            toast.error(t("triggers.failed-to-toggle"));
             return;
         }
     };
 
     const setSelectedTriggerIdWrapper = (triggerId: number) => {
         //Double Click to Edit
-        if(triggerId === selectedTriggerId) {
+        if (triggerId === selectedTriggerId) {
             handleEdit(triggers.find(t => t.id === triggerId)!);
             return;
         };
@@ -207,30 +156,31 @@ export default function Overview() {
 
     const handleConfirmDelete = async () => {
         if (!deletingTrigger) return;
-        
+
         setIsDeleting(true);
         try {
             await proxyDeleteTrigger(deletingTrigger.id);
             deleteTrigger(deletingTrigger.id);
-            
+
             if (selectedTriggerId === deletingTrigger.id) {
                 setSelectedTriggerId(null);
             }
-            
+
             // Add activity log
             addLog({
                 type: ActivityType.TriggerDeleted,
                 message: `Trigger "${deletingTrigger.name}" deleted`,
+                projectId: projectStore.activeProjectId || undefined,
                 triggerId: deletingTrigger.id,
                 triggerName: deletingTrigger.name,
             });
-            
-            toast.success("Trigger deleted successfully");
+
+            toast.success(t("triggers.deleted"));
             setIsDeleteDialogOpen(false);
             setDeletingTrigger(null);
         } catch (error) {
             console.error("Failed to delete trigger:", error);
-            toast.error("Failed to delete trigger");
+            toast.error(t("triggers.failed-to-delete"));
         } finally {
             setIsDeleting(false);
         }
@@ -243,11 +193,12 @@ export default function Overview() {
             addLog({
                 type: ActivityType.TriggerCreated,
                 message: `Trigger "${duplicated.name}" created (duplicated)`,
+                projectId: projectStore.activeProjectId || undefined,
                 triggerId: duplicated.id,
                 triggerName: duplicated.name,
             });
-            
-            toast.success(`Trigger duplicated as "${duplicated.name}"`);
+
+            toast.success(t('triggers.duplicated-successfully', { name: duplicated.name }));
         }
     };
 
@@ -267,24 +218,26 @@ export default function Overview() {
                 max_executions_per_day: triggerData.max_executions_per_day,
                 is_single_execution: triggerData.is_single_execution,
             });
-            
+
             // Add activity log
             addLog({
                 type: ActivityType.TriggerUpdated,
                 message: `Trigger "${triggerData.name}" updated`,
+                projectId: projectStore.activeProjectId || undefined,
                 triggerId: editingTrigger.id,
                 triggerName: triggerData.name,
             });
-            
-            toast.success("Trigger updated successfully");
+
+            toast.success(t("triggers.updated-successfully"));
         } else {
             // Add new trigger via store
             const newTrigger = addTrigger(triggerData);
-            
+
             // Add activity log
             addLog({
                 type: ActivityType.TriggerCreated,
                 message: `Trigger "${triggerData.name}" created`,
+                projectId: projectStore.activeProjectId || undefined,
                 triggerId: newTrigger.id,
                 triggerName: triggerData.name,
             });
@@ -301,97 +254,13 @@ export default function Overview() {
 
     return (
         <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full">
-            <div className="flex flex-row h-full bg-surface-secondary pt-2 px-2">
+            <div className="flex flex-row h-full bg-surface-secondary pt-2 px-2 gap-2">
 
-                {/* Left Side: Live Activity or Execution Logs (1/3 width) */}
-                <div className="flex-[0.3] flex-col bg-surface-primary rounded-xl overflow-hidden mb-2 relative">
-                    {/* Live Activity - Always rendered but slides out to the right when logs are shown */}
-                    <div 
-                        className={`absolute inset-0 flex flex-col bg-surface-primary rounded-xl transition-transform duration-300 ease-in-out ${
-                            selectedTriggerId ? 'translate-x-full' : 'translate-x-0'
-                        }`}
-                    >
-                        {/* Live Activity Header */}
-                        <div className="flex items-center justify-between h-[52px] pt-2 pb-4 px-4 border-b-[0.5px] border-solid border-t-0 border-x-0 border-border-secondary">
-                            <span className="text-label-sm font-bold text-text-heading">
-                                Live Activity
-                            </span>
-                        </div>
-                        {/* Live Activity Content */}
-                        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-always-visible">
-                            {activityLogs.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                                    <Bell className="w-10 h-10 text-text-label mb-2" />
-                                    <p className="text-text-label text-xs">No activity yet</p>
-                                    <p className="text-text-label text-xs mt-1">Activity will appear here</p>
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-border-tertiary">
-                                    <AnimatePresence initial={false}>
-                                        {activityLogs.slice(0, 50).map((log) => {
-                                            const Icon = getActivityIcon(log.type);
-                                            const notificationType = getActivityNotificationType(log.type);
-                                            const timeAgo = formatRelativeTime(log.timestamp.toISOString());
-                                            
-                                            return (
-                                                <motion.div
-                                                    key={log.id}
-                                                    initial={{ opacity: 0, y: -20 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    exit={{ opacity: 0, y: -20 }}
-                                                    transition={{ duration: 0.2 }}
-                                                    className={`flex items-center px-4 py-2 transition-all duration-300 hover:bg-surface-tertiary ${getNotificationStyles(notificationType)}`}
-                                                >
-                                                    <div className="flex-shrink-0 flex w-full py-1 items-center justify-center gap-2">
-                                                    <Icon className={`h-4 w-4 flex-shrink-0 ${getNotificationIconColor(notificationType)}`} />
-                                                    <div className="flex flex-row justify-between w-full min-w-0">
-                                                        <span className="text-label-xs text-text-body">
-                                                            {log.message}
-                                                        </span>
-                                                        <span className="text-label-xs text-text-label">
-                                                            {timeAgo}
-                                                        </span>
-                                                    </div>
-                                                    </div>
-                                                </motion.div>
-                                            );
-                                        })}
-                                    </AnimatePresence>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Execution Logs - Slides in from the left */}
-                    <div 
-                        className={`absolute inset-0 flex flex-col bg-surface-primary rounded-xl transition-transform duration-300 ease-in-out ${
-                            selectedTriggerId ? 'translate-x-0' : '-translate-x-full'
-                        }`}
-                    >
-                        {/* Back button to return to Live Activity */}
-                        <div className="flex flex-row items-center justify-start gap-2 px-4 py-3 bg-surface-tertiary relative">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setSelectedTriggerId(null)}
-                            >
-                                <ArrowLeft />
-                            </Button>
-                            <span className="text-text-body font-bold text-label-sm">
-                            Execution Logs
-                            </span>
-                        </div>
-                        <div className="flex-1 min-h-0">
-                            {selectedTriggerId && <ExecutionLogs triggerId={selectedTriggerId} />}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Side: Trigger List (2/3 width) */}
-                <div className="flex-[0.7] flex-col">
+                {/* Left Side: Trigger List (70% width) */}
+                <div className="flex-[0.6] flex flex-col min-w-0">
                     {/* Header */}
                     <div className="w-full flex items-center justify-between pl-4 pb-4 pt-2">
-                        <div className="text-body-sm font-bold text-text-heading">Triggers</div>
+                        <div className="text-body-sm font-bold text-text-heading">{t('triggers.title')}</div>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <div className="flex items-center gap-2">
@@ -403,13 +272,13 @@ export default function Overview() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => setSortBy("createdAt")}>
-                                    Created Time
+                                    {t('triggers.created-time')}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setSortBy("lastExecutionTime")}>
-                                    Last Execution
+                                    {t('triggers.last-execution-label')}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setSortBy("tokens")}>
-                                    Token Cost
+                                    {t('triggers.token-cost')}
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
@@ -428,21 +297,15 @@ export default function Overview() {
                                 >
                                     {/* Zap Icon */}
                                     <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-amber-500/10 rounded-lg">
-                                        <Plus className="w-5 h-5 text-amber-500" />
+                                        <Plus className="w-5 h-5 text-icon-primary" />
                                     </div>
 
                                     {/* Create Trigger Text */}
-                                    <div className="flex-1 min-w-0">
+                                    <div className="flex-1 w-full">
                                         <div className="text-sm font-semibold text-text-heading truncate group-hover:text-text-action transition-colors">
-                                            Create a trigger to automate your tasks
+                                            {t('triggers.create-hint')}
                                         </div>
                                     </div>
-
-                                    {/* Empty space for alignment */}
-                                    <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[80px]"></div>
-                                    <div className="flex items-center gap-1.5 text-xs text-text-label min-w-[100px]"></div>
-                                    <div className="w-10"></div>
-                                    <div className="w-8"></div>
                                 </div>
                             ) : (
                                 sortedTriggers.map((trigger) => (
@@ -458,6 +321,69 @@ export default function Overview() {
                                     />
                                 ))
                             )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Side: Live Activity or Execution Logs (30% width) */}
+                <div className="flex-[0.4] flex flex-col bg-surface-primary rounded-xl overflow-hidden mb-2 relative min-w-[240px]">
+                    {/* Live Activity - Always rendered but slides out to the right when logs are shown */}
+                    <div
+                        className={`absolute inset-0 flex flex-col bg-surface-primary rounded-xl transition-transform duration-300 ease-in-out ${selectedTriggerId ? 'translate-x-full' : 'translate-x-0'
+                            }`}
+                    >
+                        {/* Live Activity Header */}
+                        <div className="flex items-center justify-between h-[48px] py-3 px-4">
+                            <span className="text-label-sm font-bold text-text-heading">
+                                {t('triggers.live-activity')}
+                            </span>
+                        </div>
+                        {/* Live Activity Content */}
+                        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-always-visible">
+                            {activityLogs.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                                    <Bell className="w-10 h-10 text-text-label mb-2" />
+                                    <p className="text-text-label text-xs">{t('triggers.no-activity')}</p>
+                                    <p className="text-text-label text-xs mt-1">{t('triggers.activity-hint')}</p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col pt-2">
+                                    <AnimatePresence initial={false}>
+                                        {activityLogs.slice(0, 50).map((log, index) => (
+                                            <ActivityLogItem
+                                                key={log.id}
+                                                log={log}
+                                                index={index}
+                                                isExpanded={expandedLogs.has(log.id)}
+                                                onToggleExpanded={() => toggleLogExpanded(log.id)}
+                                            />
+                                        ))}
+                                    </AnimatePresence>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Execution Logs - Slides in from the left */}
+                    <div
+                        className={`absolute inset-0 flex flex-col bg-surface-primary rounded-xl transition-transform duration-300 ease-in-out ${selectedTriggerId ? 'translate-x-0' : '-translate-x-full'
+                            }`}
+                    >
+                        {/* Back button to return to Live Activity */}
+                        <div className="flex flex-row items-center justify-start gap-2 px-3 py-3 bg-surface-tertiary relative">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setSelectedTriggerId(null)}
+                            >
+                                <ArrowLeft />
+                            </Button>
+                            <span className="text-text-body font-bold text-label-sm">
+                                {t('triggers.execution-logs')}
+                            </span>
+                        </div>
+                        <div className="flex-1 min-h-0">
+                            {selectedTriggerId && <ExecutionLogs triggerId={selectedTriggerId} />}
                         </div>
                     </div>
                 </div>
@@ -483,29 +409,29 @@ export default function Overview() {
                     aria-describedby={undefined}
                 >
                     <DialogHeader
-                        title="Delete Trigger"
+                        title={t("triggers.delete-trigger")}
                     />
                     <DialogContentSection className="space-y-4">
                         <p className="text-text-body text-sm">
-                            Are you sure you want to delete "{deletingTrigger?.name}"? This action cannot be undone.
+                            {t("triggers.confirm-delete-message", { name: deletingTrigger?.name })}
                         </p>
                     </DialogContentSection>
                     <DialogFooter>
-                        <Button 
-                            variant="ghost" 
-                            size="md" 
+                        <Button
+                            variant="ghost"
+                            size="md"
                             onClick={() => setIsDeleteDialogOpen(false)}
                             disabled={isDeleting}
                         >
-                            Cancel
+                            {t("triggers.cancel")}
                         </Button>
-                        <Button 
-                            size="md" 
-                            onClick={handleConfirmDelete} 
+                        <Button
+                            size="md"
+                            onClick={handleConfirmDelete}
                             variant="cuation"
                             disabled={isDeleting}
                         >
-                            {isDeleting ? "Deleting..." : "Delete Trigger"}
+                            {isDeleting ? t("triggers.deleting") : t("triggers.delete-trigger")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

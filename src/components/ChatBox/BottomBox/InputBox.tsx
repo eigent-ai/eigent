@@ -211,7 +211,7 @@ export const Inputbox = ({
 		if (value.trim().length > 0 && !disabled) {
 			onSend?.();
 		} else if (value.trim().length === 0) {
-			toast.error("Message cannot be empty", {
+			toast.error(t("chat.message-cannot-be-empty"), {
 				closeButton: true,
 			});
 		}
@@ -315,7 +315,7 @@ export const Inputbox = ({
 			{isDragging && (
 				<div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-info-primary bg-info-primary/10 text-info-primary backdrop-blur-sm">
 					<UploadCloud className="w-8 h-8" />
-					<div className="text-sm font-semibold">Drop files to attach</div>
+					<div className="text-sm font-semibold">{t('chat.drop-files-to-attach')}</div>
 				</div>
 			)}
 
@@ -380,7 +380,7 @@ export const Inputbox = ({
 										e.stopPropagation();
 										handleRemoveFile(file.filePath);
 									}}
-									title={isHovered ? "Remove file" : file.fileName}
+									title={isHovered ? t("chat.remove-file") : file.fileName}
 								>
 									{isHovered ? (
 										<X className="text-icon-secondary size-4" />
@@ -448,7 +448,7 @@ export const Inputbox = ({
 														handleRemoveFile(file.filePath);
 														setIsRemainingOpen(false);
 													}}
-													title={isHovered ? "Remove file" : file.fileName}
+													title={isHovered ? t("chat.remove-file") : file.fileName}
 												>
 													{isHovered ? <X className="text-icon-secondary size-4" /> : getFileIcon(file.fileName)}
 												</a>
@@ -491,7 +491,7 @@ export const Inputbox = ({
 						onClick={() => setTriggerDialogOpen(true)}
 					>
 						<Zap size={16} className="text-icon-primary" />
-						Trigger
+						{t('triggers.trigger-label')}
 					</Button>
 
 					{/* TriggerDialog for adding trigger and task */}
@@ -514,7 +514,7 @@ export const Inputbox = ({
 							className="rounded-lg"
 							onClick={() => handleExpandedDialogChange(true)}
 							disabled={disabled}
-							title="Expand input (⌘P)"
+							title={t("chat.expand-input")}
 						>
 							<Maximize
 								size={16}

@@ -4,11 +4,13 @@ import workforce from "./workforce.json";
 import chat from "./chat.json";
 import setting from "./setting.json";
 import update from "./update.json";
+import triggers from "./triggers.json";
 export default {
-	layout,	
+	layout,
 	dashboard,
 	workforce,
 	chat,
 	setting,
 	update,
+	triggers,
 };

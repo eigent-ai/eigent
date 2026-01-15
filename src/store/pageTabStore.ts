@@ -4,8 +4,8 @@ interface PageTabState {
     activeTab: 'tasks' | 'trigger'
     setActiveTab: (tab: 'tasks' | 'trigger') => void
     // Workspace tabs within the Tasks page
-    activeWorkspaceTab: 'overview' | 'workforce' | 'inbox'
-    setActiveWorkspaceTab: (tab: 'overview' | 'workforce' | 'inbox') => void
+    activeWorkspaceTab: 'triggers' | 'workforce' | 'inbox'
+    setActiveWorkspaceTab: (tab: 'triggers' | 'workforce' | 'inbox') => void
     // Panel position for ChatBox
     chatPanelPosition: 'left' | 'right'
     setChatPanelPosition: (position: 'left' | 'right') => void
@@ -16,9 +16,9 @@ interface PageTabState {
     hasAgentFiles: boolean
     setHasAgentFiles: (value: boolean) => void
     // Track unviewed tabs with new content (for red dot indicator)
-    unviewedTabs: Set<'overview' | 'inbox'>
-    markTabAsViewed: (tab: 'overview' | 'inbox') => void
-    markTabAsUnviewed: (tab: 'overview' | 'inbox') => void
+    unviewedTabs: Set<'triggers' | 'inbox'>
+    markTabAsViewed: (tab: 'triggers' | 'inbox') => void
+    markTabAsUnviewed: (tab: 'triggers' | 'inbox') => void
 }
 
 export const usePageTabStore = create<PageTabState>((set) => ({
@@ -28,7 +28,7 @@ export const usePageTabStore = create<PageTabState>((set) => ({
     setActiveWorkspaceTab: (tab) => set((state) => {
         // When switching to a tab with new content, mark it as viewed
         const newUnviewedTabs = new Set(state.unviewedTabs);
-        if (tab === 'overview' || tab === 'inbox') {
+        if (tab === 'triggers' || tab === 'inbox') {
             newUnviewedTabs.delete(tab);
         }
         return { activeWorkspaceTab: tab, unviewedTabs: newUnviewedTabs };
@@ -42,7 +42,7 @@ export const usePageTabStore = create<PageTabState>((set) => ({
     hasAgentFiles: false,
     setHasAgentFiles: (value) => set({ hasAgentFiles: value }),
     // Unviewed tabs tracking
-    unviewedTabs: new Set<'overview' | 'inbox'>(),
+    unviewedTabs: new Set<'triggers' | 'inbox'>(),
     markTabAsViewed: (tab) => set((state) => {
         const newUnviewedTabs = new Set(state.unviewedTabs);
         newUnviewedTabs.delete(tab);

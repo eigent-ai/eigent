@@ -28,6 +28,8 @@ import {
     Zap,
     Copy,
     CircleAlert,
+    AlarmClockIcon,
+    WebhookIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -67,6 +69,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
     const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>("");
     const [nameError, setNameError] = useState<string>("");
+    const [taskPromptError, setTaskPromptError] = useState<string>("");
     const [formData, setFormData] = useState<TriggerInput>({
         name: selectedTrigger?.name || "",
         description: selectedTrigger?.description || "",
@@ -85,7 +88,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     // const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
 
     //Get projectStore for the active project's task
-	const { projectStore } = useChatStoreAdapter();
+    const { projectStore } = useChatStoreAdapter();
 
     const { addTrigger, updateTrigger } = useTriggerStore();
 
@@ -94,7 +97,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         if (isOpen) {
             // Clear validation errors when dialog opens
             setNameError("");
-            
+            setTaskPromptError("");
+
             // If editing an existing trigger, populate the form with its data
             if (selectedTrigger) {
                 setFormData({
@@ -141,13 +145,17 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             setNameError(t("triggers.name-required"));
             return;
         }
-        
+
         // Clear name error if validation passes
         setNameError("");
         if (!formData.task_prompt?.trim()) {
+            setTaskPromptError(t("triggers.task-prompt-required"));
             toast.error(t("triggers.task-prompt-required"));
             return;
         }
+
+        // Clear task prompt error if validation passes
+        setTaskPromptError("");
 
         setIsLoading(true);
         onTriggerCreating(formData);
@@ -155,7 +163,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         try {
             //Make sure we have an active project
             //TODO: Also make sure project is created in database
-            if(!projectStore.activeProjectId) {
+            if (!projectStore.activeProjectId) {
                 toast.error(t("triggers.project-id-required"));
                 return;
             }
@@ -200,9 +208,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
             onTriggerCreated(formData);
             handleClose();
-            
+
             // Display the webhook url in a success dialog (only for new webhooks)
-            if(!selectedTrigger && formData.trigger_type === TriggerType.Webhook && response.webhook_url) {
+            if (!selectedTrigger && formData.trigger_type === TriggerType.Webhook && response.webhook_url) {
                 setCreatedWebhookUrl(response.webhook_url);
                 setIsWebhookSuccessOpen(true);
             }
@@ -247,42 +255,50 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 {/* Task Prompt - moved from step 2 */}
                 <TriggerTaskInput
                     value={formData.task_prompt || ""}
-                    onChange={(value) => setFormData({ ...formData, task_prompt: value })}
+                    onChange={(value) => {
+                        setFormData({ ...formData, task_prompt: value });
+                        // Clear error when user starts typing
+                        if (taskPromptError) {
+                            setTaskPromptError("");
+                        }
+                    }}
+                    state={taskPromptError ? "error" : "default"}
+                    note={taskPromptError || undefined}
                 />
 
                 {/* Execution Settings - Accordion */}
                 <Accordion type="single" collapsible className="w-full">
                     <AccordionItem value="execution-settings" className="border-none">
                         <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
-                            <span className="font-bold text-sm text-text-heading">Execution Settings</span>
+                            <span className="font-bold text-sm text-text-heading">{t("triggers.execution-settings")}</span>
                         </AccordionTrigger>
                         <AccordionContent>
                             <div className="flex flex-col gap-4 pt-2 bg-surface-disabled rounded-lg p-4">
                                 <div className="flex items-center gap-2 my-2">
                                     <Label htmlFor="single_execution" className="text-body-md font-bold">{t("triggers.single-execution")}</Label>
-                                    <Switch id="single_execution" 
-                                    size="sm"
-                                    checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
+                                    <Switch id="single_execution"
+                                        size="sm"
+                                        checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                <Input
-                                    id="max_per_hour"
-                                    title={t("triggers.max-per-hour")}
-                                    placeholder={t("triggers.max-per-hour-placeholder")}
-                                    type="number" value={formData.max_executions_per_hour || ""}
-                                    onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
-                                    min={0}
-                                    disabled={formData.is_single_execution}
-                                />
-                                <Input
-                                    id="max_per_day"
-                                    title={t("triggers.max-per-day")}
-                                    placeholder={t("triggers.max-per-day-placeholder")}
-                                    type="number" value={formData.max_executions_per_day || ""}
-                                    onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
-                                    min={0}
-                                    disabled={formData.is_single_execution}
-                                />
+                                    <Input
+                                        id="max_per_hour"
+                                        title={t("triggers.max-per-hour")}
+                                        placeholder={t("triggers.max-per-hour-placeholder")}
+                                        type="number" value={formData.max_executions_per_hour || ""}
+                                        onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
+                                        min={0}
+                                        disabled={formData.is_single_execution}
+                                    />
+                                    <Input
+                                        id="max_per_day"
+                                        title={t("triggers.max-per-day")}
+                                        placeholder={t("triggers.max-per-day-placeholder")}
+                                        type="number" value={formData.max_executions_per_day || ""}
+                                        onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
+                                        min={0}
+                                        disabled={formData.is_single_execution}
+                                    />
                                 </div>
                             </div>
                         </AccordionContent>
@@ -294,8 +310,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <Label className="font-bold text-sm">{t("triggers.type")}</Label>
                     <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
                         <TabsList className="w-full">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><Clock className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><Globe className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
 
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
@@ -324,18 +340,17 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
                                             {t("triggers.webhook-url-after-creation")}
                                         </div>) : (
-                                        <div className="relative groups">
-                                            <div className="w-full bg-surface-secondary rounded-xl p-4 pr-24 border border-border-secondary font-mono text-sm text-text-body break-all shadow-sm">
+                                        <div className="flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl">
+                                            <div className="w-full font-mono text-sm text-text-body break-all">
                                                 {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
                                             </div>
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 onClick={handleCopyWebhookUrl}
-                                                className="absolute right-2 top-2 bg-white"
                                             >
-                                                <Copy className="w-3 h-3 mr-1.5" />
-                                                {t("copy")}
+                                                <Copy />
+                                                {t("triggers.copy")}
                                             </Button>
                                         </div>)
                                 }
@@ -348,19 +363,24 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     };
 
     const getDialogTitle = () => {
-        return selectedTrigger 
-            ? t("triggers.edit-trigger-agent", { defaultValue: "Edit Trigger Agent" })
+        return selectedTrigger
+            ? t("triggers.edit-trigger-agent")
             : t("triggers.create-trigger-agent");
     };
 
     const renderFooter = () => {
         return (
             <DialogFooter>
-                <div className="flex w-full justify-end">
+                <div className="flex w-full justify-end gap-2">
+                    {selectedTrigger && (
+                        <Button variant="ghost" onClick={handleClose} disabled={isLoading}>
+                            {t("triggers.cancel")}
+                        </Button>
+                    )}
                     <Button variant="primary" onClick={() => handleSubmit()} disabled={isLoading}>
-                        {isLoading 
-                            ? (selectedTrigger ? t("common.updating") : t("common.creating"))
-                            : (selectedTrigger ? t("common.update") : t("common.create"))
+                        {isLoading
+                            ? (selectedTrigger ? t("triggers.updating") : t("triggers.creating"))
+                            : (selectedTrigger ? t("triggers.update") : t("triggers.create"))
                         }
                     </Button>
                 </div>
@@ -370,59 +390,59 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     return (
         <>
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent
-                size="md"
-                showCloseButton={true}
-                onClose={handleClose}
-                aria-describedby={undefined}
-            >
-                <DialogHeader
-                    title={getDialogTitle()}
-                />
-                <DialogContentSection className="p-0 flex-1 overflow-auto min-h-0">
-                    {renderCreateContent()}
-                </DialogContentSection>
-                {renderFooter()}
-            </DialogContent>
-        </Dialog>
+            <Dialog open={isOpen} onOpenChange={onOpenChange}>
+                <DialogContent
+                    size="md"
+                    showCloseButton={true}
+                    onClose={handleClose}
+                    aria-describedby={undefined}
+                >
+                    <DialogHeader
+                        title={getDialogTitle()}
+                    />
+                    <DialogContentSection className="p-0 flex-1 overflow-auto min-h-0">
+                        {renderCreateContent()}
+                    </DialogContentSection>
+                    {renderFooter()}
+                </DialogContent>
+            </Dialog>
 
-        {/* Webhook Success Dialog */}
-        <Dialog open={isWebhookSuccessOpen} onOpenChange={setIsWebhookSuccessOpen}>
-            <DialogContent
-                size="md"
-                showCloseButton={true}
-                onClose={() => setIsWebhookSuccessOpen(false)}
-                className="max-w-[550px] p-0 gap-0"
-                aria-describedby={undefined}
-            >
-                <DialogHeader
-                    className="!bg-popup-surface !rounded-t-xl p-md border-b border-border-secondary"
-                    title={t("triggers.webhook-created-title")}
-                />
-                
-                <div className="bg-popup-bg">
+            {/* Webhook Success Dialog */}
+            <Dialog open={isWebhookSuccessOpen} onOpenChange={setIsWebhookSuccessOpen}>
+                <DialogContent
+                    size="md"
+                    showCloseButton={true}
+                    onClose={() => setIsWebhookSuccessOpen(false)}
+                    aria-describedby={undefined}
+                >
+                    <DialogHeader
+                        className="!bg-popup-surface !rounded-t-xl p-md border-b border-border-secondary"
+                        title={t("triggers.webhook-created-title")}
+                    />
+
                     {/* Trigger Details Section */}
-                    <div className="flex flex-col items-center justify-center py-6 px-md border-b border-border-secondary bg-surface-tertiary">
-                        <div className="w-12 h-12 rounded-full bg-surface-success flex items-center justify-center mb-3 shadow-sm">
-                            <Zap className="w-6 h-6 text-text-success" />
+                    <div className="flex flex-col items-center justify-center p-4 gap-2">
+                        <div className="w-16 h-16 rounded-full bg-surface-success flex items-center justify-center shadow-sm">
+                            <Zap className="w-8 h-8 text-text-success" />
                         </div>
-                        <h3 className="text-text-heading font-bold text-lg mb-1">
-                            {formData.name}
-                        </h3>
-                        {formData.description && (
-                            <p className="text-text-label text-sm text-center max-w-md line-clamp-2 px-4">
-                                {formData.description}
-                            </p>
-                        )}
-                        <Badge variant="outline" className="mt-3 bg-white/50">
-                            {formData.webhook_method}
-                        </Badge>
+                        <div className="flex flex-col gap-2 px-4 pt-2">
+                            <div className="text-text-heading font-bold text-lg">
+                                {formData.name}
+                            </div>
+                            {formData.description && (
+                                <div className="text-text-label text-sm max-w-md line-clamp-2">
+                                    {formData.description}
+                                </div>
+                            )}
+                            <Badge variant="default">
+                                {formData.webhook_method}
+                            </Badge>
+                        </div>
                     </div>
-                    
+
                     {/* Webhook URL Section */}
-                    <div className="px-md py-6 space-y-3">
-                        <div className="flex items-center justify-start gap-2">
+                    <div className="flex flex-col p-4">
+                        <div className="flex items-center justify-start gap-2 mb-4">
                             <Label className="text-text-heading text-sm font-semibold">
                                 {t("triggers.your-webhook-url")}
                             </Label>
@@ -433,56 +453,49 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 />
                             </TooltipSimple>
                         </div>
-                        
-                        <div className="relative groups">
-                            <div className="w-full bg-surface-secondary rounded-xl p-4 pr-24 border border-border-secondary font-mono text-sm text-text-body break-all shadow-sm">
+
+                        <div className="flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl">
+                            <div className="w-full font-mono text-sm text-text-body break-all">
                                 {`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`}
                             </div>
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={handleCopyWebhookUrl}
-                                className="absolute right-2 top-2 bg-white"
                             >
-                                <Copy className="w-3 h-3 mr-1.5" />
-                                {t("copy")}
+                                <Copy />
+                                {t("triggers.copy")}
                             </Button>
                         </div>
                     </div>
 
                     {/* Info Tip Section */}
-                    <div className="px-md pb-md">
-                        <div className="bg-surface-information/10 border border-surface-information/20 rounded-xl p-4">
-                            <div className="flex items-start gap-3">
-                                <div className="p-1.5 bg-surface-information/20 rounded-md shrink-0">
-                                    <Globe className="w-4 h-4 text-text-information" />
+                    <div className="flex flex-col p-4">
+                        <div className="flex flex-row items-start justify-start bg-surface-information rounded-xl p-4">
+                            <Globe className="w-5 h-5 text-text-information" />
+                            <div className="flex flex-col items-start justify-start gap-2 pl-4">
+                                <div className="text-label-sm font-semibold text-text-information">
+                                    {t("triggers.webhook-tip-title")}
                                 </div>
-                                <div className="space-y-1">
-                                    <p className="text-sm font-semibold text-text-heading">
-                                        {t("triggers.webhook-tip-title")}
-                                    </p>
-                                    <p className="text-sm text-text-label leading-relaxed">
-                                        {t("triggers.webhook-tip-description")}
-                                    </p>
+                                <div className="text-label-sm text-text-information opacity-60 leading-relaxed">
+                                    {t("triggers.webhook-tip-description")}
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Footer */}
-                    <div className="p-md bg-surface-secondary border-t border-border-secondary">
-                        <Button 
-                            variant="primary" 
+                    <DialogFooter>
+                        <Button
+                            variant="primary"
                             size="md"
                             onClick={() => setIsWebhookSuccessOpen(false)}
-                            className="w-full font-semibold shadow-sm"
                         >
-                            {t("common.got-it")}
+                            {t("triggers.got-it")}
                         </Button>
-                    </div>
-                </div>
-            </DialogContent>
-        </Dialog>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 };

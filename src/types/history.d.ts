@@ -26,6 +26,7 @@ export interface ProjectGroup {
   project_name?: string;
   total_tokens: number;
   task_count: number;
+  trigger_count: number;
   latest_task_date: string;
   last_prompt: string;
   tasks: HistoryTask[];
