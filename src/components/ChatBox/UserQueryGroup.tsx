@@ -351,45 +351,6 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 />
               </motion.div>
             );
-          } else if (message.content === "skip") {
-            return (
-              <motion.div
-                key={`skip-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="flex flex-col pl-3 gap-4"
-              >
-                <AgentMessageCard
-                  key={message.id}
-                  id={message.id}
-                  content="No reply received, task continues..."
-                  onTyping={() => { }}
-                />
-              </motion.div>
-            );
-          } else {
-            return (
-              <motion.div
-                key={`message-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="flex flex-col pl-3 gap-4"
-              >
-                <AgentMessageCard
-                  key={message.id}
-                  typewriter={
-                    task?.type !== "replay" ||
-                    (task?.type === "replay" && task?.delayTime !== 0)
-                  }
-                  id={message.id}
-                  content={message.content}
-                  onTyping={() => { }}
-                  attaches={message.attaches}
-                />
-              </motion.div>
-            );
           }
         } else if (message.step === "end" && message.content === "") {
           return (
