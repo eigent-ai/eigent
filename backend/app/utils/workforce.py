@@ -498,33 +498,6 @@ class Workforce(BaseWorkforce):
         """Call cleanup callbacks for all agents to release resources (e.g., CDP browsers)."""
         logger.info(f"[WF-CLEANUP] Starting cleanup for all agents in workforce {id(self)}")
 
-        # ========== DEBUG INFO START ==========
-        logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, 'children'): {hasattr(self, 'children')}")
-        logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, '_children'): {hasattr(self, '_children')}")
-
-        if hasattr(self, 'children'):
-            try:
-                logger.info(f"[WF-CLEANUP-DEBUG] self.children = {self.children}")
-                logger.info(f"[WF-CLEANUP-DEBUG] bool(self.children) = {bool(self.children)}")
-            except AttributeError as e:
-                logger.info(f"[WF-CLEANUP-DEBUG] AttributeError accessing self.children: {e}")
-
-        if hasattr(self, '_children'):
-            logger.info(f"[WF-CLEANUP-DEBUG] self._children exists: {self._children is not None}")
-            if self._children is not None:
-                logger.info(f"[WF-CLEANUP-DEBUG] len(self._children) = {len(self._children)}")
-                for i, child in enumerate(self._children):
-                    logger.info(f"[WF-CLEANUP-DEBUG] _children[{i}]: type={type(child).__name__}, "
-                               f"has_worker_agent={hasattr(child, 'worker_agent')}, "
-                               f"has_agent_pool={hasattr(child, 'agent_pool')}")
-
-        logger.info(f"[WF-CLEANUP-DEBUG] hasattr(self, 'coordinator_agent'): {hasattr(self, 'coordinator_agent')}")
-        if hasattr(self, 'coordinator_agent'):
-            logger.info(f"[WF-CLEANUP-DEBUG] self.coordinator_agent is None: {self.coordinator_agent is None}")
-            if self.coordinator_agent is not None:
-                logger.info(f"[WF-CLEANUP-DEBUG] coordinator has _cleanup_callback: {hasattr(self.coordinator_agent, '_cleanup_callback')}")
-        # ========== DEBUG INFO END ==========
-
         cleanup_count = 0
 
         # Cleanup all child workers - use _children instead of children
