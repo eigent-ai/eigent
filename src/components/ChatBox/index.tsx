@@ -888,9 +888,9 @@ export default function ChatBox(): JSX.Element {
 									<div className="mr-2 flex flex-col items-center gap-2">
 										{[
 											{
-												label: t("layout.palm-springs-tennis-trip-planner"),
+												label: t("layout.it-ticket-creation"),
 												message: t(
-													"layout.palm-springs-tennis-trip-planner-message"
+													"layout.it-ticket-creation-message"
 												),
 											},
 											{
