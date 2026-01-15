@@ -14,6 +14,7 @@ from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
+    ActionTimeoutData,
     TaskLock,
     delete_task_lock,
     set_current_task_id,
@@ -936,6 +937,28 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         format_agent_description(item), await new_agent_model(item, options)
                     )
                     workforce.resume()
+            elif item.action == Action.timeout:
+                logger.info("=" * 80)
+                logger.info(f"⏰ [LIFECYCLE] TIMEOUT action received for project {options.project_id}, task {options.task_id}")
+                logger.info(f"[LIFECYCLE] Timeout data: {item.data}")
+                logger.info("=" * 80)
+
+                # Send timeout error to frontend
+                timeout_message = item.data.get("message", "Task execution timeout")
+                in_flight = item.data.get("in_flight_tasks", 0)
+                pending = item.data.get("pending_tasks", 0)
+                timeout_seconds = item.data.get("timeout_seconds", 0)
+
+                yield sse_json("error", {
+                    "message": timeout_message,
+                    "type": "timeout",
+                    "details": {
+                        "in_flight_tasks": in_flight,
+                        "pending_tasks": pending,
+                        "timeout_seconds": timeout_seconds,
+                    }
+                })
+
             elif item.action == Action.end:
                 logger.info("=" * 80)
                 logger.info(f"🏁 [LIFECYCLE] END action received for project {options.project_id}, task {options.task_id}")
