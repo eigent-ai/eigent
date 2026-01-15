@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import websockets
 import websockets.exceptions
@@ -255,9 +256,13 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         if user_data_dir is None:
             # Use browser port to determine profile directory
             browser_port = env('browser_port', '9222')
-            user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
-            user_data_dir = os.path.join(user_data_base, f"profile_{browser_port}")
-            os.makedirs(user_data_dir, exist_ok=True)
+            user_data_dir: Path = (
+                Path.home() 
+                / ".eigent" 
+                / "browser_profiles" 
+                / f"profile_{browser_port}"
+            )
+            user_data_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})")
         else:
             logger.info(f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}")
@@ -265,7 +270,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.info(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}, cdp_url: {cdp_url}")
         super().__init__(
             headless=headless,
-            user_data_dir=user_data_dir,
+            user_data_dir=str(user_data_dir),
             stealth=stealth,
             cache_dir=cache_dir,
             enabled_tools=enabled_tools,
