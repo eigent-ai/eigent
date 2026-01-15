@@ -167,15 +167,11 @@ def list_grouped_chat_history(
 def delete_chat_history(history_id: str, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete chat history."""
     user_id = auth.user.id
-    history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id)).first()
+    history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id, ChatHistory.user_id == user_id)).first()
     
     if not history:
         logger.warning("Chat history not found for deletion", extra={"user_id": user_id, "history_id": history_id})
         raise HTTPException(status_code=404, detail="Chat History not found")
-    
-    if history.user_id != user_id:
-        logger.warning("Unauthorized deletion attempt", extra={"user_id": user_id, "history_id": history_id, "owner_id": history.user_id})
-        raise HTTPException(status_code=403, detail="You are not allowed to delete this chat history")
     
     try:
         session.delete(history)
@@ -195,15 +191,11 @@ def update_chat_history(
 ):
     """Update chat history."""
     user_id = auth.user.id
-    history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id)).first()
+    history = session.exec(select(ChatHistory).where(ChatHistory.id == history_id, ChatHistory.user_id == user_id)).first()
 
     if not history:
         logger.warning("Chat history not found for update", extra={"user_id": user_id, "history_id": history_id})
         raise HTTPException(status_code=404, detail="Chat History not found")
-
-    if history.user_id != user_id:
-        logger.warning("Unauthorized update attempt", extra={"user_id": user_id, "history_id": history_id, "owner_id": history.user_id})
-        raise HTTPException(status_code=403, detail="You are not allowed to update this chat history")
 
     try:
         update_data = data.model_dump(exclude_unset=True)
