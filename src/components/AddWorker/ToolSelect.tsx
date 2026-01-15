@@ -28,6 +28,7 @@ interface McpItem {
 	install_command?: {
 		env?: { [key: string]: string };
 	};
+	toolkit?: string;
 	isLocal?: boolean;
 }
 
