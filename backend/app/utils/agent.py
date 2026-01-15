@@ -209,6 +209,10 @@ class ListenChatAgent(ChatAgent):
         # CDP management callbacks (set by search_agent)
         self._cdp_acquire_callback = None  # Called when cloning to acquire new CDP browser
         self._cdp_release_callback = None  # Called when agent is destroyed to release CDP browser
+        
+        self._cdp_port = None
+        self._cdp_session_id = None
+        self._cdp_options = None
 
     process_task_id: str = ""
 
@@ -648,13 +652,13 @@ class ListenChatAgent(ChatAgent):
         new_cdp_port = None
         new_cdp_session = None
 
-        if hasattr(self, '_cdp_acquire_callback') and callable(self._cdp_acquire_callback):
+        if self._cdp_acquire_callback and callable(self._cdp_acquire_callback):
             # Temporarily store this for use during toolkit cloning
             import uuid
             new_cdp_session = str(uuid.uuid4())[:8]
 
             # Get the options from the parent agent (stored during agent creation)
-            if hasattr(self, '_cdp_options'):
+            if self._cdp_options:
                 options = self._cdp_options
                 cdp_browsers = options.cdp_browsers if hasattr(options, 'cdp_browsers') else []
 
@@ -743,7 +747,7 @@ class ListenChatAgent(ChatAgent):
         # Copy CDP management data to cloned agent
         new_agent._cdp_acquire_callback = self._cdp_acquire_callback
         new_agent._cdp_release_callback = self._cdp_release_callback
-        if hasattr(self, '_cdp_options'):
+        if self._cdp_options:
             new_agent._cdp_options = self._cdp_options
 
         # Find and store the cloned browser toolkit on the new agent
@@ -769,13 +773,13 @@ class ListenChatAgent(ChatAgent):
             )
 
             # Attach cleanup callback
-            if hasattr(new_agent, '_cdp_release_callback') and callable(new_agent._cdp_release_callback):
+            if new_agent._cdp_release_callback and callable(new_agent._cdp_release_callback):
                 new_agent._cleanup_callback = lambda: new_agent._cdp_release_callback(new_agent)
         else:
             # If no CDP pre-acquisition, copy from parent
-            if hasattr(self, '_cdp_port'):
+            if self._cdp_port:
                 new_agent._cdp_port = self._cdp_port
-            if hasattr(self, '_cdp_session_id'):
+            if self._cdp_session_id:
                 new_agent._cdp_session_id = self._cdp_session_id
 
         # Copy memory if requested
@@ -807,7 +811,7 @@ def agent_model(
     enable_snapshot_clean: bool = False,
     cleanup_callback: Callable[[], None] | None = None,
     extra_model_config: dict | None = None,
-):
+) -> ListenChatAgent:
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
     traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}")
@@ -1076,7 +1080,7 @@ def search_agent(options: Chat):
     )
 
     # Define CDP acquire callback for cloning
-    def acquire_cdp_for_agent(agent):
+    def acquire_cdp_for_agent(agent: ListenChatAgent):
         """Acquire a CDP browser from pool and create new toolkit for the agent."""
         # Generate unique session ID for this agent clone
         session_id = str(uuid.uuid4())[:8]
@@ -1125,7 +1129,7 @@ def search_agent(options: Chat):
             session_id=session_id,
             log_dir=str(task_log_dir),
             default_start_url=default_url,
-            connect_over_cdp=True,
+            connect_over_cdp=options.use_external_cdp,
             cdp_url=f"http://localhost:{selected_port}",
             cdp_keep_current_page=use_keep_current_page,
             enabled_tools=[
@@ -1176,9 +1180,9 @@ def search_agent(options: Chat):
         agent._cdp_session_id = session_id
 
     # Define CDP release callback
-    def release_cdp_from_agent(agent):
+    def release_cdp_from_agent(agent: ListenChatAgent):
         """Release CDP browser back to pool."""
-        if hasattr(agent, '_cdp_port') and hasattr(agent, '_cdp_session_id'):
+        if agent._cdp_port and agent._cdp_session_id:
             port = agent._cdp_port
             session_id = agent._cdp_session_id
             _cdp_pool_manager.release_browser(port, session_id)
@@ -1395,7 +1399,7 @@ Your approach depends on available search tools:
                 f"Cleanup: Released CDP browser on port {port} for session {session_id}"
             )
 
-    agent = agent_model(
+    agent: ListenChatAgent = agent_model(
         Agents.search_agent,
         BaseMessage.make_assistant_message(
             role_name="Search Agent",
