@@ -56,6 +56,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
+    id: 'zhipuai',
+    name: 'ZhipuAI',
+    apiKey: '',
+    apiHost: 'https://open.bigmodel.cn/api/paas/v4/',
+    description: "ZhipuAI model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
     id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
