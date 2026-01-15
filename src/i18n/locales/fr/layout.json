@@ -122,7 +122,7 @@
 	"by-messaging-eigent": "En envoyant des messages à Eigent, vous acceptez nos",
 	"terms-of-use": "Conditions d'Utilisation",
 	"and": "et",
-	"it-ticket-creation": "Création de Ticket IT",
+	"it-ticket-creation": "Aidez-moi à remplir un formulaire en ligne",
 	"it-ticket-creation-message": "Accédez au système de gestion des tickets sur (https://eiti.eigent.ai/) et ajoutez tous ces nouveaux tickets à notre système avec l'Agent Navigateur : '' Utilisateur Affecté : Alice Johnson Groupe d'Attribution : Équipe Services Logiciels Attribué à : Michael Brown Priorité : 4 – Basse | Urgence : 3 – Moyenne | Impact : 4 – Bas Service Affecté : Services Logiciels Problème : Dégradation des Performances de l'Application Description : L'utilisateur affecté signale des temps de réponse lents et des délais d'attente intermittents lors de l'accès aux applications logicielles internes pendant les heures de bureau normales. '' Une fois terminé, vérifiez les tickets entrants et générez un rapport statistique détaillé analysant quels domaines IT ont le plus de problèmes et l'impact financier le plus élevé. Le rapport doit inclure des graphiques et des diagrammes pour la visualisation.",
 	"bank-transfer-csv-analysis": "Analyse et Visualisation CSV des Virements Bancaires",
 	"bank-transfer-csv-analysis-message": "Analysez mon fichier CSV de virements bancaires et créez des visualisations montrant les modèles de dépenses",

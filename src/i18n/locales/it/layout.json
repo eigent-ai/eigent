@@ -122,7 +122,7 @@
 	"by-messaging-eigent": "Inviando messaggi a Eigent, accetti i nostri",
 	"terms-of-use": "Termini di Utilizzo",
 	"and": "e",
-	"it-ticket-creation": "Creazione Ticket IT",
+	"it-ticket-creation": "Aiutami a compilare un modulo online",
 	"it-ticket-creation-message": "Accedi al sistema di gestione ticket su (https://eiti.eigent.ai/) e aggiungi tutti questi nuovi ticket al nostro sistema con l'Agente Browser: '' Utente Interessato: Alice Johnson Gruppo di Assegnazione: Team Servizi Software Assegnato a: Michael Brown Priorità: 4 – Bassa | Urgenza: 3 – Media | Impatto: 4 – Basso Servizio Interessato: Servizi Software Problema: Degradazione delle Prestazioni dell'Applicazione Descrizione: L'utente interessato segnala tempi di risposta lenti e timeout intermittenti durante l'accesso alle applicazioni software interne durante il normale orario lavorativo. '' Una volta completato, controlla i ticket in arrivo e genera un report statistico dettagliato che analizzi quali aree IT hanno più problemi e il maggiore impatto finanziario. Il report deve includere grafici e diagrammi per la visualizzazione.",
 	"bank-transfer-csv-analysis": "Analisi e Visualizzazione CSV Trasferimenti Bancari",
 	"bank-transfer-csv-analysis-message": "Analizza il mio file CSV trasferimenti bancari e crea visualizzazioni che mostrano modelli di spesa",
