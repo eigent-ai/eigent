@@ -614,6 +614,21 @@ def agent_model(
 
     # Build model config, defaulting to streaming for planner
     extra_params = options.extra_params or {}
+    init_param_keys = {
+        "api_version",
+        "azure_ad_token",
+        "azure_ad_token_provider",
+        "max_retries",
+        "timeout",
+        "client",
+        "async_client",
+        "azure_deployment_name",
+    }
+    init_params = {
+        k: v
+        for k, v in extra_params.items()
+        if k in init_param_keys and v is not None and (not isinstance(v, str) or v.strip() != "")
+    }
     model_config: dict[str, Any] = {}
     if options.is_cloud():
         model_config["user"] = str(options.project_id)
@@ -621,11 +636,23 @@ def agent_model(
         {
             k: v
             for k, v in extra_params.items()
-            if k not in ["model_platform", "model_type", "api_key", "url"]
+            if k not in init_param_keys and k not in ["model_platform", "model_type", "api_key", "url"]
         }
     )
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
+    if agent_name == Agents.search_agent:
+        try:
+            model_platform_enum = ModelPlatformType(options.model_platform.lower())
+        except (ValueError, AttributeError):
+            model_platform_enum = None
+        if model_platform_enum in {
+            ModelPlatformType.OPENAI,
+            ModelPlatformType.AZURE,
+            ModelPlatformType.AIHUBMIX,
+        }:
+            model_config["parallel_tool_calls"] = False
+
 
     return ListenChatAgent(
         options.project_id,
@@ -637,6 +664,7 @@ def agent_model(
             api_key=options.api_key,
             url=options.api_url,
             model_config_dict=model_config or None,
+            **init_params,
         ),
         # output_language=options.language,
         tools=tools,
