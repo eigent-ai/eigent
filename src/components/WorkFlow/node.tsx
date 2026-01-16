@@ -170,6 +170,23 @@ export function Node({ id, data }: NodeProps) {
 		getNode,
 	]);
 
+	// Auto-expand node when a task starts running with toolkits
+	useEffect(() => {
+		const tasks = data.agent?.tasks || [];
+		const runningTaskWithToolkits = tasks.find(
+			(task) =>
+				task.status === "running" &&
+				task.toolkits &&
+				task.toolkits.length > 0
+		);
+
+		if (runningTaskWithToolkits && !isExpanded) {
+			setSelectedTask(runningTaskWithToolkits);
+			setIsExpanded(true);
+			data.onExpandChange(id, true);
+		}
+	}, [data.agent?.tasks, id, isExpanded, data.onExpandChange]);
+
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const toolsRef = useRef<HTMLDivElement>(null);
 	const [shouldScroll, setShouldScroll] = useState(false);
