@@ -97,19 +97,19 @@ jobs:
 
        # Download all artifacts with correct names
       - name: Download mac-x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-macos-15-intel-x64
           path: temp-mac-x64
 
       - name: Download mac-arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-macos-latest-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-windows-latest-x64
           path: temp-win-x64
