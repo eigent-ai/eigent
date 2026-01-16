@@ -23,7 +23,7 @@
 <hr/>
 <div align="center">
 
-**English** · [简体中文](./README_CN.md) · [Official Site][eigent-site] · [Documents][docs-site] · [Feedback][github-issue-link]
+**English** · [简体中文](./README_CN.md) · [日本語](./README_JA.md) · [Official Site][eigent-site] · [Documents][docs-site] · [Feedback][github-issue-link]
 
 </div>
 <br/>
@@ -306,6 +306,17 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 ## [🤝 Contributing][contribution-link]
 
 We believe in building trust and embracing all forms of open-source collaborations. Your creative contributions help drive the innovation of `Eigent`. Explore our GitHub issues and projects to dive in and show us what you’ve got 🤝❤️ [Contribution Guideline][contribution-link]
+
+
+## Contributors
+
+<a href="https://github.com/eigent-ai/eigent/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=eigent-ai/eigent" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+<br>
 
 ## [❤️ Sponsor][sponsor-link]
 

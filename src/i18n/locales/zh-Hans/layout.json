@@ -125,7 +125,7 @@
 	"by-messaging-eigent": "通过向 Eigent 发送消息，您同意我们的",
 	"terms-of-use": "使用条款",
 	"and": "和",
-	"it-ticket-creation": "IT工单创建",
+	"it-ticket-creation": "帮我完成一个在线表单",
 	"it-ticket-creation-message": "访问 (https://eiti.eigent.ai/) 的工单管理系统，使用浏览器代理将所有这些新工单添加到我们的系统中：'' 受影响用户：Alice Johnson 分配组：软件服务团队 分配给：Michael Brown 优先级：4 – 低 | 紧急程度：3 – 中 | 影响：4 – 低 受影响服务：软件服务 问题：应用程序性能下降 描述：受影响用户报告在正常工作时间访问内部软件应用程序时响应时间慢和间歇性超时。'' 完成后，检查收到的工单并生成详细的统计报告，分析哪些IT领域问题最多、财务影响最大。报告应包含图表和图形以进行可视化。",
 	"bank-transfer-csv-analysis": "银行转账 CSV 分析和可视化",
 	"bank-transfer-csv-analysis-message": "分析我的银行转账 CSV 文件并创建显示支出模式的可视化",

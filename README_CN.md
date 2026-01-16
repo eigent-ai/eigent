@@ -23,7 +23,7 @@
 <hr/>
 <div align="center">
 
-[English](./README.md) · **简体中文** · [官方网站][eigent-site] · [文档][docs-site] · [反馈][github-issue-link]
+[English](./README.md) · **简体中文** · [日本語](./README_JA.md) · [官方网站][eigent-site] · [文档][docs-site] · [反馈][github-issue-link]
 
 </div>
 <br/>
@@ -292,6 +292,16 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 ## [🤝 贡献][contribution-link]
 
 我们相信通过开源协作建立信任。您的创意贡献将推动 `Eigent` 的创新。探索我们的 GitHub 问题与项目，加入我们 🤝❤️ [贡献指南][contribution-link]
+
+## Contributors
+
+<a href="https://github.com/eigent-ai/eigent/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=eigent-ai/eigent" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+<br>
 
 ## [❤️ 赞助][sponsor-link]
 
