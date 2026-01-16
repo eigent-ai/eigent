@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload Artifact (Windows - exe only)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
