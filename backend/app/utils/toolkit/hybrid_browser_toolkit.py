@@ -8,7 +8,9 @@ import websockets.exceptions
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
-from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper
+from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import (
+    WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper,
+)
 from app.component.command import bun, uv
 from app.component.environment import env
 from app.service.task import Agents
@@ -48,7 +50,11 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                             "id": response.get("id"),
                             "success": response.get("success"),
                             "has_result": "result" in response,
-                            "result_type": type(response.get("result")).__name__ if "result" in response else None
+                            "result_type": (
+                                type(response.get("result")).__name__
+                                if "result" in response
+                                else None
+                            ),
                         }
                         logger.debug(f"Received unexpected message: {message_summary}")
 
@@ -57,7 +63,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     logger.info(f"WebSocket disconnect: {disconnect_reason}")
                     break
                 except websockets.exceptions.ConnectionClosed as e:
-                    disconnect_reason = f"WebSocket closed: code={e.code}, reason={e.reason}"
+                    disconnect_reason = (
+                        f"WebSocket closed: code={e.code}, reason={e.reason}"
+                    )
                     logger.warning(f"WebSocket disconnect: {disconnect_reason}")
                     break
                 except websockets.exceptions.WebSocketException as e:
@@ -69,7 +77,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     continue  # Try to continue on JSON errors
                 except Exception as e:
                     disconnect_reason = f"Unexpected error: {type(e).__name__}: {e}"
-                    logger.error(f"WebSocket disconnect: {disconnect_reason}", exc_info=True)
+                    logger.error(
+                        f"WebSocket disconnect: {disconnect_reason}", exc_info=True
+                    )
                     # Notify all pending futures of the error
                     for future in self._pending_responses.values():
                         if not future.done():
@@ -77,16 +87,22 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     self._pending_responses.clear()
                     break
         finally:
-            logger.info(f"WebSocket receive loop terminated. Reason: {disconnect_reason or 'Normal shutdown'}")
+            logger.info(
+                f"WebSocket receive loop terminated. Reason: {disconnect_reason or 'Normal shutdown'}"
+            )
             # Mark the websocket as None to indicate disconnection
             self.websocket = None
 
     async def start(self):
         # Simply use the parent implementation which uses system npm/node
-        logger.info("Starting WebSocket server using parent implementation (system npm/node)")
+        logger.info(
+            "Starting WebSocket server using parent implementation (system npm/node)"
+        )
         await super().start()
 
-    async def _send_command(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _send_command(
+        self, command: str, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Send a command to the WebSocket server with enhanced error handling."""
         try:
             # First ensure we have a valid connection
@@ -98,7 +114,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 import websockets.protocol
 
                 if self.websocket.state != websockets.protocol.State.OPEN:
-                    raise RuntimeError(f"WebSocket is in {self.websocket.state} state, not OPEN")
+                    raise RuntimeError(
+                        f"WebSocket is in {self.websocket.state} state, not OPEN"
+                    )
 
             logger.debug(f"Sending command '{command}' with params: {params}")
 
@@ -116,7 +134,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 self.websocket = None
             raise
         except Exception as e:
-            logger.error(f"Unexpected error sending command '{command}': {type(e).__name__}: {e}")
+            logger.error(
+                f"Unexpected error sending command '{command}': {type(e).__name__}: {e}"
+            )
             raise
 
 
@@ -128,7 +148,9 @@ class WebSocketConnectionPool:
         self._connections: Dict[str, WebSocketBrowserWrapper] = {}
         self._lock = asyncio.Lock()
 
-    async def get_connection(self, session_id: str, config: Dict[str, Any]) -> WebSocketBrowserWrapper:
+    async def get_connection(
+        self, session_id: str, config: Dict[str, Any]
+    ) -> WebSocketBrowserWrapper:
         """Get or create a connection for the given session ID."""
         async with self._lock:
             # Check if we have an existing connection for this session
@@ -143,28 +165,41 @@ class WebSocketConnectionPool:
                         if hasattr(wrapper.websocket, "state"):
                             import websockets.protocol
 
-                            is_healthy = wrapper.websocket.state == websockets.protocol.State.OPEN
+                            is_healthy = (
+                                wrapper.websocket.state
+                                == websockets.protocol.State.OPEN
+                            )
                             if not is_healthy:
-                                logger.debug(f"Session {session_id} WebSocket state: {wrapper.websocket.state}")
+                                logger.debug(
+                                    f"Session {session_id} WebSocket state: {wrapper.websocket.state}"
+                                )
                         elif hasattr(wrapper.websocket, "open"):
                             is_healthy = wrapper.websocket.open
                         else:
                             # Try ping as last resort
                             try:
-                                await asyncio.wait_for(wrapper.websocket.ping(), timeout=1.0)
+                                await asyncio.wait_for(
+                                    wrapper.websocket.ping(), timeout=1.0
+                                )
                                 is_healthy = True
                             except:
                                 is_healthy = False
                     except Exception as e:
-                        logger.debug(f"Health check failed for session {session_id}: {e}")
+                        logger.debug(
+                            f"Health check failed for session {session_id}: {e}"
+                        )
                         is_healthy = False
 
                 if is_healthy:
-                    logger.debug(f"Reusing healthy WebSocket connection for session {session_id}")
+                    logger.debug(
+                        f"Reusing healthy WebSocket connection for session {session_id}"
+                    )
                     return wrapper
                 else:
                     # Connection is unhealthy, clean it up
-                    logger.info(f"Removing unhealthy WebSocket connection for session {session_id}")
+                    logger.info(
+                        f"Removing unhealthy WebSocket connection for session {session_id}"
+                    )
                     try:
                         await wrapper.stop()
                     except Exception as e:
@@ -176,7 +211,9 @@ class WebSocketConnectionPool:
             wrapper = WebSocketBrowserWrapper(config)
             await wrapper.start()
             self._connections[session_id] = wrapper
-            logger.info(f"Successfully created WebSocket connection for session {session_id}")
+            logger.info(
+                f"Successfully created WebSocket connection for session {session_id}"
+            )
             return wrapper
 
     async def close_connection(self, session_id: str):
@@ -187,7 +224,9 @@ class WebSocketConnectionPool:
                 try:
                     await wrapper.stop()
                 except Exception as e:
-                    logger.error(f"Error closing WebSocket connection for session {session_id}: {e}")
+                    logger.error(
+                        f"Error closing WebSocket connection for session {session_id}: {e}"
+                    )
                 del self._connections[session_id]
                 logger.info(f"Closed WebSocket connection for session {session_id}")
 
@@ -198,7 +237,9 @@ class WebSocketConnectionPool:
             try:
                 await wrapper.stop()
             except Exception as e:
-                logger.error(f"Error closing WebSocket connection for session {session_id}: {e}")
+                logger.error(
+                    f"Error closing WebSocket connection for session {session_id}: {e}"
+                )
             del self._connections[session_id]
             logger.info(f"Closed WebSocket connection for session {session_id}")
 
@@ -212,6 +253,7 @@ class WebSocketConnectionPool:
 
 # Global connection pool instance
 websocket_connection_pool = WebSocketConnectionPool()
+
 
 @auto_listen_toolkit(BaseHybridBrowserToolkit)
 class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
@@ -243,22 +285,30 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
     ) -> None:
-        logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
+        logger.info(
+            f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}"
+        )
         self.api_task_id = api_task_id
         logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
-        
+
         # Set default user_data_dir if not provided
         if user_data_dir is None:
             # Use browser port to determine profile directory
-            browser_port = env('browser_port', '9222')
+            browser_port = env("browser_port", "9222")
             user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
             user_data_dir = os.path.join(user_data_base, f"profile_{browser_port}")
             os.makedirs(user_data_dir, exist_ok=True)
-            logger.info(f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})")
+            logger.info(
+                f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})"
+            )
         else:
-            logger.info(f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}")
+            logger.info(
+                f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}"
+            )
 
-        logger.debug(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}")
+        logger.debug(
+            f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}, connect_over_cdp: {connect_over_cdp}"
+        )
         super().__init__(
             headless=headless,
             user_data_dir=user_data_dir,
@@ -281,32 +331,60 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
-        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
+        # Log the actual connect_over_cdp value from _ws_config after super().__init__
+        actual_connect_over_cdp = getattr(self, "_ws_config", {}).get(
+            "connect_over_cdp", "NOT SET"
+        )
+        logger.info(
+            f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}, connect_over_cdp in _ws_config: {actual_connect_over_cdp}"
+        )
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
-        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
+        logger.debug(
+            f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}"
+        )
         global websocket_connection_pool
 
         # Get session ID from config or use default
         session_id = self._ws_config.get("session_id", "default")
         logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
-        # Log when connecting to browser
-        cdp_url = self._ws_config.get("cdp_url", f"http://localhost:{env('browser_port', '9222')}")
-        logger.info(f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}")
+        # Check connect_over_cdp setting
+        connect_over_cdp = self._ws_config.get("connect_over_cdp", True)
+
+        # Log connection method based on connect_over_cdp setting
+        if connect_over_cdp:
+            cdp_url = self._ws_config.get(
+                "cdp_url", f"http://localhost:{env('browser_port', '9222')}"
+            )
+            logger.info(f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}")
+        else:
+            logger.info(
+                f"[PROJECT BROWSER] Starting independent browser instance (connect_over_cdp=False)"
+            )
 
         # Get or create connection from pool
-        self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
-        logger.info(f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}")
+        self._ws_wrapper = await websocket_connection_pool.get_connection(
+            session_id, self._ws_config
+        )
+        logger.info(
+            f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}"
+        )
 
         # Additional health check
         if self._ws_wrapper.websocket is None:
-            logger.warning(f"WebSocket connection for session {session_id} is None after pool retrieval, recreating...")
+            logger.warning(
+                f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
+            )
             await websocket_connection_pool.close_connection(session_id)
-            self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
+            self._ws_wrapper = await websocket_connection_pool.get_connection(
+                session_id, self._ws_config
+            )
 
-    def clone_for_new_session(self, new_session_id: str | None = None) -> "HybridBrowserToolkit":
+    def clone_for_new_session(
+        self, new_session_id: str | None = None
+    ) -> "HybridBrowserToolkit":
         import uuid
 
         if new_session_id is None:
@@ -314,7 +392,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
         # For cloned sessions, use the same user_data_dir to share login state
         # This allows multiple agents to use the same browser profile without conflicts
-        logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
+        logger.info(
+            f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}"
+        )
 
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
@@ -365,4 +445,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         """Cleanup when object is garbage collected."""
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:
             session_id = self._ws_config.get("session_id", "default")
-            logger.debug(f"HybridBrowserToolkit for session {session_id} is being garbage collected")
+            logger.debug(
+                f"HybridBrowserToolkit for session {session_id} is being garbage collected"
+            )
