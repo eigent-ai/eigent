@@ -614,6 +614,21 @@ def agent_model(
 
     # Build model config, defaulting to streaming for planner
     extra_params = options.extra_params or {}
+    init_param_keys = {
+        "api_version",
+        "azure_ad_token",
+        "azure_ad_token_provider",
+        "max_retries",
+        "timeout",
+        "client",
+        "async_client",
+        "azure_deployment_name",
+    }
+    init_params = {
+        k: v
+        for k, v in extra_params.items()
+        if k in init_param_keys and v is not None and (not isinstance(v, str) or v.strip() != "")
+    }
     model_config: dict[str, Any] = {}
     if options.is_cloud():
         model_config["user"] = str(options.project_id)
@@ -621,8 +636,7 @@ def agent_model(
         {
             k: v
             for k, v in extra_params.items()
-            if k not in ["model_platform", "model_type", "api_key", "url"]
-        }
+            if k not in init_param_keys and k not in ["model_platform", "model_type", "api_key", "url"]        }
     )
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
