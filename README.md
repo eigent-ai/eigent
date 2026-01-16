@@ -307,6 +307,17 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 
 We believe in building trust and embracing all forms of open-source collaborations. Your creative contributions help drive the innovation of `Eigent`. Explore our GitHub issues and projects to dive in and show us what you’ve got 🤝❤️ [Contribution Guideline][contribution-link]
 
+
+## Contributors
+
+<a href="https://github.com/eigent-ai/eigent/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=eigent-ai/eigent" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+<br>
+
 ## [❤️ Sponsor][sponsor-link]
 
 Eigent is built on top of [CAMEL-AI.org][camel-ai-org-github]'s research and infrastructures. [Sponsoring CAMEL-AI.org][sponsor-link] will make `Eigent` better.

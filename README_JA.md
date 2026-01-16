@@ -305,6 +305,16 @@ Documentsディレクトリにmydocsというフォルダがあります。ス�
 
 私たちは信頼を築き、あらゆる形式のオープンソースコラボレーションを歓迎することを信じています。あなたの創造的な貢献が`Eigent`のイノベーションを推進します。GitHubのissuesとプロジェクトを探索して、あなたの力を見せてください 🤝❤️ [コントリビューションガイドライン][contribution-link]
 
+## Contributors
+
+<a href="https://github.com/eigent-ai/eigent/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=eigent-ai/eigent" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+<br>
+
 ## [❤️ スポンサー][sponsor-link]
 
 Eigentは[CAMEL-AI.org][camel-ai-org-github]の研究とインフラストラクチャの上に構築されています。[CAMEL-AI.orgをスポンサー][sponsor-link]することで`Eigent`がより良くなります。

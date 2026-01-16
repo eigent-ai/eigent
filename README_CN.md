@@ -293,6 +293,16 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 我们相信通过开源协作建立信任。您的创意贡献将推动 `Eigent` 的创新。探索我们的 GitHub 问题与项目，加入我们 🤝❤️ [贡献指南][contribution-link]
 
+## Contributors
+
+<a href="https://github.com/eigent-ai/eigent/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=eigent-ai/eigent" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+<br>
+
 ## [❤️ 赞助][sponsor-link]
 
 Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建。[赞助 CAMEL-AI.org][sponsor-link] 将使 `Eigent` 变得更好。
