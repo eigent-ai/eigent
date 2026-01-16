@@ -52,6 +52,7 @@
 	"claude-opus-4.1": "Claude Opus 4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"claude-sonnet-4": "Claude Sonnet 4: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"claude-3.5-haiku": "Claude 3.5 Haiku: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
+	"claude-4.5-haiku": "Claude 4.5 Haiku: El modelo más rápido de Anthropic con excelente rendimiento para tareas cotidianas.",
 	"gpt-5": "GPT-5: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"gpt-5-mini": "GPT-5 mini: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"gpt-5-nano": "GPT-5 nano: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
