@@ -1,6 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { useInstallationStore } from '@/store/installationStore';
-import { useAuthStore } from '@/store/authStore';
+import { useEffect, useRef, useCallback } from "react";
+import { useInstallationStore } from "@/store/installationStore";
+import { useAuthStore } from "@/store/authStore";
 
 /**
  * Hook that sets up Electron IPC listeners and handles installation state synchronization
@@ -12,40 +12,62 @@ export const useInstallationSetup = () => {
   const hasCheckedOnMount = useRef(false);
   const installationCompleted = useRef(false);
   const backendReady = useRef(false);
-  const startInstallation = useInstallationStore(state => state.startInstallation);
-  const performInstallation = useInstallationStore(state => state.performInstallation);
-  const addLog = useInstallationStore(state => state.addLog);
-  const setSuccess = useInstallationStore(state => state.setSuccess);
-  const setError = useInstallationStore(state => state.setError);
-  const setBackendError = useInstallationStore(state => state.setBackendError);
-  const setWaitingBackend = useInstallationStore(state => state.setWaitingBackend);
-  const needsBackendRestart = useInstallationStore(state => state.needsBackendRestart);
-  const setNeedsBackendRestart = useInstallationStore(state => state.setNeedsBackendRestart);
+  const startInstallation = useInstallationStore(
+    (state) => state.startInstallation
+  );
+  const performInstallation = useInstallationStore(
+    (state) => state.performInstallation
+  );
+  const addLog = useInstallationStore((state) => state.addLog);
+  const setSuccess = useInstallationStore((state) => state.setSuccess);
+  const setError = useInstallationStore((state) => state.setError);
+  const setBackendError = useInstallationStore(
+    (state) => state.setBackendError
+  );
+  const setWaitingBackend = useInstallationStore(
+    (state) => state.setWaitingBackend
+  );
+  const needsBackendRestart = useInstallationStore(
+    (state) => state.needsBackendRestart
+  );
+  const setNeedsBackendRestart = useInstallationStore(
+    (state) => state.setNeedsBackendRestart
+  );
 
   // Shared function to poll backend status
   const startBackendPolling = useCallback(() => {
-    console.log('[useInstallationSetup] Starting backend polling');
+    console.log("[useInstallationSetup] Starting backend polling");
 
     // Immediately check backend status once
     const checkBackendStatus = async () => {
       try {
         const backendPort = await window.electronAPI.getBackendPort();
         if (backendPort && backendPort > 0) {
-          console.log('[useInstallationSetup] Backend immediately detected on port:', backendPort);
+          console.log(
+            "[useInstallationSetup] Backend immediately detected on port:",
+            backendPort
+          );
 
           // Verify backend is actually responding
-          const response = await fetch(`http://localhost:${backendPort}/health`).catch(() => null);
+          const response = await fetch(
+            `http://localhost:${backendPort}/health`
+          ).catch(() => null);
           if (response && response.ok) {
-            console.log('[useInstallationSetup] Backend health check passed immediately');
+            console.log(
+              "[useInstallationSetup] Backend health check passed immediately"
+            );
             backendReady.current = true;
             setSuccess();
-            setInitState('done');
+            setInitState("done");
             setNeedsBackendRestart(false);
             return true; // Backend is ready, no need to poll
           }
         }
       } catch (error) {
-        console.log('[useInstallationSetup] Initial backend check failed:', error);
+        console.log(
+          "[useInstallationSetup] Initial backend check failed:",
+          error
+        );
       }
       return false; // Backend not ready, need to poll
     };
@@ -53,11 +75,13 @@ export const useInstallationSetup = () => {
     // Check immediately, then start polling if needed
     checkBackendStatus().then((isReady) => {
       if (isReady) {
-        console.log('[useInstallationSetup] Backend already ready, skipping polling');
+        console.log(
+          "[useInstallationSetup] Backend already ready, skipping polling"
+        );
         return;
       }
 
-      console.log('[useInstallationSetup] Backend not ready, starting polling');
+      console.log("[useInstallationSetup] Backend not ready, starting polling");
 
       // Poll backend status every 2 seconds to ensure we catch when it's ready
       // This is a fallback in case the backend-ready event is missed
@@ -65,25 +89,33 @@ export const useInstallationSetup = () => {
         try {
           const backendPort = await window.electronAPI.getBackendPort();
           if (backendPort && backendPort > 0) {
-            console.log('[useInstallationSetup] Backend poll detected ready on port:', backendPort);
+            console.log(
+              "[useInstallationSetup] Backend poll detected ready on port:",
+              backendPort
+            );
 
             // Verify backend is actually responding
-            const response = await fetch(`http://localhost:${backendPort}/health`).catch(() => null);
+            const response = await fetch(
+              `http://localhost:${backendPort}/health`
+            ).catch(() => null);
             if (response && response.ok) {
-              console.log('[useInstallationSetup] Backend health check passed');
+              console.log("[useInstallationSetup] Backend health check passed");
               clearInterval(pollInterval);
 
               if (!backendReady.current) {
                 backendReady.current = true;
                 setSuccess();
-                setInitState('done');
+                setInitState("done");
                 // Clear the flag after backend is ready
                 setNeedsBackendRestart(false);
               }
             }
           }
         } catch (error) {
-          console.log('[useInstallationSetup] Backend poll check failed:', error);
+          console.log(
+            "[useInstallationSetup] Backend poll check failed:",
+            error
+          );
         }
       }, 2000);
 
@@ -98,7 +130,9 @@ export const useInstallationSetup = () => {
   useEffect(() => {
     // When user logs in after logout, needsBackendRestart will be true
     if (needsBackendRestart && email !== null) {
-      console.log('[useInstallationSetup] Detected login after logout, waiting for backend restart');
+      console.log(
+        "[useInstallationSetup] Detected login after logout, waiting for backend restart"
+      );
 
       // For account switching, tools are already installed, only backend needs restart
       // So we mark installation as completed and only wait for backend
@@ -113,7 +147,6 @@ export const useInstallationSetup = () => {
     }
   }, [needsBackendRestart, email, setWaitingBackend, startBackendPolling]);
 
-
   useEffect(() => {
     if (hasCheckedOnMount.current) {
       return;
@@ -127,7 +160,9 @@ export const useInstallationSetup = () => {
 
         if (result.success) {
           if (result.isInstalled) {
-            console.log('[useInstallationSetup] Tools already installed, waiting for backend');
+            console.log(
+              "[useInstallationSetup] Tools already installed, waiting for backend"
+            );
             installationCompleted.current = true;
             setWaitingBackend();
 
@@ -135,31 +170,40 @@ export const useInstallationSetup = () => {
             startBackendPolling();
           }
 
-          if (initState !== 'done') {
+          if (initState !== "done") {
             if (!result.isInstalled && initState === "permissions") {
-              console.log('[useInstallationSetup] Tools not installed and initState is permissions, setting to carousel');
+              console.log(
+                "[useInstallationSetup] Tools not installed and initState is permissions, setting to carousel"
+              );
               setInitState("carousel");
             }
           }
         }
         return result;
       } catch (error) {
-        console.error("[useInstallationSetup] Tool installation check failed:", error);
+        console.error(
+          "[useInstallationSetup] Tool installation check failed:",
+          error
+        );
         return { success: false, error };
       }
     };
 
-    const checkBackendStatus = async(toolResult?: any) => {
+    const checkBackendStatus = async (toolResult?: any) => {
       try {
-        const installationStatus = await window.electronAPI.getInstallationStatus();
+        const installationStatus =
+          await window.electronAPI.getInstallationStatus();
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
         }
       } catch (err) {
-        console.error('[useInstallationSetup] Failed to check installation status:', err);
+        console.error(
+          "[useInstallationSetup] Failed to check installation status:",
+          err
+        );
       }
-    }
+    };
 
     const runInitialChecks = async () => {
       const toolResult = await checkToolInstalled();
@@ -167,16 +211,23 @@ export const useInstallationSetup = () => {
     };
 
     runInitialChecks();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const checkAndSetDone = () => {
-      console.log('[useInstallationSetup] Checking readiness - Installation:', installationCompleted.current, 'Backend:', backendReady.current);
+      console.log(
+        "[useInstallationSetup] Checking readiness - Installation:",
+        installationCompleted.current,
+        "Backend:",
+        backendReady.current
+      );
 
       if (installationCompleted.current && backendReady.current) {
-        console.log('[useInstallationSetup] Both installation and backend are ready, setting initState to done');
-        setInitState('done');
+        console.log(
+          "[useInstallationSetup] Both installation and backend are ready, setting initState to done"
+        );
+        setInitState("done");
       }
     };
 
@@ -188,39 +239,63 @@ export const useInstallationSetup = () => {
 
     const handleInstallLog = (data: { type: string; data: string }) => {
       addLog({
-        type: data.type as 'stdout' | 'stderr',
+        type: data.type as "stdout" | "stderr",
         data: data.data,
         timestamp: new Date(),
       });
     };
 
-    const handleInstallComplete = (data: { success: boolean; code?: number; error?: string }) => {
-      console.log('[useInstallationSetup] Installation complete event received:', data);
+    const handleInstallComplete = (data: {
+      success: boolean;
+      code?: number;
+      error?: string;
+    }) => {
+      console.log(
+        "[useInstallationSetup] Installation complete event received:",
+        data
+      );
 
       if (data.success) {
         installationCompleted.current = true;
-        console.log('[useInstallationSetup] Installation marked as completed');
+        console.log("[useInstallationSetup] Installation marked as completed");
 
         // setSuccess() will be called in handleBackendReady to prevent premature state change
         checkAndSetDone();
       } else {
-        setError(data.error || 'Installation failed');
+        setError(data.error || "Installation failed");
       }
     };
 
-    const handleBackendReady = (data: { success: boolean; port?: number; error?: string }) => {
-      console.log('[useInstallationSetup] Backend ready event received:', data);
+    const handleBackendReady = (data: {
+      success: boolean;
+      port?: number;
+      error?: string;
+    }) => {
+      console.log("[useInstallationSetup] Backend ready event received:", data);
 
       if (data.success && data.port) {
-        console.log(`[useInstallationSetup] Backend is ready on port ${data.port}`);
+        console.log(
+          `[useInstallationSetup] Backend is ready on port ${data.port}`
+        );
         backendReady.current = true;
-        console.log('[useInstallationSetup] Backend marked as ready');
+        // If backend is ready, installation must be complete (or satisfied enough)
+        // This handles race condition where install-complete event is missed or skipped
+        if (!installationCompleted.current) {
+          console.log(
+            "[useInstallationSetup] Backend ready implies installation complete - setting flag"
+          );
+          installationCompleted.current = true;
+        }
+        console.log("[useInstallationSetup] Backend marked as ready");
 
         setSuccess();
         checkAndSetDone();
       } else {
-        console.error('[useInstallationSetup] Backend failed to start:', data.error);
-        setBackendError(data.error || 'Backend startup failed');
+        console.error(
+          "[useInstallationSetup] Backend failed to start:",
+          data.error
+        );
+        setBackendError(data.error || "Backend startup failed");
       }
     };
 
@@ -230,10 +305,17 @@ export const useInstallationSetup = () => {
     window.electronAPI.onBackendReady(handleBackendReady);
 
     return () => {
-      window.electronAPI.removeAllListeners('install-dependencies-start');
-      window.electronAPI.removeAllListeners('install-dependencies-log');
-      window.electronAPI.removeAllListeners('install-dependencies-complete');
-      window.electronAPI.removeAllListeners('backend-ready');
+      window.electronAPI.removeAllListeners("install-dependencies-start");
+      window.electronAPI.removeAllListeners("install-dependencies-log");
+      window.electronAPI.removeAllListeners("install-dependencies-complete");
+      window.electronAPI.removeAllListeners("backend-ready");
     };
-  }, [startInstallation, addLog, setSuccess, setError, setBackendError, setInitState]);
+  }, [
+    startInstallation,
+    addLog,
+    setSuccess,
+    setError,
+    setBackendError,
+    setInitState,
+  ]);
 };
