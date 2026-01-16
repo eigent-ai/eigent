@@ -733,7 +733,7 @@ export default function SettingModels() {
 														? t("setting.claude-sonnet-4")
 														: cloud_model_type === "claude-3-5-haiku-20241022"
 															? t("setting.claude-3.5-haiku")
-															: cloud_model_type === "claude-4-5-haiku-20251001"
+															: cloud_model_type === "claude-haiku-4-5-20251001"
 																? t("setting.claude-4.5-haiku")
 																: cloud_model_type === "gemini-3-pro-preview"
 																	? t("setting.gemini-3-pro-preview")
@@ -780,7 +780,7 @@ export default function SettingModels() {
 									<SelectItem value="claude-3-5-haiku-20241022">
 										Claude 3.5 Haiku
 									</SelectItem>
-									<SelectItem value="claude-4-5-haiku-20251001">
+									<SelectItem value="claude-haiku-4-5-20251001">
 										Claude 4.5 Haiku
 									</SelectItem>
 								</SelectContent>
