@@ -13,7 +13,7 @@ class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         timeout: float | None = None,
         add_branding_tag: bool = True,
         logo_path: str = "../../../../public/favicon.png",
@@ -22,7 +22,7 @@ class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
         remote_server_ip: str | None = "space.eigent.ai",
         remote_server_port: int = 8080,
     ):
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         super().__init__(timeout, add_branding_tag, logo_path, tag_text, tag_url, remote_server_ip, remote_server_port)
 
     @listen_toolkit(BaseWebDeployToolkit.deploy_html_content)

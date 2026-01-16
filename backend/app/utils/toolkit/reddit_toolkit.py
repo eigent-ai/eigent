@@ -13,17 +13,17 @@ class RedditToolkit(BaseRedditToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         retries: int = 3,
         delay: float = 0,
         timeout: float | None = None,
     ):
         super().__init__(retries, delay, timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
+    def get_can_use_tools(cls, api_project_id: str) -> list[FunctionTool]:
         if env("REDDIT_CLIENT_ID") and env("REDDIT_CLIENT_SECRET") and env("REDDIT_USER_AGENT"):
-            return RedditToolkit(api_task_id).get_tools()
+            return RedditToolkit(api_project_id).get_tools()
         else:
             return []

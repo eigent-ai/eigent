@@ -19,22 +19,22 @@ class TestWorkforce:
     
     def test_workforce_initialization(self):
         """Test Workforce initialization with default settings."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         description = "Test workforce"
         
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description=description
         )
         
-        assert workforce.api_task_id == api_task_id
+        assert workforce.api_project_id == api_project_id
         assert workforce.description == description
 
     def test_eigent_make_sub_tasks_success(self):
         """Test eigent_make_sub_tasks successfully decomposes task."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -61,9 +61,9 @@ class TestWorkforce:
 
     def test_eigent_make_sub_tasks_with_streaming_decomposition(self):
         """Test eigent_make_sub_tasks with streaming decomposition result."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -91,9 +91,9 @@ class TestWorkforce:
 
     def test_eigent_make_sub_tasks_invalid_content(self):
         """Test eigent_make_sub_tasks with invalid task content."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -111,9 +111,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_eigent_start_success(self):
         """Test eigent_start successfully starts workforce."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -138,9 +138,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_eigent_start_with_exception(self):
         """Test eigent_start handles exceptions properly."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -158,9 +158,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_find_assignee_with_notifications(self, mock_task_lock):
         """Test _find_assignee sends proper task assignment notifications."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -193,9 +193,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_post_task_notification(self, mock_task_lock):
         """Test _post_task sends running state notification."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -224,9 +224,9 @@ class TestWorkforce:
 
     def test_add_single_agent_worker_success(self):
         """Test add_single_agent_worker successfully adds worker."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -251,9 +251,9 @@ class TestWorkforce:
 
     def test_add_single_agent_worker_while_running(self):
         """Test add_single_agent_worker raises error when workforce is running."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         workforce._state = WorkforceState.RUNNING
@@ -266,9 +266,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_handle_completed_task(self, mock_task_lock):
         """Test _handle_completed_task sends completion notification."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -297,9 +297,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_handle_failed_task(self, mock_task_lock):
         """Test _handle_failed_task sends failure notification."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -329,9 +329,9 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_stop_sends_end_notification(self, mock_task_lock):
         """Test stop method sends end notification."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -349,23 +349,23 @@ class TestWorkforce:
     @pytest.mark.asyncio
     async def test_cleanup_deletes_task_lock(self):
         """Test cleanup method deletes task lock."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
         with patch('app.service.task.delete_task_lock') as mock_delete:
             await workforce.cleanup()
             
-            mock_delete.assert_called_once_with(api_task_id)
+            mock_delete.assert_called_once_with(api_project_id)
 
     @pytest.mark.asyncio
     async def test_cleanup_handles_exception(self):
         """Test cleanup handles exceptions gracefully."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Test workforce"
         )
         
@@ -391,15 +391,15 @@ class TestWorkforceIntegration:
     @pytest.mark.asyncio
     async def test_full_workforce_lifecycle(self):
         """Test complete workforce lifecycle from creation to cleanup."""
-        api_task_id = "integration_test_123"
+        api_project_id = "integration_test_123"
         
         # Create task lock
         from app.service.task import create_task_lock
-        task_lock = create_task_lock(api_task_id)
+        task_lock = create_task_lock(api_project_id)
         
         # Create workforce
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Integration test workforce"
         )
         
@@ -444,13 +444,13 @@ class TestWorkforceIntegration:
     @pytest.mark.asyncio
     async def test_workforce_with_multiple_workers(self):
         """Test workforce with multiple workers."""
-        api_task_id = "multi_worker_test_123"
+        api_project_id = "multi_worker_test_123"
         
         from app.service.task import create_task_lock
-        create_task_lock(api_task_id)
+        create_task_lock(api_project_id)
         
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Multi-worker test workforce"
         )
         
@@ -477,13 +477,13 @@ class TestWorkforceIntegration:
     @pytest.mark.asyncio
     async def test_workforce_task_state_tracking(self):
         """Test workforce properly tracks task state changes."""
-        api_task_id = "task_tracking_test_123"
+        api_project_id = "task_tracking_test_123"
         
         from app.service.task import create_task_lock
-        task_lock = create_task_lock(api_task_id)
+        task_lock = create_task_lock(api_project_id)
         
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Task tracking test workforce"
         )
         
@@ -533,9 +533,9 @@ class TestWorkforceErrorCases:
     
     def test_eigent_make_sub_tasks_with_none_task(self):
         """Test eigent_make_sub_tasks with None task."""
-        api_task_id = "error_test_123"
+        api_project_id = "error_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Error test workforce"
         )
         
@@ -544,9 +544,9 @@ class TestWorkforceErrorCases:
 
     def test_eigent_make_sub_tasks_with_malformed_task(self):
         """Test eigent_make_sub_tasks with malformed task object."""
-        api_task_id = "error_test_123"
+        api_project_id = "error_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Error test workforce"
         )
         
@@ -562,9 +562,9 @@ class TestWorkforceErrorCases:
     @pytest.mark.asyncio
     async def test_eigent_start_with_empty_subtasks(self):
         """Test eigent_start with empty subtasks list."""
-        api_task_id = "empty_test_123"
+        api_project_id = "empty_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Empty test workforce"
         )
         
@@ -579,9 +579,9 @@ class TestWorkforceErrorCases:
 
     def test_add_single_agent_worker_with_invalid_worker(self):
         """Test add_single_agent_worker with invalid worker object."""
-        api_task_id = "invalid_worker_test_123"
+        api_project_id = "invalid_worker_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Invalid worker test workforce"
         )
         
@@ -595,9 +595,9 @@ class TestWorkforceErrorCases:
     @pytest.mark.asyncio
     async def test_find_assignee_with_get_task_lock_failure(self):
         """Test _find_assignee when get_task_lock fails after parent method succeeds."""
-        api_task_id = "lock_fail_test_123"
+        api_project_id = "lock_fail_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Lock fail test workforce"
         )
         
@@ -616,9 +616,9 @@ class TestWorkforceErrorCases:
     @pytest.mark.asyncio
     async def test_cleanup_with_nonexistent_task_lock(self):
         """Test cleanup when task lock doesn't exist."""
-        api_task_id = "nonexistent_lock_test_123"
+        api_project_id = "nonexistent_lock_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Nonexistent lock test workforce"
         )
         
@@ -635,12 +635,12 @@ class TestWorkforceErrorCases:
         """Test that Workforce properly inherits from BaseWorkforce."""
         from camel.societies.workforce.workforce import Workforce as BaseWorkforce
         
-        api_task_id = "inheritance_test_123"
+        api_project_id = "inheritance_test_123"
         workforce = Workforce(
-            api_task_id=api_task_id,
+            api_project_id=api_project_id,
             description="Inheritance test workforce"
         )
         
         assert isinstance(workforce, BaseWorkforce)
-        assert hasattr(workforce, 'api_task_id')
-        assert workforce.api_task_id == api_task_id
+        assert hasattr(workforce, 'api_project_id')
+        assert workforce.api_project_id == api_project_id

@@ -89,12 +89,12 @@ def listen_toolkit(
             @wraps(wrap)
             async def async_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
-                # Check if api_task_id exists
-                if not hasattr(toolkit, 'api_task_id'):
-                    logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_task_id, calling method directly")
+                # Check if api_project_id exists
+                if not hasattr(toolkit, 'api_project_id'):
+                    logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_project_id, calling method directly")
                     return await func(*args, **kwargs)
                     
-                task_lock = get_task_lock(toolkit.api_task_id)
+                task_lock = get_task_lock(toolkit.api_project_id)
 
                 if inputs is not None:
                     args_str = inputs(*args, **kwargs)
@@ -122,9 +122,9 @@ def listen_toolkit(
                 # Multi-layer fallback to get process_task_id
                 process_task_id = process_task.get("")
                 if not process_task_id:
-                    process_task_id = getattr(toolkit, 'api_task_id', "")
+                    process_task_id = getattr(toolkit, 'api_project_id', "")
                     if not process_task_id:
-                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
+                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_project_id are empty for {toolkit_name}.{method_name}")
 
                 if not skip_workflow_display:
                     activate_data = ActionActivateToolkitData(
@@ -193,12 +193,12 @@ def listen_toolkit(
             def sync_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
 
-                # Check if api_task_id exists
-                if not hasattr(toolkit, 'api_task_id'):
-                    logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_task_id, calling method directly")
+                # Check if api_project_id exists
+                if not hasattr(toolkit, 'api_project_id'):
+                    logger.warning(f"[listen_toolkit] {toolkit.__class__.__name__} missing api_project_id, calling method directly")
                     return func(*args, **kwargs)
 
-                task_lock = get_task_lock(toolkit.api_task_id)
+                task_lock = get_task_lock(toolkit.api_project_id)
 
                 if inputs is not None:
                     args_str = inputs(*args, **kwargs)
@@ -225,9 +225,9 @@ def listen_toolkit(
                 # Multi-layer fallback to get process_task_id
                 process_task_id = process_task.get("")
                 if not process_task_id:
-                    process_task_id = getattr(toolkit, 'api_task_id', "")
+                    process_task_id = getattr(toolkit, 'api_project_id', "")
                     if not process_task_id:
-                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
+                        logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_project_id are empty for {toolkit_name}.{method_name}")
 
                 if not skip_workflow_display:
                     activate_data = ActionActivateToolkitData(

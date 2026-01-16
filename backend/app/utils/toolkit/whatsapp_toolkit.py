@@ -11,13 +11,13 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 class WhatsAppToolkit(BaseWhatsAppToolkit, AbstractToolkit):
     agent_name: str = Agents.social_medium_agent
 
-    def __init__(self, api_task_id: str, timeout: float | None = None):
+    def __init__(self, api_project_id: str, timeout: float | None = None):
         super().__init__(timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
+    def get_can_use_tools(cls, api_project_id: str) -> list[FunctionTool]:
         if env("WHATSAPP_ACCESS_TOKEN") and env("WHATSAPP_PHONE_NUMBER_ID"):
-            return WhatsAppToolkit(api_task_id).get_tools()
+            return WhatsAppToolkit(api_project_id).get_tools()
         else:
             return []

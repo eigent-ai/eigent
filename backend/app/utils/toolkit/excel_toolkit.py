@@ -13,11 +13,11 @@ class ExcelToolkit(BaseExcelToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         timeout: float | None = None,
         working_directory: str | None = None,
     ):
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
         super().__init__(timeout=timeout, working_directory=working_directory)

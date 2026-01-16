@@ -12,9 +12,9 @@ class ImageAnalysisToolkit(BaseImageAnalysisToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         model: BaseModelBackend | None = None,
         timeout: float | None = None,
     ):
         super().__init__(model, timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id

@@ -76,7 +76,7 @@ class ListenChatAgent(ChatAgent):
     @traceroot.trace()
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         agent_name: str,
         system_message: BaseMessage | str | None = None,
         model: BaseModelBackend
@@ -134,7 +134,7 @@ class ListenChatAgent(ChatAgent):
             step_timeout=step_timeout,
             **kwargs,
         )
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         self.agent_name = agent_name
 
     process_task_id: str = ""
@@ -145,7 +145,7 @@ class ListenChatAgent(ChatAgent):
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | StreamingChatAgentResponse:
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         asyncio.create_task(
             task_lock.put_queue(
                 ActionActivateAgentData(
@@ -257,7 +257,7 @@ class ListenChatAgent(ChatAgent):
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         await task_lock.put_queue(
             ActionActivateAgentData(
                 action=Action.activate_agent,
@@ -343,7 +343,7 @@ class ListenChatAgent(ChatAgent):
         has_listen_decorator = hasattr(tool.func, "__wrapped__")
 
         try:
-            task_lock = get_task_lock(self.api_task_id)
+            task_lock = get_task_lock(self.api_project_id)
 
             toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
             traceroot_logger.debug(
@@ -426,7 +426,7 @@ class ListenChatAgent(ChatAgent):
         # Always handle tool execution ourselves to maintain ContextVar context
         args = tool_call_request.args
         tool_call_id = tool_call_request.tool_call_id
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
 
         # Try to get the real toolkit name
         toolkit_name = None
@@ -557,7 +557,7 @@ class ListenChatAgent(ChatAgent):
         cloned_tools, toolkits_to_register = self._clone_tools()
         
         new_agent = ListenChatAgent(
-            api_task_id=self.api_task_id,
+            api_project_id=self.api_project_id,
             agent_name=self.agent_name,
             system_message=system_message,
             model=self.model_backend.models,  # Pass the existing model_backend
@@ -674,10 +674,10 @@ async def developer_agent(options: Chat):
         message_handler=HumanToolkit(options.project_id, Agents.developer_agent).send_message_to_user
     )
     note_toolkit = NoteTakingToolkit(
-        api_task_id=options.project_id, agent_name=Agents.developer_agent, working_directory=working_directory
+        api_project_id=options.project_id, agent_name=Agents.developer_agent, working_directory=working_directory
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
+    web_deploy_toolkit = WebDeployToolkit(api_project_id=options.project_id)
     web_deploy_toolkit = message_integration.register_toolkits(web_deploy_toolkit)
     screenshot_toolkit = ScreenshotToolkit(options.project_id, working_directory=working_directory)
     screenshot_toolkit = message_integration.register_toolkits(screenshot_toolkit)
@@ -1589,8 +1589,8 @@ async def mcp_agent(options: Chat):
 
 
 @traceroot.trace()
-async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
-    traceroot_logger.info(f"Getting toolkits for agent: {agent_name}, task: {api_task_id}, tools: {tools}")
+async def get_toolkits(tools: list[str], agent_name: str, api_project_id: str):
+    traceroot_logger.info(f"Getting toolkits for agent: {agent_name}, project: {api_project_id}, tools: {tools}")
     toolkits = {
         "audio_analysis_toolkit": AudioAnalysisToolkit,
         "openai_image_toolkit": OpenAIImageToolkit,
@@ -1620,7 +1620,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         if item in toolkits:
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
-            toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+            toolkit_tools = toolkit.get_can_use_tools(api_project_id)
             toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
             res.extend(toolkit_tools)
         else:

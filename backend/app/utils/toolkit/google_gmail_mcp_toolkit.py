@@ -10,13 +10,13 @@ class GoogleGmailMCPToolkit(BaseToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         credentials_path: str | None = None,
         timeout: float | None = None,
         input_env: dict[str, str] | None = None,
     ):
         super().__init__(timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         credentials_path = credentials_path or env("GMAIL_CREDENTIALS_PATH")
         self._mcp_toolkit = MCPToolkit(
             config_dict={
@@ -41,10 +41,10 @@ class GoogleGmailMCPToolkit(BaseToolkit, AbstractToolkit):
         return self._mcp_toolkit.get_tools()
 
     @classmethod
-    async def get_can_use_tools(cls, api_task_id: str, input_env: dict[str, str] | None = None) -> list[FunctionTool]:
+    async def get_can_use_tools(cls, api_project_id: str, input_env: dict[str, str] | None = None) -> list[FunctionTool]:
         if env("GMAIL_CREDENTIALS_PATH") is None:
             return []
-        toolkit = cls(api_task_id, env_or_fail("GMAIL_CREDENTIALS_PATH"), 180, input_env)
+        toolkit = cls(api_project_id, env_or_fail("GMAIL_CREDENTIALS_PATH"), 180, input_env)
         await toolkit.connect()
         tools = []
         for item in toolkit.get_tools():

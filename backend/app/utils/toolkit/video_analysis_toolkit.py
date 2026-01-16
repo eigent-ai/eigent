@@ -14,7 +14,7 @@ class VideoAnalysisToolkit(BaseVideoAnalysisToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         working_directory: str | None = None,
         model: BaseModelBackend | None = None,
         use_audio_transcription: bool = False,
@@ -24,7 +24,7 @@ class VideoAnalysisToolkit(BaseVideoAnalysisToolkit, AbstractToolkit):
         cookies_path: str | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
         super().__init__(

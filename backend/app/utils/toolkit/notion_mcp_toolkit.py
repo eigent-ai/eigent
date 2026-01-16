@@ -36,10 +36,10 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         timeout: float | None = None,
     ):
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if timeout is None:
             timeout = 120.0
         
@@ -61,7 +61,7 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
         super().__init__(config_dict=config_dict, timeout=timeout)    
 
     @classmethod
-    async def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
+    async def get_can_use_tools(cls, api_project_id: str) -> list[FunctionTool]:
         # Retry mechanism for remote MCP connection
         max_retries = 3
         retry_delay = 2  # seconds
@@ -72,7 +72,7 @@ class NotionMCPToolkit(MCPToolkit, AbstractToolkit):
             
             try:
                 # Create a fresh toolkit instance for each retry
-                toolkit = cls(api_task_id)
+                toolkit = cls(api_project_id)
                 logger.info(f"Attempting to connect to Notion MCP server (attempt {attempt + 1}/{max_retries})")
                 
                 await toolkit.connect()

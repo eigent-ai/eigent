@@ -11,12 +11,12 @@ class GoogleDriveMCPToolkit(BaseGoogleDriveMCPToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         timeout: float | None = None,
         credentials_path: str | None = None,
         input_env: dict[str, str] | None = None,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         super().__init__(timeout, credentials_path)
         credentials_path = credentials_path or env("GDRIVE_CREDENTIALS_PATH")
         self._mcp_toolkit = MCPToolkit(
@@ -33,10 +33,10 @@ class GoogleDriveMCPToolkit(BaseGoogleDriveMCPToolkit, AbstractToolkit):
         )
 
     @classmethod
-    async def get_can_use_tools(cls, api_task_id: str, input_env: dict[str, str] | None = None) -> list[FunctionTool]:
+    async def get_can_use_tools(cls, api_project_id: str, input_env: dict[str, str] | None = None) -> list[FunctionTool]:
         if env("GDRIVE_CREDENTIALS_PATH") is None:
             return []
-        toolkit = cls(api_task_id, 180, env("GDRIVE_CREDENTIALS_PATH"), input_env)
+        toolkit = cls(api_project_id, 180, env("GDRIVE_CREDENTIALS_PATH"), input_env)
         await toolkit.connect()
         tools = []
         for item in toolkit.get_tools():

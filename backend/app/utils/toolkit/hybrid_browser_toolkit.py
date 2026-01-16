@@ -219,7 +219,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         *,
         headless: bool = False,
         user_data_dir: str | None = None,
@@ -243,9 +243,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
     ) -> None:
-        logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
-        self.api_task_id = api_task_id
-        logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
+        logger.info(f"[HybridBrowserToolkit] Initializing with api_project_id: {api_project_id}")
+        self.api_project_id = api_project_id
+        logger.debug(f"[HybridBrowserToolkit] api_project_id set to: {self.api_project_id}")
         
         # Set default user_data_dir if not provided
         if user_data_dir is None:
@@ -281,11 +281,11 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
-        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
+        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_project_id: {self.api_project_id}")
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
-        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
+        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_project_id: {getattr(self, 'api_project_id', 'NOT SET')}")
         global websocket_connection_pool
 
         # Get session ID from config or use default
@@ -319,7 +319,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
         return HybridBrowserToolkit(
-            self.api_task_id,
+            self.api_project_id,
             headless=self._headless,
             user_data_dir=self._user_data_dir,  # Use the same user_data_dir
             stealth=self._stealth,

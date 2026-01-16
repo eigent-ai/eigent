@@ -24,7 +24,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         agent_name: str | None = None,
         timeout: float | None = None,
         working_directory: str | None = None,
@@ -35,14 +35,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = False,
     ):
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if agent_name is not None:
             self.agent_name = agent_name
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
 
         logger.info("Initializing TerminalToolkit", extra={
-            "api_task_id": api_task_id,
+            "api_project_id": api_project_id,
             "agent_name": self.agent_name,
             "working_directory": working_directory,
             "safe_mode": safe_mode,
@@ -84,14 +84,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # Convert ANSI escape sequences to plain text
         super()._write_to_log(log_file, content)
         logger.debug("Terminal output logged", extra={
-            "api_task_id": self.api_task_id,
+            "api_project_id": self.api_project_id,
             "log_file": log_file,
             "content_length": len(content)
         })
         self._update_terminal_output(_to_plain(content))
 
     def _update_terminal_output(self, output: str):
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         process_task_id = process_task.get("")
 
         # Create the coroutine
