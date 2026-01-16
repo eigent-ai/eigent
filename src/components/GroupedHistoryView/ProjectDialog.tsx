@@ -57,6 +57,15 @@ export default function ProjectDialog({
 		project.project_name || t("layout.new-project")
 	);
 
+	const MAX_NAME_LENGTH = 60;
+
+	const clearSaveTimeout = () => {
+		if (saveTimeoutRef.current) {
+			clearTimeout(saveTimeoutRef.current);
+			saveTimeoutRef.current = null;
+		}
+	};
+
 	// Update state when project changes
 	useEffect(() => {
 		const name = project.project_name || t("layout.new-project");
@@ -66,42 +75,32 @@ export default function ProjectDialog({
 
 	// Auto-save with debouncing
 	useEffect(() => {
-		// Clear any existing timeout
-		if (saveTimeoutRef.current) {
-			clearTimeout(saveTimeoutRef.current);
-		}
+		clearSaveTimeout();
 
 		const trimmedName = projectName.trim();
 
-		// Only save if the name has actually changed and is not empty
+		// Only save if the name changed and is not empty
 		if (trimmedName && trimmedName !== lastSavedNameRef.current) {
 			setIsSaving(true);
-
-			// Debounce: wait 800ms after user stops typing
 			saveTimeoutRef.current = setTimeout(() => {
-				// Update via callback (for history API)
 				onProjectRename(project.project_id, trimmedName);
-
-				// Also update in projectStore if the project exists there
-				const storeProject = projectStore.getProjectById(project.project_id);
+				const storeProject = projectStore.getProjectById(
+					project.project_id
+				);
 				if (storeProject) {
-					projectStore.updateProject(project.project_id, { name: trimmedName });
+					projectStore.updateProject(project.project_id, {
+						name: trimmedName,
+					});
 				}
-
 				lastSavedNameRef.current = trimmedName;
 				setIsSaving(false);
 			}, 800);
-		} else if (!trimmedName) {
-			// If empty, don't show saving state
+		} else {
 			setIsSaving(false);
 		}
 
 		// Cleanup timeout on unmount or when projectName changes
-		return () => {
-			if (saveTimeoutRef.current) {
-				clearTimeout(saveTimeoutRef.current);
-			}
-		};
+		return clearSaveTimeout;
 	}, [projectName, project.project_id, onProjectRename, projectStore]);
 
 	// Cleanup on unmount
@@ -148,19 +147,54 @@ export default function ProjectDialog({
 							onMouseDown={(e) => e.stopPropagation()}
 						>
 							<Input
-								disabled={true}
+								autoFocus
+								maxLength={MAX_NAME_LENGTH}
 								value={projectName}
-								onChange={(e) => setProjectName(e.target.value)}
+								onChange={(e) =>
+									setProjectName(
+										e.target.value.slice(0, MAX_NAME_LENGTH)
+									)
+								}
 								onClick={(e) => e.stopPropagation()}
 								onMouseDown={(e) => e.stopPropagation()}
 								onFocus={(e) => e.stopPropagation()}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										clearSaveTimeout();
+										const trimmed = projectName.trim();
+										if (
+											trimmed &&
+											trimmed !== lastSavedNameRef.current
+										) {
+											setIsSaving(true);
+											onProjectRename(project.project_id, trimmed);
+											const storeproject =
+												projectStore.getProjectById(
+													project.project_id
+												);
+											if (storeproject) {
+												projectStore.updateProject(
+													project.project_id,
+													{ name: trimmed }
+												);
+											}
+											lastSavedNameRef.current = trimmed;
+											setIsSaving(false);
+										}
+									}
+								}}
 								placeholder={t("layout.enter-project-name")}
 							/>
-							{isSaving ? (
-								<Loader2 className="w-4 h-4 text-icon-action animate-spin flex-shrink-0" />
-							) : (
-								<></>
-							)}
+
+							<div className="flex items-center gap-2">
+								{isSaving ? (
+									<Loader2 className="w-4 h-4 text-icon-action animate-spin flex-shrink-0" />
+								) : null}
+								<span className="text-label-xs text-text-tertiary">
+									{projectName.length}/{MAX_NAME_LENGTH}
+								</span>
+							</div>
+						
 						</div>
 					</div>
 
