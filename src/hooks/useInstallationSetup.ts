@@ -50,6 +50,14 @@ export const useInstallationSetup = () => {
       return false; // Backend not ready, need to poll
     };
 
+    // If backend is already marked ready, skip polling
+    if (backendReady.current) {
+      console.log('[useInstallationSetup] Backend already marked ready, skipping polling');
+      setSuccess();
+      setInitState('done');
+      return;
+    }
+
     // Check immediately, then start polling if needed
     checkBackendStatus().then((isReady) => {
       if (isReady) {
@@ -133,6 +141,13 @@ export const useInstallationSetup = () => {
 
             // Start polling for backend when tools are already installed
             startBackendPolling();
+
+            // FIX: if backend is already ready (e.g. from previous run or race condition),
+            // update state immediately
+            if (backendReady.current) {
+              console.log('[useInstallationSetup] Tools installed and backend ready, setting done');
+              setInitState('done');
+            }
           }
 
           if (initState !== 'done') {
@@ -149,7 +164,7 @@ export const useInstallationSetup = () => {
       }
     };
 
-    const checkBackendStatus = async(toolResult?: any) => {
+    const checkBackendStatus = async (toolResult?: any) => {
       try {
         const installationStatus = await window.electronAPI.getInstallationStatus();
 
@@ -167,7 +182,7 @@ export const useInstallationSetup = () => {
     };
 
     runInitialChecks();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
