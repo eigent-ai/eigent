@@ -624,35 +624,42 @@ def agent_model(
         "async_client",
         "azure_deployment_name",
     }
-    init_params = {
-        k: v
-        for k, v in extra_params.items()
-        if k in init_param_keys and v is not None and (not isinstance(v, str) or v.strip() != "")
-    }
+    
+    init_params = {}
     model_config: dict[str, Any] = {}
+    
     if options.is_cloud():
         model_config["user"] = str(options.project_id)
-    model_config.update(
-        {
-            k: v
-            for k, v in extra_params.items()
-            if k not in init_param_keys and k not in ["model_platform", "model_type", "api_key", "url"]
-        }
-    )
+        
+    excluded_keys = {"model_platform", "model_type", "api_key", "url"}
+
+    # Distribute extra_params between init_params and model_config
+    for k, v in extra_params.items():
+        if k in excluded_keys:
+            continue
+        # Skip empty values
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+            
+        if k in init_param_keys:
+            init_params[k] = v
+        else:
+            model_config[k] = v
+
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
     if agent_name == Agents.search_agent:
         try:
             model_platform_enum = ModelPlatformType(options.model_platform.lower())
+            if model_platform_enum in {
+                ModelPlatformType.OPENAI,
+                ModelPlatformType.AZURE,
+                ModelPlatformType.AIHUBMIX,
+            }:
+                model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
+            traceroot_logger.error(f"Invalid model platform for search agent: {options.model_platform}", exc_info=True)
             model_platform_enum = None
-        if model_platform_enum in {
-            ModelPlatformType.OPENAI,
-            ModelPlatformType.AZURE,
-            ModelPlatformType.AIHUBMIX,
-        }:
-            model_config["parallel_tool_calls"] = False
-
 
     return ListenChatAgent(
         options.project_id,
