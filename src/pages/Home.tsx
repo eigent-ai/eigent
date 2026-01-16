@@ -6,7 +6,7 @@ import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
-import SearchAgentWrokSpace from "@/components/SearchAgentWrokSpace";
+import BrowserAgentWorkSpace from "@/components/BrowserAgentWorkSpace";
 import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
 import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
@@ -206,7 +206,7 @@ export default function Home() {
 											.activeWorkSpace
 								)?.type === "browser_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<SearchAgentWrokSpace />
+										<BrowserAgentWorkSpace />
 									</div>
 								)}
 								{chatStore.tasks[chatStore.activeTaskId as string]
