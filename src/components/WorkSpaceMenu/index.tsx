@@ -101,9 +101,9 @@ export function WorkSpaceMenu() {
 					);
 
 					if (activeAgentIndex === -1) {
-						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
-						if (searchAgentIndex !== -1) {
-							taskAssigning[searchAgentIndex].activeWebviewIds?.push({
+						const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+						if (browserAgentIndex !== -1) {
+							taskAssigning[browserAgentIndex].activeWebviewIds?.push({
 								id,
 								url,
 								img: "",
@@ -135,9 +135,9 @@ export function WorkSpaceMenu() {
 					]);
 				} else {
 					// If no URL match found, also try to add to browser_agent
-					const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
-					if (searchAgentIndex !== -1 && webViewUrls.length > 0) {
-						taskAssigning[searchAgentIndex].activeWebviewIds?.push({
+					const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+					if (browserAgentIndex !== -1 && webViewUrls.length > 0) {
+						taskAssigning[browserAgentIndex].activeWebviewIds?.push({
 							id,
 							url,
 							img: "",
@@ -175,16 +175,16 @@ export function WorkSpaceMenu() {
 								...chatStore.tasks[chatStore.activeTaskId as string]
 									.taskAssigning,
 							];
-							const searchAgentIndex = taskAssigning.findIndex(
+							const browserAgentIndex = taskAssigning.findIndex(
 								(agent) => agent.agent_id === webview.agent_id
 							);
 
 							if (
-								searchAgentIndex !== -1 &&
+								browserAgentIndex !== -1 &&
 								base64 &&
 								base64 !== "data:image/jpeg;base64,"
 							) {
-								taskAssigning[searchAgentIndex].activeWebviewIds![
+								taskAssigning[browserAgentIndex].activeWebviewIds![
 									webview.index
 								].img = base64;
 
