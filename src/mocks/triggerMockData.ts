@@ -1,4 +1,4 @@
-import { Trigger, TriggerStatus, TriggerType, ListenerType, TriggerExecution, ExecutionType } from "@/types";
+import { Trigger, TriggerStatus, TriggerType, ListenerType, TriggerExecution, ExecutionType, ExecutionStatus } from "@/types";
 
 export const mockTriggers: Trigger[] = [
     {
@@ -8,10 +8,9 @@ export const mockTriggers: Trigger[] = [
         description: "Generates daily reports every morning at 9 AM",
         trigger_type: TriggerType.Schedule,
         custom_cron_expression: "0 9 * * *",
-        listener_type: ListenerType.ChatAgent,
+        listener_type: ListenerType.Workforce,
         status: TriggerStatus.Active,
         execution_count: 45,
-        error_count: 2,
         task_prompt: "Generate a daily summary report of all activities",
         agent_model: "gpt-4o-mini",
         is_single_execution: false,
@@ -28,7 +27,6 @@ export const mockTriggers: Trigger[] = [
         listener_type: ListenerType.Workforce,
         status: TriggerStatus.Active,
         execution_count: 128,
-        error_count: 5,
         task_prompt: "Process and validate incoming webhook data",
         agent_model: "gpt-4o",
         is_single_execution: false,
@@ -40,11 +38,10 @@ export const mockTriggers: Trigger[] = [
         user_id: "1",
         name: "Slack Notification Handler",
         description: "Handles notifications from Slack channels",
-        trigger_type: TriggerType.SlackTrigger,
-        listener_type: ListenerType.ChatAgent,
+        trigger_type: TriggerType.Slack,
+        listener_type: ListenerType.Workforce,
         status: TriggerStatus.Inactive,
         execution_count: 0,
-        error_count: 0,
         task_prompt: "Monitor Slack messages and respond to mentions",
         agent_model: "gpt-4o-mini",
         is_single_execution: false,
@@ -60,12 +57,12 @@ export const mockExecutions: Record<number, TriggerExecution[]> = {
             trigger_id: 1,
             execution_id: "exec_20240120_001",
             execution_type: ExecutionType.Scheduled,
-            status: 2, // Completed
+            status: ExecutionStatus.Completed, // Completed
             started_at: "2024-01-20T09:00:00Z",
             completed_at: "2024-01-20T09:02:30Z",
             duration_seconds: 150,
             tokens_used: 1250,
-            retry_count: 0,
+            attempts: 0,
             max_retries: 3,
         },
         {
@@ -73,12 +70,12 @@ export const mockExecutions: Record<number, TriggerExecution[]> = {
             trigger_id: 1,
             execution_id: "exec_20240119_001",
             execution_type: ExecutionType.Scheduled,
-            status: 2, // Completed
+            status: ExecutionStatus.Completed, // Completed
             started_at: "2024-01-19T09:00:00Z",
             completed_at: "2024-01-19T09:01:45Z",
             duration_seconds: 105,
             tokens_used: 980,
-            retry_count: 0,
+            attempts: 0,
             max_retries: 3,
         },
         {
@@ -86,12 +83,12 @@ export const mockExecutions: Record<number, TriggerExecution[]> = {
             trigger_id: 1,
             execution_id: "exec_20240118_001",
             execution_type: ExecutionType.Scheduled,
-            status: 3, // Failed
+            status: ExecutionStatus.Failed, // Failed
             started_at: "2024-01-18T09:00:00Z",
             completed_at: "2024-01-18T09:00:15Z",
             duration_seconds: 15,
             tokens_used: 120,
-            retry_count: 0,
+            attempts: 0,
             max_retries: 3,
         },
     ],
@@ -101,12 +98,12 @@ export const mockExecutions: Record<number, TriggerExecution[]> = {
             trigger_id: 2,
             execution_id: "exec_webhook_001",
             execution_type: ExecutionType.Webhook,
-            status: 2, // Completed
+            status: ExecutionStatus.Completed, // Completed
             started_at: "2024-01-22T16:45:00Z",
             completed_at: "2024-01-22T16:45:30Z",
             duration_seconds: 30,
             tokens_used: 450,
-            retry_count: 0,
+            attempts: 0,
             max_retries: 3,
         },
         {
@@ -114,12 +111,12 @@ export const mockExecutions: Record<number, TriggerExecution[]> = {
             trigger_id: 2,
             execution_id: "exec_webhook_002",
             execution_type: ExecutionType.Webhook,
-            status: 1, // Running
+            status: ExecutionStatus.Running, // Running
             started_at: "2024-01-22T17:00:00Z",
             completed_at: undefined,
             duration_seconds: undefined,
             tokens_used: undefined,
-            retry_count: 0,
+            attempts: 0,
             max_retries: 3,
         },
     ],
@@ -138,13 +135,11 @@ export const createMockTrigger = (triggerData: Partial<Trigger>): Trigger => {
         trigger_type: triggerData.trigger_type || TriggerType.Schedule,
         custom_cron_expression: triggerData.custom_cron_expression,
         webhook_url: triggerData.webhook_url,
-        listener_type: triggerData.listener_type || ListenerType.ChatAgent,
+        listener_type: triggerData.listener_type || ListenerType.Workforce,
         status: TriggerStatus.Inactive,
         execution_count: 0,
-        error_count: 0,
         task_prompt: triggerData.task_prompt,
         agent_model: triggerData.agent_model,
-        system_message: triggerData.system_message,
         max_executions_per_hour: triggerData.max_executions_per_hour,
         max_executions_per_day: triggerData.max_executions_per_day,
         is_single_execution: triggerData.is_single_execution || false,
@@ -179,13 +174,13 @@ export const createMockExecution = (triggerId: number): TriggerExecution => {
         id: nextExecutionId++,
         trigger_id: triggerId,
         execution_id: `exec_test_${Date.now()}`,
-        execution_type: ExecutionType.Manual,
-        status: 1, // Running
+        execution_type: ExecutionType.Scheduled,
+        status: ExecutionStatus.Running, // Running
         started_at: new Date().toISOString(),
         completed_at: undefined,
         duration_seconds: undefined,
         tokens_used: undefined,
-        retry_count: 0,
+        attempts: 0,
         max_retries: 3,
     };
 
@@ -197,7 +192,7 @@ export const createMockExecution = (triggerId: number): TriggerExecution => {
 
     // Simulate completion after a delay
     setTimeout(() => {
-        execution.status = 2; // Completed
+        execution.status = ExecutionStatus.Completed; // Completed
         execution.completed_at = new Date().toISOString();
         execution.duration_seconds = Math.floor(Math.random() * 30) + 5;
         execution.tokens_used = Math.floor(Math.random() * 1000) + 100;

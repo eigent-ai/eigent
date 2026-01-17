@@ -39,7 +39,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
                 return <AlarmClockIcon className="w-3.5 h-3.5" />;
             case TriggerType.Webhook:
                 return <WebhookIcon className="w-3.5 h-3.5" />;
-            case TriggerType.SlackTrigger:
+            case TriggerType.Slack:
                 return <MessageSquare className="w-3.5 h-3.5" />;
             default:
                 return <Clock className="w-3.5 h-3.5" />;
@@ -52,8 +52,8 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
                 return t("triggers.schedule");
             case TriggerType.Webhook:
                 return t("triggers.webhook");
-            case TriggerType.SlackTrigger:
-                return t("triggers.slack");
+            case TriggerType.Slack:
+                return t("triggers.slack-trigger");
             default:
                 return trigger.trigger_type;
         }
