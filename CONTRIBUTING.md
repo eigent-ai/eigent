@@ -5,10 +5,12 @@ Thank you for your interest in contributing to the Eigent project! 🎉 We're ex
 ## Join Our Community 🌍
 
 ### Developer Meeting Time & Link 💻
+
 - English speakers: Mondays at 8 PM PDT. Join via Discord: [Meeting Link](https://meet.google.com/sez-aomy-ebm?authuser=0&hs=122&ijlm=1753634732982)
 - Chinese Speakers: Mondays at 9 PM UTC+8. Join via TecentMeeting: [Meeting Link](https://meeting.tencent.com/dm/057wap1eeCSY)
 
 ### Our Communication Channels 💬
+
 - **Discord:** [Join here](https://discord.camel-ai.org/)
 - **WeChat:** Scan the QR code [here](https://ghli.org/camel/wechat.png)
 - **Slack:** [Join here](https://join.slack.com/t/camel-ai/shared_invite/zt-2g7xc41gy-_7rcrNNAArIP6sLQqldkqQ)
@@ -17,7 +19,7 @@ Thank you for your interest in contributing to the Eigent project! 🎉 We're ex
 
 ### Contributing to the Code 👨‍💻👩‍💻
 
-If you're eager to contribute to this project, that's fantastic! We're thrilled to have your support. 
+If you're eager to contribute to this project, that's fantastic! We're thrilled to have your support.
 
 - If you are a contributor from the community:
   - Follow the [Fork-and-Pull-Request](https://docs.github.com/en/get-started/quickstart/contributing-to-projects) workflow when opening your pull requests.
@@ -36,21 +38,24 @@ Ensuring excellent documentation and thorough testing is absolutely crucial. Her
   - Update any affected example console scripts in the `examples` directory, Gradio demos in the `apps` directory, and documentation in the `docs` directory.
   - Update unit tests when relevant.
 - If you add a feature:
-  - Include unit tests in the `test` directory. 
+  - Include unit tests in the `test` directory.
   - Add a demo script in the `examples` directory.
- 
+
 We're a small team focused on building great things. If you have something in mind that you'd like to add or modify, opening a pull request is the ideal way to catch our attention. 🚀
 
 ### Contributing to Code Reviews 🔍
+
 This part outlines the guidelines and best practices for conducting code reviews in Eigent. The aim is to ensure that all contributions are of high quality, align with the project's goals, and are consistent with our coding standards.
 
 #### Purpose of Code Reviews
+
 - Maintain Code Quality: Ensure that the codebase remains clean, readable, and maintainable.
 - Knowledge Sharing: Facilitate knowledge sharing among contributors and help new contributors learn best practices.
 - Bug Prevention: Catch potential bugs and issues before they are merged into the main branch.
 - Consistency: Ensure consistency in style, design patterns, and architecture across the project.
 
 #### Review Process Overview
+
 - Reviewers should check the code for functionality, readability, consistency, and compliance with the project’s coding standards.
 - If changes are necessary, the reviewer should leave constructive feedback.
 - The contributor addresses feedback and updates the PR.
@@ -59,6 +64,7 @@ This part outlines the guidelines and best practices for conducting code reviews
 - Merging should be done by a maintainer or an authorized contributor.
 
 #### Code Review Checklist
+
 - Functionality
   - Correctness: Does the code perform the intended task? Are edge cases handled?
   - Testing: Is there sufficient test coverage? Do all tests pass?
@@ -77,12 +83,14 @@ This part outlines the guidelines and best practices for conducting code reviews
   - Dependencies: Are dependencies minimized and used appropriately?
 
 #### Reviewer Responsibilities
+
 - Timely Reviews: Reviewers should strive to review PRs promptly to keep the project moving.
 - Constructive Feedback: Provide feedback that is clear, constructive, and aimed at helping the contributor improve.
 - Collaboration: Work with the contributor to address any issues and ensure the final code meets the project’s standards.
 - Approvals: Only approve code that you are confident meets all the necessary criteria.
 
 #### Common Pitfalls
+
 - Large PRs: Avoid submitting PRs that are too large. Break down your changes into smaller, manageable PRs if possible.
 - Ignoring Feedback: Address all feedback provided by reviewers, even if you don’t agree with it—discuss it instead of ignoring it.
 - Rushed Reviews: Avoid rushing through reviews. Taking the time to thoroughly review code is critical to maintaining quality.
@@ -94,20 +102,24 @@ Code reviews are an essential part of maintaining the quality and integrity of o
 This guideline will help you write clear, concise, and structured docstrings for contributing to `Eigent`.
 
 #### 1. Use the Triple-Quoted String with `r"""` (Raw String)
+
 Begin the docstring with `r"""` to indicate a raw docstring. This prevents any issues with special characters and ensures consistent formatting.
 
 #### 2. Provide a Brief Class or Method Description
+
 - Start with a concise summary of the purpose and functionality.
 - Keep each line under `79` characters.
 - The summary should start on the first line without a linebreak.
 
 Example:
+
 ```python
 r"""Class for managing conversations of CAMEL Chat Agents.
 """
 ```
 
 #### 3. Document Parameters in the Args Section
+
 - Use an `Args`: section for documenting constructor or function parameters.
 - Maintain the `79`-character limit for each line, and indent continuation lines by 4 spaces.
 - Follow this structure:
@@ -117,6 +129,7 @@ r"""Class for managing conversations of CAMEL Chat Agents.
   - Default Value: Use (`default: :obj:<default_value>`) to indicate default values.
 
 Example:
+
 ```markdown
 Args:
     system_message (BaseMessage): The system message for initializing 
@@ -141,9 +154,11 @@ Examples:
 By adhering to this principle, we ensure that CAMEL remains accessible and unambiguous for both developers and AI agents.
 
 ### Board Item Create Workflow 🛠️
+
 At Eigent, we manage our project through a structured workflow that ensures efficiency and clarity in our development process. Our workflow includes stages for issue creation and pull requests (PRs), sprint planning, and reviews.
 
-#### Issue Item Stage:
+#### Issue Item Stage
+
 Our [issues](https://github.com/eigent-ai/Eigent-desktop/issues) page on GitHub is regularly updated with bugs, improvements, and feature requests. We have a handy set of labels to help you sort through and find issues that interest you. Feel free to use these labels to keep things organized.
 
 When you start working on an issue, please assign it to yourself so that others know it's being taken care of.
@@ -153,12 +168,13 @@ When creating a new issue, it's best to keep it focused on a specific bug, impro
 We do our best to keep these issues up to date, but considering the fast-paced nature of this field, some may become outdated. If you come across any such issues, please give us a heads-up so we can address them promptly. 👀
 
 Here’s how to engage with our issues effectively:
+
 - Go to [GitHub Issues](https://github.com/eigent-ai/Eigent-desktop/issues), create a new issue, choose the category, and fill in the required information.
 - Ensure the issue has a proper title and update the Assignees, Labels, Projects (select Backlog status), Development, and Milestones.
 - Discuss the issue during team meetings, then move it to the Analysis Done column.
 - At the beginning of each sprint, share the analyzed issue and move it to the Sprint Planned column if you are going to work on this issue in the sprint.
 
-#### Pull Request Item Stage:
+#### Pull Request Item Stage
 
 - Go to [GitHub Pulls](https://github.com/eigent-ai/Eigent-desktop/pulls), create a new PR, choose the branch, and fill in the information, linking the related issue.
 - Ensure the PR has a proper title and update the Reviewers (convert to draft), Assignees, Labels, Projects (select Developing status), Development, and Milestones.
@@ -166,6 +182,7 @@ Here’s how to engage with our issues effectively:
 - Move the PR item through the stages: Developing, Stuck, Reviewing (click ready for review), Merged. The linked issue will close automatically when the PR is merged.
 
 **Labeling PRs:**
+
 - **feat**: For new features (e.g., `feat: Add new AI model`)
 - **fix**: For bug fixes (e.g., `fix: Resolve memory leak issue`)
 - **docs**: For documentation updates (e.g., `docs: Update contribution guidelines`)
@@ -192,6 +209,7 @@ docker compose up
 ```
 
 To run the application locally in developer mode:
+
 1. Configure `.env.development`:
    - Set `VITE_USE_LOCAL_PROXY=true`
    - Set `VITE_PROXY_URL=http://localhost:3001`
