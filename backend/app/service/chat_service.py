@@ -35,7 +35,7 @@ from app.utils.agent import (
     developer_agent,
     document_agent,
     multi_modal_agent,
-    search_agent,
+    browser_agent,
     social_medium_agent,
     task_summary_agent,
     question_confirm_agent,
@@ -1332,13 +1332,13 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     )
     # msg_toolkit = AgentCommunicationToolkit(max_message_history=100)
 
-    searcher = search_agent(options)
+    searcher = browser_agent(options)
     developer = await developer_agent(options)
     documenter = await document_agent(options)
     multi_modaler = multi_modal_agent(options)
 
     # msg_toolkit.register_agent("Worker", new_worker_agent)
-    # msg_toolkit.register_agent("Search_Agent", searcher)
+    # msg_toolkit.register_agent("Browser_Agent", searcher)
     # msg_toolkit.register_agent("Developer_Agent", developer)
     # msg_toolkit.register_agent("Document_Agent", documenter)
     # msg_toolkit.register_agent("Multi_Modal_Agent", multi_modaler)
@@ -1368,7 +1368,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         developer,
     )
     workforce.add_single_agent_worker(
-        "Search Agent: Can search the web, extract webpage content, "
+        "Browser Agent: Can search the web, extract webpage content, "
         "simulate browser actions, and provide relevant information to "
         "solve the given task.",
         searcher,

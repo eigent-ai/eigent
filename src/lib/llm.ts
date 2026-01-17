@@ -56,11 +56,11 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
-    id: 'zhipuai',
-    name: 'ZhipuAI',
+    id: 'Z.ai',
+    name: 'Z.ai',
     apiKey: '',
-    apiHost: 'https://open.bigmodel.cn/api/paas/v4/',
-    description: "ZhipuAI model configuration.",
+    apiHost: 'https://api.z.ai/api/paas/v4/',
+    description: "Z.ai model configuration.",
     is_valid: false,
     model_type: ""
   },
