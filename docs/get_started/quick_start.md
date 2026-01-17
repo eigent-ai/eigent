@@ -62,7 +62,7 @@ Cloud version users: outputs are also saved in your cloud workspace according to
 Eigent comes with four ready-to-work agents. Each is equipped with a specific set of tools and shines at specific tasks—click to explore:
 
 1. **Developer Agent** – writes, debugs and executes code
-2. **Search Agent** – fetches and gathers info from the web
+2. **Browser Agent** – fetches and gathers info from the web
 3. **Multimodal Agent** – ideals with images, videos and more
 4. **Document Agent** – reads, writes and manages files (Markdown, PDF, Word, etc.)
     
@@ -115,10 +115,10 @@ Once the task starts, your agents will run in parallel on the Canvas:
 
 Click on an agent icon to open its **Workspace**:
 
-- Example 1: open **Search Agent**, launch embedded browser
+- Example 1: open **Browser Agent**, launch embedded browser
     - Use **“Take Control”** to take over browsing (e.g., accept cookies), then return control to the agent
 
-![Search Agent](/docs/images/quickstart_takecontrol.gif)
+![Browser Agent](/docs/images/quickstart_takecontrol.gif)
 
 - Example 2: open **Developer Agent**, lauch **Terminal**
 
