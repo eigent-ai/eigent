@@ -25,6 +25,22 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         super().__init__(config)
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
 
+    def _ensure_local_no_proxy(self) -> None:
+        local_hosts = ["localhost", "127.0.0.1", "::1"]
+        for key in ("NO_PROXY", "no_proxy"):
+            current = os.environ.get(key, "")
+            if not current:
+                os.environ[key] = ",".join(local_hosts)
+                continue
+            parts = [item.strip() for item in current.split(",") if item.strip()]
+            updated = False
+            for host in local_hosts:
+                if host not in parts:
+                    parts.append(host)
+                    updated = True
+            if updated:
+                os.environ[key] = ",".join(parts)
+
     async def _receive_loop(self):
         """Background task to receive messages from WebSocket with enhanced logging."""
         logger.debug("WebSocket receive loop started")
@@ -83,6 +99,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
     async def start(self):
         # Simply use the parent implementation which uses system npm/node
+        self._ensure_local_no_proxy()
         logger.info("Starting WebSocket server using parent implementation (system npm/node)")
         await super().start()
 
