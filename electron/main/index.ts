@@ -1371,11 +1371,6 @@ async function createWindow() {
   const uvExists = await isBinaryExists('uv');
   const bunExists = await isBinaryExists('bun');
 
-  // Check if installation was previously completed
-  const backendPath = getBackendPath();
-  const installedLockPath = path.join(backendPath, 'uv_installed.lock');
-  const installationCompleted = fs.existsSync(installedLockPath);
-
   // Check if venv path exists for current version
   const venvPath = getVenvPath(currentVersion);
   const venvExists = fs.existsSync(venvPath);
@@ -1385,7 +1380,6 @@ async function createWindow() {
     savedVersion !== currentVersion ||
     !uvExists ||
     !bunExists ||
-    !installationCompleted ||
     !venvExists;
 
   log.info('Installation check result:', {
@@ -1394,7 +1388,6 @@ async function createWindow() {
     versionMatch: savedVersion === currentVersion,
     uvExists,
     bunExists,
-    installationCompleted,
     venvExists,
     venvPath,
   });
