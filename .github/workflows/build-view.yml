@@ -44,7 +44,7 @@ jobs:
         run: npm install -g bun
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
