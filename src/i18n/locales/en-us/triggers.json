@@ -208,7 +208,7 @@
         "behavior-settings": "Behavior Settings",
         "authentication_required": {
             "label": "Require Authentication",
-            "notice": "Slack triggers require authentication to verify webhook signatures"
+            "notice": "Slack triggers require authentication to verify webhook signatures (Slack Signing Secret required). Verify webhook endpoint at https://api.slack.com/apps to activate trigger."
         },
         "bot_token": {
             "label": "Slack Bot Token",

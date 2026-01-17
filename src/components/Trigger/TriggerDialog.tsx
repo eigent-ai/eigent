@@ -405,6 +405,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                                         value={triggerConfig}
                                                         onChange={setTriggerConfig}
                                                         disabled={isLoading}
+                                                        showSectionTitles={false}
                                                     />
                                                 </div>
                                             </AccordionContent>
@@ -413,7 +414,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 </div>
                             </div>
                         </TabsContent>
-                        <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-lg p-4 max-h-[400px] overflow-y-auto scrollbar-always-visible">
+                        <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             {!selectedApp ? (
                                 <div className="space-y-4">
                                     <Label className="font-bold text-sm">{t("triggers.select-app")}</Label>
@@ -467,6 +468,25 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             {t("triggers.change-app")}
                                         </Button>
                                     </div>
+                                    {
+                                    !selectedTrigger || !formData.webhook_url ? (
+                                        <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
+                                            {t("triggers.webhook-url-after-creation")}
+                                        </div>) : (
+                                        <div className="flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl">
+                                            <div className="w-full font-mono text-sm text-text-body break-all">
+                                                {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleCopyWebhookUrl}
+                                            >
+                                                <Copy />
+                                                {t("triggers.copy")}
+                                            </Button>
+                                        </div>)
+                                    }
                                     {selectedApp === "slack" && (
                                         <DynamicTriggerConfig
                                             triggerType={TriggerType.Slack}

@@ -85,6 +85,7 @@ type DynamicTriggerConfigProps = {
     value: Record<string, any>;
     onChange: (config: Record<string, any>) => void;
     disabled?: boolean;
+    showSectionTitles?: boolean;
 };
 
 // ============ Field Components ============
@@ -443,6 +444,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
     value,
     onChange,
     disabled = false,
+    showSectionTitles = true,
 }) => {
     const { t } = useTranslation();
     const [schema, setSchema] = useState<TriggerConfigSchema | null>(null);
@@ -664,14 +666,16 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
             {/* Credentials Section */}
             {credentials.length > 0 && (
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                        <Label className="font-bold text-sm text-text-heading">
-                            {t("triggers.dynamic.credentials")}
-                        </Label>
-                        <TooltipSimple content={t("triggers.dynamic.credentials-notice")}>
-                            <CircleAlert className="w-4 h-4 text-icon-primary cursor-pointer" />
-                        </TooltipSimple>
-                    </div>
+                    {showSectionTitles && (
+                        <div className="flex items-center gap-2">
+                            <Label className="font-bold text-sm text-text-heading">
+                                {t("triggers.dynamic.credentials")}
+                            </Label>
+                            <TooltipSimple content={t("triggers.dynamic.credentials-notice")}>
+                                <CircleAlert className="w-4 h-4 text-icon-primary cursor-pointer" />
+                            </TooltipSimple>
+                        </div>
+                    )}
                     {credentials.map(([key, prop]) => renderField(key, prop))}
                     
                     {hasAllCredentialsSaved() && (
@@ -688,9 +692,11 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
             {/* Configuration Section */}
             {config.length > 0 && (
                 <div className="space-y-4 pt-4 border-t border-border-secondary">
-                    <Label className="font-bold text-sm text-text-heading">
-                        {t("triggers.dynamic.configuration")}
-                    </Label>
+                    {showSectionTitles && (
+                        <Label className="font-bold text-sm text-text-heading">
+                            {t("triggers.dynamic.configuration")}
+                        </Label>
+                    )}
                     {config.map(([key, prop]) => renderField(key, prop))}
                 </div>
             )}
@@ -698,9 +704,11 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
             {/* Behavior Settings Section */}
             {behavior.length > 0 && (
                 <div className="space-y-4 pt-4 border-t border-border-secondary">
-                    <Label className="font-bold text-sm text-text-heading">
-                        {t("triggers.dynamic.behavior-settings")}
-                    </Label>
+                    {showSectionTitles && (
+                        <Label className="font-bold text-sm text-text-heading">
+                            {t("triggers.dynamic.behavior-settings")}
+                        </Label>
+                    )}
                     {behavior.map(([key, prop]) => renderField(key, prop))}
                 </div>
             )}
