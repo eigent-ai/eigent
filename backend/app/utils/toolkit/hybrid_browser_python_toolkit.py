@@ -128,7 +128,7 @@ class BrowserSession(BaseHybridBrowserSession):
 
 @auto_listen_toolkit(BaseHybridBrowserToolkit)
 class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
-    agent_name: str = Agents.search_agent
+    agent_name: str = Agents.browser_agent
 
     def __init__(
         self,
