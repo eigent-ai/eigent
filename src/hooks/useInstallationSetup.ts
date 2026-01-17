@@ -289,6 +289,7 @@ export const useInstallationSetup = () => {
         console.log("[useInstallationSetup] Backend marked as ready");
 
         setSuccess();
+        setNeedsBackendRestart(false);
         checkAndSetDone();
       } else {
         console.error(
@@ -317,5 +318,6 @@ export const useInstallationSetup = () => {
     setError,
     setBackendError,
     setInitState,
+    setNeedsBackendRestart,
   ]);
 };
