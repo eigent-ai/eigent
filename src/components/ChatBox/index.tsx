@@ -31,14 +31,40 @@ export default function ChatBox(): JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [privacy, setPrivacy] = useState<any>(false);
+  const [isPrivacyLoaded, setIsPrivacyLoaded] = useState<boolean>(false);
   const [hasSearchKey, setHasSearchKey] = useState<any>(false);
   const [hasModel, setHasModel] = useState<any>(false);
+  const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const { modelType } = useAuthStore();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Shared function to check model configuration
+  const checkModelConfig = useCallback(async () => {
+    try {
+      if (modelType === 'cloud') {
+        // For cloud model, check if API key exists
+        const res = await proxyFetchGet('/api/user/key');
+        setHasModel(!!res.value);
+      } else if (modelType === 'local' || modelType === 'custom') {
+        // For local/custom model, check if provider exists
+        const res = await proxyFetchGet('/api/providers', { prefer: true });
+        const providerList = res.items || [];
+        setHasModel(providerList.length > 0);
+      } else {
+        setHasModel(false);
+      }
+    } catch (err) {
+      console.error('Failed to check model config:', err);
+      setHasModel(false);
+    } finally {
+      setIsConfigLoaded(true);
+    }
+  }, [modelType]);
+
   useEffect(() => {
     // Only show warning message, don't block functionality
     if (
@@ -62,7 +88,8 @@ export default function ChatBox(): JSX.Element {
         });
         setPrivacy(_privacy === 0 ? true : false);
       })
-      .catch((err) => console.error('Failed to fetch settings:', err));
+      .catch((err) => console.error('Failed to fetch settings:', err))
+      .finally(() => setIsPrivacyLoaded(true));
 
     proxyFetchGet('/api/configs')
       .then((configsRes) => {
@@ -77,80 +104,21 @@ export default function ChatBox(): JSX.Element {
       })
       .catch((err) => console.error('Failed to fetch configs:', err));
 
-    // Check if model is configured
-    const checkModelConfig = async () => {
-      try {
-        if (modelType === 'cloud') {
-          // For cloud model, check if API key exists
-          const res = await proxyFetchGet('/api/user/key');
-          setHasModel(!!res.value);
-        } else if (modelType === 'local' || modelType === 'custom') {
-          // For local/custom model, check if provider exists
-          const res = await proxyFetchGet('/api/providers', { prefer: true });
-          const providerList = res.items || [];
-          setHasModel(providerList.length > 0);
-        } else {
-          setHasModel(false);
-        }
-      } catch (err) {
-        console.error('Failed to check model config:', err);
-        setHasModel(false);
-      }
-    };
     checkModelConfig();
-  }, [modelType]);
+  }, [modelType, checkModelConfig]);
 
   // Re-check model config when returning from settings page
   useEffect(() => {
-    const checkModelConfig = async () => {
-      try {
-        if (modelType === 'cloud') {
-          const res = await proxyFetchGet('/api/user/key');
-          setHasModel(!!res.value);
-        } else if (modelType === 'local' || modelType === 'custom') {
-          const res = await proxyFetchGet('/api/providers', {
-            prefer: true,
-          });
-          const providerList = res.items || [];
-          setHasModel(providerList.length > 0);
-        } else {
-          setHasModel(false);
-        }
-      } catch (err) {
-        console.error('Failed to check model config:', err);
-        setHasModel(false);
-      }
-    };
-
     // Check when location changes (user navigates)
     if (location.pathname === '/' && privacy) {
       checkModelConfig();
     }
-  }, [location.pathname, modelType, privacy]);
+  }, [location.pathname, privacy, checkModelConfig]);
 
   // Also check when window gains focus (user returns from settings)
   useEffect(() => {
     const handleFocus = () => {
       if (privacy) {
-        const checkModelConfig = async () => {
-          try {
-            if (modelType === 'cloud') {
-              const res = await proxyFetchGet('/api/user/key');
-              setHasModel(!!res.value);
-            } else if (modelType === 'local' || modelType === 'custom') {
-              const res = await proxyFetchGet('/api/providers', {
-                prefer: true,
-              });
-              const providerList = res.items || [];
-              setHasModel(providerList.length > 0);
-            } else {
-              setHasModel(false);
-            }
-          } catch (err) {
-            console.error('Failed to check model config:', err);
-            setHasModel(false);
-          }
-        };
         checkModelConfig();
       }
     };
@@ -159,7 +127,7 @@ export default function ChatBox(): JSX.Element {
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [modelType, privacy]);
+  }, [privacy, checkModelConfig]);
 
   // Refresh privacy status when dialog closes
   // useEffect(() => {
@@ -203,7 +171,6 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
-    const isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isTaskBusy =
       // running or paused counts as busy
       (task.status === 'running' && task.hasMessages) ||
@@ -422,10 +389,11 @@ export default function ChatBox(): JSX.Element {
   };
 
   useEffect(() => {
-    if (share_token) {
+    // Wait for both config and privacy to be loaded before handling share token
+    if (share_token && isConfigLoaded && isPrivacyLoaded) {
       handleSendShare(share_token);
     }
-  }, [share_token]);
+  }, [share_token, isConfigLoaded, isPrivacyLoaded]);
 
   useEffect(() => {
     console.log('ChatStore Data: ', chatStore);
@@ -437,6 +405,18 @@ export default function ChatBox(): JSX.Element {
       console.warn("Can't send share due to no active projectId");
       return;
     }
+
+    // Check model configuration before starting task
+    if (!hasModel) {
+      toast.error('Please select a model first.');
+      navigate('/setting/models');
+      return;
+    }
+    if (!privacy) {
+      toast.error('Please accept the privacy policy first.');
+      return;
+    }
+
     let _token: string = token.split('__')[0];
     let taskId: string = token.split('__')[1];
     chatStore.create(taskId, 'share');
@@ -1063,7 +1043,7 @@ export default function ChatBox(): JSX.Element {
                   disabled: isInputDisabled,
                   textareaRef: textareaRef,
                   allowDragDrop: false,
-                  privacy: true,
+                  privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
                 }}
               />
