@@ -29,6 +29,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    apiKey: '',
+    apiHost: 'https://openrouter.ai/api/v1',
+    description: "OpenRouter model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
     id: 'tongyi-qianwen',
     name: 'Qwen',
     apiKey: '',
