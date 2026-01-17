@@ -100,7 +100,7 @@
 	"share": "共有",
 	"home": "ホーム",
 	"developer-agent": "開発者エージェント",
-	"search-agent": "検索エージェント",
+	"browser-agent": "ブラウザエージェント",
 	"document-agent": "ドキュメントエージェント",
 	"multi-modal-agent": "マルチモーダルエージェント",
 	"social-media-agent": "ソーシャルメディアエージェント",

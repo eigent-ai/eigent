@@ -23,7 +23,7 @@
 <hr/>
 <div align="center">
 
-[English](./README.md) · [简体中文](./README_CN.md) · **日本語** · [公式サイト][eigent-site] · [ドキュメント][docs-site] · [フィードバック][github-issue-link]
+[English](./README.md) · [Português](./README_PT-BR.md) · [简体中文](./README_CN.md) · **日本語** · [公式サイト][eigent-site] · [ドキュメント][docs-site] · [フィードバック][github-issue-link]
 
 </div>
 <br/>
@@ -149,7 +149,7 @@ Eigentの強力な機能で卓越した生産性の可能性を最大限に引�
 Eigentは以下のエージェントワーカーを事前定義しています：
 
 - **Developer Agent:** コードを書いて実行し、ターミナルコマンドを実行します。
-- **Search Agent:** ウェブを検索し、コンテンツを抽出します。
+- **Browser Agent:** ウェブを検索し、コンテンツを抽出します。
 - **Document Agent:** ドキュメントを作成・管理します。
 - **Multi-Modal Agent:** 画像と音声を処理します。
 
