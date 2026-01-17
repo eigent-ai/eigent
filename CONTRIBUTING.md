@@ -1,17 +1,26 @@
-🐫 **Welcome to Eigent!** 🐫
+# 🐫 Welcome to Eigent! 🐫
 
-Thank you for your interest in contributing to the Eigent project! 🎉 We're excited to have your support. As an open-source product build on CAMEL in a rapidly evolving and open-ended field, we wholeheartedly welcome contributions of all kinds. Whether you want to introduce new features, enhance the infrastructure, improve documentation, asking issues, or fix bugs, we appreciate your enthusiasm and efforts. 🙌  You are welcome to join our [discord](https://discord.camel-ai.org/) for more efficient communication. 💬
+Thank you for your interest in contributing to the Eigent project! 🎉
+We're excited to have your support. As an open-source product build on
+CAMEL in a rapidly evolving and open-ended field, we wholeheartedly
+welcome contributions of all kinds. Whether you want to introduce new
+features, enhance the infrastructure, improve documentation, asking
+issues, or fix bugs, we appreciate your enthusiasm and efforts. 🙌
+You are welcome to join our [discord](https://discord.com/invite/CNcNpquyDc)
+for more efficient communication. 💬
 
 ## Join Our Community 🌍
 
 ### Developer Meeting Time & Link 💻
 
-- English speakers: Mondays at 8 PM PDT. Join via Discord: [Meeting Link](https://meet.google.com/sez-aomy-ebm?authuser=0&hs=122&ijlm=1753634732982)
-- Chinese Speakers: Mondays at 9 PM UTC+8. Join via TecentMeeting: [Meeting Link](https://meeting.tencent.com/dm/057wap1eeCSY)
+- English speakers: Mondays at 8 PM PDT. Join via Discord:
+  [Meeting Link](https://meet.google.com/sez-aomy-ebm?authuser=0&hs=122&ijlm=1753634732982)
+- Chinese Speakers: Mondays at 9 PM UTC+8. Join via TecentMeeting:
+  [Meeting Link](https://meeting.tencent.com/dm/057wap1eeCSY)
 
 ### Our Communication Channels 💬
 
-- **Discord:** [Join here](https://discord.camel-ai.org/)
+- **Discord:** [Join here](https://discord.com/invite/CNcNpquyDc)
 - **WeChat:** Scan the QR code [here](https://ghli.org/camel/wechat.png)
 - **Slack:** [Join here](https://join.slack.com/t/camel-ai/shared_invite/zt-2g7xc41gy-_7rcrNNAArIP6sLQqldkqQ)
 
@@ -19,33 +28,54 @@ Thank you for your interest in contributing to the Eigent project! 🎉 We're ex
 
 ### Contributing to the Code 👨‍💻👩‍💻
 
-If you're eager to contribute to this project, that's fantastic! We're thrilled to have your support.
+If you're eager to contribute to this project, that's fantastic!
+We're thrilled to have your support.
 
 - If you are a contributor from the community:
-  - Follow the [Fork-and-Pull-Request](https://docs.github.com/en/get-started/quickstart/contributing-to-projects) workflow when opening your pull requests.
+  - Follow the [Fork-and-Pull-Request][fork-pr] workflow when opening
+    your pull requests.
 - If you are a member of [CAMEL-AI.org](https://github.com/camel-ai):
-  - Follow the [Checkout-and-Pull-Request](https://dev.to/ceceliacreates/how-to-create-a-pull-request-on-github-16h1) workflow when opening your pull request; this will allow the PR to pass all tests that require [GitHub Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets).
+  - Follow the [Checkout-and-Pull-Request][checkout-pr] workflow when
+    opening your pull request; this will allow the PR to pass all tests
+    that require [GitHub Secrets][gh-secrets].
 
-Make sure to mention any related issues and tag the relevant maintainers too. 💪
+[fork-pr]: https://docs.github.com/en/get-started/quickstart/contributing-to-projects
+[checkout-pr]: https://dev.to/ceceliacreates/how-to-create-a-pull-request-on-github-16h1
+[gh-secrets]: https://docs.github.com/en/actions/security-guides/encrypted-secrets
 
-Before your pull request can be merged, it must pass the formatting, linting, and testing checks. You can find instructions on running these checks locally under the **Common Actions** section below. 🔍
+Make sure to mention any related issues and tag the relevant
+maintainers too. 💪
 
-Ensuring excellent documentation and thorough testing is absolutely crucial. Here are some guidelines to follow based on the type of contribution you're making:
+Before your pull request can be merged, it must pass the formatting,
+linting, and testing checks. You can find instructions on running these
+checks locally under the **Common Actions** section below. 🔍
+
+Ensuring excellent documentation and thorough testing is absolutely
+crucial. Here are some guidelines to follow based on the type of
+contribution you're making:
 
 - If you fix a bug:
-  - Add a relevant unit test when possible. These can be found in the `test` directory.
+  - Add a relevant unit test when possible. These can be found in the
+    `test` directory.
 - If you make an improvement:
-  - Update any affected example console scripts in the `examples` directory, Gradio demos in the `apps` directory, and documentation in the `docs` directory.
+  - Update any affected example console scripts in the `examples`
+    directory, Gradio demos in the `apps` directory, and documentation
+    in the `docs` directory.
   - Update unit tests when relevant.
 - If you add a feature:
   - Include unit tests in the `test` directory.
   - Add a demo script in the `examples` directory.
 
-We're a small team focused on building great things. If you have something in mind that you'd like to add or modify, opening a pull request is the ideal way to catch our attention. 🚀
+We're a small team focused on building great things. If you have
+something in mind that you'd like to add or modify, opening a pull
+request is the ideal way to catch our attention. 🚀
 
 ### Contributing to Code Reviews 🔍
 
-This part outlines the guidelines and best practices for conducting code reviews in Eigent. The aim is to ensure that all contributions are of high quality, align with the project's goals, and are consistent with our coding standards.
+This part outlines the guidelines and best practices for conducting
+code reviews in Eigent. The aim is to ensure that all contributions are
+of high quality, align with the project's goals, and are consistent with
+our coding standards.
 
 #### Purpose of Code Reviews
 
@@ -159,7 +189,7 @@ At Eigent, we manage our project through a structured workflow that ensures effi
 
 #### Issue Item Stage
 
-Our [issues](https://github.com/eigent-ai/Eigent-desktop/issues) page on GitHub is regularly updated with bugs, improvements, and feature requests. We have a handy set of labels to help you sort through and find issues that interest you. Feel free to use these labels to keep things organized.
+Our [issues](https://github.com/eigent-ai/eigent/issues) page on GitHub is regularly updated with bugs, improvements, and feature requests. We have a handy set of labels to help you sort through and find issues that interest you. Feel free to use these labels to keep things organized.
 
 When you start working on an issue, please assign it to yourself so that others know it's being taken care of.
 
@@ -169,14 +199,14 @@ We do our best to keep these issues up to date, but considering the fast-paced n
 
 Here’s how to engage with our issues effectively:
 
-- Go to [GitHub Issues](https://github.com/eigent-ai/Eigent-desktop/issues), create a new issue, choose the category, and fill in the required information.
+- Go to [GitHub Issues](https://github.com/eigent-ai/eigent/issues), create a new issue, choose the category, and fill in the required information.
 - Ensure the issue has a proper title and update the Assignees, Labels, Projects (select Backlog status), Development, and Milestones.
 - Discuss the issue during team meetings, then move it to the Analysis Done column.
 - At the beginning of each sprint, share the analyzed issue and move it to the Sprint Planned column if you are going to work on this issue in the sprint.
 
 #### Pull Request Item Stage
 
-- Go to [GitHub Pulls](https://github.com/eigent-ai/Eigent-desktop/pulls), create a new PR, choose the branch, and fill in the information, linking the related issue.
+- Go to [GitHub Pulls](https://github.com/eigent-ai/eigent/pulls), create a new PR, choose the branch, and fill in the information, linking the related issue.
 - Ensure the PR has a proper title and update the Reviewers (convert to draft), Assignees, Labels, Projects (select Developing status), Development, and Milestones.
 - If the PR is related to a roadmap, link the roadmap to the PR.
 - Move the PR item through the stages: Developing, Stuck, Reviewing (click ready for review), Merged. The linked issue will close automatically when the PR is merged.
