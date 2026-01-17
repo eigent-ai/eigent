@@ -18,13 +18,66 @@ exports.default = async function afterPack(context) {
     return;
   }
 
-  console.log('🧹 Cleaning invalid symlinks before signing...');
+  console.log('🧹 Cleaning invalid symlinks and cache directories before signing...');
 
   const resourcesPath = path.join(appPath, 'Contents', 'Resources');
   const prebuiltPath = path.join(resourcesPath, 'prebuilt');
 
   if (!fs.existsSync(prebuiltPath)) {
     return;
+  }
+
+  // Remove .npm-cache directories (should not be packaged)
+  function removeNpmCache(dir) {
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        try {
+          if (entry.name === '.npm-cache' && entry.isDirectory()) {
+            console.log(`Removing .npm-cache directory: ${fullPath}`);
+            fs.rmSync(fullPath, { recursive: true, force: true });
+          } else if (entry.isDirectory()) {
+            removeNpmCache(fullPath);
+          }
+        } catch (error) {
+          // Ignore errors
+        }
+      }
+    } catch (error) {
+      // Ignore errors
+    }
+  }
+
+  removeNpmCache(prebuiltPath);
+
+  // Remove flac-mac binary (uses outdated SDK, causes notarization issues)
+  const venvLibPath = path.join(prebuiltPath, 'venv', 'lib');
+  if (fs.existsSync(venvLibPath)) {
+    try {
+      const entries = fs.readdirSync(venvLibPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('python')) {
+          const flacMacPath = path.join(venvLibPath, entry.name, 'site-packages', 'speech_recognition', 'flac-mac');
+          if (fs.existsSync(flacMacPath)) {
+            console.log(`Removing flac-mac binary (outdated SDK): ${flacMacPath}`);
+            try {
+              fs.unlinkSync(flacMacPath);
+            } catch (error) {
+              console.warn(`Warning: Could not remove flac-mac: ${error.message}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Ignore errors
+    }
   }
 
   // Clean Python symlinks in venv/bin
