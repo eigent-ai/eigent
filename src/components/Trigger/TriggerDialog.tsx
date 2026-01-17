@@ -46,7 +46,7 @@ import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { proxyCreateTrigger, proxyUpdateTrigger, proxyFetchTriggerConfig } from "@/service/triggerApi";
 import { TooltipSimple } from "../ui/tooltip";
-import DynamicTriggerConfig, { getDefaultTriggerConfig } from "./DynamicTriggerConfig";
+import DynamicTriggerConfig, { getDefaultTriggerConfig, type ValidationError } from "./DynamicTriggerConfig";
 
 type TriggerDialogProps = {
     selectedTrigger: Trigger | null;
@@ -87,6 +87,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     });
     const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>(getDefaultTriggerConfig());
     const [selectedApp, setSelectedApp] = useState<string>("");
+    const [isConfigValid, setIsConfigValid] = useState<boolean>(true);
+    const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
@@ -180,6 +182,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
         // Clear task prompt error if validation passes
         setTaskPromptError("");
+
+        // Check dynamic config validation (for Slack, etc.)
+        if (selectedApp && !isConfigValid) {
+            const errorMessages = configValidationErrors.map((e) => e.message).join(", ");
+            toast.error(t("triggers.dynamic.validation-failed", { errors: errorMessages }));
+            return;
+        }
 
         setIsLoading(true);
         onTriggerCreating(formData);
@@ -493,6 +502,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             value={triggerConfig}
                                             onChange={setTriggerConfig}
                                             disabled={isLoading}
+                                            onValidationChange={(isValid, errors) => {
+                                                setIsConfigValid(isValid);
+                                                setConfigValidationErrors(errors);
+                                            }}
                                         />
                                     )}
                                 </div>

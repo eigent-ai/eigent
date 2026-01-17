@@ -178,7 +178,17 @@
         "selected": "selected",
         "save-credentials-first": "Save credentials first",
         "search": "Search...",
-        "no-options": "No options found"
+        "no-options": "No options found",
+        "validation": {
+            "required": "{{field}} is required",
+            "invalid-regex": "Invalid regular expression pattern",
+            "invalid-email": "Invalid email address",
+            "invalid-url": "Invalid URL format",
+            "min-length": "Must be at least {{min}} characters",
+            "max-length": "Must be no more than {{max}} characters",
+            "pattern-mismatch": "Value does not match required pattern"
+        },
+        "validation-failed": "Please fix validation errors: {{errors}}"
     },
     "slack": {
         "credentials-saved": "Slack credentials configured successfully",

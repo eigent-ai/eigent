@@ -56,6 +56,11 @@ type SchemaProperty = {
     "ui:notice"?: string;
     "ui:placeholder"?: string;
     "ui:options"?: Array<{ label: string; value: string }>;
+    // Validation
+    "ui:validation"?: "regex" | "email" | "url" | "number";
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
     // API endpoints
     "api:GET"?: string;
     "api:POST"?: string;
@@ -63,6 +68,13 @@ type SchemaProperty = {
     // Config group for credentials
     config_group?: string;
 };
+
+type ValidationError = {
+    field: string;
+    message: string;
+};
+
+export type { ValidationError };
 
 type TriggerConfigSchema = {
     title?: string;
@@ -76,8 +88,8 @@ type TriggerConfigSchema = {
 type SavedConfig = {
     id: number;
     config_group: string;
-    key: string;
-    value: string;
+    config_name: string;
+    config_value: string;
 };
 
 type DynamicTriggerConfigProps = {
@@ -86,6 +98,7 @@ type DynamicTriggerConfigProps = {
     onChange: (config: Record<string, any>) => void;
     disabled?: boolean;
     showSectionTitles?: boolean;
+    onValidationChange?: (isValid: boolean, errors: ValidationError[]) => void;
 };
 
 // ============ Field Components ============
@@ -100,6 +113,10 @@ type FieldProps = {
     onSaveConfig: (key: string, value: string) => Promise<void>;
     dynamicOptions: Record<string, Array<{ label: string; value: string }>>;
     credentialsSaved: boolean;
+    isRequired?: boolean;
+    validationError?: string;
+    apiError?: string;
+    onValidate: (fieldKey: string, value: any) => string | null;
 };
 
 // Text Input Field (including secrets)
@@ -111,11 +128,15 @@ const TextInputField: React.FC<FieldProps> = ({
     disabled,
     savedConfigs,
     onSaveConfig,
+    isRequired,
+    validationError,
+    onValidate,
 }) => {
     const { t } = useTranslation();
     const [localValue, setLocalValue] = useState("");
     const [showSecret, setShowSecret] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [touched, setTouched] = useState(false);
 
     const isSecret = schema["ui:widget:type"] === "secret";
     const hasApiEndpoint = !!schema["api:POST"];
@@ -135,6 +156,14 @@ const TextInputField: React.FC<FieldProps> = ({
             toast.error(t("triggers.dynamic.enter-value"));
             return;
         }
+        
+        // Validate before saving
+        const error = onValidate(fieldKey, localValue);
+        if (error) {
+            toast.error(error);
+            return;
+        }
+        
         setIsSaving(true);
         try {
             await onSaveConfig(fieldKey, localValue);
@@ -145,28 +174,39 @@ const TextInputField: React.FC<FieldProps> = ({
         }
     };
 
+    const handleChange = (newValue: string) => {
+        if (hasApiEndpoint) {
+            setLocalValue(newValue);
+        } else {
+            onChange(newValue || null);
+        }
+        // Trigger validation on change
+        onValidate(fieldKey, newValue);
+    };
+
     const label = schema["ui:label"] ? t(schema["ui:label"]) : (schema.title || fieldKey);
     const notice = schema["ui:notice"] ? t(schema["ui:notice"]) : schema.description;
     const placeholder = schema["ui:placeholder"] ? t(schema["ui:placeholder"]) : undefined;
+    const showError = touched && validationError;
 
     return (
         <div className="space-y-2">
-            <Label className="text-sm">{label}</Label>
+            <Label className="text-sm">
+                {label}
+                {isRequired && <span className="text-red-500 ml-1">*</span>}
+            </Label>
             <div className="flex gap-2">
                 <div className="relative flex-1">
                     <Input
                         type={isSecret && !showSecret ? "password" : "text"}
                         value={hasApiEndpoint ? localValue : (value || "")}
-                        onChange={(e) => {
-                            if (hasApiEndpoint) {
-                                setLocalValue(e.target.value);
-                            } else {
-                                onChange(e.target.value || null);
-                            }
-                        }}
+                        onChange={(e) => handleChange(e.target.value)}
+                        onBlur={() => setTouched(true)}
                         placeholder={placeholder}
                         disabled={disabled}
-                        className={isSecret ? "pr-10" : ""}
+                        className={cn(
+                            isSecret ? "pr-10" : ""
+                        )}
                     />
                     {isSecret && (
                         <button
@@ -201,6 +241,12 @@ const TextInputField: React.FC<FieldProps> = ({
                     </Button>
                 )}
             </div>
+            {showError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                    <CircleAlert className="w-3 h-3" />
+                    {validationError}
+                </p>
+            )}
             {notice && <p className="text-xs text-text-label">{notice}</p>}
         </div>
     );
@@ -213,6 +259,7 @@ const SwitchField: React.FC<FieldProps> = ({
     value,
     onChange,
     disabled,
+    isRequired,
 }) => {
     const { t } = useTranslation();
     const label = schema["ui:label"] ? t(schema["ui:label"]) : (schema.title || fieldKey);
@@ -221,7 +268,10 @@ const SwitchField: React.FC<FieldProps> = ({
     return (
         <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-                <Label className="text-sm">{label}</Label>
+                <Label className="text-sm">
+                    {label}
+                    {isRequired && <span className="text-red-500 ml-1">*</span>}
+                </Label>
                 {notice && <p className="text-xs text-text-label">{notice}</p>}
             </div>
             <Switch
@@ -243,10 +293,15 @@ const MultiSelectField: React.FC<FieldProps> = ({
     disabled,
     dynamicOptions,
     credentialsSaved,
+    isRequired,
+    validationError,
+    apiError,
+    onValidate,
 }) => {
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [touched, setTouched] = useState(false);
 
     const hasDynamicApi = !!schema["api:GET"];
     const options = hasDynamicApi ? (dynamicOptions[fieldKey] || []) : (schema["ui:options"] || []);
@@ -254,6 +309,8 @@ const MultiSelectField: React.FC<FieldProps> = ({
 
     const label = schema["ui:label"] ? t(schema["ui:label"]) : (schema.title || fieldKey);
     const notice = schema["ui:notice"] ? t(schema["ui:notice"]) : schema.description;
+    const showError = (touched && validationError) || apiError;
+    const errorMessage = (touched && validationError) ? validationError : apiError;
 
     const handleToggle = (optionValue: string) => {
         let newValues: string[];
@@ -262,7 +319,10 @@ const MultiSelectField: React.FC<FieldProps> = ({
         } else {
             newValues = [...selectedValues, optionValue];
         }
-        onChange(newValues.length > 0 ? newValues : null);
+        const finalValue = newValues.length > 0 ? newValues : null;
+        onChange(finalValue);
+        onValidate(fieldKey, finalValue);
+        setTouched(true);
     };
 
     const getDisplayLabel = () => {
@@ -281,7 +341,10 @@ const MultiSelectField: React.FC<FieldProps> = ({
 
     return (
         <div className="space-y-2">
-            <Label className="text-sm">{label}</Label>
+            <Label className="text-sm">
+                {label}
+                {isRequired && <span className="text-red-500 ml-1">*</span>}
+            </Label>
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                     <Button
@@ -338,6 +401,12 @@ const MultiSelectField: React.FC<FieldProps> = ({
                     </Command>
                 </PopoverContent>
             </Popover>
+            {showError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                    <CircleAlert className="w-3 h-3" />
+                    {errorMessage}
+                </p>
+            )}
             {notice && <p className="text-xs text-text-label">{notice}</p>}
             
             {/* Selected badges */}
@@ -370,30 +439,65 @@ const MultiTextInputField: React.FC<FieldProps> = ({
     value,
     onChange,
     disabled,
+    isRequired,
+    validationError,
+    onValidate,
 }) => {
     const { t } = useTranslation();
     const [newValue, setNewValue] = useState("");
+    const [touched, setTouched] = useState(false);
+    const [itemError, setItemError] = useState<string | null>(null);
 
     const values: string[] = value || [];
     const label = schema["ui:label"] ? t(schema["ui:label"]) : schema.title || fieldKey;
     const notice = schema["ui:notice"] ? t(schema["ui:notice"]) : schema.description;
     const placeholder = schema["ui:placeholder"] ? t(schema["ui:placeholder"]) : undefined;
+    const showError = touched && validationError;
+
+    // Validate individual item based on schema validation type
+    const validateItem = (item: string): string | null => {
+        if (schema["ui:validation"] === "regex") {
+            try {
+                new RegExp(item);
+            } catch (e) {
+                return t("triggers.dynamic.validation.invalid-regex");
+            }
+        }
+        return null;
+    };
 
     const handleAdd = () => {
         if (!newValue.trim()) return;
+        
+        // Validate the item before adding
+        const error = validateItem(newValue.trim());
+        if (error) {
+            setItemError(error);
+            return;
+        }
+        
         if (!values.includes(newValue.trim())) {
-            onChange([...values, newValue.trim()]);
+            const newValues = [...values, newValue.trim()];
+            onChange(newValues);
+            onValidate(fieldKey, newValues);
         }
         setNewValue("");
+        setItemError(null);
+        setTouched(true);
     };
 
     const handleRemove = (val: string) => {
-        onChange(values.filter((v) => v !== val));
+        const newValues = values.filter((v) => v !== val);
+        onChange(newValues.length > 0 ? newValues : null);
+        onValidate(fieldKey, newValues.length > 0 ? newValues : null);
     };
 
     return (
         <div className="space-y-2">
-            <Label className="text-sm">{label}</Label>
+            <Label className="text-sm">
+                {label}
+                {isRequired && <span className="text-red-500 ml-1">*</span>}
+            </Label>
             <div className="flex gap-2">
                 <Input
                     value={newValue}
@@ -416,6 +520,18 @@ const MultiTextInputField: React.FC<FieldProps> = ({
                     <Plus className="w-4 h-4" />
                 </Button>
             </div>
+            {itemError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                    <CircleAlert className="w-3 h-3" />
+                    {itemError}
+                </p>
+            )}
+            {showError && !itemError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                    <CircleAlert className="w-3 h-3" />
+                    {validationError}
+                </p>
+            )}
             {notice && <p className="text-xs text-text-label">{notice}</p>}
             
             {values.length > 0 && (
@@ -445,12 +561,138 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
     onChange,
     disabled = false,
     showSectionTitles = true,
+    onValidationChange,
 }) => {
     const { t } = useTranslation();
     const [schema, setSchema] = useState<TriggerConfigSchema | null>(null);
     const [isLoadingSchema, setIsLoadingSchema] = useState(true);
     const [savedConfigs, setSavedConfigs] = useState<Record<string, SavedConfig>>({});
     const [dynamicOptions, setDynamicOptions] = useState<Record<string, Array<{ label: string; value: string }>>>({});
+    const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+    const [apiErrors, setApiErrors] = useState<Record<string, string>>({});
+
+    // Validate a field and return error message if invalid
+    const validateField = useCallback((fieldKey: string, fieldValue: any): string | null => {
+        if (!schema) return null;
+        
+        const prop = schema.properties[fieldKey];
+        if (!prop) return null;
+
+        const isRequired = schema.required?.includes(fieldKey);
+        const label = prop["ui:label"] ? t(prop["ui:label"]) : (prop.title || fieldKey);
+
+        // Check required
+        if (isRequired) {
+            if (fieldValue === null || fieldValue === undefined || fieldValue === "") {
+                return t("triggers.dynamic.validation.required", { field: label });
+            }
+            if (Array.isArray(fieldValue) && fieldValue.length === 0) {
+                return t("triggers.dynamic.validation.required", { field: label });
+            }
+        }
+
+        // Skip further validation if empty and not required
+        if (fieldValue === null || fieldValue === undefined || fieldValue === "") {
+            return null;
+        }
+
+        // Regex validation
+        if (prop["ui:validation"] === "regex" && typeof fieldValue === "string") {
+            try {
+                new RegExp(fieldValue);
+            } catch (e) {
+                return t("triggers.dynamic.validation.invalid-regex");
+            }
+        }
+
+        // Email validation
+        if (prop["ui:validation"] === "email" && typeof fieldValue === "string") {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(fieldValue)) {
+                return t("triggers.dynamic.validation.invalid-email");
+            }
+        }
+
+        // URL validation
+        if (prop["ui:validation"] === "url" && typeof fieldValue === "string") {
+            try {
+                new URL(fieldValue);
+            } catch (e) {
+                return t("triggers.dynamic.validation.invalid-url");
+            }
+        }
+
+        // Min/Max length
+        if (prop.minLength && typeof fieldValue === "string" && fieldValue.length < prop.minLength) {
+            return t("triggers.dynamic.validation.min-length", { min: prop.minLength });
+        }
+        if (prop.maxLength && typeof fieldValue === "string" && fieldValue.length > prop.maxLength) {
+            return t("triggers.dynamic.validation.max-length", { max: prop.maxLength });
+        }
+
+        // Pattern validation
+        if (prop.pattern && typeof fieldValue === "string") {
+            try {
+                const regex = new RegExp(prop.pattern);
+                if (!regex.test(fieldValue)) {
+                    return t("triggers.dynamic.validation.pattern-mismatch");
+                }
+            } catch (e) {
+                // Invalid pattern in schema, skip validation
+            }
+        }
+
+        return null;
+    }, [schema, t]);
+
+    // Validate field and update errors state
+    const handleValidate = useCallback((fieldKey: string, fieldValue: any): string | null => {
+        const error = validateField(fieldKey, fieldValue);
+        
+        setValidationErrors((prev) => {
+            const newErrors = { ...prev };
+            if (error) {
+                newErrors[fieldKey] = error;
+            } else {
+                delete newErrors[fieldKey];
+            }
+            return newErrors;
+        });
+
+        return error;
+    }, [validateField]);
+
+    // Validate all fields and notify parent
+    const validateAll = useCallback((): ValidationError[] => {
+        if (!schema) return [];
+
+        const errors: ValidationError[] = [];
+        const newValidationErrors: Record<string, string> = {};
+
+        Object.entries(schema.properties).forEach(([key, prop]) => {
+            // Skip credential fields that are saved via API
+            if (prop.config_group && prop["api:POST"] && savedConfigs[key]) {
+                return;
+            }
+
+            const error = validateField(key, value[key]);
+            if (error) {
+                errors.push({ field: key, message: error });
+                newValidationErrors[key] = error;
+            }
+        });
+
+        setValidationErrors(newValidationErrors);
+        return errors;
+    }, [schema, value, savedConfigs, validateField]);
+
+    // Notify parent of validation status when errors change
+    useEffect(() => {
+        if (onValidationChange && schema) {
+            const errors = validateAll();
+            onValidationChange(errors.length === 0, errors);
+        }
+    }, [value, schema, savedConfigs]);
 
     // Fetch schema on mount or trigger type change
     useEffect(() => {
@@ -520,7 +762,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
             if (response && Array.isArray(response)) {
                 const configs: Record<string, SavedConfig> = {};
                 response.forEach((config: SavedConfig) => {
-                    configs[config.key] = config;
+                    configs[config.config_name] = config;
                 });
                 setSavedConfigs((prev) => ({ ...prev, ...configs }));
             }
@@ -531,6 +773,12 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
     const fetchDynamicOptions = async (fieldKey: string, apiPath: string) => {
         try {
+            // Clear previous error
+            setApiErrors((prev) => {
+                const newErrors = { ...prev };
+                delete newErrors[fieldKey];
+                return newErrors;
+            });
             const response = await proxyFetchGet(`/api/${apiPath}`);
             if (response && Array.isArray(response)) {
                 // Transform response to options format
@@ -545,6 +793,8 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
                     value: item.id,
                 }));
                 setDynamicOptions((prev) => ({ ...prev, [fieldKey]: options }));
+            } else if (response?.detail) {
+                setApiErrors((prev) => ({ ...prev, [fieldKey]: response.detail }));
             }
         } catch (error) {
             console.error(`Failed to fetch options for ${fieldKey}:`, error);
@@ -560,13 +810,17 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
         try {
             if (existingConfig) {
-                await proxyFetchPut(`/api/configs/${existingConfig.id}`, { value: configValue });
+                await proxyFetchPut(`/api/configs/${existingConfig.id}`, {
+                    config_group: configGroup,
+                    config_name: key,
+                    config_value: configValue,
+                });
                 toast.success(t("triggers.dynamic.config-updated"));
             } else {
                 const response = await proxyFetchPost("/api/configs", {
                     config_group: configGroup,
-                    key: key,
-                    value: configValue,
+                    config_name: key,
+                    config_value: configValue,
                 });
                 setSavedConfigs((prev) => ({ ...prev, [key]: response }));
                 toast.success(t("triggers.dynamic.config-saved"));
@@ -596,6 +850,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
     const renderField = (fieldKey: string, prop: SchemaProperty) => {
         const widget = prop["ui:widget"];
+        const isRequired = schema?.required?.includes(fieldKey) ?? false;
         const fieldProps: FieldProps = {
             fieldKey,
             schema: prop,
@@ -606,6 +861,10 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
             onSaveConfig: handleSaveConfig,
             dynamicOptions,
             credentialsSaved: hasAllCredentialsSaved(),
+            isRequired,
+            validationError: validationErrors[fieldKey],
+            apiError: apiErrors[fieldKey],
+            onValidate: handleValidate,
         };
 
         switch (widget) {
