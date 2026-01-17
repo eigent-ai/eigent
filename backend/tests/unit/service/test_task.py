@@ -156,7 +156,7 @@ class TestTaskServiceModels:
         """Test Agents enum contains expected values."""
         expected_agents = [
             "task_agent", "coordinator_agent", "new_worker_agent",
-            "developer_agent", "search_agent", "document_agent",
+            "developer_agent", "browser_agent", "document_agent",
             "multi_modal_agent", "social_medium_agent", "mcp_agent"
         ]
         
