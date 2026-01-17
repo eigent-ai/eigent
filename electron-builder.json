@@ -77,6 +77,11 @@
       }
     ]
   },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": ["AppImage"],
+    "category": "Development"
+  },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
