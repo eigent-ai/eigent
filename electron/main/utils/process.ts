@@ -221,7 +221,7 @@ export async function cleanupOldVenvs(currentVersion: string): Promise<void> {
 export async function isBinaryExists(name: string): Promise<boolean> {
   const cmd = await getBinaryPath(name);
 
-  return await fs.existsSync(cmd);
+  return fs.existsSync(cmd);
 }
 
 /**

@@ -10,7 +10,7 @@ import fs from 'fs'
  */
 export async function downloadWithRedirects(url, destinationPath) {
   return new Promise((resolve, reject) => {
-    const timeoutMs = 5 * 60 * 1000; // 10 minutes
+    const timeoutMs = 10 * 60 * 1000; // 10 minutes
     const timeout = setTimeout(() => {
       reject(new Error(`timeout（${timeoutMs / 1000} seconds）`));
     }, timeoutMs);
