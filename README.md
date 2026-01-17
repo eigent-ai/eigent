@@ -23,7 +23,7 @@
 <hr/>
 <div align="center">
 
-**English** · [简体中文](./README_CN.md) · [日本語](./README_JA.md) · [Official Site][eigent-site] · [Documents][docs-site] · [Feedback][github-issue-link]
+**English** · [Português](./README_PT-BR.md) · [简体中文](./README_CN.md) · [日本語](./README_JA.md) · [Official Site][eigent-site] · [Documents][docs-site] · [Feedback][github-issue-link]
 
 </div>
 <br/>
@@ -151,7 +151,7 @@ Employs a team of specialized AI agents that collaborate to solve complex tasks.
 Eigent pre-defined the following agent workers:
 
 - **Developer Agent:** Writes and executes code, runs terminal commands.
-- **Search Agent:** Searches the web and extracts content.
+- **Browser Agent:** Searches the web and extracts content.
 - **Document Agent:** Creates and manages documents.
 - **Multi-Modal Agent:** Processes images and audio.
 

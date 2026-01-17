@@ -10,7 +10,7 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 @auto_listen_toolkit(BasePyAutoGUIToolkit)
 class PyAutoGUIToolkit(BasePyAutoGUIToolkit, AbstractToolkit):
-    agent_name: str = Agents.search_agent
+    agent_name: str = Agents.browser_agent
 
     def __init__(
         self,
