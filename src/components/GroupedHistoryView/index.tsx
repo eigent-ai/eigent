@@ -212,7 +212,7 @@ export default function GroupedHistoryView({
     project_name: project.name,
     total_tokens: 0,
     task_count: 0,
-    trigger_count: 0,
+    total_triggers: 0,
     latest_task_date: new Date(project.updatedAt).toISOString(),
     last_prompt: "",
     tasks: [],

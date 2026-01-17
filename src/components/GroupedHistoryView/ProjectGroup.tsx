@@ -301,7 +301,7 @@ export default function ProjectGroup({
                   <div className="flex items-center gap-1">
                     <Zap className="w-4 h-4 text-icon-warning" />
                     <span className="text-body-sm text-text-warning font-semibold">
-                      {project.trigger_count || 0}
+                      {project.total_triggers || 0}
                     </span>
                   </div>
                 </TooltipSimple>
@@ -355,7 +355,7 @@ export default function ProjectGroup({
           <TooltipSimple content="Triggers">
             <Tag variant="warning" size="sm" className="min-w-10">
               <Zap />
-              <span>{project.trigger_count || 0}</span>
+              <span>{project.total_triggers || 0}</span>
             </Tag>
           </TooltipSimple>
         </div>
