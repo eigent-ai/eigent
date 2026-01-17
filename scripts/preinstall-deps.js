@@ -30,7 +30,7 @@ fs.mkdirSync(BIN_DIR, { recursive: true });
 fs.mkdirSync(VENV_DIR, { recursive: true });
 
 /**
- * 验证下载的文件是否是有效的 ZIP 文件
+ * Validate if the downloaded file is a valid ZIP file
  */
 function isValidZip(filePath) {
   try {
@@ -46,7 +46,7 @@ function isValidZip(filePath) {
 }
 
 /**
- * 验证下载的文件是否是有效的 tar.gz 文件
+ * Validate if the downloaded file is a valid tar.gz file
  */
 function isValidTarGz(filePath) {
   try {
@@ -60,7 +60,7 @@ function isValidTarGz(filePath) {
 }
 
 /**
- * 下载文件并验证完整性
+ * Download file and validate integrity
  */
 async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType = 'file') {
   const maxRetries = 2;
@@ -74,106 +74,93 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
         await new Promise((resolve, reject) => {
           const protocol = url.startsWith('https') ? https : http;
           const timeout = 180000; // 3 minutes
+          let redirectCount = 0;
+          const maxRedirects = 10;
 
-          const request = protocol.get(url, {
-            timeout: timeout,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }
-          }, (response) => {
-            // 处理重定向
-            if (response.statusCode === 301 || response.statusCode === 302) {
-              const redirectUrl = response.headers.location;
-              console.log(`   Following redirect...`);
-
-              const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
-              const redirectRequest = redirectProtocol.get(redirectUrl, {
-                timeout: timeout,
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-                }
-              }, (redirectResponse) => {
-                if (redirectResponse.statusCode === 200) {
-                  const file = fs.createWriteStream(dest);
-                  let downloadedSize = 0;
-                  const totalSize = parseInt(redirectResponse.headers['content-length'] || '0');
-
-                  redirectResponse.on('data', (chunk) => {
-                    downloadedSize += chunk.length;
-                    if (totalSize > 0) {
-                      const progress = ((downloadedSize / totalSize) * 100).toFixed(1);
-                      process.stdout.write(`\r   Progress: ${progress}% (${(downloadedSize / 1024 / 1024).toFixed(2)}MB / ${(totalSize / 1024 / 1024).toFixed(2)}MB)`);
-                    }
-                  });
-
-                  redirectResponse.pipe(file);
-                  file.on('finish', () => {
-                    file.close();
-                    console.log(''); // 新行
-                    resolve();
-                  });
-                  file.on('error', (err) => {
-                    file.close();
-                    if (fs.existsSync(dest)) fs.unlinkSync(dest);
-                    reject(err);
-                  });
-                } else {
-                  reject(new Error(`HTTP ${redirectResponse.statusCode}`));
-                }
-              });
-
-              redirectRequest.on('error', reject);
-              redirectRequest.on('timeout', () => {
-                redirectRequest.destroy();
-                reject(new Error('Request timeout'));
-              });
-
-              return;
-            }
-
-            if (response.statusCode !== 200) {
-              reject(new Error(`HTTP ${response.statusCode}`));
-              return;
-            }
-
-            const file = fs.createWriteStream(dest);
-            let downloadedSize = 0;
-            const totalSize = parseInt(response.headers['content-length'] || '0');
-
-            response.on('data', (chunk) => {
-              downloadedSize += chunk.length;
-              if (totalSize > 0) {
-                const progress = ((downloadedSize / totalSize) * 100).toFixed(1);
-                process.stdout.write(`\r   Progress: ${progress}% (${(downloadedSize / 1024 / 1024).toFixed(2)}MB / ${(totalSize / 1024 / 1024).toFixed(2)}MB)`);
+          const makeRequest = (requestUrl) => {
+            const requestProtocol = requestUrl.startsWith('https') ? https : http;
+            const request = requestProtocol.get(requestUrl, {
+              timeout: timeout,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
               }
+            }, (response) => {
+              // Handle redirects (301, 302, 307, 308)
+              if (response.statusCode === 301 || response.statusCode === 302 ||
+                  response.statusCode === 307 || response.statusCode === 308) {
+                redirectCount++;
+                if (redirectCount > maxRedirects) {
+                  reject(new Error(`Too many redirects (${redirectCount})`));
+                  return;
+                }
+
+                const redirectUrl = response.headers.location;
+                if (!redirectUrl) {
+                  reject(new Error(`Redirect without location header`));
+                  return;
+                }
+
+                // Handle relative redirects
+                const absoluteRedirectUrl = redirectUrl.startsWith('http')
+                  ? redirectUrl
+                  : new URL(redirectUrl, requestUrl).href;
+
+                console.log(`   Following redirect ${redirectCount} to: ${absoluteRedirectUrl}`);
+
+                // Close current response
+                response.destroy();
+
+                // Recursively handle redirects
+                makeRequest(absoluteRedirectUrl);
+                return;
+              }
+
+              if (response.statusCode !== 200) {
+                reject(new Error(`HTTP ${response.statusCode}`));
+                return;
+              }
+
+              const file = fs.createWriteStream(dest);
+              let downloadedSize = 0;
+              const totalSize = parseInt(response.headers['content-length'] || '0');
+
+              response.on('data', (chunk) => {
+                downloadedSize += chunk.length;
+                if (totalSize > 0) {
+                  const progress = ((downloadedSize / totalSize) * 100).toFixed(1);
+                  process.stdout.write(`\r   Progress: ${progress}% (${(downloadedSize / 1024 / 1024).toFixed(2)}MB / ${(totalSize / 1024 / 1024).toFixed(2)}MB)`);
+                }
+              });
+
+              response.pipe(file);
+              file.on('finish', () => {
+                file.close();
+                console.log(''); // New line
+                resolve();
+              });
+              file.on('error', (err) => {
+                file.close();
+                if (fs.existsSync(dest)) fs.unlinkSync(dest);
+                reject(err);
+              });
             });
 
-            response.pipe(file);
-            file.on('finish', () => {
-              file.close();
-              console.log(''); // 新行
-              resolve();
-            });
-            file.on('error', (err) => {
-              file.close();
+            request.on('error', (err) => {
               if (fs.existsSync(dest)) fs.unlinkSync(dest);
               reject(err);
             });
-          });
 
-          request.on('error', (err) => {
-            if (fs.existsSync(dest)) fs.unlinkSync(dest);
-            reject(err);
-          });
+            request.on('timeout', () => {
+              request.destroy();
+              if (fs.existsSync(dest)) fs.unlinkSync(dest);
+              reject(new Error('Request timeout'));
+            });
+          };
 
-          request.on('timeout', () => {
-            request.destroy();
-            if (fs.existsSync(dest)) fs.unlinkSync(dest);
-            reject(new Error('Request timeout'));
-          });
+          makeRequest(url);
         });
 
-        // 验证下载的文件
+        // Validate downloaded file
         if (!fs.existsSync(dest)) {
           throw new Error('Downloaded file does not exist');
         }
@@ -211,7 +198,7 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
 }
 
 /**
- * 获取 Bun 的下载 URL 列表
+ * Get Bun download URL list
  */
 function getBunUrls(platform, arch) {
   const filename = `bun-${platform}-${arch}.zip`;
@@ -222,7 +209,7 @@ function getBunUrls(platform, arch) {
 }
 
 /**
- * 获取 UV 的下载 URL 列表
+ * Get UV download URL list
  */
 function getUvUrls(archStr, platformStr, isWindows = false) {
   const extension = isWindows ? '.zip' : '.tar.gz';
@@ -438,18 +425,46 @@ async function installBun() {
   // Try to find bun in system PATH
   try {
     const whichCommand = platform === 'win32' ? 'where bun' : 'which bun';
-    const systemBunPath = execSync(whichCommand, { encoding: 'utf-8', stdio: 'pipe' }).trim().split('\n')[0];
-    if (systemBunPath && fs.existsSync(systemBunPath)) {
-      console.log(`📋 Using system bun: ${systemBunPath}`);
-      fs.copyFileSync(systemBunPath, bunPath);
-      if (platform !== 'win32') {
-        fs.chmodSync(bunPath, '755');
+    const output = execSync(whichCommand, { encoding: 'utf-8', stdio: 'pipe' }).trim();
+    const paths = output.split(/[\r\n]+/).map(p => p.trim()).filter(p => p && !p.includes('INFO:'));
+
+    for (const systemBunPath of paths) {
+      if (systemBunPath && fs.existsSync(systemBunPath)) {
+        console.log(`📋 Using system bun: ${systemBunPath}`);
+        fs.copyFileSync(systemBunPath, bunPath);
+        if (platform !== 'win32') {
+          fs.chmodSync(bunPath, '755');
+        }
+        return bunPath;
       }
-      return bunPath;
+    }
+
+    // Also try common Windows paths (npm global install locations)
+    if (platform === 'win32') {
+      const npmPrefix = execSync('npm config get prefix', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+      const commonPaths = [
+        path.join(npmPrefix, 'bun.exe'),
+        path.join(npmPrefix, 'bun.cmd'),
+        path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'bun.exe'),
+        path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'bun.cmd'),
+        path.join(os.homedir(), 'AppData', 'Local', 'npm', 'bun.exe'),
+        path.join(os.homedir(), '.bun', 'bin', 'bun.exe'),
+        'C:\\Program Files\\nodejs\\bun.exe',
+        'C:\\Program Files\\bun\\bun.exe',
+        'C:\\bun\\bun.exe',
+      ];
+
+      for (const commonPath of commonPaths) {
+        if (fs.existsSync(commonPath)) {
+          console.log(`📋 Using bun from common path: ${commonPath}`);
+          fs.copyFileSync(commonPath, bunPath);
+          return bunPath;
+        }
+      }
     }
   } catch (error) {
     // bun not found in PATH, continue to download
-    console.log('   bun not found in system PATH, will download...');
+    console.log(`   bun not found in system PATH (${error.message}), will download...`);
   }
 
   // Determine platform and architecture
@@ -472,8 +487,27 @@ async function installBun() {
 
   console.log(`   Platform: ${bunPlatform}-${bunArch}`);
 
-  const urlsToTry = getBunUrls(bunPlatform, bunArch);
-  await downloadFileWithValidation(urlsToTry, tempFilename, isValidZip, 'ZIP');
+  // Try using curl first (more reliable for redirects)
+  try {
+    const urlsToTry = getBunUrls(bunPlatform, bunArch);
+    const url = urlsToTry[0].url;
+
+    console.log(`   Trying to download with curl: ${url}`);
+    execSync(`curl -L -o "${tempFilename}" "${url}"`, { stdio: 'inherit' });
+
+    if (fs.existsSync(tempFilename) && isValidZip(tempFilename)) {
+      console.log('   ✅ Downloaded successfully with curl');
+    } else {
+      throw new Error('Downloaded file is invalid');
+    }
+  } catch (curlError) {
+    console.log(`   ⚠️  curl download failed: ${curlError.message}`);
+    console.log('   Falling back to manual download...');
+
+    // Fallback to manual download
+    const urlsToTry = getBunUrls(bunPlatform, bunArch);
+    await downloadFileWithValidation(urlsToTry, tempFilename, isValidZip, 'ZIP');
+  }
 
   // Extract
   console.log('   Extracting...');

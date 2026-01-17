@@ -46,6 +46,41 @@ function isValidSymlink(symlinkPath, bundleRoot) {
 }
 
 /**
+ * Fix Python symlinks in venv/bin
+ * Remove symlinks that point outside the bundle (to cache directory)
+ */
+function fixPythonSymlinks(venvBinDir, bundleRoot) {
+  if (!fs.existsSync(venvBinDir)) {
+    return;
+  }
+
+  const bundlePath = path.resolve(bundleRoot);
+  const pythonNames = ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
+
+  for (const pythonName of pythonNames) {
+    const pythonSymlink = path.join(venvBinDir, pythonName);
+
+    if (fs.existsSync(pythonSymlink)) {
+      try {
+        const stats = fs.lstatSync(pythonSymlink);
+        if (stats.isSymbolicLink()) {
+          const target = fs.readlinkSync(pythonSymlink);
+          const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
+
+          // If symlink points outside bundle (especially to cache), remove it
+          if (!resolvedPath.startsWith(bundlePath)) {
+            console.log(`Removing invalid ${pythonName} symlink pointing to: ${target}`);
+            fs.unlinkSync(pythonSymlink);
+          }
+        }
+      } catch (error) {
+        console.warn(`Warning: Could not process ${pythonName} symlink: ${error.message}`);
+      }
+    }
+  }
+}
+
+/**
  * Remove invalid symlinks recursively
  */
 function cleanSymlinks(dir, bundleRoot, removed = []) {
@@ -92,6 +127,14 @@ function main() {
   console.log('🧹 Cleaning invalid symbolic links...');
 
   const bundleRoot = path.join(projectRoot, 'resources', 'prebuilt');
+  const venvBinDir = path.join(bundleRoot, 'venv', 'bin');
+
+  // First, try to fix Python symlinks specifically
+  if (fs.existsSync(venvBinDir)) {
+    fixPythonSymlinks(venvBinDir, bundleRoot);
+  }
+
+  // Then clean all other invalid symlinks
   const removed = cleanSymlinks(bundleRoot, bundleRoot);
 
   if (removed.length > 0) {

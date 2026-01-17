@@ -47,6 +47,7 @@
     }
   ],
   "icon": "build/icon.ico",
+  "afterPack": "./config/before-sign.cjs",
   "afterSign": "./config/notarize.cjs",
   "mac": {
     "icon": "build/icon.icns",
