@@ -8,7 +8,7 @@ import {
 } from '@/api/http';
 import BottomBox from './BottomBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert, Square, SquareCheckBig } from 'lucide-react';
 import { generateUniqueId } from '@/lib';
 import { proxyFetchGet } from '@/api/http';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
@@ -1113,13 +1113,28 @@ export default function ChatBox(): JSX.Element {
                         setPrivacy(true);
                       }
                     }}
-                    className="cursor-pointer flex items-center gap-2 px-sm py-xs rounded-md bg-surface-information"
+                    className="group cursor-pointer max-w-64 flex items-center justify-center gap-2 px-md py-xs rounded-xl bg-surface-information hover:bg-surface-tertiary transition-all duration-200"
                   >
-                    <TriangleAlert
-                      size={20}
-                      className="text-icon-information"
-                    />
-                    <span className="flex-1 text-text-information text-xs font-medium leading-[20px]">
+                    <div className="shrink-0">
+                      {privacy ? (
+                        <SquareCheckBig
+                          size={20}
+                          className="text-icon-success shrink-0"
+                        />
+                      ) : (
+                        <div className="relative flex items-center justify-center shrink-0">
+                          <Square
+                            size={20}
+                            className="text-icon-information group-hover:opacity-0 transition-opacity"
+                          />
+                          <SquareCheckBig
+                            size={20}
+                            className="text-icon-information absolute inset-0 opacity-0 group-hover:opacity-50 transition-opacity"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <span className="flex-1 text-text-information text-label-xs font-medium leading-normal cursor-pointer">
                       {t('layout.by-messaging-eigent')}{' '}
                       <a
                         href="https://www.eigent.ai/terms-of-use"
