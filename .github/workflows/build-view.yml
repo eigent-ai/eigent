@@ -29,6 +29,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -44,7 +45,7 @@ jobs:
         run: npm install -g bun
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
