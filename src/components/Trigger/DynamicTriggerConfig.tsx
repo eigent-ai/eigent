@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { proxyFetchGet, proxyFetchPost, proxyFetchPut } from "@/api/http";
 import { TriggerType } from "@/types";
+import { useTriggerConfigQuery } from "@/hooks/queries/useTriggerQueries";
 
 // ============ Types ============
 
@@ -567,12 +568,22 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
     onValidationChange,
 }) => {
     const { t } = useTranslation();
-    const [schema, setSchema] = useState<TriggerConfigSchema | null>(null);
-    const [isLoadingSchema, setIsLoadingSchema] = useState(true);
     const [savedConfigs, setSavedConfigs] = useState<Record<string, SavedConfig>>({});
     const [dynamicOptions, setDynamicOptions] = useState<Record<string, Array<{ label: string; value: string }>>>({});
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
     const [apiErrors, setApiErrors] = useState<Record<string, string>>({});
+
+    // Fetch schema using query hook
+    const { data: configData, isLoading: isLoadingSchema, error: schemaError } = useTriggerConfigQuery(triggerType);
+    const schema = (configData?.schema_ as TriggerConfigSchema | undefined) || null;
+
+    // Show error toast if schema fetch fails
+    useEffect(() => {
+        if (schemaError) {
+            console.error("Failed to fetch trigger config schema:", schemaError);
+            toast.error(t("triggers.dynamic.failed-to-load-schema"));
+        }
+    }, [schemaError, t]);
 
     // Validate a field and return error message if invalid
     const validateField = useCallback((fieldKey: string, fieldValue: any): string | null => {
@@ -697,27 +708,12 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
         }
     }, [value, schema, savedConfigs]);
 
-    // Fetch schema on mount or trigger type change
+    // Initialize defaults when schema is loaded
     useEffect(() => {
-        const fetchSchema = async () => {
-            setIsLoadingSchema(true);
-            try {
-                const response = await proxyFetchGet(`/api/trigger/${triggerType}/config`);
-                if (response?.schema_) {
-                    setSchema(response.schema_);
-                    // Initialize default values
-                    initializeDefaults(response.schema_);
-                }
-            } catch (error) {
-                console.error("Failed to fetch trigger config schema:", error);
-                toast.error(t("triggers.dynamic.failed-to-load-schema"));
-            } finally {
-                setIsLoadingSchema(false);
-            }
-        };
-
-        fetchSchema();
-    }, [triggerType]);
+        if (schema) {
+            initializeDefaults(schema);
+        }
+    }, [schema]);
 
     // Initialize defaults from schema
     const initializeDefaults = (schema: TriggerConfigSchema) => {

@@ -11,6 +11,8 @@ import { useExecutionSubscription } from "./hooks/useExecutionSubscription";
 import { useTriggerTaskExecutor } from "./hooks/useTriggerTaskExecutor";
 import { Toaster } from "sonner";
 import { hasStackKeys } from "./lib";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 
 const HAS_STACK_KEYS = hasStackKeys();
 
@@ -80,19 +82,22 @@ function App() {
 
 	// render wrapper
 	const renderWrapper = (children: React.ReactNode) => {
-		if (HAS_STACK_KEYS) {
-			return (
-				<StackProvider app={stackClientApp}>
-					<StackTheme>{children}</StackTheme>
-					<Toaster style={{ zIndex: '999999 !important', position: "fixed" }} />
-				</StackProvider>
-			);
-		}
-		return (
+		const content = HAS_STACK_KEYS ? (
+			<StackProvider app={stackClientApp}>
+				<StackTheme>{children}</StackTheme>
+				<Toaster style={{ zIndex: '999999 !important', position: "fixed" }} />
+			</StackProvider>
+		) : (
 			<>
 				{children}
 				<Toaster style={{ zIndex: "999999 !important", position: "fixed" }} />
 			</>
+		);
+
+		return (
+			<QueryClientProvider client={queryClient}>
+				{content}
+			</QueryClientProvider>
 		);
 	};
 
