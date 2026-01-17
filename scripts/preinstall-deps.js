@@ -389,6 +389,23 @@ async function installBun() {
     return bunPath;
   }
 
+  // Try to find bun in system PATH
+  try {
+    const whichCommand = platform === 'win32' ? 'where bun' : 'which bun';
+    const systemBunPath = execSync(whichCommand, { encoding: 'utf-8', stdio: 'pipe' }).trim().split('\n')[0];
+    if (systemBunPath && fs.existsSync(systemBunPath)) {
+      console.log(`📋 Using system bun: ${systemBunPath}`);
+      fs.copyFileSync(systemBunPath, bunPath);
+      if (platform !== 'win32') {
+        fs.chmodSync(bunPath, '755');
+      }
+      return bunPath;
+    }
+  } catch (error) {
+    // bun not found in PATH, continue to download
+    console.log('   bun not found in system PATH, will download...');
+  }
+
   // Determine platform and architecture
   let bunPlatform, bunArch;
 
