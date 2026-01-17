@@ -181,11 +181,24 @@ Our aim is to make the developer setup as straightforward as possible. If you en
 ## Quick Start 🚀
 
 ```bash
-git clone https://github.com/eigent-ai/Eigent-desktop.git
-cd Eigent-desktop
+git clone https://github.com/eigent-ai/eigent.git
+cd eigent
 npm install
 npm run dev
+
+# In a separate terminal, start the backend server
+cd eigent/server
+docker compose up
 ```
+
+To run the application locally in developer mode:
+1. Configure `.env.development`:
+   - Set `VITE_USE_LOCAL_PROXY=true`
+   - Set `VITE_PROXY_URL=http://localhost:3001`
+   - Set `TRACEROOT_ENABLE_SPAN_CLOUD_EXPORT=false`
+   - Set `TRACEROOT_ENABLE_LOG_CLOUD_EXPORT=false`
+   - Set `TRACEROOT_ENABLE_LOG_CONSOLE_EXPORT=false`
+2. Go to the settings to specify your model key and model type.
 
 ## Common Actions 🔄
 
