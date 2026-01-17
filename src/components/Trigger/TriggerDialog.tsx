@@ -6,6 +6,7 @@ import {
     DialogContentSection,
     DialogFooter,
 } from "@/components/ui/dialog";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -28,6 +29,7 @@ import {
     CircleAlert,
     AlarmClockIcon,
     WebhookIcon,
+    AlertTriangle,
     GlobeIcon,
     Slack,
 } from "lucide-react";
@@ -39,13 +41,13 @@ import {
     TriggerType,
     Trigger,
     RequestType,
+    TriggerStatus,
 } from "@/types";
 import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
 import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { proxyCreateTrigger, proxyUpdateTrigger, proxyFetchTriggerConfig } from "@/service/triggerApi";
-import { TooltipSimple } from "../ui/tooltip";
 import DynamicTriggerConfig, { getDefaultTriggerConfig, filterExcludedFields, type ValidationError, type TriggerConfigSchema } from "./DynamicTriggerConfig";
 
 type TriggerDialogProps = {
@@ -124,6 +126,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     setTriggerConfig(selectedTrigger.config as Record<string, any>);
                 } else {
                     setTriggerConfig(getDefaultTriggerConfig());
+                }
+                // Set selectedApp based on trigger type for app-based triggers
+                if (selectedTrigger.trigger_type === TriggerType.Slack) {
+                    setSelectedApp("slack");
+                } else {
+                    setSelectedApp("");
                 }
             } else {
                 // Reset form for new trigger, use initialTaskPrompt if provided
@@ -286,6 +294,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     };
 
     const renderCreateContent = () => {
+        const needsAuth = selectedTrigger?.status === TriggerStatus.PendingAuth && selectedTrigger?.config?.authentication_required;
+
         return (
             <div className="flex flex-col w-full h-full overflow-y-auto scrollbar-always-visible p-6 gap-6">
                 {/* Trigger Name */}
@@ -388,8 +398,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
                                             {t("triggers.webhook-url-after-creation")}
                                         </div>) : (
-                                        <div className="flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl">
-                                            <div className="w-full font-mono text-sm text-text-body break-all">
+                                        <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
+                                            <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
+                                                {needsAuth && (
+                                                    <TooltipSimple content={t("triggers.verification-required")}>
+                                                        <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                                                    </TooltipSimple>
+                                                )}
                                                 {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
                                             </div>
                                             <Button
@@ -424,6 +439,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 </div>
                             </div>
                         </TabsContent>
+                        {/* TODO: Select Slack Trigger only on App Select rather than section */}
                         <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             {!selectedApp ? (
                                 <div className="space-y-4">
@@ -470,21 +486,30 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             <Slack className="w-5 h-5" />
                                             <Label className="font-bold text-sm">{selectedApp.charAt(0).toUpperCase() + selectedApp.slice(1)} Configuration</Label>
                                         </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setSelectedApp("")}
-                                        >
-                                            {t("triggers.change-app")}
-                                        </Button>
+                                        {
+                                            !selectedTrigger && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setSelectedApp("")}
+                                                >
+                                                    {t("triggers.change-app")}
+                                                </Button>
+                                            )
+                                        }
                                     </div>
                                     {
                                     !selectedTrigger || !formData.webhook_url ? (
                                         <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
                                             {t("triggers.webhook-url-after-creation")}
                                         </div>) : (
-                                        <div className="flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl">
-                                            <div className="w-full font-mono text-sm text-text-body break-all">
+                                        <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
+                                            <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
+                                                {needsAuth && (
+                                                    <TooltipSimple content={t("triggers.verification-required")}>
+                                                        <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                                                    </TooltipSimple>
+                                                )}
                                                 {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
                                             </div>
                                             <Button

@@ -1,13 +1,14 @@
 import { Trigger, TriggerType, TriggerStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TooltipSimple } from "@/components/ui/tooltip";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Zap, Clock, MoreHorizontal, Edit, Copy, Trash2, Globe, MessageSquare, AlarmClockIcon, WebhookIcon } from "lucide-react";
+import { Zap, Clock, MoreHorizontal, Edit, Copy, Trash2, Globe, MessageSquare, AlarmClockIcon, WebhookIcon, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatDateTime } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
 }) => {
     const { t } = useTranslation();
     const isActive = trigger.status === TriggerStatus.Active;
+    const needsAuth = trigger.status === TriggerStatus.PendingAuth && trigger.config?.authentication_required;
 
     const getTriggerTypeIcon = () => {
         switch (trigger.trigger_type) {
@@ -69,7 +71,9 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             onClick={() => onSelect(trigger.id)}
             className={`group flex items-center gap-3 p-3 bg-surface-primary rounded-xl border transition-all duration-200 cursor-pointer ${isSelected
                 ? 'border-border-action bg-surface-tertiary'
-                : 'border-border-tertiary hover:border-border-secondary hover:bg-surface-tertiary'
+                : needsAuth
+                    ? 'border-yellow-500 hover:border-yellow-600 hover:bg-surface-tertiary'
+                    : 'border-border-tertiary hover:border-border-secondary hover:bg-surface-tertiary'
                 }`}
         >
             {/* 1. Zap Icon */}
@@ -79,8 +83,17 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
 
             {/* 2. Trigger Name + Task Prompt */}
             <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-text-heading truncate group-hover:text-text-action transition-colors">
-                    {trigger.name}
+                <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-text-heading truncate group-hover:text-text-action transition-colors">
+                        {trigger.name}
+                    </div>
+                    {needsAuth && (
+                        <TooltipSimple content={t("triggers.verification-required")}>
+                            <div className="flex items-center justify-center p-1 rounded-full bg-yellow-100">
+                                <AlertTriangle className="w-3.5 h-3.5 text-yellow-600" />
+                            </div>
+                        </TooltipSimple>
+                    )}
                 </div>
                 <div className="text-xs text-text-label truncate mt-0.5">
                     {trigger.task_prompt || trigger.description || t("triggers.no-task-prompt")}
@@ -94,11 +107,16 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             </div>
 
             {/* 5. Activation Switch */}
-            <Switch
-                checked={isActive}
-                onCheckedChange={() => onToggleActive(trigger)}
-                onClick={(e) => e.stopPropagation()}
-            />
+            <TooltipSimple content={t("triggers.verification-required")}>
+                <div>
+                    <Switch
+                        checked={isActive}
+                        onCheckedChange={() => onToggleActive(trigger)}
+                        onClick={(e) => e.stopPropagation()}
+                        disabled={needsAuth}
+                    />
+                </div>
+            </TooltipSimple>
 
             {/* 6. More Icon Dropdown */}
             <DropdownMenu>
@@ -112,10 +130,11 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
                         <Edit className="h-4 w-4" />
                         {t("triggers.edit")}
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2" onSelect={(e) => { e.preventDefault(); onDuplicate(trigger.id); }}>
+                    {/* TODO: Support Duplicate Action */}
+                    {/* <DropdownMenuItem className="gap-2" onSelect={(e) => { e.preventDefault(); onDuplicate(trigger.id); }}>
                         <Copy className="h-4 w-4" />
                         {t("triggers.duplicate")}
-                    </DropdownMenuItem>
+                    </DropdownMenuItem> */}
                     <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onSelect={(e) => { e.preventDefault(); onDelete(trigger); }}>
                         <Trash2 className="h-4 w-4" />
                         {t("triggers.delete")}

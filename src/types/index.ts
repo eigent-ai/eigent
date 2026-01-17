@@ -38,7 +38,7 @@ export enum TriggerType {
 }
 
 export enum TriggerStatus {
-  PendingAuth = "pending_authentication",
+  PendingAuth = "pending_verification",
   Inactive = "inactive",
   Active = "active",
 }

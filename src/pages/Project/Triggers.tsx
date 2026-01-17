@@ -277,9 +277,10 @@ export default function Overview() {
                                 <DropdownMenuItem onClick={() => setSortBy("lastExecutionTime")}>
                                     {t('triggers.last-execution-label')}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setSortBy("tokens")}>
+                                {/* TODO: Support Token Cost */}
+                                {/* <DropdownMenuItem onClick={() => setSortBy("tokens")}>
                                     {t('triggers.token-cost')}
-                                </DropdownMenuItem>
+                                </DropdownMenuItem> */}
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>

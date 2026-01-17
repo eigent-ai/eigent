@@ -248,6 +248,7 @@
             "notice": "Slack user IDs to ignore messages from"
         }
     },
+    "verification-required": "Verification Required for Trigger Activation",
     "base": {
       "authentication_required": {
         "label": "Require Authentication",
