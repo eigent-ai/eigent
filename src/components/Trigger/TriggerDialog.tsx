@@ -46,7 +46,7 @@ import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { proxyCreateTrigger, proxyUpdateTrigger, proxyFetchTriggerConfig } from "@/service/triggerApi";
 import { TooltipSimple } from "../ui/tooltip";
-import DynamicTriggerConfig, { getDefaultTriggerConfig, type ValidationError } from "./DynamicTriggerConfig";
+import DynamicTriggerConfig, { getDefaultTriggerConfig, filterExcludedFields, type ValidationError, type TriggerConfigSchema } from "./DynamicTriggerConfig";
 
 type TriggerDialogProps = {
     selectedTrigger: Trigger | null;
@@ -86,6 +86,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         webhook_url: selectedTrigger?.webhook_url,
     });
     const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>(getDefaultTriggerConfig());
+    const [triggerConfigSchema, setTriggerConfigSchema] = useState<TriggerConfigSchema | null>(null);
     const [selectedApp, setSelectedApp] = useState<string>("");
     const [isConfigValid, setIsConfigValid] = useState<boolean>(true);
     const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
@@ -140,6 +141,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     is_single_execution: false,
                 });
                 setTriggerConfig(getDefaultTriggerConfig());
+                setTriggerConfigSchema(null);
                 setSelectedApp("");
             }
         }
@@ -151,7 +153,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             try {
                 //Fetch config based on trigger type
                 const config = await proxyFetchTriggerConfig(selectedTrigger?.trigger_type || formData.trigger_type);
-                //Handle config as needed
+                //Store the schema for later use when filtering excluded fields
+                if (config?.schema_) {
+                    setTriggerConfigSchema(config.schema_);
+                }
             } catch (error) {
                 console.error("Error fetching trigger config:", error);
             }
@@ -220,7 +225,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 
                 // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
                 if (Object.keys(triggerConfig).length > 0) {
-                    updateData.config = triggerConfig;
+                    // Filter out fields marked with exclude: true in schema
+                    updateData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
                 }
                 
                 response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
@@ -245,7 +251,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 
                 // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
                 if (Object.keys(triggerConfig).length > 0) {
-                    createData.config = triggerConfig;
+                    // Filter out fields marked with exclude: true in schema
+                    createData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
                 }
                 
                 response = await proxyCreateTrigger(createData);
@@ -366,12 +373,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         </TabsContent>
                         <TabsContent value={TriggerType.Webhook} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <div className="space-y-4">
-                                {/* <ToolSelect
-                                    onShowEnvConfig={() => { }}
-                                    onSelectedToolsChange={setSelectedTools}
-                                    initialSelectedTools={selectedTools}
-                                    ref={toolSelectRef}
-                                /> */}
                                 <div className="space-y-2">
                                     <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
                                     <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>

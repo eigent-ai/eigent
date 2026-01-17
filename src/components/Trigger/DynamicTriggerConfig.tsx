@@ -67,6 +67,8 @@ type SchemaProperty = {
     "api:PUT"?: string;
     // Config group for credentials
     config_group?: string;
+    // Exclude from API payload
+    exclude?: boolean;
 };
 
 type ValidationError = {
@@ -74,9 +76,10 @@ type ValidationError = {
     message: string;
 };
 
+export type { SchemaProperty };
 export type { ValidationError };
 
-type TriggerConfigSchema = {
+export type TriggerConfigSchema = {
     title?: string;
     description?: string;
     type: string;
@@ -977,5 +980,21 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
 // Helper to get default config based on trigger type
 export const getDefaultTriggerConfig = (): Record<string, any> => ({});
+
+// Helper to filter out fields marked with exclude: true from config based on schema
+export const filterExcludedFields = (
+    config: Record<string, any>,
+    schema: TriggerConfigSchema | null
+): Record<string, any> => {
+    if (!schema?.properties) return config;
+    
+    const filteredConfig = { ...config };
+    Object.entries(schema.properties).forEach(([key, prop]) => {
+        if (prop.exclude === true) {
+            delete filteredConfig[key];
+        }
+    });
+    return filteredConfig;
+};
 
 export default DynamicTriggerConfig;
