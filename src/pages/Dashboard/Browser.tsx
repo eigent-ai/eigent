@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import AlertDialog from "@/components/ui/alertDialog";
 import { Input } from "@/components/ui/input";
+import { CdpBrowser } from "electron/main/index";
 
 interface CookieDomain {
 	domain: string;
@@ -24,14 +25,6 @@ interface CdpPortStatus {
 	available: boolean | null;
 	error?: string;
 	data?: any;
-}
-
-interface CdpBrowser {
-	id: string;
-	port: number;
-	isExternal: boolean;
-	name?: string;
-	addedAt: number;
 }
 
 export default function Browser() {
