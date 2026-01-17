@@ -72,13 +72,85 @@ export class WebViewManager {
           backgroundThrottling: true,
           offscreen: false,
           sandbox: true,
-          disableBlinkFeatures: 'Accelerated2dCanvas',
+          disableBlinkFeatures: 'Accelerated2dCanvas,AutomationControlled',
           enableBlinkFeatures: 'IdleDetection',
           autoplayPolicy: 'document-user-activation-required',
         },
       })
       view.webContents.on('did-finish-load', () => {
+        // Inject stealth script to avoid bot detection
         view.webContents.executeJavaScript(`
+          // Hide webdriver property
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+            configurable: true
+          });
+
+          // Override plugins
+          Object.defineProperty(navigator, 'plugins', {
+            get: () => ({
+              length: 3,
+              0: { name: 'Chrome PDF Plugin', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+              1: { name: 'Chrome PDF Viewer', description: '', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+              2: { name: 'Native Client', description: '', filename: 'internal-nacl-plugin' },
+              item: function(index) { return this[index] || null; },
+              namedItem: function(name) {
+                for (let i = 0; i < this.length; i++) {
+                  if (this[i].name === name) return this[i];
+                }
+                return null;
+              },
+              refresh: function() {}
+            }),
+            configurable: true
+          });
+
+          // Override languages
+          Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en'],
+            configurable: true
+          });
+
+          // Override hardwareConcurrency
+          Object.defineProperty(navigator, 'hardwareConcurrency', {
+            get: () => 8,
+            configurable: true
+          });
+
+          // Override deviceMemory
+          Object.defineProperty(navigator, 'deviceMemory', {
+            get: () => 8,
+            configurable: true
+          });
+
+          // Fix WebGL vendor/renderer
+          const getParameter = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.';
+            if (parameter === 37446) return 'Intel(R) Iris(TM) Graphics 6100';
+            return getParameter.call(this, parameter);
+          };
+
+          // Override chrome runtime
+          if (!window.chrome) window.chrome = {};
+          window.chrome.runtime = {
+            onConnect: undefined,
+            onMessage: undefined
+          };
+
+          // Hide automation variables
+          const automationVars = ['__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_fn',
+            '__driver_evaluate', '__fxdriver_evaluate', '__driver_unwrapped', 'domAutomation', 'domAutomationController'];
+          automationVars.forEach(v => {
+            Object.defineProperty(window, v, {
+              get: () => undefined,
+              set: () => {},
+              configurable: true,
+              enumerable: false
+            });
+          });
+
+          // Mouse event handler
           window.addEventListener('mousedown', (e) => {
             if (!(e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement)) {
               e.preventDefault();
