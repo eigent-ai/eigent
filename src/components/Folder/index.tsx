@@ -728,6 +728,7 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
             'h4',
             'h5',
             'h6',
+            'style',
           ],
           ALLOWED_ATTR: [
             'href',
@@ -742,6 +743,7 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
             'rowspan',
             'class',
             'id',
+            'style',
           ],
           FORBID_ATTR: [
             'onerror',
@@ -878,6 +880,7 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
           'h4',
           'h5',
           'h6',
+          'style',
         ],
         ALLOWED_ATTR: [
           'href',
@@ -892,6 +895,7 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
           'rowspan',
           'class',
           'id',
+          'style',
         ],
         FORBID_ATTR: [
           'onerror',
