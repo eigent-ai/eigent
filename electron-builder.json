@@ -29,7 +29,7 @@
     {
       "from": "resources/prebuilt",
       "to": "prebuilt",
-      "filter": ["**/*"]
+      "filter": ["**/*", "!cache/**/*"]
     }
   ],
   "protocols": [

@@ -30,22 +30,6 @@ fs.mkdirSync(BIN_DIR, { recursive: true });
 fs.mkdirSync(VENV_DIR, { recursive: true });
 
 /**
- * 检测是否配置了代理
- */
-function hasProxy() {
-  const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
-  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-  return !!(httpProxy || httpsProxy);
-}
-
-const PROXY_DETECTED = hasProxy();
-if (PROXY_DETECTED) {
-  console.log('🔍 Proxy detected, will use GitHub official sources for better compatibility');
-  console.log(`   HTTP_PROXY: ${process.env.HTTP_PROXY || process.env.http_proxy || 'not set'}`);
-  console.log(`   HTTPS_PROXY: ${process.env.HTTPS_PROXY || process.env.https_proxy || 'not set'}`);
-}
-
-/**
  * 验证下载的文件是否是有效的 ZIP 文件
  */
 function isValidZip(filePath) {
@@ -223,53 +207,18 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
     }
   }
 
-  throw new Error(`Failed to download ${fileType} from all mirrors`);
+  throw new Error(`Failed to download ${fileType} from all sources`);
 }
 
 /**
  * 获取 Bun 的下载 URL 列表
- * 如果检测到代理，优先使用 GitHub 官方；否则使用中国镜像
  */
 function getBunUrls(platform, arch) {
   const filename = `bun-${platform}-${arch}.zip`;
-  const urls = [];
-
-  if (PROXY_DETECTED) {
-    // 有代理时，直接使用 GitHub 官方（代理通常能访问 GitHub）
-    urls.push({
-      url: `https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
-      name: 'GitHub (官方 via proxy)'
-    });
-
-    // 备选：镜像（可能代理访问镜像反而慢）
-    urls.push({
-      url: `https://mirror.ghproxy.com/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
-      name: 'ghproxy (备选)'
-    });
-  } else {
-    // 无代理时，使用中国镜像
-    urls.push({
-      url: `https://mirror.ghproxy.com/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
-      name: 'ghproxy.net (GitHub镜像)'
-    });
-
-    urls.push({
-      url: `https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
-      name: 'gh-proxy.com'
-    });
-
-    urls.push({
-      url: `https://github.moeyy.xyz/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
-      name: 'moeyy.xyz (CDN)'
-    });
-
-    urls.push({
-      url: `https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
-      name: 'GitHub (官方)'
-    });
-  }
-
-  return urls;
+  return [{
+    url: `https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+    name: 'GitHub'
+  }];
 }
 
 /**
@@ -277,38 +226,10 @@ function getBunUrls(platform, arch) {
  */
 function getUvUrls(archStr, platformStr) {
   const filename = `uv-${archStr}-${platformStr}.tar.gz`;
-  const urls = [];
-
-  if (PROXY_DETECTED) {
-    // 有代理时，优先使用 GitHub 官方
-    urls.push({
-      url: `https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
-      name: 'GitHub (官方 via proxy)'
-    });
-
-    urls.push({
-      url: `https://mirror.ghproxy.com/https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
-      name: 'ghproxy (备选)'
-    });
-  } else {
-    // 无代理时，使用中国镜像
-    urls.push({
-      url: `https://mirror.ghproxy.com/https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
-      name: 'ghproxy.net (GitHub镜像)'
-    });
-
-    urls.push({
-      url: `https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
-      name: 'gh-proxy.com'
-    });
-
-    urls.push({
-      url: `https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
-      name: 'GitHub (官方)'
-    });
-  }
-
-  return urls;
+  return [{
+    url: `https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
+    name: 'GitHub'
+  }];
 }
 
 /**
@@ -339,10 +260,9 @@ async function installUv() {
   const shouldTryPip = usePipEnv !== 'false';
 
   if (shouldTryPip) {
-    console.log('\n🐍 Trying to install uv via pip (fastest for China)...');
+    console.log('\n🐍 Trying to install uv via pip...');
 
     try {
-      const pypiMirror = 'https://pypi.tuna.tsinghua.edu.cn/simple';
       let pipCommand = null;
 
       try {
@@ -359,8 +279,8 @@ async function installUv() {
 
       const isMacOS = process.platform === 'darwin';
       const pipArgs = isMacOS
-        ? `install --user --break-system-packages uv -i ${pypiMirror}`
-        : `install --user uv -i ${pypiMirror}`;
+        ? `install --user --break-system-packages uv`
+        : `install --user uv`;
 
       console.log(`   Installing via ${pipCommand}...`);
       execSync(`${pipCommand} ${pipArgs}`, { stdio: 'inherit' });
@@ -399,7 +319,7 @@ async function installUv() {
     }
   }
 
-  // Download from mirrors
+  // Download from GitHub
   console.log('\n📥 Downloading uv...');
 
   const platform = process.platform;
@@ -560,19 +480,8 @@ async function installPythonDeps(uvPath) {
     console.log('📦 Creating Python venv...');
   }
 
-  const usePypiMirrorEnv = process.env.USE_PYPI_MIRROR;
-  const shouldUseMirror = usePypiMirrorEnv !== 'false';
-
-  const proxyArgs = shouldUseMirror
-    ? ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple/']
-    : [];
-
-  if (shouldUseMirror) {
-    console.log('   Using PyPI mirror: https://pypi.tuna.tsinghua.edu.cn/simple/');
-  }
-
   execSync(
-    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}" ${proxyArgs.join(' ')}`,
+    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}"`,
     { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
   );
 
