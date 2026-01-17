@@ -76,7 +76,7 @@ Eigent comes with a set of pre-configured agents, each designed for a specific d
 - NoteTakingToolkit
 - WebDeployToolkit
 
-### SearchAgent
+### BrowserAgent
 
 *Can search the web, extract webpage content, simulate browser actions, and provide relevant information to solve the given task.*
 
