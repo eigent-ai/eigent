@@ -100,7 +100,7 @@
   "share": "共有",
   "home": "ホーム",
   "developer-agent": "開発者エージェント",
-  "search-agent": "検索エージェント",
+  "browser-agent": "ブラウザエージェント",
   "document-agent": "ドキュメントエージェント",
   "multi-modal-agent": "マルチモーダルエージェント",
   "social-media-agent": "ソーシャルメディアエージェント",
@@ -165,6 +165,5 @@
   "yesterday": "昨日",
   "days-ago": "日前",
   "delete-project": "プロジェクトを削除",
-  "delete-project-confirmation": "このプロジェクトとそのすべてのタスクを削除してもよろしいですか？この操作は元に戻せません。",
-  "please-select-model": "続行するには、設定 > モデルでモデルを選択してください。"
+  "delete-project-confirmation": "このプロジェクトとそのすべてのタスクを削除してもよろしいですか？この操作は元に戻せません。"
 }

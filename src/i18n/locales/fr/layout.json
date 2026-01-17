@@ -100,7 +100,7 @@
   "share": "Partager",
   "home": "Accueil",
   "developer-agent": "Agent Développeur",
-  "search-agent": "Agent de Recherche",
+  "browser-agent": "Agent Navigateur",
   "document-agent": "Agent de Documents",
   "multi-modal-agent": "Agent Multi Modal",
   "social-media-agent": "Agent de Médias Sociaux",
@@ -165,6 +165,5 @@
   "yesterday": "Hier",
   "days-ago": "jours auparavant",
   "delete-project": "Supprimer le Projet",
-  "delete-project-confirmation": "Êtes-vous sûr de vouloir supprimer ce projet et toutes ses tâches ? Cette action ne peut pas être annulée.",
-  "please-select-model": "Veuillez sélectionner un modèle dans Paramètres > Modèles pour continuer."
+  "delete-project-confirmation": "Êtes-vous sûr de vouloir supprimer ce projet et toutes ses tâches ? Cette action ne peut pas être annulée."
 }

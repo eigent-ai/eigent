@@ -100,7 +100,7 @@
   "share": "Teilen",
   "home": "Startseite",
   "developer-agent": "Entwickler-Agent",
-  "search-agent": "Such-Agent",
+  "browser-agent": "Browser-Agent",
   "document-agent": "Dokument-Agent",
   "multi-modal-agent": "Multi-Modal-Agent",
   "social-media-agent": "Social-Media-Agent",
@@ -165,6 +165,5 @@
   "yesterday": "Gestern",
   "days-ago": "Tage zuvor",
   "delete-project": "Projekt löschen",
-  "delete-project-confirmation": "Sind Sie sicher, dass Sie dieses Projekt und alle seine Aufgaben löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
-  "please-select-model": "Bitte wählen Sie ein Modell unter Einstellungen > Modelle aus, um fortzufahren."
+  "delete-project-confirmation": "Sind Sie sicher, dass Sie dieses Projekt und alle seine Aufgaben löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
 }

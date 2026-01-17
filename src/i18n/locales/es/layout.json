@@ -100,7 +100,7 @@
   "share": "Compartir",
   "home": "Inicio",
   "developer-agent": "Agente Desarrollador",
-  "search-agent": "Agente de Búsqueda",
+  "browser-agent": "Agente de Navegador",
   "document-agent": "Agente de Documentos",
   "multi-modal-agent": "Agente Multi Modal",
   "social-media-agent": "Agente de Redes Sociales",
@@ -165,6 +165,5 @@
   "yesterday": "Ayer",
   "days-ago": "días atrás",
   "delete-project": "Eliminar Proyecto",
-  "delete-project-confirmation": "¿Estás seguro de que quieres eliminar este proyecto y todas sus tareas? Esta acción no se puede deshacer.",
-  "please-select-model": "Por favor, selecciona un modelo en Configuración > Modelos para continuar."
+  "delete-project-confirmation": "¿Estás seguro de que quieres eliminar este proyecto y todas sus tareas? Esta acción no se puede deshacer."
 }

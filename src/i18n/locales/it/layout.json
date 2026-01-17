@@ -100,7 +100,7 @@
   "share": "Condividi",
   "home": "Home",
   "developer-agent": "Agente Sviluppatore",
-  "search-agent": "Agente di Ricerca",
+  "browser-agent": "Agente Browser",
   "document-agent": "Agente Documenti",
   "multi-modal-agent": "Agente Multi Modale",
   "social-media-agent": "Agente Social Media",
@@ -165,6 +165,5 @@
   "yesterday": "Ieri",
   "days-ago": "giorni fa",
   "delete-project": "Elimina Progetto",
-  "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata.",
-  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare."
+  "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata."
 }

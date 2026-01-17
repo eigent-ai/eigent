@@ -102,7 +102,7 @@
   "home": "Home",
   "back": "Back",
   "developer-agent": "Developer Agent",
-  "search-agent": "Search Agent",
+  "browser-agent": "Browser Agent",
   "document-agent": "Document Agent",
   "multi-modal-agent": "Multi Modal Agent",
   "social-media-agent": "Social Media Agent",
@@ -167,6 +167,5 @@
   "yesterday": "Yesterday",
   "days-ago": "days ago",
   "delete-project": "Delete Project",
-  "delete-project-confirmation": "Are you sure you want to delete this project and all its tasks? This action cannot be undone.",
-  "please-select-model": "Please select a model in Settings > Models to continue."
+  "delete-project-confirmation": "Are you sure you want to delete this project and all its tasks? This action cannot be undone."
 }

@@ -103,7 +103,7 @@
   "home": "首页",
   "back": "返回",
   "developer-agent": "开发者智能体",
-  "search-agent": "搜索智能体",
+  "browser-agent": "浏览器智能体",
   "document-agent": "文档智能体",
   "multi-modal-agent": "多模态智能体",
   "social-media-agent": "社交媒体智能体",
@@ -167,6 +167,5 @@
   "yesterday": "昨天",
   "days-ago": "天前",
   "delete-project": "删除项目",
-  "delete-project-confirmation": "您确定要删除此项目及其所有任务吗？此操作无法撤销。",
-  "please-select-model": "请在设置 > 模型中选择一个模型以继续。"
+  "delete-project-confirmation": "您确定要删除此项目及其所有任务吗？此操作无法撤销。"
 }
