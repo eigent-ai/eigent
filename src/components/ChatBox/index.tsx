@@ -31,8 +31,10 @@ export default function ChatBox(): JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [privacy, setPrivacy] = useState<any>(false);
+  const [isPrivacyLoaded, setIsPrivacyLoaded] = useState<boolean>(false);
   const [hasSearchKey, setHasSearchKey] = useState<any>(false);
   const [hasModel, setHasModel] = useState<any>(false);
+  const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const { modelType } = useAuthStore();
@@ -58,6 +60,8 @@ export default function ChatBox(): JSX.Element {
     } catch (err) {
       console.error('Failed to check model config:', err);
       setHasModel(false);
+    } finally {
+      setIsConfigLoaded(true);
     }
   }, [modelType]);
 
@@ -84,7 +88,8 @@ export default function ChatBox(): JSX.Element {
         });
         setPrivacy(_privacy === 0 ? true : false);
       })
-      .catch((err) => console.error('Failed to fetch settings:', err));
+      .catch((err) => console.error('Failed to fetch settings:', err))
+      .finally(() => setIsPrivacyLoaded(true));
 
     proxyFetchGet('/api/configs')
       .then((configsRes) => {
@@ -384,10 +389,11 @@ export default function ChatBox(): JSX.Element {
   };
 
   useEffect(() => {
-    if (share_token) {
+    // Wait for both config and privacy to be loaded before handling share token
+    if (share_token && isConfigLoaded && isPrivacyLoaded) {
       handleSendShare(share_token);
     }
-  }, [share_token]);
+  }, [share_token, isConfigLoaded, isPrivacyLoaded]);
 
   useEffect(() => {
     console.log('ChatStore Data: ', chatStore);
@@ -402,12 +408,12 @@ export default function ChatBox(): JSX.Element {
 
     // Check model configuration before starting task
     if (!hasModel) {
-      toast.error('Please select a model first to run tasks.');
+      toast.error('Please select a model first.');
       navigate('/setting/models');
       return;
     }
     if (!privacy) {
-      toast.error('Please accept the privacy policy first to run tasks.');
+      toast.error('Please accept the privacy policy first.');
       return;
     }
 
