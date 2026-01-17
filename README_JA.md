@@ -23,7 +23,7 @@
 <hr/>
 <div align="center">
 
-[English](./README.md) · [简体中文](./README_CN.md) · **日本語** · [公式サイト][eigent-site] · [ドキュメント][docs-site] · [フィードバック][github-issue-link]
+[English](./README.md) · [Português](./README_PT-BR.md) · [简体中文](./README_CN.md) · **日本語** · [公式サイト][eigent-site] · [ドキュメント][docs-site] · [フィードバック][github-issue-link]
 
 </div>
 <br/>
