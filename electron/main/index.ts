@@ -1788,6 +1788,36 @@ async function createWindow() {
   // ==================== CHECK IF INSTALLATION IS NEEDED BEFORE LOADING CONTENT ====================
   log.info('Pre-checking if dependencies need to be installed...');
 
+  // Check if prebuilt dependencies are available (for packaged app)
+  let hasPrebuiltDeps = false;
+  if (app.isPackaged) {
+    const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
+    const prebuiltVenvDir = path.join(
+      process.resourcesPath,
+      'prebuilt',
+      'venv'
+    );
+    const uvPath = path.join(
+      prebuiltBinDir,
+      process.platform === 'win32' ? 'uv.exe' : 'uv'
+    );
+    const bunPath = path.join(
+      prebuiltBinDir,
+      process.platform === 'win32' ? 'bun.exe' : 'bun'
+    );
+    const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
+
+    hasPrebuiltDeps =
+      fs.existsSync(uvPath) &&
+      fs.existsSync(bunPath) &&
+      fs.existsSync(pyvenvCfg);
+    if (hasPrebuiltDeps) {
+      log.info(
+        '[PRE-CHECK] Prebuilt dependencies found, skipping installation check'
+      );
+    }
+  }
+
   // Check version and tools status synchronously
   const currentVersion = app.getVersion();
   const versionFile = path.join(app.getPath('userData'), 'version.txt');
@@ -1809,13 +1839,15 @@ async function createWindow() {
   const venvPath = getVenvPath(currentVersion);
   const venvExists = fs.existsSync(venvPath);
 
-  const needsInstallation =
-    !versionExists ||
-    savedVersion !== currentVersion ||
-    !uvExists ||
-    !bunExists ||
-    !installationCompleted ||
-    !venvExists;
+  // If prebuilt deps are available, skip installation
+  const needsInstallation = hasPrebuiltDeps
+    ? false
+    : !versionExists ||
+      savedVersion !== currentVersion ||
+      !uvExists ||
+      !bunExists ||
+      !installationCompleted ||
+      !venvExists;
 
   log.info('Installation check result:', {
     needsInstallation,
