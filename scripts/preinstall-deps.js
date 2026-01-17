@@ -224,8 +224,9 @@ function getBunUrls(platform, arch) {
 /**
  * 获取 UV 的下载 URL 列表
  */
-function getUvUrls(archStr, platformStr) {
-  const filename = `uv-${archStr}-${platformStr}.tar.gz`;
+function getUvUrls(archStr, platformStr, isWindows = false) {
+  const extension = isWindows ? '.zip' : '.tar.gz';
+  const filename = `uv-${archStr}-${platformStr}${extension}`;
   return [{
     url: `https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
     name: 'GitHub'
@@ -253,6 +254,23 @@ async function installUv() {
       fs.chmodSync(uvPath, '755');
     }
     return uvPath;
+  }
+
+  // Try to find uv in system PATH
+  try {
+    const whichCommand = process.platform === 'win32' ? 'where uv' : 'which uv';
+    const systemUvPath = execSync(whichCommand, { encoding: 'utf-8', stdio: 'pipe' }).trim().split('\n')[0];
+    if (systemUvPath && fs.existsSync(systemUvPath)) {
+      console.log(`📋 Using system uv: ${systemUvPath}`);
+      fs.copyFileSync(systemUvPath, uvPath);
+      if (process.platform !== 'win32') {
+        fs.chmodSync(uvPath, '755');
+      }
+      return uvPath;
+    }
+  } catch (error) {
+    // uv not found in PATH, continue to try pip or download
+    console.log('   uv not found in system PATH, will try pip or download...');
   }
 
   // Try pip first
@@ -286,17 +304,28 @@ async function installUv() {
       execSync(`${pipCommand} ${pipArgs}`, { stdio: 'inherit' });
 
       // Find installed uv
-      const possiblePaths = [
-        path.join(os.homedir(), '.local', 'bin', 'uv'),
-        path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
-        path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
-        path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
-        '/usr/local/bin/uv',
-      ];
+      const possiblePaths = process.platform === 'win32'
+        ? [
+            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
+            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
+            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
+            path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
+            'C:\\Python311\\Scripts\\uv.exe',
+            'C:\\Python312\\Scripts\\uv.exe',
+            'C:\\Python313\\Scripts\\uv.exe',
+          ]
+        : [
+            path.join(os.homedir(), '.local', 'bin', 'uv'),
+            path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
+            path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
+            path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
+            '/usr/local/bin/uv',
+          ];
 
       let foundUvPath = null;
       try {
-        foundUvPath = execSync('which uv', { encoding: 'utf-8' }).trim();
+        const whichCommand = process.platform === 'win32' ? 'where uv' : 'which uv';
+        foundUvPath = execSync(whichCommand, { encoding: 'utf-8' }).trim().split('\n')[0];
       } catch {
         for (const p of possiblePaths) {
           if (fs.existsSync(p)) {
@@ -339,21 +368,38 @@ async function installUv() {
     throw new Error(`Unsupported platform: ${platform}`);
   }
 
-  const tempFilename = path.join(BIN_DIR, `uv-download-${Date.now()}.tar.gz`);
+  const isWindows = platform === 'win32';
+  const fileExtension = isWindows ? '.zip' : '.tar.gz';
+  const tempFilename = path.join(BIN_DIR, `uv-download-${Date.now()}${fileExtension}`);
 
   console.log(`   Platform: ${platform}-${arch}`);
 
-  const urlsToTry = getUvUrls(archStr, platformStr);
-  await downloadFileWithValidation(urlsToTry, tempFilename, isValidTarGz, 'tar.gz');
+  const urlsToTry = getUvUrls(archStr, platformStr, isWindows);
+  const validateFn = isWindows ? isValidZip : isValidTarGz;
+  await downloadFileWithValidation(urlsToTry, tempFilename, validateFn, fileExtension);
 
   // Extract
   console.log('   Extracting...');
-  const tar = await import('tar');
-  await tar.extract({ file: tempFilename, cwd: BIN_DIR });
 
-  const extractedUvPath = path.join(BIN_DIR, 'uv');
+  if (isWindows) {
+    try {
+      const AdmZip = (await import('adm-zip')).default;
+      const zip = new AdmZip(tempFilename);
+      zip.extractAllTo(BIN_DIR, true);
+    } catch (admZipError) {
+      console.log('   Using system unzip...');
+      execSync(`powershell -command "Expand-Archive -Path '${tempFilename}' -DestinationPath '${BIN_DIR}' -Force"`, { stdio: 'inherit' });
+    }
+  } else {
+    const tar = await import('tar');
+    await tar.extract({ file: tempFilename, cwd: BIN_DIR });
+  }
+
+  const extractedUvPath = path.join(BIN_DIR, isWindows ? 'uv.exe' : 'uv');
   if (fs.existsSync(extractedUvPath)) {
-    fs.renameSync(extractedUvPath, uvPath);
+    if (!isWindows && extractedUvPath !== uvPath) {
+      fs.renameSync(extractedUvPath, uvPath);
+    }
     if (process.platform !== 'win32') {
       fs.chmodSync(uvPath, '755');
     }
