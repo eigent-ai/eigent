@@ -184,6 +184,18 @@ export default function ChatBox(): JSX.Element {
   const handleSend = async (messageStr?: string, taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
+
+    // Check model first, then privacy
+    if (!hasModel) {
+      toast.error('Please select a model first.');
+      navigate('/setting/models');
+      return;
+    }
+    if (!privacy) {
+      toast.error('Please accept the privacy policy first.');
+      return;
+    }
+
     const tempMessageContent = messageStr || message;
     chatStore.setHasMessages(_taskId as string, true);
     if (!_taskId) return;
@@ -915,9 +927,9 @@ export default function ChatBox(): JSX.Element {
 
     if (isTaskBusy) return true;
 
-    // Standard checks
-    if (!privacy) return true;
+    // Standard checks - check model first, then privacy
     if (!hasModel) return true;
+    if (!privacy) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
 
@@ -1057,7 +1069,22 @@ export default function ChatBox(): JSX.Element {
               />
             )}
             <div className="h-[210px] flex justify-center items-start gap-2 mt-3 pr-2">
-              {!privacy ? (
+              {!hasModel ? (
+                <div className="flex items-center gap-2">
+                  <div
+                    onClick={() => {
+                      navigate('/setting/models');
+                    }}
+                    className="cursor-pointer flex items-center gap-2 px-sm py-xs rounded-md bg-surface-warning"
+                  >
+                    <TriangleAlert size={20} className="text-icon-warning" />
+                    <span className="flex-1 text-text-warning text-xs font-medium leading-[20px]">
+                      {t('layout.please-select-model')}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+              {hasModel && !privacy ? (
                 <div className="flex items-center gap-2">
                   <div
                     onClick={(e) => {
@@ -1088,21 +1115,26 @@ export default function ChatBox(): JSX.Element {
                     }}
                     className="group cursor-pointer max-w-64 flex items-center justify-center gap-2 px-md py-xs rounded-xl bg-surface-information hover:bg-surface-tertiary transition-all duration-200"
                   >
-                    {privacy ? (
-                      <SquareCheckBig
-                        size={20}
-                        className="text-icon-success shrink-0"
-                      />
-                    ) : (
-                      <div className="relative flex items-center justify-center shrink-0">
-                        <Square size={20} className="text-icon-information group-hover:opacity-0 transition-opacity" />
+                    <div className="shrink-0">
+                      {privacy ? (
                         <SquareCheckBig
                           size={20}
-                          className="text-icon-information absolute inset-0 opacity-0 group-hover:opacity-50 transition-opacity"
+                          className="text-icon-success shrink-0"
                         />
-                      </div>
-                    )}
-                    <span className="flex-1 text-text-information text-label-xs font-medium leading-normal">
+                      ) : (
+                        <div className="relative flex items-center justify-center shrink-0">
+                          <Square
+                            size={20}
+                            className="text-icon-information group-hover:opacity-0 transition-opacity"
+                          />
+                          <SquareCheckBig
+                            size={20}
+                            className="text-icon-information absolute inset-0 opacity-0 group-hover:opacity-50 transition-opacity"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <span className="flex-1 text-text-information text-label-xs font-medium leading-normal cursor-pointer">
                       {t('layout.by-messaging-eigent')}{' '}
                       <a
                         href="https://www.eigent.ai/terms-of-use"
@@ -1122,21 +1154,6 @@ export default function ChatBox(): JSX.Element {
                         {t('layout.privacy-policy')}
                       </a>
                       .
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-              {privacy && !hasModel ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={() => {
-                      navigate('/setting/models');
-                    }}
-                    className="cursor-pointer flex items-center gap-2 px-sm py-xs rounded-md bg-surface-warning"
-                  >
-                    <TriangleAlert size={20} className="text-icon-warning" />
-                    <span className="flex-1 text-text-warning text-xs font-medium leading-[20px]">
-                      {t('layout.please-select-model')}
                     </span>
                   </div>
                 </div>

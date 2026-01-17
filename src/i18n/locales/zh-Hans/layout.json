@@ -103,7 +103,7 @@
   "home": "首页",
   "back": "返回",
   "developer-agent": "开发者智能体",
-  "search-agent": "搜索智能体",
+  "browser-agent": "浏览器智能体",
   "document-agent": "文档智能体",
   "multi-modal-agent": "多模态智能体",
   "social-media-agent": "社交媒体智能体",

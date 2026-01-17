@@ -102,7 +102,7 @@
   "home": "Home",
   "back": "Back",
   "developer-agent": "Developer Agent",
-  "search-agent": "Search Agent",
+  "browser-agent": "Browser Agent",
   "document-agent": "Document Agent",
   "multi-modal-agent": "Multi Modal Agent",
   "social-media-agent": "Social Media Agent",

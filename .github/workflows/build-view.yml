@@ -25,12 +25,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload Artifact (Windows - exe only)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -97,19 +97,19 @@ jobs:
 
        # Download all artifacts with correct names
       - name: Download mac-x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-macos-15-intel-x64
           path: temp-mac-x64
 
       - name: Download mac-arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-macos-latest-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-windows-latest-x64
           path: temp-win-x64

@@ -68,9 +68,9 @@ export default function Workflow({
 		},
 		{
 			tasks: [],
-			agent_id: "search_agent",
-			name: "Search Agent",
-			type: "search_agent",
+			agent_id: "browser_agent",
+			name: "Browser Agent",
+			type: "browser_agent",
 			tools: [
 				"Search Toolkit",
 				"Browser Toolkit",
