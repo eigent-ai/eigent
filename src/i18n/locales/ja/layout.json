@@ -165,5 +165,6 @@
   "yesterday": "昨日",
   "days-ago": "日前",
   "delete-project": "プロジェクトを削除",
-  "delete-project-confirmation": "このプロジェクトとそのすべてのタスクを削除してもよろしいですか？この操作は元に戻せません。"
+  "delete-project-confirmation": "このプロジェクトとそのすべてのタスクを削除してもよろしいですか？この操作は元に戻せません。",
+  "please-select-model": "続行するには、設定 > モデルでモデルを選択してください。"
 }

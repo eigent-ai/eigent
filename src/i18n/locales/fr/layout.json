@@ -165,5 +165,6 @@
   "yesterday": "Hier",
   "days-ago": "jours auparavant",
   "delete-project": "Supprimer le Projet",
-  "delete-project-confirmation": "Êtes-vous sûr de vouloir supprimer ce projet et toutes ses tâches ? Cette action ne peut pas être annulée."
+  "delete-project-confirmation": "Êtes-vous sûr de vouloir supprimer ce projet et toutes ses tâches ? Cette action ne peut pas être annulée.",
+  "please-select-model": "Veuillez sélectionner un modèle dans Paramètres > Modèles pour continuer."
 }

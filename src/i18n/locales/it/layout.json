@@ -165,5 +165,6 @@
   "yesterday": "Ieri",
   "days-ago": "giorni fa",
   "delete-project": "Elimina Progetto",
-  "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata."
+  "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata.",
+  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare."
 }
