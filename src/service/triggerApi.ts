@@ -74,6 +74,16 @@ export const proxyFetchTrigger = async (triggerId: number): Promise<Trigger> => 
   }
 };
 
+export const proxyFetchTriggerConfig = async (triggerType: TriggerType) => {
+  try {
+    const res = await proxyFetchGet(`/api/trigger/${triggerType}/config`);
+    return res;
+  } catch (error) {
+    console.error("Failed to fetch trigger config:", error);
+    throw error;
+  }
+};
+
 export const proxyCreateTrigger = async (triggerData: TriggerInput): Promise<Trigger> => {
   try {
     const res = await proxyFetchPost(`/api/trigger/`, triggerData);

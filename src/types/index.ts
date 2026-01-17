@@ -34,10 +34,11 @@ export type Model = {
 export enum TriggerType {
   Schedule = "schedule",
   Webhook = "webhook",
-  SlackTrigger = "slack_trigger"
+  Slack = "slack_trigger",
 }
 
 export enum TriggerStatus {
+  PendingAuth = "pending_authentication",
   Inactive = "inactive",
   Active = "active",
 }
@@ -49,6 +50,7 @@ export enum ListenerType {
 export enum ExecutionType {
   Scheduled = "scheduled",
   Webhook = "webhook",
+  Slack = "slack",
 }
 
 export enum RequestType {
@@ -88,6 +90,7 @@ export type Trigger = {
   created_at?: string
   updated_at?: string
   execution_count?: number
+  config?: Record<string, any>
 }
 
 export type TriggerInput = {
@@ -105,6 +108,7 @@ export type TriggerInput = {
   max_executions_per_hour?: number
   max_executions_per_day?: number
   is_single_execution?: boolean
+  config?: Record<string, any>
 }
 
 export type TriggerUpdate = {
@@ -120,6 +124,7 @@ export type TriggerUpdate = {
   max_executions_per_hour?: number
   max_executions_per_day?: number
   is_single_execution?: boolean
+  config?: Record<string, any>
 }
 
 export type TriggerExecution = {

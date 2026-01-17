@@ -21,15 +21,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-    Clock,
     Globe,
-    X,
     Plus,
     Zap,
     Copy,
     CircleAlert,
     AlarmClockIcon,
     WebhookIcon,
+    GlobeIcon,
+    Slack,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -44,8 +44,9 @@ import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
 import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { proxyCreateTrigger, proxyUpdateTrigger, proxyDeleteTrigger } from "@/service/triggerApi";
+import { proxyCreateTrigger, proxyUpdateTrigger, proxyFetchTriggerConfig } from "@/service/triggerApi";
 import { TooltipSimple } from "../ui/tooltip";
+import DynamicTriggerConfig, { getDefaultTriggerConfig } from "./DynamicTriggerConfig";
 
 type TriggerDialogProps = {
     selectedTrigger: Trigger | null;
@@ -84,8 +85,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         is_single_execution: selectedTrigger?.is_single_execution || false,
         webhook_url: selectedTrigger?.webhook_url,
     });
-    // const [selectedTools, setSelectedTools] = useState<any[]>([]);
-    // const toolSelectRef = useRef<{ installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> } | null>(null);
+    const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>(getDefaultTriggerConfig());
+    const [selectedApp, setSelectedApp] = useState<string>("");
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
@@ -115,6 +116,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     is_single_execution: selectedTrigger.is_single_execution || false,
                     webhook_url: selectedTrigger.webhook_url,
                 });
+                // Load existing trigger config if available
+                if (selectedTrigger.config) {
+                    setTriggerConfig(selectedTrigger.config as Record<string, any>);
+                } else {
+                    setTriggerConfig(getDefaultTriggerConfig());
+                }
             } else {
                 // Reset form for new trigger, use initialTaskPrompt if provided
                 setFormData({
@@ -130,9 +137,26 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     max_executions_per_day: undefined,
                     is_single_execution: false,
                 });
+                setTriggerConfig(getDefaultTriggerConfig());
+                setSelectedApp("");
             }
         }
     }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
+
+    // Fetch trigger configs
+    useEffect(() => {
+        const fetchTriggerConfig = async () => {
+            try {
+                //Fetch config based on trigger type
+                const config = await proxyFetchTriggerConfig(selectedTrigger?.trigger_type || formData.trigger_type);
+                //Handle config as needed
+            } catch (error) {
+                console.error("Error fetching trigger config:", error);
+            }
+        };
+
+        fetchTriggerConfig();
+    }, [formData.trigger_type, selectedTrigger]);
 
     const handleClose = () => {
         onOpenChange(false);
@@ -172,7 +196,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
             if (selectedTrigger) {
                 // Editing existing trigger
-                response = await proxyUpdateTrigger(selectedTrigger.id, {
+                const updateData: any = {
                     name: formData.name,
                     description: formData.description,
                     custom_cron_expression: formData.custom_cron_expression,
@@ -183,12 +207,19 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     max_executions_per_hour: formData.max_executions_per_hour,
                     max_executions_per_day: formData.max_executions_per_day,
                     is_single_execution: formData.is_single_execution,
-                });
+                };
+                
+                // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
+                if (Object.keys(triggerConfig).length > 0) {
+                    updateData.config = triggerConfig;
+                }
+                
+                response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
                 toast.success(t("triggers.updated-successfully"));
                 updateTrigger(selectedTrigger.id, response);
             } else {
                 // Creating new trigger
-                response = await proxyCreateTrigger({
+                const createData: TriggerInput = {
                     name: formData.name,
                     description: formData.description,
                     trigger_type: formData.trigger_type,
@@ -201,7 +232,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     max_executions_per_day: formData.max_executions_per_day,
                     is_single_execution: formData.is_single_execution,
                     project_id: projectStore.activeProjectId,
-                });
+                };
+                
+                // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
+                if (Object.keys(triggerConfig).length > 0) {
+                    createData.config = triggerConfig;
+                }
+                
+                response = await proxyCreateTrigger(createData);
                 toast.success(t("triggers.created-successfully"));
                 addTrigger(response);
             }
@@ -310,9 +348,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <Label className="font-bold text-sm">{t("triggers.type")}</Label>
                     <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
                         <TabsList className="w-full">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4 mr-2" />{t("triggers.schedule")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4 mr-2" />{t("triggers.webhook")}</TabsTrigger>
-
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4 mr-2" />{t("triggers.schedule-trigger")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4 mr-2" />{t("triggers.webhook-trigger")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><GlobeIcon className="w-4 h-4 mr-2" />{t("triggers.app-trigger")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
@@ -354,7 +392,91 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             </Button>
                                         </div>)
                                 }
+                                <div className="space-y-2">
+                                    <Accordion type="single" collapsible className="w-full">
+                                        <AccordionItem value="extra-settings" className="border-none">
+                                            <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
+                                                <span className="font-bold text-sm text-text-heading">{t("triggers.extra-settings")}</span>
+                                            </AccordionTrigger>
+                                            <AccordionContent>
+                                                <div className="flex flex-col gap-4 pt-2 bg-surface-disabled rounded-lg p-4">
+                                                    <DynamicTriggerConfig
+                                                        triggerType={TriggerType.Webhook}
+                                                        value={triggerConfig}
+                                                        onChange={setTriggerConfig}
+                                                        disabled={isLoading}
+                                                    />
+                                                </div>
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    </Accordion>
+                                </div>
                             </div>
+                        </TabsContent>
+                        <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-lg p-4 max-h-[400px] overflow-y-auto scrollbar-always-visible">
+                            {!selectedApp ? (
+                                <div className="space-y-4">
+                                    <Label className="font-bold text-sm">{t("triggers.select-app")}</Label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <Button
+                                            variant="outline"
+                                            size="lg"
+                                            className="h-24 flex flex-col items-center justify-center gap-2"
+                                            onClick={() => {
+                                                setSelectedApp("slack");
+                                                setFormData({ ...formData, trigger_type: TriggerType.Slack });
+                                            }}
+                                        >
+                                            <Slack className="w-8 h-8" />
+                                            <span className="font-semibold">Slack</span>
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="lg"
+                                            className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed"
+                                            disabled
+                                        >
+                                            <Globe className="w-8 h-8" />
+                                            <span className="font-semibold">Lark</span>
+                                            <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="lg"
+                                            className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed"
+                                            disabled
+                                        >
+                                            <Globe className="w-8 h-8" />
+                                            <span className="font-semibold">Telegram</span>
+                                            <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <Slack className="w-5 h-5" />
+                                            <Label className="font-bold text-sm">{selectedApp.charAt(0).toUpperCase() + selectedApp.slice(1)} Configuration</Label>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setSelectedApp("")}
+                                        >
+                                            {t("triggers.change-app")}
+                                        </Button>
+                                    </div>
+                                    {selectedApp === "slack" && (
+                                        <DynamicTriggerConfig
+                                            triggerType={TriggerType.Slack}
+                                            value={triggerConfig}
+                                            onChange={setTriggerConfig}
+                                            disabled={isLoading}
+                                        />
+                                    )}
+                                </div>
+                            )}
                         </TabsContent>
                     </Tabs>
                 </div>

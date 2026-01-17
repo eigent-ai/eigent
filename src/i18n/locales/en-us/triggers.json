@@ -9,9 +9,10 @@
     "no-triggers": "No triggers yet",
     "name-placeholder": "Enter trigger name",
     "description-placeholder": "Enter trigger description",
-    "schedule": "Schedule",
-    "webhook": "Webhook",
-    "slack": "Slack",
+    "schedule-trigger": "Schedule",
+    "webhook-trigger": "Webhook",
+    "slack-trigger": "Slack",
+    "app-trigger": "App Trigger",
     "cron-expression": "Cron Expression",
     "cron-help": "Format: minute hour day month weekday (e.g., 0 */1 * * * = every hour)",
     "listener-type": "Listener Type",
@@ -142,6 +143,7 @@
     "task-prompt-required": "Task prompt is required",
     "project-id-required": "Project ID is required",
     "execution-settings": "Execution Settings",
+    "extra-settings": "Extra Settings",
     "max-per-hour-placeholder": "0",
     "max-per-day-placeholder": "0",
     "copy": "Copy",
@@ -153,5 +155,130 @@
     "add-trigger": "Add Trigger",
     "never": "Never",
     "duplicate": "Duplicate",
-    "no-task-prompt": "No task prompt"
+    "no-task-prompt": "No task prompt",
+    "select-app": "Select App",
+    "change-app": "Change",
+    "dynamic": {
+        "credentials": "Credentials",
+        "credentials-notice": "Your credentials are stored securely and used to authenticate with the service.",
+        "credentials-saved": "Credentials configured successfully",
+        "configuration": "Configuration",
+        "behavior-settings": "Behavior Settings",
+        "enter-value": "Please enter a value",
+        "add": "Add",
+        "update": "Update",
+        "config-saved": "Configuration saved successfully",
+        "config-updated": "Configuration updated successfully",
+        "config-save-error": "Failed to save configuration",
+        "loading": "Loading...",
+        "loading-config": "Loading configuration...",
+        "no-config-available": "No configuration available for this trigger type",
+        "failed-to-load-schema": "Failed to load configuration schema",
+        "select-options": "Select options...",
+        "selected": "selected",
+        "save-credentials-first": "Save credentials first",
+        "search": "Search...",
+        "no-options": "No options found"
+    },
+    "slack": {
+        "credentials-saved": "Slack credentials configured successfully",
+        "enter-bot-token": "Please enter a bot token",
+        "bot-token-saved": "Bot token saved successfully",
+        "bot-token-updated": "Bot token updated successfully",
+        "bot-token-save-error": "Failed to save bot token",
+        "signing-secret-saved": "Signing secret saved successfully",
+        "signing-secret-updated": "Signing secret updated successfully",
+        "signing-secret-save-error": "Failed to save signing secret",
+        "add": "Add",
+        "update": "Update",
+        "event-configuration": "Event Configuration",
+        "event-types": "Event Types",
+        "select-events": "Select events to trigger on...",
+        "search-events": "Search events...",
+        "no-events-found": "No events found",
+        "events-selected": "events selected",
+        "channel-filter": "Channel Filter",
+        "select-channels": "All channels (no filter)",
+        "search-channels": "Search channels...",
+        "no-channels-found": "No channels found",
+        "channels-selected": "channels selected",
+        "save-credentials-first": "Save credentials first to load channels",
+        "loading-channels": "Loading channels...",
+        "channels-fetch-error": "Failed to fetch channels. Please check your credentials.",
+        "behavior-settings": "Behavior Settings",
+        "authentication_required": {
+            "label": "Require Authentication",
+            "notice": "Slack triggers require authentication to verify webhook signatures"
+        },
+        "bot_token": {
+            "label": "Slack Bot Token",
+            "placeholder": "xoxb-...",
+            "notice": "Your Slack Bot User OAuth Token (starts with xoxb-)"
+        },
+        "signing_secret": {
+            "label": "Slack Signing Secret",
+            "placeholder": "Enter your Slack signing secret...",
+            "notice": "Your Slack app's signing secret used to verify requests"
+        },
+        "events": {
+            "label": "Event Types",
+            "notice": "Select which Slack events should trigger this workflow"
+        },
+        "channel_id": {
+            "label": "Channel ID",
+            "placeholder": "Select a channel...",
+            "notice": "Specific channel to watch (leave empty to watch all channels)"
+        },
+        "ignore_bot_messages": {
+            "label": "Ignore Bot Messages"
+        },
+        "ignore_users": {
+            "label": "Ignore Users",
+            "placeholder": "Enter Slack user IDs (e.g., U1234567890)...",
+            "notice": "Slack user IDs to ignore messages from"
+        }
+    },
+    "base": {
+      "authentication_required": {
+        "label": "Require Authentication",
+        "notice": "Whether authentication is required for this trigger"
+      },
+      "message_filter": {
+        "label": "Message Filter (Regex)",
+        "placeholder": "Enter regex pattern to filter messages...",
+        "notice": "Use regex patterns to filter which messages trigger the workflow"
+      }
+    },
+    "webhook": {
+      "authentication_required": {
+        "label": "Require Authentication",
+        "notice": "Whether authentication is required for this webhook trigger"
+      },
+      "body_contains": {
+        "label": "Body Contains",
+        "placeholder": "Enter text that must be in request body...",
+        "notice": "Only trigger if the request body contains this string"
+      },
+      "required_headers": {
+        "label": "Required Headers",
+        "placeholder": "Enter header names (e.g., Content-Type, Authorization)...",
+        "notice": "List of HTTP headers that must be present in the request"
+      },
+      "header_match": {
+        "label": "Header Match (Regex)",
+        "placeholder": "Header-Name: regex pattern",
+        "notice": "Match request headers against a regex pattern (format: Header-Name: pattern)"
+      },
+      "include_headers": {
+        "label": "Include Headers",
+        "notice": "Include request headers in the workflow execution input"
+      },
+      "include_query_params": {
+        "label": "Include Query Parameters"
+      },
+      "include_request_metadata": {
+        "label": "Include Request Metadata",
+        "notice": "Include request metadata (method, URL, client IP) in execution input"
+      }
+    }
 }
