@@ -51,9 +51,9 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
     const getTriggerTypeLabel = () => {
         switch (trigger.trigger_type) {
             case TriggerType.Schedule:
-                return t("triggers.schedule");
+                return t("triggers.schedule-trigger");
             case TriggerType.Webhook:
-                return t("triggers.webhook");
+                return t("triggers.webhook-trigger");
             case TriggerType.Slack:
                 return t("triggers.slack-trigger");
             default:

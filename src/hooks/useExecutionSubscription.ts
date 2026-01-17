@@ -1,11 +1,16 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useActivityLogStore, ActivityType } from '@/store/activityLogStore';
-import { useTriggerStore } from '@/store/triggerStore';
+import { useTriggerStore, WebSocketConnectionStatus } from '@/store/triggerStore';
 import { queryClient, queryKeys } from '@/lib/queryClient';
 import { proxyFetchTriggerConfig } from '@/service/triggerApi';
 import { TriggerType } from '@/types';
 import { toast } from 'sonner';
+
+// Ping interval: send ping every 30 seconds
+const PING_INTERVAL = 30000;
+// Pong timeout: if no pong received within 10 seconds after ping, mark as unhealthy
+const PONG_TIMEOUT = 10000;
 
 interface ExecutionCreatedMessage {
     type: 'execution_created';
@@ -95,24 +100,66 @@ export function useExecutionSubscription(enabled: boolean = true) {
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const reconnectAttemptsRef = useRef(0);
     const sessionIdRef = useRef<string>(crypto.randomUUID());
+    const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const pongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const maxReconnectAttempts = 5;
     const baseReconnectDelay = 1000;
 
     const { token } = useAuthStore();
     const { addLog } = useActivityLogStore();
-    const { emitWebSocketEvent, triggers } = useTriggerStore();
+    const { emitWebSocketEvent, triggers, setWsConnectionStatus, setLastPongTimestamp, setWsReconnectCallback } = useTriggerStore();
 
     // Store latest values in refs to avoid recreating connect function
     const triggersRef = useRef(triggers);
     const addLogRef = useRef(addLog);
     const emitWebSocketEventRef = useRef(emitWebSocketEvent);
+    const setWsConnectionStatusRef = useRef(setWsConnectionStatus);
+    const setLastPongTimestampRef = useRef(setLastPongTimestamp);
 
     // Update refs on every render
     useEffect(() => {
         triggersRef.current = triggers;
         addLogRef.current = addLog;
         emitWebSocketEventRef.current = emitWebSocketEvent;
+        setWsConnectionStatusRef.current = setWsConnectionStatus;
+        setLastPongTimestampRef.current = setLastPongTimestamp;
     });
+
+    // Helper to start ping interval
+    const startPingInterval = useCallback((ws: WebSocket) => {
+        // Clear any existing interval
+        if (pingIntervalRef.current) {
+            clearInterval(pingIntervalRef.current);
+        }
+        if (pongTimeoutRef.current) {
+            clearTimeout(pongTimeoutRef.current);
+        }
+
+        pingIntervalRef.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                console.log('[ExecutionSubscription] Sending ping...');
+                ws.send(JSON.stringify({ type: 'ping' }));
+                
+                // Set timeout to wait for pong
+                pongTimeoutRef.current = setTimeout(() => {
+                    console.warn('[ExecutionSubscription] No pong received, marking connection as unhealthy');
+                    setWsConnectionStatusRef.current('unhealthy');
+                }, PONG_TIMEOUT);
+            }
+        }, PING_INTERVAL);
+    }, []);
+
+    // Helper to stop ping interval
+    const stopPingInterval = useCallback(() => {
+        if (pingIntervalRef.current) {
+            clearInterval(pingIntervalRef.current);
+            pingIntervalRef.current = null;
+        }
+        if (pongTimeoutRef.current) {
+            clearTimeout(pongTimeoutRef.current);
+            pongTimeoutRef.current = null;
+        }
+    }, []);
 
     const connect = useCallback(() => {
         // Prevent duplicate connections - check all non-closed states
@@ -123,8 +170,11 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
         if (!enabled || !token) {
             console.log('[ExecutionSubscription] Skipping connection - enabled:', enabled, 'hasToken:', !!token);
+            setWsConnectionStatusRef.current('disconnected');
             return;
         }
+
+        setWsConnectionStatusRef.current('connecting');
 
         try {
             const baseURL = import.meta.env.DEV 
@@ -154,6 +204,9 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 
                 ws.send(JSON.stringify(subscribeMessage));
                 console.log('[ExecutionSubscription] Sent subscription message');
+                
+                // Start ping interval to check connection health
+                startPingInterval(ws);
             };
 
             ws.onmessage = (event) => {
@@ -163,6 +216,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
                     switch (message.type) {
                         case 'connected':
                             console.log(`[ExecutionSubscription] Connected with session: ${message.session_id}`);
+                            setWsConnectionStatusRef.current('connected');
                             toast.success('Connected to execution listener');
                             break;
 
@@ -272,11 +326,23 @@ export function useExecutionSubscription(enabled: boolean = true) {
                         }
 
                         case 'heartbeat':
-                            // Server is alive - optional response
+                            // Server is alive - also treat as healthy connection
+                            if (pongTimeoutRef.current) {
+                                clearTimeout(pongTimeoutRef.current);
+                                pongTimeoutRef.current = null;
+                            }
+                            setWsConnectionStatusRef.current('connected');
                             break;
 
                         case 'pong':
                             console.debug('[ExecutionSubscription] Pong received');
+                            // Clear pong timeout - connection is healthy
+                            if (pongTimeoutRef.current) {
+                                clearTimeout(pongTimeoutRef.current);
+                                pongTimeoutRef.current = null;
+                            }
+                            setLastPongTimestampRef.current(Date.now());
+                            setWsConnectionStatusRef.current('connected');
                             break;
 
                         case 'error':
@@ -295,11 +361,14 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
             ws.onerror = (error) => {
                 console.error('[ExecutionSubscription] WebSocket error:', error);
+                setWsConnectionStatusRef.current('unhealthy');
             };
 
             ws.onclose = (event) => {
                 console.log('[ExecutionSubscription] WebSocket closed:', event.code, event.reason);
                 wsRef.current = null;
+                stopPingInterval();
+                setWsConnectionStatusRef.current('disconnected');
 
                 // Don't reconnect on authentication failures (code 1008)
                 if (event.code === 1008) {
@@ -324,14 +393,17 @@ export function useExecutionSubscription(enabled: boolean = true) {
             };
         } catch (error) {
             console.error('[ExecutionSubscription] Failed to establish connection:', error);
+            setWsConnectionStatusRef.current('disconnected');
         }
-    }, [enabled, token]); // Only depend on enabled and token - primitives that rarely change
+    }, [enabled, token, startPingInterval, stopPingInterval]); // Only depend on enabled and token - primitives that rarely change
 
     const disconnect = useCallback(() => {
         if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current);
             reconnectTimeoutRef.current = null;
         }
+
+        stopPingInterval();
 
         if (wsRef.current) {
             console.log('[ExecutionSubscription] Disconnecting...');
@@ -340,7 +412,8 @@ export function useExecutionSubscription(enabled: boolean = true) {
         }
         
         reconnectAttemptsRef.current = 0; // Reset reconnect attempts
-    }, []);
+        setWsConnectionStatusRef.current('disconnected');
+    }, [stopPingInterval]);
 
     useEffect(() => {
         // Always disconnect first to prevent duplicate connections
@@ -364,9 +437,27 @@ export function useExecutionSubscription(enabled: boolean = true) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [enabled, token]); // Only reconnect when enabled or token changes
 
+    // Manual reconnect function that fully disconnects and reconnects
+    const manualReconnect = useCallback(() => {
+        console.log('[ExecutionSubscription] Manual reconnect triggered');
+        disconnect();
+        // Small delay to ensure clean disconnect
+        setTimeout(() => {
+            connect();
+        }, 200);
+    }, [disconnect, connect]);
+
+    // Register reconnect callback in store
+    useEffect(() => {
+        setWsReconnectCallback(manualReconnect);
+        return () => {
+            setWsReconnectCallback(null);
+        };
+    }, [manualReconnect, setWsReconnectCallback]);
+
     return {
         isConnected: wsRef.current?.readyState === WebSocket.OPEN,
         disconnect,
-        reconnect: connect
+        reconnect: manualReconnect
     };
 }

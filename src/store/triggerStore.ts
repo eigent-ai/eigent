@@ -18,13 +18,22 @@ export interface WebSocketEvent {
     inputData: Record<string, any>;
 }
 
+export type WebSocketConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unhealthy';
+
 interface TriggerStore {
     // State
     triggers: Trigger[];
     webSocketEvent: WebSocketEvent | null;
+    wsConnectionStatus: WebSocketConnectionStatus;
+    lastPongTimestamp: number | null;
+    wsReconnectCallback: (() => void) | null;
 
     // Actions
     setTriggers: (triggers: Trigger[]) => void;
+    setWsConnectionStatus: (status: WebSocketConnectionStatus) => void;
+    setLastPongTimestamp: (timestamp: number | null) => void;
+    setWsReconnectCallback: (callback: (() => void) | null) => void;
+    triggerReconnect: () => void;
     addTrigger: (triggerData: Partial<Trigger>) => Trigger;
     updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => void;
     deleteTrigger: (triggerId: number) => void;
@@ -38,9 +47,31 @@ export const useTriggerStore = create<TriggerStore>((set, get) => ({
     // Initialize with mock data
     triggers: [],
     webSocketEvent: null,
+    wsConnectionStatus: 'disconnected' as WebSocketConnectionStatus,
+    lastPongTimestamp: null,
+    wsReconnectCallback: null,
 
     setTriggers: (triggers: Trigger[]) => {
         set({ triggers });
+    },
+
+    setWsConnectionStatus: (status: WebSocketConnectionStatus) => {
+        set({ wsConnectionStatus: status });
+    },
+
+    setLastPongTimestamp: (timestamp: number | null) => {
+        set({ lastPongTimestamp: timestamp });
+    },
+
+    setWsReconnectCallback: (callback: (() => void) | null) => {
+        set({ wsReconnectCallback: callback });
+    },
+
+    triggerReconnect: () => {
+        const callback = get().wsReconnectCallback;
+        if (callback) {
+            callback();
+        }
     },
 
     addTrigger: (triggerData: Partial<Trigger>) => {

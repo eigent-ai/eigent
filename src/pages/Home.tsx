@@ -19,7 +19,7 @@ import UpdateElectron from "@/components/update";
 import Overview from "./Project/Triggers";
 import { usePageTabStore } from "@/store/pageTabStore";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
-import { LayoutGrid, Inbox, Zap, Plus } from "lucide-react";
+import { LayoutGrid, Inbox, Zap, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -31,6 +31,57 @@ import { AddWorker } from "@/components/AddWorker";
 import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
 import { TriggerInput } from "@/types";
 import { useAuthStore } from "@/store/authStore";
+import { useTriggerStore, WebSocketConnectionStatus } from "@/store/triggerStore";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+// Connection status icon component
+function ConnectionStatusIcon({ status }: { status: WebSocketConnectionStatus }) {
+	const getStatusColor = () => {
+		switch (status) {
+			case 'connected':
+				return 'text-green-500';
+			case 'connecting':
+				return 'text-yellow-500 animate-pulse';
+			case 'unhealthy':
+				return 'text-orange-500';
+			case 'disconnected':
+			default:
+				return 'text-gray-400';
+		}
+	};
+
+	const getStatusTooltip = () => {
+		switch (status) {
+			case 'connected':
+				return 'Connected to trigger listener';
+			case 'connecting':
+				return 'Connecting...';
+			case 'unhealthy':
+				return 'Connection unhealthy - click refresh to reconnect';
+			case 'disconnected':
+			default:
+				return 'Disconnected from trigger listener';
+		}
+	};
+
+	return (
+		<TooltipProvider>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Zap className={getStatusColor()} />
+				</TooltipTrigger>
+				<TooltipContent>
+					<p>{getStatusTooltip()}</p>
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+}
 
 export default function Home() {
 	const { t } = useTranslation();
@@ -48,6 +99,8 @@ export default function Home() {
 		unviewedTabs,
 		markTabAsUnviewed
 	} = usePageTabStore();
+	
+	const { wsConnectionStatus, triggerReconnect } = useTriggerStore();
 
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 	const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
@@ -445,7 +498,7 @@ export default function Home() {
 													value="triggers"
 													variant="info"
 													size="xs"
-													icon={<Zap />}
+													icon={<ConnectionStatusIcon status={wsConnectionStatus} />}
 													showSubIcon={unviewedTabs.has('triggers')}
 													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
 													className="w-32"
@@ -454,25 +507,47 @@ export default function Home() {
 												</MenuToggleItem>
 											</MenuToggleGroup>
 										</div>
-										<Button
-											variant="primary"
-											size="sm"
-											className="rounded-lg w-24 items-center justify-center"
-											onClick={() => {
-												if (activeWorkspaceTab === 'workforce') {
-													setAddWorkerDialogOpen(true);
-												} else if (activeWorkspaceTab === 'inbox') {
-													fileInputRef.current?.click();
-												} else if (activeWorkspaceTab === 'triggers') {
-													setTriggerDialogOpen(true);
-												}
-											}}
-										>
-											<Plus />
-											{activeWorkspaceTab === 'workforce' && t('triggers.add')}
-											{activeWorkspaceTab === 'inbox' && t('triggers.upload')}
-											{activeWorkspaceTab === 'triggers' && t('triggers.create')}
-										</Button>
+										<div className="flex items-center gap-2">
+											{/* Refresh connection button - show when on triggers tab and not connected */}
+											{activeWorkspaceTab === 'triggers' && wsConnectionStatus !== 'connected' && (
+												<TooltipProvider>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																variant="ghost"
+																size="icon"
+																className="h-8 w-8"
+																onClick={triggerReconnect}
+															>
+																<RefreshCw className={`h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>
+															<p>Reconnect to trigger listener</p>
+														</TooltipContent>
+													</Tooltip>
+												</TooltipProvider>
+											)}
+											<Button
+													variant="primary"
+													size="sm"
+													className="rounded-lg w-24 items-center justify-center"
+													onClick={() => {
+														if (activeWorkspaceTab === 'workforce') {
+															setAddWorkerDialogOpen(true);
+														} else if (activeWorkspaceTab === 'inbox') {
+															fileInputRef.current?.click();
+														} else if (activeWorkspaceTab === 'triggers') {
+															setTriggerDialogOpen(true);
+													}
+												}}
+											>
+												<Plus />
+												{activeWorkspaceTab === 'workforce' && t('triggers.add')}
+												{activeWorkspaceTab === 'inbox' && t('triggers.upload')}
+												{activeWorkspaceTab === 'triggers' && t('triggers.create')}
+											</Button>
+										</div>
 
 										{/* Hidden file input for upload */}
 										<input
@@ -555,7 +630,7 @@ export default function Home() {
 													value="triggers"
 													variant="info"
 													size="xs"
-													icon={<Zap />}
+													icon={<ConnectionStatusIcon status={wsConnectionStatus} />}
 													showSubIcon={unviewedTabs.has('triggers')}
 													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
 													className="w-32"
@@ -564,25 +639,47 @@ export default function Home() {
 												</MenuToggleItem>
 											</MenuToggleGroup>
 										</div>
-										<Button
-											variant="primary"
-											size="sm"
-											className="rounded-lg"
-											onClick={() => {
-												if (activeWorkspaceTab === 'workforce') {
-													setAddWorkerDialogOpen(true);
-												} else if (activeWorkspaceTab === 'inbox') {
-													fileInputRef.current?.click();
-												} else if (activeWorkspaceTab === 'triggers') {
-													setTriggerDialogOpen(true);
-												}
-											}}
-										>
-											<Plus />
-											{activeWorkspaceTab === 'workforce' && t('triggers.add')}
-											{activeWorkspaceTab === 'inbox' && t('triggers.add')}
-											{activeWorkspaceTab === 'triggers' && t('triggers.add')}
-										</Button>
+										<div className="flex items-center gap-2">
+											{/* Refresh connection button - show when on triggers tab and not connected */}
+											{activeWorkspaceTab === 'triggers' && wsConnectionStatus !== 'connected' && (
+												<TooltipProvider>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																variant="ghost"
+																size="icon"
+																className="h-8 w-8"
+																onClick={triggerReconnect}
+															>
+																<RefreshCw className={`h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>
+															<p>Reconnect to trigger listener</p>
+														</TooltipContent>
+													</Tooltip>
+												</TooltipProvider>
+											)}
+											<Button
+												variant="primary"
+												size="sm"
+												className="rounded-lg"
+												onClick={() => {
+													if (activeWorkspaceTab === 'workforce') {
+														setAddWorkerDialogOpen(true);
+													} else if (activeWorkspaceTab === 'inbox') {
+														fileInputRef.current?.click();
+													} else if (activeWorkspaceTab === 'triggers') {
+														setTriggerDialogOpen(true);
+													}
+												}}
+											>
+												<Plus />
+												{activeWorkspaceTab === 'workforce' && t('triggers.add')}
+												{activeWorkspaceTab === 'inbox' && t('triggers.add')}
+												{activeWorkspaceTab === 'triggers' && t('triggers.add')}
+											</Button>
+										</div>
 
 										{/* Hidden file input for upload */}
 										<input
