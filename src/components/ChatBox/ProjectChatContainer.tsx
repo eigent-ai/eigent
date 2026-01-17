@@ -47,31 +47,31 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   useEffect(() => {
     if (!chatStore || !activeProjectId) return;
 
-    const activeTaskId = chatStore.activeTaskId;
+    const activeTaskId = chatStore.taskId;
     if (!activeTaskId) return;
 
-    const task = chatStore.tasks[activeTaskId];
+    const task = chatStore.task;
     if (!task) return;
 
     const currentMessageCount = task.messages.length;
-    
+
     // Check if a new user message was added
     if (currentMessageCount > lastMessageCount) {
       const lastMessage = task.messages[task.messages.length - 1];
-      
+
       // If the last message is from user, scroll to bottom
       if (lastMessage && lastMessage.role === 'user') {
         scrollToBottom();
       }
     }
-    
+
     setLastMessageCount(currentMessageCount);
-  }, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages, lastMessageCount, scrollToBottom, activeProjectId]);
+  }, [chatStore?.task?.messages, lastMessageCount, scrollToBottom, activeProjectId]);
 
   // Reset message count when active task changes
   useEffect(() => {
     setLastMessageCount(0);
-  }, [chatStore?.activeTaskId]);
+  }, [chatStore?.taskId]);
 
   // Intersection Observer for scroll-based animations
   useEffect(() => {
@@ -142,13 +142,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       <AnimatePresence mode="popLayout">
         {chatStores.map(({ chatId, chatStore }) => {
           const chatState = chatStore.getState();
-          const activeTaskId = chatState.activeTaskId;
-          
-          if (!activeTaskId || !chatState.tasks[activeTaskId]) {
+          const activeTaskId = chatState.taskId;
+
+          if (!activeTaskId || !chatState.task) {
             return null;
           }
 
-          const task = chatState.tasks[activeTaskId];
+          const task = chatState.task;
           const messages = task.messages || [];
           
           // Only render if there are actual user messages (not just empty or system messages)

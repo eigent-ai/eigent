@@ -150,7 +150,7 @@ export function Node({ id, data }: NodeProps) {
 	};
 
 	useEffect(() => {
-		if (chatStore.tasks[chatStore.activeTaskId as string]?.activeAgent === id) {
+		if (chatStore.task?.activeAgent === id) {
 			const node = getNode(id);
 			if (node) {
 				setTimeout(() => {
@@ -164,7 +164,7 @@ export function Node({ id, data }: NodeProps) {
 			}
 		}
 	}, [
-		chatStore.tasks[chatStore.activeTaskId as string]?.activeAgent,
+		chatStore.task?.activeAgent,
 		id,
 		setCenter,
 		getNode,
@@ -328,7 +328,7 @@ export function Node({ id, data }: NodeProps) {
 				} ${
 					data.isEditMode ? "h-full" : "max-h-[calc(100vh-200px)]"
 				}  border-worker-border-default flex border border-solid rounded-xl overflow-hidden bg-worker-surface-primary ${
-					chatStore.tasks[chatStore.activeTaskId as string].activeAgent === id
+					chatStore.task?.activeAgent === id
 						? `${agentMap[data.type]?.borderColor} z-50`
 						: "border-worker-border-default z-10"
 				} transition-all duration-300 ease-in-out ${
@@ -355,8 +355,7 @@ export function Node({ id, data }: NodeProps) {
 								{isExpanded ? <SquareChevronLeft /> : <SquareCode />}
 							</Button>
 							{!Object.keys(agentMap).find((key) => key === data.type) &&
-								chatStore.tasks[chatStore.activeTaskId as string].messages
-									.length === 0 && (
+								(chatStore.task?.messages?.length ?? 0) === 0 && (
 									<Popover>
 										<PopoverTrigger asChild>
 											<Button
@@ -419,7 +418,6 @@ export function Node({ id, data }: NodeProps) {
 						className="max-h-[180px]"
 						onClick={() => {
 							chatStore.setActiveWorkSpace(
-								chatStore.activeTaskId as string,
 								data.agent?.agent_id as string
 							);
 
@@ -564,11 +562,9 @@ export function Node({ id, data }: NodeProps) {
 											data.onExpandChange(id, true);
 											if (task.agent) {
 												chatStore.setActiveWorkSpace(
-													chatStore.activeTaskId as string,
 													"workflow"
 												);
 												chatStore.setActiveAgent(
-													chatStore.activeTaskId as string,
 													task.agent?.agent_id
 												);
 												window.electronAPI.hideAllWebview();
@@ -622,9 +618,7 @@ export function Node({ id, data }: NodeProps) {
 														<LoaderCircle
 															size={16}
 															className={`text-icon-information ${
-																chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].status === "running" && "animate-spin"
+																chatStore.task?.status === "running" && "animate-spin"
 															}`}
 														/>
 													)}
@@ -711,9 +705,7 @@ export function Node({ id, data }: NodeProps) {
 																)}
 																<div
 																	className={`${
-																		chatStore.tasks[
-																			chatStore.activeTaskId as string
-																		].activeWorkSpace
+																		chatStore.task?.activeWorkSpace
 																			? "!w-[100px]"
 																			: "!w-[500px]"
 																	} pt-1 flex-shrink-0 flex-grow-0 min-w-0 text-text-primary text-xs leading-17 overflow-hidden text-ellipsis whitespace-nowrap`}
@@ -773,9 +765,7 @@ export function Node({ id, data }: NodeProps) {
 														onClick={(e) => {
 															e.stopPropagation();
 															if (toolkit.toolkitMethods === "write to file") {
-																chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].activeWorkSpace = "documentWorkSpace";
+																chatStore.setActiveWorkSpace("documentWorkSpace");
 															} else if (
 																toolkit.toolkitMethods === "visit page"
 															) {
@@ -794,9 +784,7 @@ export function Node({ id, data }: NodeProps) {
 																<LoaderCircle
 																	size={16}
 																	className={`${
-																		chatStore.tasks[
-																			chatStore.activeTaskId as string
-																		].status === "running" && "animate-spin"
+																		chatStore.task?.status === "running" && "animate-spin"
 																	}`}
 																/>
 															) : (

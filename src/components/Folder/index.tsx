@@ -189,7 +189,7 @@ export default function Folder({ data }: { data?: Agent }) {
 				.invoke("read-file-dataurl", file.path)
 				.then((dataUrl: string) => {
 					setSelectedFile({ ...file, content: dataUrl });
-					chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+					chatStore.setSelectedFile(file);
 					setLoading(false);
 				})
 				.catch((error) => {
@@ -204,7 +204,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			.invoke("open-file", file.type, file.path, isShowSourceCode)
 			.then((res) => {
 				setSelectedFile({ ...file, content: res });
-				chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+				chatStore.setSelectedFile(file);
 				setLoading(false);
 			})
 			.catch((error) => {
@@ -304,10 +304,10 @@ export default function Folder({ data }: { data?: Agent }) {
 
 	const hasFetchedRemote = useRef(false);
 
-	// Reset hasFetchedRemote when activeTaskId changes
+	// Reset hasFetchedRemote when taskId changes
 	useEffect(() => {
 		hasFetchedRemote.current = false;
-	}, [chatStore.activeTaskId]);
+	}, [chatStore.taskId]);
 
 	useEffect(() => {
 		const setFileList = async () => {
@@ -348,7 +348,7 @@ export default function Folder({ data }: { data?: Agent }) {
 			// Keep the old structure for compatibility
 			setFileGroups((prev) => {
 				const chatStoreSelectedFile =
-					chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+					chatStore.task?.selectedFile;
 				if (chatStoreSelectedFile) {
 					console.log(res, chatStoreSelectedFile);
 					const file = res.find(
@@ -368,11 +368,11 @@ export default function Folder({ data }: { data?: Agent }) {
 			});
 		};
 		setFileList();
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+	}, [chatStore.task?.taskAssigning]);
 
 	useEffect(() => {
 		const chatStoreSelectedFile =
-			chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+			chatStore.task?.selectedFile;
 		if (chatStoreSelectedFile && fileGroups[0]?.files) {
 			const file = fileGroups[0].files.find(
 				(item: any) => item.path === chatStoreSelectedFile.path
@@ -382,14 +382,14 @@ export default function Folder({ data }: { data?: Agent }) {
 			}
 		}
 	}, [
-		chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
+		chatStore.task?.selectedFile?.path,
 		fileGroups,
 		isShowSourceCode,
-		chatStore.activeTaskId,
+		chatStore.taskId,
 	]);
 
 	const handleBack = () => {
-		chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
+		chatStore.setActiveWorkSpace("workflow");
 	};
 
 	return (

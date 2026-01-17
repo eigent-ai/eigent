@@ -93,14 +93,9 @@ const isEmptyProject = (project: Project): boolean => {
 		}
 		
 		const chatState = chatStore.getState();
-		const taskIds = Object.keys(chatState.tasks);
-		
-		// Check if chat store has only one task
-		if (taskIds.length !== 1) {
-			return false;
-		}
-		
-		const task = chatState.tasks[taskIds[0]];
+
+		// Check if chat store has a task
+		const task = chatState.task;
 		if (!task) {
 			return false;
 		}
@@ -309,9 +304,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		// Create a new task in the new chat store with the queued content
 		const newTaskId = newChatStore.getState().create(customTaskId);
 
-		//Set the initTask as the active taskId
-		newChatStore.getState().setActiveTaskId(newTaskId);
-		
 		return {taskId: newTaskId, chatStore: newChatStore};
 	},
 	
@@ -483,9 +475,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 					const chatStore = project.chatStores[chatId];
 
 					if (chatStore) {
-						// Call replay on the chat store with the taskId, question, and 0 delay
+						// Call replay on the chat store with the question and delay
 						try {
-							await chatStore.getState().replay(taskId, question, 0.2);
+							await chatStore.getState().replay(question, 0.2);
 							console.log(`[ProjectStore] Started replay for task ${taskId}`);
 						} catch (error) {
 							console.error(`[ProjectStore] Failed to replay task ${taskId}:`, error);
@@ -771,12 +763,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		Object.values(project.chatStores).forEach(chatStore => {
 			if (chatStore && chatStore.getState) {
 				const chatState = chatStore.getState();
-				// Iterate through all tasks in the chat store
-				Object.values(chatState.tasks).forEach(task => {
-					if (task && typeof task.tokens === 'number') {
-						totalTokens += task.tokens;
-					}
-				});
+				// Get tokens from the task
+				if (chatState.task && typeof chatState.task.tokens === 'number') {
+					totalTokens += chatState.task.tokens;
+				}
 			}
 		});
 		

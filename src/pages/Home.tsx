@@ -44,7 +44,7 @@ export default function Home() {
 
 	useEffect(() => {
 		let taskAssigning = [
-			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
+			...(chatStore.task?.taskAssigning ||
 				[]),
 		];
 		let webviews: { id: string; agent_id: string; index: number }[] = [];
@@ -75,7 +75,7 @@ export default function Home() {
 
 		// capture webview
 		const captureWebview = async () => {
-			const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
+			const activeTask = chatStore.task;
 			if (!activeTask || activeTask.status === "finished") {
 				return;
 			}
@@ -83,7 +83,7 @@ export default function Home() {
 				window.ipcRenderer
 					.invoke("capture-webview", webview.id)
 					.then((base64: string) => {
-						const currentTask = chatStore.tasks[chatStore.activeTaskId as string];
+						const currentTask = chatStore.task;
 						if (!currentTask || currentTask.type) return;
 						let taskAssigning = [
 							...currentTask.taskAssigning,
@@ -100,15 +100,14 @@ export default function Home() {
 								webview.index
 							].img = base64;
 							chatStore.setTaskAssigning(
-								chatStore.activeTaskId as string,
 								taskAssigning
 							);
 							const { processTaskId, url } =
 								taskAssigning[searchAgentIndex].activeWebviewIds![
 									webview.index
 								];
-							chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
-								api_task_id: chatStore.activeTaskId,
+							chatStore.setSnapshotsTemp({
+								api_task_id: chatStore.taskId,
 								camel_task_id: processTaskId,
 								browser_url: url,
 								image_base64: base64,
@@ -150,10 +149,10 @@ export default function Home() {
 				clearInterval(intervalTimer);
 			}
 		};
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+	}, [chatStore.task?.taskAssigning]);
 
 	useEffect(() => {
-		if (!chatStore.activeTaskId) {
+		if (!chatStore.taskId) {
 			projectStore.createProject("new project");
 		}
 
@@ -194,22 +193,19 @@ export default function Home() {
 						</ResizablePanel>
 							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
 						<ResizablePanel>
-						{chatStore.tasks[chatStore.activeTaskId as string]
+						{chatStore.task
 							?.activeWorkSpace && (
 							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
+								{chatStore.task?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
+										chatStore.task?.activeWorkSpace
 								)?.type === "search_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<SearchAgentWrokSpace />
 									</div>
 								)}
-								{chatStore.tasks[chatStore.activeTaskId as string]
+								{chatStore.task
 									?.activeWorkSpace === "workflow" && (
 									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
@@ -218,7 +214,7 @@ export default function Home() {
 											<div className="w-full h-full relative z-10">
 												<Workflow
 													taskAssigning={
-														chatStore.tasks[chatStore.activeTaskId as string]
+														chatStore.task
 															?.taskAssigning || []
 													}
 												/>
@@ -226,21 +222,17 @@ export default function Home() {
 										</div>
 									</div>
 								)}
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
+								{chatStore.task?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
+										chatStore.task?.activeWorkSpace
 								)?.type === "developer_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
 										{/* <Terminal content={[]} /> */}
 									</div>
 								)}
-								{chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace === "documentWorkSpace" && (
+								{chatStore.task?.activeWorkSpace === "documentWorkSpace" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
 											{/*filter blur */}
@@ -251,13 +243,10 @@ export default function Home() {
 										</div>
 									</div>
 								)}
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
+								{chatStore.task?.taskAssigning?.find(
 									(agent) =>
 										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
+										chatStore.task?.activeWorkSpace
 								)?.type === "document_agent" && (
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
@@ -265,13 +254,10 @@ export default function Home() {
 											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
 											<div className="w-full h-full relative z-10">
 												<Folder
-													data={chatStore.tasks[
-														chatStore.activeTaskId as string
-													]?.taskAssigning?.find(
+													data={chatStore.task?.taskAssigning?.find(
 														(agent) =>
 															agent.agent_id ===
-															chatStore.tasks[chatStore.activeTaskId as string]
-																.activeWorkSpace
+															chatStore.task?.activeWorkSpace
 													)}
 												/>
 											</div>

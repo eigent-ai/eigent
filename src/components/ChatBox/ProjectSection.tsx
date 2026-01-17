@@ -56,13 +56,13 @@ export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionPro
     };
   }, [chatStore]);
 
-  const activeTaskId = chatState.activeTaskId;
+  const activeTaskId = chatState.taskId;
 
-  if (!activeTaskId || !chatState.tasks[activeTaskId]) {
+  if (!activeTaskId || !chatState.task) {
     return null;
   }
 
-  const task = chatState.tasks[activeTaskId];
+  const task = chatState.task;
   const messages = task.messages || [];
 
   // Create a stable key based on messages content to prevent excessive re-renders

@@ -80,12 +80,12 @@ export default function TerminalAgentWrokSpace() {
 	const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
 	useEffect(() => {
 		const taskAssigning =
-			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
+			chatStore.task?.taskAssigning;
 		if (taskAssigning) {
 			const activeAgent = taskAssigning.find(
 				(item) =>
 					item.agent_id ===
-					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace
+					chatStore.task?.activeWorkSpace
 			);
 			setActiveAgent(() => {
 				if (activeAgent) {
@@ -95,8 +95,8 @@ export default function TerminalAgentWrokSpace() {
 			});
 		}
 	}, [
-		chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
-		chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace,
+		chatStore.task?.taskAssigning,
+		chatStore.task?.activeWorkSpace,
 	]);
 
 	const [isTakeControl, setIsTakeControl] = useState(false);
@@ -145,7 +145,6 @@ export default function TerminalAgentWrokSpace() {
 							variant="ghost"
 							onClick={() => {
 								chatStore.setActiveWorkSpace(
-									chatStore.activeTaskId as string,
 									"workflow"
 								);
 							}}

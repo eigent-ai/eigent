@@ -163,7 +163,7 @@ export default function SettingGeneral() {
 						variant="outline"
 						size="xs"
 						onClick={() => {
-							chatStore.clearTasks();
+							chatStore.clearTask();
 
 							resetInstallation(); // Reset installation state for new account
 							setNeedsBackendRestart(true); // Mark that backend is restarting

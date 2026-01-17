@@ -48,65 +48,64 @@ interface Task {
 
 export interface ChatStore {
 	updateCount: number;
-	activeTaskId: string | null;
+	taskId: string | null;
 	nextTaskId: string | null;
-	tasks: { [key: string]: Task };
+	task: Task | null;
 	create: (id?: string, type?: any) => string;
-	removeTask: (taskId: string) => void;
-	stopTask: (taskId: string) => void;
-	setStatus: (taskId: string, status: 'running' | 'finished' | 'pending' | 'pause') => void;
-	setActiveTaskId: (taskId: string) => void;
-	replay: (taskId: string, question: string, time: number) => Promise<void>;
-	startTask: (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => Promise<void>;
-	handleConfirmTask: (project_id: string, taskId: string, type?: string) => void;
-	addMessages: (taskId: string, messages: Message) => void;
-	setMessages: (taskId: string, messages: Message[]) => void;
-	updateMessage: (taskId: string, messageId: string, message: Message) => void;
-	removeMessage: (taskId: string, messageId: string) => void;
-	setAttaches: (taskId: string, attaches: File[]) => void;
-	setSummaryTask: (taskId: string, summaryTask: string) => void;
-	setHasWaitComfirm: (taskId: string, hasWaitComfirm: boolean) => void;
-	setTaskAssigning: (taskId: string, taskAssigning: Agent[]) => void;
-	setTaskInfo: (taskId: string, taskInfo: TaskInfo[]) => void;
-	setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
-	setActiveAsk: (taskId: string, agentName: string) => void;
-	setActiveAskList: (taskId: string, message: Message[]) => void;
-	addWebViewUrl: (taskId: string, webViewUrl: string, processTaskId: string) => void;
-	setWebViewUrls: (taskId: string, webViewUrls: { url: string, processTaskId: string }[]) => void;
-	setProgressValue: (taskId: string, progressValue: number) => void;
-	computedProgressValue: (taskId: string) => void;
-	setIsPending: (taskId: string, isPending: boolean) => void;
-	addTerminal: (taskId: string, processTaskId: string, terminal: string) => void;
-	addFileList: (taskId: string, processTaskId: string, fileInfo: FileInfo) => void;
-	setFileList: (taskId: string, processTaskId: string, fileList: FileInfo[]) => void;
-	setActiveWorkSpace: (taskId: string, activeWorkSpace: string) => void;
-	setActiveAgent: (taskId: string, agentName: string) => void;
-	setHasMessages: (taskId: string, hasMessages: boolean) => void;
+	removeTask: () => void;
+	stopTask: () => void;
+	setStatus: (status: 'running' | 'finished' | 'pending' | 'pause') => void;
+	replay: (question: string, time: number) => Promise<void>;
+	startTask: (type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => Promise<void>;
+	handleConfirmTask: (project_id: string, type?: string) => void;
+	addMessages: (messages: Message) => void;
+	setMessages: (messages: Message[]) => void;
+	updateMessage: (messageId: string, message: Message) => void;
+	removeMessage: (messageId: string) => void;
+	setAttaches: (attaches: File[]) => void;
+	setSummaryTask: (summaryTask: string) => void;
+	setHasWaitComfirm: (hasWaitComfirm: boolean) => void;
+	setTaskAssigning: (taskAssigning: Agent[]) => void;
+	setTaskInfo: (taskInfo: TaskInfo[]) => void;
+	setTaskRunning: (taskRunning: TaskInfo[]) => void;
+	setActiveAsk: (agentName: string) => void;
+	setActiveAskList: (message: Message[]) => void;
+	addWebViewUrl: (webViewUrl: string, processTaskId: string) => void;
+	setWebViewUrls: (webViewUrls: { url: string, processTaskId: string }[]) => void;
+	setProgressValue: (progressValue: number) => void;
+	computedProgressValue: () => void;
+	setIsPending: (isPending: boolean) => void;
+	addTerminal: (processTaskId: string, terminal: string) => void;
+	addFileList: (processTaskId: string, fileInfo: FileInfo) => void;
+	setFileList: (processTaskId: string, fileList: FileInfo[]) => void;
+	setActiveWorkSpace: (activeWorkSpace: string) => void;
+	setActiveAgent: (agentName: string) => void;
+	setHasMessages: (hasMessages: boolean) => void;
 	getLastUserMessage: () => Message | null;
 	addTaskInfo: () => void;
 	updateTaskInfo: (index: number, content: string) => void;
 	deleteTaskInfo: (index: number) => void;
-	setTaskTime: (taskId: string, taskTime: number) => void;
-	setElapsed: (taskId: string, taskTime: number) => void;
-	getFormattedTaskTime: (taskId: string) => string;
-	addTokens: (taskId: string, tokens: number) => void;
-	getTokens: (taskId: string) => void;
+	setTaskTime: (taskTime: number) => void;
+	setElapsed: (taskTime: number) => void;
+	getFormattedTaskTime: () => string;
+	addTokens: (tokens: number) => void;
+	getTokens: () => void;
 	setUpdateCount: () => void;
-	setCotList: (taskId: string, cotList: string[]) => void;
-	setHasAddWorker: (taskId: string, hasAddWorker: boolean) => void;
-	setNuwFileNum: (taskId: string, nuwFileNum: number) => void;
-	setDelayTime: (taskId: string, delayTime: number) => void;
-	setType: (taskId: string, type: string) => void;
-	setSelectedFile: (taskId: string, selectedFile: FileInfo | null) => void;
-	setSnapshots: (taskId: string, snapshots: any[]) => void,
-	setIsTakeControl: (taskId: string, isTakeControl: boolean) => void,
-	setSnapshotsTemp: (taskId: string, snapshot: any) => void,
-	setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void,
-	clearTasks: () => void,
-	setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
+	setCotList: (cotList: string[]) => void;
+	setHasAddWorker: (hasAddWorker: boolean) => void;
+	setNuwFileNum: (nuwFileNum: number) => void;
+	setDelayTime: (delayTime: number) => void;
+	setType: (type: string) => void;
+	setSelectedFile: (selectedFile: FileInfo | null) => void;
+	setSnapshots: (snapshots: any[]) => void,
+	setIsTakeControl: (isTakeControl: boolean) => void,
+	setSnapshotsTemp: (snapshot: any) => void,
+	setIsTaskEdit: (isTaskEdit: boolean) => void,
+	clearTask: () => void,
+	setIsContextExceeded: (isContextExceeded: boolean) => void;
 	setNextTaskId: (taskId: string | null) => void;
-	setStreamingDecomposeText: (taskId: string, text: string) => void;
-	clearStreamingDecomposeText: (taskId: string) => void;
+	setStreamingDecomposeText: (text: string) => void;
+	clearStreamingDecomposeText: () => void;
 }
 
 export type VanillaChatStore = {
@@ -134,15 +133,14 @@ const normalizeToolkitMessage = (value: unknown) => {
 };
 
 const resolveProcessTaskIdForToolkitEvent = (
-	tasksById: Record<string, Task>,
-	currentTaskId: string,
+	currentTask: Task | null,
 	agentName: string | undefined,
 	processTaskId: unknown
 ) => {
 	const direct = typeof processTaskId === "string" ? processTaskId : "";
 	if (direct) return direct;
 
-	const running = tasksById[currentTaskId]?.taskRunning ?? [];
+	const running = currentTask?.taskRunning ?? [];
 	// Prefer a task owned by the same agent
 	const match = running.findLast(
 		(t: any) =>
@@ -162,73 +160,69 @@ const streamingDecomposeTextTimers: Record<string, ReturnType<typeof setTimeout>
 
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
-		activeTaskId: null,
+		taskId: null,
 		nextTaskId: null,
-		tasks: initial?.tasks ?? {},
+		task: initial?.task ?? null,
 		updateCount: 0,
 		create(id?: string, type?: any) {
-			const taskId = id ? id : generateUniqueId();
-			console.log("Create Task", taskId)
-			set((state) => ({
-				activeTaskId: taskId,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						type: type,
-						messages: [],
-						summaryTask: "",
-						taskInfo: [],
-						attaches: [],
-						taskRunning: [],
-						taskAssigning: [],
-						fileList: [],
-						webViewUrls: [],
-						activeAsk: '',
-						askList: [],
-						progressValue: 0,
-						isPending: false,
-						activeWorkSpace: 'workflow',
-						hasMessages: false,
-						activeAgent: '',
-						status: 'pending',
-						taskTime: 0,
-						tokens: 0,
-						elapsed: 0,
-						hasWaitComfirm: false,
-						cotList: [],
-						hasAddWorker: false,
-						nuwFileNum: 0,
-						delayTime: 0,
-						selectedFile: null,
-						snapshots: [],
-						snapshotsTemp: [],
-						isTakeControl: false,
-						isTaskEdit: false,
-						streamingDecomposeText: '',
-					},
-				}
+			const newTaskId = id ? id : generateUniqueId();
+			console.log("Create Task", newTaskId)
+			set(() => ({
+				taskId: newTaskId,
+				task: {
+					type: type,
+					messages: [],
+					summaryTask: "",
+					taskInfo: [],
+					attaches: [],
+					taskRunning: [],
+					taskAssigning: [],
+					fileList: [],
+					webViewUrls: [],
+					activeAsk: '',
+					askList: [],
+					progressValue: 0,
+					isPending: false,
+					activeWorkSpace: 'workflow',
+					hasMessages: false,
+					activeAgent: '',
+					status: 'pending',
+					taskTime: 0,
+					tokens: 0,
+					elapsed: 0,
+					hasWaitComfirm: false,
+					cotList: [],
+					hasAddWorker: false,
+					nuwFileNum: 0,
+					delayTime: 0,
+					selectedFile: null,
+					snapshots: [],
+					snapshotsTemp: [],
+					isTakeControl: false,
+					isTaskEdit: false,
+					streamingDecomposeText: '',
+				},
 			}))
-			return taskId
+			return newTaskId
 		},
-		computedProgressValue(taskId: string) {
-			const { tasks, setProgressValue, activeTaskId } = get()
-			const taskRunning = [...tasks[taskId].taskRunning]
+		computedProgressValue() {
+			const { task, setProgressValue } = get()
+			if (!task) return;
+			const taskRunning = [...task.taskRunning]
 			const finshedTask = taskRunning?.filter(
-				(task) => task.status === "completed" || task.status === "failed"
+				(t) => t.status === "completed" || t.status === "failed"
 			).length;
 			const taskProgress = (
 				((finshedTask || 0) / (taskRunning?.length || 0)) *
 				100
 			).toFixed(2);
-			setProgressValue(
-				activeTaskId as string,
-				Number(taskProgress)
-			);
+			setProgressValue(Number(taskProgress));
 		},
-		removeTask(taskId: string) {
+		removeTask() {
+			const { taskId } = get();
 			// Clean up any pending auto-confirm timers when removing a task
 			try {
-				if (autoConfirmTimers[taskId]) {
+				if (taskId && autoConfirmTimers[taskId]) {
 					clearTimeout(autoConfirmTimers[taskId]);
 					delete autoConfirmTimers[taskId];
 				}
@@ -238,7 +232,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// Clean up SSE connection if it exists
 			try {
-				if (activeSSEControllers[taskId]) {
+				if (taskId && activeSSEControllers[taskId]) {
 					activeSSEControllers[taskId].abort();
 					delete activeSSEControllers[taskId];
 				}
@@ -246,18 +240,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.warn('Error aborting SSE connection in removeTask:', error);
 			}
 
-			set((state) => {
-				delete state.tasks[taskId];
-				return ({
-					tasks: {
-						...state.tasks,
-					},
-				})
-			})
+			set(() => ({
+				taskId: null,
+				task: null,
+			}))
 		},
-		updateMessage(taskId: string, messageId: string, message: Message) {
+		updateMessage(messageId: string, message: Message) {
 			set((state) => {
-				const task = state.tasks[taskId];
+				const task = state.task;
 				if (!task) return state;
 				const messages = task.messages.map((m) => {
 					if (m.id === messageId) {
@@ -266,20 +256,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					return m;
 				});
 				return {
-					tasks: {
-						...state.tasks,
-						[taskId]: {
-							...task,
-							messages,
-						},
+					task: {
+						...task,
+						messages,
 					},
 				};
 			});
 		},
-		stopTask(taskId: string) {
+		stopTask() {
+			const { taskId } = get();
 			// Abort the SSE connection for this task
 			try {
-				if (activeSSEControllers[taskId]) {
+				if (taskId && activeSSEControllers[taskId]) {
 					console.log(`Stopping SSE connection for task ${taskId}`);
 					activeSSEControllers[taskId].abort();
 					delete activeSSEControllers[taskId];
@@ -288,7 +276,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.warn('Error aborting SSE connection in stopTask:', error);
 				// Even if abort fails, still clean up the reference
 				try {
-					delete activeSSEControllers[taskId];
+					if (taskId) delete activeSSEControllers[taskId];
 				} catch (cleanupError) {
 					console.warn('Error cleaning up SSE controller reference:', cleanupError);
 				}
@@ -296,7 +284,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// Clean up any pending auto-confirm timers
 			try {
-				if (autoConfirmTimers[taskId]) {
+				if (taskId && autoConfirmTimers[taskId]) {
 					clearTimeout(autoConfirmTimers[taskId]);
 					delete autoConfirmTimers[taskId];
 				}
@@ -308,19 +296,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			try {
 				set((state) => {
 					// Check if task exists before updating
-					if (!state.tasks[taskId]) {
-						console.warn(`Task ${taskId} not found when trying to stop it`);
+					if (!state.task) {
+						console.warn(`Task not found when trying to stop it`);
 						return state;
 					}
 
 					return {
 						...state,
-						tasks: {
-							...state.tasks,
-							[taskId]: {
-								...state.tasks[taskId],
-								status: 'finished'
-							},
+						task: {
+							...state.task,
+							status: 'finished'
 						},
 					};
 				});
@@ -328,7 +313,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				console.error('Error updating task status to finished in stopTask:', error);
 			}
 		},
-		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
+		startTask: async (type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
 			// ✅ Wait for backend to be ready before starting task (except for replay/share)
 			if (!type || type === 'normal') {
 				console.log('[startTask] Checking if backend is ready...');
@@ -337,7 +322,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				if (!isBackendReady) {
 					console.error('[startTask] Backend is not ready, cannot start task');
 					const { addMessages } = get();
-					addMessages(taskId, {
+					addMessages({
 						id: generateUniqueId(),
 						role: 'agent',
 						content: '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
@@ -349,15 +334,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
 			const workerList = useWorkerList();
-			const { getLastUserMessage, setDelayTime, setType } = get();
+			const { taskId, getLastUserMessage, setDelayTime, setType } = get();
 			const baseURL = await getBaseURL();
 			let systemLanguage = language
 			if (language === 'system') {
 				systemLanguage = await window.ipcRenderer.invoke('get-system-language');
 			}
 			if (type === 'replay') {
-				setDelayTime(taskId, delayTime as number)
-				setType(taskId, type)
+				setDelayTime(delayTime as number)
+				setType(type)
 			}
 
 			//ProjectStore must exist as chatStore is already
@@ -376,20 +361,26 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				if (newChatResult) {
 					newTaskId = newChatResult.taskId;
 					targetChatStore = newChatResult.chatStore;
-					targetChatStore.getState().setIsPending(newTaskId, true);
+					targetChatStore.getState().setIsPending(true);
 
 					//From handleSend if message is given
 					// Add the message to the new chatStore if provided
 					if (messageContent) {
-						targetChatStore.getState().addMessages(newTaskId, {
+						targetChatStore.getState().addMessages({
 							id: generateUniqueId(),
 							role: "user",
 							content: messageContent,
 							attaches: messageAttaches || [],
 						});
-						targetChatStore.getState().setHasMessages(newTaskId, true);
+						targetChatStore.getState().setHasMessages(true);
 					}
 				}
+			}
+
+			// Ensure we have a valid taskId before proceeding
+			if (!newTaskId) {
+				console.error('[startTask] No task ID available, cannot proceed');
+				return;
 			}
 
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
@@ -399,7 +390,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					`${base_Url}/api/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
 					: `${baseURL}/chat`
 
-			const { tasks } = get()
+			const { task } = get()
 			let historyId: string | null = projectStore.getHistoryId(project_id);
 			let snapshots: any = [];
 			let skipFirstConfirm = true;
@@ -524,7 +515,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					"project_id": project_id,
 					"task_id": newTaskId,
 					"user_id": authStore.user_id,
-					"question": messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
+					"question": messageContent || (targetChatStore.getState().task?.messages[0]?.content ?? ''),
 					"language": systemLanguage,
 					"model_platform": apiModel.model_platform,
 					"model_type": apiModel.model_type,
@@ -601,7 +592,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					installed_mcp: { mcpServers: {} },
 					language: systemLanguage,
 					allow_local_system: true,
-					attaches: (messageAttaches || targetChatStore.getState().tasks[newTaskId]?.attaches || []).map(f => f.filePath),
+					attaches: (messageAttaches || targetChatStore.getState().task?.attaches || []).map((f: File) => f.filePath),
 					summary_prompt: ``,
 					new_agents: [...addWorkers],
 					browser_port: browser_port,
@@ -620,10 +611,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						// Create error task to notify user
 						const currentStore = getCurrentChatStore();
-						const newTaskId = currentStore.create();
-						currentStore.setActiveTaskId(newTaskId);
-						currentStore.setHasWaitComfirm(newTaskId, true);
-						currentStore.addMessages(newTaskId, {
+						currentStore.create();
+						currentStore.setHasWaitComfirm(true);
+						currentStore.addMessages({
 							id: generateUniqueId(),
 							role: "agent",
 							content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
@@ -634,7 +624,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					// Check if this task has been stopped before processing any message
 					// But allow messages that switch to new tasks (like confirmed events)
 					const lockedTaskId = getCurrentTaskId();
-					const currentTask = getCurrentChatStore().tasks[lockedTaskId];
+					const currentTask = getCurrentChatStore().task;
 
 					// Only ignore messages if task is finished and not a valid post-completion event
 					// Valid events after task completion:
@@ -695,26 +685,26 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 								// Update references for both scenarios
 								updateLockedReferences(newChatStore, newTaskId);
-								newChatStore.getState().setIsPending(newTaskId, false);
+								newChatStore.getState().setIsPending(false);
 
 								if (type === "replay") {
-									newChatStore.getState().setDelayTime(newTaskId, delayTime as number);
-									newChatStore.getState().setType(newTaskId, "replay");
+									newChatStore.getState().setDelayTime(delayTime as number);
+									newChatStore.getState().setType("replay");
 								}
 
-								const lastMessage = previousChatStore.tasks[currentTaskId]?.messages.at(-1);
+								const lastMessage = previousChatStore.task?.messages.at(-1);
 								if (lastMessage?.role === "user" && lastMessage?.id) {
-									previousChatStore.removeMessage(currentTaskId, lastMessage.id);
+									previousChatStore.removeMessage(lastMessage.id);
 								}
 
-								//Trick: by the time the question is retrieved from event, 
+								//Trick: by the time the question is retrieved from event,
 								//the last message from previous chatStore is at display
-								newChatStore.getState().addMessages(newTaskId, {
+								newChatStore.getState().addMessages({
 									id: generateUniqueId(),
 									role: "user",
 									content: question || messageContent as string,
 									//TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-									attaches: [...(previousChatStore.tasks[currentTaskId]?.attaches || []), ...(messageAttaches || [])],
+									attaches: [...(previousChatStore.task?.attaches || []), ...(messageAttaches || [])],
 								});
 								console.log("[NEW CHATSTORE] Created for ", project_id);
 
@@ -726,7 +716,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										"project_id": project_id,
 										"task_id": newTaskId,
 										"user_id": authStore.user_id,
-										"question": question || messageContent || (targetChatStore.getState().tasks[newTaskId]?.messages[0]?.content ?? ''),
+										"question": question || messageContent || (targetChatStore.getState().task?.messages[0]?.content ?? ''),
 										"language": systemLanguage,
 										"model_platform": apiModel.model_platform,
 										"model_type": apiModel.model_type,
@@ -751,8 +741,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						} else {
 							//NOTE: Triggered only with first "confirmed" in the project
 							//Handle Original cases - with old chatStore
-							previousChatStore.setStatus(currentTaskId, 'pending');
-							previousChatStore.setHasWaitComfirm(currentTaskId, false);
+							previousChatStore.setStatus('pending');
+							previousChatStore.setHasWaitComfirm(false);
 						}
 
 						//Enable it for the rest of current SSE session
@@ -779,18 +769,17 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						addFileList,
 						setActiveAsk,
 						setActiveAskList,
-						tasks,
+						task,
 						create,
 						setTaskTime,
 						setElapsed,
-						setActiveTaskId,
 						setIsContextExceeded,
 						setStreamingDecomposeText,
 						clearStreamingDecomposeText,
 						setIsTaskEdit } = getCurrentChatStore()
 
 					currentTaskId = getCurrentTaskId();
-					// if (tasks[currentTaskId].status === 'finished') return
+					// if (task?.status === 'finished') return
 					if (agentMessages.step === "decompose_text") {
 						const { content } = agentMessages.data;
 						const text = content;
@@ -798,7 +787,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						// Get current buffer or task state
 						const currentContent = streamingDecomposeTextBuffer[currentId] ||
-							getCurrentChatStore().tasks[currentId]?.streamingDecomposeText || "";
+							getCurrentChatStore().task?.streamingDecomposeText || "";
 						const newContent = text || "";
 						let updatedContent = newContent;
 
@@ -818,7 +807,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							streamingDecomposeTextTimers[currentId] = setTimeout(() => {
 								const bufferedText = streamingDecomposeTextBuffer[currentId];
 								if (bufferedText !== undefined) {
-									setStreamingDecomposeText(currentId, bufferedText);
+									setStreamingDecomposeText(bufferedText);
 								}
 								delete streamingDecomposeTextTimers[currentId];
 							}, 16);
@@ -828,19 +817,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					if (agentMessages.step === "to_sub_tasks") {
 						// Clear streaming decompose text when task splitting is done
-						clearStreamingDecomposeText(currentTaskId);
+						clearStreamingDecomposeText();
 						// Check if this is a multi-turn scenario after task completion
-						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
+						const isMultiTurnAfterCompletion = task?.status === 'finished';
 
 						// Reset status for multi-turn complex tasks to allow splitting panel to show
 						if (isMultiTurnAfterCompletion) {
-							setStatus(currentTaskId, 'pending');
+							setStatus('pending');
 						}
 
 						// Each splitting round starts in a clean editing state
-						setIsTaskEdit(currentTaskId, false);
+						setIsTaskEdit(false);
 
-						const messages = [...tasks[currentTaskId].messages]
+						const messages = [...(task?.messages || [])]
 						const toSubTaskIndex = messages.findLastIndex((message: Message) => message.step === 'to_sub_tasks')
 						// For multi-turn scenarios, always create a new to_sub_tasks message
 						// even if one already exists from a previous task
@@ -861,16 +850,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									try {
 										const currentStore = getCurrentChatStore();
 										const currentId = getCurrentTaskId();
-										const { tasks, handleConfirmTask, setIsTaskEdit } = currentStore;
-										const message = tasks[currentId].messages.findLast((item) => item.step === "to_sub_tasks");
+										const { task, handleConfirmTask, setIsTaskEdit } = currentStore;
+										const message = task?.messages.findLast((item: Message) => item.step === "to_sub_tasks");
 										const isConfirm = message?.isConfirm || false;
-										const isTakeControl =
-											tasks[currentId].isTakeControl;
+										const isTakeControl = task?.isTakeControl;
 
-										if (project_id && !isConfirm && !isTakeControl && !tasks[currentId].isTaskEdit) {
-											handleConfirmTask(project_id, currentId, type);
+										if (project_id && !isConfirm && !isTakeControl && !task?.isTaskEdit) {
+											handleConfirmTask(project_id, type);
 										}
-										setIsTaskEdit(currentId, false);
+										setIsTaskEdit(false);
 										delete autoConfirmTimers[currentId];
 									} catch (error) {
 										console.error('Error in auto-confirm timeout handler:', error);
@@ -888,7 +876,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								content: "",
 								step: 'notice_card',
 							};
-							addMessages(currentTaskId, newNoticeMessage)
+							addMessages(newNoticeMessage)
 							const shouldAutoConfirm = !!type && !isMultiTurnAfterCompletion;
 
 							const newMessage: Message = {
@@ -902,7 +890,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								isConfirm: shouldAutoConfirm,
 								task_id: currentTaskId
 							};
-							addMessages(currentTaskId, newMessage)
+							addMessages(newMessage)
 							const newTaskInfo = {
 								id: "",
 								content: "",
@@ -919,13 +907,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								"project_name": agentMessages.data!.summary_task?.split('|')[0] || '',
 								"summary": agentMessages.data!.summary_task?.split('|')[1] || '',
 								"status": 1,
-								"tokens": getTokens(currentTaskId)
+								"tokens": getTokens()
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 						}
-						setSummaryTask(currentTaskId, agentMessages.data.summary_task as string)
-						setTaskInfo(currentTaskId, agentMessages.data.sub_tasks as TaskInfo[])
-						setTaskRunning(currentTaskId, agentMessages.data.sub_tasks as TaskInfo[])
+						setSummaryTask(agentMessages.data.summary_task as string)
+						setTaskInfo(agentMessages.data.sub_tasks as TaskInfo[])
+						setTaskRunning(agentMessages.data.sub_tasks as TaskInfo[])
 						return;
 					}
 					// Create agent
@@ -936,7 +924,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Add agent to taskAssigning
 						if (!['mcp_agent', 'new_worker_agent', 'task_agent', 'task_summary_agent', "coordinator_agent", "question_confirm_agent"].includes(agent_name)) {
 							// if (agentNameMap[agent_name as keyof typeof agentNameMap]) {
-							const hasAgent = tasks[currentTaskId].taskAssigning.find((agent) => agent.agent_id === agent_id)
+							const hasAgent = task?.taskAssigning.find((agent: Agent) => agent.agent_id === agent_id)
 
 							if (!hasAgent) {
 								let activeWebviewIds: any = [];
@@ -951,7 +939,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										})
 									})
 								}
-								setTaskAssigning(currentTaskId, [...tasks[currentTaskId].taskAssigning, {
+								setTaskAssigning([...(task?.taskAssigning || []), {
 									agent_id,
 									name: agentNameMap[agent_name as keyof typeof agentNameMap] || agent_name,
 									type: agent_name as AgentNameType,
@@ -967,18 +955,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					}
 					if (agentMessages.step === "wait_confirm") {
 						const { content, question } = agentMessages.data;
-						setHasWaitComfirm(currentTaskId, true)
-						setIsPending(currentTaskId, false)
+						setHasWaitComfirm(true)
+						setIsPending(false)
 
 						const currentChatStore = getCurrentChatStore();
-						//Make sure to add user Message on replay and avoid duplication of first msg						
-						if (question && !(currentChatStore.tasks[currentTaskId].messages.length === 1)) {
+						//Make sure to add user Message on replay and avoid duplication of first msg
+						if (question && !(currentChatStore.task?.messages.length === 1)) {
 							//Replace the optimistic update if existent.
-							const lastMessage = currentChatStore.tasks[currentTaskId]?.messages.at(-1);
+							const lastMessage = currentChatStore.task?.messages.at(-1);
 							if (lastMessage?.role === "user" && lastMessage.id && lastMessage.content === question) {
-								currentChatStore.removeMessage(currentTaskId, lastMessage.id)
+								currentChatStore.removeMessage(lastMessage.id)
 							}
-							addMessages(currentTaskId, {
+							addMessages({
 								id: generateUniqueId(),
 								role: "user",
 								content: question as string,
@@ -986,7 +974,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								isConfirm: false,
 							})
 						}
-						addMessages(currentTaskId, {
+						addMessages({
 							id: generateUniqueId(),
 							role: "agent",
 							content: content as string,
@@ -1000,17 +988,18 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						const { state, task_id, result, failure_count } = agentMessages.data;
 						if (!state && !task_id) return
 
-						let taskRunning = [...tasks[currentTaskId].taskRunning]
-						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						const targetTaskIndex = taskRunning.findIndex((task) => task.id === task_id)
-						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((task: TaskInfo) => task.id === task_id && !task.reAssignTo))
+						let taskRunning = [...(task?.taskRunning || [])]
+						let taskAssigning = [...(task?.taskAssigning || [])]
+						const targetTaskIndex = taskRunning.findIndex((t) => t.id === task_id)
+						const targetTaskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((t: TaskInfo) => t.id === task_id && !t.reAssignTo))
 						if (targetTaskAssigningIndex !== -1) {
-							const taskIndex = taskAssigning[targetTaskAssigningIndex].tasks.findIndex((task: TaskInfo) => task.id === task_id)
-							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].status = state === "DONE" ? "completed" : "failed";
-							taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].failure_count = failure_count || 0
+							const taskIndex = taskAssigning[targetTaskAssigningIndex].tasks.findIndex((t: TaskInfo) => t.id === task_id)
+							const targetTask = taskAssigning[targetTaskAssigningIndex].tasks[taskIndex];
+							targetTask.status = state === "DONE" ? "completed" : "failed";
+							targetTask.failure_count = typeof failure_count === 'number' ? failure_count : 0;
 
 							// destroy webview
-							tasks[currentTaskId].taskAssigning = tasks[currentTaskId].taskAssigning.map((item) => {
+							(task?.taskAssigning || []).forEach((item: Agent) => {
 								if (item.type === "search_agent" && item.activeWebviewIds?.length && item.activeWebviewIds?.length > 0) {
 									let removeList: number[] = []
 									item.activeWebviewIds.map((webview, index) => {
@@ -1023,7 +1012,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 										item.activeWebviewIds?.splice(webviewIndex, 1);
 									});
 								}
-								return item
 							})
 
 
@@ -1031,7 +1019,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								let targetResult = result.replace(taskAssigning[targetTaskAssigningIndex].agent_id, taskAssigning[targetTaskAssigningIndex].name)
 								taskAssigning[targetTaskAssigningIndex].tasks[taskIndex].report = targetResult
 								if (state === "FAILED" && failure_count && failure_count >= 3) {
-									addMessages(currentTaskId, {
+									addMessages({
 										id: generateUniqueId(),
 										role: "agent",
 										content: targetResult,
@@ -1045,8 +1033,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							console.log("targetTaskIndex", targetTaskIndex, state)
 							taskRunning[targetTaskIndex].status = state === "DONE" ? "completed" : "failed";
 						}
-						setTaskRunning(currentTaskId, taskRunning)
-						setTaskAssigning(currentTaskId, taskAssigning)
+						setTaskRunning(taskRunning)
+						setTaskAssigning(taskAssigning)
 						return;
 					}
 					/**  New Task State from queue
@@ -1062,10 +1050,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					// Activate agent
 					if (agentMessages.step === "activate_agent" || agentMessages.step === "deactivate_agent") {
-						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						let taskRunning = [...tasks[currentTaskId].taskRunning]
+						let taskAssigning = [...(task?.taskAssigning || [])]
+						let taskRunning = [...(task?.taskRunning || [])]
 						if (agentMessages.data.tokens) {
-							addTokens(currentTaskId, agentMessages.data.tokens)
+							addTokens(agentMessages.data.tokens)
 						}
 						const { state, agent_id, process_task_id } = agentMessages.data;
 						if (!state && !agent_id && !process_task_id) return
@@ -1088,29 +1076,29 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									status: "running",
 								});
 							}
-							const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+							const taskIndex = taskRunning.findIndex((t) => t.id === process_task_id);
 							if (taskIndex !== -1 && taskRunning![taskIndex].status) {
 								taskRunning![taskIndex].agent!.status = "running";
 								taskRunning![taskIndex]!.status = "running";
 
-								const task = taskAssigning[agentIndex].tasks.find((task: TaskInfo) => task.id === process_task_id);
-								if (task) {
-									task.status = "running";
+								const foundTask = taskAssigning[agentIndex].tasks.find((t: TaskInfo) => t.id === process_task_id);
+								if (foundTask) {
+									foundTask.status = "running";
 								}
 							}
-							setTaskRunning(currentTaskId, [...taskRunning]);
-							setTaskAssigning(currentTaskId, [...taskAssigning]);
+							setTaskRunning([...taskRunning]);
+							setTaskAssigning([...taskAssigning]);
 						}
 						if (agentMessages.step === "deactivate_agent") {
 							if (message) {
 								const index = taskAssigning[agentIndex].log.findLastIndex((log) => log.data.method_name === agentMessages.data.method_name && log.data.toolkit_name === agentMessages.data.toolkit_name)
 								if (index != -1) {
 									taskAssigning[agentIndex].log[index].status = "completed";
-									setTaskAssigning(currentTaskId, [...taskAssigning]);
+									setTaskAssigning([...taskAssigning]);
 								}
 
 							}
-							// const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+							// const taskIndex = taskRunning.findIndex((t) => t.id === process_task_id);
 							// if (taskIndex !== -1) {
 							// 	taskRunning![taskIndex].agent!.status = "completed";
 							// 	taskRunning![taskIndex]!.status = "completed";
@@ -1119,17 +1107,17 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							if (!type && historyId) {
 								const obj = {
-									"project_name": tasks[currentTaskId].summaryTask.split('|')[0],
-									"summary": tasks[currentTaskId].summaryTask.split('|')[1],
+									"project_name": task?.summaryTask.split('|')[0],
+									"summary": task?.summaryTask.split('|')[1],
 									"status": 1,
-									"tokens": getTokens(currentTaskId)
+									"tokens": getTokens()
 								}
 								proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 							}
 
 
-							setTaskRunning(currentTaskId, [...taskRunning]);
-							setTaskAssigning(currentTaskId, [...taskAssigning]);
+							setTaskRunning([...taskRunning]);
+							setTaskAssigning([...taskAssigning]);
 
 
 
@@ -1141,20 +1129,20 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						if (!agentMessages.data?.assignee_id || !agentMessages.data?.task_id) return;
 
 						const { assignee_id, task_id, content = "", state: taskState, failure_count } = agentMessages.data as any;
-						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
-						let taskRunning = [...tasks[currentTaskId].taskRunning]
-						let taskInfo = [...tasks[currentTaskId].taskInfo]
+						let taskAssigning = [...(task?.taskAssigning || [])]
+						let taskRunning = [...(task?.taskRunning || [])]
+						let taskInfo: TaskInfo[] = [...(task?.taskInfo || [])]
 
 						// Find the index of the agent corresponding to assignee_id
 						const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.agent_id === assignee_id);
 						// Find task corresponding to task_id
-						const task = taskInfo!.find((task: TaskInfo) => task.id === task_id);
+						const foundTaskInfo = taskInfo!.find((t: TaskInfo) => t.id === task_id);
 
-						const taskRunningIndex = taskRunning!.findIndex((task: TaskInfo) => task.id === task_id);
+						const taskRunningIndex = taskRunning!.findIndex((t: TaskInfo) => t.id === task_id);
 
 						// Skip tasks with empty content only if the task doesn't exist in taskInfo
 						// If task exists in taskInfo, we should still process status updates
-						if ((!content || content.trim() === "") && !task) {
+						if ((!content || content.trim() === "") && !foundTaskInfo) {
 							console.warn(`Skipping task ${task_id} with empty content and not found in taskInfo`);
 							return;
 						}
@@ -1196,9 +1184,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Handle task assignment to taskAssigning based on state
 						if (taskState === "waiting") {
 							if (!taskAssigning[assigneeAgentIndex].tasks.find(item => item.id === task_id)) {
-								taskAssigning[assigneeAgentIndex].tasks.push(task ?? { id: task_id, content, status: "waiting" });
+								taskAssigning[assigneeAgentIndex].tasks.push(foundTaskInfo ?? { id: task_id, content, status: "waiting" });
 							}
-							setTaskAssigning(currentTaskId, [...taskAssigning]);
+							setTaskAssigning([...taskAssigning]);
 
 						}
 						// The following logic is for when the task actually starts executing (running)
@@ -1215,8 +1203,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							} else {
 								// Task doesn't exist, add it
 								let taskTemp = null
-								if (task) {
-									taskTemp = JSON.parse(JSON.stringify(task))
+								if (foundTaskInfo) {
+									taskTemp = JSON.parse(JSON.stringify(foundTaskInfo))
 									taskTemp.failure_count = 0
 									taskTemp.status = "running"
 									taskTemp.toolkits = []
@@ -1229,11 +1217,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Only update or add to taskRunning, never duplicate
 						if (taskRunningIndex === -1) {
 							// Task not in taskRunning, add it
-							if (task) {
-								task.status = taskState === "waiting" ? "waiting" : "running";
+							if (foundTaskInfo) {
+								foundTaskInfo.status = taskState === "waiting" ? "waiting" : "running";
 							}
 							taskRunning!.push(
-								task ?? {
+								foundTaskInfo ?? {
 									id: task_id,
 									content,
 									status: taskState === "waiting" ? "waiting" : "running",
@@ -1248,22 +1236,21 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								agent: JSON.parse(JSON.stringify(taskAgent)),
 							};
 						}
-						setTaskRunning(currentTaskId, [...taskRunning]);
-						setTaskAssigning(currentTaskId, [...taskAssigning]);
+						setTaskRunning([...taskRunning]);
+						setTaskAssigning([...taskAssigning]);
 
 						return;
 					}
 					// Activate Toolkit
 					if (agentMessages.step === "activate_toolkit") {
 						// add log
-						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
+						let taskAssigning = [...(task?.taskAssigning || [])]
 						const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
-							tasks,
-							currentTaskId,
+							task,
 							agentMessages.data.agent_name,
 							agentMessages.data.process_task_id
 						);
-						let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId));
+						let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((t: TaskInfo) => t.id === resolvedProcessTaskId));
 
 						// Fallback: if task ID not found, try finding by agent type
 						if (assigneeAgentIndex === -1 && agentMessages.data.agent_name) {
@@ -1274,34 +1261,34 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							const message = filterMessage(agentMessages)
 							if (message) {
 								taskAssigning[assigneeAgentIndex].log.push(agentMessages);
-								setTaskAssigning(currentTaskId, [...taskAssigning]);
+								setTaskAssigning([...taskAssigning]);
 							}
 						}
 
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'browser visit page') {
-							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message).replace(/url=/g, '').replace(/'/g, '') as string, resolvedProcessTaskId)
+							addWebViewUrl(normalizeToolkitMessage(agentMessages.data.message).replace(/url=/g, '').replace(/'/g, '') as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'Browser Toolkit' && agentMessages.data.method_name === 'visit page') {
 							console.log('match success')
-							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
+							addWebViewUrl(normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.toolkit_name === 'ElectronToolkit' && agentMessages.data.method_name === 'browse_url') {
-							addWebViewUrl(currentTaskId, normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
+							addWebViewUrl(normalizeToolkitMessage(agentMessages.data.message) as string, resolvedProcessTaskId)
 						}
 						if (agentMessages.data.method_name === 'browser_navigate' && agentMessages.data.message?.startsWith('{"url"')) {
 							try {
 								const urlData = JSON.parse(normalizeToolkitMessage(agentMessages.data.message));
 								if (urlData?.url) {
-									addWebViewUrl(currentTaskId, urlData.url as string, resolvedProcessTaskId)
+									addWebViewUrl(urlData.url as string, resolvedProcessTaskId)
 								}
 							} catch (error) {
 								console.error('Failed to parse browser_navigate URL:', error);
 								console.error('Raw message:', agentMessages.data.message);
 							}
 						}
-						let taskRunning = [...tasks[currentTaskId].taskRunning]
+						let taskRunning = [...(task?.taskRunning || [])]
 
-						const taskIndex = taskRunning.findIndex((task) => task.id === resolvedProcessTaskId);
+						const taskIndex = taskRunning.findIndex((t) => t.id === resolvedProcessTaskId);
 
 						if (taskIndex !== -1) {
 							const { toolkit_name, method_name } = agentMessages.data;
@@ -1318,12 +1305,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 									// Update taskAssigning if we found the agent
 									if (assigneeAgentIndex !== -1) {
-										const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === resolvedProcessTaskId);
-										if (task) {
-											task.toolkits ??= []
-											task.toolkits.push({ ...toolkit });
-											task.status = "running";
-											setTaskAssigning(currentTaskId, [...taskAssigning]);
+										const foundTask = taskAssigning[assigneeAgentIndex].tasks.find((t: TaskInfo) => t.id === resolvedProcessTaskId);
+										if (foundTask) {
+											foundTask.toolkits ??= []
+											foundTask.toolkits.push({ ...toolkit });
+											foundTask.status = "running";
+											setTaskAssigning([...taskAssigning]);
 										}
 									}
 
@@ -1334,17 +1321,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								}
 							}
 						}
-						setTaskRunning(currentTaskId, taskRunning);
+						setTaskRunning(taskRunning);
 						return;
 					}
 					// Deactivate Toolkit
 					if (agentMessages.step === "deactivate_toolkit") {
 
 						// add log
-						let taskAssigning = [...tasks[currentTaskId].taskAssigning]
+						let taskAssigning = [...(task?.taskAssigning || [])]
 						const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
-							tasks,
-							currentTaskId,
+							task,
 							agentMessages.data.agent_name,
 							agentMessages.data.process_task_id
 						);
@@ -1379,16 +1365,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								}
 								taskAssigning[assigneeAgentIndex].log.push(agentMessages);
 
-								setTaskAssigning(currentTaskId, [...taskAssigning]);
+								setTaskAssigning([...taskAssigning]);
 							}
 						}
 
-						let taskRunning = [...tasks[currentTaskId].taskRunning]
+						let taskRunning = [...(task?.taskRunning || [])]
 						const { toolkit_name, method_name, message } =
 							agentMessages.data;
-						const taskIndex = taskRunning.findIndex((task) =>
-							task.agent?.type === agentMessages.data.agent_name &&
-							task.toolkits?.at(-1)?.toolkitName === toolkit_name
+						const taskIndex = taskRunning.findIndex((t) =>
+							t.agent?.type === agentMessages.data.agent_name &&
+							t.toolkits?.at(-1)?.toolkitName === toolkit_name
 						);
 
 						if (taskIndex !== -1) {
@@ -1406,19 +1392,19 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							}
 						}
-						setTaskAssigning(currentTaskId, [...taskAssigning]);
-						setTaskRunning(currentTaskId, taskRunning);
+						setTaskAssigning([...taskAssigning]);
+						setTaskRunning(taskRunning);
 						return;
 					}
 					// Terminal
 					if (agentMessages.step === "terminal") {
-						addTerminal(currentTaskId, agentMessages.data.process_task_id as string, agentMessages.data.output as string)
+						addTerminal(agentMessages.data.process_task_id as string, agentMessages.data.output as string)
 						return
 					}
 					// Write File
 					if (agentMessages.step === "write_file") {
 						console.log('write_to_file', agentMessages.data)
-						setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1)
+						setNuwFileNum((task?.nuwFileNum || 0) + 1)
 						const { file_path } = agentMessages.data;
 						const fileName = file_path?.replace(/\\/g, "/").split("/").pop() || "";
 						const fileType = fileName.split(".").pop() || "";
@@ -1428,14 +1414,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							path: file_path || "",
 							icon: FileText,
 						};
-						addFileList(currentTaskId, agentMessages.data.process_task_id as string, fileInfo);
+						addFileList(agentMessages.data.process_task_id as string, fileInfo);
 						return;
 					}
 
 					if (agentMessages.step === "budget_not_enough") {
 						console.log('error', agentMessages.data)
 						showCreditsToast()
-						setStatus(currentTaskId, 'pause');
+						setStatus('pause');
 						uploadLog(currentTaskId, type)
 						return
 					}
@@ -1457,8 +1443,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						);
 
 						// Set flag to block input and set status to pause
-						setIsContextExceeded(currentTaskId, true);
-						setStatus(currentTaskId, "pause");
+						setIsContextExceeded(true);
+						setStatus("pause");
 						uploadLog(currentTaskId, type);
 						return
 					}
@@ -1478,8 +1464,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								'An error occurred while processing your request';
 
 							// Mark all incomplete tasks as failed
-							let taskRunning = [...tasks[currentTaskId].taskRunning];
-							let taskAssigning = [...tasks[currentTaskId].taskAssigning];
+							let taskRunning = [...(task?.taskRunning || [])];
+							let taskAssigning = [...(task?.taskAssigning || [])];
 
 							// Update taskRunning - mark non-completed tasks as failed
 							taskRunning = taskRunning.map((task) => {
@@ -1491,25 +1477,25 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							// Update taskAssigning - mark non-completed tasks as failed
 							taskAssigning = taskAssigning.map((agent) => {
-								agent.tasks = agent.tasks.map((task) => {
-									if (task.status !== "completed" && task.status !== "failed") {
-										task.status = "failed";
+								agent.tasks = agent.tasks.map((t: TaskInfo) => {
+									if (t.status !== "completed" && t.status !== "failed") {
+										t.status = "failed";
 									}
-									return task;
+									return t;
 								});
 								return agent;
 							});
 
 							// Apply the updates
-							setTaskRunning(currentTaskId, taskRunning);
-							setTaskAssigning(currentTaskId, taskAssigning);
+							setTaskRunning(taskRunning);
+							setTaskAssigning(taskAssigning);
 
 							// Complete the current task with error status
-							setStatus(currentTaskId, 'finished');
-							setIsPending(currentTaskId, false);
+							setStatus('finished');
+							setIsPending(false);
 
 							// Add error message to the current task
-							addMessages(currentTaskId, {
+							addMessages({
 								id: generateUniqueId(),
 								role: "agent",
 								content: `❌ **Error**: ${errorMessage}`,
@@ -1528,11 +1514,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 							// Fallback: try to create error task with minimal operations
 							try {
-								const { create, setActiveTaskId, setHasWaitComfirm, addMessages } = get();
-								const fallbackTaskId = create();
-								setActiveTaskId(fallbackTaskId);
-								setHasWaitComfirm(fallbackTaskId, true);
-								addMessages(fallbackTaskId, {
+								const { create, setHasWaitComfirm, addMessages } = get();
+								create();
+								setHasWaitComfirm(true);
+								addMessages({
 									id: generateUniqueId(),
 									role: "agent",
 									content: `**Critical Error**: An unexpected error occurred while handling a model error. Please refresh the application or contact support.`,
@@ -1604,8 +1589,9 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					if (agentMessages.step === "end") {
 						// compute task time
-						console.log('tasks[taskId].snapshotsTemp', tasks[currentTaskId].snapshotsTemp)
-						Promise.all(tasks[currentTaskId].snapshotsTemp.map((snapshot) =>
+						const currentTaskData = task;
+						console.log('currentTaskData?.snapshotsTemp', currentTaskData?.snapshotsTemp)
+						Promise.all((currentTaskData?.snapshotsTemp || []).map((snapshot: any) =>
 							proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
 						));
 
@@ -1674,60 +1660,59 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						if (!type && historyId) {
 							const obj = {
-								"project_name": tasks[currentTaskId].summaryTask.split('|')[0],
-								"summary": tasks[currentTaskId].summaryTask.split('|')[1],
+								"project_name": currentTaskData?.summaryTask.split('|')[0],
+								"summary": currentTaskData?.summaryTask.split('|')[1],
 								"status": 2,
-								"tokens": getTokens(currentTaskId)
+								"tokens": getTokens()
 							}
 							proxyFetchPut(`/api/chat/history/${historyId}`, obj)
 						}
 						uploadLog(currentTaskId, type)
 
 
-						let taskRunning = [...tasks[currentTaskId].taskRunning];
-						let taskAssigning = [...tasks[currentTaskId].taskAssigning];
+						let taskRunning = [...(currentTaskData?.taskRunning || [])];
+						let taskAssigning = [...(currentTaskData?.taskAssigning || [])];
 						taskAssigning = taskAssigning.map((agent) => {
-							agent.tasks = agent.tasks.map((task) => {
-								if (task.status !== "completed" && task.status !== "failed" && !type) {
-									task.status = "skipped"
+							agent.tasks = agent.tasks.map((t: TaskInfo) => {
+								if (t.status !== "completed" && t.status !== "failed" && !type) {
+									t.status = "skipped"
 								}
-								return task
+								return t
 							})
 							return agent
 						})
 
-						taskRunning = taskRunning.map((task) => {
-							console.log('task.status', task.status)
-							if (task.status !== "completed" && task.status !== "failed" && !type) {
-								task.status = "skipped"
+						taskRunning = taskRunning.map((t) => {
+							console.log('t.status', t.status)
+							if (t.status !== "completed" && t.status !== "failed" && !type) {
+								t.status = "skipped"
 							}
-							return task
+							return t
 						})
-						setTaskAssigning(currentTaskId, [...taskAssigning]);
-						setTaskRunning(currentTaskId, [...taskRunning]);
+						setTaskAssigning([...taskAssigning]);
+						setTaskRunning([...taskRunning]);
 
-						if (!currentTaskId || !tasks[currentTaskId]) return "N/A";
+						if (!currentTaskId || !currentTaskData) return;
 
-						const task = tasks[currentTaskId];
-						let taskTime = task.taskTime;
-						let elapsed = task.elapsed;
+						let taskTime = currentTaskData.taskTime;
+						let elapsed = currentTaskData.elapsed;
 						// if task is running, compute current time
 						if (taskTime !== 0) {
 							const currentTime = Date.now()
 							elapsed += currentTime - taskTime
 						}
 
-						setTaskTime(currentTaskId, 0);
-						setElapsed(currentTaskId, elapsed);
-						const fileList = tasks[currentTaskId].taskAssigning.map((agent) => {
-							return agent.tasks.map((task) => {
-								return task.fileList || []
+						setTaskTime(0);
+						setElapsed(elapsed);
+						const fileList = (currentTaskData?.taskAssigning || []).map((agent: Agent) => {
+							return agent.tasks.map((t: TaskInfo) => {
+								return t.fileList || []
 							}).flat()
 						}).flat()
 						let endMessage = agentMessages.data as string
 						let summary = endMessage.match(/<summary>(.*?)<\/summary>/)?.[1]
 						let newMessage: Message | null = null
-						const agent_summary_end = tasks[currentTaskId].messages.findLast((message: Message) => message.step === 'agent_summary_end')
+						const agent_summary_end = currentTaskData?.messages.findLast((message: Message) => message.step === 'agent_summary_end')
 						console.log('summary', summary)
 						if (summary) {
 							endMessage = summary
@@ -1748,24 +1733,24 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						};
 
 
-						addMessages(currentTaskId, newMessage);
+						addMessages(newMessage);
 
-						setIsPending(currentTaskId, false);
-						setStatus(currentTaskId, 'finished');
+						setIsPending(false);
+						setStatus('finished');
 						// completed tasks move to history
 						setUpdateCount();
 
-						console.log(tasks[currentTaskId], 'end');
+						console.log(currentTaskData, 'end');
 
 
 						return;
 					}
 					if (agentMessages.step === "notice") {
 						if (agentMessages.data.process_task_id !== '') {
-							let taskAssigning = [...tasks[currentTaskId].taskAssigning]
+							let taskAssigning = [...(task?.taskAssigning || [])]
 
-							const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id));
-							const task = taskAssigning[assigneeAgentIndex].tasks.find((task: TaskInfo) => task.id === agentMessages.data.process_task_id);
+							const assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) => agent.tasks.find((t: TaskInfo) => t.id === agentMessages.data.process_task_id));
+							const foundTask = taskAssigning[assigneeAgentIndex]?.tasks.find((t: TaskInfo) => t.id === agentMessages.data.process_task_id);
 							const toolkit = {
 								toolkitId: generateUniqueId(),
 								toolkitName: 'notice',
@@ -1773,13 +1758,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								message: agentMessages.data.notice as string,
 								toolkitStatus: "running" as AgentStatus,
 							}
-							if (assigneeAgentIndex !== -1 && task) {
-								task.toolkits ??= []
-								task.toolkits.push({ ...toolkit });
+							if (assigneeAgentIndex !== -1 && foundTask) {
+								foundTask.toolkits ??= []
+								foundTask.toolkits.push({ ...toolkit });
 							}
-							setTaskAssigning(currentTaskId, [...taskAssigning]);
+							setTaskAssigning([...taskAssigning]);
 						} else {
-							const messages = [...tasks[currentTaskId].messages]
+							const messages = [...(task?.messages || [])]
 							const noticeCardIndex = messages.findLastIndex((message) => message.step === 'notice_card')
 							if (noticeCardIndex === -1) {
 								const newMessage: Message = {
@@ -1788,16 +1773,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 									content: "",
 									step: 'notice_card',
 								};
-								addMessages(currentTaskId, newMessage)
+								addMessages(newMessage)
 							}
-							setCotList(currentTaskId, [...tasks[currentTaskId].cotList, agentMessages.data.notice as string])
+							setCotList([...(task?.cotList || []), agentMessages.data.notice as string])
 						}
 						return
 
 					}
 					if (["sync"].includes(agentMessages.step)) return
 					if (agentMessages.step === "ask") {
-						if (tasks[currentTaskId].activeAsk != '') {
+						if (task?.activeAsk != '') {
 							const newMessage: Message = {
 								id: generateUniqueId(),
 								role: "agent",
@@ -1812,12 +1797,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								step: agentMessages.step,
 								isConfirm: false,
 							};
-							let activeAskList = tasks[currentTaskId].askList
-							setActiveAskList(currentTaskId, [...activeAskList, newMessage]);
+							let activeAskList = task?.askList || []
+							setActiveAskList([...activeAskList, newMessage]);
 							return
 						}
-						setActiveAsk(currentTaskId, agentMessages.data.agent || '')
-						setIsPending(currentTaskId, false)
+						setActiveAsk(agentMessages.data.agent || '')
+						setIsPending(false)
 					}
 					const newMessage: Message = {
 						id: generateUniqueId(),
@@ -1832,12 +1817,12 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						step: agentMessages.step,
 						isConfirm: false,
 					};
-					addMessages(currentTaskId, newMessage);
+					addMessages(newMessage);
 				},
 				async onopen(respond) {
 					console.log("open", respond);
-					const { setAttaches, activeTaskId } = get()
-					setAttaches(activeTaskId as string, [])
+					const { setAttaches } = get()
+					setAttaches([])
 					return;
 				},
 
@@ -1887,8 +1872,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 		},
 
-		replay: async (taskId: string, question: string, time: number) => {
-			const { create, setHasMessages, addMessages, startTask, setActiveTaskId, handleConfirmTask } = get();
+		replay: async (question: string, time: number) => {
+			const { create, setHasMessages, addMessages, startTask, handleConfirmTask } = get();
 			//get project id
 			const project_id = useProjectStore.getState().activeProjectId
 			if (!project_id) {
@@ -1896,17 +1881,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				return;
 			}
 
-			create(taskId, "replay");
-			setHasMessages(taskId, true);
-			addMessages(taskId, {
+			create(undefined, "replay");
+			setHasMessages(true);
+			addMessages({
 				id: generateUniqueId(),
 				role: "user",
 				content: question.split("|")[0],
 			});
 
-			await startTask(taskId, "replay", undefined, time);
-			setActiveTaskId(taskId);
-			handleConfirmTask(project_id, taskId, "replay");
+			await startTask("replay", undefined, time);
+			handleConfirmTask(project_id, "replay");
 		},
 		setUpdateCount() {
 			set((state) => ({
@@ -1914,209 +1898,201 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				updateCount: state.updateCount + 1
 			}))
 		},
-		setActiveTaskId: (taskId: string) => {
-			set({
-				activeTaskId: taskId,
-			});
-		},
-		addMessages(taskId, message) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						messages: [
-							...state.tasks[taskId].messages,
-							message,
-						],
-					},
-				},
-			}))
-		},
-		setAttaches(taskId, attaches) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						attaches: [...attaches],
-					},
-				},
-			}))
-		},
-		setMessages(taskId, messages) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						messages: [
-							...messages,
-						],
-					},
-				},
-			}))
-		},
-		removeMessage(taskId, messageId) {
+		addMessages(message) {
 			set((state) => {
-				if (!state.tasks[taskId]) {
-					return state;
-				}
+				if (!state.task) return state;
 				return {
 					...state,
-					tasks: {
-						...state.tasks,
-						[taskId]: {
-							...state.tasks[taskId],
-							messages: state.tasks[taskId].messages.filter(
-								(message) => message.id !== messageId
-							),
-						},
+					task: {
+						...state.task,
+						messages: [
+							...state.task.messages,
+							message,
+						],
 					},
 				};
 			})
 		},
-		setCotList(taskId, cotList) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setAttaches(attaches) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
+						attaches: [...attaches],
+					},
+				};
+			})
+		},
+		setMessages(messages) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
+						messages: [
+							...messages,
+						],
+					},
+				};
+			})
+		},
+		removeMessage(messageId) {
+			set((state) => {
+				if (!state.task) {
+					return state;
+				}
+				return {
+					...state,
+					task: {
+						...state.task,
+						messages: state.task.messages.filter(
+							(message) => message.id !== messageId
+						),
+					},
+				};
+			})
+		},
+		setCotList(cotList) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						cotList: [...cotList],
 					},
-				},
-			}))
+				};
+			})
 		},
 
-		setSummaryTask(taskId, summaryTask) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setSummaryTask(summaryTask) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						summaryTask,
 					},
-				},
-			}))
+				};
+			})
 		},
-		setIsTakeControl(taskId, isTakeControl) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setIsTakeControl(isTakeControl) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						isTakeControl,
 					},
-				},
-			}))
+				};
+			})
 		},
-		setHasWaitComfirm(taskId, hasWaitComfirm) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setHasWaitComfirm(hasWaitComfirm) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						hasWaitComfirm,
 					},
-				},
-			}))
+				};
+			})
 		},
-		setTaskInfo(taskId, taskInfo) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setTaskInfo(taskInfo) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						taskInfo: [...taskInfo],
 					},
-				},
-			}))
+				};
+			})
 		},
-		setTaskRunning(taskId, taskRunning) {
+		setTaskRunning(taskRunning) {
 			const { computedProgressValue } = get()
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						taskRunning: [...taskRunning],
 					},
-				},
-			}))
-			computedProgressValue(taskId)
+				};
+			})
+			computedProgressValue()
 		},
-		addWebViewUrl(taskId: string, webViewUrl: string, processTaskId: string) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						webViewUrls: [...state.tasks[taskId].webViewUrls, { url: webViewUrl, processTaskId: processTaskId }],
+		addWebViewUrl(webViewUrl: string, processTaskId: string) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
+						webViewUrls: [...state.task.webViewUrls, { url: webViewUrl, processTaskId: processTaskId }],
 					},
-				},
-			}))
+				};
+			})
 		},
-		setWebViewUrls(taskId: string, webViewUrls: { url: string, processTaskId: string }[]) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setWebViewUrls(webViewUrls: { url: string, processTaskId: string }[]) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						webViewUrls: [...webViewUrls],
 					},
-				},
-			}))
+				};
+			})
 		},
-		setActiveAskList(taskId, askList) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setActiveAskList(askList: Message[]) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						askList: [...askList],
 					},
-				},
-			}))
+				};
+			})
 		},
-		setTaskAssigning(taskId, taskAssigning) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setTaskAssigning(taskAssigning: Agent[]) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						taskAssigning: [...taskAssigning],
 					},
-				},
-			}))
+				};
+			})
 		},
-		setStatus(taskId: string, status: 'running' | 'finished' | 'pending' | 'pause') {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setStatus(status: 'running' | 'finished' | 'pending' | 'pause') {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						status
 					},
-				},
-			}))
+				};
+			})
 		},
-		handleConfirmTask: async (project_id: string, taskId: string, type?: string) => {
-			const { tasks, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning, setIsTaskEdit } = get();
-			if (!taskId) return;
+		handleConfirmTask: async (project_id: string, type?: string) => {
+			const { task, taskId, setMessages, setActiveWorkSpace, setStatus, setTaskTime, setTaskInfo, setTaskRunning, setIsTaskEdit } = get();
+			if (!task || !taskId) return;
 
 			// Stop any pending auto-confirm timers for this task (manual confirmation)
 			try {
@@ -2129,22 +2105,22 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}
 
 			// record task start time
-			setTaskTime(taskId, Date.now());
-			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
-			setTaskInfo(taskId, taskInfo)
+			setTaskTime(Date.now());
+			const filteredTaskInfo = task.taskInfo.filter((t: TaskInfo) => t.content !== '')
+			setTaskInfo(filteredTaskInfo)
 			// Also update taskRunning with the filtered tasks to keep counts consistent
-			const taskRunning = tasks[taskId].taskRunning.filter((task) => task.content !== '')
-			setTaskRunning(taskId, taskRunning)
+			const filteredTaskRunning = task.taskRunning.filter((t: TaskInfo) => t.content !== '')
+			setTaskRunning(filteredTaskRunning)
 			if (!type) {
 				await fetchPut(`/task/${project_id}`, {
-					task: taskInfo,
+					task: filteredTaskInfo,
 				});
 				await fetchPost(`/task/${project_id}/start`, {});
 
-				setActiveWorkSpace(taskId, 'workflow')
-				setStatus(taskId, 'running')
+				setActiveWorkSpace('workflow')
+				setStatus('running')
 			}
-			let messages = [...tasks[taskId].messages]
+			let messages = [...task.messages]
 			const cardTaskIndex = messages.findLastIndex((message) => message.step === 'to_sub_tasks')
 			if (cardTaskIndex !== -1) {
 				messages[cardTaskIndex] = {
@@ -2152,249 +2128,247 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					isConfirm: true,
 					taskType: 2,
 				}
-				setMessages(taskId, messages)
+				setMessages(messages)
 			}
 
 			// Reset editing state after manual confirmation so next round can auto-start
-			setIsTaskEdit(taskId, false);
+			setIsTaskEdit(false);
 		},
 		addTaskInfo() {
-			const { tasks, activeTaskId, setTaskInfo } = get()
-			if (!activeTaskId) return
-			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
+			const { task, setTaskInfo } = get()
+			if (!task) return
+			let targetTaskInfo = [...task.taskInfo]
 			const newTaskInfo = {
 				id: "",
 				content: "",
 			};
 			targetTaskInfo.push(newTaskInfo)
-			setTaskInfo(activeTaskId, targetTaskInfo)
+			setTaskInfo(targetTaskInfo)
 		},
-		addTerminal(taskId, processTaskId, terminal) {
+		addTerminal(processTaskId: string, terminal: any) {
 			if (!processTaskId) return
-			const { tasks, setTaskAssigning } = get()
-			const taskAssigning = [...tasks[taskId].taskAssigning]
-			const taskAssigningIndex = taskAssigning.findIndex((task) => task.tasks.find((task) => task.id === processTaskId))
+			const { task, setTaskAssigning } = get()
+			if (!task) return
+			const taskAssigning = [...task.taskAssigning]
+			const taskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((t) => t.id === processTaskId))
 			if (taskAssigningIndex !== -1) {
-				const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((task) => task.id === processTaskId)
+				const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((t) => t.id === processTaskId)
 				taskAssigning[taskAssigningIndex].tasks[taskIndex].terminal ??= []
 				taskAssigning[taskAssigningIndex].tasks[taskIndex].terminal?.push(terminal)
 				console.log(taskAssigning[taskAssigningIndex].tasks[taskIndex].terminal)
-				setTaskAssigning(taskId, taskAssigning)
+				setTaskAssigning(taskAssigning)
 			}
 		},
-		setActiveAsk(taskId, agentName) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setActiveAsk(agentName: string) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						activeAsk: agentName,
 					},
-				},
-			}))
+				};
+			})
 		},
-		setProgressValue(taskId: string, progressValue: number) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setProgressValue(progressValue: number) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						progressValue
 					},
-				},
-			}))
+				};
+			})
 		},
-		setIsPending(taskId: string, isPending: boolean) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setIsPending(isPending: boolean) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						isPending
 					},
-				},
-			}))
+				};
+			})
 		},
-		setActiveWorkSpace(taskId: string, activeWorkSpace: string) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setActiveWorkSpace(activeWorkSpace: string) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						activeWorkSpace
 					},
-				},
-			}))
+				};
+			})
 		},
-		setActiveAgent(taskId: string, agent_id: string) {
-			console.log('setActiveAgent', taskId, agent_id)
-
+		setActiveAgent(agent_id: string) {
 			set((state) => {
-				if (state.tasks[taskId]?.activeAgent === agent_id) {
+				if (!state.task) return state;
+				if (state.task.activeAgent === agent_id) {
 					return state;
 				}
-				return ({
+				return {
 					...state,
-					tasks: {
-						...state.tasks,
-						[taskId]: {
-							...state.tasks[taskId],
-							activeAgent: agent_id
-						},
+					task: {
+						...state.task,
+						activeAgent: agent_id
 					},
-				})
+				};
 			})
 		},
-		setHasMessages(taskId: string, hasMessages: boolean) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setHasMessages(hasMessages: boolean) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						hasMessages
 					},
-				},
-			}))
+				};
+			})
 		},
-		setHasAddWorker(taskId: string, hasAddWorker: boolean) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setHasAddWorker(hasAddWorker: boolean) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						hasAddWorker
 					},
-				},
-			}))
+				};
+			})
 		},
-		addFileList(taskId, processTaskId, fileInfo) {
-			const { tasks, setTaskAssigning } = get()
-			const taskAssigning = [...tasks[taskId].taskAssigning]
+		addFileList(processTaskId: string, fileInfo: FileInfo) {
+			const { task, setTaskAssigning } = get()
+			if (!task) return
+			const taskAssigning = [...task.taskAssigning]
 			let agentId = ''
-			const taskAssigningIndex = taskAssigning.findIndex((agent) => {
-				const hasTask = agent.tasks.find((task) => task.id === processTaskId)
-				if (hasTask) {
+			const taskAssigningIndex = taskAssigning.findIndex((agent: Agent) => {
+				const hasAgentTask = agent.tasks.find((t: any) => t.id === processTaskId)
+				if (hasAgentTask) {
 					agentId = agent.agent_id
 				}
-				return hasTask
+				return hasAgentTask
 			})
 			if (taskAssigningIndex !== -1) {
-				const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((task) => task.id === processTaskId)
+				const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((t: any) => t.id === processTaskId)
 				if (taskIndex !== -1) {
 					taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList ??= []
 					taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList?.push({ ...fileInfo, agent_id: agentId, task_id: processTaskId })
-					setTaskAssigning(taskId, taskAssigning)
+					setTaskAssigning(taskAssigning)
 				}
 			}
 		},
-		setFileList(taskId, processTaskId, fileList: FileInfo[]) {
-			const { tasks, setTaskAssigning } = get()
-			const taskAssigning = [...tasks[taskId].taskAssigning]
+		setFileList(processTaskId: string, fileList: FileInfo[]) {
+			const { task, setTaskAssigning } = get()
+			if (!task) return
+			const taskAssigning = [...task.taskAssigning]
 
-			const taskAssigningIndex = taskAssigning.findIndex((task) => task.tasks.find((task) => task.id === processTaskId))
-			const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((task) => task.id === processTaskId)
-			if (taskAssigningIndex !== -1) {
+			const taskAssigningIndex = taskAssigning.findIndex((agent) => agent.tasks.find((t) => t.id === processTaskId))
+			if (taskAssigningIndex === -1) return
+			const taskIndex = taskAssigning[taskAssigningIndex].tasks.findIndex((t) => t.id === processTaskId)
+			if (taskIndex !== -1) {
 				taskAssigning[taskAssigningIndex].tasks[taskIndex].fileList = [...fileList]
-				setTaskAssigning(taskId, taskAssigning)
+				setTaskAssigning(taskAssigning)
 			}
 		},
 		updateTaskInfo(index: number, content: string) {
-			const { tasks, activeTaskId, setTaskInfo } = get()
-			if (!activeTaskId) return
-			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
+			const { task, setTaskInfo } = get()
+			if (!task) return
+			let targetTaskInfo = [...task.taskInfo]
 			if (targetTaskInfo) {
 				targetTaskInfo[index].content = content
 			}
-			setTaskInfo(activeTaskId, targetTaskInfo)
+			setTaskInfo(targetTaskInfo)
 		},
 		deleteTaskInfo(index: number) {
-			const { tasks, activeTaskId, setTaskInfo } = get()
-			if (!activeTaskId) return
-			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
+			const { task, setTaskInfo } = get()
+			if (!task) return
+			let targetTaskInfo = [...task.taskInfo]
 
 			if (targetTaskInfo) {
 				targetTaskInfo.splice(index, 1)
 			}
-			setTaskInfo(activeTaskId, targetTaskInfo)
+			setTaskInfo(targetTaskInfo)
 
 		},
 		getLastUserMessage() {
-			const { activeTaskId, tasks } = get();
-			if (!activeTaskId) return null
-			return tasks[activeTaskId]?.messages.findLast((message: Message) => message.role === 'user') || null
+			const { task } = get();
+			if (!task) return null
+			return task.messages.findLast((message: Message) => message.role === 'user') || null
 		},
-		setTaskTime(taskId: string, taskTime: number) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setTaskTime(taskTime: number) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						taskTime
 					},
-				},
-			}))
+				};
+			})
 		},
-		setNuwFileNum(taskId: string, nuwFileNum: number) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setNuwFileNum(nuwFileNum: number) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						nuwFileNum
 					},
-				},
-			}))
+				};
+			})
 		},
-		setType(taskId: string, type: string) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setType(type: string) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						type
 					},
-				},
-			}))
+				};
+			})
 		},
-		setDelayTime(taskId: string, delayTime: number) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setDelayTime(delayTime: number) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						delayTime
 					},
-				},
-			}))
+				};
+			})
 		},
-		setElapsed(taskId: string, elapsed: number) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setElapsed(elapsed: number) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						elapsed
 					},
-				},
-			}))
+				};
+			})
 		},
-		getFormattedTaskTime(taskId: string) {
+		getFormattedTaskTime() {
+			const { task } = get();
+			if (!task) return "N/A";
 
-			const { tasks } = get();
-			if (!taskId || !tasks[taskId]) return "N/A";
-
-			const task = tasks[taskId];
 			let taskTime = task.taskTime;
 			let elapsed = task.elapsed;
 			let time = 0
@@ -2410,110 +2384,96 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const seconds = Math.floor((time % 60000) / 1000);
 			return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 		},
-		addTokens(taskId: string, tokens: number) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						tokens: state.tasks[taskId].tokens + tokens
+		addTokens(tokens: number) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
+						tokens: state.task.tokens + tokens
 					},
-				},
-			}))
+				};
+			})
 		},
-		getTokens(taskId: string) {
-			const { tasks } = get();
-			return tasks[taskId]?.tokens ?? 0;
+		getTokens() {
+			const { task } = get();
+			return task?.tokens ?? 0;
 		},
-		setSelectedFile(taskId: string, selectedFile: FileInfo | null) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setSelectedFile(selectedFile: FileInfo | null) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						selectedFile: selectedFile,
 					},
-				},
-			}))
+				};
+			})
 		},
-		setSnapshots(taskId: string, snapshots: any[]) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setSnapshots(snapshots: any[]) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						snapshots,
 					},
-				},
-			}))
+				};
+			})
 		},
-		setSnapshotsTemp(taskId: string, snapshot: any) {
+		setSnapshotsTemp(snapshot: any) {
 			set((state) => {
-				const oldList = state.tasks[taskId]?.snapshotsTemp || [];
-				if (oldList.find(item => item.browser_url === snapshot.browser_url)) {
+				if (!state.task) return state;
+				const oldList = state.task.snapshotsTemp || [];
+				if (oldList.find((item: any) => item.browser_url === snapshot.browser_url)) {
 					return state;
 				}
 				return {
 					...state,
-					tasks: {
-						...state.tasks,
-						[taskId]: {
-							...state.tasks[taskId],
-							snapshotsTemp: [...state.tasks[taskId].snapshotsTemp, snapshot],
-						},
+					task: {
+						...state.task,
+						snapshotsTemp: [...state.task.snapshotsTemp, snapshot],
 					},
-				}
+				};
 			})
 		},
-		setIsTaskEdit(taskId: string, isTaskEdit: boolean) {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
+		setIsTaskEdit(isTaskEdit: boolean) {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
 						isTaskEdit
 					},
-				},
-			}))
+				};
+			})
 		},
-		clearTasks: () => {
-			const { create } = get()
-			console.log('clearTasks')
+		clearTask: () => {
+			const { taskId, create } = get()
+			console.log('clearTask')
 
-			// Clean up all pending auto-confirm timers when clearing tasks
+			// Clean up pending auto-confirm timer for current task
 			try {
-				Object.keys(autoConfirmTimers).forEach(taskId => {
-					try {
-						if (autoConfirmTimers[taskId]) {
-							clearTimeout(autoConfirmTimers[taskId]);
-							delete autoConfirmTimers[taskId];
-						}
-					} catch (error) {
-						console.warn(`Error clearing timer for task ${taskId}:`, error);
-					}
-				});
+				if (taskId && autoConfirmTimers[taskId]) {
+					clearTimeout(autoConfirmTimers[taskId]);
+					delete autoConfirmTimers[taskId];
+				}
 			} catch (error) {
-				console.error('Error during timer cleanup in clearTasks:', error);
+				console.warn('Error clearing auto-confirm timer in clearTask:', error);
 			}
 
-			// Clean up all active SSE connections
+			// Clean up active SSE connection for current task
 			try {
-				Object.keys(activeSSEControllers).forEach(taskId => {
-					try {
-						if (activeSSEControllers[taskId]) {
-							activeSSEControllers[taskId].abort();
-							delete activeSSEControllers[taskId];
-						}
-					} catch (error) {
-						console.warn(`Error aborting SSE connection for task ${taskId}:`, error);
-					}
-				});
+				if (taskId && activeSSEControllers[taskId]) {
+					activeSSEControllers[taskId].abort();
+					delete activeSSEControllers[taskId];
+				}
 			} catch (error) {
-				console.error('Error during SSE cleanup in clearTasks:', error);
+				console.warn('Error aborting SSE connection in clearTask:', error);
 			}
 
 			window.ipcRenderer.invoke('restart-backend')
@@ -2521,72 +2481,60 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					console.log('restart-backend', res)
 				})
 				.catch((error) => {
-					console.error('Error in clearTasks cleanup:', error)
+					console.error('Error in clearTask cleanup:', error)
 				})
 
-
-			// Immediately create new task to maintain UI responsiveness
-			const newTaskId = create()
-			set((state) => ({
-				...state,
-				tasks: {
-					[newTaskId]: {
-						...state.tasks[newTaskId],
-					},
-				},
-			}))
+			// Create new task to maintain UI responsiveness
+			create()
 		},
-		setIsContextExceeded: (taskId, isContextExceeded) => {
-			set((state) => ({
-				...state,
-				tasks: {
-					...state.tasks,
-					[taskId]: {
-						...state.tasks[taskId],
-						isContextExceeded: isContextExceeded,
-					},
-				},
-			}))
-		},
-		setNextTaskId: (taskId) => {
-			set((state) => ({
-				...state,
-				nextTaskId: taskId,
-			}))
-		},
-		setStreamingDecomposeText: (taskId, text) => {
+		setIsContextExceeded: (isContextExceeded: boolean) => {
 			set((state) => {
-				if (!state.tasks[taskId]) return state;
+				if (!state.task) return state;
 				return {
 					...state,
-					tasks: {
-						...state.tasks,
-						[taskId]: {
-							...state.tasks[taskId],
-							streamingDecomposeText: text,
-						},
+					task: {
+						...state.task,
+						isContextExceeded: isContextExceeded,
+					},
+				};
+			})
+		},
+		setNextTaskId: (nextTaskId: string | null) => {
+			set((state) => ({
+				...state,
+				nextTaskId: nextTaskId,
+			}))
+		},
+		setStreamingDecomposeText: (text: string) => {
+			set((state) => {
+				if (!state.task) return state;
+				return {
+					...state,
+					task: {
+						...state.task,
+						streamingDecomposeText: text,
 					},
 				};
 			});
 		},
-		clearStreamingDecomposeText: (taskId) => {
+		clearStreamingDecomposeText: () => {
+			const { taskId } = get();
 			// Clear buffer and any pending timer
-			delete streamingDecomposeTextBuffer[taskId];
-			if (streamingDecomposeTextTimers[taskId]) {
-				clearTimeout(streamingDecomposeTextTimers[taskId]);
-				delete streamingDecomposeTextTimers[taskId];
+			if (taskId) {
+				delete streamingDecomposeTextBuffer[taskId];
+				if (streamingDecomposeTextTimers[taskId]) {
+					clearTimeout(streamingDecomposeTextTimers[taskId]);
+					delete streamingDecomposeTextTimers[taskId];
+				}
 			}
 
 			set((state) => {
-				if (!state.tasks[taskId]) return state;
+				if (!state.task) return state;
 				return {
 					...state,
-					tasks: {
-						...state.tasks,
-						[taskId]: {
-							...state.tasks[taskId],
-							streamingDecomposeText: '',
-						},
+					task: {
+						...state.task,
+						streamingDecomposeText: '',
 					},
 				};
 			});

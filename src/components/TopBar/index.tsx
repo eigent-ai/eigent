@@ -116,17 +116,15 @@ function HeaderWin() {
 
 	const activeTaskTitle = useMemo(() => {
 		if (
-			chatStore.activeTaskId &&
-			chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask
+			chatStore.taskId &&
+			chatStore.task?.summaryTask
 		) {
-			return chatStore.tasks[
-				chatStore.activeTaskId as string
-			].summaryTask.split("|")[0];
+			return chatStore.task.summaryTask.split("|")[0];
 		}
 		return t("layout.new-project");
 	}, [
-		chatStore.activeTaskId,
-		chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask,
+		chatStore.taskId,
+		chatStore.task?.summaryTask,
 	]);
 
 	const getReferFriendsLink = async () => {
@@ -147,7 +145,7 @@ function HeaderWin() {
 
 	//TODO: Mark ChatStore details as completed
 	const handleEndProject = async () => {
-		const taskId = chatStore.activeTaskId;
+		const taskId = chatStore.taskId;
 		const projectId = projectStore.activeProjectId;
 
 		if (!taskId) {
@@ -158,7 +156,7 @@ function HeaderWin() {
 		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 
 		try {
-			const task = chatStore.tasks[taskId];
+			const task = chatStore.task;
 
 			// Stop the task if it's running
 			if (task && task.status === 'running') {
@@ -175,11 +173,11 @@ function HeaderWin() {
 			}
 
 			// Delete from history using historyId
-			if (historyId && task.status !== "finished") {
+			if (historyId && task?.status !== "finished") {
 				try {
 					await proxyFetchDelete(`/api/chat/history/${historyId}`);
 					// Remove from local store
-					chatStore.removeTask(taskId);
+					chatStore.removeTask();
 				} catch (error) {
 					console.log("History may not exist:", error);
 				}
@@ -312,12 +310,12 @@ function HeaderWin() {
 							platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string] &&
+						{chatStore.taskId &&
+							chatStore.task &&
 							(
-								(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
+								(chatStore.task?.messages?.length || 0) > 0 ||
+								chatStore.task?.hasMessages ||
+								chatStore.task?.status !== 'pending'
 							) && (
 							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
@@ -331,11 +329,11 @@ function HeaderWin() {
 								</Button>
 							</TooltipSimple>
 						)}
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+						{chatStore.taskId &&
+							chatStore.task?.status === 'finished' && (
 							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
 								<Button
-									onClick={() => handleShare(chatStore.activeTaskId as string)}
+									onClick={() => handleShare(chatStore.taskId as string)}
 									variant="ghost"
 									size="xs"
 									className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
@@ -355,7 +353,7 @@ function HeaderWin() {
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-36">
-								{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+								{chatStore.taskId && chatStore.task && (
 									<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
 										<FileDown className="w-4 h-4" />
 										{t("layout.report-bug")}

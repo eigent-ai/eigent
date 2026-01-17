@@ -139,9 +139,8 @@ export default function Project() {
 	};
 
 	const handleClickAgent = (taskId: string, agent_id: string) => {
-		chatStore.setActiveTaskId(taskId);
-		chatStore.setActiveWorkSpace(taskId, "workflow");
-		chatStore.setActiveAgent(taskId, agent_id);
+		chatStore.setActiveWorkSpace("workflow");
+		chatStore.setActiveAgent(agent_id);
 		navigate(`/`);
 	};
 
@@ -157,8 +156,8 @@ export default function Project() {
 		try {
 			await proxyFetchDelete(`/api/chat/history/${id}`);
 			setHistoryTasks((list) => list.filter((item) => item.id !== id));
-			if (chatStore.tasks[id]) {
-				chatStore.removeTask(id);
+			if (chatStore.taskId === id) {
+				chatStore.removeTask();
 			}
 		} catch (error) {
 			console.error("Failed to delete history task:", error);
@@ -196,15 +195,14 @@ export default function Project() {
 	};
 
 	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(taskId, question, 0);
+		chatStore.replay(question, 0);
 		navigate({ pathname: "/" });
 	};
 
 	const handleSetActive = (taskId: string, question: string) => {
-		const task = chatStore.tasks[taskId];
-		if (task) {
+		const hasTask = chatStore.taskId === taskId && chatStore.task;
+		if (hasTask) {
 			// if there is a record, display the result
-			chatStore.setActiveTaskId(taskId);
 			navigate(`/`);
 		} else {
 			// if there is no record, execute replay
@@ -213,23 +211,24 @@ export default function Project() {
 	};
 
 	const handleTakeControl = (type: "pause" | "resume", taskId: string) => {
+		if (!chatStore.task || chatStore.taskId !== taskId) return;
 		if (type === "pause") {
-			let { taskTime, elapsed } = chatStore.tasks[taskId];
+			let { taskTime, elapsed } = chatStore.task;
 
 			const now = Date.now();
 			elapsed += now - taskTime;
-			chatStore.setElapsed(taskId, elapsed);
-			chatStore.setTaskTime(taskId, 0);
+			chatStore.setElapsed(elapsed);
+			chatStore.setTaskTime(0);
 		} else {
-			chatStore.setTaskTime(taskId, Date.now());
+			chatStore.setTaskTime(Date.now());
 		}
 		fetchPut(`/task/${taskId}/take-control`, {
 			action: type,
 		});
 		if (type === "pause") {
-			chatStore.setStatus(taskId, "pause");
+			chatStore.setStatus("pause");
 		} else {
-			chatStore.setStatus(taskId, "running");
+			chatStore.setStatus("running");
 		}
 	};
 
@@ -282,10 +281,9 @@ export default function Project() {
           onTaskSelect={handleSetActive}
           onTaskDelete={handleDelete}
           onTaskShare={handleShare}
-          activeTaskId={chatStore.activeTaskId || undefined}
-          ongoingTasks={chatStore.tasks}
+          activeTaskId={chatStore.taskId || undefined}
+          ongoingTasks={chatStore.task && chatStore.taskId ? { [chatStore.taskId]: chatStore.task } : {}}
           onOngoingTaskClick={(taskId) => {
-            chatStore.setActiveTaskId(taskId);
             navigate(`/`);
           }}
           onOngoingTaskPause={(taskId) => handleTakeControl("pause", taskId)}

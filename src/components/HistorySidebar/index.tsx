@@ -101,20 +101,18 @@ export default function HistorySidebar() {
 			// Check all chat stores for ongoing tasks
 			chatStores.forEach(({ chatStore: cs }) => {
 				const csState = cs.getState();
-				Object.keys(csState.tasks || {}).forEach((taskId) => {
-					const task = csState.tasks[taskId];
-					// Only include ongoing tasks
-					if (task.status !== "finished" && !task.type) {
-						hasOngoingTasks = true;
-						taskCount++;
-						if (task.tokens) {
-							totalTokens += task.tokens;
-						}
-						if (!lastPrompt && task.messages?.[0]?.content) {
-							lastPrompt = task.messages[0].content;
-						}
+				const task = csState.task;
+				// Only include ongoing tasks
+				if (task && task.status !== "finished" && !task.type) {
+					hasOngoingTasks = true;
+					taskCount++;
+					if (task.tokens) {
+						totalTokens += task.tokens;
 					}
-				});
+					if (!lastPrompt && task.messages?.[0]?.content) {
+						lastPrompt = task.messages[0].content;
+					}
+				}
 			});
 			
 			// Only add project if it has ongoing tasks

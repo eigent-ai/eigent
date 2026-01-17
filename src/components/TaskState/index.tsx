@@ -138,7 +138,7 @@ export const TaskState = ({
 								(isSelected("ongoing") || forceVisible) &&
 								"!text-icon-information"
 							} ${
-								chatStore.tasks[chatStore.activeTaskId as string]?.status ===
+								chatStore.task?.status ===
 									"running" && "animate-spin"
 							}`}
 						/>

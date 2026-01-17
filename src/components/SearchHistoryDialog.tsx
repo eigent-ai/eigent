@@ -104,7 +104,7 @@ export function SearchHistoryDialog() {
 								onTaskSelect={handleSetActive}
 								onTaskDelete={handleDelete}
 								onTaskShare={handleShare}
-								activeTaskId={chatStore.activeTaskId || undefined}
+								activeTaskId={chatStore.taskId || undefined}
 							/>
 						</div>
 					) : (

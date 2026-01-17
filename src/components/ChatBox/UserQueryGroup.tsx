@@ -37,16 +37,15 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
   const chatState = chatStore.getState();
-  const activeTaskId = chatState.activeTaskId;
+  const activeTaskId = chatState.taskId;
 
   // Subscribe to streaming decompose text separately for efficient updates
   const streamingDecomposeText = useSyncExternalStore(
     (callback) => chatStore.subscribe(callback),
     () => {
       const state = chatStore.getState();
-      const taskId = state.activeTaskId;
-      if (!taskId || !state.tasks[taskId]) return '';
-      return state.tasks[taskId].streamingDecomposeText || '';
+      if (!state.taskId || !state.task) return '';
+      return state.task.streamingDecomposeText || '';
     }
   );
 
@@ -55,11 +54,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // Exclude human-reply scenarios (when user is replying to an activeAsk)
   const isHumanReply = queryGroup.userMessage &&
     activeTaskId &&
-    chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk ||
+    chatState.task &&
+    (chatState.task.activeAsk ||
       // Check if this user message follows an 'ask' message in the message sequence
       (() => {
-        const messages = chatState.tasks[activeTaskId].messages;
+        const messages = chatState.task.messages;
         const userMessageIndex = messages.findIndex((m: any) => m.id === queryGroup.userMessage.id);
         if (userMessageIndex > 0) {
           // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
@@ -72,22 +71,22 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const isLastUserQuery = !queryGroup.taskMessage &&
     !isHumanReply &&
     activeTaskId &&
-    chatState.tasks[activeTaskId] &&
+    chatState.task &&
     queryGroup.userMessage &&
-    queryGroup.userMessage.id === chatState.tasks[activeTaskId].messages.filter((m: any) => m.role === 'user').pop()?.id &&
+    queryGroup.userMessage.id === chatState.task.messages.filter((m: any) => m.role === 'user').pop()?.id &&
     // Only show during active phases (not finished)
-    chatState.tasks[activeTaskId].status !== 'finished';
+    chatState.task.status !== 'finished';
 
   // Only show the fallback task box for the newest query while the agent is still splitting work.
   // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
   // Also, do not show fallback task if we are currently decomposing (streaming text).
   const isDecomposing = streamingDecomposeText.length > 0;
   const shouldShowFallbackTask =
-    isLastUserQuery && activeTaskId && !chatState.tasks[activeTaskId].hasWaitComfirm && !isDecomposing;
+    isLastUserQuery && activeTaskId && !chatState.task?.hasWaitComfirm && !isDecomposing;
 
   const task =
     (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
-      ? chatState.tasks[activeTaskId]
+      ? chatState.task
       : null;
 
   // Set up intersection observer for this query group
@@ -230,15 +229,15 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 progressValue={task?.progressValue || 0}
                 summaryTask={task?.summaryTask || ""}
                 onAddTask={() => {
-                  chatState.setIsTaskEdit(activeTaskId as string, true);
+                  chatState.setIsTaskEdit(true);
                   chatState.addTaskInfo();
                 }}
                 onUpdateTask={(taskIndex, content) => {
-                  chatState.setIsTaskEdit(activeTaskId as string, true);
+                  chatState.setIsTaskEdit(true);
                   chatState.updateTaskInfo(taskIndex, content);
                 }}
                 onDeleteTask={(taskIndex) => {
-                  chatState.setIsTaskEdit(activeTaskId as string, true);
+                  chatState.setIsTaskEdit(true);
                   chatState.deleteTaskInfo(taskIndex);
                 }}
                 clickable={true}
@@ -279,8 +278,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.3 }}
                         onClick={() => {
-                          chatState.setSelectedFile(activeTaskId as string, file);
-                          chatState.setActiveWorkSpace(activeTaskId as string, "documentWorkSpace");
+                          chatState.setSelectedFile(file);
+                          chatState.setActiveWorkSpace("documentWorkSpace");
                         }}
                         className="flex items-center gap-2 bg-message-fill-default rounded-sm px-2 py-1 w-[140px] cursor-pointer hover:bg-message-fill-hover transition-colors"
                       >
@@ -356,8 +355,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: 0.3 }}
                       onClick={() => {
-                        chatState.setSelectedFile(activeTaskId as string, file);
-                        chatState.setActiveWorkSpace(activeTaskId as string, "documentWorkSpace");
+                        chatState.setSelectedFile(file);
+                        chatState.setActiveWorkSpace("documentWorkSpace");
                       }}
                       className="flex items-center gap-2 bg-message-fill-default rounded-2xl px-2 py-1 w-[120px] cursor-pointer hover:bg-message-fill-hover transition-colors"
                     >

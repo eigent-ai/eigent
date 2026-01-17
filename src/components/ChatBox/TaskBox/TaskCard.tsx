@@ -101,20 +101,20 @@ export function TaskCard({
 
 	const isAllTaskFinished = useMemo(() => {
 		return (
-			chatStore.tasks[chatStore.activeTaskId as string].status === "finished"
+			chatStore.task?.status === "finished"
 		);
-	}, [chatStore.tasks[chatStore.activeTaskId as string].status]);
+	}, [chatStore.task?.status]);
 
 	useEffect(() => {
 		if (
-			chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace ===
+			chatStore.task?.activeWorkSpace ===
 			"workflow"
 		) {
 			setIsExpanded(false);
 		} else {
 			setIsExpanded(true);
 		}
-	}, [chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace]);
+	}, [chatStore.task?.activeWorkSpace]);
 
 	// Improved height calculation logic
 	useEffect(() => {
@@ -347,11 +347,9 @@ export function TaskCard({
 
 														// Set the active workspace and agent
 														chatStore.setActiveWorkSpace(
-															chatStore.activeTaskId as string,
 															"workflow"
 														);
 														chatStore.setActiveAgent(
-															chatStore.activeTaskId as string,
 															task.agent?.agent_id
 														);
 														window.electronAPI.hideAllWebview();
@@ -386,9 +384,7 @@ export function TaskCard({
 														<LoaderCircle
 															size={16}
 															className={`text-icon-information ${
-																chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].status === "running" && "animate-spin"
+																chatStore.task?.status === "running" && "animate-spin"
 															} `}
 														/>
 													)}
