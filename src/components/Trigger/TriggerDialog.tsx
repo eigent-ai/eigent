@@ -47,7 +47,8 @@ import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
 import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { proxyCreateTrigger, proxyUpdateTrigger, proxyFetchTriggerConfig } from "@/service/triggerApi";
+import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
+import { useTriggerConfigQuery, useTriggerCacheInvalidation } from "@/hooks/queries/useTriggerQueries";
 import DynamicTriggerConfig, { getDefaultTriggerConfig, filterExcludedFields, type ValidationError, type TriggerConfigSchema } from "./DynamicTriggerConfig";
 
 type TriggerDialogProps = {
@@ -97,6 +98,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const { projectStore } = useChatStoreAdapter();
 
     const { addTrigger, updateTrigger } = useTriggerStore();
+    const { invalidateTriggerList } = useTriggerCacheInvalidation();
+
+    // Fetch trigger config using query hook
+    const { data: configData } = useTriggerConfigQuery(
+        selectedTrigger?.trigger_type || formData.trigger_type,
+        isOpen // Only fetch when dialog is open
+    );
 
     // Reset form when dialog opens
     useEffect(() => {
@@ -155,23 +163,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
     }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
 
-    // Fetch trigger configs
+    // Update schema when query data changes
     useEffect(() => {
-        const fetchTriggerConfig = async () => {
-            try {
-                //Fetch config based on trigger type
-                const config = await proxyFetchTriggerConfig(selectedTrigger?.trigger_type || formData.trigger_type);
-                //Store the schema for later use when filtering excluded fields
-                if (config?.schema_) {
-                    setTriggerConfigSchema(config.schema_);
-                }
-            } catch (error) {
-                console.error("Error fetching trigger config:", error);
-            }
-        };
-
-        fetchTriggerConfig();
-    }, [formData.trigger_type, selectedTrigger]);
+        if (configData?.schema_) {
+            setTriggerConfigSchema(configData.schema_);
+        }
+    }, [configData]);
 
     const handleClose = () => {
         onOpenChange(false);
@@ -269,6 +266,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             }
 
             onTriggerCreated(formData);
+            
+            // Invalidate trigger list cache to refresh the list
+            await invalidateTriggerList(projectStore.activeProjectId);
+            
             handleClose();
 
             // Display the webhook url in a success dialog (only for new webhooks)
@@ -286,7 +287,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     const handleCopyWebhookUrl = async () => {
         try {
-            await navigator.clipboard.writeText(`${import.meta.env.VITE_PROXY_URL}/api/${formData.webhook_url || createdWebhookUrl}`);
+            await navigator.clipboard.writeText(`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`);
             toast.success(t("triggers.webhook-url-copied"));
         } catch (err) {
             toast.error(t("triggers.failed-to-copy"));

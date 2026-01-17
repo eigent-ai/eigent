@@ -2,6 +2,9 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useActivityLogStore, ActivityType } from '@/store/activityLogStore';
 import { useTriggerStore } from '@/store/triggerStore';
+import { queryClient, queryKeys } from '@/lib/queryClient';
+import { proxyFetchTriggerConfig } from '@/service/triggerApi';
+import { TriggerType } from '@/types';
 import { toast } from 'sonner';
 
 interface ExecutionCreatedMessage {
@@ -38,6 +41,15 @@ interface ProjectCreatedMessage {
     created_at: string | null;
 }
 
+interface WebhookAuthenticatedMessage {
+    type: 'trigger_activated';
+    trigger_id: number;
+    trigger_type: 'webhook' | 'schedule';
+    user_id: string;
+    project_id: string;
+    webhook_uuid: string;
+}
+
 interface AckConfirmedMessage {
     type: 'ack_confirmed';
     execution_id: string;
@@ -68,6 +80,7 @@ type WebSocketMessage =
     | ExecutionCreatedMessage 
     | ExecutionUpdatedMessage 
     | ProjectCreatedMessage 
+    | WebhookAuthenticatedMessage
     | AckConfirmedMessage 
     | ConnectedMessage 
     | HeartbeatMessage 
@@ -231,6 +244,32 @@ export function useExecutionSubscription(enabled: boolean = true) {
                         case 'project_created':
                             console.log(`[ExecutionSubscription] Project created: ${message.project_id} - ${message.project_name}`);
                             break;
+
+                        case 'trigger_activated': {
+                            console.log(`[ExecutionSubscription] Trigger activated: ${message.trigger_id}`);
+                            
+                            // Invalidate trigger list cache to refresh triggers
+                            queryClient.invalidateQueries({
+                                queryKey: queryKeys.triggers.list(message.project_id),
+                            });
+
+                            // Also invalidate all trigger lists in case project_id is different
+                            queryClient.invalidateQueries({
+                                queryKey: queryKeys.triggers.all,
+                                predicate: (query) => query.queryKey[1] === 'list',
+                            });
+
+                            // Prefetch/refresh trigger type config for caching
+                            const triggerType = message.trigger_type as TriggerType;
+                            queryClient.prefetchQuery({
+                                queryKey: queryKeys.triggers.configs(triggerType),
+                                queryFn: () => proxyFetchTriggerConfig(triggerType),
+                                staleTime: 1000 * 60 * 10, // 10 minutes
+                            });
+
+                            toast.success(`Trigger verified: #${message.trigger_id}`);
+                            break;
+                        }
 
                         case 'heartbeat':
                             // Server is alive - optional response

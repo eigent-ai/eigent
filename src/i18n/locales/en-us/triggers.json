@@ -248,7 +248,7 @@
             "notice": "Slack user IDs to ignore messages from"
         }
     },
-    "verification-required": "Verification Required for Trigger Activation",
+    "verification-required": "Pending Verification. A valid event message is required for Trigger Activation or disable trigger Authentication.",
     "base": {
       "authentication_required": {
         "label": "Require Authentication",

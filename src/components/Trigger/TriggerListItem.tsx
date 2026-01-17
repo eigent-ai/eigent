@@ -110,7 +110,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             <TooltipSimple content={t("triggers.verification-required")}>
                 <div>
                     <Switch
-                        checked={isActive}
+                        checked={isActive || needsAuth}
                         onCheckedChange={() => onToggleActive(trigger)}
                         onClick={(e) => e.stopPropagation()}
                         disabled={needsAuth}
