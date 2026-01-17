@@ -15,12 +15,12 @@ class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         agent_name: str | None = None,
         working_directory: str | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if agent_name is not None:
             self.agent_name = agent_name
         if working_directory is None:

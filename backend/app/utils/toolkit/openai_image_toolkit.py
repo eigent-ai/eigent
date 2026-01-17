@@ -14,7 +14,7 @@ class OpenAIImageToolkit(BaseOpenAIImageToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         model: None | Literal["gpt-image-1"] | Literal["dall-e-3"] | Literal["dall-e-2"] = "gpt-image-1",
         timeout: float | None = None,
         api_key: str | None = None,
@@ -40,7 +40,7 @@ class OpenAIImageToolkit(BaseOpenAIImageToolkit, AbstractToolkit):
         style: None | Literal["vivid"] | Literal["natural"] = None,
         working_directory: str | None = None,
     ):
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         super().__init__(
             model, timeout, api_key, url, size, quality, response_format, background, style, working_directory
         )
@@ -60,5 +60,5 @@ class OpenAIImageToolkit(BaseOpenAIImageToolkit, AbstractToolkit):
 
     def _build_base_params(self, prompt: str, n: Optional[int] = None) -> dict:
         params = super()._build_base_params(prompt, n)
-        params["user"] = self.api_task_id  # support cloud key billing
+        params["user"] = self.api_project_id  # support cloud key billing
         return params

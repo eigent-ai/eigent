@@ -37,7 +37,7 @@ class TestListenChatAgent:
     
     def test_listen_chat_agent_initialization(self):
         """Test ListenChatAgent initialization."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock') as mock_get_lock, \
@@ -53,7 +53,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4",  # Use string instead of mock
                 system_message="You are a helpful assistant",
@@ -61,13 +61,13 @@ class TestListenChatAgent:
                 agent_id="test_agent_123"
             )
             
-            assert agent.api_task_id == api_task_id
+            assert agent.api_project_id == api_project_id
             assert agent.agent_name == agent_name
             assert isinstance(agent, ChatAgent)
 
     def test_listen_chat_agent_step_with_string_input(self, mock_task_lock):
         """Test ListenChatAgent step method with string input."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock', return_value=mock_task_lock), \
@@ -82,7 +82,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )
@@ -107,7 +107,7 @@ class TestListenChatAgent:
 
     def test_listen_chat_agent_step_with_base_message_input(self, mock_task_lock):
         """Test ListenChatAgent step method with BaseMessage input."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock', return_value=mock_task_lock), \
@@ -122,7 +122,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )
@@ -155,7 +155,7 @@ class TestListenChatAgent:
     @pytest.mark.asyncio
     async def test_listen_chat_agent_astep(self, mock_task_lock):
         """Test ListenChatAgent async step method."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock', return_value=mock_task_lock), \
@@ -170,7 +170,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )
@@ -196,7 +196,7 @@ class TestListenChatAgent:
 
     def test_listen_chat_agent_execute_tool(self, mock_task_lock):
         """Test ListenChatAgent _execute_tool method."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock', return_value=mock_task_lock), \
@@ -211,7 +211,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )
@@ -244,7 +244,7 @@ class TestListenChatAgent:
     @pytest.mark.asyncio
     async def test_listen_chat_agent_aexecute_tool(self, mock_task_lock):
         """Test ListenChatAgent _aexecute_tool method."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock', return_value=mock_task_lock), \
@@ -258,7 +258,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )
@@ -288,7 +288,7 @@ class TestListenChatAgent:
 
     def test_listen_chat_agent_clone(self, mock_task_lock):
         """Test ListenChatAgent clone method."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         with patch('app.utils.agent.get_task_lock', return_value=mock_task_lock), \
@@ -310,7 +310,7 @@ class TestListenChatAgent:
             
             # First create the initial agent
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )
@@ -343,7 +343,7 @@ class TestListenChatAgent:
 
     def test_listen_chat_agent_with_tools(self, mock_task_lock):
         """Test ListenChatAgent with tools."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         # Mock tool
@@ -361,7 +361,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4",
                 tools=tools
@@ -376,7 +376,7 @@ class TestListenChatAgent:
 
     def test_listen_chat_agent_with_pause_event(self, mock_task_lock):
         """Test ListenChatAgent with pause event."""
-        api_task_id = "test_api_task_123"
+        api_project_id = "test_api_task_123"
         agent_name = "TestAgent"
         
         pause_event = asyncio.Event()
@@ -392,7 +392,7 @@ class TestListenChatAgent:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4",
                 pause_event=pause_event
@@ -743,7 +743,7 @@ class TestToolkitFunctions:
         """Test get_toolkits with known tool names."""
         tools = ["search_toolkit", "terminal_toolkit", "file_write_toolkit"]
         agent_name = "TestAgent"
-        api_task_id = "test_task_123"
+        api_project_id = "test_task_123"
         
         with patch('app.utils.agent.SearchToolkit') as mock_search_toolkit, \
              patch('app.utils.agent.TerminalToolkit') as mock_terminal_toolkit, \
@@ -773,7 +773,7 @@ class TestToolkitFunctions:
             mock_terminal_toolkit.get_can_use_tools = MagicMock(return_value=mock_terminal_tools)
             mock_file_toolkit.get_can_use_tools = MagicMock(return_value=mock_file_tools)
             
-            result = await get_toolkits(tools, agent_name, api_task_id)
+            result = await get_toolkits(tools, agent_name, api_project_id)
             
             # The result should contain tools from the toolkits that match
             assert isinstance(result, list)
@@ -785,9 +785,9 @@ class TestToolkitFunctions:
         """Test get_toolkits with unknown tool name."""
         tools = ["unknown_tool"]
         agent_name = "TestAgent"
-        api_task_id = "test_task_123"
+        api_project_id = "test_task_123"
         
-        result = await get_toolkits(tools, agent_name, api_task_id)
+        result = await get_toolkits(tools, agent_name, api_project_id)
         
         # Should return empty list or handle unknown tools gracefully
         assert isinstance(result, list)
@@ -797,9 +797,9 @@ class TestToolkitFunctions:
         """Test get_toolkits with empty tools list."""
         tools = []
         agent_name = "TestAgent"
-        api_task_id = "test_task_123"
+        api_project_id = "test_task_123"
         
-        result = await get_toolkits(tools, agent_name, api_task_id)
+        result = await get_toolkits(tools, agent_name, api_project_id)
         
         assert result == []
 
@@ -872,11 +872,11 @@ class TestAgentIntegration:
         from app.service.task import task_locks
         
         options = Chat(**sample_chat_data)
-        api_task_id = options.task_id
+        api_project_id = options.task_id
         
         # Create task lock
         mock_task_lock = MagicMock()
-        task_locks[api_task_id] = mock_task_lock
+        task_locks[api_project_id] = mock_task_lock
         
         # Create agent
         with patch('app.utils.agent.ModelFactory.create') as mock_model_factory, \
@@ -886,13 +886,13 @@ class TestAgentIntegration:
             mock_model_factory.return_value = mock_model
             
             mock_agent_instance = MagicMock()
-            mock_agent_instance.api_task_id = api_task_id
+            mock_agent_instance.api_project_id = api_project_id
             mock_listen_agent.return_value = mock_agent_instance
 
             agent = agent_model("IntegrationAgent", "Test system prompt", options, [])
             
             assert agent is mock_agent_instance
-            assert agent.api_task_id == api_task_id
+            assert agent.api_project_id == api_project_id
             
             # Test step operation
             mock_response = MagicMock()
@@ -973,7 +973,7 @@ class TestAgentErrorCases:
     
     def test_listen_chat_agent_with_invalid_model(self):
         """Test ListenChatAgent with invalid model."""
-        api_task_id = "error_test_123"
+        api_project_id = "error_test_123"
         agent_name = "ErrorAgent"
         
         with patch('app.utils.agent.get_task_lock') as mock_get_lock, \
@@ -984,7 +984,7 @@ class TestAgentErrorCases:
             # Try to create agent with invalid model which should raise an error through ModelFactory
             with pytest.raises(ValueError):
                 ListenChatAgent(
-                    api_task_id=api_task_id,
+                    api_project_id=api_project_id,
                     agent_name=agent_name,
                     model="invalid_model_string"  # Invalid model type
                 )
@@ -1003,17 +1003,17 @@ class TestAgentErrorCases:
         """Test get_toolkits when toolkit initialization fails."""
         tools = ["search"]
         agent_name = "ErrorAgent"
-        api_task_id = "error_test_123"
+        api_project_id = "error_test_123"
         
         with patch('app.utils.agent.SearchToolkit', side_effect=Exception("Toolkit init failed")):
             # Should handle toolkit initialization errors
-            result = await get_toolkits(tools, agent_name, api_task_id)
+            result = await get_toolkits(tools, agent_name, api_project_id)
             # Should return what it can or empty list
             assert isinstance(result, list)
 
     def test_listen_chat_agent_step_with_task_lock_error(self):
         """Test ListenChatAgent step when task lock retrieval fails."""
-        api_task_id = "error_test_123"
+        api_project_id = "error_test_123"
         agent_name = "ErrorAgent"
         
         with patch('app.utils.agent.get_task_lock', side_effect=Exception("Task lock not found")), \
@@ -1027,7 +1027,7 @@ class TestAgentErrorCases:
             mock_create_model.return_value = mock_backend
             
             agent = ListenChatAgent(
-                api_task_id=api_task_id,
+                api_project_id=api_project_id,
                 agent_name=agent_name,
                 model="gpt-4"
             )

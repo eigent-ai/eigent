@@ -19,8 +19,8 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
     agent_name: str = Agents.social_medium_agent
 
-    def __init__(self, api_task_id: str, timeout: float | None = None):
-        self.api_task_id = api_task_id
+    def __init__(self, api_project_id: str, timeout: float | None = None):
+        self.api_project_id = api_project_id
         # Use a stable token file (no per-task suffix). Can be overridden by env.
         self._token_path = env("GOOGLE_CALENDAR_TOKEN_PATH") or os.path.join(
             os.path.expanduser("~"),
@@ -42,7 +42,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
         )
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str):
+    def get_can_use_tools(cls, api_project_id: str):
         from dotenv import load_dotenv
         
         # Force reload environment variables
@@ -51,7 +51,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
             load_dotenv(dotenv_path=default_env_path, override=True)
         
         if os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"):
-            return cls(api_task_id).get_tools()
+            return cls(api_project_id).get_tools()
         else:
             return []
 
@@ -151,7 +151,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
         return creds
     
     @staticmethod
-    def start_background_auth(api_task_id: str = "install_auth") -> str:
+    def start_background_auth(api_project_id: str = "install_auth") -> str:
         """
         Start background OAuth authorization flow with timeout
         Returns the status of the authorization

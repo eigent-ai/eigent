@@ -18,12 +18,12 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         agent_name: str | None = None,
         timeout: float | None = None,
         exclude_domains: List[str] | None = None,
     ):
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if agent_name is not None:
             self.agent_name = agent_name
         super().__init__(
@@ -338,8 +338,8 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     #     )
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
-        search_toolkit = SearchToolkit(api_task_id)
+    def get_can_use_tools(cls, api_project_id: str) -> list[FunctionTool]:
+        search_toolkit = SearchToolkit(api_project_id)
         tools = [
             # FunctionTool(search_toolkit.search_wiki),
             # FunctionTool(search_toolkit.search_duckduckgo),

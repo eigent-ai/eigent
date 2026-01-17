@@ -17,9 +17,9 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
     agent_name: str = Agents.social_medium_agent
 
-    def __init__(self, api_task_id: str, timeout: float | None = None):
+    def __init__(self, api_project_id: str, timeout: float | None = None):
         super().__init__(timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
 
     @listen_toolkit(
         create_tweet,
@@ -64,13 +64,13 @@ class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
         ]
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> List[FunctionTool]:
+    def get_can_use_tools(cls, api_project_id: str) -> List[FunctionTool]:
         if (
             env("TWITTER_CONSUMER_KEY")
             and env("TWITTER_CONSUMER_SECRET")
             and env("TWITTER_ACCESS_TOKEN")
             and env("TWITTER_ACCESS_TOKEN_SECRET")
         ):
-            return TwitterToolkit(api_task_id).get_tools()
+            return TwitterToolkit(api_project_id).get_tools()
         else:
             return []

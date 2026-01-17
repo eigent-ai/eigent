@@ -11,7 +11,7 @@ class CodeExecutionToolkit(BaseCodeExecutionToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         sandbox: Literal["internal_python", "jupyter", "docker", "subprocess", "e2b"] = "subprocess",
         verbose: bool = False,
         unsafe_mode: bool = False,
@@ -19,7 +19,7 @@ class CodeExecutionToolkit(BaseCodeExecutionToolkit, AbstractToolkit):
         require_confirm: bool = False,
         timeout: float | None = None,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         super().__init__(sandbox, verbose, unsafe_mode, import_white_list, require_confirm, timeout)
 
     def get_tools(self) -> List[FunctionTool]:

@@ -132,7 +132,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         *,
         headless: bool = False,
         user_data_dir: str | None = None,
@@ -150,7 +150,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         page_stability_timeout: int | None = None,
         dom_content_loaded_timeout: int | None = None,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         self._headless = headless
         self._user_data_dir = user_data_dir
         self._stealth = stealth
@@ -276,9 +276,9 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         return {"result": nav_result, "snapshot": snapshot, **tab_info}
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
+    def get_can_use_tools(cls, api_project_id: str) -> list[FunctionTool]:
         browser = HybridBrowserPythonToolkit(
-            api_task_id,
+            api_project_id,
             headless=False,
             browser_log_to_file=True,
             stealth=True,
@@ -312,7 +312,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             new_session_id = str(uuid.uuid4())[:8]
 
         return HybridBrowserPythonToolkit(
-            self.api_task_id,
+            self.api_project_id,
             headless=self._headless,
             user_data_dir=self._user_data_dir,
             stealth=self._stealth,

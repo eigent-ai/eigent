@@ -35,7 +35,7 @@ logger = traceroot.get_logger("workforce")
 class Workforce(BaseWorkforce):
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         description: str,
         children: List[BaseNode] | None = None,
         coordinator_agent: ChatAgent | None = None,
@@ -45,9 +45,9 @@ class Workforce(BaseWorkforce):
         share_memory: bool = False,
         use_structured_output_handler: bool = True,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         logger.info("=" * 80)
-        logger.info("🏭 [WF-LIFECYCLE] Workforce.__init__ STARTED", extra={"api_task_id": api_task_id})
+        logger.info("🏭 [WF-LIFECYCLE] Workforce.__init__ STARTED", extra={"api_project_id": api_project_id})
         logger.info(f"[WF-LIFECYCLE] Workforce id will be: {id(self)}")
         logger.info(f"[WF-LIFECYCLE] Init params: graceful_shutdown_timeout={graceful_shutdown_timeout}, share_memory={share_memory}")
         logger.info("=" * 80)
@@ -87,7 +87,7 @@ class Workforce(BaseWorkforce):
         """
         logger.info("=" * 80)
         logger.info("🧩 [DECOMPOSE] eigent_make_sub_tasks CALLED", extra={
-            "api_task_id": self.api_task_id,
+            "api_project_id": self.api_project_id,
             "workforce_id": id(self),
             "task_id": task.id
         })
@@ -125,7 +125,7 @@ class Workforce(BaseWorkforce):
         )
         logger.info("=" * 80)
         logger.info(f"✅ [DECOMPOSE] Task decomposition COMPLETED", extra={
-            "api_task_id": self.api_task_id,
+            "api_project_id": self.api_project_id,
             "task_id": task.id,
             "subtasks_count": len(subtasks)
         })
@@ -135,7 +135,7 @@ class Workforce(BaseWorkforce):
     async def eigent_start(self, subtasks: list[Task]):
         """start the workforce"""
         logger.info("=" * 80)
-        logger.info("▶️  [WF-LIFECYCLE] eigent_start CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
+        logger.info("▶️  [WF-LIFECYCLE] eigent_start CALLED", extra={"api_project_id": self.api_project_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Starting workforce execution with {len(subtasks)} subtasks")
         logger.info(f"[WF-LIFECYCLE] Current workforce state: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
@@ -149,7 +149,7 @@ class Workforce(BaseWorkforce):
             logger.info(f"[WF-LIFECYCLE] ✅ Base class start() method completed")
         except Exception as e:
             logger.error(f"[WF-LIFECYCLE] ❌ Error in workforce execution: {e}", extra={
-                "api_task_id": self.api_task_id,
+                "api_project_id": self.api_project_id,
                 "error": str(e)
             }, exc_info=True)
             self._state = WorkforceState.STOPPED
@@ -311,7 +311,7 @@ class Workforce(BaseWorkforce):
         # task actually begins execution
         assigned = await super()._find_assignee(tasks)
 
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         for item in assigned.assignments:
             # DEBUG ▶ Task has been assigned to which worker and its dependencies
             logger.debug(f"[WF] ASSIGN {item.task_id} -> {item.assignee_id} deps={item.dependencies}")
@@ -375,7 +375,7 @@ class Workforce(BaseWorkforce):
         logger.debug(f"[WF] POST  {task.id} -> {assignee_id}")
         """Override the _post_task method to notify the frontend when the task really starts to execute"""
         # When the dependency check is passed and the task is about to be published to the execution queue, send a notification to the frontend
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         if self._task and task.id != self._task.id:  # Skip the main task itself
             # Map node_id to agent_id for frontend communication
             agent_id = self._get_agent_id_from_node_id(assignee_id)
@@ -447,7 +447,7 @@ class Workforce(BaseWorkforce):
     async def _handle_completed_task(self, task: Task) -> None:
         # DEBUG ▶ Task completed
         logger.debug(f"[WF] DONE  {task.id}")
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
 
         # Log task completion with result details
         is_main_task = self._task and task.id == self._task.id
@@ -487,7 +487,7 @@ class Workforce(BaseWorkforce):
                     error_message = entry.get("error_message")
                     break
 
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         await task_lock.put_queue(
             ActionTaskStateData(
                 data={
@@ -504,19 +504,19 @@ class Workforce(BaseWorkforce):
 
     def stop(self) -> None:
         logger.info("=" * 80)
-        logger.info(f"⏹️  [WF-LIFECYCLE] stop() CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
+        logger.info(f"⏹️  [WF-LIFECYCLE] stop() CALLED", extra={"api_project_id": self.api_project_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Current state before stop: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
         super().stop()
         logger.info(f"[WF-LIFECYCLE] super().stop() completed, new state: {self._state.name}")
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         task = asyncio.create_task(task_lock.put_queue(ActionEndData()))
         task_lock.add_background_task(task)
         logger.info(f"[WF-LIFECYCLE] ✅ ActionEndData queued")
 
     def stop_gracefully(self) -> None:
         logger.info("=" * 80)
-        logger.info(f"🛑 [WF-LIFECYCLE] stop_gracefully() CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
+        logger.info(f"🛑 [WF-LIFECYCLE] stop_gracefully() CALLED", extra={"api_project_id": self.api_project_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Current state before stop_gracefully: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
         super().stop_gracefully()
@@ -524,7 +524,7 @@ class Workforce(BaseWorkforce):
 
     def skip_gracefully(self) -> None:
         logger.info("=" * 80)
-        logger.info(f"⏭️  [WF-LIFECYCLE] skip_gracefully() CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
+        logger.info(f"⏭️  [WF-LIFECYCLE] skip_gracefully() CALLED", extra={"api_project_id": self.api_project_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Current state before skip_gracefully: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
         super().skip_gracefully()
@@ -532,7 +532,7 @@ class Workforce(BaseWorkforce):
 
     def pause(self) -> None:
         logger.info("=" * 80)
-        logger.info(f"⏸️  [WF-LIFECYCLE] pause() CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
+        logger.info(f"⏸️  [WF-LIFECYCLE] pause() CALLED", extra={"api_project_id": self.api_project_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Current state before pause: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
         super().pause()
@@ -540,7 +540,7 @@ class Workforce(BaseWorkforce):
 
     def resume(self) -> None:
         logger.info("=" * 80)
-        logger.info(f"▶️  [WF-LIFECYCLE] resume() CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
+        logger.info(f"▶️  [WF-LIFECYCLE] resume() CALLED", extra={"api_project_id": self.api_project_id, "workforce_id": id(self)})
         logger.info(f"[WF-LIFECYCLE] Current state before resume: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
         super().resume()
@@ -552,6 +552,6 @@ class Workforce(BaseWorkforce):
             # Clean up the task lock
             from app.service.task import delete_task_lock
 
-            await delete_task_lock(self.api_task_id)
+            await delete_task_lock(self.api_project_id)
         except Exception as e:
             logger.error(f"Error cleaning up workforce resources: {e}")

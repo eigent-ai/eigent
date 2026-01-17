@@ -15,7 +15,7 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         working_directory: str | None = None,
         timeout: float | None = None,
         default_encoding: str = "utf-8",
@@ -24,7 +24,7 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
         super().__init__(working_directory, timeout, default_encoding, backup_enabled)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
 
     @listen_toolkit(
         BaseFileToolkit.write_to_file,
@@ -45,7 +45,7 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
     ) -> str:
         res = super().write_to_file(title, content, filename, encoding, use_latex)
         if "Content successfully written to file: " in res:
-            task_lock = get_task_lock(self.api_task_id)
+            task_lock = get_task_lock(self.api_project_id)
             # Capture ContextVar value before creating async task
             current_process_task_id = process_task.get("")
 

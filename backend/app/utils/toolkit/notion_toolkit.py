@@ -13,16 +13,16 @@ class NotionToolkit(BaseNotionToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         notion_token: str | None = None,
         timeout: float | None = None,
     ) -> None:
         super().__init__(notion_token, timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> List[FunctionTool]:
+    def get_can_use_tools(cls, api_project_id: str) -> List[FunctionTool]:
         if env("NOTION_TOKEN"):
-            return NotionToolkit(api_task_id).get_tools()
+            return NotionToolkit(api_project_id).get_tools()
         else:
             return []

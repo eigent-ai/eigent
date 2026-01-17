@@ -20,11 +20,11 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
 
     agent_name: str
 
-    def __init__(self, api_task_id: str, agent_name: str, timeout: float | None = None):
+    def __init__(self, api_project_id: str, agent_name: str, timeout: float | None = None):
         super().__init__(timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         self.agent_name = agent_name
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         task_lock.add_human_input_listen(self.agent_name)
 
     @listen_toolkit(inputs=lambda _, question: question)
@@ -46,7 +46,7 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
             str: The user's response to the question.
         """
         logger.info(f"Question: {question}")
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
         await task_lock.put_queue(
             ActionAskData(
                 action=Action.ask,
@@ -106,13 +106,13 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         if message_attachment:
             print(message_attachment)
 
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock(self.api_project_id)
 
         # Get process_task_id from ContextVar with fallback
         current_process_task_id = process_task.get("")
         if not current_process_task_id:
-            current_process_task_id = self.api_task_id
-            logger.warning(f"[send_message_to_user] ContextVar process_task is empty, using api_task_id as fallback: '{current_process_task_id}'")
+            current_process_task_id = self.api_project_id
+            logger.warning(f"[send_message_to_user] ContextVar process_task is empty, using api_project_id as fallback: '{current_process_task_id}'")
 
         from app.utils.listen.toolkit_listen import _safe_put_queue
 
@@ -139,8 +139,8 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         ]
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str, agent_name: str) -> list[FunctionTool]:
-        human = cls(api_task_id, agent_name)
+    def get_can_use_tools(cls, api_project_id: str, agent_name: str) -> list[FunctionTool]:
+        human = cls(api_project_id, agent_name)
         return [
             FunctionTool(human.ask_human_via_gui),
             # Note: send_message_to_user is not included in get_can_use_tools

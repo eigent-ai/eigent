@@ -15,11 +15,11 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         working_directory: str | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
         super().__init__(working_directory, timeout)
@@ -38,7 +38,7 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
         file_path = self._resolve_filepath(filename)
         res = super().create_presentation(content, filename, template)
         if "PowerPoint presentation successfully created" in res:
-            task_lock = get_task_lock(self.api_task_id)
+            task_lock = get_task_lock(self.api_project_id)
             # Capture ContextVar value before creating async task
             current_process_task_id = process_task.get("")
 

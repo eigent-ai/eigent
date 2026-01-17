@@ -14,7 +14,7 @@ class AudioAnalysisToolkit(BaseAudioAnalysisToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         cache_dir: str | None = None,
         transcribe_model: BaseAudioModel | None = None,
         audio_reasoning_model: BaseModelBackend | None = None,
@@ -23,4 +23,4 @@ class AudioAnalysisToolkit(BaseAudioAnalysisToolkit, AbstractToolkit):
         if cache_dir is None:
             cache_dir = env("file_save_path", os.path.expanduser("~/.eigent/tmp/"))
         super().__init__(cache_dir, transcribe_model, audio_reasoning_model, timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id

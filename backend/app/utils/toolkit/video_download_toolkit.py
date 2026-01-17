@@ -15,7 +15,7 @@ class VideoDownloaderToolkit(BaseVideoDownloaderToolkit, AbstractToolkit):
 
     def __init__(
         self,
-        api_task_id: str,
+        api_project_id: str,
         working_directory: str | None = None,
         cookies_path: str | None = None,
         timeout: float | None = None,
@@ -23,4 +23,4 @@ class VideoDownloaderToolkit(BaseVideoDownloaderToolkit, AbstractToolkit):
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
         super().__init__(working_directory, cookies_path, timeout)
-        self.api_task_id = api_task_id
+        self.api_project_id = api_project_id
