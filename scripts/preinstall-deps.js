@@ -1,0 +1,683 @@
+#!/usr/bin/env node
+/**
+ * Pre-install dependencies script
+ * This script installs all necessary dependencies before packaging the app
+ * so users don't have to wait for installation on first run
+ */
+
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+import https from 'https';
+import http from 'http';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '..');
+
+const BIN_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'bin');
+const VENV_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'venv');
+const BACKEND_DIR = path.join(projectRoot, 'backend');
+
+console.log('🚀 Starting pre-installation of dependencies...');
+console.log(`📦 Binaries will be installed to: ${BIN_DIR}`);
+console.log(`🐍 Python venv will be installed to: ${VENV_DIR}`);
+
+// Ensure directories exist
+fs.mkdirSync(BIN_DIR, { recursive: true });
+fs.mkdirSync(VENV_DIR, { recursive: true });
+
+/**
+ * 检测是否配置了代理
+ */
+function hasProxy() {
+  const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
+  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  return !!(httpProxy || httpsProxy);
+}
+
+const PROXY_DETECTED = hasProxy();
+if (PROXY_DETECTED) {
+  console.log('🔍 Proxy detected, will use GitHub official sources for better compatibility');
+  console.log(`   HTTP_PROXY: ${process.env.HTTP_PROXY || process.env.http_proxy || 'not set'}`);
+  console.log(`   HTTPS_PROXY: ${process.env.HTTPS_PROXY || process.env.https_proxy || 'not set'}`);
+}
+
+/**
+ * 验证下载的文件是否是有效的 ZIP 文件
+ */
+function isValidZip(filePath) {
+  try {
+    const buffer = fs.readFileSync(filePath);
+    return buffer.length > 4 &&
+           buffer[0] === 0x50 &&
+           buffer[1] === 0x4B &&
+           buffer[2] === 0x03 &&
+           buffer[3] === 0x04;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 验证下载的文件是否是有效的 tar.gz 文件
+ */
+function isValidTarGz(filePath) {
+  try {
+    const buffer = fs.readFileSync(filePath);
+    return buffer.length > 2 &&
+           buffer[0] === 0x1F &&
+           buffer[1] === 0x8B;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 下载文件并验证完整性
+ */
+async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType = 'file') {
+  const maxRetries = 2;
+
+  for (const { url, name } of urlsToTry) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`   Trying ${name} (attempt ${attempt + 1}/${maxRetries})`);
+        console.log(`   URL: ${url}`);
+
+        await new Promise((resolve, reject) => {
+          const protocol = url.startsWith('https') ? https : http;
+          const timeout = 180000; // 3 minutes
+
+          const request = protocol.get(url, {
+            timeout: timeout,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+          }, (response) => {
+            // 处理重定向
+            if (response.statusCode === 301 || response.statusCode === 302) {
+              const redirectUrl = response.headers.location;
+              console.log(`   Following redirect...`);
+
+              const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
+              const redirectRequest = redirectProtocol.get(redirectUrl, {
+                timeout: timeout,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                }
+              }, (redirectResponse) => {
+                if (redirectResponse.statusCode === 200) {
+                  const file = fs.createWriteStream(dest);
+                  let downloadedSize = 0;
+                  const totalSize = parseInt(redirectResponse.headers['content-length'] || '0');
+
+                  redirectResponse.on('data', (chunk) => {
+                    downloadedSize += chunk.length;
+                    if (totalSize > 0) {
+                      const progress = ((downloadedSize / totalSize) * 100).toFixed(1);
+                      process.stdout.write(`\r   Progress: ${progress}% (${(downloadedSize / 1024 / 1024).toFixed(2)}MB / ${(totalSize / 1024 / 1024).toFixed(2)}MB)`);
+                    }
+                  });
+
+                  redirectResponse.pipe(file);
+                  file.on('finish', () => {
+                    file.close();
+                    console.log(''); // 新行
+                    resolve();
+                  });
+                  file.on('error', (err) => {
+                    file.close();
+                    if (fs.existsSync(dest)) fs.unlinkSync(dest);
+                    reject(err);
+                  });
+                } else {
+                  reject(new Error(`HTTP ${redirectResponse.statusCode}`));
+                }
+              });
+
+              redirectRequest.on('error', reject);
+              redirectRequest.on('timeout', () => {
+                redirectRequest.destroy();
+                reject(new Error('Request timeout'));
+              });
+
+              return;
+            }
+
+            if (response.statusCode !== 200) {
+              reject(new Error(`HTTP ${response.statusCode}`));
+              return;
+            }
+
+            const file = fs.createWriteStream(dest);
+            let downloadedSize = 0;
+            const totalSize = parseInt(response.headers['content-length'] || '0');
+
+            response.on('data', (chunk) => {
+              downloadedSize += chunk.length;
+              if (totalSize > 0) {
+                const progress = ((downloadedSize / totalSize) * 100).toFixed(1);
+                process.stdout.write(`\r   Progress: ${progress}% (${(downloadedSize / 1024 / 1024).toFixed(2)}MB / ${(totalSize / 1024 / 1024).toFixed(2)}MB)`);
+              }
+            });
+
+            response.pipe(file);
+            file.on('finish', () => {
+              file.close();
+              console.log(''); // 新行
+              resolve();
+            });
+            file.on('error', (err) => {
+              file.close();
+              if (fs.existsSync(dest)) fs.unlinkSync(dest);
+              reject(err);
+            });
+          });
+
+          request.on('error', (err) => {
+            if (fs.existsSync(dest)) fs.unlinkSync(dest);
+            reject(err);
+          });
+
+          request.on('timeout', () => {
+            request.destroy();
+            if (fs.existsSync(dest)) fs.unlinkSync(dest);
+            reject(new Error('Request timeout'));
+          });
+        });
+
+        // 验证下载的文件
+        if (!fs.existsSync(dest)) {
+          throw new Error('Downloaded file does not exist');
+        }
+
+        const fileSize = fs.statSync(dest).size;
+        console.log(`   Downloaded file size: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+
+        if (fileSize < 1024) {
+          const content = fs.readFileSync(dest, 'utf-8');
+          console.log(`   ⚠️  File too small, content: ${content.substring(0, 200)}`);
+          throw new Error('Downloaded file is too small (likely an error page)');
+        }
+
+        if (!validateFn(dest)) {
+          throw new Error(`Downloaded file is not a valid ${fileType}`);
+        }
+
+        console.log(`   ✅ Successfully downloaded and validated from ${name}`);
+        return true;
+
+      } catch (error) {
+        console.log(`\n   ⚠️  Failed: ${error.message}`);
+        if (fs.existsSync(dest)) {
+          try {
+            fs.unlinkSync(dest);
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }
+    }
+  }
+
+  throw new Error(`Failed to download ${fileType} from all mirrors`);
+}
+
+/**
+ * 获取 Bun 的下载 URL 列表
+ * 如果检测到代理，优先使用 GitHub 官方；否则使用中国镜像
+ */
+function getBunUrls(platform, arch) {
+  const filename = `bun-${platform}-${arch}.zip`;
+  const urls = [];
+
+  if (PROXY_DETECTED) {
+    // 有代理时，直接使用 GitHub 官方（代理通常能访问 GitHub）
+    urls.push({
+      url: `https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+      name: 'GitHub (官方 via proxy)'
+    });
+
+    // 备选：镜像（可能代理访问镜像反而慢）
+    urls.push({
+      url: `https://mirror.ghproxy.com/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+      name: 'ghproxy (备选)'
+    });
+  } else {
+    // 无代理时，使用中国镜像
+    urls.push({
+      url: `https://mirror.ghproxy.com/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+      name: 'ghproxy.net (GitHub镜像)'
+    });
+
+    urls.push({
+      url: `https://gh-proxy.com/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+      name: 'gh-proxy.com'
+    });
+
+    urls.push({
+      url: `https://github.moeyy.xyz/https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+      name: 'moeyy.xyz (CDN)'
+    });
+
+    urls.push({
+      url: `https://github.com/oven-sh/bun/releases/latest/download/${filename}`,
+      name: 'GitHub (官方)'
+    });
+  }
+
+  return urls;
+}
+
+/**
+ * 获取 UV 的下载 URL 列表
+ */
+function getUvUrls(archStr, platformStr) {
+  const filename = `uv-${archStr}-${platformStr}.tar.gz`;
+  const urls = [];
+
+  if (PROXY_DETECTED) {
+    // 有代理时，优先使用 GitHub 官方
+    urls.push({
+      url: `https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
+      name: 'GitHub (官方 via proxy)'
+    });
+
+    urls.push({
+      url: `https://mirror.ghproxy.com/https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
+      name: 'ghproxy (备选)'
+    });
+  } else {
+    // 无代理时，使用中国镜像
+    urls.push({
+      url: `https://mirror.ghproxy.com/https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
+      name: 'ghproxy.net (GitHub镜像)'
+    });
+
+    urls.push({
+      url: `https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
+      name: 'gh-proxy.com'
+    });
+
+    urls.push({
+      url: `https://github.com/astral-sh/uv/releases/latest/download/${filename}`,
+      name: 'GitHub (官方)'
+    });
+  }
+
+  return urls;
+}
+
+/**
+ * Install uv binary
+ */
+async function installUv() {
+  console.log('\n📥 Installing uv...');
+  const uvPath = path.join(BIN_DIR, process.platform === 'win32' ? 'uv.exe' : 'uv');
+
+  if (fs.existsSync(uvPath)) {
+    console.log('✅ uv already installed');
+    return uvPath;
+  }
+
+  // Check manual path
+  const manualUvPath = process.env.MANUAL_UV_PATH;
+  if (manualUvPath && fs.existsSync(manualUvPath)) {
+    console.log(`📋 Using manually provided uv binary: ${manualUvPath}`);
+    fs.copyFileSync(manualUvPath, uvPath);
+    if (process.platform !== 'win32') {
+      fs.chmodSync(uvPath, '755');
+    }
+    return uvPath;
+  }
+
+  // Try pip first
+  const usePipEnv = process.env.USE_PIP_INSTALL_UV;
+  const shouldTryPip = usePipEnv !== 'false';
+
+  if (shouldTryPip) {
+    console.log('\n🐍 Trying to install uv via pip (fastest for China)...');
+
+    try {
+      const pypiMirror = 'https://pypi.tuna.tsinghua.edu.cn/simple';
+      let pipCommand = null;
+
+      try {
+        execSync('pip3 --version', { stdio: 'ignore' });
+        pipCommand = 'pip3';
+      } catch {
+        try {
+          execSync('pip --version', { stdio: 'ignore' });
+          pipCommand = 'pip';
+        } catch {
+          throw new Error('pip not found');
+        }
+      }
+
+      const isMacOS = process.platform === 'darwin';
+      const pipArgs = isMacOS
+        ? `install --user --break-system-packages uv -i ${pypiMirror}`
+        : `install --user uv -i ${pypiMirror}`;
+
+      console.log(`   Installing via ${pipCommand}...`);
+      execSync(`${pipCommand} ${pipArgs}`, { stdio: 'inherit' });
+
+      // Find installed uv
+      const possiblePaths = [
+        path.join(os.homedir(), '.local', 'bin', 'uv'),
+        path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
+        path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
+        path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
+        '/usr/local/bin/uv',
+      ];
+
+      let foundUvPath = null;
+      try {
+        foundUvPath = execSync('which uv', { encoding: 'utf-8' }).trim();
+      } catch {
+        for (const p of possiblePaths) {
+          if (fs.existsSync(p)) {
+            foundUvPath = p;
+            break;
+          }
+        }
+      }
+
+      if (foundUvPath && fs.existsSync(foundUvPath)) {
+        fs.copyFileSync(foundUvPath, uvPath);
+        if (process.platform !== 'win32') {
+          fs.chmodSync(uvPath, '755');
+        }
+        console.log('✅ uv installed via pip');
+        return uvPath;
+      }
+    } catch (error) {
+      console.log(`   ⚠️  pip install failed: ${error.message}`);
+    }
+  }
+
+  // Download from mirrors
+  console.log('\n📥 Downloading uv...');
+
+  const platform = process.platform;
+  const arch = process.arch;
+  let platformStr, archStr;
+
+  archStr = arch === 'x64' ? 'x86_64' : arch === 'arm64' ? 'aarch64' : arch;
+
+  if (platform === 'darwin') {
+    platformStr = 'apple-darwin';
+  } else if (platform === 'linux') {
+    platformStr = 'unknown-linux-gnu';
+  } else if (platform === 'win32') {
+    platformStr = 'pc-windows-msvc';
+    archStr = 'x86_64';
+  } else {
+    throw new Error(`Unsupported platform: ${platform}`);
+  }
+
+  const tempFilename = path.join(BIN_DIR, `uv-download-${Date.now()}.tar.gz`);
+
+  console.log(`   Platform: ${platform}-${arch}`);
+
+  const urlsToTry = getUvUrls(archStr, platformStr);
+  await downloadFileWithValidation(urlsToTry, tempFilename, isValidTarGz, 'tar.gz');
+
+  // Extract
+  console.log('   Extracting...');
+  const tar = await import('tar');
+  await tar.extract({ file: tempFilename, cwd: BIN_DIR });
+
+  const extractedUvPath = path.join(BIN_DIR, 'uv');
+  if (fs.existsSync(extractedUvPath)) {
+    fs.renameSync(extractedUvPath, uvPath);
+    if (process.platform !== 'win32') {
+      fs.chmodSync(uvPath, '755');
+    }
+  }
+
+  fs.unlinkSync(tempFilename);
+  console.log('✅ uv installed successfully');
+  return uvPath;
+}
+
+/**
+ * Install bun binary
+ */
+async function installBun() {
+  console.log('\n📥 Installing bun...');
+  const platform = process.platform;
+  const arch = process.arch;
+  const bunPath = path.join(BIN_DIR, platform === 'win32' ? 'bun.exe' : 'bun');
+
+  if (fs.existsSync(bunPath)) {
+    console.log('✅ bun already installed');
+    return bunPath;
+  }
+
+  // Check manual path
+  const manualBunPath = process.env.MANUAL_BUN_PATH;
+  if (manualBunPath && fs.existsSync(manualBunPath)) {
+    console.log(`📋 Using manually provided bun binary: ${manualBunPath}`);
+    fs.copyFileSync(manualBunPath, bunPath);
+    if (platform !== 'win32') {
+      fs.chmodSync(bunPath, '755');
+    }
+    return bunPath;
+  }
+
+  // Determine platform and architecture
+  let bunPlatform, bunArch;
+
+  if (platform === 'darwin') {
+    bunPlatform = 'darwin';
+    bunArch = arch === 'arm64' ? 'aarch64' : 'x64';
+  } else if (platform === 'linux') {
+    bunPlatform = 'linux';
+    bunArch = arch === 'arm64' ? 'aarch64' : 'x64';
+  } else if (platform === 'win32') {
+    bunPlatform = 'windows';
+    bunArch = 'x64';
+  } else {
+    throw new Error(`Unsupported platform: ${platform}`);
+  }
+
+  const tempFilename = path.join(BIN_DIR, `bun-download-${Date.now()}.zip`);
+
+  console.log(`   Platform: ${bunPlatform}-${bunArch}`);
+
+  const urlsToTry = getBunUrls(bunPlatform, bunArch);
+  await downloadFileWithValidation(urlsToTry, tempFilename, isValidZip, 'ZIP');
+
+  // Extract
+  console.log('   Extracting...');
+
+  try {
+    const AdmZip = (await import('adm-zip')).default;
+    const zip = new AdmZip(tempFilename);
+    const entries = zip.getEntries();
+
+    for (const entry of entries) {
+      const name = entry.entryName;
+      if (name === 'bun' || name === 'bun.exe' || name.endsWith('/bun') || name.endsWith('/bun.exe')) {
+        zip.extractEntryTo(entry, BIN_DIR, false, true);
+        break;
+      }
+    }
+  } catch (admZipError) {
+    console.log('   Using system unzip...');
+    if (platform === 'win32') {
+      execSync(`powershell -command "Expand-Archive -Path '${tempFilename}' -DestinationPath '${BIN_DIR}' -Force"`, { stdio: 'inherit' });
+    } else {
+      execSync(`unzip -o "${tempFilename}" -d "${BIN_DIR}"`, { stdio: 'inherit' });
+    }
+  }
+
+  if (platform !== 'win32' && fs.existsSync(bunPath)) {
+    fs.chmodSync(bunPath, '755');
+  }
+
+  fs.unlinkSync(tempFilename);
+
+  if (fs.existsSync(bunPath)) {
+    console.log('✅ bun installed successfully');
+    return bunPath;
+  } else {
+    throw new Error('bun binary not found after extraction');
+  }
+}
+
+/**
+ * Install Python dependencies
+ */
+async function installPythonDeps(uvPath) {
+  console.log('\n🐍 Installing Python dependencies...');
+
+  const venvPath = VENV_DIR;
+  const cacheDir = path.join(projectRoot, 'resources', 'prebuilt', 'cache', 'uv_cache');
+  const pythonCacheDir = path.join(projectRoot, 'resources', 'prebuilt', 'cache', 'uv_python');
+  const toolCacheDir = path.join(projectRoot, 'resources', 'prebuilt', 'cache', 'uv_tool');
+
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.mkdirSync(pythonCacheDir, { recursive: true });
+  fs.mkdirSync(toolCacheDir, { recursive: true });
+
+  const env = {
+    ...process.env,
+    UV_PYTHON_INSTALL_DIR: pythonCacheDir,
+    UV_TOOL_DIR: toolCacheDir,
+    UV_PROJECT_ENVIRONMENT: venvPath,
+    UV_HTTP_TIMEOUT: '300',
+  };
+
+  const pyvenvCfg = path.join(venvPath, 'pyvenv.cfg');
+  if (fs.existsSync(pyvenvCfg)) {
+    console.log('✅ Python venv exists, syncing...');
+  } else {
+    console.log('📦 Creating Python venv...');
+  }
+
+  const usePypiMirrorEnv = process.env.USE_PYPI_MIRROR;
+  const shouldUseMirror = usePypiMirrorEnv !== 'false';
+
+  const proxyArgs = shouldUseMirror
+    ? ['--default-index', 'https://pypi.tuna.tsinghua.edu.cn/simple/']
+    : [];
+
+  if (shouldUseMirror) {
+    console.log('   Using PyPI mirror: https://pypi.tuna.tsinghua.edu.cn/simple/');
+  }
+
+  execSync(
+    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}" ${proxyArgs.join(' ')}`,
+    { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
+  );
+
+  console.log('✅ Python dependencies installed');
+
+  console.log('📝 Compiling babel...');
+  execSync(`"${uvPath}" run pybabel compile -d lang`, {
+    cwd: BACKEND_DIR,
+    env: env,
+    stdio: 'inherit'
+  });
+
+  console.log('✅ Babel compiled');
+}
+
+/**
+ * Install browser toolkit deps
+ */
+async function installBrowserToolkitDeps(uvPath, venvPath) {
+  console.log('\n🌐 Installing browser toolkit...');
+
+  try {
+    const libPath = path.join(venvPath, 'lib');
+    if (!fs.existsSync(libPath)) {
+      console.log('⚠️  Skipping browser toolkit');
+      return;
+    }
+
+    const pythonDir = fs.readdirSync(libPath).find(n => n.startsWith('python'));
+    if (!pythonDir) {
+      console.log('⚠️  Skipping browser toolkit');
+      return;
+    }
+
+    const toolkitPath = path.join(libPath, pythonDir, 'site-packages', 'camel', 'toolkits', 'hybrid_browser_toolkit', 'ts');
+    if (!fs.existsSync(toolkitPath)) {
+      console.log('⚠️  Toolkit not found');
+      return;
+    }
+
+    const nodeModulesPath = path.join(toolkitPath, 'node_modules');
+    const distPath = path.join(toolkitPath, 'dist');
+    if (fs.existsSync(nodeModulesPath) && fs.existsSync(distPath)) {
+      console.log('✅ Browser toolkit already installed');
+      return;
+    }
+
+    const npmCacheDir = path.join(venvPath, '.npm-cache');
+    fs.mkdirSync(npmCacheDir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      UV_PROJECT_ENVIRONMENT: venvPath,
+      npm_config_cache: npmCacheDir,
+    };
+
+    let npmCommand = 'npm';
+    try {
+      execSync('npm --version', { stdio: 'ignore' });
+    } catch {
+      npmCommand = `"${uvPath}" run npm`;
+    }
+
+    console.log('📦 Installing npm deps...');
+    execSync(`${npmCommand} install`, { cwd: toolkitPath, env: env, stdio: 'inherit' });
+
+    console.log('🔨 Building TS...');
+    execSync(`${npmCommand} run build`, { cwd: toolkitPath, env: env, stdio: 'inherit' });
+
+    console.log('🎭 Installing Playwright...');
+    try {
+      const npxCommand = npmCommand === 'npm' ? 'npx' : `"${uvPath}" run npx`;
+      execSync(`${npxCommand} playwright install`, {
+        cwd: toolkitPath,
+        env: env,
+        stdio: 'inherit',
+        timeout: 600000
+      });
+    } catch (e) {
+      console.log('⚠️  Playwright install failed (non-critical)');
+    }
+
+    console.log('✅ Browser toolkit installed');
+  } catch (error) {
+    console.error('❌ Browser toolkit failed:', error.message);
+  }
+}
+
+/**
+ * Main
+ */
+async function main() {
+  try {
+    const uvPath = await installUv();
+    await installBun();
+    await installPythonDeps(uvPath);
+    await installBrowserToolkitDeps(uvPath, VENV_DIR);
+
+    console.log('\n✅ All dependencies installed!');
+    console.log(`📦 Binaries: ${BIN_DIR}`);
+    console.log(`🐍 Python venv: ${VENV_DIR}`);
+  } catch (error) {
+    console.error('\n❌ Failed:', error);
+    process.exit(1);
+  }
+}
+
+main();

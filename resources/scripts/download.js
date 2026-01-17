@@ -35,23 +35,52 @@ export async function downloadWithRedirects(url, destinationPath) {
     };
 
     const request = (url) => {
-      https
+      // Support both http and https
+      const httpModule = url.startsWith('https://') ? https : require('http');
+
+      httpModule
         .get(url, (response) => {
-          if (response.statusCode == 301 || response.statusCode == 302) {
-            request(response.headers.location)
-            return
+          const statusCode = response.statusCode || 0;
+
+          // Handle redirects (301, 302, 307, 308)
+          if (statusCode >= 301 && statusCode <= 308 && response.headers.location) {
+            const redirectUrl = response.headers.location;
+            console.log(`Following redirect to: ${redirectUrl}`);
+            request(redirectUrl);
+            return;
           }
-          if (response.statusCode !== 200) {
-            safeReject(new Error(`Download failed: ${response.statusCode} ${response.statusMessage}`))
+          if (statusCode !== 200) {
+            safeReject(new Error(`Download failed: ${statusCode} ${response.statusMessage || 'Unknown error'}`))
             return
           }
 
           const file = fs.createWriteStream(destinationPath)
           let downloadedBytes = 0
           const expectedBytes = parseInt(response.headers['content-length'] || '0')
+          const startTime = Date.now()
+          let lastProgressTime = Date.now()
+
+          if (expectedBytes > 0) {
+            console.log(`Downloading ${(expectedBytes / 1024 / 1024).toFixed(2)} MB...`)
+          } else {
+            console.log('Downloading...')
+          }
 
           response.on('data', (chunk) => {
             downloadedBytes += chunk.length
+
+            // Show progress every 1 second
+            const now = Date.now()
+            if (now - lastProgressTime >= 1000) {
+              if (expectedBytes > 0) {
+                const percent = ((downloadedBytes / expectedBytes) * 100).toFixed(1)
+                const speed = downloadedBytes / ((now - startTime) / 1000) / 1024 / 1024
+                console.log(`Progress: ${percent}% (${(downloadedBytes / 1024 / 1024).toFixed(2)} MB) - ${speed.toFixed(2)} MB/s`)
+              } else {
+                console.log(`Downloaded: ${(downloadedBytes / 1024 / 1024).toFixed(2)} MB`)
+              }
+              lastProgressTime = now
+            }
           })
 
           response.pipe(file)
