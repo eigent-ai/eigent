@@ -228,8 +228,15 @@ async function installUv() {
   const uvPath = path.join(BIN_DIR, process.platform === 'win32' ? 'uv.exe' : 'uv');
 
   if (fs.existsSync(uvPath)) {
-    console.log('✅ uv already installed');
-    return uvPath;
+    // Verify the binary actually works (correct architecture)
+    try {
+      execSync(`"${uvPath}" --version`, { stdio: 'pipe' });
+      console.log('✅ uv already installed');
+      return uvPath;
+    } catch (e) {
+      console.log('⚠️  Existing uv binary is invalid or wrong architecture, removing...');
+      fs.unlinkSync(uvPath);
+    }
   }
 
   // Check manual path
@@ -407,8 +414,15 @@ async function installBun() {
   const bunPath = path.join(BIN_DIR, platform === 'win32' ? 'bun.exe' : 'bun');
 
   if (fs.existsSync(bunPath)) {
-    console.log('✅ bun already installed');
-    return bunPath;
+    // Verify the binary actually works (correct architecture)
+    try {
+      execSync(`"${bunPath}" --version`, { stdio: 'pipe' });
+      console.log('✅ bun already installed');
+      return bunPath;
+    } catch (e) {
+      console.log('⚠️  Existing bun binary is invalid or wrong architecture, removing...');
+      fs.unlinkSync(bunPath);
+    }
   }
 
   // Check manual path
