@@ -37,6 +37,21 @@ export enum TriggerType {
   Slack = "slack_trigger",
 }
 
+/** Slack event input data from slack_trigger execution */
+export interface SlackInputData {
+  event_type: 'app_mention' | 'message' | 'reaction_added' | 'reaction_removed' | string;
+  event_ts: string;
+  team_id: string;
+  user_id: string;
+  channel_id: string;
+  text: string | null;
+  message_ts: string;
+  thread_ts: string | null;
+  reaction: string | null;
+  files: any[] | null;
+  event_id: string;
+}
+
 export enum TriggerStatus {
   PendingAuth = "pending_verification",
   Inactive = "inactive",

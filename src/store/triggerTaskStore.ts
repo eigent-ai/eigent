@@ -75,6 +75,37 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
             if (task.inputData.scheduled_time) {
                 parts.push(`- **Scheduled Time:** ${task.inputData.scheduled_time}`);
             }
+        } else if (task.triggerType === 'slack_trigger') {
+            parts.push(`- **Source:** Slack trigger "${task.triggerName}"`);
+            
+            // Slack event context
+            if (task.inputData.event_type) {
+                parts.push(`- **Event Type:** ${task.inputData.event_type}`);
+            }
+            if (task.inputData.text) {
+                parts.push(`- **Message:** ${task.inputData.text}`);
+            }
+            if (task.inputData.channel_id) {
+                parts.push(`- **Channel ID:** ${task.inputData.channel_id}`);
+            }
+            if (task.inputData.user_id) {
+                parts.push(`- **Sender User ID:** ${task.inputData.user_id}`);
+            }
+            if (task.inputData.thread_ts) {
+                parts.push(`- **Thread TS:** ${task.inputData.thread_ts}`);
+            }
+            if (task.inputData.message_ts) {
+                parts.push(`- **Message TS:** ${task.inputData.message_ts}`);
+            }
+            if (task.inputData.team_id) {
+                parts.push(`- **Team ID:** ${task.inputData.team_id}`);
+            }
+            if (task.inputData.reaction) {
+                parts.push(`- **Reaction:** :${task.inputData.reaction}:`);
+            }
+            if (task.inputData.files && task.inputData.files.length > 0) {
+                parts.push(`- **Files:** ${task.inputData.files.length} file(s) attached`);
+            }
         }
     }
     
@@ -115,6 +146,38 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
 
     enqueueTask: (taskData) => {
         const id = `triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Check for duplicate event_id (Slack deduplication)
+        const eventId = taskData.inputData?.event_id;
+        if (eventId) {
+            const { taskQueue, taskHistory, currentTask } = get();
+            
+            // Check if event_id exists in queue, current task, or history
+            const isDuplicate = 
+                taskQueue.some(t => t.inputData?.event_id === eventId) ||
+                (currentTask?.inputData?.event_id === eventId) ||
+                taskHistory.some(t => t.inputData?.event_id === eventId);
+            
+            if (isDuplicate) {
+                console.warn('[TriggerTaskStore] Duplicate event_id detected, marking as missed:', eventId);
+                
+                const failedTask: TriggeredTask = {
+                    ...taskData,
+                    id,
+                    status: ExecutionStatus.Missed,
+                    timestamp: Date.now(),
+                    errorMessage: `Duplicate event_id: ${eventId}`,
+                };
+                
+                // Add to history as failed
+                set((state) => ({
+                    taskHistory: [...state.taskHistory, failedTask]
+                }));
+                
+                return id;
+            }
+        }
+        
         const newTask: TriggeredTask = {
             ...taskData,
             id,
