@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.component.model_validation import create_agent
+from app.model.chat import PLATFORM_MAPPING
 from camel.types import ModelType
 from app.component.error_format import normalize_error_to_openai_format
 from utils import traceroot_wrapper as traceroot
@@ -18,6 +19,11 @@ class ValidateModelRequest(BaseModel):
     url: str | None = Field(None, description="Model URL")
     model_config_dict: dict | None = Field(None, description="Model config dict")
     extra_params: dict | None = Field(None, description="Extra model parameters")
+
+    @field_validator("model_platform")
+    @classmethod
+    def map_model_platform(cls, v: str) -> str:
+        return PLATFORM_MAPPING.get(v, v)
 
 
 class ValidateModelResponse(BaseModel):
