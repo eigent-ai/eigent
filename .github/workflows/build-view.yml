@@ -9,6 +9,7 @@ permissions:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
 
     strategy:
       matrix:
@@ -25,19 +26,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install uv
+
+      - name: Install bun
+        run: npm install -g bun
 
       - name: Install Dependencies
         run: npm install
@@ -45,6 +49,7 @@ jobs:
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
+        timeout-minutes: 90
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,10 +62,12 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          USE_NPM_INSTALL_BUN: 'true'
 
       # Step for Windows builds without signing
       - name: Build Release Files (Windows without signing)
         if: runner.os == 'Windows'
+        timeout-minutes: 90
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,10 +76,11 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          USE_NPM_INSTALL_BUN: 'true'
 
       - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -81,7 +89,7 @@ jobs:
 
       - name: Upload Artifact (Windows - exe only)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -95,21 +103,21 @@ jobs:
         run: |
           mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
 
-       # Download all artifacts with correct names
+        # Download all artifacts with correct names
       - name: Download mac-x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-macos-15-intel-x64
           path: temp-mac-x64
 
       - name: Download mac-arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-macos-latest-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-windows-latest-x64
           path: temp-win-x64
@@ -138,4 +146,3 @@ jobs:
           else
             find temp-win-x64 -name "*.exe" -exec mv {} release/win-x64/ \; || true
           fi
-
