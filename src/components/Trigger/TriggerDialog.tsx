@@ -45,7 +45,6 @@ import {
 } from "@/types";
 import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
-import { useTriggerStore } from "@/store/triggerStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
 import { useTriggerConfigQuery, useTriggerCacheInvalidation } from "@/hooks/queries/useTriggerQueries";
@@ -54,7 +53,7 @@ import DynamicTriggerConfig, { getDefaultTriggerConfig, filterExcludedFields, ty
 type TriggerDialogProps = {
     selectedTrigger: Trigger | null;
     onTriggerCreating: (triggerData: TriggerInput) => void;
-    onTriggerCreated: (triggerData: TriggerInput) => void;
+    onTriggerCreated: (triggerData: Trigger) => void;
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     initialTaskPrompt?: string;
@@ -96,9 +95,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
-
-    const { addTrigger, updateTrigger } = useTriggerStore();
-    const { invalidateTriggerList } = useTriggerCacheInvalidation();
 
     // Fetch trigger config using query hook
     const { data: configData } = useTriggerConfigQuery(
@@ -193,8 +189,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Clear task prompt error if validation passes
         setTaskPromptError("");
 
-        // Check dynamic config validation (for Slack, etc.)
-        if (selectedApp && !isConfigValid) {
+        // Check dynamic config validation for triggers with config (Slack, Webhook, etc.)
+        const hasDynamicConfig = triggerConfigSchema && Object.keys(triggerConfigSchema.properties || {}).length > 0;
+        if (hasDynamicConfig && !isConfigValid) {
             const errorMessages = configValidationErrors.map((e) => e.message).join(", ");
             toast.error(t("triggers.dynamic.validation-failed", { errors: errorMessages }));
             return;
@@ -236,7 +233,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 
                 response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
                 toast.success(t("triggers.updated-successfully"));
-                updateTrigger(selectedTrigger.id, response);
             } else {
                 // Creating new trigger
                 const createData: TriggerInput = {
@@ -262,13 +258,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 
                 response = await proxyCreateTrigger(createData);
                 toast.success(t("triggers.created-successfully"));
-                addTrigger(response);
             }
-
-            onTriggerCreated(formData);
             
-            // Invalidate trigger list cache to refresh the list
-            await invalidateTriggerList(projectStore.activeProjectId);
+            //Update/Create Trigger on response
+            onTriggerCreated(response);
             
             handleClose();
 

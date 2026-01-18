@@ -7,10 +7,10 @@ import { proxyFetchTriggerConfig } from '@/service/triggerApi';
 import { TriggerType } from '@/types';
 import { toast } from 'sonner';
 
-// Ping interval: send ping every 30 seconds
-const PING_INTERVAL = 30000;
+// Ping interval: send ping every 5 minutes
+const PING_INTERVAL = 60 * 5 * 1000;
 // Pong timeout: if no pong received within 10 seconds after ping, mark as unhealthy
-const PONG_TIMEOUT = 10000;
+const PONG_TIMEOUT = 10 * 1000;
 
 interface ExecutionCreatedMessage {
     type: 'execution_created';
@@ -137,7 +137,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
         pingIntervalRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
-                console.log('[ExecutionSubscription] Sending ping...');
                 ws.send(JSON.stringify({ type: 'ping' }));
                 
                 // Set timeout to wait for pong
@@ -257,8 +256,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
                                     inputData: message.input_data || {},
                                 });
                             }
-
-                            toast.info(`Execution started: ${triggerName}`);
                             break;
                         }
 
@@ -335,7 +332,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
                             break;
 
                         case 'pong':
-                            console.debug('[ExecutionSubscription] Pong received');
                             // Clear pong timeout - connection is healthy
                             if (pongTimeoutRef.current) {
                                 clearTimeout(pongTimeoutRef.current);

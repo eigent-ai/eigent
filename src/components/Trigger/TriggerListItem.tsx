@@ -107,7 +107,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             </div>
 
             {/* 5. Activation Switch */}
-            <TooltipSimple content={t("triggers.verification-required")}>
+            <TooltipSimple content={t("triggers.verification-required")} enabled={needsAuth}>
                 <div>
                     <Switch
                         checked={isActive || needsAuth}

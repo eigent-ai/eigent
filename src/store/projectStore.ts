@@ -138,7 +138,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		const { projects } = get();
 		
 		//Replay doesn't need to use an empty project container
-		if(type !== ProjectType.REPLAY) {
+		if(type !== ProjectType.REPLAY && !projectId) {
 			// First, check if there are any existing empty projects
 			const existingEmptyProject = Object.values(projects).find(project => isEmptyProject(project));
 			

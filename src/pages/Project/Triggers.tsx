@@ -202,7 +202,7 @@ export default function Overview() {
         }
     };
 
-    const handleTriggerCreated = (triggerData: TriggerInput) => {
+    const handleTriggerCreated = (triggerData: Trigger) => {
         if (editingTrigger) {
             // Update existing trigger
             updateTrigger(editingTrigger.id, {
@@ -227,8 +227,6 @@ export default function Overview() {
                 triggerId: editingTrigger.id,
                 triggerName: triggerData.name,
             });
-
-            toast.success(t("triggers.updated-successfully"));
         } else {
             // Add new trigger via store
             const newTrigger = addTrigger(triggerData);
