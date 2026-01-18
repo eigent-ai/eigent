@@ -149,8 +149,21 @@ export function getPrebuiltVenvPath(): string | null {
   if (fs.existsSync(prebuiltVenvPath)) {
     const pyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
     if (fs.existsSync(pyvenvCfg)) {
-      log.info(`Using prebuilt venv: ${prebuiltVenvPath}`);
-      return prebuiltVenvPath;
+      // Verify Python executable exists (Windows: Scripts/python.exe, Unix: bin/python)
+      const isWindows = process.platform === 'win32';
+      const pythonExePath = isWindows
+        ? path.join(prebuiltVenvPath, 'Scripts', 'python.exe')
+        : path.join(prebuiltVenvPath, 'bin', 'python');
+
+      if (fs.existsSync(pythonExePath)) {
+        log.info(`Using prebuilt venv: ${prebuiltVenvPath}`);
+        return prebuiltVenvPath;
+      } else {
+        log.warn(
+          `Prebuilt venv found but Python executable missing at: ${pythonExePath}. ` +
+            `Falling back to user venv.`
+        );
+      }
     }
   }
   return null;

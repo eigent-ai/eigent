@@ -591,11 +591,37 @@ async function installPythonDeps(uvPath) {
     console.log('📦 Creating Python venv...');
   }
 
+  // Ensure Python is installed before syncing
+  // This is critical for Windows where Python might not be in the venv
+  console.log('🐍 Ensuring Python is installed...');
+  try {
+    execSync(
+      `"${uvPath}" python install 3.10`,
+      { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
+    );
+  } catch (error) {
+    console.log('⚠️  Python install command failed, continuing with sync (Python may already be installed)...');
+  }
+
   execSync(
     `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}"`,
     { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
   );
 
+  // Verify Python executable exists in the virtual environment
+  const isWindows = process.platform === 'win32';
+  const pythonExePath = isWindows
+    ? path.join(venvPath, 'Scripts', 'python.exe')
+    : path.join(venvPath, 'bin', 'python');
+
+  if (!fs.existsSync(pythonExePath)) {
+    throw new Error(
+      `Python executable not found in virtual environment at: ${pythonExePath}\n` +
+      `Virtual environment may be corrupted. Please ensure uv sync completed successfully.`
+    );
+  }
+
+  console.log(`✅ Python executable verified: ${pythonExePath}`);
   console.log('✅ Python dependencies installed');
 
   console.log('📝 Compiling babel...');
