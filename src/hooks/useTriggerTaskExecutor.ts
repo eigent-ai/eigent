@@ -2,17 +2,18 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerTaskStore, TriggeredTask, formatTriggeredTaskMessage } from '@/store/triggerTaskStore';
 import { useTriggerStore } from '@/store/triggerStore';
-import { generateUniqueId } from '@/lib';
 import { toast } from 'sonner';
 
 /**
- * Hook that executes triggered tasks by creating new projects/chats
- * and running them as if a user sent a message.
+ * Hook that queues triggered tasks to their target projects.
  * 
- * This provides a modular way to programmatically run tasks from:
+ * This provides a modular way to enqueue tasks from:
  * - Webhook triggers
  * - Scheduled triggers
  * - Future: per-project triggers
+ * 
+ * The actual execution is handled by ChatBox's handleSend via the
+ * project's queuedMessages system.
  */
 export function useTriggerTaskExecutor() {
     const projectStore = useProjectStore();
@@ -34,11 +35,11 @@ export function useTriggerTaskExecutor() {
     /**
      * Execute a triggered task by:
      * 1. Creating or selecting a project
-     * 2. Creating a new chat store in that project
-     * 3. Starting the task with the formatted message
+     * 2. Adding the message to the project's queue via addQueuedMessage
+     * 3. ChatBox will consume and process the queued message via handleSend
      */
     const executeTask = useCallback(async (task: TriggeredTask) => {
-        console.log('[TriggerTaskExecutor] Executing task:', task.id, task.triggerName);
+        console.log('[TriggerTaskExecutor] Queueing task:', task.id, task.triggerName);
         
         try {
             const store = projectStoreRef.current;
@@ -53,54 +54,33 @@ export function useTriggerTaskExecutor() {
                 console.log('[TriggerTaskExecutor] Created new project:', targetProjectId);
             }
             
-            // Set this project as active
+            // Set this project as active so ChatBox will process the queue
             store.setActiveProject(targetProjectId);
-            
-            // Get the chat store for this project
-            const chatStore = store.getActiveChatStore(targetProjectId);
-            if (!chatStore) {
-                throw new Error(`Failed to get chat store for project ${targetProjectId}`);
-            }
-            
-            const chatState = chatStore.getState();
-            const taskId = chatState.activeTaskId;
-            
-            if (!taskId) {
-                throw new Error('No active task ID in chat store');
-            }
             
             // Format the message with all context
             const formattedMessage = formatTriggeredTaskMessage(task);
             
-            console.log('[TriggerTaskExecutor] Starting task with message:', formattedMessage.substring(0, 100) + '...');
+            console.log('[TriggerTaskExecutor] Adding message to project queue:', formattedMessage.substring(0, 100) + '...');
             
-            // Add the message to chat and mark as having messages
-            chatState.setHasMessages(taskId, true);
+            // Add message to the project's queue - ChatBox will process it via handleSend
+            const queuedTaskId = store.addQueuedMessage(targetProjectId, formattedMessage, [], task.executionId);
             
-            // Start the task (similar to handleSend flow)
-            try {
-                await chatState.startTask(taskId, undefined, undefined, undefined, formattedMessage, []);
-                chatState.setHasWaitComfirm(taskId, true);
-                
-                // Mark task as completed in our store
-                triggerTaskStoreRef.current.completeTask(task.id);
-                
-                toast.success(`Started: ${task.triggerName}`, {
-                    description: 'Triggered task is now running',
-                });
-                
-                console.log('[TriggerTaskExecutor] Task started successfully:', task.id);
-            } catch (err: any) {
-                console.error('[TriggerTaskExecutor] Failed to start task:', err);
-                triggerTaskStoreRef.current.failTask(task.id, err?.message || 'Failed to start task');
-                toast.error(`Failed to start: ${task.triggerName}`, {
-                    description: err?.message || 'Unknown error',
-                });
+            if (!queuedTaskId) {
+                throw new Error('Failed to add message to project queue');
             }
             
+            // Mark task as completed in trigger task store (message is now queued)
+            triggerTaskStoreRef.current.completeTask(task.id);
+            
+            toast.success(`Queued: ${task.triggerName}`, {
+                description: 'Task has been added to the project queue',
+            });
+            
+            console.log('[TriggerTaskExecutor] Task queued successfully:', task.id, '-> queuedTaskId:', queuedTaskId);
+            
         } catch (error: any) {
-            console.error('[TriggerTaskExecutor] Task execution failed:', error);
-            triggerTaskStoreRef.current.failTask(task.id, error?.message || 'Execution failed');
+            console.error('[TriggerTaskExecutor] Task queueing failed:', error);
+            triggerTaskStoreRef.current.failTask(task.id, error?.message || 'Queueing failed');
             toast.error(`Trigger failed: ${task.triggerName}`, {
                 description: error?.message || 'Unknown error',
             });
@@ -174,12 +154,12 @@ export function useTriggerTaskExecutor() {
     }, [triggerStore.webSocketEvent, processNextTask]);
 
     // Also process on mount if there are pending tasks
-    useEffect(() => {
-        const pending = triggerTaskStore.taskQueue.filter(t => t.status === 'pending');
-        if (pending.length > 0) {
-            processNextTask();
-        }
-    }, []);
+    // useEffect(() => {
+    //     const pending = triggerTaskStore.taskQueue.filter(t => t.status === 'pending');
+    //     if (pending.length > 0) {
+    //         processNextTask();
+    //     }
+    // }, []);
 
     return {
         /** Manually trigger a task execution (useful for testing) */

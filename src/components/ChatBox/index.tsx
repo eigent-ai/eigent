@@ -12,6 +12,9 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { replayActiveTask } from "@/lib";
+import { handleSend as handleSendLogic } from "./handlers/handleSend";
+import { proxyUpdateTriggerExecution } from "@/service/triggerApi";
+import { ExecutionStatus } from "@/types";
 
 export default function ChatBox(): JSX.Element {
 	const [message, setMessage] = useState<string>("");
@@ -597,6 +600,55 @@ export default function ChatBox(): JSX.Element {
 			: false;
 		setHasSubTask(_hasSubTask);
 	}, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages]);
+
+	// Process queued messages when task is idle
+	// This handles messages added by triggers (useTriggerTaskExecutor)
+	useEffect(() => {
+		if (!projectStore.activeProjectId) return;
+		
+		const project = projectStore.getProjectById(projectStore.activeProjectId);
+		const queuedMessages = project?.queuedMessages || [];
+		
+		// No queued messages to process
+		if (queuedMessages.length === 0) return;
+		
+		const taskId = chatStore.activeTaskId;
+		if (!taskId) return;
+		
+		const task = chatStore.tasks[taskId];
+		if (!task) return;
+		
+		// Check if task is idle (not busy)
+		const isTaskBusy = (
+			task.status === 'running' ||
+			task.status === 'pause' ||
+			task.isPending ||
+			task.messages.some(m => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+			((!task.messages.find(m => m.step === 'to_sub_tasks') && !task.hasWaitComfirm && task.messages.length > 0) || task.isTakeControl)
+		);
+		
+		// Only process if task is idle
+		if (isTaskBusy) return;
+		
+		// Get the first queued message
+		const firstMessage = queuedMessages[0];
+		
+		// Remove from queue first to prevent double processing
+		projectStore.removeQueuedMessage(projectStore.activeProjectId, firstMessage.task_id);
+		
+		console.log('[ChatBox] Processing queued message:', firstMessage.content.substring(0, 50) + '...');
+		
+		// Process the queued message via handleSend
+		// Use the task_id from the queued message if needed for tracking
+		handleSend(firstMessage.content);
+	}, [
+		projectStore.activeProjectId,
+		projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.length,
+		chatStore.activeTaskId,
+		chatStore.tasks[chatStore.activeTaskId as string]?.status,
+		chatStore.tasks[chatStore.activeTaskId as string]?.isPending,
+		chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length,
+	]);
 
 	useEffect(() => {
 		const activeAsk =

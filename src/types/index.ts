@@ -71,6 +71,7 @@ export type Trigger = {
   id: number
   user_id: string
   name: string
+  project_id?: string
   description: string
   trigger_type: TriggerType
   status: TriggerStatus
@@ -114,6 +115,7 @@ export type TriggerInput = {
 export type TriggerUpdate = {
   name?: string
   description?: string
+  project_id?: string
   status?: TriggerStatus
   custom_cron_expression?: string
   listener_type?: ListenerType

@@ -229,7 +229,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
                         {trigger.name}
                     </span>
                     <span className="text-label-xs text-text-label">
-                        {trigger.trigger_type === "schedule" ? t("triggers.schedule-trigger") : trigger.trigger_type === "webhook" ? t("triggers.webhook") : trigger.trigger_type.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                        {trigger.trigger_type === "schedule" ? t("triggers.schedule-trigger") : trigger.trigger_type === "webhook" ? t("triggers.webhook-trigger") : trigger.trigger_type.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
                     </span>
                 </div>
                 <div className="flex flex-row">

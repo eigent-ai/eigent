@@ -1,5 +1,39 @@
 import { proxyFetchGet, proxyFetchPost, proxyFetchPut, proxyFetchDelete } from "@/api/http";
-import { Trigger, TriggerInput, TriggerUpdate, TriggerType, TriggerStatus } from "@/types";
+import { Trigger, TriggerInput, TriggerUpdate, TriggerType, TriggerStatus, ExecutionStatus } from "@/types";
+import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
+
+// Helper function to update or add execution log
+const updateExecutionLog = (
+  executionId: string,
+  activityType: ActivityType,
+  message: string,
+  triggerInfo?: {
+    triggerId?: number;
+    triggerName?: string;
+    projectId?: string;
+  },
+  metadata?: Record<string, any>
+) => {
+  const { addLog, modifyLog } = useActivityLogStore.getState();
+  
+  const logData = {
+    type: activityType,
+    message,
+    triggerId: triggerInfo?.triggerId,
+    triggerName: triggerInfo?.triggerName,
+    projectId: triggerInfo?.projectId,
+    metadata,
+  };
+  
+  const updated = modifyLog(executionId, logData);
+  
+  if (!updated) {
+    addLog({
+      ...logData,
+      executionId,
+    });
+  }
+};
 
 // ==== Proxy API calls (for server) ====
 
@@ -152,3 +186,103 @@ export const proxyFetchTriggerExecutions = async (
     throw error;
   }
 };
+
+export const proxyUpdateTriggerExecution = async (
+  executionId: string,
+  updateData: Partial<{
+    status?: string;
+    started_at?: string;
+    completed_at?: string;
+    duration_seconds?: number;
+    output_data?: Record<string, any>;
+    error_message?: string;
+    attempts?: number;
+    tokens_used?: number;
+    tools_executed?: Record<string, any>;
+  }>,
+  triggerInfo?: {
+    triggerId?: number;
+    triggerName?: string;
+    projectId?: string;
+  }
+) => {
+  try {
+    const res = await proxyFetchPut(`/api/trigger/execution/${executionId}`, updateData);
+    
+    // Log activity when execution status is updated
+    if (updateData.status) {
+      let activityType: ActivityType;
+      let message: string;
+      
+      switch (updateData.status) {
+        case ExecutionStatus.Completed:
+          activityType = ActivityType.ExecutionSuccess;
+          message = `Execution ${executionId} completed successfully`;
+          break;
+        case ExecutionStatus.Failed:
+          activityType = ActivityType.ExecutionFailed;
+          message = `Execution ${executionId} failed${updateData.error_message ? `: ${updateData.error_message}` : ''}`;
+          break;
+        case ExecutionStatus.Running:
+          activityType = ActivityType.TriggerExecuted;
+          message = `Execution ${executionId} started running`;
+          break;
+        case ExecutionStatus.Cancelled:
+          activityType = ActivityType.ExecutionFailed;
+          message = `Execution ${executionId} was cancelled`;
+          break;
+        default:
+          activityType = ActivityType.TriggerExecuted;
+          message = `Execution ${executionId} status updated to ${updateData.status}`;
+      }
+      
+      updateExecutionLog(
+        executionId,
+        activityType,
+        message,
+        triggerInfo,
+        {
+          status: updateData.status,
+          error_message: updateData.error_message,
+          duration_seconds: updateData.duration_seconds,
+          tokens_used: updateData.tokens_used,
+        }
+      );
+    }
+    
+    return res;
+  } catch (error) {
+    console.error("Failed to update trigger execution:", error);
+    throw error;
+  }
+};
+
+export const proxyRetryTriggerExecution = async (
+  executionId: string,
+  triggerInfo?: {
+    triggerId?: number;
+    triggerName?: string;
+    projectId?: string;
+  }
+) => {
+  try {
+    const res = await proxyFetchPost(`/api/trigger/execution/${executionId}/retry`);
+    
+    updateExecutionLog(
+      executionId,
+      ActivityType.TriggerExecuted,
+      `Execution ${executionId} retry initiated`,
+      triggerInfo,
+      {
+        status: ExecutionStatus.Pending,
+        retried: true,
+      }
+    );
+    
+    return res;
+  } catch (error) {
+    console.error("Failed to retry trigger execution:", error);
+    throw error;
+  }
+};
+

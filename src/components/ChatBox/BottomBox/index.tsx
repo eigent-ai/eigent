@@ -45,7 +45,7 @@ export default function BottomBox({
 	inputProps,
 }: BottomBoxProps) {
 	const { t } = useTranslation();
-	const enableQueuedBox = false; //TODO: Enable queued box https://github.com/eigent-ai/eigent/issues/684
+	const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
 	// Background color reflects current state only
 	let backgroundClass = "bg-input-bg-default";
