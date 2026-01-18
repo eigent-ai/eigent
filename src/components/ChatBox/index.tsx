@@ -30,8 +30,6 @@ export default function ChatBox(): JSX.Element {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [privacy, setPrivacy] = useState<any>(false);
-  const [isPrivacyLoaded, setIsPrivacyLoaded] = useState<boolean>(false);
   const [hasSearchKey, setHasSearchKey] = useState<any>(false);
   const [hasModel, setHasModel] = useState<any>(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
@@ -77,20 +75,6 @@ export default function ChatBox(): JSX.Element {
     }
   }, [modelType]);
   useEffect(() => {
-    proxyFetchGet('/api/user/privacy')
-      .then((res) => {
-        let _privacy = 0;
-        Object.keys(res).forEach((key) => {
-          if (!res[key]) {
-            _privacy++;
-            return;
-          }
-        });
-        setPrivacy(_privacy === 0 ? true : false);
-      })
-      .catch((err) => console.error('Failed to fetch settings:', err))
-      .finally(() => setIsPrivacyLoaded(true));
-
     proxyFetchGet('/api/configs')
       .then((configsRes) => {
         const configs = Array.isArray(configsRes) ? configsRes : [];
@@ -110,24 +94,22 @@ export default function ChatBox(): JSX.Element {
   // Re-check model config when returning from settings page
   useEffect(() => {
     // Check when location changes (user navigates)
-    if (location.pathname === '/' && privacy) {
+    if (location.pathname === '/') {
       checkModelConfig();
     }
-  }, [location.pathname, privacy, checkModelConfig]);
+  }, [location.pathname, checkModelConfig]);
 
   // Also check when window gains focus (user returns from settings)
   useEffect(() => {
     const handleFocus = () => {
-      if (privacy) {
-        checkModelConfig();
-      }
+      checkModelConfig();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [privacy, checkModelConfig]);
+  }, [checkModelConfig]);
 
   // Refresh privacy status when dialog closes
   // useEffect(() => {
@@ -153,14 +135,10 @@ export default function ChatBox(): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
 
-    // Check model first, then privacy
+    // Check model first
     if (!hasModel) {
       toast.error('Please select a model first.');
       navigate('/setting/models');
-      return;
-    }
-    if (!privacy) {
-      toast.error('Please accept the privacy policy first.');
       return;
     }
 
@@ -337,23 +315,6 @@ export default function ChatBox(): JSX.Element {
             setMessage('');
           }
         } else {
-          if (!privacy) {
-            const API_FIELDS = [
-              'take_screenshot',
-              'access_local_software',
-              'access_your_address',
-              'password_storage',
-            ];
-            const requestData = {
-              [API_FIELDS[0]]: true,
-              [API_FIELDS[1]]: true,
-              [API_FIELDS[2]]: true,
-              [API_FIELDS[3]]: true,
-            };
-            proxyFetchPut('/api/user/privacy', requestData);
-            setPrivacy(true);
-          }
-
           setTimeout(() => {
             scrollToBottom();
           }, 200);
@@ -389,11 +350,11 @@ export default function ChatBox(): JSX.Element {
   };
 
   useEffect(() => {
-    // Wait for both config and privacy to be loaded before handling share token
-    if (share_token && isConfigLoaded && isPrivacyLoaded) {
+    // Wait for config to be loaded before handling share token
+    if (share_token && isConfigLoaded) {
       handleSendShare(share_token);
     }
-  }, [share_token, isConfigLoaded, isPrivacyLoaded]);
+  }, [share_token, isConfigLoaded]);
 
   useEffect(() => {
     console.log('ChatStore Data: ', chatStore);
@@ -410,10 +371,6 @@ export default function ChatBox(): JSX.Element {
     if (!hasModel) {
       toast.error('Please select a model first.');
       navigate('/setting/models');
-      return;
-    }
-    if (!privacy) {
-      toast.error('Please accept the privacy policy first.');
       return;
     }
 
@@ -907,9 +864,8 @@ export default function ChatBox(): JSX.Element {
 
     if (isTaskBusy) return true;
 
-    // Standard checks - check model first, then privacy
+    // Standard checks - check model first
     if (!hasModel) return true;
-    if (!privacy) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
 
@@ -917,7 +873,6 @@ export default function ChatBox(): JSX.Element {
   }, [
     chatStore.activeTaskId,
     chatStore.tasks,
-    privacy,
     hasModel,
     useCloudModelInDev,
     isTaskBusy,
@@ -999,7 +954,6 @@ export default function ChatBox(): JSX.Element {
                 disabled: isInputDisabled,
                 textareaRef: textareaRef,
                 allowDragDrop: true,
-                privacy: privacy,
                 useCloudModelInDev: useCloudModelInDev,
               }}
             />
@@ -1043,7 +997,6 @@ export default function ChatBox(): JSX.Element {
                   disabled: isInputDisabled,
                   textareaRef: textareaRef,
                   allowDragDrop: false,
-                  privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
                 }}
               />
@@ -1064,81 +1017,7 @@ export default function ChatBox(): JSX.Element {
                   </div>
                 </div>
               ) : null}
-              {hasModel && !privacy ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={(e) => {
-                      // Check if the click target is an anchor tag
-                      const target = e.target as HTMLElement;
-                      if (target.tagName === 'A') {
-                        // Let the anchor tag handle the click naturally
-                        return;
-                      }
-                      // Toggle privacy if not already enabled
-                      if (!privacy) {
-                        // Enable privacy permissions
-                        const API_FIELDS = [
-                          'take_screenshot',
-                          'access_local_software',
-                          'access_your_address',
-                          'password_storage',
-                        ];
-                        const requestData = {
-                          [API_FIELDS[0]]: true,
-                          [API_FIELDS[1]]: true,
-                          [API_FIELDS[2]]: true,
-                          [API_FIELDS[3]]: true,
-                        };
-                        proxyFetchPut('/api/user/privacy', requestData);
-                        setPrivacy(true);
-                      }
-                    }}
-                    className="group cursor-pointer max-w-64 flex items-center justify-center gap-2 px-md py-xs rounded-xl bg-surface-information hover:bg-surface-tertiary transition-all duration-200"
-                  >
-                    <div className="shrink-0">
-                      {privacy ? (
-                        <SquareCheckBig
-                          size={20}
-                          className="text-icon-success shrink-0"
-                        />
-                      ) : (
-                        <div className="relative flex items-center justify-center shrink-0">
-                          <Square
-                            size={20}
-                            className="text-icon-information group-hover:opacity-0 transition-opacity"
-                          />
-                          <SquareCheckBig
-                            size={20}
-                            className="text-icon-information absolute inset-0 opacity-0 group-hover:opacity-50 transition-opacity"
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <span className="flex-1 text-text-information text-label-xs font-medium leading-normal cursor-pointer">
-                      {t('layout.by-messaging-eigent')}{' '}
-                      <a
-                        href="https://www.eigent.ai/terms-of-use"
-                        target="_blank"
-                        className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {t('layout.terms-of-use')}
-                      </a>{' '}
-                      {t('layout.and')}{' '}
-                      <a
-                        href="https://www.eigent.ai/privacy-policy"
-                        target="_blank"
-                        className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {t('layout.privacy-policy')}
-                      </a>
-                      .
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-              {privacy && hasModel && (
+              {hasModel && (
                 <div className="mr-2 flex flex-col items-center gap-2">
                   {[
                     {

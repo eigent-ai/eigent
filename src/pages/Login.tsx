@@ -11,7 +11,7 @@ import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import eye from '@/assets/eye.svg';
 import eyeOff from '@/assets/eye-off.svg';
-import { proxyFetchPost } from '@/api/http';
+import { proxyFetchPost, proxyFetchPut } from '@/api/http';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
 import WindowControls from '@/components/WindowControls';
@@ -37,6 +37,7 @@ export default function Login() {
   const [generalError, setGeneralError] = useState('');
   const titlebarRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -115,9 +116,34 @@ export default function Login() {
     }
   };
 
+  const acceptPrivacy = async () => {
+    const API_FIELDS = [
+      'take_screenshot',
+      'access_local_software',
+      'access_your_address',
+      'password_storage',
+    ];
+    const requestData = {
+      [API_FIELDS[0]]: true,
+      [API_FIELDS[1]]: true,
+      [API_FIELDS[2]]: true,
+      [API_FIELDS[3]]: true,
+    };
+    try {
+      await proxyFetchPut('/api/user/privacy', requestData);
+    } catch (e) {
+      console.error('Failed to set privacy settings', e);
+    }
+  };
+
   //
   const handleLogin = async () => {
     if (!validateForm()) {
+      return;
+    }
+
+    if (!agreeToTerms) {
+      setGeneralError('Please agree to the Terms of Use and Privacy Policy.');
       return;
     }
 
@@ -140,6 +166,7 @@ export default function Login() {
       // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
       setLocalProxyValue(localProxyValue);
+      await acceptPrivacy();
       navigate('/');
     } catch (error: any) {
       console.error('Login failed:', error);
@@ -168,6 +195,7 @@ export default function Login() {
       // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
       setLocalProxyValue(localProxyValue);
+      await acceptPrivacy();
       navigate('/');
     } catch (error: any) {
       console.error('Login failed:', error);
@@ -180,6 +208,10 @@ export default function Login() {
   };
 
   const handleReloadBtn = async (type: string) => {
+    if (!agreeToTerms) {
+      setGeneralError('Please agree to the Terms of Use and Privacy Policy.');
+      return;
+    }
     if (!app) {
       console.error('Stack app not initialized');
       return;
@@ -360,8 +392,41 @@ export default function Login() {
                 {t('layout.sign-up')}
               </Button>
             </div>
+            <div className="flex items-start space-x-2 w-full px-1 justify-center mt-4">
+              <input
+                type="checkbox"
+                id="terms"
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                checked={agreeToTerms}
+                onChange={(e) => {
+                  setAgreeToTerms(e.target.checked);
+                  setGeneralError('');
+                }}
+              />
+              <label
+                htmlFor="terms"
+                className="text-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                I agree to{' '}
+                <a
+                  href="https://www.eigent.ai/terms-of-use"
+                  target="_blank"
+                  className="text-text-information underline"
+                >
+                  {t('layout.terms-of-use')}
+                </a>{' '}
+                {t('layout.and')}{' '}
+                <a
+                  href="https://www.eigent.ai/privacy-policy"
+                  target="_blank"
+                  className="text-text-information underline"
+                >
+                  {t('layout.privacy-policy')}
+                </a>
+              </label>
+            </div>
             {HAS_STACK_KEYS && (
-              <div className="w-full pt-6">
+              <div className="w-full pt-4">
                 <Button
                   variant="primary"
                   size="lg"
