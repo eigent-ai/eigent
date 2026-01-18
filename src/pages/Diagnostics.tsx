@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 type HealthResponse = {
   status: string;
   service: string;
-  database: { status: string };
-  model: { configured: boolean };
-  tools: { available: boolean };
+  database: {
+    status: string;
+  };
 };
 
 export default function Diagnostics() {
@@ -13,7 +13,7 @@ export default function Diagnostics() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/health")
+    fetch("/api/health")
       .then((res) => {
         if (!res.ok) throw new Error("Backend unreachable");
         return res.json();
@@ -39,18 +39,6 @@ export default function Diagnostics() {
       <p>
         Database:{" "}
         {data.database.status === "ok" ? "✅ Connected" : "❌ Error"}
-      </p>
-
-      <p>
-        Model:{" "}
-        {data.model.configured
-          ? "✅ Configured"
-          : "⚠️ Not Configured"}
-      </p>
-
-      <p>
-        Tools:{" "}
-        {data.tools.available ? "✅ Available" : "❌ Not Available"}
       </p>
     </div>
   );
