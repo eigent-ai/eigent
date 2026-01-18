@@ -36,15 +36,49 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
             filename += ".pptx"
 
         file_path = self._resolve_filepath(filename)
-        res = super().create_presentation(content, filename, template)
-        if "PowerPoint presentation successfully created" in res:
-            task_lock = get_task_lock(self.api_task_id)
-            # Capture ContextVar value before creating async task
-            current_process_task_id = process_task.get("")
+        
+        # Use Node.js script for generation
+        import subprocess
+        import json
+        
+        script_path = os.path.join(env("project_root"), "scripts", "generate_pptx.js")
+        
+        try:
+             # Ensure content is a valid JSON string
+             # If it's already a dict/list, dump it. If string, try to parse to validate/minify
+             try:
+                 if not isinstance(content, str):
+                     content_str = json.dumps(content)
+                 else:
+                     # Validate JSON
+                     json_obj = json.loads(content)
+                     content_str = json.dumps(json_obj)
+             except json.JSONDecodeError:
+                 return "Error: Content must be valid JSON string representing slides."
 
-            # Use _safe_put_queue to handle both sync and async contexts
-            _safe_put_queue(
-                task_lock,
-                ActionWriteFileData(process_task_id=current_process_task_id, data=str(file_path))
-            )
-        return res
+             # Run node script
+             result = subprocess.run(
+                 ["node", script_path, str(file_path), content_str],
+                 capture_output=True,
+                 text=True,
+                 check=True
+             )
+             res = result.stdout.strip()
+             
+             # If successful, queue the file write action
+             if "PowerPoint presentation successfully created" in res:
+                task_lock = get_task_lock(self.api_task_id)
+                # Capture ContextVar value before creating async task
+                current_process_task_id = process_task.get("")
+
+                # Use _safe_put_queue to handle both sync and async contexts
+                _safe_put_queue(
+                    task_lock,
+                    ActionWriteFileData(process_task_id=current_process_task_id, data=str(file_path))
+                )
+             return res
+
+        except subprocess.CalledProcessError as e:
+            return f"Error creating presentation: {e.stderr}"
+        except Exception as e:
+            return f"Error creating presentation: {str(e)}"
