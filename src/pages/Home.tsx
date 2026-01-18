@@ -51,7 +51,7 @@ function ConnectionStatusIcon({ status }: { status: WebSocketConnectionStatus })
 				return 'text-orange-500';
 			case 'disconnected':
 			default:
-				return 'text-gray-400';
+				return 'text-red-400';
 		}
 	};
 
@@ -340,7 +340,11 @@ export default function Home() {
 
 		switch (activeWorkspaceTab) {
 			case 'triggers':
-				return <Overview />;
+				return (
+					<div className={`w-full h-full ${wsConnectionStatus === 'disconnected' ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
+						<Overview />
+					</div>
+				);
 			case 'inbox':
 				return (
 					<div className="w-full h-full flex-1 flex items-center justify-center">

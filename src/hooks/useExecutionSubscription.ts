@@ -4,11 +4,11 @@ import { useActivityLogStore, ActivityType } from '@/store/activityLogStore';
 import { useTriggerStore, WebSocketConnectionStatus } from '@/store/triggerStore';
 import { queryClient, queryKeys } from '@/lib/queryClient';
 import { proxyFetchTriggerConfig } from '@/service/triggerApi';
-import { TriggerType } from '@/types';
+import { ExecutionStatus, ExecutionType, TriggerType } from '@/types';
 import { toast } from 'sonner';
 
-// Ping interval: send ping every 5 minutes
-const PING_INTERVAL = 60 * 5 * 1000;
+// Ping interval: send ping every 2 minutes
+const PING_INTERVAL = 60 * 2 * 1000;
 // Pong timeout: if no pong received within 10 seconds after ping, mark as unhealthy
 const PONG_TIMEOUT = 10 * 1000;
 
@@ -16,24 +16,26 @@ interface ExecutionCreatedMessage {
     type: 'execution_created';
     execution_id: string;
     trigger_id: number;
-    trigger_type: 'webhook' | 'schedule';
-    status: string;
-    execution_type: 'webhook' | 'schedule';
+    trigger_type: TriggerType;
+    status: ExecutionStatus;
+    execution_type: ExecutionType;
     input_data: any;
     user_id: number;
     project_id: string;
     timestamp: string;
+    task_prompt?: string;
 }
 
 interface ExecutionUpdatedMessage {
     type: 'execution_updated';
     execution_id: string;
     trigger_id: number;
-    status: 'completed' | 'failed' | 'running';
+    status: ExecutionStatus;
     updated_fields: string[];
     user_id: number;
     project_id: string;
     timestamp: string;
+    task_prompt?: string;
 }
 
 interface ProjectCreatedMessage {
@@ -216,13 +218,15 @@ export function useExecutionSubscription(enabled: boolean = true) {
                         case 'connected':
                             console.log(`[ExecutionSubscription] Connected with session: ${message.session_id}`);
                             setWsConnectionStatusRef.current('connected');
-                            toast.success('Connected to execution listener');
+                            // toast.success('Connected to execution listener');
                             break;
 
                         case 'execution_created': {
                             // Use ref to access latest triggers without adding to dependencies
                             const trigger = triggersRef.current.find(t => t.id === message.trigger_id);
                             const triggerName = trigger?.name || `Trigger #${message.trigger_id}`;
+                            // Use task_prompt from server message (primary), fallback to local trigger data
+                            const taskPrompt = message.task_prompt || trigger?.task_prompt || '';
                             
                             console.log(`[ExecutionSubscription] Execution created: ${message.execution_id}`);
                             
@@ -242,20 +246,19 @@ export function useExecutionSubscription(enabled: boolean = true) {
                                 executionId: message.execution_id,
                             });
 
-                            if (trigger) {
-                                // Emit WebSocket event with full context for task execution
-                                emitWebSocketEventRef.current({
-                                    triggerId: message.trigger_id,
-                                    triggerName: triggerName,
-                                    taskPrompt: trigger.task_prompt || '',
-                                    executionId: message.execution_id,
-                                    timestamp: Date.now(),
-                                    // New fields for programmatic task execution
-                                    triggerType: message.execution_type || 'webhook',
-                                    projectId: message.project_id, // Future: triggers will be associated with projects
-                                    inputData: message.input_data || {},
-                                });
-                            }
+                            // Emit WebSocket event with full context for task execution
+                            // server provides task_prompt
+                            emitWebSocketEventRef.current({
+                                triggerId: message.trigger_id,
+                                triggerName: triggerName,
+                                taskPrompt: taskPrompt,
+                                executionId: message.execution_id,
+                                timestamp: Date.now(),
+                                // New fields for programmatic task execution
+                                triggerType: message.trigger_type,
+                                projectId: message.project_id, // Future: triggers will be associated with projects
+                                inputData: message.input_data || {},
+                            });
                             break;
                         }
 

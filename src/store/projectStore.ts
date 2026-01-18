@@ -620,6 +620,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 		}
 
 		const new_task_id = generateUniqueId();
+		const actual_task_id = task_id || new_task_id;
 		
 		set((state) => ({
 			projects: {
@@ -629,7 +630,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 					queuedMessages: [
 						...state.projects[projectId].queuedMessages,
 						{
-							task_id: task_id || new_task_id,
+							task_id: actual_task_id,
 							content,
 							timestamp: Date.now(),
 							attaches: [...attaches]
@@ -640,7 +641,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 			}
 		}));
 
-		return new_task_id;
+		return actual_task_id;
 	},
 	
 	removeQueuedMessage: (projectId: string, task_id: string) => {

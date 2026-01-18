@@ -696,7 +696,20 @@ export default function ChatBox(): JSX.Element {
 
 		try {
 			//Optimistic Removal
-			projectStore.removeQueuedMessage(project_id, task_id);
+			const removedTask = projectStore.removeQueuedMessage(project_id, task_id);
+
+			//For now return early due to https://github.com/eigent-ai/eigent/issues/684
+			await proxyUpdateTriggerExecution(
+				removedTask.task_id,
+				{ 
+					status: ExecutionStatus.Cancelled,
+					error_message: "Task was removed from queue by user."
+				},
+				{
+					projectId: project_id
+				}
+			)
+			return;
 
 			// Always try to call the backend to remove the task
 			// The backend will handle the error gracefully if workforce is not initialized
@@ -943,11 +956,11 @@ export default function ChatBox(): JSX.Element {
 				{chatStore.activeTaskId && hasAnyMessages && (
 					<BottomBox
 						state={hasAnyMessages ? getBottomBoxState() : "input"}
-						queuedMessages={hasAnyMessages && isTaskBusy ? [] : (hasAnyMessages ? projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
+						queuedMessages={hasAnyMessages && isTaskBusy ? (projectStore.getProjectById(projectStore.activeProjectId || '')?.queuedMessages?.map(m => ({
 							id: m.task_id,
 							content: m.content,
 							timestamp: m.timestamp
-						})) || [] : [])}
+						})) || []) : []}
 						onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
 						subtitle={hasAnyMessages && getBottomBoxState() === 'confirm'
 							? (() => {

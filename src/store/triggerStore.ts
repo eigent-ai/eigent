@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Trigger, TriggerInput } from '@/types';
+import { Trigger, TriggerType } from '@/types';
 
 export interface WebSocketEvent {
     triggerId: number;
@@ -8,7 +8,7 @@ export interface WebSocketEvent {
     executionId: string;
     timestamp: number;
     /** Type of trigger: webhook or scheduled */
-    triggerType: 'webhook' | 'schedule';
+    triggerType: TriggerType;
     /** 
      * Target project ID where this task should run.
      * Future: triggers will be associated with specific projects.

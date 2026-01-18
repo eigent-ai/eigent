@@ -1,3 +1,4 @@
+import { ExecutionStatus, TriggerType } from '@/types';
 import { create } from 'zustand';
 
 /**
@@ -16,7 +17,7 @@ export interface TriggeredTask {
     /** Execution ID from the backend */
     executionId: string;
     /** Type of trigger: webhook or scheduled */
-    triggerType: 'webhook' | 'schedule';
+    triggerType: TriggerType;
     /** 
      * Target project ID where this task should run.
      * If null, creates a new project or uses active project.
@@ -28,7 +29,7 @@ export interface TriggeredTask {
     /** Timestamp when the task was triggered */
     timestamp: number;
     /** Current status of the triggered task */
-    status: 'pending' | 'running' | 'completed' | 'failed';
+    status: ExecutionStatus;
     /** Error message if task failed */
     errorMessage?: string;
 }
@@ -117,7 +118,7 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
         const newTask: TriggeredTask = {
             ...taskData,
             id,
-            status: 'pending',
+            status: ExecutionStatus.Pending,
             timestamp: Date.now(),
         };
 
@@ -131,16 +132,16 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
 
     dequeueTask: () => {
         const { taskQueue } = get();
-        const nextTask = taskQueue.find(t => t.status === 'pending');
+        const nextTask = taskQueue.find(t => t.status === ExecutionStatus.Pending);
         
         if (nextTask) {
             // Mark as running and move to current
             set((state) => ({
                 taskQueue: state.taskQueue.filter(t => t.id !== nextTask.id),
-                currentTask: { ...nextTask, status: 'running' }
+                currentTask: { ...nextTask, status: ExecutionStatus.Running }
             }));
             console.log('[TriggerTaskStore] Task dequeued:', nextTask.id);
-            return { ...nextTask, status: 'running' as const };
+            return { ...nextTask, status: ExecutionStatus.Running };
         }
         return null;
     },
@@ -152,7 +153,7 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
     completeTask: (taskId) => {
         set((state) => {
             const completedTask = state.currentTask?.id === taskId 
-                ? { ...state.currentTask, status: 'completed' as const }
+                ? { ...state.currentTask, status: ExecutionStatus.Completed as const }
                 : state.taskQueue.find(t => t.id === taskId);
             
             if (!completedTask) return state;
@@ -160,7 +161,7 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
             return {
                 currentTask: state.currentTask?.id === taskId ? null : state.currentTask,
                 taskQueue: state.taskQueue.filter(t => t.id !== taskId),
-                taskHistory: [{ ...completedTask, status: 'completed' as const }, ...state.taskHistory].slice(0, 50)
+                taskHistory: [{ ...completedTask, status: ExecutionStatus.Completed as const }, ...state.taskHistory].slice(0, 50)
             };
         });
         console.log('[TriggerTaskStore] Task completed:', taskId);
@@ -169,7 +170,7 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
     failTask: (taskId, errorMessage) => {
         set((state) => {
             const failedTask = state.currentTask?.id === taskId 
-                ? { ...state.currentTask, status: 'failed' as const, errorMessage }
+                ? { ...state.currentTask, status: ExecutionStatus.Failed as const, errorMessage }
                 : state.taskQueue.find(t => t.id === taskId);
             
             if (!failedTask) return state;
@@ -177,7 +178,7 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
             return {
                 currentTask: state.currentTask?.id === taskId ? null : state.currentTask,
                 taskQueue: state.taskQueue.filter(t => t.id !== taskId),
-                taskHistory: [{ ...failedTask, status: 'failed' as const, errorMessage }, ...state.taskHistory].slice(0, 50)
+                taskHistory: [{ ...failedTask, status: ExecutionStatus.Failed as const, errorMessage }, ...state.taskHistory].slice(0, 50)
             };
         });
         console.log('[TriggerTaskStore] Task failed:', taskId, errorMessage);
