@@ -29,7 +29,7 @@
     {
       "from": "resources/prebuilt",
       "to": "prebuilt",
-      "filter": ["**/*", "!cache/**/*", "!**/.npm-cache/**/*"]
+      "filter": ["**/*", "!cache/uv_cache/**/*", "!cache/uv_tool/**/*", "!**/.npm-cache/**/*"]
     }
   ],
   "protocols": [

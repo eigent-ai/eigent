@@ -3,25 +3,37 @@ const fs = require('fs');
 
 /**
  * After pack hook - clean invalid symlinks after packing, before signing
+ * Also ensures Python executable is available on Windows
  */
 exports.default = async function afterPack(context) {
-  if (process.platform !== 'darwin') {
+  const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
+
+  if (!isMac && !isWindows) {
     return;
   }
 
   const appOutDir = context.appOutDir;
   const appName = context.packager.appInfo.productName;
-  const appPath = path.join(appOutDir, `${appName}.app`);
 
-  if (!fs.existsSync(appPath)) {
-    console.log('App bundle not found, skipping symlink cleanup');
-    return;
+  let appPath, resourcesPath, prebuiltPath;
+
+  if (isMac) {
+    appPath = path.join(appOutDir, `${appName}.app`);
+    if (!fs.existsSync(appPath)) {
+      console.log('App bundle not found, skipping cleanup');
+      return;
+    }
+    resourcesPath = path.join(appPath, 'Contents', 'Resources');
+  } else if (isWindows) {
+    // On Windows, resources are directly in the app directory
+    appPath = appOutDir;
+    resourcesPath = path.join(appPath, 'resources');
   }
 
-  console.log('🧹 Cleaning invalid symlinks and cache directories before signing...');
+  prebuiltPath = path.join(resourcesPath, 'prebuilt');
 
-  const resourcesPath = path.join(appPath, 'Contents', 'Resources');
-  const prebuiltPath = path.join(resourcesPath, 'prebuilt');
+  console.log('🧹 Cleaning invalid symlinks and cache directories...');
 
   if (!fs.existsSync(prebuiltPath)) {
     return;
@@ -80,31 +92,47 @@ exports.default = async function afterPack(context) {
     }
   }
 
-  // Clean Python symlinks in venv/bin
-  const venvBinDir = path.join(prebuiltPath, 'venv', 'bin');
+  // Clean Python symlinks in venv/bin (Unix) or venv/Scripts (Windows)
+  const venvBinDir = isWindows
+    ? path.join(prebuiltPath, 'venv', 'Scripts')
+    : path.join(prebuiltPath, 'venv', 'bin');
+
   if (fs.existsSync(venvBinDir)) {
-    const pythonNames = ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
+    const pythonNames = isWindows
+      ? ['python.exe', 'python3.exe', 'python3.10.exe', 'python3.11.exe', 'python3.12.exe']
+      : ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
     const bundlePath = path.resolve(appPath);
 
     for (const pythonName of pythonNames) {
-      const pythonSymlink = path.join(venvBinDir, pythonName);
+      const pythonPath = path.join(venvBinDir, pythonName);
 
-      if (fs.existsSync(pythonSymlink)) {
+      if (fs.existsSync(pythonPath)) {
         try {
-          const stats = fs.lstatSync(pythonSymlink);
+          const stats = fs.lstatSync(pythonPath);
           if (stats.isSymbolicLink()) {
-            const target = fs.readlinkSync(pythonSymlink);
-            const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
+            const target = fs.readlinkSync(pythonPath);
+            const resolvedPath = path.resolve(path.dirname(pythonPath), target);
 
             // If symlink points outside bundle, remove it
             if (!resolvedPath.startsWith(bundlePath)) {
               console.log(`Removing invalid ${pythonName} symlink: ${target}`);
-              fs.unlinkSync(pythonSymlink);
+              fs.unlinkSync(pythonPath);
             }
           }
         } catch (error) {
-          console.warn(`Warning: Could not process ${pythonName} symlink: ${error.message}`);
+          console.warn(`Warning: Could not process ${pythonName}: ${error.message}`);
         }
+      }
+    }
+
+    // On Windows, verify Python executable exists and is accessible
+    if (isWindows) {
+      const pythonExe = path.join(venvBinDir, 'python.exe');
+      if (!fs.existsSync(pythonExe)) {
+        console.warn(`⚠️  Warning: Python executable not found at: ${pythonExe}`);
+        console.warn(`   This may cause runtime errors. Ensure Python cache (uv_python) is included in the build.`);
+      } else {
+        console.log(`✅ Python executable verified: ${pythonExe}`);
       }
     }
   }
