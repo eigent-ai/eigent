@@ -12,7 +12,6 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { replayActiveTask } from "@/lib";
-import { handleSend as handleSendLogic } from "./handlers/handleSend";
 import { proxyUpdateTriggerExecution } from "@/service/triggerApi";
 import { ExecutionStatus } from "@/types";
 
@@ -637,6 +636,16 @@ export default function ChatBox(): JSX.Element {
 		projectStore.removeQueuedMessage(projectStore.activeProjectId, firstMessage.task_id);
 		
 		console.log('[ChatBox] Processing queued message:', firstMessage.content.substring(0, 50) + '...');
+		
+		// For multiturn Store the execution ID mapping for this task
+		// The task_id from queued message is the executionId when added via trigger
+		// We map it to the current activeTaskId which will be used for the new task
+		if (firstMessage.task_id && projectStore.activeProjectId) {
+			// Store mapping: actual taskId -> executionId
+			// The nextTaskId or activeTaskId will be used for the actual task processing
+			const targetTaskId = chatStore.nextTaskId || taskId;
+			projectStore.setExecutionId(projectStore.activeProjectId, targetTaskId, firstMessage.task_id);
+		}
 		
 		// Process the queued message via handleSend
 		// Use the task_id from the queued message if needed for tracking

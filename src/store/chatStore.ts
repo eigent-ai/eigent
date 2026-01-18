@@ -8,7 +8,8 @@ import { useProjectStore } from './projectStore';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { toast } from 'sonner';
-
+import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
+import { ExecutionStatus } from '@/types';
 
 interface Task {
 	messages: Message[];
@@ -159,6 +160,39 @@ const resolveProcessTaskIdForToolkitEvent = (
 // Throttle streaming decompose text updates to prevent excessive re-renders
 const streamingDecomposeTextBuffer: Record<string, string> = {};
 const streamingDecomposeTextTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+// Helper function to update trigger execution status
+const updateTriggerExecutionStatus = async (
+	projectStore: any,
+	project_id: string | null | undefined,
+	currentTaskId: string,
+	status: ExecutionStatus,
+	tokens: number,
+	errorMessage?: string
+) => {
+	const projectId = project_id || projectStore.activeProjectId;
+	if (!projectId) return;
+
+	const executionId = projectStore.getExecutionId(projectId, currentTaskId);
+	if (!executionId) return;
+
+	try {
+		await proxyUpdateTriggerExecution(
+			executionId,
+			{
+				status,
+				completed_at: new Date().toISOString(),
+				...(errorMessage && { error_message: errorMessage }),
+				tokens_used: tokens
+			},
+			{ projectId }
+		);
+		// Clean up the execution ID mapping after successful update
+		projectStore.removeExecutionId(projectId, currentTaskId);
+	} catch (err) {
+		console.warn(`Failed to update execution status to ${status}:`, err);
+	}
+};
 
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
@@ -1516,6 +1550,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 							});
 							uploadLog(currentTaskId, type)
 
+							// Update trigger execution status to Failed if this task has an associated execution
+							updateTriggerExecutionStatus(
+								projectStore,
+								project_id,
+								currentTaskId,
+								ExecutionStatus.Failed,
+								tasks[currentTaskId]?.tokens || 0,
+								errorMessage
+							);
+
 							// Stop the workforce
 							try {
 								await fetchDelete(`/chat/${project_id}`);
@@ -1755,6 +1799,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// completed tasks move to history
 						setUpdateCount();
 
+						// Update trigger execution status to Completed if this task has an associated execution
+						updateTriggerExecutionStatus(
+							projectStore,
+							project_id,
+							currentTaskId,
+							ExecutionStatus.Completed,
+							tasks[currentTaskId]?.tokens || 0
+						);
+
 						console.log(tasks[currentTaskId], 'end');
 
 
@@ -1854,6 +1907,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						// Don't throw - let fetchEventSource auto-retry
 						return;
 					}
+					const currentTaskId = getCurrentTaskId();
+					// Update trigger execution status to Completed for connection closed by server
+					updateTriggerExecutionStatus(
+						projectStore,
+						project_id,
+						currentTaskId,
+						ExecutionStatus.Completed,
+						tasks[currentTaskId]?.tokens || 0
+					);
 
 					// For other errors, log and throw to stop retrying
 					console.error('[fetchEventSource] Fatal error, stopping connection:', err);
