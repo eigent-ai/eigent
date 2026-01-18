@@ -279,41 +279,8 @@ export default function SignUp() {
 									{t("layout.login")}
 								</Button>
 						</div>
-						<div className="flex items-start space-x-2 w-full px-1 justify-center mt-4">
-							<input
-								type="checkbox"
-								id="terms"
-								className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-								checked={agreeToTerms}
-								onChange={(e) => {
-									setAgreeToTerms(e.target.checked);
-									setGeneralError("");
-								}}
-							/>
-							<label
-								htmlFor="terms"
-								className="text-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-							>
-								I agree to{' '}
-								<a
-									href="https://www.eigent.ai/terms-of-use"
-									target="_blank"
-									className="text-text-information underline"
-								>
-									{t('layout.terms-of-use')}
-								</a>{' '}
-								{t('layout.and')}{' '}
-								<a
-									href="https://www.eigent.ai/privacy-policy"
-									target="_blank"
-									className="text-text-information underline"
-								>
-									{t('layout.privacy-policy')}
-								</a>
-							</label>
-						</div>
 						{HAS_STACK_KEYS && (
-							<div className="w-full pt-4">
+              <div className="w-full pt-6">
 								<Button
 									variant="primary"
 									size="lg"
@@ -393,6 +360,39 @@ export default function SignUp() {
 									/>
 							</div>
 						</div>
+          <div className="flex items-start space-x-2 w-full px-1 justify-center mb-4">
+            <input
+              type="checkbox"
+              id="terms"
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+              checked={agreeToTerms}
+              onChange={(e) => {
+                setAgreeToTerms(e.target.checked);
+                setGeneralError("");
+              }}
+            />
+            <label
+              htmlFor="terms"
+              className="text-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+            >
+              I agree to{' '}
+              <a
+                href="https://www.eigent.ai/terms-of-use"
+                target="_blank"
+                className="text-text-information underline"
+              >
+                {t('layout.terms-of-use')}
+              </a>{' '}
+              {t('layout.and')}{' '}
+              <a
+                href="https://www.eigent.ai/privacy-policy"
+                target="_blank"
+                className="text-text-information underline"
+              >
+                {t('layout.privacy-policy')}
+              </a>
+            </label>
+          </div>
 						<Button
 							onClick={handleRegister}
 							size="md"
