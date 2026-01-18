@@ -36,10 +36,10 @@ function isValidZip(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     return buffer.length > 4 &&
-           buffer[0] === 0x50 &&
-           buffer[1] === 0x4B &&
-           buffer[2] === 0x03 &&
-           buffer[3] === 0x04;
+      buffer[0] === 0x50 &&
+      buffer[1] === 0x4B &&
+      buffer[2] === 0x03 &&
+      buffer[3] === 0x04;
   } catch {
     return false;
   }
@@ -52,8 +52,8 @@ function isValidTarGz(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     return buffer.length > 2 &&
-           buffer[0] === 0x1F &&
-           buffer[1] === 0x8B;
+      buffer[0] === 0x1F &&
+      buffer[1] === 0x8B;
   } catch {
     return false;
   }
@@ -87,7 +87,7 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
             }, (response) => {
               // Handle redirects (301, 302, 307, 308)
               if (response.statusCode === 301 || response.statusCode === 302 ||
-                  response.statusCode === 307 || response.statusCode === 308) {
+                response.statusCode === 307 || response.statusCode === 308) {
                 redirectCount++;
                 if (redirectCount > maxRedirects) {
                   reject(new Error(`Too many redirects (${redirectCount})`));
@@ -300,21 +300,21 @@ async function installUv() {
       // Find installed uv
       const possiblePaths = process.platform === 'win32'
         ? [
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
-            'C:\\Python311\\Scripts\\uv.exe',
-            'C:\\Python312\\Scripts\\uv.exe',
-            'C:\\Python313\\Scripts\\uv.exe',
-          ]
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
+          'C:\\Python311\\Scripts\\uv.exe',
+          'C:\\Python312\\Scripts\\uv.exe',
+          'C:\\Python313\\Scripts\\uv.exe',
+        ]
         : [
-            path.join(os.homedir(), '.local', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
-            '/usr/local/bin/uv',
-          ];
+          path.join(os.homedir(), '.local', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
+          '/usr/local/bin/uv',
+        ];
 
       let foundUvPath = null;
       try {
@@ -592,15 +592,28 @@ async function installPythonDeps(uvPath) {
   }
 
   // Ensure Python is installed before syncing
-  // This is critical for Windows where Python might not be in the venv
-  console.log('🐍 Ensuring Python is installed...');
+  // Use fixed Python version to ensure consistency across builds
+  // This prevents version mismatch issues when packaging
+  console.log('🐍 Ensuring Python is installed (using fixed version 3.10.15)...');
   try {
+    // Use fixed minor version to ensure consistency
+    // This prevents issues where different builds might get different patch versions
     execSync(
-      `"${uvPath}" python install 3.10`,
+      `"${uvPath}" python install 3.10.15`,
       { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
     );
+    console.log('✅ Python 3.10.15 installed');
   } catch (error) {
-    console.log('⚠️  Python install command failed, continuing with sync (Python may already be installed)...');
+    console.log('⚠️  Python 3.10.15 install failed, trying 3.10 (latest)...');
+    try {
+      execSync(
+        `"${uvPath}" python install 3.10`,
+        { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
+      );
+      console.log('✅ Python 3.10 (latest) installed');
+    } catch (error2) {
+      console.log('⚠️  Python install command failed, continuing with sync (Python may already be installed)...');
+    }
   }
 
   execSync(
@@ -608,20 +621,96 @@ async function installPythonDeps(uvPath) {
     { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
   );
 
-  // Verify Python executable exists in the virtual environment
+  // Verify and fix Python executable symlinks in the virtual environment
   const isWindows = process.platform === 'win32';
+  const venvBinDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
   const pythonExePath = isWindows
-    ? path.join(venvPath, 'Scripts', 'python.exe')
-    : path.join(venvPath, 'bin', 'python');
+    ? path.join(venvBinDir, 'python.exe')
+    : path.join(venvBinDir, 'python');
 
   if (!fs.existsSync(pythonExePath)) {
-    throw new Error(
-      `Python executable not found in virtual environment at: ${pythonExePath}\n` +
-      `Virtual environment may be corrupted. Please ensure uv sync completed successfully.`
-    );
+    // Try to find Python in cache and create symlink
+    console.log('⚠️  Python executable not found, attempting to fix symlink...');
+
+    if (fs.existsSync(pythonCacheDir)) {
+      try {
+        const entries = fs.readdirSync(pythonCacheDir);
+        const pythonDirs = entries
+          .filter(name => name.startsWith('cpython-3.10'))
+          .map(name => {
+            const binDir = path.join(pythonCacheDir, name, 'bin');
+            const pythonExe = isWindows
+              ? path.join(binDir, 'python.exe')
+              : path.join(binDir, 'python3.10');
+            return { name, binDir, pythonExe };
+          })
+          .filter(({ pythonExe }) => fs.existsSync(pythonExe));
+
+        if (pythonDirs.length > 0) {
+          const { pythonExe, binDir } = pythonDirs[0];
+          console.log(`Found Python at: ${pythonExe}`);
+
+          // Create symlink using relative path
+          const relativePath = path.relative(venvBinDir, pythonExe);
+
+          if (fs.existsSync(pythonExePath)) {
+            fs.unlinkSync(pythonExePath);
+          }
+          fs.symlinkSync(relativePath, pythonExePath);
+          console.log(`✅ Created Python symlink: ${pythonExePath} -> ${relativePath}`);
+
+          // On Unix, also create python3 and python3.10 symlinks
+          if (!isWindows) {
+            const python3Path = path.join(venvBinDir, 'python3');
+            const python310Path = path.join(venvBinDir, 'python3.10');
+
+            if (fs.existsSync(python3Path)) {
+              fs.unlinkSync(python3Path);
+            }
+            fs.symlinkSync('python', python3Path);
+
+            if (fs.existsSync(python310Path)) {
+              fs.unlinkSync(python310Path);
+            }
+            fs.symlinkSync('python', python310Path);
+          }
+        } else {
+          throw new Error('No Python executable found in cache');
+        }
+      } catch (error) {
+        throw new Error(
+          `Python executable not found in virtual environment at: ${pythonExePath}\n` +
+          `Virtual environment may be corrupted. Please ensure uv sync completed successfully.\n` +
+          `Error: ${error.message}`
+        );
+      }
+    } else {
+      throw new Error(
+        `Python executable not found in virtual environment at: ${pythonExePath}\n` +
+        `Virtual environment may be corrupted. Please ensure uv sync completed successfully.`
+      );
+    }
   }
 
-  console.log(`✅ Python executable verified: ${pythonExePath}`);
+  // Verify the symlink is valid
+  try {
+    const stats = fs.lstatSync(pythonExePath);
+    if (stats.isSymbolicLink()) {
+      const target = fs.readlinkSync(pythonExePath);
+      const resolvedPath = path.resolve(path.dirname(pythonExePath), target);
+      if (fs.existsSync(resolvedPath)) {
+        console.log(`✅ Python executable verified: ${pythonExePath} -> ${resolvedPath}`);
+      } else {
+        console.warn(`⚠️  Warning: Python symlink target does not exist: ${target}`);
+        console.warn(`   This may cause issues during packaging.`);
+      }
+    } else {
+      console.log(`✅ Python executable verified: ${pythonExePath}`);
+    }
+  } catch (error) {
+    console.warn(`⚠️  Warning: Could not verify Python executable: ${error.message}`);
+  }
+
   console.log('✅ Python dependencies installed');
 
   console.log('📝 Compiling babel...');

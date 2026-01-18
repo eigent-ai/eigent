@@ -139,6 +139,7 @@ export function getCachePath(folder: string): string {
 
 /**
  * Get path to prebuilt venv (if available in packaged app)
+ * Attempts to fix Python symlinks if they are broken
  */
 export function getPrebuiltVenvPath(): string | null {
   if (!app.isPackaged) {
@@ -151,18 +152,95 @@ export function getPrebuiltVenvPath(): string | null {
     if (fs.existsSync(pyvenvCfg)) {
       // Verify Python executable exists (Windows: Scripts/python.exe, Unix: bin/python)
       const isWindows = process.platform === 'win32';
+      const venvBinDir = isWindows
+        ? path.join(prebuiltVenvPath, 'Scripts')
+        : path.join(prebuiltVenvPath, 'bin');
       const pythonExePath = isWindows
-        ? path.join(prebuiltVenvPath, 'Scripts', 'python.exe')
-        : path.join(prebuiltVenvPath, 'bin', 'python');
+        ? path.join(venvBinDir, 'python.exe')
+        : path.join(venvBinDir, 'python');
 
+      // Check if Python executable exists and is valid
+      let pythonValid = false;
       if (fs.existsSync(pythonExePath)) {
+        try {
+          const stats = fs.lstatSync(pythonExePath);
+          if (stats.isSymbolicLink()) {
+            const target = fs.readlinkSync(pythonExePath);
+            const resolvedPath = path.resolve(path.dirname(pythonExePath), target);
+            pythonValid = fs.existsSync(resolvedPath);
+          } else {
+            pythonValid = true; // Regular file, assume valid
+          }
+        } catch (error) {
+          pythonValid = false;
+        }
+      }
+
+      if (pythonValid) {
         log.info(`Using prebuilt venv: ${prebuiltVenvPath}`);
         return prebuiltVenvPath;
       } else {
+        // Try to fix the Python symlink before falling back
         log.warn(
-          `Prebuilt venv found but Python executable missing at: ${pythonExePath}. ` +
-            `Falling back to user venv.`
+          `Prebuilt venv found but Python executable missing or invalid at: ${pythonExePath}. ` +
+            `Attempting to fix...`
         );
+
+        const pythonCacheDir = path.join(process.resourcesPath, 'prebuilt', 'cache', 'uv_python');
+        if (fs.existsSync(pythonCacheDir)) {
+          try {
+            const entries = fs.readdirSync(pythonCacheDir);
+            const pythonDirs = entries
+              .filter(name => name.startsWith('cpython-3.10'))
+              .map(name => {
+                const binDir = path.join(pythonCacheDir, name, 'bin');
+                const pythonExe = isWindows
+                  ? path.join(binDir, 'python.exe')
+                  : path.join(binDir, 'python3.10');
+                return { name, binDir, pythonExe };
+              })
+              .filter(({ pythonExe }) => fs.existsSync(pythonExe));
+
+            if (pythonDirs.length > 0) {
+              const { pythonExe } = pythonDirs[0];
+              const relativePath = path.relative(venvBinDir, pythonExe);
+
+              // Remove old symlink if exists
+              if (fs.existsSync(pythonExePath)) {
+                fs.unlinkSync(pythonExePath);
+              }
+
+              // Create new symlink
+              fs.symlinkSync(relativePath, pythonExePath);
+              log.info(`Fixed Python symlink: ${pythonExePath} -> ${relativePath}`);
+
+              // On Unix, also fix python3 and python3.10
+              if (!isWindows) {
+                const python3Path = path.join(venvBinDir, 'python3');
+                const python310Path = path.join(venvBinDir, 'python3.10');
+
+                if (fs.existsSync(python3Path)) {
+                  fs.unlinkSync(python3Path);
+                }
+                fs.symlinkSync('python', python3Path);
+
+                if (fs.existsSync(python310Path)) {
+                  fs.unlinkSync(python310Path);
+                }
+                fs.symlinkSync('python', python310Path);
+              }
+
+              log.info(`Using prebuilt venv (after fix): ${prebuiltVenvPath}`);
+              return prebuiltVenvPath;
+            } else {
+              log.warn('No valid Python executable found in cache, falling back to user venv.');
+            }
+          } catch (error: any) {
+            log.warn(`Failed to fix Python symlink: ${error?.message || String(error)}. Falling back to user venv.`);
+          }
+        } else {
+          log.warn('Python cache directory not found, falling back to user venv.');
+        }
       }
     }
   }

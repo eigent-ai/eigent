@@ -103,6 +103,7 @@ exports.default = async function afterPack(context) {
       : ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
     const bundlePath = path.resolve(appPath);
 
+    // First, clean invalid symlinks
     for (const pythonName of pythonNames) {
       const pythonPath = path.join(venvBinDir, pythonName);
 
@@ -113,8 +114,8 @@ exports.default = async function afterPack(context) {
             const target = fs.readlinkSync(pythonPath);
             const resolvedPath = path.resolve(path.dirname(pythonPath), target);
 
-            // If symlink points outside bundle, remove it
-            if (!resolvedPath.startsWith(bundlePath)) {
+            // If symlink points outside bundle or target doesn't exist, remove it
+            if (!resolvedPath.startsWith(bundlePath) || !fs.existsSync(resolvedPath)) {
               console.log(`Removing invalid ${pythonName} symlink: ${target}`);
               fs.unlinkSync(pythonPath);
             }
@@ -122,6 +123,80 @@ exports.default = async function afterPack(context) {
         } catch (error) {
           console.warn(`Warning: Could not process ${pythonName}: ${error.message}`);
         }
+      }
+    }
+
+    // Fix Python symlinks by finding actual Python in cache
+    const pythonCacheDir = path.join(prebuiltPath, 'cache', 'uv_python');
+    if (fs.existsSync(pythonCacheDir)) {
+      try {
+        const entries = fs.readdirSync(pythonCacheDir);
+        const pythonDirs = entries
+          .filter(name => name.startsWith('cpython-'))
+          .map(name => {
+            const binDir = path.join(pythonCacheDir, name, 'bin');
+            const pythonExe = isWindows
+              ? path.join(binDir, 'python.exe')
+              : path.join(binDir, 'python3.10');
+            return { name, binDir, pythonExe };
+          })
+          .filter(({ pythonExe }) => fs.existsSync(pythonExe));
+
+        if (pythonDirs.length > 0) {
+          // Use the first available Python (usually the latest)
+          const { pythonExe, binDir } = pythonDirs[0];
+          const mainPythonName = isWindows ? 'python.exe' : 'python';
+          const mainPythonPath = path.join(venvBinDir, mainPythonName);
+
+          // Check if main Python symlink exists and is valid
+          let needsFix = true;
+          if (fs.existsSync(mainPythonPath)) {
+            try {
+              const stats = fs.lstatSync(mainPythonPath);
+              if (stats.isSymbolicLink()) {
+                const target = fs.readlinkSync(mainPythonPath);
+                const resolvedPath = path.resolve(path.dirname(mainPythonPath), target);
+                if (fs.existsSync(resolvedPath) && resolvedPath === pythonExe) {
+                  needsFix = false;
+                }
+              }
+            } catch (error) {
+              // Error reading symlink, needs fix
+            }
+          }
+
+          if (needsFix) {
+            // Remove old symlink if exists
+            if (fs.existsSync(mainPythonPath)) {
+              fs.unlinkSync(mainPythonPath);
+            }
+
+            // Create new symlink using relative path
+            const relativePath = path.relative(venvBinDir, pythonExe);
+            fs.symlinkSync(relativePath, mainPythonPath);
+            console.log(`✅ Fixed Python symlink: ${mainPythonPath} -> ${relativePath}`);
+
+            // Also fix python3 and python3.10 symlinks on Unix
+            if (!isWindows) {
+              const python3Path = path.join(venvBinDir, 'python3');
+              const python310Path = path.join(venvBinDir, 'python3.10');
+
+              if (fs.existsSync(python3Path)) {
+                fs.unlinkSync(python3Path);
+              }
+              fs.symlinkSync('python', python3Path);
+
+              if (fs.existsSync(python310Path)) {
+                fs.unlinkSync(python310Path);
+              }
+              fs.symlinkSync('python', python310Path);
+            }
+          } else {
+            console.log(`✅ Python symlink is valid: ${mainPythonPath}`);
+          }
+        }
+      } catch (error) {
+        console.warn(`Warning: Could not fix Python symlinks: ${error.message}`);
       }
     }
 
@@ -133,6 +208,31 @@ exports.default = async function afterPack(context) {
         console.warn(`   This may cause runtime errors. Ensure Python cache (uv_python) is included in the build.`);
       } else {
         console.log(`✅ Python executable verified: ${pythonExe}`);
+      }
+    } else {
+      // On Unix, verify Python executable
+      const pythonExe = path.join(venvBinDir, 'python');
+      if (!fs.existsSync(pythonExe)) {
+        console.warn(`⚠️  Warning: Python executable not found at: ${pythonExe}`);
+        console.warn(`   This may cause runtime errors. Ensure Python cache (uv_python) is included in the build.`);
+      } else {
+        // Verify symlink is valid
+        try {
+          const stats = fs.lstatSync(pythonExe);
+          if (stats.isSymbolicLink()) {
+            const target = fs.readlinkSync(pythonExe);
+            const resolvedPath = path.resolve(path.dirname(pythonExe), target);
+            if (fs.existsSync(resolvedPath)) {
+              console.log(`✅ Python executable verified: ${pythonExe} -> ${resolvedPath}`);
+            } else {
+              console.warn(`⚠️  Warning: Python symlink target does not exist: ${target}`);
+            }
+          } else {
+            console.log(`✅ Python executable verified: ${pythonExe}`);
+          }
+        } catch (error) {
+          console.warn(`⚠️  Warning: Could not verify Python executable: ${error.message}`);
+        }
       }
     }
   }
