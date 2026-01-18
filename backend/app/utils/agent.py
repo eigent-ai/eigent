@@ -614,18 +614,52 @@ def agent_model(
 
     # Build model config, defaulting to streaming for planner
     extra_params = options.extra_params or {}
+    init_param_keys = {
+        "api_version",
+        "azure_ad_token",
+        "azure_ad_token_provider",
+        "max_retries",
+        "timeout",
+        "client",
+        "async_client",
+        "azure_deployment_name",
+    }
+    
+    init_params = {}
     model_config: dict[str, Any] = {}
+    
     if options.is_cloud():
         model_config["user"] = str(options.project_id)
-    model_config.update(
-        {
-            k: v
-            for k, v in extra_params.items()
-            if k not in ["model_platform", "model_type", "api_key", "url"]
-        }
-    )
+        
+    excluded_keys = {"model_platform", "model_type", "api_key", "url"}
+
+    # Distribute extra_params between init_params and model_config
+    for k, v in extra_params.items():
+        if k in excluded_keys:
+            continue
+        # Skip empty values
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+            
+        if k in init_param_keys:
+            init_params[k] = v
+        else:
+            model_config[k] = v
+
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
+    if agent_name == Agents.search_agent:
+        try:
+            model_platform_enum = ModelPlatformType(options.model_platform.lower())
+            if model_platform_enum in {
+                ModelPlatformType.OPENAI,
+                ModelPlatformType.AZURE,
+                ModelPlatformType.AIHUBMIX,
+            }:
+                model_config["parallel_tool_calls"] = False
+        except (ValueError, AttributeError):
+            traceroot_logger.error(f"Invalid model platform for search agent: {options.model_platform}", exc_info=True)
+            model_platform_enum = None
 
     return ListenChatAgent(
         options.project_id,
@@ -637,6 +671,7 @@ def agent_model(
             api_key=options.api_key,
             url=options.api_url,
             model_config_dict=model_config or None,
+            **init_params,
         ),
         # output_language=options.language,
         tools=tools,
