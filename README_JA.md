@@ -295,7 +295,7 @@ Documentsディレクトリにmydocsというフォルダがあります。ス�
 | **コンテキストエンジニアリング** | - プロンプトキャッシング<br> - システムプロンプト最適化<br> - ツールキットdocstring最適化<br> - コンテキスト圧縮 | [**Discordに参加 →**](https://discord.gg/D2e3rBWD) |
 | **マルチモーダル強化** | - ブラウザ使用時のより正確な画像理解<br> - 高度な動画生成 | [**Discordに参加 →**](https://discord.gg/kyapNCeJ) |
 | **マルチエージェントシステム** | - 固定ワークフローをサポートするワークフォース<br> - マルチラウンド変換をサポートするワークフォース | [**Discordに参加 →**](https://discord.gg/bFRmPuDB) |
-| **ブラウザツールキット** | - BrowseCamp統合<br> - ベンチマーク改善<br> - 繰り返しページ訪問の禁止<br> - 自動キャッシュボタンクリック | [**Discordに参加 →**](https://discord.gg/NF73ze5v) |
+| **ブラウザツールキット** | - BrowseComp統合<br> - ベンチマーク改善<br> - 繰り返しページ訪問の禁止<br> - 自動キャッシュボタンクリック | [**Discordに参加 →**](https://discord.gg/NF73ze5v) |
 | **ドキュメントツールキット** | - 動的ファイル編集のサポート | [**Discordに参加 →**](https://discord.gg/4yAWJxYr) |
 | **ターミナルツールキット** | - ベンチマーク改善<br> - Terminal-Bench統合 | [**Discordに参加 →**](https://discord.gg/FjQfnsrV) |
 | **環境 & RL** | - 環境設計<br> - データ生成<br> - RLフレームワーク統合（VERL、TRL、OpenRLHF） | [**Discordに参加 →**](https://discord.gg/MaVZXEn8) |
@@ -328,7 +328,7 @@ Eigentは[CAMEL-AI.org][camel-ai-org-github]の研究とインフラストラク
 
 - **GitHub Issues:** バグ報告、機能リクエスト、開発の追跡。[Issueを提出][github-issue-link]
 
-- **Discord:** リアルタイムサポート、コミュニティとのチャット、最新情報の入手。[参加する](https://discord.camel-ai.org/)
+- **Discord:** リアルタイムサポート、コミュニティとのチャット、最新情報の入手。[参加する](https://discord.com/invite/CNcNpquyDc)
 
 - **X（Twitter）:** 更新情報、AIインサイト、重要なお知らせをフォロー。[フォローする][social-x-link]
 
@@ -342,7 +342,7 @@ Eigentは[CAMEL-AI.org][camel-ai-org-github]の研究とインフラストラク
 
 <!-- LINK GROUP -->
 <!-- Social -->
-[discord-url]: https://discord.camel-ai.org/
+[discord-url]: https://discord.com/invite/CNcNpquyDc
 [discord-image]: https://img.shields.io/discord/1082486657678311454?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb
 
 [built-with-camel]:https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=

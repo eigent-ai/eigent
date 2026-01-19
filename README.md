@@ -297,7 +297,7 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 | **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.gg/D2e3rBWD) |
 | **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.gg/kyapNCeJ) |
 | **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.gg/bFRmPuDB) |
-| **Browser Toolkit** | - BrowseCamp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
+| **Browser Toolkit** | - BrowseComp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
 | **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.gg/4yAWJxYr) |
 | **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.gg/FjQfnsrV) |
 | **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.gg/MaVZXEn8) |
@@ -331,7 +331,7 @@ For more information please contact info@eigent.ai
 
 - **GitHub Issues:** Report bugs, request features, and track development. [Submit an issue][github-issue-link]
 
-- **Discord:** Get real-time support, chat with the community, and stay updated. [Join us](https://discord.camel-ai.org/)
+- **Discord:** Get real-time support, chat with the community, and stay updated. [Join us](https://discord.com/invite/CNcNpquyDc)
 
 - **X (Twitter):** Follow for updates, AI insights, and key announcements. [Follow us][social-x-link]
 
@@ -345,7 +345,7 @@ For more information please contact info@eigent.ai
 
 <!-- LINK GROUP -->
 <!-- Social -->
-[discord-url]: https://discord.camel-ai.org/
+[discord-url]: https://discord.com/invite/CNcNpquyDc
 [discord-image]: https://img.shields.io/discord/1082486657678311454?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb
 
 [built-with-camel]:https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=
