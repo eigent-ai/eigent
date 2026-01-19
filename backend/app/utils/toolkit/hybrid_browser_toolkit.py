@@ -350,8 +350,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             full_visual_mode=self._full_visual_mode,
         )
 
-        return cloned_toolkit
-
     async def browser_sheet_input(self, *, cells: List[SheetCell]) -> Dict[str, Any]:
         # Use typing_extensions.TypedDict for Pydantic <3.12 compatibility.
         return await super().browser_sheet_input(cells=cells)
