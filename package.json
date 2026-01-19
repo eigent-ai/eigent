@@ -136,9 +136,12 @@
     "glob": "^10.4.5"
   },
   "pnpm": {
-    "neverBuiltDependencies": []
+    "neverBuiltDependencies": [],
+    "overrides": {
+      "glob": "^10.4.5"
+    }
   },
   "engines": {
-    "node": ">=18.0.0 <23.0.0"
+    "node": ">=20.0.0 <23.0.0"
   }
 }
