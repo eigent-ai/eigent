@@ -691,7 +691,9 @@ class ListenChatAgent(ChatAgent):
             mask_tool_output=self.mask_tool_output,
             pause_event=self.pause_event,
             prune_tool_calls_from_memory=self.prune_tool_calls_from_memory,
+            enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
+            stream_accumulate=self.stream_accumulate,
         )
 
         new_agent.process_task_id = self.process_task_id
@@ -778,7 +780,9 @@ def agent_model(
             if model_platform_enum in {
                 ModelPlatformType.OPENAI,
                 ModelPlatformType.AZURE,
-                ModelPlatformType.AIHUBMIX,
+                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                ModelPlatformType.LITELLM,
+                ModelPlatformType.OPENROUTER,
             }:
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
@@ -1051,6 +1055,9 @@ def browser_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
+            "browser_scroll",
+            "browser_sheet_read",
+            "browser_sheet_input",
             "browser_get_page_snapshot",
         ],
     )

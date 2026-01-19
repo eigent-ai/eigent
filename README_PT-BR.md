@@ -88,7 +88,7 @@ Construído sobre o aclamado projeto open source da [CAMEL-AI][camel-site], noss
 
 A forma recomendada de executar o Eigent — totalmente independente, com controle completo sobre seus dados, sem necessidade de conta em nuvem.
 
-👉 **[Guia Completo de Implantação Local](./server/README_EN.md)**
+👉 **[Guia Completo de Implantação Local](./server/README_PT-BR.md)**
 
 Esta configuração inclui:
 - Servidor backend local com API completa
