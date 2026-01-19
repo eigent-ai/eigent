@@ -616,7 +616,8 @@ export async function installDependencies(
           log.info('[DEPS INSTALL] Using system npm for installation');
         } else {
           // Try uv run npm (might not work if nodejs-wheel isn't properly set up)
-          npmCommand = [uv_path, 'run', 'npm'];
+          // Quote the path to handle spaces in username on Windows
+          npmCommand = [`"${uv_path}"`, 'run', 'npm'];
           log.info('[DEPS INSTALL] Attempting to use uv run npm');
         }
 
@@ -746,7 +747,7 @@ export async function installDependencies(
         try {
           log.info('[DEPS INSTALL] Installing Playwright browsers...');
           const npxCommand =
-            npmCommand[0] === 'npm' ? ['npx'] : [uv_path, 'run', 'npx'];
+            npmCommand[0] === 'npm' ? ['npx'] : [`"${uv_path}"`, 'run', 'npx'];
           const playwrightInstall = spawn(
             npxCommand[0],
             [...npxCommand.slice(1), 'playwright', 'install'],
