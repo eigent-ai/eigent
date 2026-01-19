@@ -7,17 +7,16 @@ from fastapi_babel import _
 from sqlmodel import Session, select, desc, case
 from app.component.auth import Auth, auth_must
 from app.component.database import session
-from utils import traceroot_wrapper as traceroot
+import logging
 from typing import Optional, Dict, List
 from collections import defaultdict
 
-logger = traceroot.get_logger("server_chat_history")
+logger = logging.getLogger("server_chat_history")
 
 router = APIRouter(prefix="/chat", tags=["Chat History"])
 
 
 @router.post("/history", name="save chat history", response_model=ChatHistoryOut)
-@traceroot.trace()
 def create_chat_history(data: ChatHistoryIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Save new chat history."""
     user_id = auth.user.id
@@ -37,7 +36,6 @@ def create_chat_history(data: ChatHistoryIn, session: Session = Depends(session)
 
 
 @router.get("/histories", name="get chat history")
-@traceroot.trace()
 def list_chat_history(session: Session = Depends(session), auth: Auth = Depends(auth_must)) -> Page[ChatHistoryOut]:
     """List chat histories for current user."""
     user_id = auth.user.id
@@ -61,7 +59,6 @@ def list_chat_history(session: Session = Depends(session), auth: Auth = Depends(
 
 
 @router.get("/histories/grouped", name="get grouped chat history")
-@traceroot.trace()
 def list_grouped_chat_history(
     include_tasks: Optional[bool] = Query(True, description="Whether to include individual tasks in groups"),
     session: Session = Depends(session), 
@@ -163,7 +160,6 @@ def list_grouped_chat_history(
 
 
 @router.delete("/history/{history_id}", name="delete chat history")
-@traceroot.trace()
 def delete_chat_history(history_id: str, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete chat history."""
     user_id = auth.user.id
@@ -189,7 +185,6 @@ def delete_chat_history(history_id: str, session: Session = Depends(session), au
 
 
 @router.put("/history/{history_id}", name="update chat history", response_model=ChatHistoryOut)
-@traceroot.trace()
 def update_chat_history(
     history_id: int, data: ChatHistoryUpdate, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -218,7 +213,6 @@ def update_chat_history(
 
 
 @router.put("/project/{project_id}/name", name="update project name")
-@traceroot.trace()
 def update_project_name(
     project_id: str,
     new_name: str,

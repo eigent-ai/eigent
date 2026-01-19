@@ -8,15 +8,14 @@ from app.component.encrypt import password_hash, password_verify
 from app.exception.exception import UserException
 from app.model.user.user import UpdatePassword, UserOut
 from fastapi_babel import _
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_password_controller")
+logger = logging.getLogger("server_password_controller")
 
 router = APIRouter(tags=["User"])
 
 
 @router.put("/user/update-password", name="update password", response_model=UserOut)
-@traceroot.trace()
 def update_password(data: UpdatePassword, auth: Auth = Depends(auth_must), session: Session = Depends(session)):
     """Update user password after verifying current password."""
     user_id = auth.user.id

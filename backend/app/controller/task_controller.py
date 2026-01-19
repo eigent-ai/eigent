@@ -15,16 +15,15 @@ from app.service.task import (
 )
 import asyncio
 from app.component.environment import set_user_env_path
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("task_controller")
+logger = logging.getLogger("task_controller")
 
 
 router = APIRouter()
 
 
 @router.post("/task/{id}/start", name="start task")
-@traceroot.trace()
 def start(id: str):
     task_lock = get_task_lock(id)
     logger.info("Starting task", extra={"task_id": id})
@@ -34,7 +33,6 @@ def start(id: str):
 
 
 @router.put("/task/{id}", name="update task")
-@traceroot.trace()
 def put(id: str, data: UpdateData):
     logger.info("Updating task", extra={"task_id": id, "task_items_count": len(data.task)})
     logger.debug("Update task data", extra={"task_id": id, "data": data.model_dump_json()})
@@ -49,7 +47,6 @@ class TakeControl(BaseModel):
 
 
 @router.put("/task/{id}/take-control", name="take control pause or resume")
-@traceroot.trace()
 def take_control(id: str, data: TakeControl):
     logger.info("Task control action", extra={"task_id": id, "action": data.action})
     task_lock = get_task_lock(id)
@@ -59,7 +56,6 @@ def take_control(id: str, data: TakeControl):
 
 
 @router.post("/task/{id}/add-agent", name="add new agent")
-@traceroot.trace()
 def add_agent(id: str, data: NewAgent):
     logger.info("Adding new agent to task", extra={"task_id": id, "agent_name": data.name})
     logger.debug("New agent data", extra={"task_id": id, "agent_data": data.model_dump_json()})
@@ -72,7 +68,6 @@ def add_agent(id: str, data: NewAgent):
 
 
 @router.delete("/task/stop-all", name="stop all tasks")
-@traceroot.trace()
 def stop_all():
     logger.warning("Stopping all tasks", extra={"task_count": len(task_locks)})
     for task_lock in task_locks.values():

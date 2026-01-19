@@ -15,16 +15,15 @@ from app.model.user.user import (
     RegisterIn,
 )
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_login_controller")
+logger = logging.getLogger("server_login_controller")
 
 
 router = APIRouter(tags=["Login/Registration"])
 
 
 @router.post("/login", name="login by email or password")
-@traceroot.trace()
 async def by_password(
     data: LoginByPasswordIn, session: Session = Depends(session)
 ) -> LoginResponse:
@@ -49,7 +48,6 @@ async def by_password(
 
 
 @router.post("/dev_login", name="OAuth2 password flow login (for Swagger UI)")
-@traceroot.trace()
 async def dev_login(
     username: str = Form(...),  # OAuth2 uses 'username' but we accept email
     password: str = Form(...),
@@ -82,7 +80,6 @@ async def dev_login(
 
 
 @router.post("/login-by_stack", name="login by stack")
-@traceroot.trace()
 async def by_stack_auth(
     token: str,
     type: str = "signup",
@@ -155,7 +152,6 @@ async def by_stack_auth(
 
 
 @router.post("/register", name="register by email/password")
-@traceroot.trace()
 async def register(data: RegisterIn, session: Session = Depends(session)):
     email = data.email
 

@@ -5,15 +5,14 @@ from sqlmodel import Session, select
 from app.component.database import session
 from app.component.auth import Auth, auth_must
 from fastapi_babel import _
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_chat_snapshot")
+logger = logging.getLogger("server_chat_snapshot")
 
 router = APIRouter(prefix="/chat", tags=["Chat Snapshot Management"])
 
 
 @router.get("/snapshots", name="list chat snapshots", response_model=List[ChatSnapshot])
-@traceroot.trace()
 async def list_chat_snapshots(
     api_task_id: Optional[str] = None,
     camel_task_id: Optional[str] = None,
@@ -35,7 +34,6 @@ async def list_chat_snapshots(
 
 
 @router.get("/snapshots/{snapshot_id}", name="get chat snapshot", response_model=ChatSnapshot)
-@traceroot.trace()
 async def get_chat_snapshot(snapshot_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get specific chat snapshot."""
     user_id = auth.user.id
@@ -50,7 +48,6 @@ async def get_chat_snapshot(snapshot_id: int, session: Session = Depends(session
 
 
 @router.post("/snapshots", name="create chat snapshot", response_model=ChatSnapshot)
-@traceroot.trace()
 async def create_chat_snapshot(
     snapshot: ChatSnapshotIn, auth: Auth = Depends(auth_must), session: Session = Depends(session)
 ):
@@ -78,7 +75,6 @@ async def create_chat_snapshot(
 
 
 @router.put("/snapshots/{snapshot_id}", name="update chat snapshot", response_model=ChatSnapshot)
-@traceroot.trace()
 async def update_chat_snapshot(
     snapshot_id: int,
     snapshot_update: ChatSnapshot,
@@ -113,7 +109,6 @@ async def update_chat_snapshot(
 
 
 @router.delete("/snapshots/{snapshot_id}", name="delete chat snapshot")
-@traceroot.trace()
 async def delete_chat_snapshot(snapshot_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete chat snapshot."""
     user_id = auth.user.id

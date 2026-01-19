@@ -11,9 +11,9 @@ from app.service.task import Action, ActionTerminalData, Agents, get_task_lock
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("terminal_toolkit")
+logger = logging.getLogger("terminal_toolkit")
 
 
 @auto_listen_toolkit(BaseTerminalToolkit)

@@ -10,15 +10,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.component.database import session
 from app.component.auth import Auth, auth_must
 from app.model.provider.provider import Provider, ProviderIn, ProviderOut, ProviderPreferIn
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_provider_controller")
+logger = logging.getLogger("server_provider_controller")
 
 router = APIRouter(tags=["Provider Management"])
 
 
 @router.get("/providers", name="list providers", response_model=Page[ProviderOut])
-@traceroot.trace()
 async def gets(
     keyword: str | None = None,
     prefer: Optional[bool] = Query(None, description="Filter by prefer status"),
@@ -38,7 +37,6 @@ async def gets(
 
 
 @router.get("/provider", name="get provider detail", response_model=ProviderOut)
-@traceroot.trace()
 async def get(id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get provider details."""
     user_id = auth.user.id
@@ -52,7 +50,6 @@ async def get(id: int, session: Session = Depends(session), auth: Auth = Depends
 
 
 @router.post("/provider", name="create provider", response_model=ProviderOut)
-@traceroot.trace()
 async def post(data: ProviderIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Create a new provider."""
     user_id = auth.user.id
@@ -67,7 +64,6 @@ async def post(data: ProviderIn, session: Session = Depends(session), auth: Auth
 
 
 @router.put("/provider/{id}", name="update provider", response_model=ProviderOut)
-@traceroot.trace()
 async def put(id: int, data: ProviderIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Update provider details."""
     user_id = auth.user.id
@@ -95,7 +91,6 @@ async def put(id: int, data: ProviderIn, session: Session = Depends(session), au
 
 
 @router.delete("/provider/{id}", name="delete provider")
-@traceroot.trace()
 async def delete(id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete a provider."""
     user_id = auth.user.id
@@ -116,7 +111,6 @@ async def delete(id: int, session: Session = Depends(session), auth: Auth = Depe
 
 
 @router.post("/provider/prefer", name="set provider prefer")
-@traceroot.trace()
 async def set_prefer(data: ProviderPreferIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Set preferred provider for user."""
     user_id = auth.user.id

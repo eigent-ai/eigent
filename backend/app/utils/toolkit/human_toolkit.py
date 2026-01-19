@@ -5,9 +5,9 @@ from app.service.task import Action, ActionAskData, ActionNoticeData, get_task_l
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("human_toolkit")
+logger = logging.getLogger("human_toolkit")
 
 
 @auto_listen_toolkit(BaseToolkit)

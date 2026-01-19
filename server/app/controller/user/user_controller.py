@@ -11,15 +11,14 @@ from app.model.mcp.mcp_user import McpUser
 from app.model.config.config import Config
 from app.model.chat.chat_snpshot import ChatSnapshot
 from app.model.user.user_credits_record import UserCreditsRecord
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_user_controller")
+logger = logging.getLogger("server_user_controller")
 
 router = APIRouter(tags=["User"])
 
 
 @router.get("/user", name="user info", response_model=UserOut)
-@traceroot.trace()
 def get(auth: Auth = Depends(auth_must), session: Session = Depends(session)):
     """Get current user information and refresh credits."""
     user: User = auth.user
@@ -29,7 +28,6 @@ def get(auth: Auth = Depends(auth_must), session: Session = Depends(session)):
 
 
 @router.put("/user", name="update user info", response_model=UserOut)
-@traceroot.trace()
 def put(data: UserIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Update user basic information."""
     model = auth.user
@@ -40,7 +38,6 @@ def put(data: UserIn, session: Session = Depends(session), auth: Auth = Depends(
 
 
 @router.put("/user/profile", name="update user profile", response_model=UserProfile)
-@traceroot.trace()
 def put_profile(data: UserProfile, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Update user profile details."""
     model = auth.user
@@ -53,7 +50,6 @@ def put_profile(data: UserProfile, session: Session = Depends(session), auth: Au
 
 
 @router.get("/user/privacy", name="get user privacy")
-@traceroot.trace()
 def get_privacy(session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get user privacy settings."""
     user_id = auth.user.id
@@ -69,7 +65,6 @@ def get_privacy(session: Session = Depends(session), auth: Auth = Depends(auth_m
 
 
 @router.put("/user/privacy", name="update user privacy")
-@traceroot.trace()
 def put_privacy(data: UserPrivacySettings, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Update user privacy settings."""
     user_id = auth.user.id
@@ -90,7 +85,6 @@ def put_privacy(data: UserPrivacySettings, session: Session = Depends(session), 
 
 
 @router.get("/user/current_credits", name="get user current credits")
-@traceroot.trace()
 def get_user_credits(auth: Auth = Depends(auth_must), session: Session = Depends(session)):
     """Get user's current credit balance."""
     user = auth.user
@@ -107,7 +101,6 @@ def get_user_credits(auth: Auth = Depends(auth_must), session: Session = Depends
 
 
 @router.get("/user/stat", name="get user stat", response_model=UserStatOut)
-@traceroot.trace()
 def get_user_stat(auth: Auth = Depends(auth_must), session: Session = Depends(session)):
     """Get current user's operation statistics."""
     user_id = auth.user.id
@@ -138,7 +131,6 @@ def get_user_stat(auth: Auth = Depends(auth_must), session: Session = Depends(se
 
 
 @router.post("/user/stat", name="record user stat")
-@traceroot.trace()
 def record_user_stat(
     data: UserStatActionIn,
     auth: Auth = Depends(auth_must),

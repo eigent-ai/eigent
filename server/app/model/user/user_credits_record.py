@@ -8,9 +8,9 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 from datetime import date, datetime, timedelta
 from app.model.user.key import ModelType
 from app.component.database import session_make
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("user_credits_record")
+logger = logging.getLogger("user_credits_record")
 
 
 class CreditsChannel(IntEnum):

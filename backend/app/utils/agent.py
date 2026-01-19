@@ -6,7 +6,7 @@ from threading import Event
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
-from utils import traceroot_wrapper as traceroot
+import logging
 from camel.agents import ChatAgent
 from camel.agents.chat_agent import StreamingChatAgentResponse, AsyncStreamingChatAgentResponse
 from camel.agents._types import ToolCallRequest
@@ -54,8 +54,8 @@ import datetime
 from pydantic import BaseModel
 from app.model.chat import Chat, McpServers
 
-# Create traceroot logger for agent tracking
-traceroot_logger = traceroot.get_logger("agent")
+# Logger for agent tracking
+logger = logging.getLogger("agent")
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -73,7 +73,6 @@ NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
 
 
 class ListenChatAgent(ChatAgent):
-    @traceroot.trace()
     def __init__(
         self,
         api_task_id: str,
@@ -139,7 +138,6 @@ class ListenChatAgent(ChatAgent):
 
     process_task_id: str = ""
 
-    @traceroot.trace()
     def step(
         self,
         input_message: BaseMessage | str,
@@ -161,7 +159,7 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.info(
+        logger.info(
             f"Agent {self.agent_name} starting step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}"
         )
         try:
@@ -171,16 +169,16 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
-                traceroot_logger.warning(f"Agent {self.agent_name} budget exceeded")
+                logger.warning(f"Agent {self.agent_name} budget exceeded")
                 asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
-                traceroot_logger.error(f"Agent {self.agent_name} model processing error: {e}")
+                logger.error(f"Agent {self.agent_name} model processing error: {e}")
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
-            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
+            logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
@@ -226,7 +224,7 @@ class ListenChatAgent(ChatAgent):
             message = res.msg.content if res.msg else ""
             usage_info = res.info.get("usage") or res.info.get("token_usage") or {}
             total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
-            traceroot_logger.info(
+            logger.info(
                 f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
             )
 
@@ -251,7 +249,6 @@ class ListenChatAgent(ChatAgent):
         assert res is not None
         return res
 
-    @traceroot.trace()
     async def astep(
         self,
         input_message: BaseMessage | str,
@@ -273,7 +270,7 @@ class ListenChatAgent(ChatAgent):
         error_info = None
         message = None
         res = None
-        traceroot_logger.debug(
+        logger.debug(
             f"Agent {self.agent_name} starting async step with message: {input_message.content if isinstance(input_message, BaseMessage) else input_message}"
         )
 
@@ -286,23 +283,23 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
-                traceroot_logger.warning(f"Agent {self.agent_name} budget exceeded")
+                logger.warning(f"Agent {self.agent_name} budget exceeded")
                 asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
-                traceroot_logger.error(f"Agent {self.agent_name} model processing error: {e}")
+                logger.error(f"Agent {self.agent_name} model processing error: {e}")
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
-            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in async step: {e}", exc_info=True)
+            logger.error(f"Agent {self.agent_name} unexpected error in async step: {e}", exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
         if res is not None:
             message = res.msg.content if res.msg else ""
             total_tokens = res.info["usage"]["total_tokens"]
-            traceroot_logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
+            logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
 
         assert message is not None
 
@@ -325,7 +322,6 @@ class ListenChatAgent(ChatAgent):
         assert res is not None
         return res
 
-    @traceroot.trace()
     def _execute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
         tool: FunctionTool = self._internal_tools[func_name]
@@ -346,7 +342,7 @@ class ListenChatAgent(ChatAgent):
             task_lock = get_task_lock(self.api_task_id)
 
             toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
-            traceroot_logger.debug(
+            logger.debug(
                 f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
             )
 
@@ -368,7 +364,7 @@ class ListenChatAgent(ChatAgent):
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)
-            traceroot_logger.debug(f"Tool {func_name} executed successfully")
+            logger.debug(f"Tool {func_name} executed successfully")
             if self.mask_tool_output:
                 self._secure_result_store[tool_call_id] = raw_result
                 result = (
@@ -410,7 +406,7 @@ class ListenChatAgent(ChatAgent):
             error_msg = f"Error executing tool '{func_name}': {e!s}"
             result = f"Tool execution failed: {error_msg}"
             mask_flag = False
-            traceroot_logger.error(f"Tool execution failed for {func_name}: {e}", exc_info=True)
+            logger.error(f"Tool execution failed for {func_name}: {e}", exc_info=True)
 
         return self._record_tool_calling(
             func_name, args, result, tool_call_id,
@@ -418,7 +414,6 @@ class ListenChatAgent(ChatAgent):
             extra_content=tool_call_request.extra_content,
         )
 
-    @traceroot.trace()
     async def _aexecute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
         tool: FunctionTool = self._internal_tools[func_name]
@@ -452,7 +447,7 @@ class ListenChatAgent(ChatAgent):
         if not toolkit_name:
             toolkit_name = "mcp_toolkit"
 
-        traceroot_logger.info(
+        logger.info(
             f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
         )
 
@@ -518,7 +513,7 @@ class ListenChatAgent(ChatAgent):
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"
             result = {"error": error_msg}
-            traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}", exc_info=True)
+            logger.error(f"Async tool execution failed for {func_name}: {e}", exc_info=True)
 
         # Prepare result message with truncation
         if isinstance(result, str):
@@ -548,7 +543,6 @@ class ListenChatAgent(ChatAgent):
             extra_content=tool_call_request.extra_content,
         )
 
-    @traceroot.trace()
     def clone(self, with_memory: bool = False) -> ChatAgent:
         """Please see super.clone()"""
         system_message = None if with_memory else self._original_system_message
@@ -592,7 +586,6 @@ class ListenChatAgent(ChatAgent):
         return new_agent
 
 
-@traceroot.trace()
 def agent_model(
     agent_name: str,
     system_message: str | BaseMessage,
@@ -605,7 +598,7 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}")
+    logger.info(f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}")
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(data={"agent_name": agent_name, "agent_id": agent_id, "tools": tool_names or []})
@@ -648,7 +641,6 @@ def agent_model(
     )
 
 
-@traceroot.trace()
 def question_confirm_agent(options: Chat):
     return agent_model(
         "question_confirm_agent",
@@ -657,7 +649,6 @@ def question_confirm_agent(options: Chat):
     )
 
 
-@traceroot.trace()
 def task_summary_agent(options: Chat):
     return agent_model(
         "task_summary_agent",
@@ -666,10 +657,9 @@ def task_summary_agent(options: Chat):
     )
 
 
-@traceroot.trace()
 async def developer_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating developer agent for project: {options.project_id} in directory: {working_directory}")
+    logger.info(f"Creating developer agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.developer_agent).send_message_to_user
     )
@@ -843,10 +833,9 @@ these tips to maximize your effectiveness:
     )
 
 
-@traceroot.trace()
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating browser agent for project: {options.project_id} in directory: {working_directory}")
+    logger.info(f"Creating browser agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.browser_agent).send_message_to_user
     )
@@ -1031,10 +1020,9 @@ Your approach depends on available search tools:
     )
 
 
-@traceroot.trace()
 async def document_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating document agent for project: {options.project_id} in directory: {working_directory}")
+    logger.info(f"Creating document agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.task_agent).send_message_to_user
     )
@@ -1237,10 +1225,9 @@ supported formats including advanced spreadsheet functionality.
     )
 
 
-@traceroot.trace()
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}")
+    logger.info(f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id, Agents.multi_modal_agent).send_message_to_user
     )
@@ -1409,14 +1396,13 @@ multi-modal content across audio and visual domains.
     )
 
 
-@traceroot.trace()
 async def social_medium_agent(options: Chat):
     """
     Agent to handling tasks related to social media:
     include toolkits: WhatsApp, Twitter, LinkedIn, Reddit, Notion, Slack, Discord and Google Suite.
     """
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating social medium agent for project: {options.project_id} in directory: {working_directory}")
+    logger.info(f"Creating social medium agent for project: {options.project_id} in directory: {working_directory}")
     tools = [
         *WhatsAppToolkit.get_can_use_tools(options.project_id),
         *TwitterToolkit.get_can_use_tools(options.project_id),
@@ -1528,9 +1514,8 @@ operations.
     )
 
 
-@traceroot.trace()
 async def mcp_agent(options: Chat):
-    traceroot_logger.info(
+    logger.info(
         f"Creating MCP agent for project: {options.project_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
     tools = [
@@ -1540,17 +1525,17 @@ async def mcp_agent(options: Chat):
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
-            traceroot_logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}")
+            logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}")
             if mcp_tools:
                 tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in mcp_tools]
-                traceroot_logger.debug(f"MCP tools: {tool_names}")
+                logger.debug(f"MCP tools: {tool_names}")
             tools = [*tools, *mcp_tools]
         except Exception as e:
-            traceroot_logger.debug(repr(e))
+            logger.debug(repr(e))
 
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.project_id}")
+    logger.info(f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.project_id}")
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(
@@ -1588,9 +1573,8 @@ async def mcp_agent(options: Chat):
     )
 
 
-@traceroot.trace()
 async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
-    traceroot_logger.info(f"Getting toolkits for agent: {agent_name}, task: {api_task_id}, tools: {tools}")
+    logger.info(f"Getting toolkits for agent: {agent_name}, task: {api_task_id}, tools: {tools}")
     toolkits = {
         "audio_analysis_toolkit": AudioAnalysisToolkit,
         "openai_image_toolkit": OpenAIImageToolkit,
@@ -1624,13 +1608,12 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
             res.extend(toolkit_tools)
         else:
-            traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")
+            logger.warning(f"Toolkit {item} not found for agent {agent_name}")
     return res
 
 
-@traceroot.trace()
 async def get_mcp_tools(mcp_server: McpServers):
-    traceroot_logger.info(f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
+    logger.info(f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
     if len(mcp_server["mcpServers"]) == 0:
         return []
     
@@ -1648,15 +1631,15 @@ async def get_mcp_tools(mcp_server: McpServers):
         mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
         await mcp_toolkit.connect()
 
-        traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
+        logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
         tools = mcp_toolkit.get_tools()
         if tools:
             tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in tools]
-            traceroot_logger.debug(f"MCP tool names: {tool_names}")
+            logger.debug(f"MCP tool names: {tool_names}")
         return tools
     except asyncio.CancelledError:
-        traceroot_logger.info("MCP connection cancelled during get_mcp_tools")
+        logger.info("MCP connection cancelled during get_mcp_tools")
         return []
     except Exception as e:
-        traceroot_logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
+        logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
         return []

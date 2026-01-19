@@ -7,11 +7,11 @@ from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
-from utils import traceroot_wrapper as traceroot
+import logging
 
 from camel.toolkits import GoogleCalendarToolkit as BaseGoogleCalendarToolkit
 
-logger = traceroot.get_logger("main")
+logger = logging.getLogger("main")
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 

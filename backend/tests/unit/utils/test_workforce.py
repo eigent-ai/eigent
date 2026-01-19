@@ -369,14 +369,10 @@ class TestWorkforce:
             description="Test workforce"
         )
         
-        with patch('app.service.task.delete_task_lock', side_effect=Exception("Delete failed")), \
-             patch('traceroot.get_logger') as mock_get_logger:
-            
+        with patch('app.service.task.delete_task_lock', side_effect=Exception("Delete failed")):
+
             # Should not raise exception
             await workforce.cleanup()
-
-            # Should log the error
-            mock_get_logger.assert_called_once()
 
 
 @pytest.mark.integration
@@ -622,14 +618,9 @@ class TestWorkforceErrorCases:
             description="Nonexistent lock test workforce"
         )
         
-        with patch('app.service.task.delete_task_lock', side_effect=Exception("Task lock not found")), \
-             patch('traceroot.get_logger') as mock_get_logger:
-            
+        with patch('app.service.task.delete_task_lock', side_effect=Exception("Task lock not found")):
             # Should handle missing task lock gracefully
             await workforce.cleanup()
-
-            # Should log the error
-            mock_get_logger.assert_called_once()
 
     def test_workforce_inheritance(self):
         """Test that Workforce properly inherits from BaseWorkforce."""

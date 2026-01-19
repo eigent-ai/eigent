@@ -2,7 +2,7 @@ import datetime
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
 from camel.societies.workforce.single_agent_worker import SingleAgentWorker as BaseSingleAgentWorker
 from camel.tasks.task import Task, TaskState, is_task_result_insufficient
-from utils import traceroot_wrapper as traceroot
+import logging
 
 from app.utils.agent import ListenChatAgent
 from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
@@ -10,7 +10,7 @@ from colorama import Fore
 from camel.societies.workforce.utils import TaskResult
 from camel.utils.context_utils import ContextUtility
 
-logger = traceroot.get_logger("single_agent_worker")
+logger = logging.getLogger("single_agent_worker")
 
 
 class SingleAgentWorker(BaseSingleAgentWorker):

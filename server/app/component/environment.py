@@ -5,9 +5,9 @@ from fastapi import APIRouter, FastAPI
 from dotenv import load_dotenv
 import importlib
 from typing import Any, overload
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("environment")
+logger = logging.getLogger("environment")
 
 logger.info("Loading environment variables from .env file")
 load_dotenv()
