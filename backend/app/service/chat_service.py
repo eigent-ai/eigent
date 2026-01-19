@@ -1471,9 +1471,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         )
     except Exception as e:
         logger.error(f"Failed to create agents in parallel: {e}", exc_info=True)
-        # Clear event loop reference on failure
-        set_main_event_loop(None)
         raise
+    finally:
+        # Always clear event loop reference after parallel agent creation completes
+        # This prevents stale references and potential cross-request interference
+        set_main_event_loop(None)
 
     # Unpack results
     (

@@ -3,7 +3,7 @@ import contextvars
 import json
 import os
 import platform
-from threading import Event
+from threading import Event, Lock
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
@@ -15,15 +15,23 @@ _main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] =
     '_main_event_loop', default=None
 )
 
+# Global fallback for main event loop reference
+# Used when contextvars don't propagate to worker threads (e.g., asyncio.to_thread)
+_GLOBAL_MAIN_LOOP: asyncio.AbstractEventLoop | None = None
+_GLOBAL_MAIN_LOOP_LOCK = Lock()
+
 
 def set_main_event_loop(loop: asyncio.AbstractEventLoop | None):
     """Set the main event loop reference for thread-safe task scheduling.
 
     This should be called from the main async context before spawning threads
-    that need to schedule async tasks. Uses contextvars to ensure thread-safety
-    across concurrent requests.
+    that need to schedule async tasks. Uses both contextvars (for request isolation)
+    and a global fallback (for thread pool workers where contextvars may not propagate).
     """
+    global _GLOBAL_MAIN_LOOP
     _main_event_loop_var.set(loop)
+    with _GLOBAL_MAIN_LOOP_LOCK:
+        _GLOBAL_MAIN_LOOP = loop
 
 
 def _schedule_async_task(coro):
@@ -38,8 +46,11 @@ def _schedule_async_task(coro):
         loop.create_task(coro)
     except RuntimeError:
         # No running loop in this thread (we're in a worker thread)
-        # Use the stored main loop reference from contextvars
+        # First try contextvars, then fallback to global reference
         main_loop = _main_event_loop_var.get()
+        if main_loop is None:
+            with _GLOBAL_MAIN_LOOP_LOCK:
+                main_loop = _GLOBAL_MAIN_LOOP
         if main_loop is not None and main_loop.is_running():
             asyncio.run_coroutine_threadsafe(coro, main_loop)
         else:
