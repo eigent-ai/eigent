@@ -257,16 +257,16 @@ function HeaderWin() {
 									<House className="w-4 h-4" />
 							</Button>
 						</TooltipSimple>
-						<Button
-							 variant="ghost"
-							 size="icon"
-							 className="no-drag"
-							 onClick={createNewProject}
-									>
-								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-									<Plus className="w-4 h-4" />
-								</TooltipSimple>
-						</Button>
+						<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
+							<Button
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+								onClick={createNewProject}
+							>
+								<Plus className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
