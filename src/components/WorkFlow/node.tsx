@@ -109,10 +109,27 @@ export function Node({ id, data }: NodeProps) {
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();
 	const nodeRef = useRef<HTMLDivElement>(null);
+	const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		setIsExpanded(data.isExpanded);
 	}, [data.isExpanded]);
+
+	useEffect(() => {
+		const runningTask = data.agent?.tasks?.find(
+			(task) =>
+				task.status === "running" && task.toolkits && task.toolkits.length > 0
+		);
+
+		if (runningTask && runningTask.id !== lastAutoExpandedTaskIdRef.current) {
+			if (!isExpanded) {
+				setIsExpanded(true);
+				data.onExpandChange(id, true);
+				setSelectedTask(runningTask);
+			}
+			lastAutoExpandedTaskIdRef.current = runningTask.id;
+		}
+	}, [data.agent?.tasks, id, data.onExpandChange, isExpanded]);
 
 	// manually control node size
 	useEffect(() => {
@@ -234,8 +251,8 @@ export function Node({ id, data }: NodeProps) {
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		search_agent: {
-			name: "Search Agent",
+		browser_agent: {
+			name: "Browser Agent",
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -278,7 +295,7 @@ export function Node({ id, data }: NodeProps) {
 			"# Web Deployment ",
 			"# Screen Capture ",
 		],
-		search_agent: ["# Web Browser ", "# Search Engines "],
+		browser_agent: ["# Web Browser ", "# Search Engines "],
 		multi_modal_agent: [
 			"# Image Analysis ",
 			"# Video Processing ",
