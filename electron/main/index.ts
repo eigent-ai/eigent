@@ -120,9 +120,10 @@ app.commandLine.appendSwitch(
 );
 
 // Override User Agent to remove Electron/eigent identifiers
-// Dynamically generate User Agent based on actual platform
+// Dynamically generate User Agent based on actual platform and Chrome version
 const getPlatformUA = () => {
-  const chromeVersion = '131.0.0.0';
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
   switch (process.platform) {
     case 'darwin':
       return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
