@@ -282,7 +282,7 @@ export function AddWorker({
 						name: workerName,
 						type: workerName as AgentNameType,
 						log: [],
-						tools: [...selectedTools.map((tool) => tool.name || tool.key || tool.mcp_name || "")],
+						tools: [...selectedTools.map((tool) => tool.name || tool.mcp_name || tool.key || "Unknown Tool")],
 						activeWebviewIds: [],
 						workerInfo: {
 							name: workerName,
