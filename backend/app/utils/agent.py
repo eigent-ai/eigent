@@ -725,7 +725,9 @@ def agent_model(
             if model_platform_enum in {
                 ModelPlatformType.OPENAI,
                 ModelPlatformType.AZURE,
-                ModelPlatformType.AIHUBMIX,
+                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                ModelPlatformType.LITELLM,
+                ModelPlatformType.OPENROUTER,
             }:
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
