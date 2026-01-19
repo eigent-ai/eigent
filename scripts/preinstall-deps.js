@@ -399,12 +399,14 @@ async function installUv() {
       const targetPath = path.join(BIN_DIR, 'uv');
       if (fs.existsSync(nestedUvPath)) {
         console.log(`   Found uv in ${nestedDir}, moving...`);
-        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
-        fs.renameSync(nestedUvPath, targetPath);
-        // Clean up directory
         try {
+          if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+          fs.renameSync(nestedUvPath, targetPath);
+          // Clean up directory
           fs.rmSync(path.join(BIN_DIR, nestedDir), { recursive: true, force: true });
-        } catch (e) { console.log('   Warning: Failed to cleanup nested dir'); }
+        } catch (e) {
+          console.log(`   Warning: Failed to move uv from nested dir: ${e.message}`);
+        }
       }
     }
   }

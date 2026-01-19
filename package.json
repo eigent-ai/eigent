@@ -24,7 +24,7 @@
     "build:mac:test": "npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build && electron-builder --mac && npm run test-signing",
     "build:win": "npm run preinstall-deps && npm run compile-babel && tsc && vite build && electron-builder --win",
     "build:linux": "npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build && electron-builder --linux",
-    "build:all": "npm run preinstall-deps && npm run compile-babel && tsc && vite build && electron-builder --mac --win",
+    "build:all": "npm run preinstall-deps && npm run compile-babel && tsc && vite build && electron-builder --mac --win --linux",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run",

@@ -56,6 +56,13 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      # Install libfuse2 for Linux AppImage builds
+      - name: Install libfuse2 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
