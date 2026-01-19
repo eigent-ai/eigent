@@ -14,6 +14,7 @@ import eyeOff from "@/assets/eye-off.svg";
 import { proxyFetchPost, proxyFetchPut } from "@/api/http";
 import { hasStackKeys } from "@/lib";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -360,20 +361,19 @@ export default function SignUp() {
 									/>
 							</div>
 						</div>
-          <div className="flex items-start space-x-2 w-full px-1 justify-center mb-4">
-            <input
-              type="checkbox"
+          <div className="flex items-center space-x-2 w-full px-1 justify-center mb-4">
+            <Checkbox
               id="terms"
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+              className="my-0.5 cursor-pointer"
               checked={agreeToTerms}
-              onChange={(e) => {
-                setAgreeToTerms(e.target.checked);
+              onCheckedChange={(checked) => {
+                setAgreeToTerms(!!checked);
                 setGeneralError("");
               }}
             />
             <label
               htmlFor="terms"
-              className="text-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              className="text-label-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
             >
               I agree to{' '}
               <a
@@ -406,13 +406,6 @@ export default function SignUp() {
 							</span>
 						</Button>
 				</div>
-				<Button 
-				  variant="ghost"
-					size="xs"
-					onClick={() => window.open("https://www.eigent.ai/privacy-policy", "_blank", "noopener,noreferrer")}
-				>
-					{t("layout.privacy-policy")}
-				</Button>
 			</div>
 		</div>
 	);

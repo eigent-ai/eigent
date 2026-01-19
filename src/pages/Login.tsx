@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useStackApp } from '@stackframe/react';
 import loginGif from '@/assets/login.gif';
 import { Button } from '@/components/ui/button';
-
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
@@ -465,20 +465,19 @@ export default function Login() {
                 />
               </div>
             </div>
-            <div className="flex items-start space-x-2 w-full px-1 justify-center mb-4">
-              <input
-                type="checkbox"
+            <div className="flex items-center space-x-2 w-full px-1 justify-center mb-4">
+              <Checkbox
                 id="terms"
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                className="my-0.5 cursor-pointer"
                 checked={agreeToTerms}
-                onChange={(e) => {
-                  setAgreeToTerms(e.target.checked);
+                onCheckedChange={(checked) => {
+                  setAgreeToTerms(!!checked);
                   setGeneralError('');
                 }}
               />
               <label
                 htmlFor="terms"
-                className="text-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                className="text-label-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
               >
                 I agree to{' '}
                 <a
@@ -511,19 +510,6 @@ export default function Login() {
               </span>
             </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() =>
-              window.open(
-                'https://www.eigent.ai/privacy-policy',
-                '_blank',
-                'noopener,noreferrer'
-              )
-            }
-          >
-            {t('layout.privacy-policy')}
-          </Button>
         </div>
       </div>
     </div>
