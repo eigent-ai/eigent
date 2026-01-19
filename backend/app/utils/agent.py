@@ -639,7 +639,9 @@ class ListenChatAgent(ChatAgent):
             mask_tool_output=self.mask_tool_output,
             pause_event=self.pause_event,
             prune_tool_calls_from_memory=self.prune_tool_calls_from_memory,
+            enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
+            stream_accumulate=self.stream_accumulate,
         )
 
         new_agent.process_task_id = self.process_task_id
