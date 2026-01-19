@@ -1,13 +1,13 @@
 /**
  * Integration Test: Case 1 - New Project
- * 
+ *
  * Tests the complete flow of creating a new project and sending the first message.
- * 
+ *
  * Flow:
  * 1. User creates a new project with initial message
  * 2. System automatically creates initial chatStore
  * 3. Task starts executing
- * 
+ *
  * This is the most common user journey and serves as the foundation for all other cases.
  */
 
@@ -68,14 +68,14 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       // Debug: Log the store state immediately after creation
       console.log('Created projectId:', projectId)
-      
+
       // Try to get project before asserting
       const debugProject = result.current.getProjectById(projectId)
       console.log('Retrieved project:', debugProject)
 
       // Verify project created
       expect(projectId).toBeDefined()
-      
+
       // First check: activeProjectId should be set
       expect(debugProject?.id).toBe(projectId)
 
@@ -99,8 +99,8 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       // Verify initial task exists
       const chatState = chatStore!.getState()
-      expect(chatState.activeTaskId).toBeDefined()
-      expect(chatState.tasks[chatState.activeTaskId!]).toBeDefined()
+      expect(chatState.taskId).toBeDefined()
+      expect(chatState.task).toBeDefined()
     })
   })
 
@@ -111,8 +111,7 @@ describe('Integration Test: Case 1 - New Project', () => {
       const projectId = result.current.createProject('Test Project')
       const chatStore = result.current.getActiveChatStore(projectId)!
       const chatState = chatStore.getState()
-      const taskId = chatState.activeTaskId!
-      const task = chatState.tasks[taskId]
+      const task = chatState.task
 
       // Verify task initial state
       expect(task.status).toBe('pending')
@@ -129,7 +128,6 @@ describe('Integration Test: Case 1 - New Project', () => {
     act(() => {
       const projectId = result.current.createProject('Test Project')
       const chatStore = result.current.getActiveChatStore(projectId)!
-      const taskId = chatStore.getState().activeTaskId!
 
       // Step 3: User sends message
       const userMessage = {
@@ -139,11 +137,11 @@ describe('Integration Test: Case 1 - New Project', () => {
         attaches: [],
       }
 
-      chatStore.getState().addMessages(taskId, userMessage)
-      chatStore.getState().setHasMessages(taskId, true)
+      chatStore.getState().addMessages(userMessage)
+      chatStore.getState().setHasMessages(true)
 
       // Verify message added
-      const task = chatStore.getState().tasks[taskId]
+      const task = chatStore.getState().task
       expect(task.messages).toHaveLength(1)
       expect(task.messages[0].content).toBe('Create a todo app with React')
       expect(task.hasMessages).toBe(true)
@@ -152,14 +150,13 @@ describe('Integration Test: Case 1 - New Project', () => {
 
   it('should create historyId after starting task', async () => {
     const { result } = renderHook(() => useProjectStore())
-    
+
     await act(async () => {
       const projectId = result.current.createProject('Test Project')
       const chatStore = result.current.getActiveChatStore(projectId)!
-      const taskId = chatStore.getState().activeTaskId!
 
       // Add message
-      chatStore.getState().addMessages(taskId, {
+      chatStore.getState().addMessages({
         id: generateUniqueId(),
         role: 'user',
         content: 'Test message',
@@ -175,7 +172,7 @@ describe('Integration Test: Case 1 - New Project', () => {
       })
 
       // Step 4: Start task
-      await chatStore.getState().startTask(taskId)
+      await chatStore.getState().startTask()
 
       // Wait for historyId to be set
       await waitFor(() => {
@@ -191,7 +188,7 @@ describe('Integration Test: Case 1 - New Project', () => {
 
     await act(async () => {
       // Complete Flow Test
-      
+
       // 1. Create project
       const projectId = result.current.createProject(
         'Complete Journey Test',
@@ -203,15 +200,15 @@ describe('Integration Test: Case 1 - New Project', () => {
       const chatStore = result.current.getActiveChatStore(projectId)!
       expect(chatStore).toBeDefined()
 
-      const initiatorTaskId = chatStore.getState().activeTaskId!
+      const initiatorTaskId = chatStore.getState().taskId!
       expect(initiatorTaskId).toBeDefined()
 
       // 3. Set user message
       const userMessage = 'Build a calculator app';
 
       // 4. Verify task ready to start
-      const initialTask = chatStore.getState().tasks[initiatorTaskId]
-      
+      const initialTask = chatStore.getState().task
+
 
       // 5. Mock SSE stream with to_sub_tasks event
       mockFetchEventSource.mockImplementation((url: string, options: any) => {
@@ -237,16 +234,15 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       // 6. Start task
       // NOTE: startTask creates a NEW chatStore and switches to it, the old chatStore is no longer active
-      await chatStore.getState().startTask(initiatorTaskId, undefined, undefined, undefined, userMessage)
+      await chatStore.getState().startTask(undefined, undefined, undefined, userMessage)
 
       // IMPORTANT: Get the NEW active chatStore after startTask creates it
       const newChatStore = result.current.getActiveChatStore()
       expect(newChatStore).toBeDefined()
       expect(newChatStore).not.toBe(chatStore) // Should be a different instance
-      
-      let taskId = newChatStore?.getState().activeTaskId!
-      const task = newChatStore?.getState().tasks[taskId]
-      expect(taskId).toBeDefined()
+
+      const task = newChatStore?.getState().task
+      expect(newChatStore?.getState().taskId).toBeDefined()
       if(task) {
         expect(task.hasMessages).toBe(true)
         expect(task.messages[0].content).toBe('Build a calculator app')
@@ -255,7 +251,7 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       // 7. Wait for task breakdown
       await waitFor(() => {
-        const updatedTask = newChatStore?.getState().tasks[taskId]
+        const updatedTask = newChatStore?.getState().task
         expect(updatedTask?.summaryTask).toBe('Calculator App|Build a simple calculator')
         //Bcz of newTaskInfo { id: '', content: '', status: '' } we have 3 items
         expect(updatedTask?.taskInfo).toHaveLength(3)
@@ -293,8 +289,7 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       // Add a message (making it non-empty)
       const chatStore = result.current.getActiveChatStore(projectId1)!
-      const taskId = chatStore.getState().activeTaskId!
-      chatStore.getState().addMessages(taskId, {
+      chatStore.getState().addMessages({
         id: generateUniqueId(),
         role: 'user',
         content: 'Test message',
@@ -330,15 +325,14 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       await act(async () => {
         const projectId = result.current.createProject('Test Project')
-        
+
         // Wait a tick for project creation to complete
         await new Promise(resolve => setTimeout(resolve, 0))
-        
+
         const chatStore = result.current.getActiveChatStore(projectId)!
-        const taskId = chatStore.getState().activeTaskId!
 
         // Add empty message
-        chatStore.getState().addMessages(taskId, {
+        chatStore.getState().addMessages({
           id: generateUniqueId(),
           role: 'user',
           content: '',
@@ -347,7 +341,7 @@ describe('Integration Test: Case 1 - New Project', () => {
         // Wait for message update to complete
         await new Promise(resolve => setTimeout(resolve, 0))
 
-        const task = chatStore.getState().tasks[taskId]
+        const task = chatStore.getState().task
         expect(task.messages).toHaveLength(1)
         expect(task.messages[0].content).toBe('')
       })

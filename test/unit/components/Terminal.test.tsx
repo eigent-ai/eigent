@@ -87,11 +87,9 @@ describe('Terminal Component', async () => {
   const mockUseProjectStore = vi.mocked((await import('../../../src/store/projectStore')).useProjectStore)
 
   const defaultChatStoreState = {
-    activeTaskId: 'test-task-id',
-    tasks: {
-      'test-task-id': {
-        terminal: []
-      }
+    taskId: 'test-task-id',
+    task: {
+      terminal: []
     }
   }
 
@@ -134,7 +132,7 @@ describe('Terminal Component', async () => {
       chatStore: defaultChatStoreState as any
     })
     mockUseProjectStore.mockReturnValue(defaultProjectStoreState as any)
-    
+
     // Reset terminal mock
     Object.keys(mockTerminal).forEach(key => {
       if (typeof mockTerminal[key as keyof typeof mockTerminal] === 'function') {
@@ -153,7 +151,7 @@ describe('Terminal Component', async () => {
   describe('Initial Render', () => {
     it('should render terminal container', () => {
       render(<TerminalComponent />)
-      
+
   const container = document.querySelector('.w-full.h-full.flex.flex-col')
   expect(container).not.toBeNull()
     })
@@ -162,9 +160,9 @@ describe('Terminal Component', async () => {
       const { Terminal } = await import('@xterm/xterm')
       const { FitAddon } = await import('@xterm/addon-fit')
       const { WebLinksAddon } = await import('@xterm/addon-web-links')
-      
+
       render(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(Terminal).toHaveBeenCalledWith(expect.objectContaining({
           theme: expect.objectContaining({
@@ -177,14 +175,14 @@ describe('Terminal Component', async () => {
           cursorBlink: true
         }))
       })
-      
+
       expect(FitAddon).toHaveBeenCalled()
       expect(WebLinksAddon).toHaveBeenCalled()
     })
 
     it('should load addons and open terminal', async () => {
       render(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(mockTerminal.loadAddon).toHaveBeenCalledTimes(2)
         expect(mockTerminal.open).toHaveBeenCalled()
@@ -193,7 +191,7 @@ describe('Terminal Component', async () => {
 
     it('should fit terminal to container after opening', async () => {
       render(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(mockFitAddon.fit).toHaveBeenCalled()
       }, { timeout: 500 })
@@ -203,7 +201,7 @@ describe('Terminal Component', async () => {
   describe('Welcome Message', () => {
     it('should show welcome message when showWelcome is true', async () => {
       render(<TerminalComponent showWelcome={true} instanceId="test-instance" />)
-      
+
       await waitFor(() => {
         // Be tolerant of ordering/timing: assert that some writeln call contains the expected substrings
         const calls = (mockTerminal.writeln as any).mock.calls.flat().map(String)
@@ -216,11 +214,11 @@ describe('Terminal Component', async () => {
 
     it('should not show welcome message when showWelcome is false', async () => {
       render(<TerminalComponent showWelcome={false} />)
-      
+
       await waitFor(() => {
         expect(mockTerminal.open).toHaveBeenCalled()
       })
-      
+
       // Should not contain welcome messages
       const welcomeCalls = (mockTerminal.writeln as any).mock.calls.flat().map(String).filter((c: string) => c.includes('=== Eigent Terminal ==='))
       expect(welcomeCalls).toHaveLength(0)
@@ -228,7 +226,7 @@ describe('Terminal Component', async () => {
 
     it('should use default instanceId when not provided', async () => {
       render(<TerminalComponent showWelcome={true} />)
-      
+
       await waitFor(() => {
         const calls = (mockTerminal.writeln as any).mock.calls.flat().map(String)
         const joined = calls.join('\n')
@@ -240,17 +238,17 @@ describe('Terminal Component', async () => {
   describe('Content Handling', () => {
     it('should process terminal content when provided', async () => {
       const content = ['First line', 'Second line', 'Third line']
-      
+
       render(<TerminalComponent content={content} />)
-      
+
       await waitFor(() => {
         expect(mockTerminal.open).toHaveBeenCalled()
       })
-      
+
       // Since this tests incremental updates, we need to simulate re-render
       const { rerender } = render(<TerminalComponent content={content} />)
       rerender(<TerminalComponent content={[...content, 'Fourth line']} />)
-      
+
       await waitFor(() => {
         const calls = (mockTerminal.writeln as any).mock.calls.flat().map(String)
         const found = calls.some(c => c.includes('[Eigent]'))
@@ -260,18 +258,18 @@ describe('Terminal Component', async () => {
 
     it('should handle empty content gracefully', () => {
       render(<TerminalComponent content={[]} />)
-      
+
       // Should not crash and terminal should still be created
       expect(mockTerminal.open).toHaveBeenCalled()
     })
 
     it('should skip history data on component re-initialization', () => {
       const content = ['Existing line 1', 'Existing line 2']
-      
+
       // First render with content
       const { unmount } = render(<TerminalComponent content={content} />)
       unmount()
-      
+
       // Re-render (simulating re-initialization)
       // Spy console BEFORE rendering so we catch the log
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -291,11 +289,11 @@ describe('Terminal Component', async () => {
 
     beforeEach(async () => {
       render(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(mockTerminal.onKey).toHaveBeenCalled()
       })
-      
+
       // Get the key handler function
       keyHandler = (mockTerminal.onKey as any).mock.calls[0][0]
     })
@@ -305,9 +303,9 @@ describe('Terminal Component', async () => {
         key: '\r',
         domEvent: { keyCode: 13, altKey: false, ctrlKey: false, metaKey: false }
       }
-      
+
       keyHandler(mockEvent)
-      
+
       expect(mockTerminal.writeln).toHaveBeenCalledWith('')
       expect(mockTerminal.write).toHaveBeenCalledWith('Eigent:~$ ')
     })
@@ -319,14 +317,14 @@ describe('Terminal Component', async () => {
         domEvent: { keyCode: 65, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(addCharEvent)
-      
+
       // Then backspace
       const backspaceEvent = {
         key: '\b',
         domEvent: { keyCode: 8, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(backspaceEvent)
-      
+
   // Be tolerant: component may write a backspace sequence or simply have written the character earlier.
   const writes = (mockTerminal.write as any).mock.calls.flat().map(String)
   const hasBackspace = writes.some(w => w.includes('\b'))
@@ -341,14 +339,14 @@ describe('Terminal Component', async () => {
         domEvent: { keyCode: 65, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(addCharEvent)
-      
+
       // Then left arrow
       const leftArrowEvent = {
         key: 'ArrowLeft',
         domEvent: { keyCode: 37, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(leftArrowEvent)
-      
+
   const writes = (mockTerminal.write as any).mock.calls.flat().map(String)
   const hasLeft = writes.some(w => w === '\x1b[D' || w.includes('\x1b[D'))
   const hasChar = writes.some(w => w === 'a')
@@ -362,20 +360,20 @@ describe('Terminal Component', async () => {
         domEvent: { keyCode: 65, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(addCharEvent)
-      
+
       const leftArrowEvent = {
         key: 'ArrowLeft',
         domEvent: { keyCode: 37, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(leftArrowEvent)
-      
+
       // Then right arrow
       const rightArrowEvent = {
         key: 'ArrowRight',
         domEvent: { keyCode: 39, altKey: false, ctrlKey: false, metaKey: false }
       }
       keyHandler(rightArrowEvent)
-      
+
   const writes = (mockTerminal.write as any).mock.calls.flat().map(String)
   const hasRight = writes.some(w => w === '\x1b[C' || w.includes('\x1b[C'))
   const hasChar = writes.some(w => w === 'a')
@@ -387,9 +385,9 @@ describe('Terminal Component', async () => {
         key: 'a',
         domEvent: { keyCode: 65, altKey: false, ctrlKey: false, metaKey: false }
       }
-      
+
       keyHandler(charEvent)
-      
+
       expect(mockTerminal.write).toHaveBeenCalledWith('a')
     })
 
@@ -398,11 +396,11 @@ describe('Terminal Component', async () => {
         key: 'c',
         domEvent: { keyCode: 67, altKey: false, ctrlKey: true, metaKey: false }
       }
-      
+
       const writeCallsBefore = (mockTerminal.write as any).mock.calls.length
       keyHandler(ctrlCEvent)
       const writeCallsAfter = (mockTerminal.write as any).mock.calls.length
-      
+
       expect(writeCallsAfter).toBe(writeCallsBefore)
     })
   })
@@ -410,23 +408,23 @@ describe('Terminal Component', async () => {
   describe('Resize Handling', () => {
     it('should set up ResizeObserver for container', () => {
       render(<TerminalComponent />)
-      
+
       expect(global.ResizeObserver).toHaveBeenCalled()
     })
 
     it('should call fit on window resize', async () => {
       render(<TerminalComponent />)
-      
+
       // Wait for initial setup
       await waitFor(() => {
         expect(mockFitAddon.fit).toHaveBeenCalled()
       })
-      
+
       const initialCalls = (mockFitAddon.fit as any).mock.calls.length
-      
+
       // Trigger window resize
       window.dispatchEvent(new Event('resize'))
-      
+
       // Wait for resize handler
       await waitFor(() => {
         expect((mockFitAddon.fit as any).mock.calls.length).toBeGreaterThan(initialCalls)
@@ -440,11 +438,9 @@ describe('Terminal Component', async () => {
 
       // Change active task
       const newChatState = {
-        activeTaskId: 'new-task-id',
-        tasks: {
-          'new-task-id': {
-            terminal: []
-          }
+        taskId: 'new-task-id',
+        task: {
+          terminal: []
         }
       }
 
@@ -465,11 +461,9 @@ describe('Terminal Component', async () => {
 
       // Change active task
       const newChatState = {
-        activeTaskId: 'new-task-id',
-        tasks: {
-          'new-task-id': {
-            terminal: []
-          }
+        taskId: 'new-task-id',
+        task: {
+          terminal: []
         }
       }
 
@@ -489,11 +483,9 @@ describe('Terminal Component', async () => {
       const historyContent = ['Previous command output']
 
       const newChatState = {
-        activeTaskId: 'task-with-history',
-        tasks: {
-          'task-with-history': {
-            terminal: historyContent
-          }
+        taskId: 'task-with-history',
+        task: {
+          terminal: historyContent
         }
       }
 
@@ -520,20 +512,20 @@ describe('Terminal Component', async () => {
   describe('Component Lifecycle', () => {
     it('should prevent duplicate initialization', async () => {
       const { Terminal } = await import('@xterm/xterm')
-      
+
       render(<TerminalComponent />)
-      
+
       // Wait for initialization
       await waitFor(() => {
         expect(Terminal).toHaveBeenCalled()
       })
-      
+
       const initialCallCount = (Terminal as any).mock.calls.length
-      
+
       // Force re-render
       const { rerender } = render(<TerminalComponent />)
       rerender(<TerminalComponent />)
-      
+
   // Ensure terminal was constructed and opened (don't rely on exact constructor counts)
   expect(Terminal).toHaveBeenCalled()
   expect(mockTerminal.open).toHaveBeenCalled()
@@ -541,21 +533,21 @@ describe('Terminal Component', async () => {
 
     it('should dispose terminal on unmount', () => {
       const { unmount } = render(<TerminalComponent />)
-      
+
       unmount()
-      
+
       expect(mockTerminal.dispose).toHaveBeenCalled()
     })
 
     it('should clean up event listeners on unmount', () => {
       const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
-      
+
       const { unmount } = render(<TerminalComponent />)
-      
+
       unmount()
-      
+
       expect(removeEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
-      
+
       removeEventListenerSpy.mockRestore()
     })
   })
@@ -563,9 +555,9 @@ describe('Terminal Component', async () => {
   describe('Styling and Theme', () => {
     it('should apply correct terminal theme', async () => {
       const { Terminal } = await import('@xterm/xterm')
-      
+
       render(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(Terminal).toHaveBeenCalledWith(expect.objectContaining({
           theme: {
@@ -580,9 +572,9 @@ describe('Terminal Component', async () => {
 
     it('should apply correct font settings', async () => {
       const { Terminal } = await import('@xterm/xterm')
-      
+
       render(<TerminalComponent />)
-      
+
       await waitFor(() => {
         expect(Terminal).toHaveBeenCalledWith(expect.objectContaining({
           fontFamily: '"Courier New", Courier, monospace',
@@ -595,7 +587,7 @@ describe('Terminal Component', async () => {
 
     it('should render custom CSS styles', () => {
       render(<TerminalComponent />)
-      
+
       // Some test environments inject many style tags; check any style tag contains our rules
       const styleElements = Array.from(document.querySelectorAll('style'))
       const found = styleElements.some((s) =>
@@ -614,7 +606,7 @@ describe('Terminal Component', async () => {
     it('should handle missing container reference', () => {
       const originalQuerySelector = document.querySelector
       document.querySelector = vi.fn().mockReturnValue(null)
-      
+
       // Rendering may throw depending on environment; ensure we don't leave global state modified
       try {
         render(<TerminalComponent />)

@@ -46,7 +46,7 @@ const TestWrapper = ({ children }: { children: React.ReactNode }) => (
 describe('ChatBox Integration Tests - Different ChatStore Configurations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     const { result } = renderHook(() => useProjectStore());
     //Reset projectStore
     result.current.getAllProjects().forEach(project => {
@@ -63,7 +63,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
     // Get chatStore (automatically created)
     let chatStore = result.current.getActiveChatStore(projectId)!
     expect(chatStore).toBeDefined()
-    const initiatorTaskId = chatStore.getState().activeTaskId!
+    const initiatorTaskId = chatStore.getState().taskId!
     expect(initiatorTaskId).toBeDefined()
   })
 
@@ -74,13 +74,13 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
   describe('Task States and UI Rendering', () => {
     it('should render welcome screen when no messages exist', () => {
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
-      
+
       render(
         <TestWrapper>
           <ChatBox />
         </TestWrapper>
       )
-      
+
       expect(screen.getByText(/layout.welcome-to-eigent/i)).toBeInTheDocument()
       expect(screen.getByText(/layout.how-can-i-help-you/i)).toBeInTheDocument()
     })
@@ -89,22 +89,21 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore, projectStore } = result.current
       const projectId = projectStore.activeProjectId as string
-      const taskId = chatStore?.activeTaskId
-      
-      if (!chatStore || !taskId) {
-        throw new Error('ChatStore or taskId is null')
+
+      if (!chatStore) {
+        throw new Error('ChatStore is null')
       }
-      
+
       // Simulate the state after receiving to_sub_tasks SSE event
       await act(async () => {
-        chatStore.setHasMessages(taskId, true)
-        chatStore.addMessages(taskId, {
+        chatStore.setHasMessages(true)
+        chatStore.addMessages({
           id: 'user-msg-1',
           role: 'user',
           content: 'Build a calculator app',
           attaches: []
         })
-        chatStore.addMessages(taskId, {
+        chatStore.addMessages({
           id: 'assistant-msg-1',
           role: 'assistant',
           content: '',
@@ -126,7 +125,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         </TestWrapper>
       )
 
-      // Should show the task card/splitting interface  
+      // Should show the task card/splitting interface
       await waitFor(() => {
         // Look for elements that indicate task splitting UI - there might be multiple instances
         const calculatorElements = screen.getAllByText('Build a calculator app')
@@ -139,21 +138,20 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
     it('should render active conversation with messages', async () => {
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore } = result.current
-      const taskId = chatStore?.activeTaskId
-      
-      if (!chatStore || !taskId) {
-        throw new Error('ChatStore or taskId is null')
+
+      if (!chatStore) {
+        throw new Error('ChatStore is null')
       }
-      
+
       await act(async () => {
-        chatStore.setHasMessages(taskId, true)
-        chatStore.addMessages(taskId, {
+        chatStore.setHasMessages(true)
+        chatStore.addMessages({
           id: 'user-1',
           role: 'user',
           content: 'Hello, how are you?',
           attaches: []
         })
-        chatStore.addMessages(taskId, {
+        chatStore.addMessages({
           id: 'assistant-1',
           role: 'assistant',
           content: 'I am doing well, thank you! layout.how-can-i-help-you?',
@@ -178,21 +176,20 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
     it('should show loading state when task is pending', async () => {
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore } = result.current
-      const taskId = chatStore?.activeTaskId
-      
-      if (!chatStore || !taskId) {
-        throw new Error('ChatStore or taskId is null')
+
+      if (!chatStore) {
+        throw new Error('ChatStore is null')
       }
-      
+
       await act(async () => {
-        chatStore.setHasMessages(taskId, true)
-        chatStore.addMessages(taskId, {
+        chatStore.setHasMessages(true)
+        chatStore.addMessages({
           id: 'user-1',
           role: 'user',
           content: 'Calculate 2+2',
           attaches: []
         })
-        chatStore.setIsPending(taskId, true)
+        chatStore.setIsPending(true)
         rerender()
       })
 
@@ -215,21 +212,20 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       // Skipping for now until we understand the component's file attachment UI
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore } = result.current
-      const taskId = chatStore?.activeTaskId
-      
-      if (!chatStore || !taskId) {
-        throw new Error('ChatStore or taskId is null')
+
+      if (!chatStore) {
+        throw new Error('ChatStore is null')
       }
-      
+
       await act(async () => {
-        chatStore.setHasMessages(taskId, true)
-        chatStore.addMessages(taskId, {
+        chatStore.setHasMessages(true)
+        chatStore.addMessages({
           id: 'user-1',
           role: 'user',
           content: 'Generate a report',
           attaches: []
         })
-        chatStore.addMessages(taskId, {
+        chatStore.addMessages({
           id: 'assistant-1',
           role: 'assistant',
           content: 'I have generated the report for you.',
@@ -242,7 +238,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
             },
             {
               name: 'data.csv',
-              type: 'CSV', 
+              type: 'CSV',
               path: '/tmp/data.csv'
             }
           ]
@@ -270,27 +266,26 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       // Skipping for now until we understand the component's input handling
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore } = result.current
-      const taskId = chatStore?.activeTaskId
-      
-      if (!chatStore || !taskId) {
-        throw new Error('ChatStore or taskId is null')
+
+      if (!chatStore) {
+        throw new Error('ChatStore is null')
       }
-      
+
       await act(async () => {
-        chatStore.setHasMessages(taskId, true)
-        chatStore.addMessages(taskId, {
+        chatStore.setHasMessages(true)
+        chatStore.addMessages({
           id: 'user-1',
           role: 'user',
           content: 'Help me decide between options',
           attaches: []
         })
-        chatStore.addMessages(taskId, {
+        chatStore.addMessages({
           id: 'assistant-1',
           role: 'assistant',
           content: 'Which option would you prefer: A or B?',
           agent_name: 'decision-agent'
         })
-        chatStore.setActiveAsk(taskId, 'decision-agent')
+        chatStore.setActiveAsk('decision-agent')
         rerender()
       })
 
@@ -323,7 +318,7 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
     it('should handle corrupted chatStore state gracefully', async () => {
       // Test that the component doesn't crash when chatStore is in an invalid state
       // This is more of a safety test to ensure the component has proper error boundaries
-      
+
       // Should not crash when rendering with potentially corrupted state
       expect(() => {
         render(
@@ -332,15 +327,15 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
           </TestWrapper>
         )
       }).not.toThrow()
-      
+
       // Should show some content (either welcome screen or handle the error gracefully)
       expect(screen.getByText(/layout.welcome-to-eigent/i) || screen.getByText(/error/i) || screen.getByRole('main')).toBeTruthy()
     })
 
-    it('should handle missing activeTaskId gracefully', async () => {
+    it('should handle missing taskId gracefully', async () => {
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore } = result.current
-      
+
       if (!chatStore) {
         // If chatStore is null, that's fine for this test
         render(
@@ -353,9 +348,9 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       }
 
       await act(async () => {
-        // Try to set activeTaskId to null
+        // Try to set taskId to null
         try {
-          (chatStore as any).activeTaskId = null
+          (chatStore as any).taskId = null
           rerender()
         } catch (error) {
           // Expected - the store might prevent this
@@ -396,11 +391,11 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
 
       // Look for disabled send button (has arrow-right icon based on HTML structure)
       const buttons = screen.getAllByRole('button')
-      const sendButton = buttons.find(btn => 
-        btn.querySelector('svg.lucide-arrow-right') && 
+      const sendButton = buttons.find(btn =>
+        btn.querySelector('svg.lucide-arrow-right') &&
         btn.hasAttribute('disabled')
       )
-      
+
       expect(sendButton).toBeInTheDocument()
       expect(sendButton).toBeDisabled()
     })
@@ -414,11 +409,11 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
 
       const termsLink = screen.getByRole('link', { name: /layout.terms-of-use/i })
       const privacyLink = screen.getByRole('link', { name: /layout.privacy-policy/i })
-      
+
       expect(termsLink).toBeInTheDocument()
       expect(termsLink).toHaveAttribute('href', 'https://www.eigent.ai/terms-of-use')
       expect(termsLink).toHaveAttribute('target', '_blank')
-      
+
       expect(privacyLink).toBeInTheDocument()
       expect(privacyLink).toHaveAttribute('href', 'https://www.eigent.ai/privacy-policy')
       expect(privacyLink).toHaveAttribute('target', '_blank')
@@ -429,17 +424,17 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
     it('should properly integrate with useChatStoreAdapter hook', async () => {
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore, projectStore } = result.current
-      
+
       // Verify that the adapter returns the expected structure
       expect(projectStore).toBeDefined()
       expect(chatStore).toBeDefined()
-      
+
       // Verify that we can access basic properties
       if (chatStore) {
-        expect(chatStore.activeTaskId).toBeDefined()
-        expect(typeof chatStore.activeTaskId).toBe('string')
+        expect(chatStore.taskId).toBeDefined()
+        expect(typeof chatStore.taskId).toBe('string')
       }
-      
+
       if (projectStore) {
         expect(projectStore.activeProjectId).toBeDefined()
         expect(typeof projectStore.activeProjectId).toBe('string')
@@ -449,16 +444,15 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
     it('should handle chatStore state changes through adapter', async () => {
       const { result, rerender } = renderHook(() => useChatStoreAdapter())
       const { chatStore } = result.current
-      const taskId = chatStore?.activeTaskId
-      
-      if (!chatStore || !taskId) {
-        throw new Error('ChatStore or taskId is null')
+
+      if (!chatStore) {
+        throw new Error('ChatStore is null')
       }
 
       // Test adding a message through the adapter
       await act(async () => {
-        chatStore.setHasMessages(taskId, true)
-        chatStore.addMessages(taskId, {
+        chatStore.setHasMessages(true)
+        chatStore.addMessages({
           id: 'test-message-1',
           role: 'user',
           content: 'Test message from adapter',
@@ -469,10 +463,10 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
 
       // Verify the message was added
       const updatedChatStore = result.current.chatStore
-      if (updatedChatStore && updatedChatStore.tasks[taskId]) {
-        expect(updatedChatStore.tasks[taskId].hasMessages).toBe(true)
-        expect(updatedChatStore.tasks[taskId].messages).toHaveLength(1)
-        expect(updatedChatStore.tasks[taskId].messages[0].content).toBe('Test message from adapter')
+      if (updatedChatStore && updatedChatStore.task) {
+        expect(updatedChatStore.task.hasMessages).toBe(true)
+        expect(updatedChatStore.task.messages).toHaveLength(1)
+        expect(updatedChatStore.task.messages[0].content).toBe('Test message from adapter')
       }
     })
   })
