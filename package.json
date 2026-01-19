@@ -67,7 +67,7 @@
     "csv-parser": "^3.2.0",
     "dompurify": "^3.2.7",
     "electron-log": "^5.4.0",
-    "electron-updater": "^6.3.9",
+    "electron-updater": "^6.7.3",
     "embla-carousel-autoplay": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.17.0",
@@ -114,11 +114,11 @@
     "@vitejs/plugin-react": "^4.3.3",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.4.0",
     "electron-devtools-installer": "^4.0.0",
     "i18next": "^25.4.2",
-    "jsdom": "^26.1.0",
+    "jsdom": "^27.4.0",
     "postcss": "^8.4.49",
     "postcss-import": "^16.1.0",
     "react": "^18.3.1",
@@ -131,6 +131,9 @@
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "^2.1.5"
+  },
+  "overrides": {
+    "glob": "^10.4.5"
   },
   "pnpm": {
     "neverBuiltDependencies": []
