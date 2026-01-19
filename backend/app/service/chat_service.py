@@ -477,7 +477,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     # Stream decomposition in background so queue items (decompose_text) are processed immediately
                     logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
-                    stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
+                    stream_state = {"subtasks": [], "seen_ids": set(), "last_content": "", "first_token_logged": False}
                     state_holder: dict[str, Any] = {"sub_tasks": [], "summary_task": ""}
 
                     def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
@@ -502,6 +502,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             stream_state["last_content"] = accumulated_content
 
                             if delta_content:
+                                # === TIMING: Log TTFT (Time to First Token) ===
+                                if not stream_state["first_token_logged"]:
+                                    stream_state["first_token_logged"] = True
+                                    ttft = (time_module.time() - task_lock.decomposition_start_time) * 1000
+                                    logger.info(f"⏱️ [TIMING] 🚀 TTFT (Time to First Token): {ttft:.2f}ms - First streaming token received for task decomposition")
+
                                 asyncio.run_coroutine_threadsafe(
                                     task_lock.put_queue(
                                         ActionDecomposeTextData(
@@ -841,7 +847,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
                         logger.info(f"[LIFECYCLE] Multi-turn: calling workforce.handle_decompose_append_task for new task decomposition")
-                        stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
+                        multi_turn_decompose_start = time_module.time()
+                        stream_state = {"subtasks": [], "seen_ids": set(), "last_content": "", "first_token_logged": False, "start_time": multi_turn_decompose_start}
 
                         def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
                             fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
@@ -864,6 +871,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 stream_state["last_content"] = accumulated_content
 
                                 if delta_content:
+                                    # === TIMING: Log TTFT (Time to First Token) for multi-turn ===
+                                    if not stream_state["first_token_logged"]:
+                                        stream_state["first_token_logged"] = True
+                                        ttft = (time_module.time() - stream_state["start_time"]) * 1000
+                                        logger.info(f"⏱️ [TIMING] 🚀 TTFT (Time to First Token): {ttft:.2f}ms - First streaming token received for multi-turn task decomposition")
+
                                     asyncio.run_coroutine_threadsafe(
                                         task_lock.put_queue(
                                             ActionDecomposeTextData(
