@@ -297,7 +297,7 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 | **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.gg/D2e3rBWD) |
 | **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.gg/kyapNCeJ) |
 | **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.gg/bFRmPuDB) |
-| **Browser Toolkit** | - BrowseCamp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
+| **Browser Toolkit** | - BrowseComp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
 | **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.gg/4yAWJxYr) |
 | **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.gg/FjQfnsrV) |
 | **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.gg/MaVZXEn8) |
