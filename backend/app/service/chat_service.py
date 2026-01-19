@@ -1385,27 +1385,21 @@ async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent
     This function creates all agents in PARALLEL to minimize startup time.
     Sync functions are run in thread pool, async functions are awaited concurrently.
     """
-    import time as time_module
-
-    # === TIMING: construct_workforce start ===
-    construct_start = time_module.time()
-    logger.info("⏱️ [TIMING] construct_workforce started (PARALLEL mode)", extra={"project_id": options.project_id, "task_id": options.task_id})
+    logger.debug("construct_workforce started", extra={"project_id": options.project_id, "task_id": options.task_id})
 
     # Store main event loop reference for thread-safe async task scheduling
     # This allows agent_model() to schedule tasks when called from worker threads
     set_main_event_loop(asyncio.get_running_loop())
 
     working_directory = get_working_directory(options)
-    logger.debug("Working directory set", extra={"working_directory": working_directory})
 
     # ========================================================================
-    # Define sync agent creation functions (will be run in thread pool)
+    # Define agent creation functions
     # ========================================================================
 
     def _create_coordinator_and_task_agents() -> list[ListenChatAgent]:
         """Create coordinator and task agents (sync, runs in thread pool)."""
-        start = time_module.time()
-        agents = [
+        return [
             agent_model(
                 key,
                 prompt,
@@ -1437,14 +1431,10 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         """,
             }.items()
         ]
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] Coordinator + Task agents created in {elapsed:.2f}ms (thread)")
-        return agents
 
     def _create_new_worker_agent() -> ListenChatAgent:
         """Create new worker agent (sync, runs in thread pool)."""
-        start = time_module.time()
-        agent = agent_model(
+        return agent_model(
             Agents.new_worker_agent,
             f"""
         You are a helpful assistant.
@@ -1462,81 +1452,34 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
                 ).get_tools(),
             ],
         )
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] New worker agent created in {elapsed:.2f}ms (thread)")
-        return agent
-
-    def _create_browser_agent() -> ListenChatAgent:
-        """Create browser agent (sync, runs in thread pool)."""
-        start = time_module.time()
-        agent = browser_agent(options)
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] Browser agent created in {elapsed:.2f}ms (thread)")
-        return agent
-
-    def _create_multi_modal_agent() -> ListenChatAgent:
-        """Create multi-modal agent (sync, runs in thread pool)."""
-        start = time_module.time()
-        agent = multi_modal_agent(options)
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] Multi-modal agent created in {elapsed:.2f}ms (thread)")
-        return agent
-
-    # ========================================================================
-    # Define async agent creation wrappers (for timing)
-    # ========================================================================
-
-    async def _create_developer_agent() -> ListenChatAgent:
-        """Create developer agent (async)."""
-        start = time_module.time()
-        agent = await developer_agent(options)
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] Developer agent created in {elapsed:.2f}ms (async)")
-        return agent
-
-    async def _create_document_agent() -> ListenChatAgent:
-        """Create document agent (async)."""
-        start = time_module.time()
-        agent = await document_agent(options)
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] Document agent created in {elapsed:.2f}ms (async)")
-        return agent
-
-    async def _create_mcp_agent() -> ListenChatAgent:
-        """Create MCP agent (async)."""
-        start = time_module.time()
-        agent = await mcp_agent(options)
-        elapsed = (time_module.time() - start) * 1000
-        logger.info(f"⏱️ [TIMING] MCP agent created in {elapsed:.2f}ms (async)")
-        return agent
 
     # ========================================================================
     # Execute all agent creations in PARALLEL
     # ========================================================================
 
-    parallel_start = time_module.time()
-    logger.info("⏱️ [TIMING] Starting parallel agent creation...")
-
-    # asyncio.gather runs all coroutines concurrently
-    # asyncio.to_thread runs sync functions in thread pool without blocking event loop
-    results = await asyncio.gather(
-        asyncio.to_thread(_create_coordinator_and_task_agents),  # sync -> thread
-        asyncio.to_thread(_create_new_worker_agent),             # sync -> thread
-        asyncio.to_thread(_create_browser_agent),                # sync -> thread
-        _create_developer_agent(),                               # async
-        _create_document_agent(),                                # async
-        asyncio.to_thread(_create_multi_modal_agent),            # sync -> thread
-        _create_mcp_agent(),                                     # async
-    )
-
-    parallel_time = (time_module.time() - parallel_start) * 1000
-    logger.info(f"⏱️ [TIMING] All agents created in parallel: {parallel_time:.2f}ms")
+    try:
+        # asyncio.gather runs all coroutines concurrently
+        # asyncio.to_thread runs sync functions in thread pool without blocking event loop
+        results = await asyncio.gather(
+            asyncio.to_thread(_create_coordinator_and_task_agents),
+            asyncio.to_thread(_create_new_worker_agent),
+            asyncio.to_thread(browser_agent, options),
+            developer_agent(options),
+            document_agent(options),
+            asyncio.to_thread(multi_modal_agent, options),
+            mcp_agent(options),
+        )
+    except Exception as e:
+        logger.error(f"Failed to create agents in parallel: {e}", exc_info=True)
+        # Clear event loop reference on failure
+        set_main_event_loop(None)
+        raise
 
     # Unpack results
     (
-        coord_task_agents,  # [coordinator_agent, task_agent]
+        coord_task_agents,
         new_worker_agent,
-        searcher,           # browser agent
+        searcher,
         developer,
         documenter,
         multi_modaler,
@@ -1549,14 +1492,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     # Create Workforce instance and add workers (must be sequential)
     # ========================================================================
 
-    # Convert string model_platform to enum for comparison
     try:
         model_platform_enum = ModelPlatformType(options.model_platform.lower())
     except (ValueError, AttributeError):
         model_platform_enum = None
 
-    # === TIMING: Workforce instance creation ===
-    workforce_instance_start = time_module.time()
     workforce = Workforce(
         options.project_id,
         "A workforce",
@@ -1567,11 +1507,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         new_worker_agent=new_worker_agent,
         use_structured_output_handler=False if model_platform_enum == ModelPlatformType.OPENAI else True,
     )
-    workforce_instance_time = (time_module.time() - workforce_instance_start) * 1000
-    logger.info(f"⏱️ [TIMING] Workforce instance created in {workforce_instance_time:.2f}ms")
 
-    # === TIMING: Adding workers to workforce ===
-    add_workers_start = time_module.time()
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
@@ -1599,13 +1535,6 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         "generate new images from text prompts.",
         multi_modaler,
     )
-    add_workers_time = (time_module.time() - add_workers_start) * 1000
-    logger.info(f"⏱️ [TIMING] Workers added to workforce in {add_workers_time:.2f}ms")
-
-    # === TIMING: construct_workforce total ===
-    total_construct_time = (time_module.time() - construct_start) * 1000
-    logger.info(f"⏱️ [TIMING] construct_workforce TOTAL: {total_construct_time:.2f}ms (parallel agents: {parallel_time:.2f}ms)")
-    logger.info(f"⏱️ [TIMING] construct_workforce summary: parallel_agents={parallel_time:.2f}ms, workforce_init={workforce_instance_time:.2f}ms, add_workers={add_workers_time:.2f}ms")
 
     return workforce, mcp
 

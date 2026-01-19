@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import json
 import os
 import platform
@@ -8,18 +9,21 @@ from typing import Any, Callable, Dict, List, Tuple
 import uuid
 from utils import traceroot_wrapper as traceroot
 
-# Thread-safe reference to main event loop for scheduling tasks from worker threads
-_main_event_loop: asyncio.AbstractEventLoop | None = None
+# Thread-safe reference to main event loop using contextvars
+# This ensures each request has its own event loop reference, avoiding race conditions
+_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
+    '_main_event_loop', default=None
+)
 
 
 def set_main_event_loop(loop: asyncio.AbstractEventLoop | None):
     """Set the main event loop reference for thread-safe task scheduling.
 
     This should be called from the main async context before spawning threads
-    that need to schedule async tasks.
+    that need to schedule async tasks. Uses contextvars to ensure thread-safety
+    across concurrent requests.
     """
-    global _main_event_loop
-    _main_event_loop = loop
+    _main_event_loop_var.set(loop)
 
 
 def _schedule_async_task(coro):
@@ -34,15 +38,16 @@ def _schedule_async_task(coro):
         loop.create_task(coro)
     except RuntimeError:
         # No running loop in this thread (we're in a worker thread)
-        # Use the stored main loop reference
-        if _main_event_loop is not None and _main_event_loop.is_running():
-            asyncio.run_coroutine_threadsafe(coro, _main_event_loop)
+        # Use the stored main loop reference from contextvars
+        main_loop = _main_event_loop_var.get()
+        if main_loop is not None and main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, main_loop)
         else:
-            # Fallback: run synchronously (not ideal but works)
-            traceroot.get_logger("agent").warning(
-                "No event loop available for async task scheduling, running synchronously"
+            # This should not happen in normal operation - log error and skip
+            traceroot.get_logger("agent").error(
+                "No event loop available for async task scheduling, task skipped. "
+                "Ensure set_main_event_loop() is called before parallel agent creation."
             )
-            asyncio.run(coro)
 from camel.agents import ChatAgent
 from camel.agents.chat_agent import (
     StreamingChatAgentResponse,
@@ -702,12 +707,9 @@ def agent_model(
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
 ):
-    import time as time_module
-    agent_model_start = time_module.time()
-
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}"
     )
     # Use thread-safe scheduling to support parallel agent creation
@@ -775,8 +777,6 @@ def agent_model(
             )
             model_platform_enum = None
 
-    # === TIMING: ModelFactory.create ===
-    t0 = time_module.time()
     model = ModelFactory.create(
         model_platform=options.model_platform,
         model_type=options.model_type,
@@ -785,16 +785,12 @@ def agent_model(
         model_config_dict=model_config or None,
         **init_params,
     )
-    model_create_time = (time_module.time() - t0) * 1000
 
-    # === TIMING: ListenChatAgent creation ===
-    t0 = time_module.time()
-    agent = ListenChatAgent(
+    return ListenChatAgent(
         options.project_id,
         agent_name,
         system_message,
         model=model,
-        # output_language=options.language,
         tools=tools,
         agent_id=agent_id,
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
@@ -802,11 +798,6 @@ def agent_model(
         enable_snapshot_clean=enable_snapshot_clean,
         stream_accumulate=False,
     )
-    agent_create_time = (time_module.time() - t0) * 1000
-
-    total_time = (time_module.time() - agent_model_start) * 1000
-    traceroot_logger.info(f"⏱️ [TIMING] agent_model({agent_name}): {total_time:.2f}ms (model_create={model_create_time:.2f}ms, agent_create={agent_create_time:.2f}ms)")
-    return agent
 
 
 @traceroot.trace()
@@ -1019,25 +1010,17 @@ these tips to maximize your effectiveness:
 
 @traceroot.trace()
 def browser_agent(options: Chat):
-    import time as time_module
-    browser_agent_start = time_module.time()
-
     working_directory = get_working_directory(options)
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating browser agent for project: {options.project_id} in directory: {working_directory}"
     )
 
-    # === TIMING: message_integration ===
-    t0 = time_module.time()
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.browser_agent
         ).send_message_to_user
     )
-    traceroot_logger.info(f"⏱️ [TIMING] browser_agent: message_integration in {(time_module.time() - t0) * 1000:.2f}ms")
 
-    # === TIMING: HybridBrowserToolkit ===
-    t0 = time_module.time()
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
         headless=False,
@@ -1058,17 +1041,13 @@ def browser_agent(options: Chat):
             "browser_enter",
             "browser_visit_page",
             "browser_get_page_snapshot",
-            # "browser_get_som_screenshot",
         ],
     )
-    traceroot_logger.info(f"⏱️ [TIMING] browser_agent: HybridBrowserToolkit in {(time_module.time() - t0) * 1000:.2f}ms")
 
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
 
-    # === TIMING: TerminalToolkit (already has internal timing) ===
-    t0 = time_module.time()
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         Agents.browser_agent,
@@ -1078,25 +1057,17 @@ def browser_agent(options: Chat):
     terminal_toolkit = message_integration.register_functions(
         [terminal_toolkit.shell_exec]
     )
-    traceroot_logger.info(f"⏱️ [TIMING] browser_agent: TerminalToolkit+register in {(time_module.time() - t0) * 1000:.2f}ms")
 
-    # === TIMING: NoteTakingToolkit ===
-    t0 = time_module.time()
     note_toolkit = NoteTakingToolkit(
         options.project_id, Agents.browser_agent, working_directory=working_directory
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    traceroot_logger.info(f"⏱️ [TIMING] browser_agent: NoteTakingToolkit in {(time_module.time() - t0) * 1000:.2f}ms")
 
-    # === TIMING: SearchToolkit ===
-    t0 = time_module.time()
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
-    # Only register search tools if any are available
     if search_tools:
         search_tools = message_integration.register_functions(search_tools)
     else:
         search_tools = []
-    traceroot_logger.info(f"⏱️ [TIMING] browser_agent: SearchToolkit in {(time_module.time() - t0) * 1000:.2f}ms")
 
     tools = [
         *HumanToolkit.get_can_use_tools(options.project_id, Agents.browser_agent),
@@ -1241,15 +1212,11 @@ Your approach depends on available search tools:
 
 @traceroot.trace()
 async def document_agent(options: Chat):
-    import time as time_module
-
     working_directory = get_working_directory(options)
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating document agent for project: {options.project_id} in directory: {working_directory}"
     )
 
-    # === TIMING: Toolkits creation ===
-    t0 = time_module.time()
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.task_agent
@@ -1270,9 +1237,7 @@ async def document_agent(options: Chat):
         options.project_id, Agents.document_agent, working_directory=working_directory
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    traceroot_logger.info(f"⏱️ [TIMING] document_agent: basic toolkits in {(time_module.time() - t0) * 1000:.2f}ms")
 
-    t0 = time_module.time()
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         Agents.document_agent,
@@ -1280,14 +1245,10 @@ async def document_agent(options: Chat):
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
-    traceroot_logger.info(f"⏱️ [TIMING] document_agent: TerminalToolkit in {(time_module.time() - t0) * 1000:.2f}ms")
 
-    # === TIMING: GoogleDriveMCPToolkit (async) ===
-    t0 = time_module.time()
     google_drive_tools = await GoogleDriveMCPToolkit.get_can_use_tools(
         options.project_id, options.get_bun_env()
     )
-    traceroot_logger.info(f"⏱️ [TIMING] document_agent: GoogleDriveMCPToolkit in {(time_module.time() - t0) * 1000:.2f}ms")
 
     tools = [
         *file_write_toolkit.get_tools(),
@@ -1479,15 +1440,11 @@ supported formats including advanced spreadsheet functionality.
 
 @traceroot.trace()
 def multi_modal_agent(options: Chat):
-    import time as time_module
-
     working_directory = get_working_directory(options)
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}"
     )
 
-    # === TIMING: Basic toolkits ===
-    t0 = time_module.time()
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.multi_modal_agent
@@ -1503,10 +1460,7 @@ def multi_modal_agent(options: Chat):
     image_analysis_toolkit = message_integration.register_toolkits(
         image_analysis_toolkit
     )
-    traceroot_logger.info(f"⏱️ [TIMING] multi_modal_agent: basic toolkits in {(time_module.time() - t0) * 1000:.2f}ms")
 
-    # === TIMING: TerminalToolkit ===
-    t0 = time_module.time()
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         agent_name=Agents.multi_modal_agent,
@@ -1514,7 +1468,6 @@ def multi_modal_agent(options: Chat):
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
-    traceroot_logger.info(f"⏱️ [TIMING] multi_modal_agent: TerminalToolkit in {(time_module.time() - t0) * 1000:.2f}ms")
 
     note_toolkit = NoteTakingToolkit(
         options.project_id,

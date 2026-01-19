@@ -36,49 +36,23 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = True,
     ):
-        # === TIMING: TerminalToolkit init start ===
-        init_start = time.time()
-
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
 
-        logger.info(f"⏱️ [TIMING] TerminalToolkit.__init__ started for agent={self.agent_name}", extra={
+        logger.debug(f"Initializing TerminalToolkit for agent={self.agent_name}", extra={
             "api_task_id": api_task_id,
-            "agent_name": self.agent_name,
             "working_directory": working_directory,
-            "safe_mode": safe_mode,
-            "use_docker_backend": use_docker_backend
+            "clone_current_env": clone_current_env
         })
-        logger.info(f"⏱️ [TIMING] working_directory={working_directory}")
 
-        # === TIMING: Thread pool creation ===
-        thread_pool_start = time.time()
         if TerminalToolkit._thread_pool is None:
             TerminalToolkit._thread_pool = ThreadPoolExecutor(
                 max_workers=1,
                 thread_name_prefix="terminal_toolkit"
             )
-            thread_pool_time = (time.time() - thread_pool_start) * 1000
-            logger.info(f"⏱️ [TIMING] Created terminal toolkit thread pool in {thread_pool_time:.2f}ms")
-        else:
-            logger.debug("Thread pool already exists, skipping creation")
-
-        # === TIMING: Base class init (this is the heavy part) ===
-        super_init_start = time.time()
-        logger.info("⏱️ [TIMING] Starting BaseTerminalToolkit.__init__...")
-        logger.info(f"⏱️ [TIMING] Parameters: working_directory={working_directory}, clone_current_env={clone_current_env}")
-
-        # Check if env already exists (determines if env setup is needed)
-        # .venv is used when clone_current_env=True, .initial_env when False
-        if clone_current_env:
-            env_path = os.path.join(working_directory, ".venv") if working_directory else None
-        else:
-            env_path = os.path.join(working_directory, ".initial_env") if working_directory else None
-        env_exists = env_path and os.path.exists(env_path)
-        logger.info(f"⏱️ [TIMING] env_path={env_path}, env_exists={env_exists}")
 
         super().__init__(
             timeout=timeout,
@@ -90,10 +64,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             allowed_commands=allowed_commands,
             clone_current_env=clone_current_env,
         )
-        super_init_time = (time.time() - super_init_start) * 1000
-        total_init_time = (time.time() - init_start) * 1000
-        logger.info(f"⏱️ [TIMING] BaseTerminalToolkit.__init__ completed in {super_init_time:.2f}ms (env_existed={env_exists})")
-        logger.info(f"⏱️ [TIMING] TerminalToolkit.__init__ TOTAL: {total_init_time:.2f}ms")
 
     def _write_to_log(self, log_file: str, content: str) -> None:
         r"""Write content to log file with optional ANSI stripping.

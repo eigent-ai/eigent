@@ -88,48 +88,26 @@ class Workforce(BaseWorkforce):
             on_stream_batch: Optional callback for streaming batches signature (List[Task], bool)
             on_stream_text: Optional callback for raw streaming text chunks
         """
-        # === TIMING: eigent_make_sub_tasks start ===
-        decompose_start = time.time()
-
-        logger.info("=" * 80)
-        logger.info("🧩 [DECOMPOSE] eigent_make_sub_tasks CALLED", extra={
+        logger.debug("[DECOMPOSE] eigent_make_sub_tasks called", extra={
             "api_task_id": self.api_task_id,
-            "workforce_id": id(self),
             "task_id": task.id
         })
-        logger.info(f"⏱️ [TIMING] eigent_make_sub_tasks started")
-        logger.info(f"[DECOMPOSE] Task content preview: '{task.content[:200]}...'")
-        logger.info(f"[DECOMPOSE] Has coordinator context: {bool(coordinator_context)}")
-        logger.info(f"[DECOMPOSE] Current workforce state: {self._state.name}, _running: {self._running}")
-        logger.info("=" * 80)
 
-        # === TIMING: Validation ===
-        validation_start = time.time()
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
             task.result = "Task failed: Invalid or empty content provided"
-            logger.warning("❌ [DECOMPOSE] Task rejected: Invalid or empty content", extra={
+            logger.warning("[DECOMPOSE] Task rejected: Invalid or empty content", extra={
                 "task_id": task.id,
                 "content_preview": task.content[:50] + "..." if len(task.content) > 50 else task.content
             })
             raise UserException(code.error, task.result)
-        validation_time = (time.time() - validation_start) * 1000
-        logger.info(f"⏱️ [TIMING] Task validation completed in {validation_time:.2f}ms")
 
-        # === TIMING: Workforce reset ===
-        reset_start = time.time()
-        logger.info(f"[DECOMPOSE] Resetting workforce state")
         self.reset()
         self._task = task
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        reset_time = (time.time() - reset_start) * 1000
-        logger.info(f"⏱️ [TIMING] Workforce reset completed in {reset_time:.2f}ms, state: {self._state.name}")
 
-        # === TIMING: handle_decompose_append_task ===
-        handle_decompose_start = time.time()
-        logger.info(f"[DECOMPOSE] Calling handle_decompose_append_task")
         subtasks = asyncio.run(
             self.handle_decompose_append_task(
                 task,
@@ -139,57 +117,37 @@ class Workforce(BaseWorkforce):
                 on_stream_text=on_stream_text
             )
         )
-        handle_decompose_time = (time.time() - handle_decompose_start) * 1000
-        logger.info(f"⏱️ [TIMING] handle_decompose_append_task completed in {handle_decompose_time:.2f}ms")
 
-        total_decompose_time = (time.time() - decompose_start) * 1000
-        logger.info("=" * 80)
-        logger.info(f"✅ [DECOMPOSE] Task decomposition COMPLETED", extra={
+        logger.info(f"[DECOMPOSE] Task decomposition completed", extra={
             "api_task_id": self.api_task_id,
             "task_id": task.id,
             "subtasks_count": len(subtasks)
         })
-        logger.info(f"⏱️ [TIMING] eigent_make_sub_tasks TOTAL: {total_decompose_time:.2f}ms (validation: {validation_time:.2f}ms, reset: {reset_time:.2f}ms, decompose: {handle_decompose_time:.2f}ms)")
-        logger.info("=" * 80)
         return subtasks
 
     async def eigent_start(self, subtasks: list[Task]):
         """start the workforce"""
-        logger.info("=" * 80)
-        logger.info("▶️  [WF-LIFECYCLE] eigent_start CALLED", extra={"api_task_id": self.api_task_id, "workforce_id": id(self)})
-        logger.info(f"[WF-LIFECYCLE] Starting workforce execution with {len(subtasks)} subtasks")
-        logger.info(f"[WF-LIFECYCLE] Current workforce state: {self._state.name}, _running: {self._running}")
-        logger.info("=" * 80)
+        logger.debug(f"[WF-LIFECYCLE] eigent_start called with {len(subtasks)} subtasks", extra={
+            "api_task_id": self.api_task_id
+        })
         self._pending_tasks.extendleft(reversed(subtasks))
-        # Save initial snapshot
         self.save_snapshot("Initial task decomposition")
 
         try:
-            logger.info(f"[WF-LIFECYCLE] Calling base class start() method")
             await self.start()
-            logger.info(f"[WF-LIFECYCLE] ✅ Base class start() method completed")
         except Exception as e:
-            logger.error(f"[WF-LIFECYCLE] ❌ Error in workforce execution: {e}", extra={
+            logger.error(f"[WF-LIFECYCLE] Error in workforce execution: {e}", extra={
                 "api_task_id": self.api_task_id,
                 "error": str(e)
             }, exc_info=True)
             self._state = WorkforceState.STOPPED
-            logger.info(f"[WF-LIFECYCLE] Workforce state set to STOPPED after error")
             raise
         finally:
-            logger.info(f"[WF-LIFECYCLE] eigent_start finally block, current state: {self._state.name}")
             if self._state != WorkforceState.STOPPED:
                 self._state = WorkforceState.IDLE
-                logger.info(f"[WF-LIFECYCLE] Workforce state set to IDLE")
 
     def _decompose_task(self, task: Task, stream_callback=None):
         """Decompose task with optional streaming text callback."""
-        # === TIMING: _decompose_task start ===
-        decompose_task_start = time.time()
-        logger.info(f"⏱️ [TIMING] _decompose_task started")
-
-        # === TIMING: Prompt building ===
-        prompt_build_start = time.time()
         decompose_prompt = str(
             TASK_DECOMPOSE_PROMPT.format(
                 content=task.content,
@@ -197,23 +155,11 @@ class Workforce(BaseWorkforce):
                 additional_info=task.additional_info,
             )
         )
-        prompt_build_time = (time.time() - prompt_build_start) * 1000
-        logger.info(f"⏱️ [TIMING] Decompose prompt built in {prompt_build_time:.2f}ms (length: {len(decompose_prompt)} chars)")
 
-        # === TIMING: Agent reset ===
-        agent_reset_start = time.time()
         self.task_agent.reset()
-        agent_reset_time = (time.time() - agent_reset_start) * 1000
-        logger.info(f"⏱️ [TIMING] Task agent reset in {agent_reset_time:.2f}ms")
-
-        # === TIMING: LLM call (task.decompose) ===
-        llm_call_start = time.time()
-        logger.info(f"⏱️ [TIMING] Starting LLM decompose call...")
         result = task.decompose(
             self.task_agent, decompose_prompt, stream_callback=stream_callback
         )
-        llm_call_time = (time.time() - llm_call_start) * 1000
-        logger.info(f"⏱️ [TIMING] LLM decompose call returned in {llm_call_time:.2f}ms (streaming={isinstance(result, Generator)})")
 
         if isinstance(result, Generator):
             def streaming_with_dependencies():
@@ -254,10 +200,7 @@ class Workforce(BaseWorkforce):
         Returns:
             List[Task]: The decomposed subtasks or the original task
         """
-        # === TIMING: handle_decompose_append_task start ===
-        handle_start = time.time()
-        logger.info(f"⏱️ [TIMING] handle_decompose_append_task started")
-        logger.info(f"[DECOMPOSE] handle_decompose_append_task CALLED, task_id={task.id}, reset={reset}")
+        logger.debug(f"[DECOMPOSE] handle_decompose_append_task called, task_id={task.id}, reset={reset}")
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
@@ -269,31 +212,20 @@ class Workforce(BaseWorkforce):
             return [task]
 
         if reset and self._state != WorkforceState.RUNNING:
-            logger.info(f"[DECOMPOSE] Resetting workforce (reset={reset}, state={self._state.name})")
             self.reset()
-            logger.info("[DECOMPOSE] Workforce reset complete")
 
         self._task = task
         task.state = TaskState.FAILED
 
         if coordinator_context:
-            logger.info(f"[DECOMPOSE] Adding coordinator context to task")
             original_content = task.content
-            task_with_context = coordinator_context
-            if coordinator_context:
-                task_with_context += "\n=== CURRENT TASK ===\n"
-            task_with_context += original_content
+            task_with_context = coordinator_context + "\n=== CURRENT TASK ===\n" + original_content
             task.content = task_with_context
-
-            logger.info(f"[DECOMPOSE] Calling _decompose_task with context")
             subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
-
             task.content = original_content
         else:
-            logger.info(f"[DECOMPOSE] Calling _decompose_task without context")
             subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
 
-        logger.info(f"[DECOMPOSE] _decompose_task returned, processing results")
         if isinstance(subtasks_result, Generator):
             subtasks = []
             for new_tasks in subtasks_result:
@@ -303,18 +235,15 @@ class Workforce(BaseWorkforce):
                         on_stream_batch(new_tasks, False)
                     except Exception as e:
                         logger.warning(f"Streaming callback failed: {e}")
-            logger.info(f"[DECOMPOSE] Collected {len(subtasks)} subtasks from generator")
 
             # After consuming the generator, check task.subtasks for final result as fallback
             if not subtasks and task.subtasks:
                 subtasks = task.subtasks
         else:
             subtasks = subtasks_result
-            logger.info(f"[DECOMPOSE] Got {len(subtasks) if subtasks else 0} subtasks directly")
 
         if subtasks:
             self._pending_tasks.extendleft(reversed(subtasks))
-            logger.info(f"[DECOMPOSE] ✅ Appended {len(subtasks)} subtasks to pending tasks")
 
         if not subtasks:
             logger.warning(f"[DECOMPOSE] No subtasks returned, creating fallback task")
@@ -325,7 +254,6 @@ class Workforce(BaseWorkforce):
             )
             task.subtasks = [fallback_task]
             subtasks = [fallback_task]
-            logger.info(f"[DECOMPOSE] Created fallback task: {fallback_task.id}")
 
         if on_stream_batch:
             try:
@@ -333,10 +261,7 @@ class Workforce(BaseWorkforce):
             except Exception as e:
                 logger.warning(f"Final streaming callback failed: {e}")
 
-        # === TIMING: handle_decompose_append_task complete ===
-        handle_total_time = (time.time() - handle_start) * 1000
-        logger.info(f"⏱️ [TIMING] handle_decompose_append_task completed in {handle_total_time:.2f}ms, returned {len(subtasks)} subtasks")
-
+        logger.debug(f"[DECOMPOSE] handle_decompose_append_task completed, returned {len(subtasks)} subtasks")
         return subtasks
 
     def _get_agent_id_from_node_id(self, node_id: str) -> str | None:
@@ -453,32 +378,23 @@ class Workforce(BaseWorkforce):
         pool_max_size: int = DEFAULT_WORKER_POOL_SIZE,
         enable_workflow_memory: bool = False,
     ) -> BaseWorkforce:
-        import time as time_module
-        add_worker_start = time_module.time()
-
         if self._state == WorkforceState.RUNNING:
             raise RuntimeError("Cannot add workers while workforce is running. Pause the workforce first.")
 
         # Validate worker agent compatibility
-        t0 = time_module.time()
         self._validate_agent_compatibility(worker, "Worker agent")
-        validate_time = (time_module.time() - t0) * 1000
 
         # Ensure the worker agent shares this workforce's pause control
-        t0 = time_module.time()
         self._attach_pause_event_to_agent(worker)
-        attach_time = (time_module.time() - t0) * 1000
 
-        t0 = time_module.time()
         worker_node = SingleAgentWorker(
             description=description,
             worker=worker,
             pool_max_size=pool_max_size,
             use_structured_output_handler=self.use_structured_output_handler,
-            context_utility=None, # Will be set during save/load operations
+            context_utility=None,
             enable_workflow_memory=enable_workflow_memory,
         )
-        create_node_time = (time_module.time() - t0) * 1000
         self._children.append(worker_node)
 
         # If we have a channel set up, set it for the new worker
@@ -486,9 +402,7 @@ class Workforce(BaseWorkforce):
             worker_node.set_channel(self._channel)
 
         # If workforce is paused, start the worker's listening task
-        t0 = time_module.time()
         self._start_child_node_when_paused(worker_node.start())
-        start_child_time = (time_module.time() - t0) * 1000
 
         # Use proper CAMEL pattern for metrics logging
         metrics_callbacks = [cb for cb in self._callbacks if isinstance(cb, WorkforceMetrics)]
@@ -500,8 +414,6 @@ class Workforce(BaseWorkforce):
             )
             metrics_callbacks[0].log_worker_created(event)
 
-        total_time = (time_module.time() - add_worker_start) * 1000
-        logger.info(f"⏱️ [TIMING] add_single_agent_worker: {total_time:.2f}ms (validate={validate_time:.2f}ms, attach={attach_time:.2f}ms, create_node={create_node_time:.2f}ms, start_child={start_child_time:.2f}ms) for {description[:30]}...")
         return self
 
     async def _handle_completed_task(self, task: Task) -> None:
