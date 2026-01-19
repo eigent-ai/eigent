@@ -1,5 +1,5 @@
 import asyncio
-from typing import Generator, List
+from typing import Generator, List, Optional
 from camel.agents import ChatAgent
 from camel.societies.workforce.workforce import (
     Workforce as BaseWorkforce,
@@ -22,6 +22,7 @@ from app.service.task import (
     ActionAssignTaskData,
     ActionEndData,
     ActionTaskStateData,
+    ActionTimeoutData,
     get_camel_task,
     get_task_lock,
 )
@@ -60,6 +61,7 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
+            task_timeout_seconds=1800,  # 30 minutes
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"],
             ),
@@ -501,6 +503,55 @@ class Workforce(BaseWorkforce):
         )
 
         return result
+
+    async def _get_returned_task(self) -> Optional[Task]:
+        r"""Override to handle timeout and send notification to frontend.
+
+        Get the task that's published by this node and just get returned
+        from the assignee. Includes timeout handling to prevent indefinite
+        waiting.
+
+        Raises:
+            asyncio.TimeoutError: If waiting for task exceeds timeout
+        """
+        try:
+            return await asyncio.wait_for(
+                self._channel.get_returned_task_by_publisher(self.node_id),
+                timeout=self.task_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            # Send timeout notification to frontend before re-raising
+            logger.warning(
+                f"⏰ [WF-TIMEOUT] Task timeout in workforce {self.node_id}. "
+                f"Timeout: {self.task_timeout_seconds}s, "
+                f"Pending tasks: {len(self._pending_tasks)}, "
+                f"In-flight tasks: {self._in_flight_tasks}"
+            )
+
+            # Try to notify frontend, but don't let notification failure mask the timeout
+            try:
+                task_lock = get_task_lock(self.api_task_id)
+                timeout_minutes = self.task_timeout_seconds // 60
+                await task_lock.put_queue(
+                    ActionTimeoutData(
+                        data={
+                            "message": f"Task execution timeout: No response received for {timeout_minutes} minutes",
+                            "in_flight_tasks": self._in_flight_tasks,
+                            "pending_tasks": len(self._pending_tasks),
+                            "timeout_seconds": self.task_timeout_seconds,
+                        }
+                    )
+                )
+            except Exception as notify_err:
+                logger.error(f"Failed to send timeout notification: {notify_err}")
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error getting returned task {e} in workforce {self.node_id}. "
+                f"Current pending tasks: {len(self._pending_tasks)}, "
+                f"In-flight tasks: {self._in_flight_tasks}"
+            )
+            raise
 
     def stop(self) -> None:
         logger.info("=" * 80)
