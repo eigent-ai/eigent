@@ -199,7 +199,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             import shutil
             
             # Remove cloned env (.venv) if it exists
-            if self.cloned_env_path and os.path.exists(self.cloned_env_path):
+            if hasattr(self, 'cloned_env_path') and self.cloned_env_path and os.path.exists(self.cloned_env_path):
                 try:
                     shutil.rmtree(self.cloned_env_path)
                     logger.info(f"Removed cloned venv: {self.cloned_env_path}", extra={
@@ -209,7 +209,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     logger.warning(f"Failed to remove cloned venv {self.cloned_env_path}: {e}")
             
             # Remove initial env (.initial_env) if it exists
-            if self.initial_env_path and os.path.exists(self.initial_env_path):
+            if hasattr(self, 'initial_env_path') and self.initial_env_path and os.path.exists(self.initial_env_path):
                 try:
                     shutil.rmtree(self.initial_env_path)
                     logger.info(f"Removed initial env: {self.initial_env_path}", extra={
