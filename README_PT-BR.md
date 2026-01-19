@@ -292,7 +292,7 @@ Por favor, adicione esta imagem de assinatura às áreas de assinatura no PDF. V
 | **Engenharia de Contexto** | - Cache de prompts<br> - Otimização de prompt do sistema<br> - Otimização de docstrings do toolkit<br> - Compressão de contexto | [**Entrar no Discord →**](https://discord.gg/D2e3rBWD) |
 | **Aprimoramento Multimodal** | - Compreensão de imagens mais precisa ao usar o navegador<br> - Geração avançada de vídeo | [**Entrar no Discord →**](https://discord.gg/kyapNCeJ) |
 | **Sistema Multiagente** | - Suporte do Workforce a fluxos fixos<br> - Suporte do Workforce a conversas em múltiplas rodadas | [**Entrar no Discord →**](https://discord.gg/bFRmPuDB) |
-| **Toolkit de Navegador** | - Integração com BrowseCamp<br> - Melhoria de benchmark<br> - Proibir visitas repetidas a páginas<br> - Clique automático em botões de cache | [**Entrar no Discord →**](https://discord.gg/NF73ze5v) |
+| **Toolkit de Navegador** | - Integração com BrowseComp<br> - Melhoria de benchmark<br> - Proibir visitas repetidas a páginas<br> - Clique automático em botões de cache | [**Entrar no Discord →**](https://discord.gg/NF73ze5v) |
 | **Toolkit de Documentos** | - Suporte à edição dinâmica de arquivos | [**Entrar no Discord →**](https://discord.gg/4yAWJxYr) |
 | **Toolkit de Terminal** | - Melhoria de benchmark<br> - Integração com Terminal-Bench | [**Entrar no Discord →**](https://discord.gg/FjQfnsrV) |
 | **Ambiente & RL** | - Design de ambiente<br> - Geração de dados<br> - Integração de frameworks de RL (VERL, TRL, OpenRLHF) | [**Entrar no Discord →**](https://discord.gg/MaVZXEn8) |
