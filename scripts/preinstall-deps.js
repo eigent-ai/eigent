@@ -389,6 +389,28 @@ async function installUv() {
     await tar.extract({ file: tempFilename, cwd: BIN_DIR });
   }
 
+  // Handle nested directory from tarball if needed
+  if (!isWindows) {
+    const nestedDir = fs.readdirSync(BIN_DIR).find(f => 
+      fs.statSync(path.join(BIN_DIR, f)).isDirectory() && f.startsWith('uv-')
+    );
+    if (nestedDir) {
+      const nestedUvPath = path.join(BIN_DIR, nestedDir, 'uv');
+      const targetPath = path.join(BIN_DIR, 'uv');
+      if (fs.existsSync(nestedUvPath)) {
+        console.log(`   Found uv in ${nestedDir}, moving...`);
+        try {
+          if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+          fs.renameSync(nestedUvPath, targetPath);
+          // Clean up directory
+          fs.rmSync(path.join(BIN_DIR, nestedDir), { recursive: true, force: true });
+        } catch (e) {
+          console.log(`   Warning: Failed to move uv from nested dir: ${e.message}`);
+        }
+      }
+    }
+  }
+
   const extractedUvPath = path.join(BIN_DIR, isWindows ? 'uv.exe' : 'uv');
   if (fs.existsSync(extractedUvPath)) {
     if (!isWindows && extractedUvPath !== uvPath) {
