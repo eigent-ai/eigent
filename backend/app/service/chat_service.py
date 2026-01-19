@@ -40,6 +40,7 @@ from app.utils.agent import (
     social_medium_agent,
     task_summary_agent,
     question_confirm_agent,
+    set_main_event_loop,
 )
 from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
@@ -247,6 +248,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
     start_event_loop = True
 
+    # === TIMING: Task lock initialization ===
+    init_start = time_module.time()
     if not hasattr(task_lock, 'conversation_history'):
         task_lock.conversation_history = []
     if not hasattr(task_lock, 'last_task_result'):
@@ -255,11 +258,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         task_lock.question_agent = None
     if not hasattr(task_lock, 'summary_generated'):
         task_lock.summary_generated = False
+    init_time = (time_module.time() - init_start) * 1000
+    logger.info(f"⏱️ [TIMING] Task lock attrs initialized in {init_time:.2f}ms")
 
     # Create or reuse persistent question_agent
+    # === TIMING: question_agent creation ===
+    question_agent_start = time_module.time()
     if task_lock.question_agent is None:
         task_lock.question_agent = question_confirm_agent(options)
-        logger.info(f"Created new persistent question_agent for project {options.project_id}")
+        question_agent_time = (time_module.time() - question_agent_start) * 1000
+        logger.info(f"⏱️ [TIMING] question_confirm_agent created in {question_agent_time:.2f}ms")
     else:
         logger.info(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
 
@@ -1372,31 +1380,46 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
 
 @traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
+    """Construct a workforce with all required agents.
+
+    This function creates all agents in PARALLEL to minimize startup time.
+    Sync functions are run in thread pool, async functions are awaited concurrently.
+    """
     import time as time_module
+
     # === TIMING: construct_workforce start ===
     construct_start = time_module.time()
-    logger.info("⏱️ [TIMING] construct_workforce started", extra={"project_id": options.project_id, "task_id": options.task_id})
+    logger.info("⏱️ [TIMING] construct_workforce started (PARALLEL mode)", extra={"project_id": options.project_id, "task_id": options.task_id})
+
+    # Store main event loop reference for thread-safe async task scheduling
+    # This allows agent_model() to schedule tasks when called from worker threads
+    set_main_event_loop(asyncio.get_running_loop())
 
     working_directory = get_working_directory(options)
     logger.debug("Working directory set", extra={"working_directory": working_directory})
 
-    # === TIMING: Coordinator and Task agent creation ===
-    coord_task_agent_start = time_module.time()
-    [coordinator_agent, task_agent] = [
-        agent_model(
-            key,
-            prompt,
-            options,
-            [
-                *(
-                    ToolkitMessageIntegration(
-                        message_handler=HumanToolkit(options.project_id, key).send_message_to_user
-                    ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
-                ).get_tools()
-            ],
-        )
-        for key, prompt in {
-            Agents.coordinator_agent: f"""
+    # ========================================================================
+    # Define sync agent creation functions (will be run in thread pool)
+    # ========================================================================
+
+    def _create_coordinator_and_task_agents() -> list[ListenChatAgent]:
+        """Create coordinator and task agents (sync, runs in thread pool)."""
+        start = time_module.time()
+        agents = [
+            agent_model(
+                key,
+                prompt,
+                options,
+                [
+                    *(
+                        ToolkitMessageIntegration(
+                            message_handler=HumanToolkit(options.project_id, key).send_message_to_user
+                        ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
+                    ).get_tools()
+                ],
+            )
+            for key, prompt in {
+                Agents.coordinator_agent: f"""
 You are a helpful coordinator.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
@@ -1406,76 +1429,130 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
 `Developer_Agent`. The `Developer_Agent` is a powerful agent with terminal
 access and can resolve a wide range of issues.
             """,
-            Agents.task_agent: f"""
+                Agents.task_agent: f"""
 You are a helpful task planner.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
         """,
-        }.items()
-    ]
-    coord_task_agent_time = (time_module.time() - coord_task_agent_start) * 1000
-    logger.info(f"⏱️ [TIMING] Coordinator + Task agent created in {coord_task_agent_time:.2f}ms")
+            }.items()
+        ]
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] Coordinator + Task agents created in {elapsed:.2f}ms (thread)")
+        return agents
 
-    # === TIMING: New worker agent creation ===
-    new_worker_start = time_module.time()
-    new_worker_agent = agent_model(
-        Agents.new_worker_agent,
-        f"""
+    def _create_new_worker_agent() -> ListenChatAgent:
+        """Create new worker agent (sync, runs in thread pool)."""
+        start = time_module.time()
+        agent = agent_model(
+            Agents.new_worker_agent,
+            f"""
         You are a helpful assistant.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
         """,
-        options,
-        [
-            *HumanToolkit.get_can_use_tools(options.project_id, Agents.new_worker_agent),
-            *(
-                ToolkitMessageIntegration(
-                    message_handler=HumanToolkit(options.project_id, Agents.new_worker_agent).send_message_to_user
-                ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
-            ).get_tools(),
-        ],
+            options,
+            [
+                *HumanToolkit.get_can_use_tools(options.project_id, Agents.new_worker_agent),
+                *(
+                    ToolkitMessageIntegration(
+                        message_handler=HumanToolkit(options.project_id, Agents.new_worker_agent).send_message_to_user
+                    ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
+                ).get_tools(),
+            ],
+        )
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] New worker agent created in {elapsed:.2f}ms (thread)")
+        return agent
+
+    def _create_browser_agent() -> ListenChatAgent:
+        """Create browser agent (sync, runs in thread pool)."""
+        start = time_module.time()
+        agent = browser_agent(options)
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] Browser agent created in {elapsed:.2f}ms (thread)")
+        return agent
+
+    def _create_multi_modal_agent() -> ListenChatAgent:
+        """Create multi-modal agent (sync, runs in thread pool)."""
+        start = time_module.time()
+        agent = multi_modal_agent(options)
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] Multi-modal agent created in {elapsed:.2f}ms (thread)")
+        return agent
+
+    # ========================================================================
+    # Define async agent creation wrappers (for timing)
+    # ========================================================================
+
+    async def _create_developer_agent() -> ListenChatAgent:
+        """Create developer agent (async)."""
+        start = time_module.time()
+        agent = await developer_agent(options)
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] Developer agent created in {elapsed:.2f}ms (async)")
+        return agent
+
+    async def _create_document_agent() -> ListenChatAgent:
+        """Create document agent (async)."""
+        start = time_module.time()
+        agent = await document_agent(options)
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] Document agent created in {elapsed:.2f}ms (async)")
+        return agent
+
+    async def _create_mcp_agent() -> ListenChatAgent:
+        """Create MCP agent (async)."""
+        start = time_module.time()
+        agent = await mcp_agent(options)
+        elapsed = (time_module.time() - start) * 1000
+        logger.info(f"⏱️ [TIMING] MCP agent created in {elapsed:.2f}ms (async)")
+        return agent
+
+    # ========================================================================
+    # Execute all agent creations in PARALLEL
+    # ========================================================================
+
+    parallel_start = time_module.time()
+    logger.info("⏱️ [TIMING] Starting parallel agent creation...")
+
+    # asyncio.gather runs all coroutines concurrently
+    # asyncio.to_thread runs sync functions in thread pool without blocking event loop
+    results = await asyncio.gather(
+        asyncio.to_thread(_create_coordinator_and_task_agents),  # sync -> thread
+        asyncio.to_thread(_create_new_worker_agent),             # sync -> thread
+        asyncio.to_thread(_create_browser_agent),                # sync -> thread
+        _create_developer_agent(),                               # async
+        _create_document_agent(),                                # async
+        asyncio.to_thread(_create_multi_modal_agent),            # sync -> thread
+        _create_mcp_agent(),                                     # async
     )
-    new_worker_time = (time_module.time() - new_worker_start) * 1000
-    logger.info(f"⏱️ [TIMING] New worker agent created in {new_worker_time:.2f}ms")
-    # msg_toolkit = AgentCommunicationToolkit(max_message_history=100)
 
-    # === TIMING: Browser agent creation ===
-    browser_start = time_module.time()
-    searcher = browser_agent(options)
-    browser_time = (time_module.time() - browser_start) * 1000
-    logger.info(f"⏱️ [TIMING] Browser agent created in {browser_time:.2f}ms")
+    parallel_time = (time_module.time() - parallel_start) * 1000
+    logger.info(f"⏱️ [TIMING] All agents created in parallel: {parallel_time:.2f}ms")
 
-    # === TIMING: Developer agent creation ===
-    developer_start = time_module.time()
-    developer = await developer_agent(options)
-    developer_time = (time_module.time() - developer_start) * 1000
-    logger.info(f"⏱️ [TIMING] Developer agent created in {developer_time:.2f}ms")
+    # Unpack results
+    (
+        coord_task_agents,  # [coordinator_agent, task_agent]
+        new_worker_agent,
+        searcher,           # browser agent
+        developer,
+        documenter,
+        multi_modaler,
+        mcp,
+    ) = results
 
-    # === TIMING: Document agent creation ===
-    document_start = time_module.time()
-    documenter = await document_agent(options)
-    document_time = (time_module.time() - document_start) * 1000
-    logger.info(f"⏱️ [TIMING] Document agent created in {document_time:.2f}ms")
+    coordinator_agent, task_agent = coord_task_agents
 
-    # === TIMING: Multi-modal agent creation ===
-    multi_modal_start = time_module.time()
-    multi_modaler = multi_modal_agent(options)
-    multi_modal_time = (time_module.time() - multi_modal_start) * 1000
-    logger.info(f"⏱️ [TIMING] Multi-modal agent created in {multi_modal_time:.2f}ms")
-
-    # msg_toolkit.register_agent("Worker", new_worker_agent)
-    # msg_toolkit.register_agent("Browser_Agent", searcher)
-    # msg_toolkit.register_agent("Developer_Agent", developer)
-    # msg_toolkit.register_agent("Document_Agent", documenter)
-    # msg_toolkit.register_agent("Multi_Modal_Agent", multi_modaler)
+    # ========================================================================
+    # Create Workforce instance and add workers (must be sequential)
+    # ========================================================================
 
     # Convert string model_platform to enum for comparison
     try:
         model_platform_enum = ModelPlatformType(options.model_platform.lower())
     except (ValueError, AttributeError):
-        # If conversion fails, default to non-OpenAI behavior
         model_platform_enum = None
 
     # === TIMING: Workforce instance creation ===
@@ -1483,7 +1560,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     workforce = Workforce(
         options.project_id,
         "A workforce",
-        graceful_shutdown_timeout=3,  # 30 seconds for debugging
+        graceful_shutdown_timeout=3,
         share_memory=False,
         coordinator_agent=coordinator_agent,
         task_agent=task_agent,
@@ -1525,29 +1602,10 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     add_workers_time = (time_module.time() - add_workers_start) * 1000
     logger.info(f"⏱️ [TIMING] Workers added to workforce in {add_workers_time:.2f}ms")
 
-    # workforce.add_single_agent_worker(
-    #     "Social Media Agent: A social media management assistant for "
-    #     "handling tasks related to WhatsApp, Twitter, LinkedIn, Reddit, "
-    #     "Notion, Slack, and other social platforms.",
-    #     await social_medium_agent(options),
-    # )
-
-    # === TIMING: MCP agent creation ===
-    mcp_start = time_module.time()
-    mcp = await mcp_agent(options)
-    mcp_time = (time_module.time() - mcp_start) * 1000
-    logger.info(f"⏱️ [TIMING] MCP agent created in {mcp_time:.2f}ms")
-
-    # workforce.add_single_agent_worker(
-    #     "MCP Agent: A Model Context Protocol agent that provides access "
-    #     "to external tools and services through MCP integrations.",
-    #     mcp,
-    # )
-
     # === TIMING: construct_workforce total ===
     total_construct_time = (time_module.time() - construct_start) * 1000
-    logger.info(f"⏱️ [TIMING] construct_workforce TOTAL: {total_construct_time:.2f}ms")
-    logger.info(f"⏱️ [TIMING] construct_workforce breakdown: coord+task={coord_task_agent_time:.2f}ms, new_worker={new_worker_time:.2f}ms, browser={browser_time:.2f}ms, developer={developer_time:.2f}ms, document={document_time:.2f}ms, multi_modal={multi_modal_time:.2f}ms, workforce_init={workforce_instance_time:.2f}ms, add_workers={add_workers_time:.2f}ms, mcp={mcp_time:.2f}ms")
+    logger.info(f"⏱️ [TIMING] construct_workforce TOTAL: {total_construct_time:.2f}ms (parallel agents: {parallel_time:.2f}ms)")
+    logger.info(f"⏱️ [TIMING] construct_workforce summary: parallel_agents={parallel_time:.2f}ms, workforce_init={workforce_instance_time:.2f}ms, add_workers={add_workers_time:.2f}ms")
 
     return workforce, mcp
 

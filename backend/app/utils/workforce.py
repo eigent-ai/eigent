@@ -453,15 +453,23 @@ class Workforce(BaseWorkforce):
         pool_max_size: int = DEFAULT_WORKER_POOL_SIZE,
         enable_workflow_memory: bool = False,
     ) -> BaseWorkforce:
+        import time as time_module
+        add_worker_start = time_module.time()
+
         if self._state == WorkforceState.RUNNING:
             raise RuntimeError("Cannot add workers while workforce is running. Pause the workforce first.")
 
         # Validate worker agent compatibility
+        t0 = time_module.time()
         self._validate_agent_compatibility(worker, "Worker agent")
+        validate_time = (time_module.time() - t0) * 1000
 
         # Ensure the worker agent shares this workforce's pause control
+        t0 = time_module.time()
         self._attach_pause_event_to_agent(worker)
+        attach_time = (time_module.time() - t0) * 1000
 
+        t0 = time_module.time()
         worker_node = SingleAgentWorker(
             description=description,
             worker=worker,
@@ -470,6 +478,7 @@ class Workforce(BaseWorkforce):
             context_utility=None, # Will be set during save/load operations
             enable_workflow_memory=enable_workflow_memory,
         )
+        create_node_time = (time_module.time() - t0) * 1000
         self._children.append(worker_node)
 
         # If we have a channel set up, set it for the new worker
@@ -477,7 +486,9 @@ class Workforce(BaseWorkforce):
             worker_node.set_channel(self._channel)
 
         # If workforce is paused, start the worker's listening task
+        t0 = time_module.time()
         self._start_child_node_when_paused(worker_node.start())
+        start_child_time = (time_module.time() - t0) * 1000
 
         # Use proper CAMEL pattern for metrics logging
         metrics_callbacks = [cb for cb in self._callbacks if isinstance(cb, WorkforceMetrics)]
@@ -488,6 +499,9 @@ class Workforce(BaseWorkforce):
                 role=worker_node.description,
             )
             metrics_callbacks[0].log_worker_created(event)
+
+        total_time = (time_module.time() - add_worker_start) * 1000
+        logger.info(f"⏱️ [TIMING] add_single_agent_worker: {total_time:.2f}ms (validate={validate_time:.2f}ms, attach={attach_time:.2f}ms, create_node={create_node_time:.2f}ms, start_child={start_child_time:.2f}ms) for {description[:30]}...")
         return self
 
     async def _handle_completed_task(self, task: Task) -> None:
