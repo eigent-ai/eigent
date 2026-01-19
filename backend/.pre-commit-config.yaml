@@ -85,4 +85,3 @@ repos:
           - mdformat-gfm
           - mdformat_frontmatter
           - mdformat_footnote
-        exclude: ^test/data/cursor\.md$
