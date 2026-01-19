@@ -1069,7 +1069,7 @@ export default function SettingModels() {
 						<SelectContent className="bg-white-100%">
 							<SelectItem value="ollama">Ollama</SelectItem>
 							<SelectItem value="vllm">vLLM</SelectItem>
-							<SelectItem value="sglang">Sglang</SelectItem>
+							<SelectItem value="sglang">SGLang</SelectItem>
 							<SelectItem value="lmstudio">LMStudio</SelectItem>
 						</SelectContent>
 					</Select>

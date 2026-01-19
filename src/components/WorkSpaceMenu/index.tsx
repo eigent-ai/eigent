@@ -49,9 +49,9 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 		},
 		{
 			tasks: [],
-			agent_id: "search_agent",
-			name: t("layout.search-agent"),
-			type: "search_agent",
+			agent_id: "browser_agent",
+			name: t("layout.browser-agent"),
+			type: "browser_agent",
 			log: [],
 			activeWebviewIds: [],
 		},
@@ -115,9 +115,9 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 					);
 
 					if (activeAgentIndex === -1) {
-						const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
-						if (searchAgentIndex !== -1) {
-							taskAssigning[searchAgentIndex].activeWebviewIds?.push({
+						const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+						if (browserAgentIndex !== -1) {
+							taskAssigning[browserAgentIndex].activeWebviewIds?.push({
 								id,
 								url,
 								img: "",
@@ -148,10 +148,10 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 						...webViewUrls,
 					]);
 				} else {
-					// If no URL match found, also try to add to search_agent
-					const searchAgentIndex = taskAssigning.findIndex((item) => item.type === 'search_agent');
-					if (searchAgentIndex !== -1 && webViewUrls.length > 0) {
-						taskAssigning[searchAgentIndex].activeWebviewIds?.push({
+					// If no URL match found, also try to add to browser_agent
+					const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+					if (browserAgentIndex !== -1 && webViewUrls.length > 0) {
+						taskAssigning[browserAgentIndex].activeWebviewIds?.push({
 							id,
 							url,
 							img: "",
@@ -167,7 +167,7 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 
 			let webviews: { id: string; agent_id: string; index: number }[] = [];
 			taskAssigning.map((item) => {
-				if (item.type === "search_agent") {
+				if (item.type === "browser_agent") {
 					item.activeWebviewIds?.map((webview, index) => {
 						// console.log("@@@@@@", webview);
 						if (webview.id === id) {
@@ -189,16 +189,16 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 								...chatStore.tasks[chatStore.activeTaskId as string]
 									.taskAssigning,
 							];
-							const searchAgentIndex = taskAssigning.findIndex(
+							const browserAgentIndex = taskAssigning.findIndex(
 								(agent) => agent.agent_id === webview.agent_id
 							);
 
 							if (
-								searchAgentIndex !== -1 &&
+								browserAgentIndex !== -1 &&
 								base64 &&
 								base64 !== "data:image/jpeg;base64,"
 							) {
-								taskAssigning[searchAgentIndex].activeWebviewIds![
+								taskAssigning[browserAgentIndex].activeWebviewIds![
 									webview.index
 								].img = base64;
 
@@ -236,8 +236,8 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 			borderColor: "border-bg-fill-coding-active",
 			bgColorLight: "bg-emerald-200",
 		},
-		search_agent: {
-			name: t("layout.search-agent"),
+		browser_agent: {
+			name: t("layout.browser-agent"),
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",
@@ -279,9 +279,9 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 				className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`}
 			/>
 		),
-		search_agent: (
+		browser_agent: (
 			<Globe
-				className={`!h-[10px] !w-[10px] ${agentMap.search_agent.textColor}`}
+				className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`}
 			/>
 		),
 		document_agent: (
@@ -356,7 +356,7 @@ export function WorkSpaceMenu({ onToggleChatBox, isChatBoxVisible = true }: Work
 												disabled={
 													![
 														"developer_agent",
-														"search_agent",
+														"browser_agent",
 														"document_agent",
 													].includes(agent.type as AgentNameType) ||
 													agent.tasks.length === 0

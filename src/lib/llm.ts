@@ -29,6 +29,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    apiKey: '',
+    apiHost: 'https://openrouter.ai/api/v1',
+    description: "OpenRouter model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
     id: 'tongyi-qianwen',
     name: 'Qwen',
     apiKey: '',
@@ -56,7 +65,16 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
-    id: 'bedrock',
+    id: 'Z.ai',
+    name: 'Z.ai',
+    apiKey: '',
+    apiHost: 'https://api.z.ai/api/coding/paas/v4/',
+    description: "Z.ai model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
+    id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
     apiHost: '',

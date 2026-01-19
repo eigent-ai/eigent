@@ -67,14 +67,13 @@ export function update(win: Electron.BrowserWindow) {
  * Should be called once when the app starts
  */
 export function registerUpdateIpcHandlers() {
-  // Checking for updates
+  // Checking for updates - errors are silent since users can't act on them
   ipcMain.handle('check-update', async () => {
-
-
     try {
       return await autoUpdater.checkForUpdatesAndNotify()
     } catch (error) {
-      return { message: 'Network error', error }
+      console.log('[AutoUpdater] Update check failed:', (error as Error).message)
+      return null
     }
   })
 

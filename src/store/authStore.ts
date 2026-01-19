@@ -57,6 +57,12 @@ interface AuthState {
 	checkAgentTool: (tool: string) => void;
 }
 
+// random default model selection
+const getRandomDefaultModel = (): CloudModelType => {
+	const models: CloudModelType[] = ['gpt-5.2', 'gpt-5.1', 'gpt-4.1'];
+	return models[Math.floor(Math.random() * models.length)];
+};
+
 // create store
 const authStore = create<AuthState>()(
 	persist(
@@ -70,7 +76,7 @@ const authStore = create<AuthState>()(
 			language: 'system',
 			isFirstLaunch: true,
 			modelType: 'cloud',
-			cloud_model_type: 'gpt-4.1',
+			cloud_model_type: getRandomDefaultModel(),
 			initState: 'permissions',
 			share_token: null,
 			localProxyValue: null,

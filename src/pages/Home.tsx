@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { ReactFlowProvider } from "@xyflow/react";
 import { AnimatePresence, motion } from "framer-motion";
 import BottomBar from "@/components/BottomBar";
-import SearchAgentWrokSpace from "@/components/SearchAgentWrokSpace";
+import BrowserAgentWorkSpace from "@/components/BrowserAgentWorkSpace";
 import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
 import {
 	ResizableHandle,
@@ -213,7 +213,7 @@ export default function Home() {
 		];
 		let webviews: { id: string; agent_id: string; index: number }[] = [];
 		taskAssigning.map((item) => {
-			if (item.type === "search_agent") {
+			if (item.type === "browser_agent") {
 				item.activeWebviewIds?.map((webview, index) => {
 					webviews.push({ ...webview, agent_id: item.agent_id, index });
 				});
@@ -225,10 +225,10 @@ export default function Home() {
 		}
 
 		if (webviews.length === 0) {
-			const searchAgent = taskAssigning.find(agent => agent.type === 'search_agent');
-			if (searchAgent && searchAgent.activeWebviewIds && searchAgent.activeWebviewIds.length > 0) {
-				searchAgent.activeWebviewIds.forEach((webview, index) => {
-					webviews.push({ ...webview, agent_id: searchAgent.agent_id, index });
+			const browserAgent = taskAssigning.find(agent => agent.type === 'browser_agent');
+			if (browserAgent && browserAgent.activeWebviewIds && browserAgent.activeWebviewIds.length > 0) {
+				browserAgent.activeWebviewIds.forEach((webview, index) => {
+					webviews.push({ ...webview, agent_id: browserAgent.agent_id, index });
 				});
 			}
 		}
@@ -252,15 +252,15 @@ export default function Home() {
 						let taskAssigning = [
 							...currentTask.taskAssigning,
 						];
-						const searchAgentIndex = taskAssigning.findIndex(
+						const browserAgentIndex = taskAssigning.findIndex(
 							(agent) => agent.agent_id === webview.agent_id
 						);
 
 						if (
-							searchAgentIndex !== -1 &&
+							browserAgentIndex !== -1 &&
 							base64 !== "data:image/jpeg;base64,"
 						) {
-							taskAssigning[searchAgentIndex].activeWebviewIds![
+							taskAssigning[browserAgentIndex].activeWebviewIds![
 								webview.index
 							].img = base64;
 							chatStore.setTaskAssigning(
@@ -268,8 +268,8 @@ export default function Home() {
 								taskAssigning
 							);
 							const { processTaskId, url } =
-								taskAssigning[searchAgentIndex].activeWebviewIds![
-								webview.index
+								taskAssigning[browserAgentIndex].activeWebviewIds![
+									webview.index
 								];
 							chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
 								api_task_id: chatStore.activeTaskId,
@@ -374,9 +374,9 @@ export default function Home() {
 						{activeTask.taskAssigning?.find(
 							(agent) =>
 								agent.agent_id === activeWorkSpace
-						)?.type === "search_agent" && (
-								<div className="w-full h-full flex-1 flex">
-									<SearchAgentWrokSpace />
+						)?.type === "browser_agent" && (
+								<div className="w-full h-full flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+									<BrowserAgentWorkSpace />
 								</div>
 							)}
 						{activeWorkSpace === "workflow" && (

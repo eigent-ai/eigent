@@ -34,8 +34,8 @@ router = APIRouter()
 # Create traceroot logger for chat controller
 chat_logger = traceroot.get_logger("chat_controller")
 
-# SSE timeout configuration (10 minutes in seconds)
-SSE_TIMEOUT_SECONDS = 10 * 60
+# SSE timeout configuration (30 minutes in seconds)
+SSE_TIMEOUT_SECONDS = 30 * 60
 
 
 async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TIMEOUT_SECONDS):
@@ -58,8 +58,7 @@ async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TI
                 yield data
             except asyncio.TimeoutError:
                 chat_logger.warning(f"SSE timeout: No data received for {timeout_seconds} seconds, closing connection")
-                # yield sse_json("error", {"message": "Connection timeout: No data received for 10 minutes"})
-                # TODO: Temporary change: suppress error signal to frontend on timeout. Needs proper fix later.
+                yield sse_json("error", {"message": f"Connection timeout: No data received for {timeout_seconds // 60} minutes"})
                 break
             except StopAsyncIteration:
                 break
