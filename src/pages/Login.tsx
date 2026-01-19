@@ -433,6 +433,15 @@ export default function Login() {
                 />
               </div>
             </div>
+            <div className="w-full flex justify-end mb-4">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => navigate('/forgot-password')}
+              >
+                {t('layout.forgot-password')}
+              </Button>
+            </div>
             <Button
               onClick={handleLogin}
               size="md"
