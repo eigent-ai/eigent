@@ -429,11 +429,19 @@ export function createProcessUtilsMock() {
     getVenvsBaseDir: vi.fn(),
     cleanupOldVenvs: vi.fn(),
     isBinaryExists: vi.fn(),
+    getUvEnv: vi.fn(),
     mockState: {} as MockEnvironmentState,
     
     setup: (mockState: MockEnvironmentState) => {
       utilsMock.mockState = mockState
       
+      utilsMock.getUvEnv.mockReturnValue({
+        UV_PYTHON_INSTALL_DIR: `${mockState.system.homedir}/.eigent/cache/uv_python`,
+        UV_TOOL_DIR: `${mockState.system.homedir}/.eigent/cache/uv_tool`,
+        UV_PROJECT_ENVIRONMENT: `${mockState.system.homedir}/.eigent/venvs/backend-mock`,
+        UV_HTTP_TIMEOUT: '300',
+      })
+
       utilsMock.getResourcePath.mockReturnValue(
         `${mockState.app.appPath}/resources`
       )
