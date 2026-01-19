@@ -31,7 +31,9 @@
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.config.ts",
     "test:coverage": "vitest run --coverage",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "dependencies": {
     "@electron/notarize": "^2.5.0",
@@ -131,7 +133,11 @@
     "vite": "^5.4.11",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^2.1.5"
+    "vitest": "^2.1.5",
+    "storybook": "^10.1.11",
+    "@storybook/react-vite": "^10.1.11",
+    "@storybook/addon-a11y": "^10.1.11",
+    "@storybook/addon-docs": "^10.1.11"
   },
   "overrides": {
     "glob": "^10.4.5"
