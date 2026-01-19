@@ -21,6 +21,7 @@ dependencies = [
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
     "debugpy>=1.8.17",
+    "camel-ai>=0.2.82",
 ]
 
 

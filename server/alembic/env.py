@@ -29,6 +29,7 @@ auto_import("app.model.user")
 auto_import("app.model.config")
 auto_import("app.model.chat")
 auto_import("app.model.provider")
+auto_import("app.model.trigger")
 
 
 # target_metadata = mymodel.Base.metadata
