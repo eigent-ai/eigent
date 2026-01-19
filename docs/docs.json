@@ -66,7 +66,8 @@
                 "expanded": true,
                 "pages": [
                   "/core/models/gemini",
-                  "/core/models/local-model"
+                  "/core/models/local-model",
+                  "/core/models/byok"
                 ]
               },
               "/core/tools",
