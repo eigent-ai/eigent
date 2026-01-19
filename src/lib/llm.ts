@@ -29,6 +29,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    apiKey: '',
+    apiHost: 'https://openrouter.ai/api/v1',
+    description: "OpenRouter model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
     id: 'tongyi-qianwen',
     name: 'Qwen',
     apiKey: '',
@@ -59,7 +68,7 @@ export const INIT_PROVODERS: Provider[] = [
     id: 'Z.ai',
     name: 'Z.ai',
     apiKey: '',
-    apiHost: 'https://open.bigmodel.cn/api/paas/v4/',
+    apiHost: 'https://api.z.ai/api/coding/paas/v4/',
     description: "Z.ai model configuration.",
     is_valid: false,
     model_type: ""
