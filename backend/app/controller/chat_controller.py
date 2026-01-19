@@ -74,10 +74,23 @@ async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TI
 @router.post("/chat", name="start chat")
 @traceroot.trace()
 async def post(data: Chat, request: Request):
+    # === TIMING: Request received ===
+    request_start_time = time.time()
     chat_logger.info(
-        "Starting new chat session", extra={"project_id": data.project_id, "task_id": data.task_id, "user": data.email}
+        "⏱️ [TIMING] Request received",
+        extra={"project_id": data.project_id, "task_id": data.task_id, "user": data.email, "timestamp": request_start_time}
     )
+
+    task_lock_start = time.time()
     task_lock = get_or_create_task_lock(data.project_id)
+    task_lock_time = (time.time() - task_lock_start) * 1000
+    chat_logger.info(f"⏱️ [TIMING] task_lock created in {task_lock_time:.2f}ms")
+
+    # Store request start time in task_lock for downstream timing
+    task_lock.request_start_time = request_start_time
+
+    # === TIMING: Environment setup ===
+    env_setup_start = time.time()
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -95,6 +108,9 @@ async def post(data: Chat, request: Request):
             if value:  # Only set non-empty values
                 os.environ[key] = value
                 chat_logger.info(f"Set search config: {key}", extra={"project_id": data.project_id})
+
+    env_setup_time = (time.time() - env_setup_start) * 1000
+    chat_logger.info(f"⏱️ [TIMING] Environment setup completed in {env_setup_time:.2f}ms")
 
     email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]).strip(".")
     camel_log = (
@@ -115,11 +131,16 @@ async def post(data: Chat, request: Request):
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
+    # === TIMING: Queue operation ===
+    queue_start = time.time()
     # Put initial action in queue to start processing
     await task_lock.put_queue(ActionImproveData(data=data.question, new_task_id=data.task_id))
+    queue_time = (time.time() - queue_start) * 1000
+    chat_logger.info(f"⏱️ [TIMING] Question queued in {queue_time:.2f}ms")
 
+    total_controller_time = (time.time() - request_start_time) * 1000
     chat_logger.info(
-        "Chat session initialized, starting streaming response",
+        f"⏱️ [TIMING] Controller total time: {total_controller_time:.2f}ms (task_lock: {task_lock_time:.2f}ms, env: {env_setup_time:.2f}ms, queue: {queue_time:.2f}ms)",
         extra={"project_id": data.project_id, "task_id": data.task_id, "log_dir": str(camel_log)},
     )
     return StreamingResponse(

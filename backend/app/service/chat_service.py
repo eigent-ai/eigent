@@ -237,12 +237,13 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 @sync_step
 @traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
-    # if True:
-    #     import faulthandler
+    import time as time_module
 
-    #     faulthandler.enable()
-    #     for second in [5, 10, 20, 30, 60, 120, 240]:
-    #         faulthandler.dump_traceback_later(second)
+    # === TIMING: step_solve started ===
+    step_solve_start = time_module.time()
+    request_start_time = getattr(task_lock, 'request_start_time', step_solve_start)
+    time_since_request = (step_solve_start - request_start_time) * 1000
+    logger.info(f"⏱️ [TIMING] step_solve started, {time_since_request:.2f}ms since request received")
 
     start_event_loop = True
 
@@ -303,7 +304,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             logger.info(f"[LIFECYCLE] Breaking out of step_solve loop due to client disconnect")
             break
         try:
+            # === TIMING: Waiting for queue item ===
+            queue_wait_start = time_module.time()
             item = await task_lock.get_queue()
+            queue_wait_time = (time_module.time() - queue_wait_start) * 1000
+            logger.info(f"⏱️ [TIMING] Got item from queue in {queue_wait_time:.2f}ms, action={item.action}")
         except Exception as e:
             logger.error("Error getting item from queue", extra={"project_id": options.project_id, "task_id": options.task_id, "error": str(e)}, exc_info=True)
             # Continue waiting instead of breaking on queue error
@@ -339,15 +344,25 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     })
                     continue
 
+                # === TIMING: Complexity determination ===
+                complexity_start = time_module.time()
+                time_since_request_to_complexity = (complexity_start - request_start_time) * 1000
+                logger.info(f"⏱️ [TIMING] Starting complexity check, {time_since_request_to_complexity:.2f}ms since request")
+
                 # Simplified logic: attachments mean workforce, otherwise let agent decide
                 is_complex_task: bool
                 if len(options.attaches) > 0:
                     # Questions with attachments always need workforce
                     is_complex_task = True
                     logger.info(f"[NEW-QUESTION] Has attachments, treating as complex task")
+                    complexity_time = (time_module.time() - complexity_start) * 1000
+                    logger.info(f"⏱️ [TIMING] Complexity check (has attachments) completed in {complexity_time:.2f}ms")
                 else:
                     logger.info(f"[NEW-QUESTION] Calling question_confirm to determine complexity")
+                    question_confirm_start = time_module.time()
                     is_complex_task = await question_confirm(question_agent, question, task_lock)
+                    question_confirm_time = (time_module.time() - question_confirm_start) * 1000
+                    logger.info(f"⏱️ [TIMING] question_confirm completed in {question_confirm_time:.2f}ms, is_complex={is_complex_task}")
                     logger.info(f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}")
 
                 if not is_complex_task:
@@ -386,6 +401,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         except Exception as e:
                             logger.error(f"Error cleaning up folder: {e}")
                 else:
+                    # === TIMING: Complex task processing ===
+                    complex_task_start = time_module.time()
+                    time_since_request_to_complex = (complex_task_start - request_start_time) * 1000
+                    logger.info(f"⏱️ [TIMING] Complex task processing started, {time_since_request_to_complex:.2f}ms since request")
+
                     logger.info(f"[NEW-QUESTION] 🔧 Complex task, creating workforce and decomposing")
                     # Update the sync_step with new task_id
                     if hasattr(item, 'new_task_id') and item.new_task_id:
@@ -397,8 +417,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"[NEW-QUESTION] Sending 'confirmed' SSE to frontend")
                     yield sse_json("confirmed", {"question": question})
 
+                    # === TIMING: Context building ===
+                    context_build_start = time_module.time()
                     logger.info(f"[NEW-QUESTION] Building context for coordinator")
                     context_for_coordinator = build_context_for_workforce(task_lock, options)
+                    context_build_time = (time_module.time() - context_build_start) * 1000
+                    logger.info(f"⏱️ [TIMING] Context building completed in {context_build_time:.2f}ms")
 
                     # Check if workforce exists - if so, reuse it (agents are preserved)
                     # Otherwise create new workforce
@@ -407,14 +431,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(f"[NEW-QUESTION] ✅ Reusing existing workforce with preserved agents")
                         # Workforce is already stopped from skip_task, ready for new decomposition
                     else:
+                        # === TIMING: Workforce construction ===
+                        workforce_construct_start = time_module.time()
                         logger.info(f"[NEW-QUESTION] 🏭 Creating NEW workforce instance (workforce=None)")
                         (workforce, mcp) = await construct_workforce(options)
+                        workforce_construct_time = (time_module.time() - workforce_construct_start) * 1000
+                        logger.info(f"⏱️ [TIMING] Workforce construction completed in {workforce_construct_time:.2f}ms")
                         logger.info(f"[NEW-QUESTION] ✅ NEW Workforce instance created, id={id(workforce)}")
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent), await new_agent_model(new_agent, options)
                             )
                     task_lock.status = Status.confirmed
+
+                    # === TIMING: Task creation ===
+                    task_create_start = time_module.time()
 
                     # If camel_task already exists (from previous paused task), add new question as subtask
                     # Otherwise, create a new camel_task
@@ -433,6 +464,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         camel_task = Task(content=clean_task_content, id=options.task_id)
                         if len(options.attaches) > 0:
                             camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
+
+                    task_create_time = (time_module.time() - task_create_start) * 1000
+                    logger.info(f"⏱️ [TIMING] Task object created in {task_create_time:.2f}ms")
+
+                    # === TIMING: Task decomposition start ===
+                    decomposition_start = time_module.time()
+                    time_since_request_to_decompose = (decomposition_start - request_start_time) * 1000
+                    logger.info(f"⏱️ [TIMING] Starting task decomposition, {time_since_request_to_decompose:.2f}ms since request")
+                    # Store decomposition start time in task_lock for downstream tracking
+                    task_lock.decomposition_start_time = decomposition_start
 
                     # Stream decomposition in background so queue items (decompose_text) are processed immediately
                     logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
@@ -479,6 +520,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     async def run_decomposition():
                         nonlocal camel_task, summary_task_content
                         try:
+                            # === TIMING: LLM decomposition call ===
+                            llm_decompose_start = time_module.time()
+                            decomposition_start_time = getattr(task_lock, 'decomposition_start_time', llm_decompose_start)
+
                             sub_tasks = await asyncio.to_thread(
                                 workforce.eigent_make_sub_tasks,
                                 camel_task,
@@ -486,6 +531,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 on_stream_batch,
                                 on_stream_text,
                             )
+
+                            llm_decompose_time = (time_module.time() - llm_decompose_start) * 1000
+                            total_decompose_time = (time_module.time() - decomposition_start_time) * 1000
+                            logger.info(f"⏱️ [TIMING] LLM decomposition completed in {llm_decompose_time:.2f}ms (total decompose phase: {total_decompose_time:.2f}ms)")
+
                             if stream_state["subtasks"]:
                                 sub_tasks = stream_state["subtasks"]
                             state_holder["sub_tasks"] = sub_tasks
@@ -495,13 +545,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             except Exception:
                                 pass
 
+                            # === TIMING: Summary generation ===
+                            summary_start = time_module.time()
                             logger.info(f"[NEW-QUESTION] Generating task summary")
                             summary_task_agent = task_summary_agent(options)
                             try:
                                 summary_task_content = await asyncio.wait_for(
                                     summary_task(summary_task_agent, camel_task), timeout=10
                                 )
+                                summary_time = (time_module.time() - summary_start) * 1000
                                 task_lock.summary_generated = True
+                                logger.info(f"⏱️ [TIMING] Summary generation completed in {summary_time:.2f}ms")
                                 logger.info("[NEW-QUESTION] ✅ Summary generated successfully", extra={"project_id": options.project_id})
                             except asyncio.TimeoutError:
                                 logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
@@ -542,6 +596,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             }
                             await task_lock.put_queue(ActionDecomposeProgressData(data=payload))
                             logger.info(f"[NEW-QUESTION] ✅ to_sub_tasks SSE sent")
+
+                            # === TIMING: Total time from request to decomposition complete ===
+                            request_start = getattr(task_lock, 'request_start_time', decomposition_start_time)
+                            total_request_to_decompose = (time_module.time() - request_start) * 1000
+                            logger.info(f"⏱️ [TIMING] ===== TOTAL: Request → Decomposition Complete: {total_request_to_decompose:.2f}ms =====")
                         except Exception as e:
                             logger.error(f"Error in background decomposition: {e}", exc_info=True)
 
@@ -1300,9 +1359,16 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
 
 @traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
-    logger.info("Constructing workforce", extra={"project_id": options.project_id, "task_id": options.task_id})
+    import time as time_module
+    # === TIMING: construct_workforce start ===
+    construct_start = time_module.time()
+    logger.info("⏱️ [TIMING] construct_workforce started", extra={"project_id": options.project_id, "task_id": options.task_id})
+
     working_directory = get_working_directory(options)
     logger.debug("Working directory set", extra={"working_directory": working_directory})
+
+    # === TIMING: Coordinator and Task agent creation ===
+    coord_task_agent_start = time_module.time()
     [coordinator_agent, task_agent] = [
         agent_model(
             key,
@@ -1323,9 +1389,9 @@ You are a helpful coordinator.
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
 
-- If a task assigned to another agent fails, you should re-assign it to the 
-`Developer_Agent`. The `Developer_Agent` is a powerful agent with terminal 
-access and can resolve a wide range of issues. 
+- If a task assigned to another agent fails, you should re-assign it to the
+`Developer_Agent`. The `Developer_Agent` is a powerful agent with terminal
+access and can resolve a wide range of issues.
             """,
             Agents.task_agent: f"""
 You are a helpful task planner.
@@ -1335,6 +1401,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         """,
         }.items()
     ]
+    coord_task_agent_time = (time_module.time() - coord_task_agent_start) * 1000
+    logger.info(f"⏱️ [TIMING] Coordinator + Task agent created in {coord_task_agent_time:.2f}ms")
+
+    # === TIMING: New worker agent creation ===
+    new_worker_start = time_module.time()
     new_worker_agent = agent_model(
         Agents.new_worker_agent,
         f"""
@@ -1353,12 +1424,33 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
             ).get_tools(),
         ],
     )
+    new_worker_time = (time_module.time() - new_worker_start) * 1000
+    logger.info(f"⏱️ [TIMING] New worker agent created in {new_worker_time:.2f}ms")
     # msg_toolkit = AgentCommunicationToolkit(max_message_history=100)
 
+    # === TIMING: Browser agent creation ===
+    browser_start = time_module.time()
     searcher = browser_agent(options)
+    browser_time = (time_module.time() - browser_start) * 1000
+    logger.info(f"⏱️ [TIMING] Browser agent created in {browser_time:.2f}ms")
+
+    # === TIMING: Developer agent creation ===
+    developer_start = time_module.time()
     developer = await developer_agent(options)
+    developer_time = (time_module.time() - developer_start) * 1000
+    logger.info(f"⏱️ [TIMING] Developer agent created in {developer_time:.2f}ms")
+
+    # === TIMING: Document agent creation ===
+    document_start = time_module.time()
     documenter = await document_agent(options)
+    document_time = (time_module.time() - document_start) * 1000
+    logger.info(f"⏱️ [TIMING] Document agent created in {document_time:.2f}ms")
+
+    # === TIMING: Multi-modal agent creation ===
+    multi_modal_start = time_module.time()
     multi_modaler = multi_modal_agent(options)
+    multi_modal_time = (time_module.time() - multi_modal_start) * 1000
+    logger.info(f"⏱️ [TIMING] Multi-modal agent created in {multi_modal_time:.2f}ms")
 
     # msg_toolkit.register_agent("Worker", new_worker_agent)
     # msg_toolkit.register_agent("Browser_Agent", searcher)
@@ -1373,6 +1465,8 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         # If conversion fails, default to non-OpenAI behavior
         model_platform_enum = None
 
+    # === TIMING: Workforce instance creation ===
+    workforce_instance_start = time_module.time()
     workforce = Workforce(
         options.project_id,
         "A workforce",
@@ -1383,6 +1477,11 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         new_worker_agent=new_worker_agent,
         use_structured_output_handler=False if model_platform_enum == ModelPlatformType.OPENAI else True,
     )
+    workforce_instance_time = (time_module.time() - workforce_instance_start) * 1000
+    logger.info(f"⏱️ [TIMING] Workforce instance created in {workforce_instance_time:.2f}ms")
+
+    # === TIMING: Adding workers to workforce ===
+    add_workers_start = time_module.time()
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
@@ -1410,18 +1509,33 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         "generate new images from text prompts.",
         multi_modaler,
     )
+    add_workers_time = (time_module.time() - add_workers_start) * 1000
+    logger.info(f"⏱️ [TIMING] Workers added to workforce in {add_workers_time:.2f}ms")
+
     # workforce.add_single_agent_worker(
     #     "Social Media Agent: A social media management assistant for "
     #     "handling tasks related to WhatsApp, Twitter, LinkedIn, Reddit, "
     #     "Notion, Slack, and other social platforms.",
     #     await social_medium_agent(options),
     # )
+
+    # === TIMING: MCP agent creation ===
+    mcp_start = time_module.time()
     mcp = await mcp_agent(options)
+    mcp_time = (time_module.time() - mcp_start) * 1000
+    logger.info(f"⏱️ [TIMING] MCP agent created in {mcp_time:.2f}ms")
+
     # workforce.add_single_agent_worker(
     #     "MCP Agent: A Model Context Protocol agent that provides access "
     #     "to external tools and services through MCP integrations.",
     #     mcp,
     # )
+
+    # === TIMING: construct_workforce total ===
+    total_construct_time = (time_module.time() - construct_start) * 1000
+    logger.info(f"⏱️ [TIMING] construct_workforce TOTAL: {total_construct_time:.2f}ms")
+    logger.info(f"⏱️ [TIMING] construct_workforce breakdown: coord+task={coord_task_agent_time:.2f}ms, new_worker={new_worker_time:.2f}ms, browser={browser_time:.2f}ms, developer={developer_time:.2f}ms, document={document_time:.2f}ms, multi_modal={multi_modal_time:.2f}ms, workforce_init={workforce_instance_time:.2f}ms, add_workers={add_workers_time:.2f}ms, mcp={mcp_time:.2f}ms")
+
     return workforce, mcp
 
 

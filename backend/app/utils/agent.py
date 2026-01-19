@@ -803,7 +803,7 @@ async def developer_agent(options: Chat):
         options.project_id,
         Agents.document_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
@@ -1008,7 +1008,7 @@ def browser_agent(options: Chat):
         options.project_id,
         Agents.browser_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_functions(
         [terminal_toolkit.shell_exec]
@@ -1196,7 +1196,7 @@ async def document_agent(options: Chat):
         options.project_id,
         Agents.document_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
     tools = [
@@ -1415,7 +1415,7 @@ def multi_modal_agent(options: Chat):
         options.project_id,
         agent_name=Agents.multi_modal_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
     note_toolkit = NoteTakingToolkit(
@@ -1607,7 +1607,7 @@ async def social_medium_agent(options: Chat):
         *TerminalToolkit(
             options.project_id,
             agent_name=Agents.social_medium_agent,
-            clone_current_env=False,
+            clone_current_env=True,
         ).get_tools(),
         *NoteTakingToolkit(
             options.project_id,

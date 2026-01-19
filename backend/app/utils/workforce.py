@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Generator, List, Optional
 from camel.agents import ChatAgent
 from camel.societies.workforce.workforce import (
@@ -87,17 +88,23 @@ class Workforce(BaseWorkforce):
             on_stream_batch: Optional callback for streaming batches signature (List[Task], bool)
             on_stream_text: Optional callback for raw streaming text chunks
         """
+        # === TIMING: eigent_make_sub_tasks start ===
+        decompose_start = time.time()
+
         logger.info("=" * 80)
         logger.info("🧩 [DECOMPOSE] eigent_make_sub_tasks CALLED", extra={
             "api_task_id": self.api_task_id,
             "workforce_id": id(self),
             "task_id": task.id
         })
+        logger.info(f"⏱️ [TIMING] eigent_make_sub_tasks started")
         logger.info(f"[DECOMPOSE] Task content preview: '{task.content[:200]}...'")
         logger.info(f"[DECOMPOSE] Has coordinator context: {bool(coordinator_context)}")
         logger.info(f"[DECOMPOSE] Current workforce state: {self._state.name}, _running: {self._running}")
         logger.info("=" * 80)
 
+        # === TIMING: Validation ===
+        validation_start = time.time()
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
             task.result = "Task failed: Invalid or empty content provided"
@@ -106,31 +113,43 @@ class Workforce(BaseWorkforce):
                 "content_preview": task.content[:50] + "..." if len(task.content) > 50 else task.content
             })
             raise UserException(code.error, task.result)
+        validation_time = (time.time() - validation_start) * 1000
+        logger.info(f"⏱️ [TIMING] Task validation completed in {validation_time:.2f}ms")
 
+        # === TIMING: Workforce reset ===
+        reset_start = time.time()
         logger.info(f"[DECOMPOSE] Resetting workforce state")
         self.reset()
         self._task = task
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        logger.info(f"[DECOMPOSE] Workforce reset complete, state: {self._state.name}")
+        reset_time = (time.time() - reset_start) * 1000
+        logger.info(f"⏱️ [TIMING] Workforce reset completed in {reset_time:.2f}ms, state: {self._state.name}")
 
+        # === TIMING: handle_decompose_append_task ===
+        handle_decompose_start = time.time()
         logger.info(f"[DECOMPOSE] Calling handle_decompose_append_task")
         subtasks = asyncio.run(
             self.handle_decompose_append_task(
-                task, 
-                reset=False, 
+                task,
+                reset=False,
                 coordinator_context=coordinator_context,
-                on_stream_batch=on_stream_batch, 
+                on_stream_batch=on_stream_batch,
                 on_stream_text=on_stream_text
             )
         )
+        handle_decompose_time = (time.time() - handle_decompose_start) * 1000
+        logger.info(f"⏱️ [TIMING] handle_decompose_append_task completed in {handle_decompose_time:.2f}ms")
+
+        total_decompose_time = (time.time() - decompose_start) * 1000
         logger.info("=" * 80)
         logger.info(f"✅ [DECOMPOSE] Task decomposition COMPLETED", extra={
             "api_task_id": self.api_task_id,
             "task_id": task.id,
             "subtasks_count": len(subtasks)
         })
+        logger.info(f"⏱️ [TIMING] eigent_make_sub_tasks TOTAL: {total_decompose_time:.2f}ms (validation: {validation_time:.2f}ms, reset: {reset_time:.2f}ms, decompose: {handle_decompose_time:.2f}ms)")
         logger.info("=" * 80)
         return subtasks
 
@@ -165,7 +184,12 @@ class Workforce(BaseWorkforce):
 
     def _decompose_task(self, task: Task, stream_callback=None):
         """Decompose task with optional streaming text callback."""
+        # === TIMING: _decompose_task start ===
+        decompose_task_start = time.time()
+        logger.info(f"⏱️ [TIMING] _decompose_task started")
 
+        # === TIMING: Prompt building ===
+        prompt_build_start = time.time()
         decompose_prompt = str(
             TASK_DECOMPOSE_PROMPT.format(
                 content=task.content,
@@ -173,10 +197,23 @@ class Workforce(BaseWorkforce):
                 additional_info=task.additional_info,
             )
         )
+        prompt_build_time = (time.time() - prompt_build_start) * 1000
+        logger.info(f"⏱️ [TIMING] Decompose prompt built in {prompt_build_time:.2f}ms (length: {len(decompose_prompt)} chars)")
+
+        # === TIMING: Agent reset ===
+        agent_reset_start = time.time()
         self.task_agent.reset()
+        agent_reset_time = (time.time() - agent_reset_start) * 1000
+        logger.info(f"⏱️ [TIMING] Task agent reset in {agent_reset_time:.2f}ms")
+
+        # === TIMING: LLM call (task.decompose) ===
+        llm_call_start = time.time()
+        logger.info(f"⏱️ [TIMING] Starting LLM decompose call...")
         result = task.decompose(
             self.task_agent, decompose_prompt, stream_callback=stream_callback
         )
+        llm_call_time = (time.time() - llm_call_start) * 1000
+        logger.info(f"⏱️ [TIMING] LLM decompose call returned in {llm_call_time:.2f}ms (streaming={isinstance(result, Generator)})")
 
         if isinstance(result, Generator):
             def streaming_with_dependencies():
@@ -217,6 +254,9 @@ class Workforce(BaseWorkforce):
         Returns:
             List[Task]: The decomposed subtasks or the original task
         """
+        # === TIMING: handle_decompose_append_task start ===
+        handle_start = time.time()
+        logger.info(f"⏱️ [TIMING] handle_decompose_append_task started")
         logger.info(f"[DECOMPOSE] handle_decompose_append_task CALLED, task_id={task.id}, reset={reset}")
 
         if not validate_task_content(task.content, task.id):
@@ -292,6 +332,10 @@ class Workforce(BaseWorkforce):
                 on_stream_batch(subtasks, True)
             except Exception as e:
                 logger.warning(f"Final streaming callback failed: {e}")
+
+        # === TIMING: handle_decompose_append_task complete ===
+        handle_total_time = (time.time() - handle_start) * 1000
+        logger.info(f"⏱️ [TIMING] handle_decompose_append_task completed in {handle_total_time:.2f}ms, returned {len(subtasks)} subtasks")
 
         return subtasks
 
