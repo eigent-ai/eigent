@@ -10,17 +10,17 @@ vi.mock('react-i18next', () => ({
       const translations: Record<string, string> = {
         'chat.welcome-to-eigent': 'Welcome to Eigent',
         'chat.how-can-i-help-you': 'How can I help you today?',
-        'chat.palm-springs-tennis-trip-planner': 'Palm Springs Tennis Trip Planner',
+        'chat.it-ticket-creation': 'IT Ticket Creation',
         'chat.bank-transfer-csv-analysis-and-visualization': 'Bank Transfer CSV Analysis and Visualization',
-        'chat.find-duplicate-files-in-downloads-folder': 'Find Duplicate Files in Downloads Folder',
+        'chat.help-organize-my-desktop': 'Please Help Organize My Desktop',
         'setting.search-mcp': 'Search MCPs',
         'chat.by-messaging-eigent': 'By messaging Eigent, you agree to our',
         'chat.terms-of-use': 'Terms of Use',
         'chat.and': 'and',
         'chat.privacy-policy': 'Privacy Policy',
-        'chat.palm-springs-tennis-trip-planner-message': 'Plan a tennis trip to Palm Springs',
+        'chat.it-ticket-creation-message': 'Plan a tennis trip to Palm Springs',
         'chat.bank-transfer-csv-analysis-and-visualization-message': 'Analyze and visualize bank transfer CSV',
-        'chat.find-duplicate-files-in-downloads-folder-message': 'Find duplicate files in Downloads folder',
+        'chat.help-organize-my-desktop-message': 'Please Help Organize My Desktop',
         'chat.no-reply-received-task-continue': 'No reply received, task will continue',
       }
       return translations[key] || key

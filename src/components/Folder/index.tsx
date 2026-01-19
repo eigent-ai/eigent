@@ -1,644 +1,943 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from 'react';
 import {
-	ChevronsLeft,
-	Search,
-	FileText,
-	CodeXml,
-	ChevronLeft,
-	Download,
-	Folder as FolderIcon,
-	ChevronRight,
-	ChevronDown,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import FolderComponent from "./FolderComponent";
+  ChevronsLeft,
+  Search,
+  FileText,
+  CodeXml,
+  ChevronLeft,
+  Download,
+  Folder as FolderIcon,
+  ChevronRight,
+  ChevronDown,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import FolderComponent from './FolderComponent';
 
-import { MarkDown } from "@/components/ChatBox/MessageItem/MarkDown";
-import { useAuthStore } from "@/store/authStore";
-import { proxyFetchGet } from "@/api/http";
-import { useTranslation } from "react-i18next";
-import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { useAuthStore } from '@/store/authStore';
+import { proxyFetchGet } from '@/api/http';
+import { useTranslation } from 'react-i18next';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import DOMPurify from 'dompurify';
 
 // Type definitions
 interface FileTreeNode {
-	name: string;
-	path: string;
-	type?: string;
-	isFolder?: boolean;
-	icon?: React.ElementType;
-	children?: FileTreeNode[];
-	isRemote?: boolean;
+  name: string;
+  path: string;
+  type?: string;
+  isFolder?: boolean;
+  icon?: React.ElementType;
+  children?: FileTreeNode[];
+  isRemote?: boolean;
 }
 
 interface FileInfo {
-	name: string;
-	path: string;
-	type: string;
-	isFolder?: boolean;
-	icon?: React.ElementType;
-	content?: string;
-	relativePath?: string;
-	isRemote?: boolean;
+  name: string;
+  path: string;
+  type: string;
+  isFolder?: boolean;
+  icon?: React.ElementType;
+  content?: string;
+  relativePath?: string;
+  isRemote?: boolean;
 }
 
 // FileTree component to render nested file structure
 interface FileTreeProps {
-	node: FileTreeNode;
-	level?: number;
-	selectedFile: FileInfo | null;
-	expandedFolders: Set<string>;
-	onToggleFolder: (path: string) => void;
-	onSelectFile: (file: FileInfo) => void;
-	isShowSourceCode: boolean;
+  node: FileTreeNode;
+  level?: number;
+  selectedFile: FileInfo | null;
+  expandedFolders: Set<string>;
+  onToggleFolder: (path: string) => void;
+  onSelectFile: (file: FileInfo) => void;
+  isShowSourceCode: boolean;
 }
 
 const FileTree: React.FC<FileTreeProps> = ({
-	node,
-	level = 0,
-	selectedFile,
-	expandedFolders,
-	onToggleFolder,
-	onSelectFile,
-	isShowSourceCode,
+  node,
+  level = 0,
+  selectedFile,
+  expandedFolders,
+  onToggleFolder,
+  onSelectFile,
+  isShowSourceCode,
 }) => {
-	if (!node.children || node.children.length === 0) return null;
+  if (!node.children || node.children.length === 0) return null;
 
-	return (
-		<div className={level > 0 ? "ml-4" : ""}>
-			{node.children.map((child) => {
-				const isExpanded = expandedFolders.has(child.path);
-				const fileInfo: FileInfo = {
-					name: child.name,
-					path: child.path,
-					type: child.type || "",
-					isFolder: child.isFolder,
-					icon: child.icon,
-					isRemote: child.isRemote,
-				};
+  return (
+    <div className={level > 0 ? 'ml-4' : ''}>
+      {node.children.map((child) => {
+        const isExpanded = expandedFolders.has(child.path);
+        const fileInfo: FileInfo = {
+          name: child.name,
+          path: child.path,
+          type: child.type || '',
+          isFolder: child.isFolder,
+          icon: child.icon,
+          isRemote: child.isRemote,
+        };
 
-				return (
-					<div key={child.path}>
-						<button
-							onClick={() => {
-								if (child.isFolder) {
-									onToggleFolder(child.path);
-								} else {
-									onSelectFile(fileInfo);
-								}
-							}}
-							className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
-								selectedFile?.path === child.path
-									? "bg-fill-fill-transparent-active"
-									: ""
-							}`}
-						>
-							{child.isFolder && (
-								<span className="w-4 h-4 flex items-center justify-center">
-									{isExpanded ? (
-										<ChevronDown className="w-4 h-4" />
-									) : (
-										<ChevronRight className="w-4 h-4" />
-									)}
-								</span>
-							)}
-							{!child.isFolder && <span className="w-4" />}
+        return (
+          <div key={child.path}>
+            <button
+              onClick={() => {
+                if (child.isFolder) {
+                  onToggleFolder(child.path);
+                } else {
+                  onSelectFile(fileInfo);
+                }
+              }}
+              className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
+                selectedFile?.path === child.path
+                  ? 'bg-fill-fill-transparent-active'
+                  : ''
+              }`}
+            >
+              {child.isFolder && (
+                <span className="w-4 h-4 flex items-center justify-center">
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </span>
+              )}
+              {!child.isFolder && <span className="w-4" />}
 
-							{child.isFolder ? (
-								<FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
-							) : child.icon ? (
-								<child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
-							) : (
-								<FileText className="w-5 h-5 mr-2 flex-shrink-0" />
-							)}
+              {child.isFolder ? (
+                <FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
+              ) : child.icon ? (
+                <child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
+              ) : (
+                <FileText className="w-5 h-5 mr-2 flex-shrink-0" />
+              )}
 
-							<span
-								className={`truncate text-[13px] leading-5 ${
-									child.isFolder ? "font-semibold" : "font-medium"
-								}`}
-							>
-								{child.name}
-							</span>
-						</button>
+              <span
+                className={`truncate text-[13px] leading-5 ${
+                  child.isFolder ? 'font-semibold' : 'font-medium'
+                }`}
+              >
+                {child.name}
+              </span>
+            </button>
 
-						{child.isFolder && isExpanded && child.children && (
-							<FileTree
-								node={child}
-								level={level + 1}
-								selectedFile={selectedFile}
-								expandedFolders={expandedFolders}
-								onToggleFolder={onToggleFolder}
-								onSelectFile={onSelectFile}
-								isShowSourceCode={isShowSourceCode}
-							/>
-						)}
-					</div>
-				);
-			})}
-		</div>
-	);
+            {child.isFolder && isExpanded && child.children && (
+              <FileTree
+                node={child}
+                level={level + 1}
+                selectedFile={selectedFile}
+                expandedFolders={expandedFolders}
+                onToggleFolder={onToggleFolder}
+                onSelectFile={onSelectFile}
+                isShowSourceCode={isShowSourceCode}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 function downloadByBrowser(url: string) {
-	window.ipcRenderer
-		.invoke("download-file", url)
-		.then((result) => {
-			if (result.success) {
-				console.log("download-file success:", result.path);
-			} else {
-				console.error("download-file error:", result.error);
-			}
-		})
-		.catch((error) => {
-			console.error("download-file error:", error);
-		});
+  window.ipcRenderer
+    .invoke('download-file', url)
+    .then((result) => {
+      if (result.success) {
+        console.log('download-file success:', result.path);
+      } else {
+        console.error('download-file error:', result.error);
+      }
+    })
+    .catch((error) => {
+      console.error('download-file error:', error);
+    });
 }
 
 export default function Folder({ data }: { data?: Agent }) {
-	//Get Chatstore for the active project's task
-	const { chatStore, projectStore } = useChatStoreAdapter();
-	if (!chatStore) {
-		return <div>Loading...</div>;
-	}
-	
-	const authStore = useAuthStore();
-	const { t } = useTranslation();
-	const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
-	const [loading, setLoading] = useState(false);
+  //Get Chatstore for the active project's task
+  const { chatStore, projectStore } = useChatStoreAdapter();
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
-	const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
-		if (file.type === "zip") {
-			// if file is remote, don't call reveal-in-folder
-			if (file.isRemote) {
-				downloadByBrowser(file.path);
-				return;
-			}
-			window.ipcRenderer.invoke("reveal-in-folder", file.path);
-			return;
-		}
-		// Don't open folders in preview - they are handled by expand/collapse
-		if (file.isFolder) {
-			return;
-		}
-		setSelectedFile(file);
-		setLoading(true);
-		console.log("file", JSON.parse(JSON.stringify(file)));
+  const authStore = useAuthStore();
+  const { t } = useTranslation();
+  const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
+  const [loading, setLoading] = useState(false);
 
-		// For PDF files, use data URL instead of custom protocol
-		if (file.type === "pdf") {
-			window.ipcRenderer
-				.invoke("read-file-dataurl", file.path)
-				.then((dataUrl: string) => {
-					setSelectedFile({ ...file, content: dataUrl });
-					chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
-					setLoading(false);
-				})
-				.catch((error) => {
-					console.error("read-file-dataurl error:", error);
-					setLoading(false);
-				});
-			return;
-		}
+  const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
+    if (file.type === 'zip') {
+      // if file is remote, don't call reveal-in-folder
+      if (file.isRemote) {
+        downloadByBrowser(file.path);
+        return;
+      }
+      window.ipcRenderer.invoke('reveal-in-folder', file.path);
+      return;
+    }
+    // Don't open folders in preview - they are handled by expand/collapse
+    if (file.isFolder) {
+      return;
+    }
+    setSelectedFile(file);
+    setLoading(true);
+    console.log('file', JSON.parse(JSON.stringify(file)));
 
-		// all other files call open-file interface, the backend handles download and parsing
-		window.ipcRenderer
-			.invoke("open-file", file.type, file.path, isShowSourceCode)
-			.then((res) => {
-				setSelectedFile({ ...file, content: res });
-				chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
-				setLoading(false);
-			})
-			.catch((error) => {
-				console.error("open-file error:", error);
-				setLoading(false);
-			});
-	};
+    // For PDF files, use data URL instead of custom protocol
+    if (file.type === 'pdf') {
+      window.ipcRenderer
+        .invoke('read-file-dataurl', file.path)
+        .then((dataUrl: string) => {
+          setSelectedFile({ ...file, content: dataUrl });
+          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error('read-file-dataurl error:', error);
+          setLoading(false);
+        });
+      return;
+    }
 
-	const [isShowSourceCode, setIsShowSourceCode] = useState(false);
-	const isShowSourceCodeChange = () => {
-		// all files can reload content
-		selectedFileChange(selectedFile!, !isShowSourceCode);
-		setIsShowSourceCode(!isShowSourceCode);
-	};
+    // all other files call open-file interface, the backend handles download and parsing
+    window.ipcRenderer
+      .invoke('open-file', file.type, file.path, isShowSourceCode)
+      .then((res) => {
+        setSelectedFile({ ...file, content: res });
+        chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error('open-file error:', error);
+        setLoading(false);
+      });
+  };
 
-	const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
+  const isShowSourceCodeChange = () => {
+    // all files can reload content
+    selectedFileChange(selectedFile!, !isShowSourceCode);
+    setIsShowSourceCode(!isShowSourceCode);
+  };
 
-	const buildFileTree = (files: FileInfo[]): FileTreeNode => {
-		const root: FileTreeNode = {
-			name: "root",
-			path: "",
-			children: [],
-			isFolder: true,
-		};
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
-		const nodeMap = new Map<string, FileTreeNode>();
-		nodeMap.set("", root);
+  const buildFileTree = (files: FileInfo[]): FileTreeNode => {
+    const root: FileTreeNode = {
+      name: 'root',
+      path: '',
+      children: [],
+      isFolder: true,
+    };
 
-		const sortedFiles = [...files].sort((a, b) => {
-			const depthA = (a.relativePath || "").split("/").filter(Boolean).length;
-			const depthB = (b.relativePath || "").split("/").filter(Boolean).length;
-			return depthA - depthB;
-		});
+    const nodeMap = new Map<string, FileTreeNode>();
+    nodeMap.set('', root);
 
-		for (const file of sortedFiles) {
-			const fullRelativePath = file.relativePath
-				? `${file.relativePath}/${file.name}`
-				: file.name;
+    const sortedFiles = [...files].sort((a, b) => {
+      const depthA = (a.relativePath || '').split('/').filter(Boolean).length;
+      const depthB = (b.relativePath || '').split('/').filter(Boolean).length;
+      return depthA - depthB;
+    });
 
-			const parentPath = file.relativePath || "";
-			const parentNode = nodeMap.get(parentPath) || root;
+    for (const file of sortedFiles) {
+      const fullRelativePath = file.relativePath
+        ? `${file.relativePath}/${file.name}`
+        : file.name;
 
-			const node: FileTreeNode = {
-				name: file.name,
-				path: file.path,
-				type: file.type,
-				isFolder: file.isFolder,
-				icon: file.icon,
-				children: file.isFolder ? [] : undefined,
-				isRemote: file.isRemote,
-			};
+      const parentPath = file.relativePath || '';
+      const parentNode = nodeMap.get(parentPath) || root;
 
-			parentNode.children!.push(node);
+      const node: FileTreeNode = {
+        name: file.name,
+        path: file.path,
+        type: file.type,
+        isFolder: file.isFolder,
+        icon: file.icon,
+        children: file.isFolder ? [] : undefined,
+        isRemote: file.isRemote,
+      };
 
-			if (file.isFolder) {
-				nodeMap.set(fullRelativePath, node);
-			}
-		}
+      parentNode.children!.push(node);
 
-		return root;
-	};
+      if (file.isFolder) {
+        nodeMap.set(fullRelativePath, node);
+      }
+    }
 
-	const [fileTree, setFileTree] = useState<FileTreeNode>({
-		name: "root",
-		path: "",
-		children: [],
-		isFolder: true,
-	});
+    return root;
+  };
 
-	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-		new Set()
-	);
+  const [fileTree, setFileTree] = useState<FileTreeNode>({
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  });
 
-	const toggleFolder = (folderPath: string) => {
-		setExpandedFolders((prev) => {
-			const newSet = new Set(prev);
-			if (newSet.has(folderPath)) {
-				newSet.delete(folderPath);
-			} else {
-				newSet.add(folderPath);
-			}
-			return newSet;
-		});
-	};
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set()
+  );
 
-	const [fileGroups, setFileGroups] = useState<
-		{
-			folder: string;
-			files: FileInfo[];
-		}[]
-	>([
-		{
-			folder: "Reports",
-			files: [],
-		},
-	]);
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderPath)) {
+        newSet.delete(folderPath);
+      } else {
+        newSet.add(folderPath);
+      }
+      return newSet;
+    });
+  };
 
-	const hasFetchedRemote = useRef(false);
+  const [fileGroups, setFileGroups] = useState<
+    {
+      folder: string;
+      files: FileInfo[];
+    }[]
+  >([
+    {
+      folder: 'Reports',
+      files: [],
+    },
+  ]);
 
-	// Reset hasFetchedRemote when activeTaskId changes
-	useEffect(() => {
-		hasFetchedRemote.current = false;
-	}, [chatStore.activeTaskId]);
+  const hasFetchedRemote = useRef(false);
 
-	useEffect(() => {
-		const setFileList = async () => {
-			let res = null;
-			res = await window.ipcRenderer.invoke(
-				"get-project-file-list",
-				authStore.email,
-				projectStore.activeProjectId as string
-			);
-			let tree: any = null;
-			if (
-				(res && res.length > 0) ||
-				import.meta.env.VITE_USE_LOCAL_PROXY === "true"
-			) {
-				tree = buildFileTree(res || []);
-			} else {
-				if (!hasFetchedRemote.current) {
-					//TODO(file): rename endpoint to use project_id
-					res = await proxyFetchGet("/api/chat/files", {
-						task_id: projectStore.activeProjectId as string,
-					});
-					hasFetchedRemote.current = true;
-				}
-				console.log("res", res);
-				if (res) {
-					res = res.map((item: any) => {
-						return {
-							name: item.filename,
-							type: item.filename.split(".")[1],
-							path: item.url,
-							isRemote: true,
-						};
-					});
-					tree = buildFileTree(res || []);
-				}
-			}
-			setFileTree(tree);
-			// Keep the old structure for compatibility
-			setFileGroups((prev) => {
-				const chatStoreSelectedFile =
-					chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
-				if (chatStoreSelectedFile) {
-					console.log(res, chatStoreSelectedFile);
-					const file = res.find(
-						(item: any) => item.name === chatStoreSelectedFile.name
-					);
-					console.log("file", file);
-					if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-						selectedFileChange(file as FileInfo, isShowSourceCode);
-					}
-				}
-				return [
-					{
-						...prev[0],
-						files: res || [],
-					},
-				];
-			});
-		};
-		setFileList();
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+  // Reset hasFetchedRemote when activeTaskId changes
+  useEffect(() => {
+    hasFetchedRemote.current = false;
+  }, [chatStore.activeTaskId]);
 
-	useEffect(() => {
-		const chatStoreSelectedFile =
-			chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
-		if (chatStoreSelectedFile && fileGroups[0]?.files) {
-			const file = fileGroups[0].files.find(
-				(item: any) => item.path === chatStoreSelectedFile.path
-			);
-			if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-				selectedFileChange(file as FileInfo, isShowSourceCode);
-			}
-		}
-	}, [
-		chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
-		fileGroups,
-		isShowSourceCode,
-		chatStore.activeTaskId,
-	]);
+  useEffect(() => {
+    const setFileList = async () => {
+      let res = null;
+      res = await window.ipcRenderer.invoke(
+        'get-project-file-list',
+        authStore.email,
+        projectStore.activeProjectId as string
+      );
+      let tree: any = null;
+      if (
+        (res && res.length > 0) ||
+        import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
+      ) {
+        tree = buildFileTree(res || []);
+      } else {
+        if (!hasFetchedRemote.current) {
+          //TODO(file): rename endpoint to use project_id
+          res = await proxyFetchGet('/api/chat/files', {
+            task_id: projectStore.activeProjectId as string,
+          });
+          hasFetchedRemote.current = true;
+        }
+        console.log('res', res);
+        if (res) {
+          res = res.map((item: any) => {
+            return {
+              name: item.filename,
+              type: item.filename.split('.')[1],
+              path: item.url,
+              isRemote: true,
+            };
+          });
+          tree = buildFileTree(res || []);
+        }
+      }
+      setFileTree(tree);
+      // Keep the old structure for compatibility
+      setFileGroups((prev) => {
+        const chatStoreSelectedFile =
+          chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+        if (chatStoreSelectedFile) {
+          console.log(res, chatStoreSelectedFile);
+          const file = res.find(
+            (item: any) => item.name === chatStoreSelectedFile.name
+          );
+          console.log('file', file);
+          if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
+            selectedFileChange(file as FileInfo, isShowSourceCode);
+          }
+        }
+        return [
+          {
+            ...prev[0],
+            files: res || [],
+          },
+        ];
+      });
+    };
+    setFileList();
+  }, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
 
-	const handleBack = () => {
-		chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
-	};
+  useEffect(() => {
+    const chatStoreSelectedFile =
+      chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+    if (chatStoreSelectedFile && fileGroups[0]?.files) {
+      const file = fileGroups[0].files.find(
+        (item: any) => item.path === chatStoreSelectedFile.path
+      );
+      if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
+        selectedFileChange(file as FileInfo, isShowSourceCode);
+      }
+    }
+  }, [
+    chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
+    fileGroups,
+    isShowSourceCode,
+    chatStore.activeTaskId,
+  ]);
 
-	return (
-		<div className="h-full w-full flex overflow-hidden">
-			{/* fileList */}
-			<div
-				className={`${
-					isCollapsed ? "w-16" : "w-64"
-				} border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
-			>
-				{/* head */}
-				<div
-					className={` py-2 border-b border-zinc-200 flex-shrink-0 ${
-						isCollapsed ? "px-2" : "pl-4 pr-2"
-					}`}
-				>
-					<div className="flex items-center justify-between">
-						{!isCollapsed && (
-							<div className="flex items-center gap-2">
-								<Button
-									onClick={handleBack}
-									size="sm"
-									variant="ghost"
-									className={`flex items-center gap-2`}
-								>
-									<ChevronLeft />
-								</Button>
-								<span className="text-xl font-bold text-primary whitespace-nowrap">
-									{t("chat.agent-folder")}
-								</span>
-							</div>
-						)}
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() => setIsCollapsed(!isCollapsed)}
-							className={`${
-								isCollapsed ? "w-full" : ""
-							} flex items-center justify-center`}
-							title={isCollapsed ? t("chat.open") : t("chat.close")}
-						>
-							<ChevronsLeft
-								className={`w-6 h-6 text-zinc-500 ${
-									isCollapsed ? "rotate-180" : ""
-								} transition-transform ease-in-out`}
-							/>
-						</Button>
-					</div>
-				</div>
+  const handleBack = () => {
+    chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, 'workflow');
+  };
 
-				{/* Search Input*/}
-				{!isCollapsed && (
-					<div className="px-2 border-b border-zinc-200 flex-shrink-0">
-						<div className="relative">
-							<Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
-							<input
-								type="text"
-								placeholder={t("chat.search")}
-								className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
-							/>
-						</div>
-					</div>
-				)}
+  return (
+    <div className="h-full w-full flex overflow-hidden">
+      {/* fileList */}
+      <div
+        className={`${
+          isCollapsed ? 'w-16' : 'w-64'
+        } border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
+      >
+        {/* head */}
+        <div
+          className={` py-2 border-b border-zinc-200 flex-shrink-0 ${
+            isCollapsed ? 'px-2' : 'pl-4 pr-2'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            {!isCollapsed && (
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleBack}
+                  size="sm"
+                  variant="ghost"
+                  className={`flex items-center gap-2`}
+                >
+                  <ChevronLeft />
+                </Button>
+                <span className="text-xl font-bold text-primary whitespace-nowrap">
+                  {t('chat.agent-folder')}
+                </span>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className={`${
+                isCollapsed ? 'w-full' : ''
+              } flex items-center justify-center`}
+              title={isCollapsed ? t('chat.open') : t('chat.close')}
+            >
+              <ChevronsLeft
+                className={`w-6 h-6 text-zinc-500 ${
+                  isCollapsed ? 'rotate-180' : ''
+                } transition-transform ease-in-out`}
+              />
+            </Button>
+          </div>
+        </div>
 
-				{/* fileList */}
-				<div className="flex-1 overflow-y-auto min-h-0">
-					{!isCollapsed ? (
-						<div className="p-2">
-							<div className="mb-2">
-								<div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
-									{t("chat.files")}
-								</div>
-								<FileTree
-									node={fileTree}
-									selectedFile={selectedFile}
-									expandedFolders={expandedFolders}
-									onToggleFolder={toggleFolder}
-									onSelectFile={(file) =>
-										selectedFileChange(file, isShowSourceCode)
-									}
-									isShowSourceCode={isShowSourceCode}
-								/>
-							</div>
-						</div>
-					) : (
-						// Display simplified file icons when collapsed
-						<div className="p-2 space-y-2">
-							{fileGroups.map((group) =>
-								group.files.map((file) => (
-									<button
-										key={file.path}
-										onClick={() => selectedFileChange(file, isShowSourceCode)}
-										className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
-											selectedFile?.name === file.name
-												? "bg-blue-50 text-blue-700"
-												: "text-zinc-600"
-										}`}
-										title={file.name}
-									>
-										{file.icon ? (
-											<file.icon className="w-4 h-4" />
-										) : (
-											<FileText className="w-4 h-4" />
-										)}
-									</button>
-								))
-							)}
-						</div>
-					)}
-				</div>
-			</div>
+        {/* Search Input*/}
+        {!isCollapsed && (
+          <div className="px-2 border-b border-zinc-200 flex-shrink-0">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
+              <input
+                type="text"
+                placeholder={t('chat.search')}
+                className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
 
-			{/* content */}
-			<div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-				{/* head */}
-				{selectedFile && (
-					<div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
-						<div className="flex h-[30px] items-center justify-between gap-2">
-							<div
-								onClick={() => {
-									// if file is remote, don't call reveal-in-folder
-									if (selectedFile.isRemote) {
-										downloadByBrowser(selectedFile.path);
-										return;
-									}
-									window.ipcRenderer.invoke(
-										"reveal-in-folder",
-										selectedFile.path
-									);
-								}}
-								className="flex-1 min-w-0 overflow-hidden cursor-pointer flex items-center gap-2"
-							>
-								<span className="block text-[15px] leading-[22px] font-medium text-primary overflow-hidden text-ellipsis whitespace-nowrap">
-									{selectedFile.name}
-								</span>
-								<Button size="icon" variant="ghost">
-									<Download className="w-4 h-4 text-zinc-500" />
-								</Button>
-							</div>
-							<Button
-								variant="ghost"
-								size="icon"
-								className=" flex-shrink-0"
-								onClick={() => isShowSourceCodeChange()}
-							>
-								<CodeXml className="w-4 h-4 text-zinc-500" />
-							</Button>
-						</div>
-					</div>
-				)}
+        {/* fileList */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {!isCollapsed ? (
+            <div className="p-2">
+              <div className="mb-2">
+                <div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
+                  {t('chat.files')}
+                </div>
+                <FileTree
+                  node={fileTree}
+                  selectedFile={selectedFile}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={toggleFolder}
+                  onSelectFile={(file) =>
+                    selectedFileChange(file, isShowSourceCode)
+                  }
+                  isShowSourceCode={isShowSourceCode}
+                />
+              </div>
+            </div>
+          ) : (
+            // Display simplified file icons when collapsed
+            <div className="p-2 space-y-2">
+              {fileGroups.map((group) =>
+                group.files.map((file) => (
+                  <button
+                    key={file.path}
+                    onClick={() => selectedFileChange(file, isShowSourceCode)}
+                    className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
+                      selectedFile?.name === file.name
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-zinc-600'
+                    }`}
+                    title={file.name}
+                  >
+                    {file.icon ? (
+                      <file.icon className="w-4 h-4" />
+                    ) : (
+                      <FileText className="w-4 h-4" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-				{/* content */}
-				<div className="flex-1 overflow-y-auto min-h-0 scrollbar">
-					<div className="p-6 h-full">
-						{selectedFile ? (
-							!loading ? (
-								selectedFile.type === "md" && !isShowSourceCode ? (
-									<div className="prose prose-sm max-w-none">
-										<MarkDown
-											content={selectedFile.content || ""}
-											enableTypewriter={false}
-										/>
-									</div>
-								) : selectedFile.type === "pdf" ? (
-									<iframe
-										src={selectedFile.content as string}
-										className="w-full h-full border-0"
-										title={selectedFile.name}
-									/>
-								) : ["csv", "doc", "docx", "pptx", "xlsx"].includes(
-										selectedFile.type
-								  ) ? (
-									<FolderComponent selectedFile={selectedFile} />
-								) : selectedFile.type === "html" ? (
-									isShowSourceCode ? (
-										<>{selectedFile.content}</>
-									) : (
-										<FolderComponent selectedFile={selectedFile} />
-									)
-								) : selectedFile.type === "zip" ? (
-									<div className="flex items-center justify-center h-full text-zinc-500">
-										<div className="text-center">
-											<FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
-											<p className="text-sm">
-												{t("folder.zip-file-is-not-supported-yet")}
-											</p>
-										</div>
-									</div>
-								) : [
-										"png",
-										"jpg",
-										"jpeg",
-										"gif",
-										"bmp",
-										"webp",
-										"svg",
-								  ].includes(selectedFile.type.toLowerCase()) ? (
-									<div className="flex items-center justify-center h-full">
-										<ImageLoader selectedFile={selectedFile} />
-									</div>
-								) : (
-									<pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
-										{selectedFile.content}
-									</pre>
-								)
-							) : (
-								<div className="flex items-center justify-center h-full">
-									<div className="text-center">
-										<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-										<p className="text-sm text-zinc-500">{t("chat.loading")}</p>
-									</div>
-								</div>
-							)
-						) : (
-							<div className="flex items-center justify-center h-full text-zinc-500">
-								<div className="text-center">
-									<FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
-									<p className="text-sm">
-										{t("chat.select-a-file-to-view-its-contents")}
-									</p>
-								</div>
-							</div>
-						)}
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+      {/* content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* head */}
+        {selectedFile && (
+          <div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
+            <div className="flex h-[30px] items-center justify-between gap-2">
+              <div
+                onClick={() => {
+                  // if file is remote, don't call reveal-in-folder
+                  if (selectedFile.isRemote) {
+                    downloadByBrowser(selectedFile.path);
+                    return;
+                  }
+                  window.ipcRenderer.invoke(
+                    'reveal-in-folder',
+                    selectedFile.path
+                  );
+                }}
+                className="flex-1 min-w-0 overflow-hidden cursor-pointer flex items-center gap-2"
+              >
+                <span className="block text-[15px] leading-[22px] font-medium text-primary overflow-hidden text-ellipsis whitespace-nowrap">
+                  {selectedFile.name}
+                </span>
+                <Button size="icon" variant="ghost">
+                  <Download className="w-4 h-4 text-zinc-500" />
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className=" flex-shrink-0"
+                onClick={() => isShowSourceCodeChange()}
+              >
+                <CodeXml className="w-4 h-4 text-zinc-500" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* content */}
+        <div className="flex-1 overflow-y-auto min-h-0 scrollbar">
+          <div className="p-6 h-full">
+            {selectedFile ? (
+              !loading ? (
+                selectedFile.type === 'md' && !isShowSourceCode ? (
+                  <div className="prose prose-sm max-w-none">
+                    <MarkDown
+                      content={selectedFile.content || ''}
+                      enableTypewriter={false}
+                    />
+                  </div>
+                ) : selectedFile.type === 'pdf' ? (
+                  <iframe
+                    src={selectedFile.content as string}
+                    className="w-full h-full border-0"
+                    title={selectedFile.name}
+                  />
+                ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
+                    selectedFile.type
+                  ) ? (
+                  <FolderComponent selectedFile={selectedFile} />
+                ) : selectedFile.type === 'html' ? (
+                  isShowSourceCode ? (
+                    <>{selectedFile.content}</>
+                  ) : (
+                    <HtmlRenderer selectedFile={selectedFile} />
+                  )
+                ) : selectedFile.type === 'zip' ? (
+                  <div className="flex items-center justify-center h-full text-zinc-500">
+                    <div className="text-center">
+                      <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
+                      <p className="text-sm">
+                        {t('folder.zip-file-is-not-supported-yet')}
+                      </p>
+                    </div>
+                  </div>
+                ) : [
+                    'png',
+                    'jpg',
+                    'jpeg',
+                    'gif',
+                    'bmp',
+                    'webp',
+                    'svg',
+                  ].includes(selectedFile.type.toLowerCase()) ? (
+                  <div className="flex items-center justify-center h-full">
+                    <ImageLoader selectedFile={selectedFile} />
+                  </div>
+                ) : (
+                  <pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                    {selectedFile.content}
+                  </pre>
+                )
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-sm text-zinc-500">{t('chat.loading')}</p>
+                  </div>
+                </div>
+              )
+            ) : (
+              <div className="flex items-center justify-center h-full text-zinc-500">
+                <div className="text-center">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
+                  <p className="text-sm">
+                    {t('chat.select-a-file-to-view-its-contents')}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
-    const [src, setSrc] = useState("");
+  const [src, setSrc] = useState('');
 
-    useEffect(() => {
-        const filePath = selectedFile.isRemote
-            ? (selectedFile.content as string)
-            : selectedFile.path;
+  useEffect(() => {
+    const filePath = selectedFile.isRemote
+      ? (selectedFile.content as string)
+      : selectedFile.path;
 
-        window.electronAPI
-            .readFileAsDataUrl(filePath)
-            .then(setSrc)
-            .catch((err: any) => console.error("Image load error:", err));
-    }, [selectedFile]);
+    window.electronAPI
+      .readFileAsDataUrl(filePath)
+      .then(setSrc)
+      .catch((err: any) => console.error('Image load error:', err));
+  }, [selectedFile]);
 
-    return (
-        <img
-            src={src}
-            alt={selectedFile.name}
-            className="max-w-full max-h-full object-contain"
-        />
-    );
+  return (
+    <img
+      src={src}
+      alt={selectedFile.name}
+      className="max-w-full max-h-full object-contain"
+    />
+  );
+}
+
+// Helper function to get directory path from file path
+function getDirPath(filePath: string): string {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const lastSlashIndex = normalizedPath.lastIndexOf('/');
+  return lastSlashIndex >= 0 ? normalizedPath.substring(0, lastSlashIndex) : '';
+}
+
+// Helper function to join paths
+function joinPath(...paths: string[]): string {
+  return paths
+    .filter(Boolean)
+    .map((p) => p.replace(/\\/g, '/'))
+    .join('/')
+    .replace(/\/+/g, '/');
+}
+
+// Component to render HTML with relative image paths resolved
+function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
+  const [processedHtml, setProcessedHtml] = useState<string>('');
+
+  useEffect(() => {
+    const processHtml = async () => {
+      if (!selectedFile.content) {
+        setProcessedHtml('');
+        return;
+      }
+
+      let html = selectedFile.content;
+
+      // Strict dangerous content detection to prevent various bypass techniques
+      const dangerousPatterns = [
+        /ipcRenderer/gi,
+        /window\s*\[\s*['"`]ipcRenderer['"`]\s*\]/gi,
+        /parent\s*\.\s*ipcRenderer/gi,
+        /top\s*\.\s*ipcRenderer/gi,
+        /frames\s*\[\s*\d+\s*\]\s*\.\s*ipcRenderer/gi,
+        /require\s*\(\s*['"`]electron['"`]\s*\)/gi,
+        /process\s*\.\s*versions\s*\.\s*electron/gi,
+        /nodeIntegration/gi,
+        /webSecurity/gi,
+        /contextIsolation/gi,
+      ];
+
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(html)) {
+          console.warn('Detected forbidden content:', pattern);
+          setProcessedHtml('');
+          return;
+        }
+      }
+
+      // Skip processing if file is remote (we can't resolve relative paths for remote files)
+      if (selectedFile.isRemote) {
+        const sanitized = DOMPurify.sanitize(html, {
+          USE_PROFILES: { html: true },
+          ALLOWED_TAGS: [
+            'a',
+            'b',
+            'i',
+            'u',
+            'strong',
+            'em',
+            'p',
+            'br',
+            'ul',
+            'ol',
+            'li',
+            'img',
+            'div',
+            'span',
+            'table',
+            'thead',
+            'tbody',
+            'tr',
+            'td',
+            'th',
+            'pre',
+            'code',
+            'h1',
+            'h2',
+            'h3',
+            'h4',
+            'h5',
+            'h6',
+            'style',
+          ],
+          ALLOWED_ATTR: [
+            'href',
+            'src',
+            'alt',
+            'title',
+            'width',
+            'height',
+            'target',
+            'rel',
+            'colspan',
+            'rowspan',
+            'class',
+            'id',
+            'style',
+          ],
+          FORBID_ATTR: [
+            'onerror',
+            'onload',
+            'onclick',
+            'onmouseover',
+            'onfocus',
+            'onblur',
+            'onchange',
+            'onsubmit',
+            'onreset',
+            'onselect',
+            'onabort',
+            'onkeydown',
+            'onkeypress',
+            'onkeyup',
+            'onunload',
+          ],
+          FORBID_TAGS: [
+            'script',
+            'iframe',
+            'object',
+            'embed',
+            'form',
+            'input',
+            'button',
+          ],
+          ADD_ATTR: ['target'],
+          SANITIZE_DOM: true,
+          KEEP_CONTENT: false,
+        });
+        setProcessedHtml(sanitized);
+        return;
+      }
+
+      // Get the directory of the HTML file
+      const htmlDir = getDirPath(selectedFile.path);
+
+      // Find all img tags with relative paths (match various formats)
+      const imgRegex = /<img\s+([^>]*?)(?:\s*\/\s*>|>)/gi;
+      const matches = Array.from(html.matchAll(imgRegex));
+
+      // Process each img tag
+      const processedImages = await Promise.all(
+        matches.map(async (match) => {
+          const fullMatch = match[0];
+          const attributes = match[1];
+          // Reconstruct the img tag to handle both <img ...> and <img ... />
+          const imgTag = fullMatch;
+
+          // Extract src attribute
+          const srcMatch = attributes.match(/src\s*=\s*["']([^"']+)["']/i);
+          if (!srcMatch) return { original: imgTag, processed: imgTag };
+
+          const src = srcMatch[1];
+
+          // Skip if src is already absolute (http, https, data:, localfile:)
+          if (
+            src.startsWith('http://') ||
+            src.startsWith('https://') ||
+            src.startsWith('data:') ||
+            src.startsWith('localfile://')
+          ) {
+            return { original: imgTag, processed: imgTag };
+          }
+
+          // Build full path for relative image
+          const imagePath = joinPath(htmlDir, src);
+
+          try {
+            // Read image as data URL
+            const dataUrl = await window.electronAPI.readFileAsDataUrl(
+              imagePath
+            );
+
+            // Replace src with data URL
+            const newAttributes = attributes.replace(
+              /src\s*=\s*["'][^"']+["']/i,
+              `src="${dataUrl}"`
+            );
+            // Preserve the original tag format (self-closing or not)
+            const isSelfClosing = imgTag.trim().endsWith('/>');
+            const processedTag = isSelfClosing
+              ? `<img ${newAttributes} />`
+              : `<img ${newAttributes}>`;
+
+            return { original: imgTag, processed: processedTag };
+          } catch (error) {
+            console.error(`Failed to load image: ${imagePath}`, error);
+            // Keep original tag if image loading fails
+            return { original: imgTag, processed: imgTag };
+          }
+        })
+      );
+
+      // Replace all img tags in HTML
+      let processedHtmlContent = html;
+      processedImages.forEach(({ original, processed }) => {
+        processedHtmlContent = processedHtmlContent.replace(
+          original,
+          processed
+        );
+      });
+
+      // Sanitize the processed HTML
+      const sanitized = DOMPurify.sanitize(processedHtmlContent, {
+        USE_PROFILES: { html: true },
+        ALLOWED_TAGS: [
+          'a',
+          'b',
+          'i',
+          'u',
+          'strong',
+          'em',
+          'p',
+          'br',
+          'ul',
+          'ol',
+          'li',
+          'img',
+          'div',
+          'span',
+          'table',
+          'thead',
+          'tbody',
+          'tr',
+          'td',
+          'th',
+          'pre',
+          'code',
+          'h1',
+          'h2',
+          'h3',
+          'h4',
+          'h5',
+          'h6',
+          'style',
+        ],
+        ALLOWED_ATTR: [
+          'href',
+          'src',
+          'alt',
+          'title',
+          'width',
+          'height',
+          'target',
+          'rel',
+          'colspan',
+          'rowspan',
+          'class',
+          'id',
+          'style',
+        ],
+        FORBID_ATTR: [
+          'onerror',
+          'onload',
+          'onclick',
+          'onmouseover',
+          'onfocus',
+          'onblur',
+          'onchange',
+          'onsubmit',
+          'onreset',
+          'onselect',
+          'onabort',
+          'onkeydown',
+          'onkeypress',
+          'onkeyup',
+          'onunload',
+        ],
+        FORBID_TAGS: [
+          'script',
+          'iframe',
+          'object',
+          'embed',
+          'form',
+          'input',
+          'button',
+        ],
+        ADD_ATTR: ['target'],
+        SANITIZE_DOM: true,
+        KEEP_CONTENT: false,
+      });
+
+      setProcessedHtml(sanitized);
+    };
+
+    processHtml();
+  }, [selectedFile]);
+
+  return (
+    <div
+      className="w-full overflow-auto"
+      dangerouslySetInnerHTML={{ __html: processedHtml }}
+    />
+  );
 }

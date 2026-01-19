@@ -8,11 +8,20 @@ from typing import Any, Callable, Dict, List, Tuple
 import uuid
 from utils import traceroot_wrapper as traceroot
 from camel.agents import ChatAgent
-from camel.agents.chat_agent import StreamingChatAgentResponse, AsyncStreamingChatAgentResponse
+from camel.agents.chat_agent import (
+    StreamingChatAgentResponse,
+    AsyncStreamingChatAgentResponse,
+)
 from camel.agents._types import ToolCallRequest
 from camel.memories import AgentMemory
 from camel.messages import BaseMessage
-from camel.models import BaseModelBackend, ModelFactory, ModelManager, OpenAIAudioModels, ModelProcessingError
+from camel.models import (
+    BaseModelBackend,
+    ModelFactory,
+    ModelManager,
+    OpenAIAudioModels,
+    ModelProcessingError,
+)
 from camel.responses import ChatAgentResponse
 from camel.terminators import ResponseTerminator
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
@@ -47,6 +56,7 @@ from app.utils.toolkit.twitter_toolkit import TwitterToolkit
 from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.toolkit.reddit_toolkit import RedditToolkit
 from app.utils.toolkit.slack_toolkit import SlackToolkit
+from app.utils.toolkit.lark_toolkit import LarkToolkit
 from camel.types import ModelPlatformType, ModelType
 from camel.toolkits import MCPToolkit, ToolkitMessageIntegration
 import datetime
@@ -78,25 +88,29 @@ class ListenChatAgent(ChatAgent):
         api_task_id: str,
         agent_name: str,
         system_message: BaseMessage | str | None = None,
-        model: BaseModelBackend
-        | ModelManager
-        | Tuple[str, str]
-        | str
-        | ModelType
-        | Tuple[ModelPlatformType, ModelType]
-        | List[BaseModelBackend]
-        | List[str]
-        | List[ModelType]
-        | List[Tuple[str, str]]
-        | List[Tuple[ModelPlatformType, ModelType]]
-        | None = None,
+        model: (
+            BaseModelBackend
+            | ModelManager
+            | Tuple[str, str]
+            | str
+            | ModelType
+            | Tuple[ModelPlatformType, ModelType]
+            | List[BaseModelBackend]
+            | List[str]
+            | List[ModelType]
+            | List[Tuple[str, str]]
+            | List[Tuple[ModelPlatformType, ModelType]]
+            | None
+        ) = None,
         memory: AgentMemory | None = None,
         message_window_size: int | None = None,
         token_limit: int | None = None,
         output_language: str | None = None,
         tools: List[FunctionTool | Callable[..., Any]] | None = None,
         toolkits_to_register_agent: List[RegisteredAgentToolkit] | None = None,
-        external_tools: List[FunctionTool | Callable[..., Any] | Dict[str, Any]] | None = None,
+        external_tools: (
+            List[FunctionTool | Callable[..., Any] | Dict[str, Any]] | None
+        ) = None,
         response_terminators: List[ResponseTerminator] | None = None,
         scheduling_strategy: str = "round_robin",
         max_iteration: int | None = None,
@@ -152,7 +166,11 @@ class ListenChatAgent(ChatAgent):
                         "agent_name": self.agent_name,
                         "process_task_id": self.process_task_id,
                         "agent_id": self.agent_id,
-                        "message": input_message.content if isinstance(input_message, BaseMessage) else input_message,
+                        "message": (
+                            input_message.content
+                            if isinstance(input_message, BaseMessage)
+                            else input_message
+                        ),
                     },
                 )
             )
@@ -174,17 +192,22 @@ class ListenChatAgent(ChatAgent):
                 asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
-                traceroot_logger.error(f"Agent {self.agent_name} model processing error: {e}")
+                traceroot_logger.error(
+                    f"Agent {self.agent_name} model processing error: {e}"
+                )
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
-            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True)
+            traceroot_logger.error(
+                f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True
+            )
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
         if res is not None:
             if isinstance(res, StreamingChatAgentResponse):
+
                 def _stream_with_deactivate():
                     last_response: ChatAgentResponse | None = None
                     # With stream_accumulate=False, we need to accumulate delta content
@@ -264,7 +287,11 @@ class ListenChatAgent(ChatAgent):
                     "agent_name": self.agent_name,
                     "process_task_id": self.process_task_id,
                     "agent_id": self.agent_id,
-                    "message": input_message.content if isinstance(input_message, BaseMessage) else input_message,
+                    "message": (
+                        input_message.content
+                        if isinstance(input_message, BaseMessage)
+                        else input_message
+                    ),
                 },
             )
         )
@@ -289,19 +316,26 @@ class ListenChatAgent(ChatAgent):
                 asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
-                traceroot_logger.error(f"Agent {self.agent_name} model processing error: {e}")
+                traceroot_logger.error(
+                    f"Agent {self.agent_name} model processing error: {e}"
+                )
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
-            traceroot_logger.error(f"Agent {self.agent_name} unexpected error in async step: {e}", exc_info=True)
+            traceroot_logger.error(
+                f"Agent {self.agent_name} unexpected error in async step: {e}",
+                exc_info=True,
+            )
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
         if res is not None:
             message = res.msg.content if res.msg else ""
             total_tokens = res.info["usage"]["total_tokens"]
-            traceroot_logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
+            traceroot_logger.info(
+                f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
+            )
 
         assert message is not None
 
@@ -344,7 +378,11 @@ class ListenChatAgent(ChatAgent):
         try:
             task_lock = get_task_lock(self.api_task_id)
 
-            toolkit_name = getattr(tool, "_toolkit_name") if hasattr(tool, "_toolkit_name") else "mcp_toolkit"
+            toolkit_name = (
+                getattr(tool, "_toolkit_name")
+                if hasattr(tool, "_toolkit_name")
+                else "mcp_toolkit"
+            )
             traceroot_logger.debug(
                 f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
             )
@@ -385,7 +423,10 @@ class ListenChatAgent(ChatAgent):
                 result_str = repr(result)
                 MAX_RESULT_LENGTH = 500
                 if len(result_str) > MAX_RESULT_LENGTH:
-                    result_msg = result_str[:MAX_RESULT_LENGTH] + f"... (truncated, total length: {len(result_str)} chars)"
+                    result_msg = (
+                        result_str[:MAX_RESULT_LENGTH]
+                        + f"... (truncated, total length: {len(result_str)} chars)"
+                    )
                 else:
                     result_msg = result_str
 
@@ -409,16 +450,23 @@ class ListenChatAgent(ChatAgent):
             error_msg = f"Error executing tool '{func_name}': {e!s}"
             result = f"Tool execution failed: {error_msg}"
             mask_flag = False
-            traceroot_logger.error(f"Tool execution failed for {func_name}: {e}", exc_info=True)
+            traceroot_logger.error(
+                f"Tool execution failed for {func_name}: {e}", exc_info=True
+            )
 
         return self._record_tool_calling(
-            func_name, args, result, tool_call_id,
+            func_name,
+            args,
+            result,
+            tool_call_id,
             mask_output=mask_flag,
             extra_content=tool_call_request.extra_content,
         )
 
     @traceroot.trace()
-    async def _aexecute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
+    async def _aexecute_tool(
+        self, tool_call_request: ToolCallRequest
+    ) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
         tool: FunctionTool = self._internal_tools[func_name]
 
@@ -435,16 +483,24 @@ class ListenChatAgent(ChatAgent):
             toolkit_name = tool._toolkit_name
 
         # Method 2: For MCP tools, check if func has __self__ (the toolkit instance)
-        if not toolkit_name and hasattr(tool, "func") and hasattr(tool.func, "__self__"):
+        if (
+            not toolkit_name
+            and hasattr(tool, "func")
+            and hasattr(tool.func, "__self__")
+        ):
             toolkit_instance = tool.func.__self__
-            if hasattr(toolkit_instance, "toolkit_name") and callable(toolkit_instance.toolkit_name):
+            if hasattr(toolkit_instance, "toolkit_name") and callable(
+                toolkit_instance.toolkit_name
+            ):
                 toolkit_name = toolkit_instance.toolkit_name()
 
         # Method 3: Check if tool.func is a bound method with toolkit
         if not toolkit_name and hasattr(tool, "func"):
             if hasattr(tool.func, "func") and hasattr(tool.func.func, "__self__"):
                 toolkit_instance = tool.func.func.__self__
-                if hasattr(toolkit_instance, "toolkit_name") and callable(toolkit_instance.toolkit_name):
+                if hasattr(toolkit_instance, "toolkit_name") and callable(
+                    toolkit_instance.toolkit_name
+                ):
                     toolkit_name = toolkit_instance.toolkit_name()
 
         # Default fallback
@@ -475,7 +531,7 @@ class ListenChatAgent(ChatAgent):
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
                     # Check if the wrapped tool is sync to avoid run_in_executor
-                    if hasattr(tool, 'is_async') and not tool.is_async:
+                    if hasattr(tool, "is_async") and not tool.is_async:
                         # Sync tool: call directly to preserve ContextVar
                         result = tool(**args)
                         if asyncio.iscoroutine(result):
@@ -487,7 +543,7 @@ class ListenChatAgent(ChatAgent):
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
                     # Check if this is a sync tool to avoid run_in_executor (which breaks ContextVar)
-                    if hasattr(tool, 'is_async') and not tool.is_async:
+                    if hasattr(tool, "is_async") and not tool.is_async:
                         # Sync tool: call directly to preserve ContextVar in same thread
                         result = tool(**args)
                         # Handle case where synchronous call returns a coroutine
@@ -517,7 +573,9 @@ class ListenChatAgent(ChatAgent):
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"
             result = {"error": error_msg}
-            traceroot_logger.error(f"Async tool execution failed for {func_name}: {e}", exc_info=True)
+            traceroot_logger.error(
+                f"Async tool execution failed for {func_name}: {e}", exc_info=True
+            )
 
         # Prepare result message with truncation
         if isinstance(result, str):
@@ -526,7 +584,10 @@ class ListenChatAgent(ChatAgent):
             result_str = repr(result)
             MAX_RESULT_LENGTH = 500
             if len(result_str) > MAX_RESULT_LENGTH:
-                result_msg = result_str[:MAX_RESULT_LENGTH] + f"... (truncated, total length: {len(result_str)} chars)"
+                result_msg = (
+                    result_str[:MAX_RESULT_LENGTH]
+                    + f"... (truncated, total length: {len(result_str)} chars)"
+                )
             else:
                 result_msg = result_str
 
@@ -543,7 +604,10 @@ class ListenChatAgent(ChatAgent):
             )
         )
         return self._record_tool_calling(
-            func_name, args, result, tool_call_id,
+            func_name,
+            args,
+            result,
+            tool_call_id,
             extra_content=tool_call_request.extra_content,
         )
 
@@ -554,7 +618,7 @@ class ListenChatAgent(ChatAgent):
 
         # Clone tools and collect toolkits that need registration
         cloned_tools, toolkits_to_register = self._clone_tools()
-        
+
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
             agent_name=self.agent_name,
@@ -604,27 +668,74 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}")
+    traceroot_logger.info(
+        f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}"
+    )
     asyncio.create_task(
         task_lock.put_queue(
-            ActionCreateAgentData(data={"agent_name": agent_name, "agent_id": agent_id, "tools": tool_names or []})
+            ActionCreateAgentData(
+                data={
+                    "agent_name": agent_name,
+                    "agent_id": agent_id,
+                    "tools": tool_names or [],
+                }
+            )
         )
     )
 
     # Build model config, defaulting to streaming for planner
     extra_params = options.extra_params or {}
+    init_param_keys = {
+        "api_version",
+        "azure_ad_token",
+        "azure_ad_token_provider",
+        "max_retries",
+        "timeout",
+        "client",
+        "async_client",
+        "azure_deployment_name",
+    }
+
+    init_params = {}
     model_config: dict[str, Any] = {}
+
     if options.is_cloud():
         model_config["user"] = str(options.project_id)
-    model_config.update(
-        {
-            k: v
-            for k, v in extra_params.items()
-            if k not in ["model_platform", "model_type", "api_key", "url"]
-        }
-    )
+
+    excluded_keys = {"model_platform", "model_type", "api_key", "url"}
+
+    # Distribute extra_params between init_params and model_config
+    for k, v in extra_params.items():
+        if k in excluded_keys:
+            continue
+        # Skip empty values
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+
+        if k in init_param_keys:
+            init_params[k] = v
+        else:
+            model_config[k] = v
+
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
+    if agent_name == Agents.browser_agent:
+        try:
+            model_platform_enum = ModelPlatformType(options.model_platform.lower())
+            if model_platform_enum in {
+                ModelPlatformType.OPENAI,
+                ModelPlatformType.AZURE,
+                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                ModelPlatformType.LITELLM,
+                ModelPlatformType.OPENROUTER,
+            }:
+                model_config["parallel_tool_calls"] = False
+        except (ValueError, AttributeError):
+            traceroot_logger.error(
+                f"Invalid model platform for browser agent: {options.model_platform}",
+                exc_info=True,
+            )
+            model_platform_enum = None
 
     return ListenChatAgent(
         options.project_id,
@@ -636,6 +747,7 @@ def agent_model(
             api_key=options.api_key,
             url=options.api_url,
             model_config_dict=model_config or None,
+            **init_params,
         ),
         # output_language=options.language,
         tools=tools,
@@ -668,20 +780,33 @@ def task_summary_agent(options: Chat):
 @traceroot.trace()
 async def developer_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating developer agent for project: {options.project_id} in directory: {working_directory}")
+    traceroot_logger.info(
+        f"Creating developer agent for project: {options.project_id} in directory: {working_directory}"
+    )
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.developer_agent).send_message_to_user
+        message_handler=HumanToolkit(
+            options.project_id, Agents.developer_agent
+        ).send_message_to_user
     )
     note_toolkit = NoteTakingToolkit(
-        api_task_id=options.project_id, agent_name=Agents.developer_agent, working_directory=working_directory
+        api_task_id=options.project_id,
+        agent_name=Agents.developer_agent,
+        working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
     web_deploy_toolkit = message_integration.register_toolkits(web_deploy_toolkit)
-    screenshot_toolkit = ScreenshotToolkit(options.project_id, working_directory=working_directory)
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id, working_directory=working_directory
+    )
     screenshot_toolkit = message_integration.register_toolkits(screenshot_toolkit)
 
-    terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        Agents.document_agent,
+        safe_mode=True,
+        clone_current_env=False,
+    )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     tools = [
@@ -693,26 +818,26 @@ async def developer_agent(options: Chat):
     ]
     system_message = f"""
 <role>
-You are a Lead Software Engineer, a master-level coding assistant with a 
-powerful and unrestricted terminal. Your primary role is to solve any 
-technical task by writing and executing code, installing necessary libraries, 
-interacting with the operating system, and deploying applications. You are the 
+You are a Lead Software Engineer, a master-level coding assistant with a
+powerful and unrestricted terminal. Your primary role is to solve any
+technical task by writing and executing code, installing necessary libraries,
+interacting with the operating system, and deploying applications. You are the
 team's go-to expert for all technical implementation.
 </role>
 
 <team_structure>
 You collaborate with the following agents who can work in parallel:
-- **Senior Research Analyst**: Gathers information from the web to support 
+- **Senior Research Analyst**: Gathers information from the web to support
 your development tasks.
-- **Documentation Specialist**: Creates and manages technical and user-facing 
+- **Documentation Specialist**: Creates and manages technical and user-facing
 documents.
-- **Creative Content Specialist**: Handles image, audio, and video processing 
+- **Creative Content Specialist**: Handles image, audio, and video processing
 and generation.
 </team_structure>
 
 <operating_environment>
 - **System**: {platform.system()} ({platform.machine()})
-- **Working Directory**: `{working_directory}`. All local file operations must 
+- **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
@@ -810,7 +935,7 @@ these tips to maximize your effectiveness:
   - **Piping**: Use `|` to pass output from one command to another.
   - **Permissions**: Use `ls -F` to check file permissions.
   - **Installation**: Use `pip3 install` or `apt-get install` for new
-    packages.If you encounter `ModuleNotFoundError` or `ImportError`, install 
+    packages.If you encounter `ModuleNotFoundError` or `ImportError`, install
     the missing package with `pip install <package>`.
 
 - Stop a Process: If a process needs to be terminated, use
@@ -843,11 +968,15 @@ these tips to maximize your effectiveness:
 
 
 @traceroot.trace()
-def search_agent(options: Chat):
+def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating search agent for project: {options.project_id} in directory: {working_directory}")
+    traceroot_logger.info(
+        f"Creating browser agent for project: {options.project_id} in directory: {working_directory}"
+    )
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.search_agent).send_message_to_user
+        message_handler=HumanToolkit(
+            options.project_id, Agents.browser_agent
+        ).send_message_to_user
     )
 
     web_toolkit_custom = HybridBrowserToolkit(
@@ -863,23 +992,35 @@ def search_agent(options: Chat):
             "browser_type",
             "browser_back",
             "browser_forward",
+            "browser_select",
+            "browser_console_exec",
+            "browser_console_view",
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
             "browser_scroll",
             "browser_sheet_read",
             "browser_sheet_input",
-            # "browser_get_som_screenshot",
+            "browser_get_page_snapshot",
         ],
     )
 
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
-    terminal_toolkit = TerminalToolkit(options.project_id, Agents.search_agent, safe_mode=True, clone_current_env=False)
-    terminal_toolkit = message_integration.register_functions([terminal_toolkit.shell_exec])
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        Agents.browser_agent,
+        safe_mode=True,
+        clone_current_env=False,
+    )
+    terminal_toolkit = message_integration.register_functions(
+        [terminal_toolkit.shell_exec]
+    )
 
-    note_toolkit = NoteTakingToolkit(options.project_id, Agents.search_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(
+        options.project_id, Agents.browser_agent, working_directory=working_directory
+    )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
     # Only register search tools if any are available
@@ -889,7 +1030,7 @@ def search_agent(options: Chat):
         search_tools = []
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.search_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id, Agents.browser_agent),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
@@ -946,9 +1087,9 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     Fabricating or guessing URLs is considered a critical error and must
     never be done under any circumstances.
 
-- You SHOULD keep the user informed by providing message_title and 
+- You SHOULD keep the user informed by providing message_title and
     message_description
-    parameters when calling tools. These optional parameters are available on 
+    parameters when calling tools. These optional parameters are available on
     all tools and will automatically notify the user of your progress.
 
 - You MUST NOT answer from your own knowledge. All information
@@ -1009,9 +1150,9 @@ Your approach depends on available search tools:
     """
 
     return agent_model(
-        Agents.search_agent,
+        Agents.browser_agent,
         BaseMessage.make_assistant_message(
-            role_name="Search Agent",
+            role_name="Browser Agent",
             content=system_message,
         ),
         options,
@@ -1032,20 +1173,35 @@ Your approach depends on available search tools:
 @traceroot.trace()
 async def document_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating document agent for project: {options.project_id} in directory: {working_directory}")
-    message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.task_agent).send_message_to_user
+    traceroot_logger.info(
+        f"Creating document agent for project: {options.project_id} in directory: {working_directory}"
     )
-    file_write_toolkit = FileToolkit(options.project_id, working_directory=working_directory)
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(
+            options.project_id, Agents.task_agent
+        ).send_message_to_user
+    )
+    file_write_toolkit = FileToolkit(
+        options.project_id, working_directory=working_directory
+    )
     pptx_toolkit = PPTXToolkit(options.project_id, working_directory=working_directory)
     pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
     mark_it_down_toolkit = MarkItDownToolkit(options.project_id)
     mark_it_down_toolkit = message_integration.register_toolkits(mark_it_down_toolkit)
-    excel_toolkit = ExcelToolkit(options.project_id, working_directory=working_directory)
+    excel_toolkit = ExcelToolkit(
+        options.project_id, working_directory=working_directory
+    )
     excel_toolkit = message_integration.register_toolkits(excel_toolkit)
-    note_toolkit = NoteTakingToolkit(options.project_id, Agents.document_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(
+        options.project_id, Agents.document_agent, working_directory=working_directory
+    )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    terminal_toolkit = TerminalToolkit(options.project_id, Agents.document_agent, safe_mode=True, clone_current_env=False)
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        Agents.document_agent,
+        safe_mode=True,
+        clone_current_env=False,
+    )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
     tools = [
         *file_write_toolkit.get_tools(),
@@ -1055,7 +1211,9 @@ async def document_agent(options: Chat):
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
-        *await GoogleDriveMCPToolkit.get_can_use_tools(options.project_id, options.get_bun_env()),
+        *await GoogleDriveMCPToolkit.get_can_use_tools(
+            options.project_id, options.get_bun_env()
+        ),
     ]
     # if env("EXA_API_KEY") or options.is_cloud():
     #     search_toolkit = SearchToolkit(options.project_id, Agents.document_agent).search_exa
@@ -1063,26 +1221,26 @@ async def document_agent(options: Chat):
     #     tools.extend(search_toolkit)
     system_message = f"""
 <role>
-You are a Documentation Specialist, responsible for creating, modifying, and 
-managing a wide range of documents. Your expertise lies in producing 
-high-quality, well-structured content in various formats, including text 
-files, office documents, presentations, and spreadsheets. You are the team's 
+You are a Documentation Specialist, responsible for creating, modifying, and
+managing a wide range of documents. Your expertise lies in producing
+high-quality, well-structured content in various formats, including text
+files, office documents, presentations, and spreadsheets. You are the team's
 authority on all things related to documentation.
 </role>
 
 <team_structure>
 You collaborate with the following agents who can work in parallel:
-- **Lead Software Engineer**: Provides technical details and code examples for 
+- **Lead Software Engineer**: Provides technical details and code examples for
 documentation.
-- **Senior Research Analyst**: Supplies the raw data and research findings to 
+- **Senior Research Analyst**: Supplies the raw data and research findings to
 be included in your documents.
-- **Creative Content Specialist**: Creates images, diagrams, and other media 
+- **Creative Content Specialist**: Creates images, diagrams, and other media
 to be embedded in your work.
 </team_structure>
 
 <operating_environment>
 - **System**: {platform.system()} ({platform.machine()})
-- **Working Directory**: `{working_directory}`. All local file operations must 
+- **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
@@ -1095,7 +1253,7 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     `write_to_file`, `create_presentation`). Your primary output should be
     a file, not just content within your response.
 
-- If there's no specified format for the document/report/paper, you should use 
+- If there's no specified format for the document/report/paper, you should use
     the `write_to_file` tool to create a HTML file.
 
 - If the document has many data, you MUST use the terminal tool to
@@ -1106,9 +1264,9 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
 
-- You SHOULD keep the user informed by providing message_title and 
+- You SHOULD keep the user informed by providing message_title and
     message_description
-    parameters when calling tools. These optional parameters are available on 
+    parameters when calling tools. These optional parameters are available on
     all tools and will automatically notify the user of your progress.
 </mandatory_instructions>
 
@@ -1238,20 +1396,37 @@ supported formats including advanced spreadsheet functionality.
 @traceroot.trace()
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}")
-    message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.multi_modal_agent).send_message_to_user
+    traceroot_logger.info(
+        f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}"
     )
-    video_download_toolkit = VideoDownloaderToolkit(options.project_id, working_directory=working_directory)
-    video_download_toolkit = message_integration.register_toolkits(video_download_toolkit)
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(
+            options.project_id, Agents.multi_modal_agent
+        ).send_message_to_user
+    )
+    video_download_toolkit = VideoDownloaderToolkit(
+        options.project_id, working_directory=working_directory
+    )
+    video_download_toolkit = message_integration.register_toolkits(
+        video_download_toolkit
+    )
     image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
-    image_analysis_toolkit = message_integration.register_toolkits(image_analysis_toolkit)
+    image_analysis_toolkit = message_integration.register_toolkits(
+        image_analysis_toolkit
+    )
 
     terminal_toolkit = TerminalToolkit(
-        options.project_id, agent_name=Agents.multi_modal_agent, safe_mode=True, clone_current_env=False
+        options.project_id,
+        agent_name=Agents.multi_modal_agent,
+        safe_mode=True,
+        clone_current_env=False,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
-    note_toolkit = NoteTakingToolkit(options.project_id, Agents.multi_modal_agent, working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(
+        options.project_id,
+        Agents.multi_modal_agent,
+        working_directory=working_directory,
+    )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     tools = [
         *video_download_toolkit.get_tools(),
@@ -1271,7 +1446,9 @@ def multi_modal_agent(options: Chat):
             api_key=options.api_key,
             url=options.api_url,
         )
-        open_ai_image_toolkit = message_integration.register_toolkits(open_ai_image_toolkit)
+        open_ai_image_toolkit = message_integration.register_toolkits(
+            open_ai_image_toolkit
+        )
         tools = [
             *tools,
             *open_ai_image_toolkit.get_tools(),
@@ -1291,7 +1468,9 @@ def multi_modal_agent(options: Chat):
                 url=options.api_url,
             ),
         )
-        audio_analysis_toolkit = message_integration.register_toolkits(audio_analysis_toolkit)
+        audio_analysis_toolkit = message_integration.register_toolkits(
+            audio_analysis_toolkit
+        )
         tools.extend(audio_analysis_toolkit.get_tools())
 
     # if env("EXA_API_KEY") or options.is_cloud():
@@ -1301,32 +1480,32 @@ def multi_modal_agent(options: Chat):
 
     system_message = f"""
 <role>
-You are a Creative Content Specialist, specializing in analyzing and 
-generating various types of media content. Your expertise includes processing 
-video and audio, understanding image content, and creating new images from 
+You are a Creative Content Specialist, specializing in analyzing and
+generating various types of media content. Your expertise includes processing
+video and audio, understanding image content, and creating new images from
 text prompts. You are the team's expert for all multi-modal tasks.
 </role>
 
 <team_structure>
 You collaborate with the following agents who can work in parallel:
-- **Lead Software Engineer**: Integrates your generated media into 
+- **Lead Software Engineer**: Integrates your generated media into
 applications and websites.
-- **Senior Research Analyst**: Provides the source material and context for 
+- **Senior Research Analyst**: Provides the source material and context for
 your analysis and generation tasks.
-- **Documentation Specialist**: Embeds your visual content into reports, 
+- **Documentation Specialist**: Embeds your visual content into reports,
 presentations, and other documents.
 </team_structure>
 
 <operating_environment>
 - **System**: {platform.system()} ({platform.machine()})
-- **Working Directory**: `{working_directory}`. All local file operations must 
+- **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 </operating_environment>
 
 <mandatory_instructions>
 - You MUST use the `read_note` tool to to gather all information collected
-    by other team members by reading ALL notes and write down your findings in 
+    by other team members by reading ALL notes and write down your findings in
     the notes.
 
 - When you complete your task, your final response must be a comprehensive
@@ -1334,9 +1513,9 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
     detailed, and easy-to-read format. Avoid using markdown tables for
     presenting data; use plain text formatting instead.
 
-- You SHOULD keep the user informed by providing message_title and 
+- You SHOULD keep the user informed by providing message_title and
     message_description
-    parameters when calling tools. These optional parameters are available on 
+    parameters when calling tools. These optional parameters are available on
     all tools and will automatically notify the user of your progress.
 <mandatory_instructions>
 
@@ -1414,7 +1593,9 @@ async def social_medium_agent(options: Chat):
     include toolkits: WhatsApp, Twitter, LinkedIn, Reddit, Notion, Slack, Discord and Google Suite.
     """
     working_directory = get_working_directory(options)
-    traceroot_logger.info(f"Creating social medium agent for project: {options.project_id} in directory: {working_directory}")
+    traceroot_logger.info(
+        f"Creating social medium agent for project: {options.project_id} in directory: {working_directory}"
+    )
     tools = [
         *WhatsAppToolkit.get_can_use_tools(options.project_id),
         *TwitterToolkit.get_can_use_tools(options.project_id),
@@ -1422,12 +1603,20 @@ async def social_medium_agent(options: Chat):
         *RedditToolkit.get_can_use_tools(options.project_id),
         *await NotionMCPToolkit.get_can_use_tools(options.project_id),
         # *SlackToolkit.get_can_use_tools(options.project_id),
-        *await GoogleGmailMCPToolkit.get_can_use_tools(options.project_id, options.get_bun_env()),
+        *await GoogleGmailMCPToolkit.get_can_use_tools(
+            options.project_id, options.get_bun_env()
+        ),
         *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
         *HumanToolkit.get_can_use_tools(options.project_id, Agents.social_medium_agent),
-        *TerminalToolkit(options.project_id, agent_name=Agents.social_medium_agent, clone_current_env=False).get_tools(),
+        *TerminalToolkit(
+            options.project_id,
+            agent_name=Agents.social_medium_agent,
+            clone_current_env=False,
+        ).get_tools(),
         *NoteTakingToolkit(
-            options.project_id, Agents.social_medium_agent, working_directory=working_directory
+            options.project_id,
+            Agents.social_medium_agent,
+            working_directory=working_directory,
         ).get_tools(),
         # *DiscordToolkit(options.project_id).get_tools(),  # Not supported temporarily
         # *GoogleSuiteToolkit(options.project_id).get_tools(),  # Not supported temporarily
@@ -1448,7 +1637,7 @@ be a comprehensive summary of your actions, presented in a clear, detailed,
 and easy-to-read format. Avoid using markdown tables for presenting data;
 use plain text formatting instead.
 
-- **Working Directory**: `{working_directory}`. All local file operations must 
+- **Working Directory**: `{working_directory}`. All local file operations must
 occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks, you MUST use this as the current date.
 
@@ -1491,7 +1680,7 @@ Your integrated toolkits enable you to:
    - Communicate with other agents using messaging tools when collaboration
    is needed. Use `list_available_agents` to see available team members and
    `send_message` to coordinate with them, especially when you need content
-   from document agents or research from search agents.
+   from document agents or research from browser agents.
 
 9. File System Access:
    - You can use terminal tools to interact with the local file system in
@@ -1538,9 +1727,18 @@ async def mcp_agent(options: Chat):
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
-            traceroot_logger.info(f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}")
+            traceroot_logger.info(
+                f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}"
+            )
             if mcp_tools:
-                tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in mcp_tools]
+                tool_names = [
+                    (
+                        tool.get_function_name()
+                        if hasattr(tool, "get_function_name")
+                        else str(tool)
+                    )
+                    for tool in mcp_tools
+                ]
                 traceroot_logger.debug(f"MCP tools: {tool_names}")
             tools = [*tools, *mcp_tools]
         except Exception as e:
@@ -1548,14 +1746,18 @@ async def mcp_agent(options: Chat):
 
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.project_id}")
+    traceroot_logger.info(
+        f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.project_id}"
+    )
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(
                 data={
                     "agent_name": Agents.mcp_agent,
                     "agent_id": agent_id,
-                    "tools": [key for key in options.installed_mcp["mcpServers"].keys()],
+                    "tools": [
+                        key for key in options.installed_mcp["mcpServers"].keys()
+                    ],
                 }
             )
         )
@@ -1569,11 +1771,13 @@ async def mcp_agent(options: Chat):
             model_type=options.model_type,
             api_key=options.api_key,
             url=options.api_url,
-            model_config_dict={
-                "user": str(options.project_id),
-            }
-            if options.is_cloud()
-            else None,
+            model_config_dict=(
+                {
+                    "user": str(options.project_id),
+                }
+                if options.is_cloud()
+                else None
+            ),
             **{
                 k: v
                 for k, v in (options.extra_params or {}).items()
@@ -1588,7 +1792,9 @@ async def mcp_agent(options: Chat):
 
 @traceroot.trace()
 async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
-    traceroot_logger.info(f"Getting toolkits for agent: {agent_name}, task: {api_task_id}, tools: {tools}")
+    traceroot_logger.info(
+        f"Getting toolkits for agent: {agent_name}, task: {api_task_id}, tools: {tools}"
+    )
     toolkits = {
         "audio_analysis_toolkit": AudioAnalysisToolkit,
         "openai_image_toolkit": OpenAIImageToolkit,
@@ -1600,6 +1806,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
+        "lark_toolkit": LarkToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
         "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
@@ -1618,7 +1825,11 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
             toolkit_tools = toolkit.get_can_use_tools(api_task_id)
-            toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
+            toolkit_tools = (
+                await toolkit_tools
+                if asyncio.iscoroutine(toolkit_tools)
+                else toolkit_tools
+            )
             res.extend(toolkit_tools)
         else:
             traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")
@@ -1627,10 +1838,12 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
 
 @traceroot.trace()
 async def get_mcp_tools(mcp_server: McpServers):
-    traceroot_logger.info(f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
+    traceroot_logger.info(
+        f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers"
+    )
     if len(mcp_server["mcpServers"]) == 0:
         return []
-    
+
     # Ensure unified auth directory for all mcp-remote servers to avoid re-authentication on each task
     config_dict = {**mcp_server}
     for server_config in config_dict["mcpServers"].values():
@@ -1638,17 +1851,28 @@ async def get_mcp_tools(mcp_server: McpServers):
             server_config["env"] = {}
         # Set global auth directory to persist authentication across tasks
         if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
-            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
+            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
+                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
+            )
 
     mcp_toolkit = None
     try:
         mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
         await mcp_toolkit.connect()
 
-        traceroot_logger.info(f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers")
+        traceroot_logger.info(
+            f"Successfully connected to MCP toolkit with {len(mcp_server['mcpServers'])} servers"
+        )
         tools = mcp_toolkit.get_tools()
         if tools:
-            tool_names = [tool.get_function_name() if hasattr(tool, 'get_function_name') else str(tool) for tool in tools]
+            tool_names = [
+                (
+                    tool.get_function_name()
+                    if hasattr(tool, "get_function_name")
+                    else str(tool)
+                )
+                for tool in tools
+            ]
             traceroot_logger.debug(f"MCP tool names: {tool_names}")
         return tools
     except asyncio.CancelledError:

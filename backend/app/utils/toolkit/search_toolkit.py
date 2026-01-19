@@ -14,7 +14,7 @@ logger = traceroot.get_logger("search_toolkit")
 
 @auto_listen_toolkit(BaseSearchToolkit)
 class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
-    agent_name: str = Agents.search_agent
+    agent_name: str = Agents.browser_agent
 
     def __init__(
         self,

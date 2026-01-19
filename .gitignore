@@ -54,3 +54,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
+
+# Prebuilt binaries (architecture-specific, should be downloaded during build)
+resources/prebuilt/bin/
+resources/prebuilt/venv/
+resources/prebuilt/cache/

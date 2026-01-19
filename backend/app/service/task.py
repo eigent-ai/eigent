@@ -45,6 +45,7 @@ class Action(str, Enum):
     add_task = "add_task"  # user -> backend
     remove_task = "remove_task"  # user -> backend
     skip_task = "skip_task"  # user -> backend
+    timeout = "timeout"  # backend -> user (task timeout error)
 
 
 class ActionImproveData(BaseModel):
@@ -173,6 +174,11 @@ class ActionEndData(BaseModel):
     action: Literal[Action.end] = Action.end
 
 
+class ActionTimeoutData(BaseModel):
+    action: Literal[Action.timeout] = Action.timeout
+    data: dict[Literal["message", "in_flight_tasks", "pending_tasks", "timeout_seconds"], str | int]
+
+
 class ActionSupplementData(BaseModel):
     action: Literal[Action.supplement] = Action.supplement
     data: SupplementChat
@@ -233,6 +239,7 @@ ActionData = (
     | ActionTerminalData
     | ActionStopData
     | ActionEndData
+    | ActionTimeoutData
     | ActionSupplementData
     | ActionTakeControl
     | ActionNewAgent
@@ -250,7 +257,7 @@ class Agents(str, Enum):
     coordinator_agent = "coordinator_agent"
     new_worker_agent = "new_worker_agent"
     developer_agent = "developer_agent"
-    search_agent = "search_agent"
+    browser_agent = "browser_agent"
     document_agent = "document_agent"
     multi_modal_agent = "multi_modal_agent"
     social_medium_agent = "social_medium_agent"

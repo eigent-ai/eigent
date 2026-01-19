@@ -29,6 +29,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    apiKey: '',
+    apiHost: 'https://openrouter.ai/api/v1',
+    description: "OpenRouter model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
     id: 'tongyi-qianwen',
     name: 'Qwen',
     apiKey: '',
@@ -47,7 +56,34 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
-    id: 'bedrock',
+    id: 'minimax',
+    name: 'Minimax',
+    apiKey: '',
+    apiHost: 'https://api.minimax.io/v1',
+    description: "Minimax model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
+    id: 'Z.ai',
+    name: 'Z.ai',
+    apiKey: '',
+    apiHost: 'https://api.z.ai/api/coding/paas/v4/',
+    description: "Z.ai model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
+    id: 'ModelArk',
+    name: 'ModelArk',
+    apiKey: '',
+    apiHost: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+    description: "ModelArk model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
+    id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
     apiHost: '',

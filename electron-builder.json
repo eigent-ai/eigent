@@ -6,16 +6,30 @@
   "directories": {
     "output": "release"
   },
-  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__","!server","!docs"],
+  "files": [
+    "dist-electron",
+    "dist",
+    "resources",
+    "!backend",
+    "!dist/images",
+    "!**/__pycache__",
+    "!server",
+    "!docs"
+  ],
   "extraResources": [
     {
-      "from": "backend",  
+      "from": "backend",
       "to": "backend",
       "filter": ["**/*", "!.venv/**/*"]
     },
     {
       "from": "utils",
       "to": "utils"
+    },
+    {
+      "from": "resources/prebuilt",
+      "to": "prebuilt",
+      "filter": ["**/*", "!cache/**/*", "!**/.npm-cache/**/*"]
     }
   ],
   "protocols": [
@@ -33,6 +47,7 @@
     }
   ],
   "icon": "build/icon.ico",
+  "afterPack": "./config/before-sign.cjs",
   "afterSign": "./config/notarize.cjs",
   "mac": {
     "icon": "build/icon.icns",
@@ -62,6 +77,11 @@
       }
     ]
   },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": ["AppImage"],
+    "category": "Development"
+  },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
@@ -70,7 +90,7 @@
     "deleteAppDataOnUninstall": false,
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
-    "installerHeaderIcon": "build/icon.ico", 
+    "installerHeaderIcon": "build/icon.ico",
     "include": "build/installer.nsh"
   }
 }

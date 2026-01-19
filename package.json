@@ -1,6 +1,6 @@
 {
   "name": "eigent",
-  "version": "0.0.77",
+  "version": "0.0.80",
   "main": "dist-electron/main/index.js",
   "description": "Eigent",
   "author": "Eigent.AI",
@@ -16,10 +16,15 @@
     "compile-babel": "cd backend && uv run pybabel compile -d lang",
     "clean-cache": "rimraf node_modules/.vite",
     "dev": "npm run clean-cache && vite",
-    "build": "npm run compile-babel && tsc && vite build &&  electron-builder -- --publish always",
-    "build:mac": "npm run compile-babel && tsc && vite build && electron-builder --mac",
-    "build:win": "npm run compile-babel && tsc && vite build && electron-builder --win",
-    "build:all": "npm run compile-babel && tsc && vite build && electron-builder --mac --win",
+    "preinstall-deps": "node scripts/preinstall-deps.js",
+    "clean-symlinks": "node scripts/clean-symlinks.js",
+    "test-signing": "node scripts/test-signing.js",
+    "build": "npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build &&  electron-builder -- --publish always",
+    "build:mac": "npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build && electron-builder --mac",
+    "build:mac:test": "npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build && electron-builder --mac && npm run test-signing",
+    "build:win": "npm run preinstall-deps && npm run compile-babel && tsc && vite build && electron-builder --win",
+    "build:linux": "npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build && electron-builder --linux",
+    "build:all": "npm run preinstall-deps && npm run compile-babel && tsc && vite build && electron-builder --mac --win --linux",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run",
@@ -63,7 +68,7 @@
     "csv-parser": "^3.2.0",
     "dompurify": "^3.2.7",
     "electron-log": "^5.4.0",
-    "electron-updater": "^6.3.9",
+    "electron-updater": "^6.7.3",
     "embla-carousel-autoplay": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.17.0",
@@ -110,10 +115,11 @@
     "@vitejs/plugin-react": "^4.3.3",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.4.0",
+    "electron-devtools-installer": "^4.0.0",
     "i18next": "^25.4.2",
-    "jsdom": "^26.1.0",
+    "jsdom": "^27.4.0",
     "postcss": "^8.4.49",
     "postcss-import": "^16.1.0",
     "react": "^18.3.1",
@@ -127,10 +133,16 @@
     "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "^2.1.5"
   },
+  "overrides": {
+    "glob": "^10.4.5"
+  },
   "pnpm": {
-    "neverBuiltDependencies": []
+    "neverBuiltDependencies": [],
+    "overrides": {
+      "glob": "^10.4.5"
+    }
   },
   "engines": {
-    "node": ">=18.0.0 <23.0.0"
+    "node": ">=20.0.0 <23.0.0"
   }
 }
