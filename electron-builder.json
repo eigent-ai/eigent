@@ -67,7 +67,6 @@
     }
   },
   "win": {
-    "certificateFile": null,
     "icon": "build/icon.ico",
     "artifactName": "${productName}.Setup.${version}.exe",
     "target": [
