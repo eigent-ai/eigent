@@ -77,6 +77,83 @@ SPAN_TASK_EXECUTION = "task.execution"
 SPAN_LOG_MESSAGE = "log.message"
 SPAN_ALL_TASKS_COMPLETED = "workforce.all_tasks_completed"
 
+# Global tracer provider singleton to avoid creating multiple processors
+# This is initialized once during FastAPI startup
+_GLOBAL_TRACER_PROVIDER: TracerProvider = None
+
+
+def initialize_tracer_provider() -> None:
+    """Initialize the global TracerProvider during application startup.
+
+    Should be called once during FastAPI startup event.
+    This ensures we only have one BatchSpanProcessor running,
+    preventing resource leaks when multiple WorkforceMetricsCallback
+    instances are created.
+    """
+    global _GLOBAL_TRACER_PROVIDER
+
+    if _GLOBAL_TRACER_PROVIDER is not None:
+        logger.warning("TracerProvider already initialized, skipping")
+        return
+
+    # Get configuration from environment
+    langfuse_public_key = os.getenv(ENV_LANGFUSE_PUBLIC_KEY)
+    langfuse_secret_key = os.getenv(ENV_LANGFUSE_SECRET_KEY)
+    langfuse_base_url = os.getenv(ENV_LANGFUSE_BASE_URL,
+                                  DEFAULT_LANGFUSE_BASE_URL)
+
+    # Create resource with service information
+    resource = Resource(attributes={SERVICE_NAME: SERVICE_NAME_WORKFORCE})
+
+    # Create tracer provider
+    provider = TracerProvider(resource=resource)
+
+    # Configure OTLP exporter for Langfuse if credentials are available
+    if langfuse_public_key and langfuse_secret_key:
+        logger.info("Initializing Langfuse telemetry")
+        # Set environment variables for OTLP exporter
+        endpoint_url = _create_langfuse_endpoint(langfuse_base_url)
+        os.environ[ENV_OTEL_EXPORTER_OTLP_ENDPOINT] = endpoint_url
+        auth_header = _create_basic_auth_header(langfuse_public_key,
+                                                langfuse_secret_key)
+        os.environ[ENV_OTEL_EXPORTER_OTLP_HEADERS] = auth_header
+
+        # Create exporter using environment variables
+        exporter = OTLPSpanExporter()
+
+        # Use BatchSpanProcessor for async/non-blocking export
+        # Configure max_queue_size to prevent OOM when exporter fails
+        # Configure export_timeout to fail fast if endpoint is down
+        processor = BatchSpanProcessor(
+            exporter,
+            max_queue_size=4096,  # Drop spans if queue is full
+            export_timeout_millis=30000,  # 30s timeout
+            schedule_delay_millis=3000,  # Export every 3s
+            max_export_batch_size=1024,  # Export up to 1024 spans
+        )
+        provider.add_span_processor(processor)
+        logger.info("Langfuse telemetry initialized successfully")
+    else:
+        logger.info("Langfuse credentials not found, telemetry disabled")
+
+    _GLOBAL_TRACER_PROVIDER = provider
+
+
+def get_tracer_provider() -> TracerProvider:
+    """Get the global TracerProvider instance.
+
+    Returns:
+        TracerProvider: The global tracer provider
+
+    Raises:
+        RuntimeError: If called before initialization
+    """
+    if _GLOBAL_TRACER_PROVIDER is None:
+        raise RuntimeError(
+            "TracerProvider not initialized. "
+            "Call initialize_tracer_provider() during app startup.")
+    return _GLOBAL_TRACER_PROVIDER
+
 
 def _create_langfuse_endpoint(base_url: str) -> str:
     """Create Langfuse OTLP endpoint URL.
@@ -120,6 +197,9 @@ class WorkforceMetricsCallback(WorkforceMetrics):
     def __init__(self, project_id: str, task_id: str):
         """Initialize OpenTelemetry metrics callback.
 
+        Uses a global shared TracerProvider to avoid creating multiple
+        BatchSpanProcessor instances, which would lead to resource leaks.
+
         Args:
             project_id: The project/workforce identifier
             task_id: The task identifier
@@ -134,53 +214,16 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         self.project_id = project_id
         self.task_id = task_id
 
-        # Get configuration from environment
+        # Check if telemetry is enabled
         langfuse_public_key = os.getenv(ENV_LANGFUSE_PUBLIC_KEY)
         langfuse_secret_key = os.getenv(ENV_LANGFUSE_SECRET_KEY)
-        langfuse_base_url = os.getenv(ENV_LANGFUSE_BASE_URL,
-                                      DEFAULT_LANGFUSE_BASE_URL)
+        self.enabled = bool(langfuse_public_key and langfuse_secret_key)
 
-        # Create resource with service information
-        resource = Resource(
-            attributes={
-                SERVICE_NAME: SERVICE_NAME_WORKFORCE,
-                ATTR_PROJECT_ID: project_id,
-                ATTR_TASK_ID: task_id,
-            })
+        # Get the global shared tracer provider
+        # This ensures only one BatchSpanProcessor is running
+        provider = get_tracer_provider()
 
-        # Create tracer provider
-        provider = TracerProvider(resource=resource)
-
-        # Configure OTLP exporter for Langfuse
-        if langfuse_public_key and langfuse_secret_key:
-            # Set environment variables for OTLP exporter
-            # (Langfuse recommended approach)
-            endpoint_url = _create_langfuse_endpoint(langfuse_base_url)
-            os.environ[ENV_OTEL_EXPORTER_OTLP_ENDPOINT] = endpoint_url
-            auth_header = _create_basic_auth_header(langfuse_public_key,
-                                                    langfuse_secret_key)
-            os.environ[ENV_OTEL_EXPORTER_OTLP_HEADERS] = auth_header
-
-            # Create exporter using environment variables
-            exporter = OTLPSpanExporter()
-
-            # Use BatchSpanProcessor for async/non-blocking export
-            # Configure max_queue_size to prevent OOM when exporter fails
-            # Configure export_timeout to fail fast if endpoint is down
-            processor = BatchSpanProcessor(
-                exporter,
-                max_queue_size=4096,  # Drop spans to prevent OOM
-                export_timeout_millis=30000,  # 30s timeout
-                schedule_delay_millis=3000,  # Export every 3s
-                max_export_batch_size=1024,  # Export up to 1024 spans at once
-            )
-            provider.add_span_processor(processor)
-
-            self.enabled = True
-        else:
-            self.enabled = False
-
-        # Get tracer directly from our provider
+        # Get tracer from the shared provider
         # Use CAMEL version for instrumentation versioning
         self.tracer = provider.get_tracer(TRACER_NAME_WORKFORCE,
                                           camel.__version__)

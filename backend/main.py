@@ -81,6 +81,11 @@ async def startup_event():
     pid_task = asyncio.create_task(write_pid_file())
     app_logger.info("PID write task created")
 
+    # Initialize telemetry tracer provider
+    from app.utils.telemetry.workforce_metrics import initialize_tracer_provider
+    initialize_tracer_provider()
+    app_logger.info("Telemetry tracer provider initialized")
+
 # Graceful shutdown handler
 shutdown_event = asyncio.Event()
 

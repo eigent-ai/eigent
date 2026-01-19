@@ -2,6 +2,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
+import app.utils.telemetry.workforce_metrics as wm_module
 import pytest
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from camel.societies.workforce.events import (LogEvent, TaskAssignedEvent,
@@ -10,6 +11,14 @@ from camel.societies.workforce.events import (LogEvent, TaskAssignedEvent,
                                               TaskFailedEvent,
                                               TaskStartedEvent,
                                               WorkerCreatedEvent)
+
+
+@pytest.fixture(autouse=True)
+def reset_global_tracer_provider():
+    """Reset global tracer provider between tests for isolation."""
+    yield
+    # Reset global after each test
+    wm_module._GLOBAL_TRACER_PROVIDER = None
 
 
 @pytest.fixture
@@ -31,6 +40,9 @@ def mock_env_vars():
 def metrics_callback(mock_env_vars):
     """Create a WorkforceMetricsCallback instance for testing."""
     with patch("app.utils.telemetry.workforce_metrics.OTLPSpanExporter"):
+        # Initialize the tracer provider first
+        wm_module.initialize_tracer_provider()
+
         callback = WorkforceMetricsCallback(project_id="test_project",
                                             task_id="test_task")
         # Mock the tracer and spans
@@ -217,9 +229,8 @@ def test_batch_span_processor_configuration_prevents_oom(mock_env_vars):
                ) as mock_exporter_class, patch(
                    "app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
                ) as mock_processor_class:
-        # Create callback
-        WorkforceMetricsCallback(project_id="test_project",
-                                 task_id="test_task")
+        # Initialize tracer provider
+        wm_module.initialize_tracer_provider()
 
         # Verify BatchSpanProcessor was called with OOM prevention config
         mock_processor_class.assert_called_once()
@@ -242,6 +253,9 @@ def test_missing_langfuse_env_vars_disables_tracing():
     ) as mock_exporter_class, patch(
             "app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
     ) as mock_processor_class:
+        # Initialize tracer provider without credentials
+        wm_module.initialize_tracer_provider()
+
         # Create callback without Langfuse credentials
         callback = WorkforceMetricsCallback(project_id="test_project",
                                             task_id="test_task")
@@ -258,3 +272,26 @@ def test_missing_langfuse_env_vars_disables_tracing():
                                    worker_type="test_worker",
                                    role="test_role")
         callback.log_worker_created(event)  # Should not raise errors
+
+
+def test_multiple_callbacks_share_tracer_provider(mock_env_vars):
+    """Test that multiple callbacks share the same TracerProvider."""
+    with patch("app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
+               ) as mock_processor_class:
+        # Initialize tracer provider once
+        wm_module.initialize_tracer_provider()
+
+        # Create first callback
+        callback1 = WorkforceMetricsCallback(project_id="project1",
+                                             task_id="task1")
+
+        # Create second callback
+        callback2 = WorkforceMetricsCallback(project_id="project2",
+                                             task_id="task2")
+
+        # Verify BatchSpanProcessor was only called once (singleton)
+        assert mock_processor_class.call_count == 1
+
+        # Both callbacks should be enabled
+        assert callback1.enabled is True
+        assert callback2.enabled is True

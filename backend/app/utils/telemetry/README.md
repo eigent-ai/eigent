@@ -24,6 +24,32 @@ LANGFUSE_BASE_URL=https://us.cloud.langfuse.com  # Optional, defaults to US clou
 
 Only **metadata** is captured (task IDs, timings, model names, token counts, quality scores). **No PII or detailed task content** is sent to Langfuse.
 
+## Architecture
+
+### Singleton TracerProvider
+
+The `TracerProvider` is initialized once during FastAPI startup (`main.py`) to ensure only one `BatchSpanProcessor` is running, regardless of how many `WorkforceMetricsCallback` instances are created. This prevents:
+
+- Resource leaks from multiple background export threads
+- OOM issues from unbounded span queuing (max queue: 4096 spans)
+- Excessive memory usage across multiple workforce sessions
+
+The initialization happens in the startup event:
+
+```python
+@api.on_event("startup")
+async def startup_event():
+    from app.utils.telemetry.workforce_metrics import initialize_tracer_provider
+    initialize_tracer_provider()
+```
+
+### Batch Processing Configuration
+
+- `max_queue_size`: 4096 spans (drops oldest when full)
+- `export_timeout_millis`: 30000 (30s timeout for exports)
+- `schedule_delay_millis`: 3000 (exports every 3s)
+- `max_export_batch_size`: 1024 (max spans per export)
+
 ## Span Structure
 
 All spans share common resource attributes and scope information:
