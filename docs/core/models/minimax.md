@@ -15,7 +15,7 @@ description: "This guide walks you through setting up your MiniMax API key withi
 - Launch Eigent and navigate to the **Home Page**.
 - Click on the **Settings** tab (usually located in the sidebar or top navigation).
 
-![Minimax 1 Pn](/docs/images/gemini_1.png)
+![Minimax 1 Pn](/docs/images/model_setting.png)
 
 **2. Locate Model Configuration**
 
