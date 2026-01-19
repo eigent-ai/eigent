@@ -93,4 +93,3 @@ Eigent supports the following BYOK providers:
 - **Keep your API key secure** - Never share or expose your API key publicly
 - **Monitor usage** - Check your provider's dashboard regularly to track costs
 - **Use appropriate models** - Different models have different capabilities and pricing
-- **Test with smaller models first** - Validate your setup with cheaper models before using premium ones
