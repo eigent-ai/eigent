@@ -21,7 +21,13 @@ Note: All the above data is stored in the local PostgreSQL volume in Docker (see
 ---
 
 ### Quick Start (Docker)
-Prerequisite: Docker Desktop installed.
+
+#### Prerequisites
+- **Docker Desktop**: Installed and running
+- **Python**: 3.10.* (3.10.15 recommended)
+- **Node.js**: >=18.0.0 <23.0.0
+
+#### Setup Steps
 
 1) Start services
 ```bash
@@ -81,8 +87,11 @@ You can run the API locally with hot-reload while keeping the database in Docker
 # Stop API in container, keep DB
 docker stop eigent_api
 
-# Run locally (provide DB connection string)
+# Initialize database (first-time or when DB schema changes)
 cd server
+uv run alembic upgrade head
+
+# Run locally (provide DB connection string)
 export database_url=postgresql://postgres:123456@localhost:5432/eigent
 uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 ```
