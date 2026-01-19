@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -178,36 +179,46 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
     def cleanup(self, remove_venv: bool = True):
         """Clean up all active sessions and optionally remove the virtual environment.
-        
+
         Args:
             remove_venv: If True, removes the .venv or .initial_env folder created
                         by this toolkit. Defaults to True to prevent disk bloat.
         """
         # First call parent cleanup to kill all shell sessions
         super().cleanup()
-        
-        if remove_venv:
-            import shutil
-            
-            # Remove cloned env (.venv) if it exists
-            if self.cloned_env_path and os.path.exists(self.cloned_env_path):
-                try:
-                    shutil.rmtree(self.cloned_env_path)
-                    logger.info(f"Removed cloned venv: {self.cloned_env_path}", extra={
-                        "api_task_id": self.api_task_id
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to remove cloned venv {self.cloned_env_path}: {e}")
-            
-            # Remove initial env (.initial_env) if it exists
-            if self.initial_env_path and os.path.exists(self.initial_env_path):
-                try:
-                    shutil.rmtree(self.initial_env_path)
-                    logger.info(f"Removed initial env: {self.initial_env_path}", extra={
-                        "api_task_id": self.api_task_id
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to remove initial env {self.initial_env_path}: {e}")
+
+        if not remove_venv:
+            return
+
+        # Remove cloned env (.venv) if it exists
+        if self.cloned_env_path and os.path.exists(self.cloned_env_path):
+            try:
+                shutil.rmtree(self.cloned_env_path)
+                logger.info("Removed cloned venv", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.cloned_env_path
+                })
+            except Exception as e:
+                logger.warning("Failed to remove cloned venv", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.cloned_env_path,
+                    "error": str(e)
+                })
+
+        # Remove initial env (.initial_env) if it exists
+        if self.initial_env_path and os.path.exists(self.initial_env_path):
+            try:
+                shutil.rmtree(self.initial_env_path)
+                logger.info("Removed initial env", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.initial_env_path
+                })
+            except Exception as e:
+                logger.warning("Failed to remove initial env", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.initial_env_path,
+                    "error": str(e)
+                })
 
     @classmethod
     def shutdown(cls):

@@ -23,7 +23,8 @@ from app.service.task import (
     get_or_create_task_lock,
     get_task_lock,
     set_current_task_id,
-    delete_task_lock
+    delete_task_lock,
+    task_locks,
 )
 from app.component.environment import set_user_env_path
 from app.utils.workforce import Workforce
@@ -38,9 +39,40 @@ chat_logger = traceroot.get_logger("chat_controller")
 # SSE timeout configuration (30 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 30 * 60
 
-async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TIMEOUT_SECONDS, task_lock = None):
+
+async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
+    """Safely cleanup task lock with existence check.
+
+    Args:
+        task_lock: The task lock to cleanup
+        reason: Reason for cleanup (for logging)
+
+    Returns:
+        True if cleanup was performed, False otherwise
     """
-    Wraps a stream generator with timeout handling.
+    if not task_lock:
+        return False
+
+    # Check if task_lock still exists before attempting cleanup
+    if task_lock.id not in task_locks:
+        chat_logger.debug(f"[{reason}] Task lock already removed, skipping cleanup",
+                         extra={"task_id": task_lock.id})
+        return False
+
+    try:
+        task_lock.status = Status.done
+        await delete_task_lock(task_lock.id)
+        chat_logger.info(f"[{reason}] Task lock cleanup completed",
+                        extra={"task_id": task_lock.id})
+        return True
+    except Exception as e:
+        chat_logger.error(f"[{reason}] Failed to cleanup task lock",
+                         extra={"task_id": task_lock.id, "error": str(e)}, exc_info=True)
+        return False
+
+
+async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TIMEOUT_SECONDS, task_lock=None):
+    """Wraps a stream generator with timeout handling.
 
     Closes the SSE connection if no data is received within the timeout period.
     Triggers cleanup if timeout occurs to prevent resource leaks.
@@ -59,40 +91,24 @@ async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TI
                 last_data_time = time.time()
                 yield data
             except asyncio.TimeoutError:
-                chat_logger.warning(f"SSE timeout: No data received for {timeout_seconds} seconds, closing connection")
+                chat_logger.warning("SSE timeout: No data received, closing connection",
+                                   extra={"timeout_seconds": timeout_seconds})
                 yield sse_json("error", {"message": f"Connection timeout: No data received for {timeout_seconds // 60} minutes"})
-
-                # Trigger cleanup to prevent resource leaks
-                if task_lock:
-                    try:
-                        task_lock.status = Status.done
-                        await delete_task_lock(task_lock.id)
-                        cleanup_triggered = True
-                    except Exception as cleanup_error:
-                        chat_logger.error(f"[TIMEOUT-CLEANUP] Failed to cleanup task lock: {cleanup_error}", exc_info=True)
+                cleanup_triggered = await _cleanup_task_lock_safe(task_lock, "TIMEOUT")
                 break
             except StopAsyncIteration:
                 break
 
     except asyncio.CancelledError:
         chat_logger.info("[STREAM-CANCELLED] Stream cancelled, triggering cleanup")
-        # Trigger cleanup on cancellation
-        if task_lock and not cleanup_triggered:
-            try:
-                task_lock.status = Status.done
-                await delete_task_lock(task_lock.id)
-            except Exception as cleanup_error:
-                chat_logger.error(f"[STREAM-CANCELLED] Failed to cleanup: {cleanup_error}")
+        if not cleanup_triggered:
+            await _cleanup_task_lock_safe(task_lock, "CANCELLED")
         raise
     except Exception as e:
-        chat_logger.error(f"[STREAM-ERROR] Unexpected error in stream wrapper: {e}", exc_info=True)
-        # Trigger cleanup on unexpected errors
-        if task_lock and not cleanup_triggered:
-            try:
-                task_lock.status = Status.done
-                await delete_task_lock(task_lock.id)
-            except Exception as cleanup_error:
-                chat_logger.error(f"[STREAM-ERROR] Failed to cleanup: {cleanup_error}")
+        chat_logger.error("[STREAM-ERROR] Unexpected error in stream wrapper",
+                         extra={"error": str(e)}, exc_info=True)
+        if not cleanup_triggered:
+            await _cleanup_task_lock_safe(task_lock, "ERROR")
         raise
 
 

@@ -364,13 +364,23 @@ class TaskLock:
 
     def register_toolkit(self, toolkit: Any) -> None:
         """Register a toolkit for cleanup when task ends.
-        
+
         This is used to track toolkits that create resources (like venvs) that
         should be cleaned up when the task is complete.
+
+        Note: Duplicate registrations of the same toolkit instance are ignored.
         """
+        # Prevent duplicate registration of the same toolkit instance
+        if any(t is toolkit for t in self.registered_toolkits):
+            logger.debug("Toolkit already registered, skipping", extra={
+                "task_id": self.id,
+                "toolkit": type(toolkit).__name__
+            })
+            return
+
         self.registered_toolkits.append(toolkit)
         logger.debug("Toolkit registered for cleanup", extra={
-            "task_id": self.id, 
+            "task_id": self.id,
             "toolkit": type(toolkit).__name__,
             "total_registered": len(self.registered_toolkits)
         })
