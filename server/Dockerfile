@@ -4,7 +4,7 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 # Install the project into `/app`
 WORKDIR /app
 
-# Disable bytecode compilation to avoid EMFILE during build on low nofile limits
+# Disable bytecode transfer during compilation to avoid EMFILE during build on low nofile limits
 ENV UV_COMPILE_BYTECODE=0
 
 # Copy from the cache instead of linking since it's a mounted volume
@@ -43,7 +43,7 @@ RUN uv run pybabel extract -F babel.cfg -o messages.pot .  && \
 
 
 # Install netcat for database connectivity check
-RUN apt-get update && apt-get install -y curl netcat-openbsd && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends curl netcat-openbsd && rm -rf /var/lib/apt/lists/*
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
