@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import uuid
 from typing import Any, Dict, List, Optional
 from typing_extensions import TypedDict
 import websockets
@@ -24,7 +25,7 @@ logger = traceroot.get_logger("hybrid_browser_toolkit")
 _global_navigation_lock = asyncio.Lock()
 
 # Global registry: tab_id -> session_id (ensures each tab belongs to only one session)
-_global_tab_registry: Dict[str, int] = {}
+_global_tab_registry: Dict[str, str] = {}
 _global_tab_registry_lock = asyncio.Lock()
 
 
@@ -41,6 +42,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
         # Track tabs opened by this session for isolation
         self._session_tab_ids: set = set()
+        self._wrapper_session_id: str = str(uuid.uuid4())
 
     def _ensure_local_no_proxy(self) -> None:
         local_hosts = ["localhost", "127.0.0.1", "::1"]
@@ -183,7 +185,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         global _global_tab_registry, _global_tab_registry_lock
 
         all_tabs = await super().get_tab_info()
-        session_id = id(self)  # Unique identifier for this wrapper instance
+        session_id = self._wrapper_session_id  # Stable UUID for this wrapper
 
         # Auto-track: add current tab to this session's tracked tabs (with global lock)
         current_tab = next((t for t in all_tabs if t.get('is_current')),
@@ -225,6 +227,27 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 f"[Session Tab Tracking] Removed closed tab: {tab_id}, session now has tabs: {self._session_tab_ids}")
 
         return result
+
+    async def cleanup_tab_tracking(self):
+        """Clean up all tab tracking for this session from the global registry.
+
+        Should be called when the wrapper is being stopped/destroyed to prevent
+        memory leaks and stale entries in the global registry.
+        """
+        global _global_tab_registry, _global_tab_registry_lock
+
+        if not self._session_tab_ids:
+            return
+
+        async with _global_tab_registry_lock:
+            cleaned_count = len(self._session_tab_ids)
+            for tab_id in list(self._session_tab_ids):
+                if tab_id in _global_tab_registry:
+                    del _global_tab_registry[tab_id]
+            # Clear inside lock to prevent race with concurrent get_tab_info
+            self._session_tab_ids.clear()
+            logger.info(
+                f"[Session Tab Tracking] Cleaned up {cleaned_count} tabs for session {self._wrapper_session_id}")
 
 
 # WebSocket connection pool
@@ -273,6 +296,7 @@ class WebSocketConnectionPool:
                     # Connection is unhealthy, clean it up
                     logger.info(f"Removing unhealthy WebSocket connection for session {session_id}")
                     try:
+                        await wrapper.cleanup_tab_tracking()
                         await wrapper.stop()
                     except Exception as e:
                         logger.debug(f"Error stopping unhealthy wrapper: {e}")
@@ -292,6 +316,7 @@ class WebSocketConnectionPool:
             if session_id in self._connections:
                 wrapper = self._connections[session_id]
                 try:
+                    await wrapper.cleanup_tab_tracking()
                     await wrapper.stop()
                 except Exception as e:
                     logger.error(f"Error closing WebSocket connection for session {session_id}: {e}")
@@ -303,6 +328,7 @@ class WebSocketConnectionPool:
         if session_id in self._connections:
             wrapper = self._connections[session_id]
             try:
+                await wrapper.cleanup_tab_tracking()
                 await wrapper.stop()
             except Exception as e:
                 logger.error(f"Error closing WebSocket connection for session {session_id}: {e}")

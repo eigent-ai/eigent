@@ -567,9 +567,7 @@ class ListenChatAgent(ChatAgent):
 
         # Check if tool is wrapped by @listen_toolkit decorator
         # If so, the decorator will handle activate/deactivate events
-
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
-
 
         # Only send activate event if tool is NOT wrapped by @listen_toolkit
         if not has_listen_decorator:
