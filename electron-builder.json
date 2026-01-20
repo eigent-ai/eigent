@@ -67,7 +67,6 @@
     }
   },
   "win": {
-    "certificateFile": null,
     "icon": "build/icon.ico",
     "artifactName": "${productName}.Setup.${version}.exe",
     "target": [
@@ -76,6 +75,11 @@
         "arch": ["x64"]
       }
     ]
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": ["AppImage"],
+    "category": "Development"
   },
   "nsis": {
     "oneClick": false,

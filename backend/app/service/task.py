@@ -277,6 +277,8 @@ class TaskLock:
     last_accessed: datetime
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
+    registered_toolkits: list[Any]
+    """Track toolkits for cleanup (e.g., TerminalToolkit venvs)"""
 
     # Context management fields
     conversation_history: List[Dict[str, Any]]
@@ -297,6 +299,7 @@ class TaskLock:
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.background_tasks = set()
+        self.registered_toolkits = []
 
         # Initialize context management fields
         self.conversation_history = []
@@ -346,7 +349,41 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+        
+        # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
+        for toolkit in self.registered_toolkits:
+            try:
+                if hasattr(toolkit, 'cleanup'):
+                    toolkit.cleanup()
+                    logger.info("Toolkit cleanup completed", extra={"task_id": self.id, "toolkit": type(toolkit).__name__})
+            except Exception as e:
+                logger.warning(f"Failed to cleanup toolkit: {e}", extra={"task_id": self.id, "toolkit": type(toolkit).__name__})
+        self.registered_toolkits.clear()
+        
         logger.info("Task lock cleanup completed", extra={"task_id": self.id})
+
+    def register_toolkit(self, toolkit: Any) -> None:
+        """Register a toolkit for cleanup when task ends.
+
+        This is used to track toolkits that create resources (like venvs) that
+        should be cleaned up when the task is complete.
+
+        Note: Duplicate registrations of the same toolkit instance are ignored.
+        """
+        # Prevent duplicate registration of the same toolkit instance
+        if any(t is toolkit for t in self.registered_toolkits):
+            logger.debug("Toolkit already registered, skipping", extra={
+                "task_id": self.id,
+                "toolkit": type(toolkit).__name__
+            })
+            return
+
+        self.registered_toolkits.append(toolkit)
+        logger.debug("Toolkit registered for cleanup", extra={
+            "task_id": self.id,
+            "toolkit": type(toolkit).__name__,
+            "total_registered": len(self.registered_toolkits)
+        })
 
     def add_conversation(self, role: str, content: str | dict):
         """Add a conversation entry to history"""
