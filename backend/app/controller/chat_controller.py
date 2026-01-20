@@ -26,7 +26,7 @@ from app.service.task import (
     delete_task_lock,
     task_locks,
 )
-from app.component.environment import set_user_env_path
+from app.component.environment import set_user_env_path, sanitize_env_path
 from app.utils.workforce import Workforce
 from camel.tasks.task import Task
 
@@ -123,7 +123,10 @@ async def post(data: Chat, request: Request):
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
-    load_dotenv(dotenv_path=data.env_path)
+    # Load environment with validated path
+    safe_env_path = sanitize_env_path(data.env_path)
+    if safe_env_path:
+        load_dotenv(dotenv_path=safe_env_path)
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)

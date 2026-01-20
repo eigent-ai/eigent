@@ -17,27 +17,100 @@ _thread_local = threading.local()
 default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
 load_dotenv(dotenv_path=default_env_path)
 
+# Safe base directory for user environment files
+env_base_dir = os.path.join(os.path.expanduser("~"), ".eigent")
+
+
+def sanitize_env_path(env_path: str | None) -> str | None:
+    """
+    Validate and sanitize user-provided environment file path.
+
+    Security: Ensures the path stays within ~/.eigent directory and ends with .env
+    to prevent path traversal attacks and unauthorized file access.
+
+    Args:
+        env_path: User-provided environment file path
+
+    Returns:
+        Validated absolute path string if valid, None otherwise
+    """
+    if not env_path:
+        return None
+
+    try:
+        # Convert to Path object for safe manipulation
+        user_path = Path(env_path)
+
+        # Reject absolute paths outside our control
+        if user_path.is_absolute():
+            # Check if it's already within env_base_dir
+            resolved_path = user_path.resolve()
+        else:
+            # Join relative path to base directory
+            resolved_path = (Path(env_base_dir) / user_path).resolve()
+
+        # Verify the resolved path is still within env_base_dir
+        base_resolved = Path(env_base_dir).resolve()
+        try:
+            resolved_path.relative_to(base_resolved)
+        except ValueError:
+            logger.warning(
+                f"Security: Rejected env_path outside safe directory. "
+                f"Path: {env_path}, Resolved: {resolved_path}, "
+                f"Base: {base_resolved}"
+            )
+            return None
+
+        # Enforce .env file extension
+        if not resolved_path.name.endswith('.env'):
+            logger.warning(
+                f"Security: Rejected env_path with invalid extension. "
+                f"Path: {env_path}, must end with .env"
+            )
+            return None
+
+        return str(resolved_path)
+
+    except (ValueError, OSError) as e:
+        logger.warning(
+            f"Security: Invalid env_path rejected. "
+            f"Path: {env_path}, Error: {e}"
+        )
+        return None
+
 
 def set_user_env_path(env_path: str | None = None):
     """
     Set user-specific environment path for current thread.
     If env_path is None, uses default global environment.
-    """
-    logger.info(f"Setting user environment path: {env_path}, exists: {env_path and os.path.exists(env_path) if env_path else None}")
 
-    if env_path and os.path.exists(env_path):
-        _thread_local.env_path = env_path
+    Security: All paths are validated through sanitize_env_path to prevent
+    path traversal and unauthorized file access.
+    """
+    # Sanitize the path before any filesystem operations
+    safe_env_path = sanitize_env_path(env_path)
+
+    logger.info(
+        f"Setting user environment path: original={env_path}, "
+        f"sanitized={safe_env_path}, "
+        f"exists={safe_env_path and os.path.exists(safe_env_path) if safe_env_path else None}"
+    )
+
+    if safe_env_path and os.path.exists(safe_env_path):
+        _thread_local.env_path = safe_env_path
         # Load user-specific environment variables
-        load_dotenv(dotenv_path=env_path, override=True)
-        logger.info(f"User-specific environment loaded: {env_path}")
+        load_dotenv(dotenv_path=safe_env_path, override=True)
+        logger.info(f"User-specific environment loaded: {safe_env_path}")
     else:
         # Clear thread-local env_path to fall back to global
         if hasattr(_thread_local, 'env_path'):
             delattr(_thread_local, 'env_path')
         logger.info("Reset to default global environment")
 
-        if env_path and not os.path.exists(env_path):
-            logger.warning(f"User environment path does not exist, falling back to global: {env_path}")
+        if env_path and not safe_env_path:
+            logger.warning(f"User environment path rejected by security validation: {env_path}")
+        elif safe_env_path and not os.path.exists(safe_env_path):
+            logger.warning(f"User environment path does not exist, falling back to global: {safe_env_path}")
 
 
 def get_current_env_path() -> str:
@@ -64,8 +137,12 @@ def env(key: str, default=None):
     Get environment variable.
     First checks thread-local user-specific environment,
     then falls back to global environment.
+
+    Security: Uses sanitized path stored in _thread_local.env_path
+    which has already been validated by set_user_env_path.
     """
     # If we have a user-specific environment path, try to reload it to get latest values
+    # Note: _thread_local.env_path is already sanitized by set_user_env_path
     if hasattr(_thread_local, 'env_path') and os.path.exists(_thread_local.env_path):
         # Temporarily load user-specific env to get the latest value
         from dotenv import dotenv_values
