@@ -116,6 +116,19 @@ npm run dev
 
 > Note: This mode connects to Eigent cloud services and requires account registration. For a fully standalone experience, use [Local Deployment](#-local-deployment-recommended) instead.
 
+#### Updating Dependencies
+
+After pulling new code (`git pull`), update both frontend and backend dependencies:
+
+```bash
+# 1. Update frontend dependencies (in project root)
+npm install
+
+# 2. Update backend/Python dependencies (in backend directory)
+cd backend
+uv sync
+```
+
 ### 🏢 Enterprise
 
 For organizations requiring maximum security, customization, and control:
