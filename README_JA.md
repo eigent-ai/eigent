@@ -305,13 +305,13 @@ Documentsディレクトリにmydocsというフォルダがあります。ス�
 
 | トピック | 課題 | Discordチャンネル |
 | ------------------------ | -- |-- |
-| **コンテキストエンジニアリング** | - プロンプトキャッシング<br> - システムプロンプト最適化<br> - ツールキットdocstring最適化<br> - コンテキスト圧縮 | [**Discordに参加 →**](https://discord.gg/D2e3rBWD) |
-| **マルチモーダル強化** | - ブラウザ使用時のより正確な画像理解<br> - 高度な動画生成 | [**Discordに参加 →**](https://discord.gg/kyapNCeJ) |
-| **マルチエージェントシステム** | - 固定ワークフローをサポートするワークフォース<br> - マルチラウンド変換をサポートするワークフォース | [**Discordに参加 →**](https://discord.gg/bFRmPuDB) |
-| **ブラウザツールキット** | - BrowseComp統合<br> - ベンチマーク改善<br> - 繰り返しページ訪問の禁止<br> - 自動キャッシュボタンクリック | [**Discordに参加 →**](https://discord.gg/NF73ze5v) |
-| **ドキュメントツールキット** | - 動的ファイル編集のサポート | [**Discordに参加 →**](https://discord.gg/4yAWJxYr) |
-| **ターミナルツールキット** | - ベンチマーク改善<br> - Terminal-Bench統合 | [**Discordに参加 →**](https://discord.gg/FjQfnsrV) |
-| **環境 & RL** | - 環境設計<br> - データ生成<br> - RLフレームワーク統合（VERL、TRL、OpenRLHF） | [**Discordに参加 →**](https://discord.gg/MaVZXEn8) |
+| **コンテキストエンジニアリング** | - プロンプトキャッシング<br> - システムプロンプト最適化<br> - ツールキットdocstring最適化<br> - コンテキスト圧縮 | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
+| **マルチモーダル強化** | - ブラウザ使用時のより正確な画像理解<br> - 高度な動画生成 | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
+| **マルチエージェントシステム** | - 固定ワークフローをサポートするワークフォース<br> - マルチラウンド変換をサポートするワークフォース | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
+| **ブラウザツールキット** | - BrowseComp統合<br> - ベンチマーク改善<br> - 繰り返しページ訪問の禁止<br> - 自動キャッシュボタンクリック | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
+| **ドキュメントツールキット** | - 動的ファイル編集のサポート | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
+| **ターミナルツールキット** | - ベンチマーク改善<br> - Terminal-Bench統合 | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
+| **環境 & RL** | - 環境設計<br> - データ生成<br> - RLフレームワーク統合（VERL、TRL、OpenRLHF） | [**Discordに参加 →**](https://discord.com/invite/CNcNpquyDc) |
 
 
 ## [🤝 コントリビューション][contribution-link]
