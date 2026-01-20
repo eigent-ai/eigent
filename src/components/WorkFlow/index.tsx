@@ -241,15 +241,14 @@ export default function Workflow({
 			// Merge all agents
 			const allAgents = [...taskAssigning, ...base];
 			// Sort: agents with tasks come first, then agents without tasks
-			taskAssigning = allAgents.sort((a, b) => {
+			const sortedAgents = allAgents.sort((a, b) => {
 				const aHasTasks = a.tasks && a.tasks.length > 0;
 				const bHasTasks = b.tasks && b.tasks.length > 0;
 				if (aHasTasks && !bHasTasks) return -1;
 				if (!aHasTasks && bHasTasks) return 1;
-				return 0; // Keep original order for agents with same task status
+				return 0;
 			});
-			// taskAssigning = taskAssigning.filter((agent) => agent.tasks.length > 0);
-			targetData = taskAssigning.map((agent, index) => {
+			targetData = sortedAgents.map((agent, index) => {
 				const node = targetData.find((node) => node.id === agent.agent_id);
 				if (node) {
 					return {
