@@ -20,6 +20,8 @@ jobs:
             arch: x64
           - os: windows-latest
             arch: x64
+          - os: ubuntu-latest
+            arch: x64
 
     steps:
       - name: Checkout Code
@@ -45,6 +47,13 @@ jobs:
 
       - name: Install Dependencies
         run: npm install
+
+      # Install libfuse2 for Linux AppImage builds
+      - name: Install libfuse2 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
 
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
@@ -78,6 +87,19 @@ jobs:
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
           USE_NPM_INSTALL_BUN: 'true'
 
+      # Step for Linux builds
+      - name: Build Release Files (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 90
+        run: npm run build:linux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
+          VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
+          VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          USE_NPM_INSTALL_BUN: 'true'
+
       - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
@@ -95,13 +117,22 @@ jobs:
           path: |
             release/*.exe
           retention-days: 5
+
+      - name: Upload Artifact (Linux - AppImage only)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            release/*.AppImage
+          retention-days: 5
   merge-release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
+          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64 release/linux-x64
 
         # Download all artifacts with correct names
       - name: Download mac-x64 artifact
@@ -122,7 +153,13 @@ jobs:
           name: release-windows-latest-x64
           path: temp-win-x64
 
-      # Move only dmg files for macOS and exe files for Windows
+      - name: Download linux-x64 artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: release-ubuntu-latest-x64
+          path: temp-linux-x64
+
+      # Move only dmg files for macOS, exe files for Windows, and AppImage for Linux
       - name: Move files to clean folders
         shell: bash
         run: |
@@ -145,4 +182,11 @@ jobs:
             find temp-win-x64/release -name "*.exe" -exec mv {} release/win-x64/ \; || true
           else
             find temp-win-x64 -name "*.exe" -exec mv {} release/win-x64/ \; || true
+          fi
+
+          # linux-x64 - only move AppImage files
+          if [ -d "temp-linux-x64/release" ]; then
+            find temp-linux-x64/release -name "*.AppImage" -exec mv {} release/linux-x64/ \; || true
+          else
+            find temp-linux-x64 -name "*.AppImage" -exec mv {} release/linux-x64/ \; || true
           fi

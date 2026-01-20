@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import os
+import shutil
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from camel.toolkits.terminal_toolkit import TerminalToolkit as BaseTerminalToolkit
@@ -33,7 +35,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         session_logs_dir: str | None = None,
         safe_mode: bool = True,
         allowed_commands: list[str] | None = None,
-        clone_current_env: bool = False,
+        clone_current_env: bool = True,
     ):
         self.api_task_id = api_task_id
         if agent_name is not None:
@@ -41,12 +43,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         if working_directory is None:
             working_directory = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
 
-        logger.info("Initializing TerminalToolkit", extra={
+        logger.debug(f"Initializing TerminalToolkit for agent={self.agent_name}", extra={
             "api_task_id": api_task_id,
-            "agent_name": self.agent_name,
             "working_directory": working_directory,
-            "safe_mode": safe_mode,
-            "use_docker_backend": use_docker_backend
+            "clone_current_env": clone_current_env
         })
 
         if TerminalToolkit._thread_pool is None:
@@ -54,7 +54,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 max_workers=1,
                 thread_name_prefix="terminal_toolkit"
             )
-            logger.debug("Created terminal toolkit thread pool")
 
         super().__init__(
             timeout=timeout,
@@ -73,6 +72,16 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 "openpyxl",
             ],
         )
+        
+        # Auto-register with TaskLock for cleanup when task ends
+        from app.service.task import get_task_lock_if_exists
+        task_lock = get_task_lock_if_exists(api_task_id)
+        if task_lock:
+            task_lock.register_toolkit(self)
+            logger.info("TerminalToolkit registered for cleanup", extra={
+                "api_task_id": api_task_id,
+                "working_directory": working_directory
+            })
 
     def _write_to_log(self, log_file: str, content: str) -> None:
         r"""Write content to log file with optional ANSI stripping.
@@ -174,6 +183,49 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return "Command executed successfully (no output)."
 
         return result
+
+    def cleanup(self, remove_venv: bool = True):
+        """Clean up all active sessions and optionally remove the virtual environment.
+
+        Args:
+            remove_venv: If True, removes the .venv or .initial_env folder created
+                        by this toolkit. Defaults to True to prevent disk bloat.
+        """
+        # First call parent cleanup to kill all shell sessions
+        super().cleanup()
+
+        if not remove_venv:
+            return
+
+        # Remove cloned env (.venv) if it exists
+        if self.cloned_env_path and os.path.exists(self.cloned_env_path):
+            try:
+                shutil.rmtree(self.cloned_env_path)
+                logger.info("Removed cloned venv", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.cloned_env_path
+                })
+            except Exception as e:
+                logger.warning("Failed to remove cloned venv", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.cloned_env_path,
+                    "error": str(e)
+                })
+
+        # Remove initial env (.initial_env) if it exists
+        if self.initial_env_path and os.path.exists(self.initial_env_path):
+            try:
+                shutil.rmtree(self.initial_env_path)
+                logger.info("Removed initial env", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.initial_env_path
+                })
+            except Exception as e:
+                logger.warning("Failed to remove initial env", extra={
+                    "api_task_id": self.api_task_id,
+                    "path": self.initial_env_path,
+                    "error": str(e)
+                })
 
     @classmethod
     def shutdown(cls):

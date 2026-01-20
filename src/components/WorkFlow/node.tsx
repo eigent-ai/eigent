@@ -109,10 +109,27 @@ export function Node({ id, data }: NodeProps) {
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();
 	const nodeRef = useRef<HTMLDivElement>(null);
+	const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		setIsExpanded(data.isExpanded);
 	}, [data.isExpanded]);
+
+	useEffect(() => {
+		const runningTask = data.agent?.tasks?.find(
+			(task) =>
+				task.status === "running" && task.toolkits && task.toolkits.length > 0
+		);
+
+		if (runningTask && runningTask.id !== lastAutoExpandedTaskIdRef.current) {
+			if (!isExpanded) {
+				setIsExpanded(true);
+				data.onExpandChange(id, true);
+				setSelectedTask(runningTask);
+			}
+			lastAutoExpandedTaskIdRef.current = runningTask.id;
+		}
+	}, [data.agent?.tasks, id, data.onExpandChange, isExpanded]);
 
 	// manually control node size
 	useEffect(() => {
@@ -403,7 +420,7 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					<div
 						ref={toolsRef}
-						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3 text-"
+						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3"
 					>
 						{/* {JSON.stringify(data.agent)} */}
 						{agentToolkits[
