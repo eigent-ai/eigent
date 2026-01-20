@@ -211,11 +211,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			const { task, setProgressValue } = get()
 			if (!task) return;
 			const taskRunning = [...task.taskRunning]
-			const finshedTask = taskRunning?.filter(
+			const finishedTask = taskRunning?.filter(
 				(t) => t.status === "completed" || t.status === "failed"
 			).length;
 			const taskProgress = (
-				((finshedTask || 0) / (taskRunning?.length || 0)) *
+				((finishedTask || 0) / (taskRunning?.length || 0)) *
 				100
 			).toFixed(2);
 			setProgressValue(Number(taskProgress));
@@ -1061,7 +1061,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
 						//new chatStore logic is handled along side "confirmed" event
-						console.log(`Recieved new task: ${task_id} with content: ${content}`);
+						console.log(`Received new task: ${task_id} with content: ${content}`);
 						return;
 					}
 

@@ -169,7 +169,7 @@ describe('Integration Test: Case 2 - same session new chat', () => {
       console.log("Progress test - task status:", task?.status);
     }, { timeout: 1500 })
 
-    // Test 3: Rerender untill status is "finished"
+    // Test 3: Rerender until status is "finished"
     await waitFor(() => {
       rerender()
       const {chatStore: newChatStore} = result.current;
@@ -380,7 +380,7 @@ describe('Integration Test: Case 2 - same session new chat', () => {
     })
   })
 
-  //TODO: Don't let new startTask untill newChatStore appended
+  //TODO: Don't let new startTask until newChatStore appended
   it("Parallel startTask calls with separate chatStores (startTask -> wait for append -> startTask)", async () => {
     const { result, rerender } = renderHook(() => useChatStoreAdapter())
 
