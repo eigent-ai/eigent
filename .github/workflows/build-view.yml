@@ -29,26 +29,38 @@ jobs:
         run: |
           echo "Disk space before cleanup:"
           df -h
+          # Remove Xcode completely (not needed for Electron builds) - saves ~15GB
+          sudo rm -rf /Applications/Xcode.app || true
+          sudo rm -rf /Applications/Xcode_*.app || true
+          # Note: Keep /Library/Developer/CommandLineTools as codesign needs it
           # Remove iOS simulators
-          sudo rm -rf ~/Library/Developer/CoreSimulator/Devices/* || true
-          # Remove watchOS simulators
-          sudo rm -rf ~/Library/Developer/Xcode/watchOS\ DeviceSupport/* || true
-          # Remove tvOS simulators
-          sudo rm -rf ~/Library/Developer/Xcode/tvOS\ DeviceSupport/* || true
-          # Remove iOS DeviceSupport
-          sudo rm -rf ~/Library/Developer/Xcode/iOS\ DeviceSupport/* || true
-          # Remove derived data
-          sudo rm -rf ~/Library/Developer/Xcode/DerivedData/* || true
-          # Remove old archives
-          sudo rm -rf ~/Library/Developer/Xcode/Archives/* || true
+          sudo rm -rf ~/Library/Developer/CoreSimulator || true
+          # Remove all Xcode Developer files
+          sudo rm -rf ~/Library/Developer/Xcode || true
+          sudo rm -rf /Library/Developer/Xcode || true
+          # Remove provisioning profiles
+          sudo rm -rf ~/Library/MobileDevice/Provisioning\ Profiles || true
           # Remove Android SDK if present
           sudo rm -rf ~/Library/Android/sdk || true
+          sudo rm -rf /usr/local/lib/android || true
           # Remove .NET
           sudo rm -rf /usr/local/share/dotnet || true
+          # Remove Go
+          sudo rm -rf /usr/local/go || true
+          sudo rm -rf ~/go || true
+          # Remove Ruby
+          sudo rm -rf /usr/local/lib/ruby || true
+          sudo rm -rf ~/.gem || true
+          # Remove Swift toolchains
+          sudo rm -rf /Library/Developer/Toolchains || true
           # Remove Homebrew cache
           rm -rf ~/Library/Caches/Homebrew/* || true
+          brew cleanup --prune=all 2>/dev/null || true
           # Remove npm cache
           npm cache clean --force || true
+          # Remove pip cache
+          pip cache purge 2>/dev/null || true
+          # Note: Don't delete ~/Library/Caches/* as subsequent steps may need it
           echo "Disk space after cleanup:"
           df -h
 
@@ -82,6 +94,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse2
+
+      # Verify disk space before build
+      - name: Check Disk Space Before Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "Disk space available before build:"
+          df -h
+          echo ""
+          echo "Largest directories in home:"
+          du -sh ~/* 2>/dev/null | sort -rh | head -10 || true
 
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
