@@ -185,6 +185,43 @@ export function getVenvsBaseDir(): string {
   return path.join(os.homedir(), '.eigent', 'venvs');
 }
 
+/**
+ * Packages to install in the terminal base venv.
+ * These are commonly used packages for terminal tasks (data processing, visualization, etc.)
+ * Keep this list minimal - users can install additional packages as needed.
+ */
+export const TERMINAL_BASE_PACKAGES = [
+  'pandas',
+  'numpy',
+  'matplotlib',
+  'requests',
+  'openpyxl',
+  'beautifulsoup4',
+  'pillow',
+];
+
+/**
+ * Get path to the terminal base venv.
+ * This is a lightweight venv with common packages for terminal tasks,
+ * separate from the backend venv.
+ */
+export function getTerminalVenvPath(version: string): string {
+  const venvDir = path.join(
+    os.homedir(),
+    '.eigent',
+    'venvs',
+    `terminal_base-${version}`
+  );
+
+  // Ensure venvs directory exists
+  const venvsBaseDir = path.dirname(venvDir);
+  if (!fs.existsSync(venvsBaseDir)) {
+    fs.mkdirSync(venvsBaseDir, { recursive: true });
+  }
+
+  return venvDir;
+}
+
 export async function cleanupOldVenvs(currentVersion: string): Promise<void> {
   const venvsBaseDir = getVenvsBaseDir();
 
@@ -193,23 +230,34 @@ export async function cleanupOldVenvs(currentVersion: string): Promise<void> {
     return;
   }
 
+  // Patterns to match: backend-{version} and terminal_base-{version}
+  const venvPatterns = [
+    { prefix: 'backend-', regex: /^backend-(.+)$/ },
+    { prefix: 'terminal_base-', regex: /^terminal_base-(.+)$/ },
+  ];
+
   try {
     const entries = fs.readdirSync(venvsBaseDir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith('backend-')) {
-        const versionMatch = entry.name.match(/^backend-(.+)$/);
-        if (versionMatch && versionMatch[1] !== currentVersion) {
-          const oldVenvPath = path.join(venvsBaseDir, entry.name);
-          console.log(`Cleaning up old venv: ${oldVenvPath}`);
+      if (!entry.isDirectory()) continue;
 
-          try {
-            // Remove old venv directory recursively
-            fs.rmSync(oldVenvPath, { recursive: true, force: true });
-            console.log(`Successfully removed old venv: ${entry.name}`);
-          } catch (err) {
-            console.error(`Failed to remove old venv ${entry.name}:`, err);
+      for (const pattern of venvPatterns) {
+        if (entry.name.startsWith(pattern.prefix)) {
+          const versionMatch = entry.name.match(pattern.regex);
+          if (versionMatch && versionMatch[1] !== currentVersion) {
+            const oldVenvPath = path.join(venvsBaseDir, entry.name);
+            console.log(`Cleaning up old venv: ${oldVenvPath}`);
+
+            try {
+              // Remove old venv directory recursively
+              fs.rmSync(oldVenvPath, { recursive: true, force: true });
+              console.log(`Successfully removed old venv: ${entry.name}`);
+            } catch (err) {
+              console.error(`Failed to remove old venv ${entry.name}:`, err);
+            }
           }
+          break; // Found matching pattern, no need to check others
         }
       }
     }
