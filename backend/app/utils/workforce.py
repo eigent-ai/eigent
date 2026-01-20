@@ -1,35 +1,13 @@
 import asyncio
 import logging
 from typing import Generator, List, Optional
-from camel.agents import ChatAgent
-from camel.societies.workforce.workforce import (
-    Workforce as BaseWorkforce,
-    WorkforceState,
-    DEFAULT_WORKER_POOL_SIZE,
-)
-from camel.societies.workforce.utils import FailureHandlingConfig
-from camel.societies.workforce.task_channel import TaskChannel
-from camel.societies.workforce.base import BaseNode
-from camel.societies.workforce.utils import TaskAssignResult
-from camel.societies.workforce.workforce_metrics import WorkforceMetrics
-from camel.societies.workforce.events import WorkerCreatedEvent
-from camel.societies.workforce.prompts import TASK_DECOMPOSE_PROMPT
-from camel.tasks.task import Task, TaskState, validate_task_content
+
 from app.component import code
 from app.exception.exception import UserException
 from app.service.task import (Action, ActionAssignTaskData, ActionEndData,
-                              ActionTaskStateData, get_camel_task,
-                              get_task_lock)
+                              ActionTaskStateData, ActionTimeoutData,
+                              get_camel_task, get_task_lock)
 from app.utils.agent import ListenChatAgent
-from app.service.task import (
-    Action,
-    ActionAssignTaskData,
-    ActionEndData,
-    ActionTaskStateData,
-    ActionTimeoutData,
-    get_camel_task,
-    get_task_lock,
-)
 from app.utils.single_agent_worker import SingleAgentWorker
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from camel.agents import ChatAgent
@@ -113,18 +91,24 @@ class Workforce(BaseWorkforce):
             on_stream_text: Optional callback for raw
                 streaming text chunks
         """
-        logger.debug("[DECOMPOSE] eigent_make_sub_tasks called", extra={
-            "api_task_id": self.api_task_id,
-            "task_id": task.id
-        })
+        logger.debug("[DECOMPOSE] eigent_make_sub_tasks called",
+                     extra={
+                         "api_task_id": self.api_task_id,
+                         "task_id": task.id
+                     })
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
             task.result = "Task failed: Invalid or empty content provided"
-            logger.warning("[DECOMPOSE] Task rejected: Invalid or empty content", extra={
-                "task_id": task.id,
-                "content_preview": task.content[:50] + "..." if len(task.content) > 50 else task.content
-            })
+            logger.warning(
+                "[DECOMPOSE] Task rejected: Invalid or empty content",
+                extra={
+                    "task_id":
+                    task.id,
+                    "content_preview":
+                    task.content[:50] +
+                    "..." if len(task.content) > 50 else task.content
+                })
             raise UserException(code.error, task.result)
 
         self.reset()
@@ -138,32 +122,33 @@ class Workforce(BaseWorkforce):
                 reset=False,
                 coordinator_context=coordinator_context,
                 on_stream_batch=on_stream_batch,
-                on_stream_text=on_stream_text
-            )
-        )
+                on_stream_text=on_stream_text))
 
-        logger.info(f"[DECOMPOSE] Task decomposition completed", extra={
-            "api_task_id": self.api_task_id,
-            "task_id": task.id,
-            "subtasks_count": len(subtasks)
-        })
+        logger.info("[DECOMPOSE] Task decomposition completed",
+                    extra={
+                        "api_task_id": self.api_task_id,
+                        "task_id": task.id,
+                        "subtasks_count": len(subtasks)
+                    })
         return subtasks
 
     async def eigent_start(self, subtasks: list[Task]):
         """start the workforce"""
-        logger.debug(f"[WF-LIFECYCLE] eigent_start called with {len(subtasks)} subtasks", extra={
-            "api_task_id": self.api_task_id
-        })
+        logger.debug((f"[WF-LIFECYCLE] eigent_start called with "
+                      f"{len(subtasks)} subtasks"),
+                     extra={"api_task_id": self.api_task_id})
         self._pending_tasks.extendleft(reversed(subtasks))
         self.save_snapshot("Initial task decomposition")
 
         try:
             await self.start()
         except Exception as e:
-            logger.error(f"[WF-LIFECYCLE] Error in workforce execution: {e}", extra={
-                "api_task_id": self.api_task_id,
-                "error": str(e)
-            }, exc_info=True)
+            logger.error(f"[WF-LIFECYCLE] Error in workforce execution: {e}",
+                         extra={
+                             "api_task_id": self.api_task_id,
+                             "error": str(e)
+                         },
+                         exc_info=True)
             self._state = WorkforceState.STOPPED
             raise
         finally:
@@ -177,8 +162,7 @@ class Workforce(BaseWorkforce):
                 content=task.content,
                 child_nodes_info=self._get_child_nodes_info(),
                 additional_info=task.additional_info,
-            )
-        )
+            ))
 
         self.task_agent.reset()
         result = task.decompose(self.task_agent,
@@ -228,7 +212,8 @@ class Workforce(BaseWorkforce):
         Returns:
             List[Task]: The decomposed subtasks or the original task
         """
-        logger.debug(f"[DECOMPOSE] handle_decompose_append_task called, task_id={task.id}, reset={reset}")
+        logger.debug(f"[DECOMPOSE] handle_decompose_append_task called, "
+                     f"task_id={task.id}, reset={reset}")
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
@@ -246,12 +231,15 @@ class Workforce(BaseWorkforce):
 
         if coordinator_context:
             original_content = task.content
-            task_with_context = coordinator_context + "\n=== CURRENT TASK ===\n" + original_content
+            task_with_context = (coordinator_context +
+                                 "\n=== CURRENT TASK ===\n" + original_content)
             task.content = task_with_context
-            subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
+            subtasks_result = self._decompose_task(
+                task, stream_callback=on_stream_text)
             task.content = original_content
         else:
-            subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
+            subtasks_result = self._decompose_task(
+                task, stream_callback=on_stream_text)
 
         if isinstance(subtasks_result, Generator):
             subtasks = []
@@ -318,7 +306,8 @@ class Workforce(BaseWorkforce):
             except Exception as e:
                 logger.warning(f"Final streaming callback failed: {e}")
 
-        logger.debug(f"[DECOMPOSE] handle_decompose_append_task completed, returned {len(subtasks)} subtasks")
+        logger.debug(f"[DECOMPOSE] handle_decompose_append_task completed, "
+                     f"returned {len(subtasks)} subtasks")
         return subtasks
 
     def _get_agent_id_from_node_id(self, node_id: str) -> str | None:
@@ -335,6 +324,34 @@ class Workforce(BaseWorkforce):
                         child.worker, 'agent_id'):
                     return child.worker.agent_id
         return None
+
+    def _extract_model_type(self, agent: ChatAgent) -> Optional[str]:
+        """Extract model type from agent's model_backend.
+
+        Handles both ModelManager (multiple models) and single model cases.
+
+        Args:
+            agent: The chat agent to extract model type from
+
+        Returns:
+            Model type as string, or None if not found
+        """
+        if not hasattr(agent, 'model_backend') or not agent.model_backend:
+            return None
+
+        model_obj = agent.model_backend
+
+        # Handle ModelManager case (multiple models)
+        if hasattr(model_obj, 'models') and model_obj.models:
+            first_model = model_obj.models[0] if model_obj.models else None
+            if first_model:
+                mt = getattr(first_model, 'model_type', None)
+                return str(
+                    mt.value if hasattr(mt, 'value') else mt) if mt else None
+
+        # Handle single model case
+        mt = getattr(model_obj, 'model_type', None)
+        return str(mt.value if hasattr(mt, 'value') else mt) if mt else None
 
     async def _find_assignee(self, tasks: List[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification
@@ -433,12 +450,16 @@ class Workforce(BaseWorkforce):
             # Skip the main task itself
             # Map node_id to agent_id for frontend communication
             agent_id = self._get_agent_id_from_node_id(assignee_id)
+            workers = [
+                c.node_id for c in self._children if hasattr(c, 'node_id')
+            ]
             if agent_id is None:
-                logger.error(
-                    f"[WF] ERROR: Could not find agent_id for node_id={assignee_id}. "
-                    f"Task {task.id} will not be properly tracked on frontend. "
-                    f"Available workers: {[c.node_id for c in self._children if hasattr(c, 'node_id')]}"
-                )
+                logger.error(f"[WF] ERROR: Could not find agent_id "
+                             f"for node_id={assignee_id}. "
+                             f"Task {task.id} will not be properly "
+                             f"tracked on frontend. "
+                             f"Available workers: "
+                             f"{workers}")
             else:
                 await task_lock.put_queue(
                     ActionAssignTaskData(
@@ -496,35 +517,9 @@ class Workforce(BaseWorkforce):
         ]
         if metrics_callbacks:
             # Collect agent metadata for telemetry
-            actual_agent = worker
-
-            # Extract agent type from agent_name attribute
-            # This gives us specific agent types like "developer_agent",
-            # "browser_agent"
-            agent_class_name = getattr(actual_agent, 'agent_name',
-                                       actual_agent.__class__.__name__)
-
-            # Extract model type from the agent's model_backend
-            model_type = None
-            if hasattr(actual_agent,
-                       'model_backend') and actual_agent.model_backend:
-                model_obj = actual_agent.model_backend
-
-                # Handle both ModelManager (multiple models)
-                # and single model cases
-                if hasattr(model_obj, 'models') and model_obj.models:
-                    # ModelManager case - extract from first model
-                    first_model = model_obj.models[
-                        0] if model_obj.models else None
-                    if first_model:
-                        mt = getattr(first_model, 'model_type', None)
-                        model_type = str(mt.value if hasattr(mt, 'value') else
-                                         mt) if mt else None
-                else:
-                    # Single model case
-                    mt = getattr(model_obj, 'model_type', None)
-                    model_type = str(mt.value if hasattr(mt, 'value') else mt
-                                     ) if mt else None
+            agent_class_name = getattr(worker, 'agent_name',
+                                       worker.__class__.__name__)
+            model_type = self._extract_model_type(worker)
 
             # Log worker created event
             event = WorkerCreatedEvent(
@@ -536,14 +531,12 @@ class Workforce(BaseWorkforce):
             # Call log_worker_created for all callbacks
             for cb in self._callbacks:
                 if isinstance(cb, WorkforceMetricsCallback):
-                    # WorkforceMetricsCallback supports metadata parameters
                     cb.log_worker_created(
                         event,
                         agent_class=agent_class_name,
                         model_type=model_type,
                     )
                 else:
-                    # Other callbacks (like WorkforceLogger) only accept event
                     cb.log_worker_created(event)
             metrics_callbacks[0].log_worker_created(event)
 
@@ -595,7 +588,8 @@ class Workforce(BaseWorkforce):
 
         result = await super()._handle_failed_task(task)
 
-        # Only send completion report to frontend when all retries are exhausted
+        # Only send completion report to frontend when all
+        # retries are exhausted
         max_retries = self.failure_handling_config.max_retries
         if task.failure_count < max_retries:
             return result
@@ -657,32 +651,35 @@ class Workforce(BaseWorkforce):
                 f"⏰ [WF-TIMEOUT] Task timeout in workforce {self.node_id}. "
                 f"Timeout: {self.task_timeout_seconds}s, "
                 f"Pending tasks: {len(self._pending_tasks)}, "
-                f"In-flight tasks: {self._in_flight_tasks}"
-            )
+                f"In-flight tasks: {self._in_flight_tasks}")
 
-            # Try to notify frontend, but don't let notification failure mask the timeout
+            # Try to notify frontend, but don't let
+            # notification failure mask the timeout
             try:
                 task_lock = get_task_lock(self.api_task_id)
                 timeout_minutes = self.task_timeout_seconds // 60
                 await task_lock.put_queue(
                     ActionTimeoutData(
                         data={
-                            "message": f"Task execution timeout: No response received for {timeout_minutes} minutes",
-                            "in_flight_tasks": self._in_flight_tasks,
-                            "pending_tasks": len(self._pending_tasks),
-                            "timeout_seconds": self.task_timeout_seconds,
-                        }
-                    )
-                )
+                            "message":
+                            (f"Task execution timeout: No response received "
+                             f"for {timeout_minutes} minutes"),
+                            "in_flight_tasks":
+                            self._in_flight_tasks,
+                            "pending_tasks":
+                            len(self._pending_tasks),
+                            "timeout_seconds":
+                            self.task_timeout_seconds,
+                        }))
             except Exception as notify_err:
-                logger.error(f"Failed to send timeout notification: {notify_err}")
+                logger.error(
+                    f"Failed to send timeout notification: {notify_err}")
             raise
         except Exception as e:
-            logger.error(
-                f"Error getting returned task {e} in workforce {self.node_id}. "
-                f"Current pending tasks: {len(self._pending_tasks)}, "
-                f"In-flight tasks: {self._in_flight_tasks}"
-            )
+            logger.error(f"Error getting returned task {e} in "
+                         f"workforce {self.node_id}. "
+                         f"Current pending tasks: {len(self._pending_tasks)}, "
+                         f"In-flight tasks: {self._in_flight_tasks}")
             raise
 
     def stop(self) -> None:
