@@ -171,7 +171,6 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.task;
     const requiresHumanReply = Boolean(task?.activeAsk);
-    const isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isTaskBusy = task
       ? // running or paused counts as busy
         (task.status === 'running' && task.hasMessages) ||
