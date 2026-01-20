@@ -23,6 +23,10 @@ logger = traceroot.get_logger("hybrid_browser_toolkit")
 # This is needed because multiple sessions may share the same browser via CDP
 _global_navigation_lock = asyncio.Lock()
 
+# Global registry: tab_id -> session_id (ensures each tab belongs to only one session)
+_global_tab_registry: Dict[str, int] = {}
+_global_tab_registry_lock = asyncio.Lock()
+
 
 class SheetCell(TypedDict):
     row: int
@@ -35,6 +39,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         """Initialize wrapper."""
         super().__init__(config)
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
+        # Track tabs opened by this session for isolation
+        self._session_tab_ids: set = set()
 
     def _ensure_local_no_proxy(self) -> None:
         local_hosts = ["localhost", "127.0.0.1", "::1"]
@@ -166,6 +172,59 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             except Exception as e:
                 logger.error(f"[visit_page] Navigation failed: {e}")
                 raise
+
+    async def get_tab_info(self) -> List[Dict[str, Any]]:
+        """Override get_tab_info to track and filter tabs for session isolation.
+
+        Automatically tracks the current tab (is_current=true) as belonging to
+        this session, then filters to only return tabs owned by this session.
+        Uses global registry to ensure each tab belongs to only one session.
+        """
+        global _global_tab_registry, _global_tab_registry_lock
+
+        all_tabs = await super().get_tab_info()
+        session_id = id(self)  # Unique identifier for this wrapper instance
+
+        # Auto-track: add current tab to this session's tracked tabs (with global lock)
+        current_tab = next((t for t in all_tabs if t.get('is_current')),
+                           None)
+        if current_tab and current_tab.get('tab_id'):
+            tab_id = current_tab['tab_id']
+            async with _global_tab_registry_lock:
+                # Only track if not already owned by another session
+                if tab_id not in _global_tab_registry:
+                    _global_tab_registry[tab_id] = session_id
+                    self._session_tab_ids.add(tab_id)
+                    logger.info(
+                        f"[Session Tab Tracking] Auto-tracked current tab: {tab_id}, session {session_id} now has tabs: {self._session_tab_ids}")
+                elif _global_tab_registry[tab_id] == session_id:
+                    # Already owned by this session, ensure local tracking
+                    self._session_tab_ids.add(tab_id)
+
+        # Filter: only return tabs belonging to this session
+        filtered_tabs = [tab for tab in all_tabs if
+                         tab.get('tab_id') in self._session_tab_ids]
+        logger.info(
+            f"[Session Tab Filtering] Session {session_id}: Returning {len(filtered_tabs)}/{len(all_tabs)} tabs, tracked: {self._session_tab_ids}")
+
+        return filtered_tabs
+
+    async def close_tab(self, tab_id: str) -> Dict[str, Any]:
+        """Override close_tab to update tracking."""
+        global _global_tab_registry, _global_tab_registry_lock
+
+        result = await super().close_tab(tab_id)
+
+        # Remove from tracking if it was ours
+        if tab_id in self._session_tab_ids:
+            self._session_tab_ids.discard(tab_id)
+            async with _global_tab_registry_lock:
+                if tab_id in _global_tab_registry:
+                    del _global_tab_registry[tab_id]
+            logger.info(
+                f"[Session Tab Tracking] Removed closed tab: {tab_id}, session now has tabs: {self._session_tab_ids}")
+
+        return result
 
 
 # WebSocket connection pool
