@@ -112,6 +112,32 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== Anti-fingerprint settings ====================
+// Disable automation controlled indicator to avoid detection
+app.commandLine.appendSwitch(
+  'disable-blink-features',
+  'AutomationControlled'
+);
+
+// Override User Agent to remove Electron/eigent identifiers
+// Dynamically generate User Agent based on actual platform and Chrome version
+const getPlatformUA = () => {
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
+  switch (process.platform) {
+    case 'darwin':
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'win32':
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'linux':
+      return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    default:
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  }
+};
+const normalUserAgent = getPlatformUA();
+app.userAgentFallback = normalUserAgent;
+
 // ==================== protocol privileges ====================
 // Register custom protocol privileges before app ready
 protocol.registerSchemesAsPrivileged([
@@ -1826,6 +1852,15 @@ app.whenReady().then(async () => {
       // Don't throw - allow app to continue even if extension installation fails
     }
   }
+
+  // ==================== Anti-fingerprint: Set User Agent for all sessions ====================
+  // Use the same dynamic User Agent as app.userAgentFallback
+  session.defaultSession.setUserAgent(normalUserAgent);
+  // Also set for the user_login partition used by webviews
+  session.fromPartition('persist:user_login').setUserAgent(normalUserAgent);
+  // And for main_window partition
+  session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
+  log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {
