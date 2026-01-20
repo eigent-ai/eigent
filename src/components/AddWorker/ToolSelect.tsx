@@ -630,7 +630,7 @@ const ToolSelect = forwardRef<
 					key={item.id + item.key + (item.isLocal + "")}
 					className="h-5 bg-button-tertiery-fill-default flex items-center gap-1 w-auto flex-shrink-0 px-xs"
 				>
-					{item.name || item.mcp_name}
+					{item.name || item.mcp_name || item.key || `tool_${item.id}`}
 					<div className="flex items-center justify-center bg-button-secondary-fill-disabled rounded-sm">
 						<X
 							className="w-4 h-4 cursor-pointer text-button-secondary-icon-disabled"
