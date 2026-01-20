@@ -17,8 +17,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-const BIN_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'bin');
-const VENV_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'venv');
+const PREBUILT_DIR = path.join(projectRoot, 'resources', 'prebuilt');
+const BIN_DIR = path.join(PREBUILT_DIR, 'bin');
+const VENV_DIR = path.join(PREBUILT_DIR, 'venv');
 const BACKEND_DIR = path.join(projectRoot, 'backend');
 
 console.log('🚀 Starting pre-installation of dependencies...');
@@ -195,6 +196,32 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
   }
 
   throw new Error(`Failed to download ${fileType} from all sources`);
+}
+
+/**
+ * Recursively copy directory
+ */
+function copyDirRecursiveSync(src, dest) {
+  if (!fs.existsSync(src)) {
+    return;
+  }
+
+  // Create destination directory
+  fs.mkdirSync(dest, { recursive: true });
+
+  // Get all files and directories
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursiveSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 /**
@@ -625,8 +652,10 @@ async function installPythonDeps(uvPath) {
     console.log('⚠️  Python install command failed, continuing with sync (Python may already be installed)...');
   }
 
+  // Use --python-preference only-managed to ensure uv uses its own managed Python
+  // This makes the venv more portable
   execSync(
-    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}"`,
+    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}" --python-preference only-managed`,
     { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
   );
 
@@ -644,6 +673,33 @@ async function installPythonDeps(uvPath) {
   }
 
   console.log(`✅ Python executable verified: ${pythonExePath}`);
+
+  // Bundle the actual Python installation from UV cache into prebuilt
+  console.log('📦 Bundling Python installation...');
+  try {
+    const uvPythonDir = pythonCacheDir;
+    const prebuiltPythonDir = path.join(PREBUILT_DIR, 'uv_python');
+
+    if (fs.existsSync(uvPythonDir)) {
+      console.log(`   Copying from: ${uvPythonDir}`);
+      console.log(`   Copying to: ${prebuiltPythonDir}`);
+
+      // Remove existing python dir if it exists
+      if (fs.existsSync(prebuiltPythonDir)) {
+        fs.rmSync(prebuiltPythonDir, { recursive: true, force: true });
+      }
+
+      // Copy the Python installation
+      copyDirRecursiveSync(uvPythonDir, prebuiltPythonDir);
+      console.log('✅ Python installation bundled');
+    } else {
+      console.log('⚠️  UV Python cache not found, venv may not be portable');
+    }
+  } catch (error) {
+    console.log(`⚠️  Failed to bundle Python: ${error.message}`);
+    console.log('   The app may fail to start without internet connection');
+  }
+
   console.log('✅ Python dependencies installed');
 
   console.log('📝 Compiling babel...');

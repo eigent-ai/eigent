@@ -286,14 +286,35 @@ export async function isBinaryExists(name: string): Promise<boolean> {
 }
 
 /**
+ * Get path to prebuilt Python installation (if available in packaged app)
+ */
+export function getPrebuiltPythonDir(): string | null {
+  if (!app.isPackaged) {
+    return null;
+  }
+
+  const prebuiltPythonDir = path.join(process.resourcesPath, 'prebuilt', 'uv_python');
+  if (fs.existsSync(prebuiltPythonDir)) {
+    log.info(`Using prebuilt Python: ${prebuiltPythonDir}`);
+    return prebuiltPythonDir;
+  }
+
+  return null;
+}
+
+/**
  * Get unified UV environment variables for consistent Python environment management.
  * This ensures both installation and runtime use the same paths.
  * @param version - The app version for venv path
  * @returns Environment variables for UV commands
  */
 export function getUvEnv(version: string): Record<string, string> {
+  // Use prebuilt Python if available (packaged app)
+  const prebuiltPython = getPrebuiltPythonDir();
+  const pythonInstallDir = prebuiltPython || getCachePath('uv_python');
+
   return {
-    UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+    UV_PYTHON_INSTALL_DIR: pythonInstallDir,
     UV_TOOL_DIR: getCachePath('uv_tool'),
     UV_PROJECT_ENVIRONMENT: getVenvPath(version),
     UV_HTTP_TIMEOUT: '300',
