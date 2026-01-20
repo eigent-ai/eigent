@@ -24,6 +24,34 @@ jobs:
             arch: x64
 
     steps:
+      - name: Free Disk Space (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          # Remove iOS simulators
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Devices/* || true
+          # Remove watchOS simulators
+          sudo rm -rf ~/Library/Developer/Xcode/watchOS\ DeviceSupport/* || true
+          # Remove tvOS simulators
+          sudo rm -rf ~/Library/Developer/Xcode/tvOS\ DeviceSupport/* || true
+          # Remove iOS DeviceSupport
+          sudo rm -rf ~/Library/Developer/Xcode/iOS\ DeviceSupport/* || true
+          # Remove derived data
+          sudo rm -rf ~/Library/Developer/Xcode/DerivedData/* || true
+          # Remove old archives
+          sudo rm -rf ~/Library/Developer/Xcode/Archives/* || true
+          # Remove Android SDK if present
+          sudo rm -rf ~/Library/Android/sdk || true
+          # Remove .NET
+          sudo rm -rf /usr/local/share/dotnet || true
+          # Remove Homebrew cache
+          rm -rf ~/Library/Caches/Homebrew/* || true
+          # Remove npm cache
+          npm cache clean --force || true
+          echo "Disk space after cleanup:"
+          df -h
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
