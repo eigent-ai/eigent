@@ -19,6 +19,10 @@ from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("hybrid_browser_toolkit")
 
+# Global navigation lock to prevent concurrent visit_page conflicts (ERR_ABORTED)
+# This is needed because multiple sessions may share the same browser via CDP
+_global_navigation_lock = asyncio.Lock()
+
 
 class SheetCell(TypedDict):
     row: int
@@ -143,6 +147,26 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             logger.error(f"Unexpected error sending command '{command}': {type(e).__name__}: {e}")
             raise
 
+    async def visit_page(self, url: str) -> Dict[str, Any]:
+        """Override visit_page to add global navigation lock preventing ERR_ABORTED.
+
+        Multiple sessions sharing the same browser via CDP can cause conflicts
+        when they try to navigate simultaneously (e.g., both trying to use a
+        blank page). This lock serializes navigation operations at the WebSocket
+        wrapper level.
+        """
+        global _global_navigation_lock
+
+        async with _global_navigation_lock:
+            logger.debug(f"[visit_page] Acquired navigation lock, navigating to {url}")
+            try:
+                result = await super().visit_page(url)
+                logger.debug(f"[visit_page] Navigation completed, releasing lock")
+                return result
+            except Exception as e:
+                logger.error(f"[visit_page] Navigation failed: {e}")
+                raise
+
 
 # WebSocket connection pool
 class WebSocketConnectionPool:
@@ -236,6 +260,7 @@ class WebSocketConnectionPool:
 
 # Global connection pool instance
 websocket_connection_pool = WebSocketConnectionPool()
+
 
 @auto_listen_toolkit(BaseHybridBrowserToolkit)
 class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
