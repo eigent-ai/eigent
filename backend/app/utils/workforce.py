@@ -355,6 +355,7 @@ class Workforce(BaseWorkforce):
                     f"Task {task.id} will not be properly tracked on frontend. "
                     f"Available workers: {[c.node_id for c in self._children if hasattr(c, 'node_id')]}"
                 )
+            else:
                 await task_lock.put_queue(
                     ActionAssignTaskData(
                         action=Action.assign_task,
