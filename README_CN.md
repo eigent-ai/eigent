@@ -124,6 +124,19 @@ npm run dev
 #### 3. 本地开发(使用完全和云端服务分离的版本)
 [server/README_CN.md](./server/README_CN.md)
 
+#### 4. 更新依赖
+
+拉取新代码（`git pull`）后，需要分别更新前端和后端依赖：
+
+```bash
+# 1. 更新前端依赖（在项目根目录）
+npm install
+
+# 2. 更新后端/Python 依赖（在 backend 目录）
+cd backend
+uv sync
+```
+
 ### 🏢 企业版
 
 适合需要最高安全性、定制化和控制的组织：

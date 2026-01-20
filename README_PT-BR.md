@@ -115,6 +115,19 @@ npm run dev
 
 > Nota: Este modo se conecta aos serviços em nuvem do Eigent e requer registro de conta. Para uma experiência totalmente independente, utilize a [Implantação Local](#-implantação-local-recomendado) em vez disso.
 
+#### Atualizando Dependências
+
+Após baixar novo código (`git pull`), atualize as dependências do frontend e do backend:
+
+```bash
+# 1. Atualizar dependências do frontend (no diretório raiz do projeto)
+npm install
+
+# 2. Atualizar dependências do backend/Python (no diretório backend)
+cd backend
+uv sync
+```
+
 ### 🏢 Empresarial
 
 Para organizações que requerem máxima segurança, personalização e controle:
