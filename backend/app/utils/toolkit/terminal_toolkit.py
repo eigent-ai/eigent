@@ -64,6 +64,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             safe_mode=safe_mode,
             allowed_commands=allowed_commands,
             clone_current_env=clone_current_env,
+            install_dependencies=[
+                "pandas",
+                "numpy",
+                "matplotlib",
+                "requests",
+                "openpyxl",
+            ],
         )
         
         # Auto-register with TaskLock for cleanup when task ends
