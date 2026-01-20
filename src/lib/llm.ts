@@ -77,7 +77,7 @@ export const INIT_PROVODERS: Provider[] = [
     id: 'moonshot',
     name: 'Moonshot',
     apiKey: '',
-    apiHost: 'https://api.moonshot.cn/v1',
+    apiHost: 'https://api.moonshot.ai/v1',
     description: "Kimi model configuration.",
     is_valid: false,
     model_type: ""
