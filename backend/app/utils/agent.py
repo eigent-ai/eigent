@@ -425,7 +425,9 @@ class ListenChatAgent(ChatAgent):
 
         # Check if tool is wrapped by @listen_toolkit decorator
         # If so, the decorator will handle activate/deactivate events
-        has_listen_decorator = hasattr(tool.func, "__wrapped__")
+        # TODO: Refactor - current marker detection is a workaround. The proper fix is to
+        # unify event sending: remove activate/deactivate from @listen_toolkit, only send here
+        has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
 
         try:
             task_lock = get_task_lock(self.api_task_id)
@@ -565,7 +567,7 @@ class ListenChatAgent(ChatAgent):
 
         # Check if tool is wrapped by @listen_toolkit decorator
         # If so, the decorator will handle activate/deactivate events
-        has_listen_decorator = hasattr(tool.func, "__wrapped__")
+        has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
 
         # Only send activate event if tool is NOT wrapped by @listen_toolkit
         if not has_listen_decorator:
