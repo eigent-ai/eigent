@@ -11,34 +11,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		// remove all possible data-theme attributes
 		root.removeAttribute('data-theme');
 
-		// set the corresponding data-theme based on appearance
-		if (appearance === "transparent") {
-			root.setAttribute("data-theme", "transparent");
-		} else if (appearance === "light") {
-      root.setAttribute('data-theme', 'light');
-    } else if (appearance === 'dark') {
-      root.setAttribute('data-theme', 'dark');
-    }
-    else {
-      root.setAttribute('data-theme', 'light');
-    }
-
-  }, [appearance]);
+		switch (appearance) {
+			case 'transparent':
+				root.setAttribute('data-theme', 'transparent');
+				break;
+			case 'light':
+				root.setAttribute('data-theme', 'light');
+				break;
+			case 'dark':
+			default:
+				root.setAttribute('data-theme', 'dark');
+		}
+	}, [appearance]);
 
 	// initialize theme
 	useEffect(() => {
 		const root = document.documentElement;
-		const currentTheme = root.getAttribute("data-theme");
+		const currentTheme = root.getAttribute('data-theme');
 
-    if (!currentTheme) {
-      if (appearance === 'transparent') {
-        root.setAttribute('data-theme', 'transparent');
-      } else if (appearance === 'dark') {
-        root.setAttribute('data-theme', 'dark');
-      } else {
-        root.setAttribute('data-theme', 'light');
-      }
+		if (!currentTheme) {
+			root.setAttribute('data-theme', appearance === 'transparent' ? 'transparent' : appearance === 'light' ? 'light' : 'dark');
 		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []); // only execute once when the component is mounted
 
   return <>{children}</>;

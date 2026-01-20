@@ -52,6 +52,11 @@ export default function SettingGeneral() {
 
 	const [themeList, setThemeList] = useState<any>([
 		{
+			img: dark,
+			label: "setting.dark",
+			value: "dark",
+		},
+		{
 			img: light,
 			label: "setting.light",
 			value: "light",
@@ -113,13 +118,22 @@ export default function SettingGeneral() {
 	useEffect(() => {
 		const platform = window.electronAPI.getPlatform();
 		console.log(platform);
+		const baseThemes = [
+			{
+				img: dark,
+				label: "setting.dark",
+				value: "dark",
+			},
+			{
+				img: light,
+				label: "setting.light",
+				value: "light",
+			},
+		];
+
 		if (platform === "darwin") {
 			setThemeList([
-				{
-					img: light,
-					label: "setting.light",
-					value: "light",
-				},
+				...baseThemes,
 				{
 					img: transparent,
 					label: "setting.transparent",
@@ -127,13 +141,7 @@ export default function SettingGeneral() {
 				},
 			]);
 		} else {
-			setThemeList([
-				{
-					img: light,
-					label: "setting.light",
-					value: "light",
-				},
-			]);
+			setThemeList(baseThemes);
 		}
 	}, []);
 
