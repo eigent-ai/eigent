@@ -300,7 +300,7 @@ describe("Case 3: Add to the workforce queue", () => {
       expect(project?.queuedMessages?.[0].content).toBe('Create a weather app')
 
       console.log("Queue processed - first message removed")
-    }, { timeout: 6000 });
+    }, { timeout: 4000 });
 
     //Waitfor end sse
     await waitFor(() => {
