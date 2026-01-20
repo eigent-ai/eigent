@@ -64,6 +64,7 @@ export default function FolderComponent({ selectedFile }: Props) {
 				"h4",
 				"h5",
 				"h6",
+				"style",
 			],
 			ALLOWED_ATTR: [
 				"href",
@@ -78,6 +79,7 @@ export default function FolderComponent({ selectedFile }: Props) {
 				"rowspan",
 				"class",
 				"id",
+				"style",
 			],
 			FORBID_ATTR: [
 				"onerror",

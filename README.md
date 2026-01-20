@@ -116,6 +116,19 @@ npm run dev
 
 > Note: This mode connects to Eigent cloud services and requires account registration. For a fully standalone experience, use [Local Deployment](#-local-deployment-recommended) instead.
 
+#### Updating Dependencies
+
+After pulling new code (`git pull`), update both frontend and backend dependencies:
+
+```bash
+# 1. Update frontend dependencies (in project root)
+npm install
+
+# 2. Update backend/Python dependencies (in backend directory)
+cd backend
+uv sync
+```
+
 ### 🏢 Enterprise
 
 For organizations requiring maximum security, customization, and control:
@@ -294,13 +307,13 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 
 | Topics                   | Issues   | Discord Channel |
 | ------------------------ | -- |-- |
-| **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.gg/D2e3rBWD) |
-| **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.gg/kyapNCeJ) |
-| **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.gg/bFRmPuDB) |
-| **Browser Toolkit** | - BrowseCamp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
-| **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.gg/4yAWJxYr) |
-| **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.gg/FjQfnsrV) |
-| **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.gg/MaVZXEn8) |
+| **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Browser Toolkit** | - BrowseComp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
 
 
 ## [🤝 Contributing][contribution-link]

@@ -74,6 +74,24 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: ""
   },
   {
+    id: 'moonshot',
+    name: 'Moonshot',
+    apiKey: '',
+    apiHost: 'https://api.moonshot.ai/v1',
+    description: "Kimi model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
+    id: 'ModelArk',
+    name: 'ModelArk',
+    apiKey: '',
+    apiHost: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+    description: "ModelArk model configuration.",
+    is_valid: false,
+    model_type: ""
+  },
+  {
     id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',

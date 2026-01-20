@@ -112,6 +112,32 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== Anti-fingerprint settings ====================
+// Disable automation controlled indicator to avoid detection
+app.commandLine.appendSwitch(
+  'disable-blink-features',
+  'AutomationControlled'
+);
+
+// Override User Agent to remove Electron/eigent identifiers
+// Dynamically generate User Agent based on actual platform and Chrome version
+const getPlatformUA = () => {
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
+  switch (process.platform) {
+    case 'darwin':
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'win32':
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'linux':
+      return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    default:
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  }
+};
+const normalUserAgent = getPlatformUA();
+app.userAgentFallback = normalUserAgent;
+
 // ==================== protocol privileges ====================
 // Register custom protocol privileges before app ready
 protocol.registerSchemesAsPrivileged([
@@ -1359,6 +1385,36 @@ async function createWindow() {
   // ==================== CHECK IF INSTALLATION IS NEEDED BEFORE LOADING CONTENT ====================
   log.info('Pre-checking if dependencies need to be installed...');
 
+  // Check if prebuilt dependencies are available (for packaged app)
+  let hasPrebuiltDeps = false;
+  if (app.isPackaged) {
+    const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
+    const prebuiltVenvDir = path.join(
+      process.resourcesPath,
+      'prebuilt',
+      'venv'
+    );
+    const uvPath = path.join(
+      prebuiltBinDir,
+      process.platform === 'win32' ? 'uv.exe' : 'uv'
+    );
+    const bunPath = path.join(
+      prebuiltBinDir,
+      process.platform === 'win32' ? 'bun.exe' : 'bun'
+    );
+    const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
+
+    hasPrebuiltDeps =
+      fs.existsSync(uvPath) &&
+      fs.existsSync(bunPath) &&
+      fs.existsSync(pyvenvCfg);
+    if (hasPrebuiltDeps) {
+      log.info(
+        '[PRE-CHECK] Prebuilt dependencies found, skipping installation check'
+      );
+    }
+  }
+
   // Check version and tools status synchronously
   const currentVersion = app.getVersion();
   const versionFile = path.join(app.getPath('userData'), 'version.txt');
@@ -1380,13 +1436,15 @@ async function createWindow() {
   const venvPath = getVenvPath(currentVersion);
   const venvExists = fs.existsSync(venvPath);
 
-  const needsInstallation =
-    !versionExists ||
-    savedVersion !== currentVersion ||
-    !uvExists ||
-    !bunExists ||
-    !installationCompleted ||
-    !venvExists;
+  // If prebuilt deps are available, skip installation
+  const needsInstallation = hasPrebuiltDeps
+    ? false
+    : !versionExists ||
+      savedVersion !== currentVersion ||
+      !uvExists ||
+      !bunExists ||
+      !installationCompleted ||
+      !venvExists;
 
   log.info('Installation check result:', {
     needsInstallation,
@@ -1794,6 +1852,15 @@ app.whenReady().then(async () => {
       // Don't throw - allow app to continue even if extension installation fails
     }
   }
+
+  // ==================== Anti-fingerprint: Set User Agent for all sessions ====================
+  // Use the same dynamic User Agent as app.userAgentFallback
+  session.defaultSession.setUserAgent(normalUserAgent);
+  // Also set for the user_login partition used by webviews
+  session.fromPartition('persist:user_login').setUserAgent(normalUserAgent);
+  // And for main_window partition
+  session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
+  log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {

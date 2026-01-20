@@ -1,13 +1,35 @@
 import asyncio
 import logging
-from typing import Generator, List
-
+from typing import Generator, List, Optional
+from camel.agents import ChatAgent
+from camel.societies.workforce.workforce import (
+    Workforce as BaseWorkforce,
+    WorkforceState,
+    DEFAULT_WORKER_POOL_SIZE,
+)
+from camel.societies.workforce.utils import FailureHandlingConfig
+from camel.societies.workforce.task_channel import TaskChannel
+from camel.societies.workforce.base import BaseNode
+from camel.societies.workforce.utils import TaskAssignResult
+from camel.societies.workforce.workforce_metrics import WorkforceMetrics
+from camel.societies.workforce.events import WorkerCreatedEvent
+from camel.societies.workforce.prompts import TASK_DECOMPOSE_PROMPT
+from camel.tasks.task import Task, TaskState, validate_task_content
 from app.component import code
 from app.exception.exception import UserException
 from app.service.task import (Action, ActionAssignTaskData, ActionEndData,
                               ActionTaskStateData, get_camel_task,
                               get_task_lock)
 from app.utils.agent import ListenChatAgent
+from app.service.task import (
+    Action,
+    ActionAssignTaskData,
+    ActionEndData,
+    ActionTaskStateData,
+    ActionTimeoutData,
+    get_camel_task,
+    get_task_lock,
+)
 from app.utils.single_agent_worker import SingleAgentWorker
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from camel.agents import ChatAgent
@@ -62,6 +84,7 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
+            task_timeout_seconds=1800,  # 30 minutes
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"], ),
         )
@@ -90,110 +113,73 @@ class Workforce(BaseWorkforce):
             on_stream_text: Optional callback for raw
                 streaming text chunks
         """
-        logger.info("=" * 80)
-        logger.info("🧩 [DECOMPOSE] eigent_make_sub_tasks CALLED",
-                    extra={
-                        "api_task_id": self.api_task_id,
-                        "workforce_id": id(self),
-                        "task_id": task.id
-                    })
-        logger.info(f"[DECOMPOSE] Task content preview: "
-                    f"'{task.content[:200]}...'")
-        logger.info(f"[DECOMPOSE] Has coordinator context: "
-                    f"{bool(coordinator_context)}")
-        logger.info(f"[DECOMPOSE] Current workforce state: "
-                    f"{self._state.name}, _running: {self._running}")
-        logger.info("=" * 80)
+        logger.debug("[DECOMPOSE] eigent_make_sub_tasks called", extra={
+            "api_task_id": self.api_task_id,
+            "task_id": task.id
+        })
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
             task.result = "Task failed: Invalid or empty content provided"
-            logger.warning(
-                "❌ [DECOMPOSE] Task rejected: Invalid or empty content",
-                extra={
-                    "task_id":
-                    task.id,
-                    "content_preview":
-                    task.content[:50] +
-                    "..." if len(task.content) > 50 else task.content
-                })
+            logger.warning("[DECOMPOSE] Task rejected: Invalid or empty content", extra={
+                "task_id": task.id,
+                "content_preview": task.content[:50] + "..." if len(task.content) > 50 else task.content
+            })
             raise UserException(code.error, task.result)
 
-        logger.info("[DECOMPOSE] Resetting workforce state")
         self.reset()
         self._task = task
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        logger.info(
-            f"[DECOMPOSE] Workforce reset complete, state: {self._state.name}")
-
-        logger.info("[DECOMPOSE] Calling handle_decompose_append_task")
         subtasks = asyncio.run(
             self.handle_decompose_append_task(
                 task,
                 reset=False,
                 coordinator_context=coordinator_context,
                 on_stream_batch=on_stream_batch,
-                on_stream_text=on_stream_text))
-        logger.info("=" * 80)
-        logger.info("✅ [DECOMPOSE] Task decomposition COMPLETED",
-                    extra={
-                        "api_task_id": self.api_task_id,
-                        "task_id": task.id,
-                        "subtasks_count": len(subtasks)
-                    })
-        logger.info("=" * 80)
+                on_stream_text=on_stream_text
+            )
+        )
+
+        logger.info(f"[DECOMPOSE] Task decomposition completed", extra={
+            "api_task_id": self.api_task_id,
+            "task_id": task.id,
+            "subtasks_count": len(subtasks)
+        })
         return subtasks
 
     async def eigent_start(self, subtasks: list[Task]):
         """start the workforce"""
-        logger.info("=" * 80)
-        logger.info("▶️  [WF-LIFECYCLE] eigent_start CALLED",
-                    extra={
-                        "api_task_id": self.api_task_id,
-                        "workforce_id": id(self)
-                    })
-        logger.info(f"[WF-LIFECYCLE] Starting workforce execution "
-                    f"with {len(subtasks)} subtasks")
-        logger.info(f"[WF-LIFECYCLE] Current workforce state: "
-                    f"{self._state.name}, _running: {self._running}")
-        logger.info("=" * 80)
+        logger.debug(f"[WF-LIFECYCLE] eigent_start called with {len(subtasks)} subtasks", extra={
+            "api_task_id": self.api_task_id
+        })
         self._pending_tasks.extendleft(reversed(subtasks))
-        # Save initial snapshot
         self.save_snapshot("Initial task decomposition")
 
         try:
-            logger.info("[WF-LIFECYCLE] Calling base class start() method")
             await self.start()
-            logger.info("[WF-LIFECYCLE] ✅ Base class start() method completed")
         except Exception as e:
-            logger.error(f"[WF-LIFECYCLE] ❌ Error in workforce execution: {e}",
-                         extra={
-                             "api_task_id": self.api_task_id,
-                             "error": str(e)
-                         },
-                         exc_info=True)
+            logger.error(f"[WF-LIFECYCLE] Error in workforce execution: {e}", extra={
+                "api_task_id": self.api_task_id,
+                "error": str(e)
+            }, exc_info=True)
             self._state = WorkforceState.STOPPED
-            logger.info(
-                "[WF-LIFECYCLE] Workforce state set to STOPPED after error")
             raise
         finally:
-            logger.info(f"[WF-LIFECYCLE] eigent_start finally block, "
-                        f"current state: {self._state.name}")
             if self._state != WorkforceState.STOPPED:
                 self._state = WorkforceState.IDLE
-                logger.info("[WF-LIFECYCLE] Workforce state set to IDLE")
 
     def _decompose_task(self, task: Task, stream_callback=None):
         """Decompose task with optional streaming text callback."""
-
         decompose_prompt = str(
             TASK_DECOMPOSE_PROMPT.format(
                 content=task.content,
                 child_nodes_info=self._get_child_nodes_info(),
                 additional_info=task.additional_info,
-            ))
+            )
+        )
+
         self.task_agent.reset()
         result = task.decompose(self.task_agent,
                                 decompose_prompt,
@@ -242,8 +228,7 @@ class Workforce(BaseWorkforce):
         Returns:
             List[Task]: The decomposed subtasks or the original task
         """
-        logger.info(f"[DECOMPOSE] handle_decompose_append_task CALLED, "
-                    f"task_id={task.id}, reset={reset}")
+        logger.debug(f"[DECOMPOSE] handle_decompose_append_task called, task_id={task.id}, reset={reset}")
 
         if not validate_task_content(task.content, task.id):
             task.state = TaskState.FAILED
@@ -254,34 +239,20 @@ class Workforce(BaseWorkforce):
             return [task]
 
         if reset and self._state != WorkforceState.RUNNING:
-            logger.info(f"[DECOMPOSE] Resetting workforce "
-                        f"(reset={reset}, state={self._state.name})")
             self.reset()
-            logger.info("[DECOMPOSE] Workforce reset complete")
 
         self._task = task
         task.state = TaskState.FAILED
 
         if coordinator_context:
-            logger.info("[DECOMPOSE] Adding coordinator context to task")
             original_content = task.content
-            task_with_context = coordinator_context
-            if coordinator_context:
-                task_with_context += "\n=== CURRENT TASK ===\n"
-            task_with_context += original_content
+            task_with_context = coordinator_context + "\n=== CURRENT TASK ===\n" + original_content
             task.content = task_with_context
-
-            logger.info("[DECOMPOSE] Calling _decompose_task with context")
-            subtasks_result = self._decompose_task(
-                task, stream_callback=on_stream_text)
-
+            subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
             task.content = original_content
         else:
-            logger.info("[DECOMPOSE] Calling _decompose_task without context")
-            subtasks_result = self._decompose_task(
-                task, stream_callback=on_stream_text)
+            subtasks_result = self._decompose_task(task, stream_callback=on_stream_text)
 
-        logger.info("[DECOMPOSE] _decompose_task returned, processing results")
         if isinstance(subtasks_result, Generator):
             subtasks = []
             for new_tasks in subtasks_result:
@@ -291,8 +262,6 @@ class Workforce(BaseWorkforce):
                         on_stream_batch(new_tasks, False)
                     except Exception as e:
                         logger.warning(f"Streaming callback failed: {e}")
-            logger.info(f"[DECOMPOSE] Collected {len(subtasks)} "
-                        f"subtasks from generator")
 
             # After consuming the generator, check task.subtasks
             # for final result as fallback
@@ -300,14 +269,9 @@ class Workforce(BaseWorkforce):
                 subtasks = task.subtasks
         else:
             subtasks = subtasks_result
-            logger.info(f"[DECOMPOSE] Got {len(subtasks) if subtasks else 0} "
-                        f"subtasks directly")
 
         if subtasks:
             self._pending_tasks.extendleft(reversed(subtasks))
-            logger.info(f"[DECOMPOSE] ✅ Appended {len(subtasks)} "
-                        f"subtasks to pending tasks")
-
             # Log task created events
             metrics_callbacks = [
                 cb for cb in self._callbacks
@@ -333,8 +297,6 @@ class Workforce(BaseWorkforce):
             )
             task.subtasks = [fallback_task]
             subtasks = [fallback_task]
-            logger.info(
-                f"[DECOMPOSE] Created fallback task: {fallback_task.id}")
 
             # Log fallback task created event
             metrics_callbacks = [
@@ -356,6 +318,7 @@ class Workforce(BaseWorkforce):
             except Exception as e:
                 logger.warning(f"Final streaming callback failed: {e}")
 
+        logger.debug(f"[DECOMPOSE] handle_decompose_append_task completed, returned {len(subtasks)} subtasks")
         return subtasks
 
     def _get_agent_id_from_node_id(self, node_id: str) -> str | None:
@@ -471,13 +434,12 @@ class Workforce(BaseWorkforce):
             # Map node_id to agent_id for frontend communication
             agent_id = self._get_agent_id_from_node_id(assignee_id)
             if agent_id is None:
-                workers = [
-                    c.node_id for c in self._children if hasattr(c, 'node_id')
-                ]
-                logger.error(f"[WF] ERROR: Could not find agent_id "
-                             f"for node_id={assignee_id}. Task {task.id} "
-                             f"will not be properly tracked on frontend. "
-                             f"Available workers: {workers}")
+                logger.error(
+                    f"[WF] ERROR: Could not find agent_id for node_id={assignee_id}. "
+                    f"Task {task.id} will not be properly tracked on frontend. "
+                    f"Available workers: {[c.node_id for c in self._children if hasattr(c, 'node_id')]}"
+                )
+            else:
                 await task_lock.put_queue(
                     ActionAssignTaskData(
                         action=Action.assign_task,
@@ -516,7 +478,7 @@ class Workforce(BaseWorkforce):
             worker=worker,
             pool_max_size=pool_max_size,
             use_structured_output_handler=self.use_structured_output_handler,
-            context_utility=None,  # Will be set during save/load operations
+            context_utility=None,
             enable_workflow_memory=enable_workflow_memory,
         )
         self._children.append(worker_node)
@@ -583,6 +545,7 @@ class Workforce(BaseWorkforce):
                 else:
                     # Other callbacks (like WorkforceLogger) only accept event
                     cb.log_worker_created(event)
+            metrics_callbacks[0].log_worker_created(event)
 
         return self
 
@@ -632,6 +595,11 @@ class Workforce(BaseWorkforce):
 
         result = await super()._handle_failed_task(task)
 
+        # Only send completion report to frontend when all retries are exhausted
+        max_retries = self.failure_handling_config.max_retries
+        if task.failure_count < max_retries:
+            return result
+
         error_message = ""
         # Use proper CAMEL pattern for metrics logging
         metrics_callbacks = [
@@ -667,6 +635,55 @@ class Workforce(BaseWorkforce):
             metrics_callbacks[0].log_task_failed(event)
 
         return result
+
+    async def _get_returned_task(self) -> Optional[Task]:
+        r"""Override to handle timeout and send notification to frontend.
+
+        Get the task that's published by this node and just get returned
+        from the assignee. Includes timeout handling to prevent indefinite
+        waiting.
+
+        Raises:
+            asyncio.TimeoutError: If waiting for task exceeds timeout
+        """
+        try:
+            return await asyncio.wait_for(
+                self._channel.get_returned_task_by_publisher(self.node_id),
+                timeout=self.task_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            # Send timeout notification to frontend before re-raising
+            logger.warning(
+                f"⏰ [WF-TIMEOUT] Task timeout in workforce {self.node_id}. "
+                f"Timeout: {self.task_timeout_seconds}s, "
+                f"Pending tasks: {len(self._pending_tasks)}, "
+                f"In-flight tasks: {self._in_flight_tasks}"
+            )
+
+            # Try to notify frontend, but don't let notification failure mask the timeout
+            try:
+                task_lock = get_task_lock(self.api_task_id)
+                timeout_minutes = self.task_timeout_seconds // 60
+                await task_lock.put_queue(
+                    ActionTimeoutData(
+                        data={
+                            "message": f"Task execution timeout: No response received for {timeout_minutes} minutes",
+                            "in_flight_tasks": self._in_flight_tasks,
+                            "pending_tasks": len(self._pending_tasks),
+                            "timeout_seconds": self.task_timeout_seconds,
+                        }
+                    )
+                )
+            except Exception as notify_err:
+                logger.error(f"Failed to send timeout notification: {notify_err}")
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error getting returned task {e} in workforce {self.node_id}. "
+                f"Current pending tasks: {len(self._pending_tasks)}, "
+                f"In-flight tasks: {self._in_flight_tasks}"
+            )
+            raise
 
     def stop(self) -> None:
         logger.info("=" * 80)
