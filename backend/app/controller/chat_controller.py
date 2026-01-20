@@ -123,8 +123,8 @@ async def post(data: Chat, request: Request):
     task_lock = get_or_create_task_lock(data.project_id)
 
     # Set user-specific environment path for this thread
-    set_user_env_path(data.env_path)
-    load_dotenv(dotenv_path=data.env_path)
+    env_path = set_user_env_path(data.env_path)
+    load_dotenv(dotenv_path=env_path)
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)

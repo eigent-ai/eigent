@@ -186,7 +186,7 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
             logger.info("Google search completed", extra={"query": query, "search_type": search_type, "result_count": len(responses)})
         else:
             error_info = data.get("error", {})
-            logger.error("Google search API error", extra={"query": query, "api_error": error_info})
+            logger.error("Google search API error", extra={"query": query})
             raise HTTPException(status_code=500, detail="Internal server error")
 
     except Exception as e:

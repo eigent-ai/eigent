@@ -211,8 +211,17 @@ export class OAuth {
 
 	async random(size: number) {
 		const mask = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
-		const randomUints = crypto.getRandomValues(new Uint8Array(size));
-		return Array.from(randomUints).map(i => mask[i % mask.length]).join('');
+		const maskLength = mask.length;
+		const out: string[] = [];
+		const maxUnbiased = 256 - (256 % maskLength); // rejection sampling to avoid modulo bias
+
+		while (out.length < size) {
+			const byte = crypto.getRandomValues(new Uint8Array(1))[0];
+			if (byte >= maxUnbiased) continue;
+			out.push(mask[byte % maskLength]);
+		}
+
+		return out.join('');
 	}
 }
 

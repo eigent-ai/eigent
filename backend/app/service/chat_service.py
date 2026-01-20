@@ -52,6 +52,40 @@ import os
 logger = traceroot.get_logger("chat_service")
 
 
+def _safe_working_directory(path_value: str | None) -> str | None:
+    if not path_value:
+        return None
+
+    base_dir = os.path.join(os.path.expanduser("~"), "eigent")
+    normalized = path_value.replace("\\", "/")
+
+    if os.path.isabs(normalized):
+        try:
+            rel_path = os.path.relpath(normalized, base_dir)
+        except ValueError:
+            logger.warning(f"Rejected working directory outside base: {path_value}")
+            return None
+    else:
+        rel_path = normalized
+
+    if rel_path.startswith("..") or rel_path.startswith("../"):
+        logger.warning(f"Rejected working directory outside base: {path_value}")
+        return None
+
+    segments = [segment for segment in rel_path.split("/") if segment and segment != "."]
+    if not segments:
+        logger.warning(f"Invalid working directory path: {path_value}")
+        return None
+
+    for segment in segments:
+        if not segment.isascii() or not segment.replace("-", "").replace("_", "").replace(".", "").isalnum():
+            logger.warning(f"Invalid working directory segment: {segment}")
+            return None
+
+    safe_path = os.path.join(base_dir, *segments)
+    return safe_path
+
+
 def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
     """Format structured task data into a readable context string.
 
@@ -70,7 +104,7 @@ def format_task_context(task_data: dict, seen_files: set | None = None, skip_fil
 
     # Skip file listing if requested
     if not skip_files:
-        working_directory = task_data.get('working_directory')
+        working_directory = _safe_working_directory(task_data.get('working_directory'))
         if working_directory:
             try:
                 if os.path.exists(working_directory):
@@ -130,10 +164,11 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
         context_parts.append(f"Previous Task Result:\n{previous_task_result}\n")
 
     # Collect generated files from working directory
+    safe_working_directory = _safe_working_directory(working_directory)
     try:
-        if os.path.exists(working_directory):
+        if safe_working_directory and os.path.exists(safe_working_directory):
             generated_files = []
-            for root, dirs, files in os.walk(working_directory):
+            for root, dirs, files in os.walk(safe_working_directory):
                 dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
                 for file in files:
                     if not file.startswith('.') and not file.endswith(('.pyc', '.tmp')):
@@ -207,6 +242,9 @@ def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSAT
         if working_directories:
             all_generated_files = set()  # Use set to avoid duplicates
             for working_directory in working_directories:
+                working_directory = _safe_working_directory(working_directory)
+                if not working_directory:
+                    continue
                 try:
                     if os.path.exists(working_directory):
                         for root, dirs, files in os.walk(working_directory):
