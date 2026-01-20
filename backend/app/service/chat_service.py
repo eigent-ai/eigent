@@ -1301,10 +1301,6 @@ You are a helpful coordinator.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
-
-- If a task assigned to another agent fails, you should re-assign it to the
-`Developer_Agent`. The `Developer_Agent` is a powerful agent with terminal
-access and can resolve a wide range of issues.
             """,
                 Agents.task_agent: f"""
 You are a helpful task planner.

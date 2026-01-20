@@ -450,6 +450,11 @@ class Workforce(BaseWorkforce):
 
         result = await super()._handle_failed_task(task)
 
+        # Only send completion report to frontend when all retries are exhausted
+        max_retries = self.failure_handling_config.max_retries
+        if task.failure_count < max_retries:
+            return result
+
         error_message = ""
         # Use proper CAMEL pattern for metrics logging
         metrics_callbacks = [cb for cb in self._callbacks if isinstance(cb, WorkforceMetrics)]

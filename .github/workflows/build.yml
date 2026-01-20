@@ -31,10 +31,72 @@ jobs:
             arch: x64
           - os: windows-latest
             arch: x64
-          - os: ubuntu-latest
-            arch: x64
+          # - os: ubuntu-latest
+          #   arch: x64
 
     steps:
+      - name: Free Disk Space (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          # Remove Xcode completely (not needed for Electron builds) - saves ~15GB
+          sudo rm -rf /Applications/Xcode.app || true
+          sudo rm -rf /Applications/Xcode_*.app || true
+          # Note: Keep /Library/Developer/CommandLineTools as codesign needs it
+          # Remove iOS simulators
+          sudo rm -rf ~/Library/Developer/CoreSimulator || true
+          # Remove all Xcode Developer files
+          sudo rm -rf ~/Library/Developer/Xcode || true
+          sudo rm -rf /Library/Developer/Xcode || true
+          # Remove provisioning profiles
+          sudo rm -rf ~/Library/MobileDevice/Provisioning\ Profiles || true
+          # Remove Android SDK if present
+          sudo rm -rf ~/Library/Android/sdk || true
+          sudo rm -rf /usr/local/lib/android || true
+          # Remove .NET
+          sudo rm -rf /usr/local/share/dotnet || true
+          # Remove Go
+          sudo rm -rf /usr/local/go || true
+          sudo rm -rf ~/go || true
+          # Remove Ruby
+          sudo rm -rf /usr/local/lib/ruby || true
+          sudo rm -rf ~/.gem || true
+          # Remove Swift toolchains
+          sudo rm -rf /Library/Developer/Toolchains || true
+          # Remove Homebrew cache
+          rm -rf ~/Library/Caches/Homebrew/* || true
+          brew cleanup --prune=all 2>/dev/null || true
+          # Remove npm cache
+          npm cache clean --force || true
+          # Remove pip cache
+          pip cache purge 2>/dev/null || true
+          # Note: Don't delete ~/Library/Caches/* as subsequent steps may need it
+
+          # Additional cleanup for more disk space
+          # Remove hosted tool cache (can be several GB)
+          sudo rm -rf /Users/runner/hostedtoolcache || true
+          sudo rm -rf /opt/hostedtoolcache || true
+          # Remove browsers (not needed for Electron builds)
+          sudo rm -rf "/Applications/Google Chrome.app" || true
+          sudo rm -rf "/Applications/Firefox.app" || true
+          sudo rm -rf "/Applications/Safari Technology Preview.app" || true
+          # Remove PowerShell
+          sudo rm -rf /usr/local/microsoft/powershell || true
+          sudo rm -rf /usr/local/share/powershell || true
+          # Remove more from /usr/local
+          sudo rm -rf /usr/local/aws-cli || true
+          sudo rm -rf /usr/local/julia* || true
+          sudo rm -rf /usr/local/miniconda || true
+          # Remove unused large directories
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf /usr/share/miniconda || true
+          # Remove Docker images if present
+          docker system prune -af 2>/dev/null || true
+
+          echo "Disk space after cleanup:"
+          df -h
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -57,11 +119,21 @@ jobs:
         run: npm install
 
       # Install libfuse2 for Linux AppImage builds
-      - name: Install libfuse2 (Linux)
-        if: runner.os == 'Linux'
+      # - name: Install libfuse2 (Linux)
+      #   if: runner.os == 'Linux'
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y libfuse2
+
+      # Verify disk space before build
+      - name: Check Disk Space Before Build (macOS)
+        if: runner.os == 'macOS'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2
+          echo "Disk space available before build:"
+          df -h
+          echo ""
+          echo "Largest directories in home:"
+          du -sh ~/* 2>/dev/null | sort -rh | head -10 || true
 
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
@@ -92,15 +164,15 @@ jobs:
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
 
       # Step for Linux builds
-      - name: Build Release Files (Linux)
-        if: runner.os == 'Linux'
-        run: npm run build:linux
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
-          VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
-          VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
-          VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+      # - name: Build Release Files (Linux)
+      #   if: runner.os == 'Linux'
+      #   run: npm run build:linux
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+      #     VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
+      #     VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
+      #     VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
@@ -117,7 +189,7 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64 release/linux-x64
+          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64
 
        # Download all artifacts with correct names
       - name: Download mac-x64 artifact
@@ -138,11 +210,11 @@ jobs:
           name: release-windows-latest-x64
           path: temp-win-x64
 
-      - name: Download linux-x64 artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: release-ubuntu-latest-x64
-          path: temp-linux-x64
+      # - name: Download linux-x64 artifact
+      #   uses: actions/download-artifact@v7
+      #   with:
+      #     name: release-ubuntu-latest-x64
+      #     path: temp-linux-x64
 
       # Move files to final release directory, removing any nested release/ directory
       - name: Move files to clean folders
@@ -169,12 +241,12 @@ jobs:
             mv temp-win-x64/* release/win-x64/ || true
           fi
 
-          # linux-x64
-          if [ -d "temp-linux-x64/release" ]; then
-            mv temp-linux-x64/release/* release/linux-x64/ || true
-          else
-            mv temp-linux-x64/* release/linux-x64/ || true
-          fi
+          # # linux-x64
+          # if [ -d "temp-linux-x64/release" ]; then
+          #   mv temp-linux-x64/release/* release/linux-x64/ || true
+          # else
+          #   mv temp-linux-x64/* release/linux-x64/ || true
+          # fi
 
       - name: Rename duplicate files
         run: |
@@ -190,6 +262,6 @@ jobs:
             release/mac-x64/*
             release/mac-arm64/*
             release/win-x64/*
-            release/linux-x64/*
+            # release/linux-x64/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
