@@ -61,6 +61,28 @@ jobs:
           # Remove pip cache
           pip cache purge 2>/dev/null || true
           # Note: Don't delete ~/Library/Caches/* as subsequent steps may need it
+
+          # Additional cleanup for more disk space
+          # Remove hosted tool cache (can be several GB)
+          sudo rm -rf /Users/runner/hostedtoolcache || true
+          sudo rm -rf /opt/hostedtoolcache || true
+          # Remove browsers (not needed for Electron builds)
+          sudo rm -rf "/Applications/Google Chrome.app" || true
+          sudo rm -rf "/Applications/Firefox.app" || true
+          sudo rm -rf "/Applications/Safari Technology Preview.app" || true
+          # Remove PowerShell
+          sudo rm -rf /usr/local/microsoft/powershell || true
+          sudo rm -rf /usr/local/share/powershell || true
+          # Remove more from /usr/local
+          sudo rm -rf /usr/local/aws-cli || true
+          sudo rm -rf /usr/local/julia* || true
+          sudo rm -rf /usr/local/miniconda || true
+          # Remove unused large directories
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf /usr/share/miniconda || true
+          # Remove Docker images if present
+          docker system prune -af 2>/dev/null || true
+
           echo "Disk space after cleanup:"
           df -h
 
