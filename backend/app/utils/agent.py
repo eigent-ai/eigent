@@ -563,23 +563,19 @@ class ListenChatAgent(ChatAgent):
             f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
         )
 
-        # Check if tool is wrapped by @listen_toolkit decorator
-        # If so, the decorator will handle activate/deactivate events
-        has_listen_decorator = hasattr(tool.func, "__wrapped__")
-
-        # Only send activate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
-            await task_lock.put_queue(
-                ActionActivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": json.dumps(args, ensure_ascii=False),
-                    },
-                )
+        # Always send activate event from agent to ensure consistent logging
+        # This ensures all tool calls are logged, regardless of decorator detection issues
+        await task_lock.put_queue(
+            ActionActivateToolkitData(
+                data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": json.dumps(args, ensure_ascii=False),
+                },
             )
+        )
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
@@ -647,19 +643,18 @@ class ListenChatAgent(ChatAgent):
             else:
                 result_msg = result_str
 
-        # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
-            await task_lock.put_queue(
-                ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": result_msg,
-                    },
-                )
+        # Always send deactivate event from agent to ensure consistent logging
+        await task_lock.put_queue(
+            ActionDeactivateToolkitData(
+                data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": result_msg,
+                },
             )
+        )
         return self._record_tool_calling(
             func_name,
             args,

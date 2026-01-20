@@ -126,17 +126,8 @@ def listen_toolkit(
                     if not process_task_id:
                         logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
 
-                if not skip_workflow_display:
-                    activate_data = ActionActivateToolkitData(
-                        data={
-                            "agent_name": toolkit.agent_name,
-                            "process_task_id": process_task_id,
-                            "toolkit_name": toolkit_name,
-                            "method_name": method_name,
-                            "message": args_str,
-                        },
-                    )
-                    await task_lock.put_queue(activate_data)
+                # Note: activate/deactivate events are now sent by agent._aexecute_tool
+                # to avoid duplicate events and ensure all tools are logged consistently
                 error = None
                 res = None
                 try:
@@ -167,20 +158,9 @@ def listen_toolkit(
                 deactivate_timestamp = datetime.now().isoformat()
                 status = "ERROR" if error is not None else "SUCCESS"
 
-                # Log toolkit deactivation (only send to WorkFlow if not skipped)
+                # Log toolkit deactivation for debugging purposes
                 logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | Method: {method_name} | Task ID: {process_task_id} | Agent: {toolkit.agent_name} | Status: {status} | Timestamp: {deactivate_timestamp}")
 
-                if not skip_workflow_display:
-                    deactivate_data = ActionDeactivateToolkitData(
-                        data={
-                            "agent_name": toolkit.agent_name,
-                            "process_task_id": process_task_id,
-                            "toolkit_name": toolkit_name,
-                            "method_name": method_name,
-                            "message": res_msg,
-                        },
-                    )
-                    await task_lock.put_queue(deactivate_data)
                 if error is not None:
                     raise error
                 return res
@@ -229,18 +209,8 @@ def listen_toolkit(
                     if not process_task_id:
                         logger.warning(f"[toolkit_listen] Both ContextVar process_task and toolkit.api_task_id are empty for {toolkit_name}.{method_name}")
 
-                if not skip_workflow_display:
-                    activate_data = ActionActivateToolkitData(
-                        data={
-                            "agent_name": toolkit.agent_name,
-                            "process_task_id": process_task_id,
-                            "toolkit_name": toolkit_name,
-                            "method_name": method_name,
-                            "message": args_str,
-                        },
-                    )
-                    _safe_put_queue(task_lock, activate_data)
-
+                # Note: activate/deactivate events are now sent by agent._execute_tool
+                # to avoid duplicate events and ensure all tools are logged consistently
                 error = None
                 res = None
                 try:
@@ -274,18 +244,6 @@ def listen_toolkit(
                                 res_msg = res_str
                     else:
                         res_msg = str(error)
-
-                if not skip_workflow_display:
-                    deactivate_data = ActionDeactivateToolkitData(
-                        data={
-                            "agent_name": toolkit.agent_name,
-                            "process_task_id": process_task_id,
-                            "toolkit_name": toolkit_name,
-                            "method_name": method_name,
-                            "message": res_msg,
-                        },
-                    )
-                    _safe_put_queue(task_lock, deactivate_data)
 
                 if error is not None:
                     raise error
