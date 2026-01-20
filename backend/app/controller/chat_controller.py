@@ -115,15 +115,12 @@ async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TI
 @router.post("/chat", name="start chat")
 @traceroot.trace()
 async def post(data: Chat, request: Request):
-    request_start_time = time.time()
     chat_logger.info(
         "Starting new chat session",
         extra={"project_id": data.project_id, "task_id": data.task_id, "user": data.email}
     )
 
     task_lock = get_or_create_task_lock(data.project_id)
-    # Store request start time in task_lock for downstream timing
-    task_lock.request_start_time = request_start_time
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
