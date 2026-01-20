@@ -114,6 +114,19 @@ npm run dev
 
 > 注：このモードはEigentクラウドサービスに接続し、アカウント登録が必要です。完全にスタンドアロンで使用する場合は、代わりに[ローカルデプロイメント](#-ローカルデプロイメント推奨)を使用してください。
 
+#### 依存関係の更新
+
+新しいコードを取得（`git pull`）した後、フロントエンドとバックエンドの両方の依存関係を更新します：
+
+```bash
+# 1. フロントエンド依存関係を更新（プロジェクトルートで）
+npm install
+
+# 2. バックエンド/Python依存関係を更新（backendディレクトリで）
+cd backend
+uv sync
+```
+
 ### 🏢 エンタープライズ
 
 最大限のセキュリティ、カスタマイズ、制御を必要とする組織向け：
@@ -295,7 +308,7 @@ Documentsディレクトリにmydocsというフォルダがあります。ス�
 | **コンテキストエンジニアリング** | - プロンプトキャッシング<br> - システムプロンプト最適化<br> - ツールキットdocstring最適化<br> - コンテキスト圧縮 | [**Discordに参加 →**](https://discord.gg/D2e3rBWD) |
 | **マルチモーダル強化** | - ブラウザ使用時のより正確な画像理解<br> - 高度な動画生成 | [**Discordに参加 →**](https://discord.gg/kyapNCeJ) |
 | **マルチエージェントシステム** | - 固定ワークフローをサポートするワークフォース<br> - マルチラウンド変換をサポートするワークフォース | [**Discordに参加 →**](https://discord.gg/bFRmPuDB) |
-| **ブラウザツールキット** | - BrowseCamp統合<br> - ベンチマーク改善<br> - 繰り返しページ訪問の禁止<br> - 自動キャッシュボタンクリック | [**Discordに参加 →**](https://discord.gg/NF73ze5v) |
+| **ブラウザツールキット** | - BrowseComp統合<br> - ベンチマーク改善<br> - 繰り返しページ訪問の禁止<br> - 自動キャッシュボタンクリック | [**Discordに参加 →**](https://discord.gg/NF73ze5v) |
 | **ドキュメントツールキット** | - 動的ファイル編集のサポート | [**Discordに参加 →**](https://discord.gg/4yAWJxYr) |
 | **ターミナルツールキット** | - ベンチマーク改善<br> - Terminal-Bench統合 | [**Discordに参加 →**](https://discord.gg/FjQfnsrV) |
 | **環境 & RL** | - 環境設計<br> - データ生成<br> - RLフレームワーク統合（VERL、TRL、OpenRLHF） | [**Discordに参加 →**](https://discord.gg/MaVZXEn8) |

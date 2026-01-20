@@ -8,10 +8,12 @@ import {
   getBinaryPath,
   getCachePath,
   getVenvPath,
+  getTerminalVenvPath,
   getUvEnv,
   cleanupOldVenvs,
   isBinaryExists,
   runInstallScript,
+  TERMINAL_BASE_PACKAGES,
 } from './utils/process';
 import { spawn } from 'child_process';
 import { safeMainWindowSend } from './utils/safeWebContentsSend';
@@ -482,6 +484,124 @@ const runInstall = (extraArgs: string[], version: string) => {
   });
 };
 
+/**
+ * Install terminal base venv with common packages for terminal tasks.
+ * This is a lightweight venv separate from the backend venv.
+ */
+async function installTerminalBaseVenv(version: string): Promise<PromiseReturnType> {
+  const terminalVenvPath = getTerminalVenvPath(version);
+  const pythonPath = process.platform === 'win32'
+    ? path.join(terminalVenvPath, 'Scripts', 'python.exe')
+    : path.join(terminalVenvPath, 'bin', 'python');
+
+  // Check if terminal base venv already exists and is valid
+  if (fs.existsSync(pythonPath)) {
+    log.info('[DEPS INSTALL] Terminal base venv already exists, skipping creation');
+    return { message: 'Terminal base venv already exists', success: true };
+  }
+
+  log.info('[DEPS INSTALL] Creating terminal base venv...');
+  safeMainWindowSend('install-dependencies-log', {
+    type: 'stdout',
+    data: 'Creating terminal base environment...\n',
+  });
+
+  try {
+    // Create the venv using uv
+    await new Promise<void>((resolve, reject) => {
+      const createVenv = spawn(
+        uv_path,
+        ['venv', '--python', '3.10', terminalVenvPath],
+        {
+          env: {
+            ...process.env,
+            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+          },
+        }
+      );
+
+      createVenv.stdout.on('data', (data) => {
+        log.info(`[DEPS INSTALL] terminal venv: ${data}`);
+      });
+
+      createVenv.stderr.on('data', (data) => {
+        log.info(`[DEPS INSTALL] terminal venv: ${data}`);
+      });
+
+      createVenv.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Failed to create terminal venv, exit code: ${code}`));
+        }
+      });
+
+      createVenv.on('error', reject);
+    });
+
+    // Install base packages
+    log.info('[DEPS INSTALL] Installing terminal base packages...');
+    safeMainWindowSend('install-dependencies-log', {
+      type: 'stdout',
+      data: `Installing packages: ${TERMINAL_BASE_PACKAGES.join(', ')}...\n`,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const installPkgs = spawn(
+        uv_path,
+        [
+          'pip',
+          'install',
+          '--python',
+          pythonPath,
+          ...TERMINAL_BASE_PACKAGES,
+        ],
+        {
+          env: {
+            ...process.env,
+            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+          },
+        }
+      );
+
+      installPkgs.stdout.on('data', (data) => {
+        log.info(`[DEPS INSTALL] terminal packages: ${data}`);
+        safeMainWindowSend('install-dependencies-log', {
+          type: 'stdout',
+          data: data.toString(),
+        });
+      });
+
+      installPkgs.stderr.on('data', (data) => {
+        log.info(`[DEPS INSTALL] terminal packages: ${data}`);
+        safeMainWindowSend('install-dependencies-log', {
+          type: 'stdout',
+          data: data.toString(),
+        });
+      });
+
+      installPkgs.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Failed to install terminal packages, exit code: ${code}`));
+        }
+      });
+
+      installPkgs.on('error', reject);
+    });
+
+    log.info('[DEPS INSTALL] Terminal base venv created successfully');
+    return { message: 'Terminal base venv created successfully', success: true };
+  } catch (error) {
+    log.error('[DEPS INSTALL] Failed to create terminal base venv:', error);
+    return {
+      message: `Failed to create terminal base venv: ${error}`,
+      success: false,
+    };
+  }
+}
+
 export async function installDependencies(
   version: string
 ): Promise<PromiseReturnType> {
@@ -616,7 +736,8 @@ export async function installDependencies(
           log.info('[DEPS INSTALL] Using system npm for installation');
         } else {
           // Try uv run npm (might not work if nodejs-wheel isn't properly set up)
-          npmCommand = [uv_path, 'run', 'npm'];
+          // Quote the path to handle spaces in username on Windows
+          npmCommand = [`"${uv_path}"`, 'run', 'npm'];
           log.info('[DEPS INSTALL] Attempting to use uv run npm');
         }
 
@@ -746,7 +867,7 @@ export async function installDependencies(
         try {
           log.info('[DEPS INSTALL] Installing Playwright browsers...');
           const npxCommand =
-            npmCommand[0] === 'npm' ? ['npx'] : [uv_path, 'run', 'npx'];
+            npmCommand[0] === 'npm' ? ['npx'] : [`"${uv_path}"`, 'run', 'npx'];
           const playwrightInstall = spawn(
             npxCommand[0],
             [...npxCommand.slice(1), 'playwright', 'install'],
@@ -889,6 +1010,13 @@ export async function installDependencies(
     // try default install
     const installSuccess = await runInstall([], version);
     if (installSuccess.success) {
+      // Install terminal base venv (lightweight venv for terminal tasks)
+      log.info('[DEPS INSTALL] Installing terminal base venv...');
+      const terminalResult = await installTerminalBaseVenv(version);
+      if (!terminalResult.success) {
+        log.warn('[DEPS INSTALL] Terminal base venv installation failed, but continuing...', terminalResult.message);
+      }
+
       // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
       log.info(
         '[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...'
@@ -921,6 +1049,13 @@ export async function installDependencies(
         : await runInstall([], version);
 
     if (mirrorInstallSuccess.success) {
+      // Install terminal base venv (lightweight venv for terminal tasks)
+      log.info('[DEPS INSTALL] Installing terminal base venv...');
+      const terminalResult = await installTerminalBaseVenv(version);
+      if (!terminalResult.success) {
+        log.warn('[DEPS INSTALL] Terminal base venv installation failed, but continuing...', terminalResult.message);
+      }
+
       // Install hybrid_browser_toolkit npm dependencies after Python packages are installed
       log.info(
         '[DEPS INSTALL] Installing hybrid_browser_toolkit dependencies...'

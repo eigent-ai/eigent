@@ -159,6 +159,8 @@ const resolveProcessTaskIdForToolkitEvent = (
 // Throttle streaming decompose text updates to prevent excessive re-renders
 const streamingDecomposeTextBuffer: Record<string, string> = {};
 const streamingDecomposeTextTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+// TTFT (Time to First Token) tracking for task decomposition
+const ttftTracking: Record<string, { confirmedAt: number; firstTokenLogged: boolean }> = {};
 
 const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 	(set, get) => ({
@@ -213,11 +215,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		computedProgressValue(taskId: string) {
 			const { tasks, setProgressValue, activeTaskId } = get()
 			const taskRunning = [...tasks[taskId].taskRunning]
-			const finshedTask = taskRunning?.filter(
+			const finishedTask = taskRunning?.filter(
 				(task) => task.status === "completed" || task.status === "failed"
 			).length;
 			const taskProgress = (
-				((finshedTask || 0) / (taskRunning?.length || 0)) *
+				((finishedTask || 0) / (taskRunning?.length || 0)) *
 				100
 			).toFixed(2);
 			setProgressValue(
@@ -757,6 +759,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						//Enable it for the rest of current SSE session
 						skipFirstConfirm = false;
+
+						// Record confirmed time for TTFT tracking
+						const ttftTaskId = getCurrentTaskId();
+						ttftTracking[ttftTaskId] = { confirmedAt: performance.now(), firstTokenLogged: false };
+						console.log(`[TTFT] Task ${ttftTaskId} confirmed at ${new Date().toISOString()}, starting TTFT measurement`);
 						return
 					}
 
@@ -796,6 +803,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						const text = content;
 						const currentId = getCurrentTaskId();
 
+						// Log TTFT (Time to First Token) on first decompose_text event
+						if (ttftTracking[currentId] && !ttftTracking[currentId].firstTokenLogged) {
+							ttftTracking[currentId].firstTokenLogged = true;
+							const ttft = performance.now() - ttftTracking[currentId].confirmedAt;
+							console.log(`%c[TTFT] 🚀 Time to First Token: ${ttft.toFixed(2)}ms - First streaming token received for task ${currentId}`, 'color: #4CAF50; font-weight: bold');
+						}
+
 						// Get current buffer or task state
 						const currentContent = streamingDecomposeTextBuffer[currentId] ||
 							getCurrentChatStore().tasks[currentId]?.streamingDecomposeText || "";
@@ -829,6 +843,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "to_sub_tasks") {
 						// Clear streaming decompose text when task splitting is done
 						clearStreamingDecomposeText(currentTaskId);
+						// Clean up TTFT tracking
+						delete ttftTracking[currentTaskId];
 						// Check if this is a multi-turn scenario after task completion
 						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
@@ -1056,7 +1072,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
 						//new chatStore logic is handled along side "confirmed" event
-						console.log(`Recieved new task: ${task_id} with content: ${content}`);
+						console.log(`Received new task: ${task_id} with content: ${content}`);
 						return;
 					}
 
