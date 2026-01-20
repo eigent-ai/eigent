@@ -10,14 +10,11 @@ import {
 } from './dialog'
 import { Button } from './button'
 import { Input } from './input'
+import { expect, userEvent, within } from 'storybook/test'
 
 const meta: Meta<typeof Dialog> = {
   title: 'UI/Dialog',
   component: Dialog,
-  tags: ['autodocs'],
-  parameters: {
-    layout: 'centered',
-  },
 }
 
 export default meta
@@ -346,5 +343,170 @@ export const AllSizes: Story = {
         </Dialog>
       </div>
     )
+  },
+}
+
+// Interaction test stories
+export const OpenCloseInteraction: Story = {
+  render: function OpenCloseDialog() {
+    const [open, setOpen] = useState(false)
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button variant="primary">Open Dialog</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader title="Interactive Dialog" subtitle="Test opening and closing" />
+          <DialogContentSection>
+            <p className="text-text-body">
+              This dialog tests the open/close interaction.
+            </p>
+          </DialogContentSection>
+          <DialogFooter
+            showCancelButton
+            showConfirmButton
+            onCancel={() => setOpen(false)}
+            onConfirm={() => setOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    )
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(document.body)
+
+    // Open the dialog
+    await userEvent.click(canvas.getByRole('button', { name: /open dialog/i }))
+
+    // Verify dialog is visible (renders in portal)
+    await expect(await body.findByText('Interactive Dialog')).toBeVisible()
+
+    // Close the dialog
+    await userEvent.click(body.getByRole('button', { name: /cancel/i }))
+
+    // Verify dialog is closed
+    await expect(body.queryByText('Interactive Dialog')).not.toBeInTheDocument()
+  },
+}
+
+export const FormInteraction: Story = {
+  render: function FormInteractionDialog() {
+    const [open, setOpen] = useState(false)
+    const [submitted, setSubmitted] = useState(false)
+    return (
+      <div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button variant="primary">Open Form</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader title="Sign Up" subtitle="Create your account" />
+            <DialogContentSection>
+              <div className="flex flex-col gap-4">
+                <Input title="Name" placeholder="Enter your name" required />
+                <Input
+                  title="Email"
+                  type="email"
+                  placeholder="Enter your email"
+                  required
+                />
+              </div>
+            </DialogContentSection>
+            <DialogFooter
+              showCancelButton
+              showConfirmButton
+              confirmButtonText="Sign Up"
+              onCancel={() => setOpen(false)}
+              onConfirm={() => {
+                setSubmitted(true)
+                setOpen(false)
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+        {submitted && <p data-testid="success-message">Form submitted successfully!</p>}
+      </div>
+    )
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(document.body)
+
+    // Open the dialog
+    await userEvent.click(canvas.getByRole('button', { name: /open form/i }))
+
+    // Wait for dialog to appear (renders in portal)
+    await expect(await body.findByText('Sign Up')).toBeVisible()
+
+    // Fill in the form
+    const nameInput = body.getByPlaceholderText('Enter your name')
+    const emailInput = body.getByPlaceholderText('Enter your email')
+
+    await userEvent.type(nameInput, 'John Doe')
+    await userEvent.type(emailInput, 'john@example.com')
+
+    // Verify inputs have values
+    await expect(nameInput).toHaveValue('John Doe')
+    await expect(emailInput).toHaveValue('john@example.com')
+
+    // Submit the form
+    await userEvent.click(body.getByRole('button', { name: /sign up/i }))
+
+    // Verify success message appears
+    await expect(await canvas.findByTestId('success-message')).toBeVisible()
+  },
+}
+
+export const ConfirmDialogInteraction: Story = {
+  render: function ConfirmInteractionDialog() {
+    const [open, setOpen] = useState(false)
+    const [confirmed, setConfirmed] = useState(false)
+    return (
+      <div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button variant="warning">Delete Item</Button>
+          </DialogTrigger>
+          <DialogContent size="sm">
+            <DialogHeader title="Confirm Delete" subtitle="This action cannot be undone" />
+            <DialogContentSection>
+              <p className="text-text-body">
+                Are you sure you want to delete this item?
+              </p>
+            </DialogContentSection>
+            <DialogFooter
+              showCancelButton
+              showConfirmButton
+              confirmButtonText="Delete"
+              confirmButtonVariant="warning"
+              onCancel={() => setOpen(false)}
+              onConfirm={() => {
+                setConfirmed(true)
+                setOpen(false)
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+        {confirmed && <p data-testid="deleted-message">Item deleted!</p>}
+      </div>
+    )
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(document.body)
+
+    // Open the confirmation dialog
+    await userEvent.click(canvas.getByRole('button', { name: /delete item/i }))
+
+    // Verify dialog is visible (renders in portal)
+    await expect(await body.findByText('Confirm Delete')).toBeVisible()
+
+    // Click the confirm/delete button
+    await userEvent.click(body.getByRole('button', { name: /^delete$/i }))
+
+    // Verify the deleted message appears
+    const deletedMessage = await canvas.findByTestId('deleted-message')
+    await expect(deletedMessage).toHaveTextContent('Item deleted!')
   },
 }

@@ -2,11 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Input } from './input'
 import { Search, Eye, EyeOff } from 'lucide-react'
 import { useState } from 'react'
+import { expect, fn, userEvent, within } from 'storybook/test'
 
 const meta: Meta<typeof Input> = {
   title: 'UI/Input',
   component: Input,
-  tags: ['autodocs'],
   argTypes: {
     size: {
       control: 'select',
@@ -22,9 +22,6 @@ const meta: Meta<typeof Input> = {
     required: {
       control: 'boolean',
     },
-  },
-  parameters: {
-    layout: 'centered',
   },
   decorators: [
     (Story) => (
@@ -190,4 +187,105 @@ export const FormExample: Story = {
       </div>
     ),
   ],
+}
+
+// Interaction test stories
+export const TypeInteraction: Story = {
+  args: {
+    placeholder: 'Type something...',
+    onChange: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByPlaceholderText('Type something...')
+
+    // Test that input is visible and enabled
+    await expect(input).toBeVisible()
+    await expect(input).toBeEnabled()
+
+    // Clear any existing value and type new text
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Hello World')
+
+    // Verify the input value
+    await expect(input).toHaveValue('Hello World')
+
+    // Verify onChange was called
+    await expect(args.onChange).toHaveBeenCalled()
+  },
+}
+
+export const FocusInteraction: Story = {
+  args: {
+    title: 'Focus Test',
+    placeholder: 'Click to focus...',
+    onFocus: fn(),
+    onBlur: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByPlaceholderText('Click to focus...')
+
+    // Click to focus the input
+    await userEvent.click(input)
+    await expect(args.onFocus).toHaveBeenCalled()
+
+    // Tab away to blur
+    await userEvent.tab()
+    await expect(args.onBlur).toHaveBeenCalled()
+  },
+}
+
+export const ClearAndTypeInteraction: Story = {
+  args: {
+    title: 'Edit Field',
+    placeholder: 'Edit this text',
+    defaultValue: 'Initial value',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByPlaceholderText('Edit this text')
+
+    // Verify initial value
+    await expect(input).toHaveValue('Initial value')
+
+    // Select all and replace
+    await userEvent.tripleClick(input)
+    await userEvent.type(input, 'Replaced text')
+
+    // Verify the new value
+    await expect(input).toHaveValue('Replaced text')
+  },
+}
+
+export const PasswordToggleInteraction: Story = {
+  render: function PasswordToggle() {
+    const [showPassword, setShowPassword] = useState(false)
+    return (
+      <Input
+        title="Password"
+        type={showPassword ? 'text' : 'password'}
+        placeholder="Enter password"
+        defaultValue="secret123"
+        backIcon={showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+        onBackIconClick={() => setShowPassword(!showPassword)}
+      />
+    )
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByPlaceholderText('Enter password')
+    const toggleButton = canvas.getByRole('button')
+
+    // Initially password should be hidden (type="password")
+    await expect(input).toHaveAttribute('type', 'password')
+
+    // Click toggle to show password
+    await userEvent.click(toggleButton)
+    await expect(input).toHaveAttribute('type', 'text')
+
+    // Click toggle again to hide password
+    await userEvent.click(toggleButton)
+    await expect(input).toHaveAttribute('type', 'password')
+  },
 }

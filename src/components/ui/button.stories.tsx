@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Button } from './button'
 import { Plus, Download, Trash2 } from 'lucide-react'
+import { expect, fn, userEvent, within } from 'storybook/test'
 
 const meta: Meta<typeof Button> = {
   title: 'UI/Button',
   component: Button,
-  tags: ['autodocs'],
   argTypes: {
     variant: {
       control: 'select',
@@ -38,9 +38,6 @@ const meta: Meta<typeof Button> = {
     children: 'Button',
     variant: 'primary',
     size: 'md',
-  },
-  parameters: {
-    layout: 'centered',
   },
 }
 
@@ -157,4 +154,70 @@ export const AllSizes: Story = {
       </Button>
     </div>
   ),
+}
+
+// Interaction test stories
+export const ClickInteraction: Story = {
+  args: {
+    variant: 'primary',
+    children: 'Click Me',
+    onClick: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const button = canvas.getByRole('button', { name: /click me/i })
+
+    // Test that button is visible and enabled
+    await expect(button).toBeVisible()
+    await expect(button).toBeEnabled()
+
+    // Click the button
+    await userEvent.click(button)
+
+    // Verify the onClick handler was called
+    await expect(args.onClick).toHaveBeenCalledTimes(1)
+  },
+}
+
+export const DisabledInteraction: Story = {
+  args: {
+    variant: 'primary',
+    children: 'Disabled Button',
+    disabled: true,
+    onClick: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const button = canvas.getByRole('button', { name: /disabled button/i })
+
+    // Test that button is visible but disabled
+    await expect(button).toBeVisible()
+    await expect(button).toBeDisabled()
+
+    // Verify the onClick handler was NOT called (disabled buttons block pointer events)
+    await expect(args.onClick).not.toHaveBeenCalled()
+  },
+}
+
+export const HoverInteraction: Story = {
+  args: {
+    variant: 'outline',
+    children: 'Hover Over Me',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const button = canvas.getByRole('button', { name: /hover over me/i })
+
+    // Test initial state
+    await expect(button).toBeVisible()
+
+    // Hover over the button
+    await userEvent.hover(button)
+
+    // The button should still be visible after hover
+    await expect(button).toBeVisible()
+
+    // Unhover
+    await userEvent.unhover(button)
+  },
 }

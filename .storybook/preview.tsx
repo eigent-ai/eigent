@@ -7,6 +7,7 @@ import '@fontsource/inter/700.css'
 import '@fontsource/inter/800.css'
 import '../src/style/index.css'
 import './storybook.css' // Storybook-specific overrides
+import { Toaster } from 'sonner'
 
 // Apply theme immediately via script
 if (typeof document !== 'undefined') {
@@ -15,7 +16,9 @@ if (typeof document !== 'undefined') {
 }
 
 const preview: Preview = {
+  tags: ['autodocs'],
   parameters: {
+    layout: 'centered',
     controls: {
       expanded: true,
       matchers: {
@@ -35,6 +38,7 @@ const preview: Preview = {
     (Story) => (
       <div className="root" data-theme="light" style={{ padding: '1rem' }}>
         <Story />
+        <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
       </div>
     ),
   ],
