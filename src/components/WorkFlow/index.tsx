@@ -233,11 +233,21 @@ export default function Workflow({
 		// console.log("workerList	", workerList);
 		setNodes((prev: CustomNode[]) => {
 			if (!taskAssigning) return prev;
+			// Agents not yet in taskAssigning (from baseWorker or workerList)
 			const base = [...baseWorker, ...workerList].filter(
 				(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
 			);
 			let targetData = [...prev];
-			taskAssigning = [...base, ...taskAssigning];
+			// Merge all agents
+			const allAgents = [...taskAssigning, ...base];
+			// Sort: agents with tasks come first, then agents without tasks
+			taskAssigning = allAgents.sort((a, b) => {
+				const aHasTasks = a.tasks && a.tasks.length > 0;
+				const bHasTasks = b.tasks && b.tasks.length > 0;
+				if (aHasTasks && !bHasTasks) return -1;
+				if (!aHasTasks && bHasTasks) return 1;
+				return 0; // Keep original order for agents with same task status
+			});
 			// taskAssigning = taskAssigning.filter((agent) => agent.tasks.length > 0);
 			targetData = taskAssigning.map((agent, index) => {
 				const node = targetData.find((node) => node.id === agent.agent_id);
