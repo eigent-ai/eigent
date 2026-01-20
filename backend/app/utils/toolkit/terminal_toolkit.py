@@ -152,13 +152,16 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             logger.warning("Falling back to system Python")
 
     def _get_venv_path(self):
+        """Return the cloned venv path for shell activation."""
+        cloned_env_path = getattr(self, 'cloned_env_path', None)
+        if cloned_env_path and os.path.exists(cloned_env_path):
+            return cloned_env_path
         return None
 
     def _clone_venv_with_symlinks(self, source_venv: str, target_venv: str):
         """Clone a venv using symlinks for efficiency.
 
-        Only creates the minimum structure needed: pyvenv.cfg, bin/python, and lib symlink.
-        Activation scripts are not needed since we use python_executable directly.
+        Creates the structure needed: pyvenv.cfg, bin/python, lib symlink, and activate scripts.
         """
         is_windows = platform.system() == 'Windows'
 
@@ -187,6 +190,16 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 src = os.path.join(source_scripts, exe)
                 if os.path.exists(src):
                     shutil.copy2(src, os.path.join(target_bin, exe))
+            # Copy activate scripts (need to modify VIRTUAL_ENV path)
+            for script in ["activate.bat", "activate.ps1", "deactivate.bat"]:
+                src = os.path.join(source_scripts, script)
+                if os.path.exists(src):
+                    with open(src, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    content = content.replace(source_venv, target_venv)
+                    dst = os.path.join(target_bin, script)
+                    with open(dst, 'w', encoding='utf-8') as f:
+                        f.write(content)
             # Use directory junction for Lib (no admin rights needed, unlike symlink)
             source_lib = os.path.join(source_venv, "Lib")
             target_lib = os.path.join(target_venv, "Lib")
@@ -203,6 +216,19 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 python_exe = os.path.join(python_home, "python")
             os.symlink(python_exe, os.path.join(target_bin, "python"))
             os.symlink("python", os.path.join(target_bin, "python3"))
+
+            # Copy activate scripts (need to modify VIRTUAL_ENV path)
+            source_bin = os.path.join(source_venv, "bin")
+            for script in ["activate", "activate.csh", "activate.fish"]:
+                src = os.path.join(source_bin, script)
+                if os.path.exists(src):
+                    with open(src, 'r') as f:
+                        content = f.read()
+                    # Replace source venv path with target venv path
+                    content = content.replace(source_venv, target_venv)
+                    dst = os.path.join(target_bin, script)
+                    with open(dst, 'w') as f:
+                        f.write(content)
 
             # Symlink lib directory
             source_lib = os.path.join(source_venv, "lib")
