@@ -56,15 +56,18 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
+
+        # Get base directory from environment
+        base_dir = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
+
         if working_directory is None:
-            base_dir = env("file_save_path", os.path.expanduser("~/.eigent/terminal/"))
-            # Each agent gets its own subdirectory to avoid race conditions when
-            # multiple agents create .venv simultaneously during parallel initialization
-            working_directory = os.path.join(base_dir, self.agent_name)
+            working_directory = base_dir
+        self._agent_venv_dir = os.path.join(base_dir, self.agent_name)
 
         logger.debug(f"Initializing TerminalToolkit for agent={self.agent_name}", extra={
             "api_task_id": api_task_id,
             "working_directory": working_directory,
+            "agent_venv_dir": self._agent_venv_dir,
         })
 
         if TerminalToolkit._thread_pool is None:
@@ -101,7 +104,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Creates a lightweight clone using symlinks to the terminal_base venv,
         which contains pre-installed packages (pandas, numpy, matplotlib, etc.).
         """
-        self.cloned_env_path = os.path.join(self.working_dir, ".venv")
+        self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
         terminal_base_path = get_terminal_base_venv_path()
 
         # Check if terminal_base exists
@@ -147,6 +150,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             if os.path.exists(self.cloned_env_path):
                 shutil.rmtree(self.cloned_env_path, ignore_errors=True)
             logger.warning("Falling back to system Python")
+
+    def _get_venv_path(self):
+        return None
 
     def _clone_venv_with_symlinks(self, source_venv: str, target_venv: str):
         """Clone a venv using symlinks for efficiency.
