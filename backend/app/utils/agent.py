@@ -1,12 +1,64 @@
 import asyncio
+import contextvars
 import json
 import os
 import platform
-from threading import Event
+from threading import Event, Lock
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
 from utils import traceroot_wrapper as traceroot
+
+# Thread-safe reference to main event loop using contextvars
+# This ensures each request has its own event loop reference, avoiding race conditions
+_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
+    '_main_event_loop', default=None
+)
+
+# Global fallback for main event loop reference
+# Used when contextvars don't propagate to worker threads (e.g., asyncio.to_thread)
+_GLOBAL_MAIN_LOOP: asyncio.AbstractEventLoop | None = None
+_GLOBAL_MAIN_LOOP_LOCK = Lock()
+
+
+def set_main_event_loop(loop: asyncio.AbstractEventLoop | None):
+    """Set the main event loop reference for thread-safe task scheduling.
+
+    This should be called from the main async context before spawning threads
+    that need to schedule async tasks. Uses both contextvars (for request isolation)
+    and a global fallback (for thread pool workers where contextvars may not propagate).
+    """
+    global _GLOBAL_MAIN_LOOP
+    _main_event_loop_var.set(loop)
+    with _GLOBAL_MAIN_LOOP_LOCK:
+        _GLOBAL_MAIN_LOOP = loop
+
+
+def _schedule_async_task(coro):
+    """Schedule an async coroutine as a task, thread-safe.
+
+    This function handles scheduling from both the main event loop thread
+    and from worker threads (e.g., when using asyncio.to_thread).
+    """
+    try:
+        # Try to get the running loop (works in main event loop thread)
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        # No running loop in this thread (we're in a worker thread)
+        # First try contextvars, then fallback to global reference
+        main_loop = _main_event_loop_var.get()
+        if main_loop is None:
+            with _GLOBAL_MAIN_LOOP_LOCK:
+                main_loop = _GLOBAL_MAIN_LOOP
+        if main_loop is not None and main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, main_loop)
+        else:
+            # This should not happen in normal operation - log error and skip
+            traceroot.get_logger("agent").error(
+                "No event loop available for async task scheduling, task skipped. "
+                "Ensure set_main_event_loop() is called before parallel agent creation."
+            )
 from camel.agents import ChatAgent
 from camel.agents.chat_agent import (
     StreamingChatAgentResponse,
@@ -639,7 +691,9 @@ class ListenChatAgent(ChatAgent):
             mask_tool_output=self.mask_tool_output,
             pause_event=self.pause_event,
             prune_tool_calls_from_memory=self.prune_tool_calls_from_memory,
+            enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
+            stream_accumulate=self.stream_accumulate,
         )
 
         new_agent.process_task_id = self.process_task_id
@@ -668,10 +722,11 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating agent: {agent_name} with id: {agent_id} for project: {options.project_id}"
     )
-    asyncio.create_task(
+    # Use thread-safe scheduling to support parallel agent creation
+    _schedule_async_task(
         task_lock.put_queue(
             ActionCreateAgentData(
                 data={
@@ -737,19 +792,20 @@ def agent_model(
             )
             model_platform_enum = None
 
+    model = ModelFactory.create(
+        model_platform=options.model_platform,
+        model_type=options.model_type,
+        api_key=options.api_key,
+        url=options.api_url,
+        model_config_dict=model_config or None,
+        **init_params,
+    )
+
     return ListenChatAgent(
         options.project_id,
         agent_name,
         system_message,
-        model=ModelFactory.create(
-            model_platform=options.model_platform,
-            model_type=options.model_type,
-            api_key=options.api_key,
-            url=options.api_url,
-            model_config_dict=model_config or None,
-            **init_params,
-        ),
-        # output_language=options.language,
+        model=model,
         tools=tools,
         agent_id=agent_id,
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
@@ -805,7 +861,7 @@ async def developer_agent(options: Chat):
         options.project_id,
         Agents.document_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
@@ -970,9 +1026,10 @@ these tips to maximize your effectiveness:
 @traceroot.trace()
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating browser agent for project: {options.project_id} in directory: {working_directory}"
     )
+
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.browser_agent
@@ -998,19 +1055,22 @@ def browser_agent(options: Chat):
             "browser_switch_tab",
             "browser_enter",
             "browser_visit_page",
+            "browser_scroll",
+            "browser_sheet_read",
+            "browser_sheet_input",
             "browser_get_page_snapshot",
-            # "browser_get_som_screenshot",
         ],
     )
 
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
+
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         Agents.browser_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_functions(
         [terminal_toolkit.shell_exec]
@@ -1020,8 +1080,8 @@ def browser_agent(options: Chat):
         options.project_id, Agents.browser_agent, working_directory=working_directory
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
-    # Only register search tools if any are available
     if search_tools:
         search_tools = message_integration.register_functions(search_tools)
     else:
@@ -1171,9 +1231,10 @@ Your approach depends on available search tools:
 @traceroot.trace()
 async def document_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating document agent for project: {options.project_id} in directory: {working_directory}"
     )
+
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.task_agent
@@ -1194,13 +1255,19 @@ async def document_agent(options: Chat):
         options.project_id, Agents.document_agent, working_directory=working_directory
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         Agents.document_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+
+    google_drive_tools = await GoogleDriveMCPToolkit.get_can_use_tools(
+        options.project_id, options.get_bun_env()
+    )
+
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
@@ -1209,9 +1276,7 @@ async def document_agent(options: Chat):
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
-        *await GoogleDriveMCPToolkit.get_can_use_tools(
-            options.project_id, options.get_bun_env()
-        ),
+        *google_drive_tools,
     ]
     # if env("EXA_API_KEY") or options.is_cloud():
     #     search_toolkit = SearchToolkit(options.project_id, Agents.document_agent).search_exa
@@ -1394,9 +1459,10 @@ supported formats including advanced spreadsheet functionality.
 @traceroot.trace()
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
-    traceroot_logger.info(
+    traceroot_logger.debug(
         f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}"
     )
+
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.multi_modal_agent
@@ -1417,9 +1483,10 @@ def multi_modal_agent(options: Chat):
         options.project_id,
         agent_name=Agents.multi_modal_agent,
         safe_mode=True,
-        clone_current_env=False,
+        clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+
     note_toolkit = NoteTakingToolkit(
         options.project_id,
         Agents.multi_modal_agent,
@@ -1609,7 +1676,7 @@ async def social_medium_agent(options: Chat):
         *TerminalToolkit(
             options.project_id,
             agent_name=Agents.social_medium_agent,
-            clone_current_env=False,
+            clone_current_env=True,
         ).get_tools(),
         *NoteTakingToolkit(
             options.project_id,
