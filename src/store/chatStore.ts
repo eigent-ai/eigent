@@ -245,6 +245,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set(() => ({
 				taskId: null,
 				task: null,
+				updateCount: 0,
+				nextTaskId: null,
 			}))
 		},
 		updateMessage(messageId: string, message: Message) {
@@ -304,7 +306,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					}
 
 					return {
-						...state,
 						task: {
 							...state.task,
 							status: 'finished'
@@ -381,8 +382,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// Ensure we have a valid taskId before proceeding
 			if (!newTaskId) {
-				console.error('[startTask] No task ID available, cannot proceed');
-				return;
+				console.error('[startTask] No task ID available to start task');
+				throw Error('No task ID available, cannot proceed');
 			}
 
 			const base_Url = import.meta.env.DEV ? import.meta.env.VITE_PROXY_URL : import.meta.env.VITE_BASE_URL
@@ -1910,7 +1911,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		},
 		setUpdateCount() {
 			set((state) => ({
-				...state,
 				updateCount: state.updateCount + 1
 			}))
 		},
@@ -1918,7 +1918,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						messages: [
@@ -1933,7 +1932,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						attaches: [...attaches],
@@ -1945,7 +1943,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						messages: [
@@ -1961,7 +1958,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					return state;
 				}
 				return {
-					...state,
 					task: {
 						...state.task,
 						messages: state.task.messages.filter(
@@ -1975,7 +1971,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						cotList: [...cotList],
@@ -1988,7 +1983,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						summaryTask,
@@ -2000,7 +1994,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						isTakeControl,
@@ -2012,7 +2005,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						hasWaitComfirm,
@@ -2024,7 +2016,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						taskInfo: [...taskInfo],
@@ -2037,7 +2028,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						taskRunning: [...taskRunning],
@@ -2050,7 +2040,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						webViewUrls: [...state.task.webViewUrls, { url: webViewUrl, processTaskId: processTaskId }],
@@ -2062,7 +2051,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						webViewUrls: [...webViewUrls],
@@ -2074,7 +2062,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						askList: [...askList],
@@ -2086,7 +2073,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						taskAssigning: [...taskAssigning],
@@ -2098,7 +2084,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						status
@@ -2179,7 +2164,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						activeAsk: agentName,
@@ -2191,7 +2175,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						progressValue
@@ -2203,7 +2186,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						isPending
@@ -2215,7 +2197,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						activeWorkSpace
@@ -2230,7 +2211,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					return state;
 				}
 				return {
-					...state,
 					task: {
 						...state.task,
 						activeAgent: agent_id
@@ -2242,7 +2222,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						hasMessages
@@ -2254,7 +2233,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						hasAddWorker
@@ -2325,7 +2303,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						taskTime
@@ -2337,7 +2314,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						nuwFileNum
@@ -2349,7 +2325,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						type
@@ -2361,7 +2336,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						delayTime
@@ -2373,7 +2347,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						elapsed
@@ -2404,7 +2377,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						tokens: state.task.tokens + tokens
@@ -2420,7 +2392,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						selectedFile: selectedFile,
@@ -2432,7 +2403,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						snapshots,
@@ -2448,7 +2418,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					return state;
 				}
 				return {
-					...state,
 					task: {
 						...state.task,
 						snapshotsTemp: [...state.task.snapshotsTemp, snapshot],
@@ -2460,7 +2429,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						isTaskEdit
@@ -2507,7 +2475,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						isContextExceeded: isContextExceeded,
@@ -2516,8 +2483,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			})
 		},
 		setNextTaskId: (nextTaskId: string | null) => {
-			set((state) => ({
-				...state,
+			set(() => ({
 				nextTaskId: nextTaskId,
 			}))
 		},
@@ -2525,7 +2491,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						streamingDecomposeText: text,
@@ -2547,7 +2512,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			set((state) => {
 				if (!state.task) return state;
 				return {
-					...state,
 					task: {
 						...state.task,
 						streamingDecomposeText: '',
