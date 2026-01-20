@@ -2447,7 +2447,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					delete autoConfirmTimers[taskId];
 				}
 			} catch (error) {
-				console.warn('Error clearing auto-confirm timer in clearTask:', error);
+				console.error('Error clearing auto-confirm timer in clearTask:', error);
 			}
 
 			// Clean up active SSE connection for current task
