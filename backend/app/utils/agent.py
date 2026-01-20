@@ -859,7 +859,8 @@ async def developer_agent(options: Chat):
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
-        Agents.document_agent,
+        Agents.developer_agent,
+        working_directory=working_directory,
         safe_mode=True,
         clone_current_env=True,
     )
@@ -1069,6 +1070,7 @@ def browser_agent(options: Chat):
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         Agents.browser_agent,
+        working_directory=working_directory,
         safe_mode=True,
         clone_current_env=True,
     )
@@ -1259,6 +1261,7 @@ async def document_agent(options: Chat):
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         Agents.document_agent,
+        working_directory=working_directory,
         safe_mode=True,
         clone_current_env=True,
     )
@@ -1482,6 +1485,7 @@ def multi_modal_agent(options: Chat):
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         agent_name=Agents.multi_modal_agent,
+        working_directory=working_directory,
         safe_mode=True,
         clone_current_env=True,
     )
@@ -1676,6 +1680,7 @@ async def social_medium_agent(options: Chat):
         *TerminalToolkit(
             options.project_id,
             agent_name=Agents.social_medium_agent,
+            working_directory=working_directory,
             clone_current_env=True,
         ).get_tools(),
         *NoteTakingToolkit(
