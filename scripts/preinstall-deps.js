@@ -199,7 +199,7 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
 }
 
 /**
- * Recursively copy directory
+ * Recursively copy directory, handling symlinks properly
  */
 function copyDirRecursiveSync(src, dest) {
   if (!fs.existsSync(src)) {
@@ -218,6 +218,19 @@ function copyDirRecursiveSync(src, dest) {
 
     if (entry.isDirectory()) {
       copyDirRecursiveSync(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      try {
+        const realPath = fs.realpathSync(srcPath);
+        const realStat = fs.statSync(realPath);
+        if (realStat.isDirectory()) {
+          copyDirRecursiveSync(realPath, destPath);
+        } else {
+          fs.copyFileSync(realPath, destPath);
+        }
+      } catch (err) {
+        // If symlink target doesn't exist, skip it
+        console.log(`   Skipping broken symlink: ${srcPath}`);
+      }
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
