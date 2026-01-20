@@ -238,18 +238,9 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 @sync_step
 @traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
-    import time as time_module
-
-    # === TIMING: step_solve started ===
-    step_solve_start = time_module.time()
-    request_start_time = getattr(task_lock, 'request_start_time', step_solve_start)
-    time_since_request = (step_solve_start - request_start_time) * 1000
-    logger.info(f"⏱️ [TIMING] step_solve started, {time_since_request:.2f}ms since request received")
-
     start_event_loop = True
 
-    # === TIMING: Task lock initialization ===
-    init_start = time_module.time()
+    # Initialize task_lock attributes
     if not hasattr(task_lock, 'conversation_history'):
         task_lock.conversation_history = []
     if not hasattr(task_lock, 'last_task_result'):
@@ -258,24 +249,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         task_lock.question_agent = None
     if not hasattr(task_lock, 'summary_generated'):
         task_lock.summary_generated = False
-    init_time = (time_module.time() - init_start) * 1000
-    logger.info(f"⏱️ [TIMING] Task lock attrs initialized in {init_time:.2f}ms")
 
     # Create or reuse persistent question_agent
-    # === TIMING: question_agent creation ===
-    question_agent_start = time_module.time()
     if task_lock.question_agent is None:
         task_lock.question_agent = question_confirm_agent(options)
-        question_agent_time = (time_module.time() - question_agent_start) * 1000
-        logger.info(f"⏱️ [TIMING] question_confirm_agent created in {question_agent_time:.2f}ms")
     else:
-        logger.info(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
+        logger.debug(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
 
     question_agent = task_lock.question_agent
 
     # Other variables
     camel_task = None
     workforce = None
+    mcp = None
     last_completed_task_result = ""  # Track the last completed task result
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
@@ -312,11 +298,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             logger.info(f"[LIFECYCLE] Breaking out of step_solve loop due to client disconnect")
             break
         try:
-            # === TIMING: Waiting for queue item ===
-            queue_wait_start = time_module.time()
             item = await task_lock.get_queue()
-            queue_wait_time = (time_module.time() - queue_wait_start) * 1000
-            logger.info(f"⏱️ [TIMING] Got item from queue in {queue_wait_time:.2f}ms, action={item.action}")
         except Exception as e:
             logger.error("Error getting item from queue", extra={"project_id": options.project_id, "task_id": options.task_id, "error": str(e)}, exc_info=True)
             # Continue waiting instead of breaking on queue error
@@ -352,25 +334,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     })
                     continue
 
-                # === TIMING: Complexity determination ===
-                complexity_start = time_module.time()
-                time_since_request_to_complexity = (complexity_start - request_start_time) * 1000
-                logger.info(f"⏱️ [TIMING] Starting complexity check, {time_since_request_to_complexity:.2f}ms since request")
-
-                # Simplified logic: attachments mean workforce, otherwise let agent decide
+                # Determine task complexity: attachments mean workforce, otherwise let agent decide
                 is_complex_task: bool
                 if len(options.attaches) > 0:
-                    # Questions with attachments always need workforce
                     is_complex_task = True
                     logger.info(f"[NEW-QUESTION] Has attachments, treating as complex task")
-                    complexity_time = (time_module.time() - complexity_start) * 1000
-                    logger.info(f"⏱️ [TIMING] Complexity check (has attachments) completed in {complexity_time:.2f}ms")
                 else:
-                    logger.info(f"[NEW-QUESTION] Calling question_confirm to determine complexity")
-                    question_confirm_start = time_module.time()
                     is_complex_task = await question_confirm(question_agent, question, task_lock)
-                    question_confirm_time = (time_module.time() - question_confirm_start) * 1000
-                    logger.info(f"⏱️ [TIMING] question_confirm completed in {question_confirm_time:.2f}ms, is_complex={is_complex_task}")
                     logger.info(f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}")
 
                 if not is_complex_task:
@@ -409,83 +379,36 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         except Exception as e:
                             logger.error(f"Error cleaning up folder: {e}")
                 else:
-                    # === TIMING: Complex task processing ===
-                    complex_task_start = time_module.time()
-                    time_since_request_to_complex = (complex_task_start - request_start_time) * 1000
-                    logger.info(f"⏱️ [TIMING] Complex task processing started, {time_since_request_to_complex:.2f}ms since request")
-
-                    logger.info(f"[NEW-QUESTION] 🔧 Complex task, creating workforce and decomposing")
+                    logger.info(f"[NEW-QUESTION] Complex task, creating workforce and decomposing")
                     # Update the sync_step with new task_id
                     if hasattr(item, 'new_task_id') and item.new_task_id:
                         set_current_task_id(options.project_id, item.new_task_id)
-                        # Reset summary generation flag for new tasks to ensure proper summaries
                         task_lock.summary_generated = False
-                        logger.info("[NEW-QUESTION] Reset summary_generated flag for new task", extra={"project_id": options.project_id, "new_task_id": item.new_task_id})
 
-                    logger.info(f"[NEW-QUESTION] Sending 'confirmed' SSE to frontend")
                     yield sse_json("confirmed", {"question": question})
 
-                    # === TIMING: Context building ===
-                    context_build_start = time_module.time()
-                    logger.info(f"[NEW-QUESTION] Building context for coordinator")
                     context_for_coordinator = build_context_for_workforce(task_lock, options)
-                    context_build_time = (time_module.time() - context_build_start) * 1000
-                    logger.info(f"⏱️ [TIMING] Context building completed in {context_build_time:.2f}ms")
 
-                    # Check if workforce exists - if so, reuse it (agents are preserved)
-                    # Otherwise create new workforce
+                    # Check if workforce exists - if so, reuse it; otherwise create new workforce
                     if workforce is not None:
-                        logger.info(f"[NEW-QUESTION] 🔄 Workforce exists (id={id(workforce)}), state={workforce._state.name}, _running={workforce._running}")
-                        logger.info(f"[NEW-QUESTION] ✅ Reusing existing workforce with preserved agents")
-                        # Workforce is already stopped from skip_task, ready for new decomposition
+                        logger.debug(f"[NEW-QUESTION] Reusing existing workforce (id={id(workforce)})")
                     else:
-                        # === TIMING: Workforce construction ===
-                        workforce_construct_start = time_module.time()
-                        logger.info(f"[NEW-QUESTION] 🏭 Creating NEW workforce instance (workforce=None)")
+                        logger.info(f"[NEW-QUESTION] Creating NEW workforce instance")
                         (workforce, mcp) = await construct_workforce(options)
-                        workforce_construct_time = (time_module.time() - workforce_construct_start) * 1000
-                        logger.info(f"⏱️ [TIMING] Workforce construction completed in {workforce_construct_time:.2f}ms")
-                        logger.info(f"[NEW-QUESTION] ✅ NEW Workforce instance created, id={id(workforce)}")
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent), await new_agent_model(new_agent, options)
                             )
                     task_lock.status = Status.confirmed
 
-                    # === TIMING: Task creation ===
-                    task_create_start = time_module.time()
+                    # Create camel_task for the question
+                    clean_task_content = question + options.summary_prompt
+                    camel_task = Task(content=clean_task_content, id=options.task_id)
+                    if len(options.attaches) > 0:
+                        camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    # If camel_task already exists (from previous paused task), add new question as subtask
-                    # Otherwise, create a new camel_task
-                    if camel_task is not None:
-                        logger.info(f"[NEW-QUESTION] 🔄 camel_task exists (id={camel_task.id}), adding new question as context")
-                        # Update the task content with new question
-                        clean_task_content = question + options.summary_prompt
-                        logger.info(f"[NEW-QUESTION] Updating existing camel_task content with new question")
-                        # We keep the existing task structure but update content for new decomposition
-                        camel_task = Task(content=clean_task_content, id=options.task_id)
-                        if len(options.attaches) > 0:
-                            camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
-                    else:
-                        clean_task_content = question + options.summary_prompt
-                        logger.info(f"[NEW-QUESTION] Creating NEW camel_task with id={options.task_id}")
-                        camel_task = Task(content=clean_task_content, id=options.task_id)
-                        if len(options.attaches) > 0:
-                            camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
-
-                    task_create_time = (time_module.time() - task_create_start) * 1000
-                    logger.info(f"⏱️ [TIMING] Task object created in {task_create_time:.2f}ms")
-
-                    # === TIMING: Task decomposition start ===
-                    decomposition_start = time_module.time()
-                    time_since_request_to_decompose = (decomposition_start - request_start_time) * 1000
-                    logger.info(f"⏱️ [TIMING] Starting task decomposition, {time_since_request_to_decompose:.2f}ms since request")
-                    # Store decomposition start time in task_lock for downstream tracking
-                    task_lock.decomposition_start_time = decomposition_start
-
-                    # Stream decomposition in background so queue items (decompose_text) are processed immediately
-                    logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
-                    stream_state = {"subtasks": [], "seen_ids": set(), "last_content": "", "first_token_logged": False}
+                    # Stream decomposition in background
+                    stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
                     state_holder: dict[str, Any] = {"sub_tasks": [], "summary_task": ""}
 
                     def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
@@ -496,8 +419,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     def on_stream_text(chunk):
                         try:
-                            # With task_agent using stream_accumulate=True, chunk.msg.content is accumulated content
-                            # We need to calculate the delta to send only new content to frontend
                             accumulated_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
                             last_content = stream_state["last_content"]
 
@@ -510,12 +431,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             stream_state["last_content"] = accumulated_content
 
                             if delta_content:
-                                # === TIMING: Log TTFT (Time to First Token) ===
-                                if not stream_state["first_token_logged"]:
-                                    stream_state["first_token_logged"] = True
-                                    ttft = (time_module.time() - task_lock.decomposition_start_time) * 1000
-                                    logger.info(f"⏱️ [TIMING] 🚀 TTFT (Time to First Token): {ttft:.2f}ms - First streaming token received for task decomposition")
-
                                 asyncio.run_coroutine_threadsafe(
                                     task_lock.put_queue(
                                         ActionDecomposeTextData(
@@ -534,10 +449,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     async def run_decomposition():
                         nonlocal camel_task, summary_task_content
                         try:
-                            # === TIMING: LLM decomposition call ===
-                            llm_decompose_start = time_module.time()
-                            decomposition_start_time = getattr(task_lock, 'decomposition_start_time', llm_decompose_start)
-
                             sub_tasks = await asyncio.to_thread(
                                 workforce.eigent_make_sub_tasks,
                                 camel_task,
@@ -546,60 +457,44 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 on_stream_text,
                             )
 
-                            llm_decompose_time = (time_module.time() - llm_decompose_start) * 1000
-                            total_decompose_time = (time_module.time() - decomposition_start_time) * 1000
-                            logger.info(f"⏱️ [TIMING] LLM decomposition completed in {llm_decompose_time:.2f}ms (total decompose phase: {total_decompose_time:.2f}ms)")
-
                             if stream_state["subtasks"]:
                                 sub_tasks = stream_state["subtasks"]
                             state_holder["sub_tasks"] = sub_tasks
-                            logger.info(f"[NEW-QUESTION] ✅ Task decomposed into {len(sub_tasks)} subtasks")
+                            logger.info(f"Task decomposed into {len(sub_tasks)} subtasks")
                             try:
                                 setattr(task_lock, "decompose_sub_tasks", sub_tasks)
                             except Exception:
                                 pass
 
-                            # === TIMING: Summary generation ===
-                            summary_start = time_module.time()
-                            logger.info(f"[NEW-QUESTION] Generating task summary")
+                            # Generate task summary
                             summary_task_agent = task_summary_agent(options)
                             try:
                                 summary_task_content = await asyncio.wait_for(
                                     summary_task(summary_task_agent, camel_task), timeout=10
                                 )
-                                summary_time = (time_module.time() - summary_start) * 1000
                                 task_lock.summary_generated = True
-                                logger.info(f"⏱️ [TIMING] Summary generation completed in {summary_time:.2f}ms")
-                                logger.info("[NEW-QUESTION] ✅ Summary generated successfully", extra={"project_id": options.project_id})
                             except asyncio.TimeoutError:
                                 logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
                                 task_lock.summary_generated = True
-                                fallback_name = "Task"
                                 content_preview = camel_task.content if hasattr(camel_task, "content") else ""
                                 if content_preview is None:
                                     content_preview = ""
-                                summary_task_content = (
-                                    (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
-                                )
-                                summary_task_content = f"{fallback_name}|{summary_task_content}"
+                                summary_task_content = (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                                summary_task_content = f"Task|{summary_task_content}"
                             except Exception:
                                 task_lock.summary_generated = True
-                                fallback_name = "Task"
                                 content_preview = camel_task.content if hasattr(camel_task, "content") else ""
                                 if content_preview is None:
                                     content_preview = ""
-                                summary_task_content = (
-                                    (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
-                                )
-                                summary_task_content = f"{fallback_name}|{summary_task_content}"
+                                summary_task_content = (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                                summary_task_content = f"Task|{summary_task_content}"
 
                             state_holder["summary_task"] = summary_task_content
                             try:
                                 setattr(task_lock, "summary_task_content", summary_task_content)
                             except Exception:
                                 pass
-                            logger.info(f"[NEW-QUESTION] 📤 Sending to_sub_tasks SSE to frontend (task card)")
-                            logger.info(f"[NEW-QUESTION] to_sub_tasks data: task_id={camel_task.id}, summary={summary_task_content[:50]}..., subtasks_count={len(camel_task.subtasks)}")
+
                             payload = {
                                 "project_id": options.project_id,
                                 "task_id": options.task_id,
@@ -609,12 +504,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 "summary_task": summary_task_content,
                             }
                             await task_lock.put_queue(ActionDecomposeProgressData(data=payload))
-                            logger.info(f"[NEW-QUESTION] ✅ to_sub_tasks SSE sent")
-
-                            # === TIMING: Total time from request to decomposition complete ===
-                            request_start = getattr(task_lock, 'request_start_time', decomposition_start_time)
-                            total_request_to_decompose = (time_module.time() - request_start) * 1000
-                            logger.info(f"⏱️ [TIMING] ===== TOTAL: Request → Decomposition Complete: {total_request_to_decompose:.2f}ms =====")
                         except Exception as e:
                             logger.error(f"Error in background decomposition: {e}", exc_info=True)
 
@@ -854,9 +743,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(f"[LIFECYCLE] Multi-turn: building context for workforce")
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
-                        logger.info(f"[LIFECYCLE] Multi-turn: calling workforce.handle_decompose_append_task for new task decomposition")
-                        multi_turn_decompose_start = time_module.time()
-                        stream_state = {"subtasks": [], "seen_ids": set(), "last_content": "", "first_token_logged": False, "start_time": multi_turn_decompose_start}
+                        stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
 
                         def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
                             fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
@@ -866,8 +753,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         def on_stream_text(chunk):
                             try:
-                                # With task_agent using stream_accumulate=True, chunk.msg.content is accumulated content
-                                # We need to calculate the delta to send only new content to frontend
                                 accumulated_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
                                 last_content = stream_state["last_content"]
 
@@ -879,12 +764,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 stream_state["last_content"] = accumulated_content
 
                                 if delta_content:
-                                    # === TIMING: Log TTFT (Time to First Token) for multi-turn ===
-                                    if not stream_state["first_token_logged"]:
-                                        stream_state["first_token_logged"] = True
-                                        ttft = (time_module.time() - stream_state["start_time"]) * 1000
-                                        logger.info(f"⏱️ [TIMING] 🚀 TTFT (Time to First Token): {ttft:.2f}ms - First streaming token received for multi-turn task decomposition")
-
                                     asyncio.run_coroutine_threadsafe(
                                         task_lock.put_queue(
                                             ActionDecomposeTextData(
@@ -987,6 +866,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.search_mcp:
                 yield sse_json("search_mcp", item.data)
             elif item.action == Action.install_mcp:
+                if mcp is None:
+                    logger.error(f"Cannot install MCP: mcp agent not initialized for project {options.project_id}")
+                    yield sse_json("error", {"message": "MCP agent not initialized. Please start a complex task first."})
+                    continue
                 task = asyncio.create_task(install_mcp(mcp, item))
                 task_lock.add_background_task(task)
             elif item.action == Action.terminal:
