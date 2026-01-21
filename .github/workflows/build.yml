@@ -25,12 +25,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: depot-macos-latest
+          - os: [self-hosted, macOS, ARM64]
             arch: arm64
+            artifact_name: macos-self-hosted
           # - os: windows-latest
           #   arch: x64
+          #   artifact_name: windows-latest
           - os: ubuntu-latest
             arch: x64
+            artifact_name: ubuntu-latest
 
     steps:
       - name: Checkout Code
@@ -108,7 +111,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
-          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*
             !release/builder-debug.yml
@@ -126,7 +129,7 @@ jobs:
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-depot-macos-latest-arm64
+          name: release-macos-self-hosted-arm64
           path: temp-mac-arm64
 
       # - name: Download win-x64 artifact
