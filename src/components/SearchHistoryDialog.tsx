@@ -2,14 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
-	Calculator,
-	Calendar,
-	CreditCard,
 	ScanFace,
 	Search,
-	Settings,
-	Smile,
-	User,
+	Trash2,
 } from "lucide-react";
 
 import {
@@ -20,20 +15,19 @@ import {
 	CommandItem,
 	CommandList,
 	CommandSeparator,
-	CommandShortcut,
 } from "@/components/ui/command";
 import { Button } from "./ui/button";
 import { DialogTitle } from "./ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { proxyFetchGet } from "@/api/http";
+import { proxyFetchDelete } from "@/api/http";
 import { useNavigate } from "react-router-dom";
-import { generateUniqueId } from "@/lib";
 import { useTranslation } from "react-i18next";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { replayProject } from "@/lib";
 import { fetchHistoryTasks } from "@/service/historyApi";
 import GroupedHistoryView from "@/components/GroupedHistoryView";
 import { useGlobalStore } from "@/store/globalStore";
+import { getAuthStore } from "@/store/authStore";
 
 export function SearchHistoryDialog() {
 	const {t} = useTranslation()
@@ -67,9 +61,31 @@ export function SearchHistoryDialog() {
 		await replayProject(projectStore, navigate, projectId, question, historyId);
 	};
 
-	const handleDelete = (taskId: string) => {
-		// TODO: Implement delete functionality similar to HistorySidebar
-		console.log("Delete task:", taskId);
+	const handleDelete = async (historyId: string, callback?: () => void) => {
+		try {
+			await proxyFetchDelete(`/api/chat/history/${historyId}`);
+
+			// Also delete local files for this task if available (via Electron IPC)
+			const history = historyTasks.find((item) => String(item.id) === String(historyId));
+			const { email } = getAuthStore();
+			if (history?.task_id && (window as any).ipcRenderer) {
+				try {
+					await (window as any).ipcRenderer.invoke(
+						'delete-task-files',
+						email,
+						history.task_id,
+						history.project_id ?? undefined
+					);
+				} catch (error) {
+					console.warn("Local file cleanup failed:", error);
+				}
+			}
+
+			setHistoryTasks((list) => list.filter((item) => String(item.id) !== String(historyId)));
+			callback?.();
+		} catch (error) {
+			console.error("Failed to delete history task:", error);
+		}
 	};
 
 	const handleShare = (taskId: string) => {
@@ -123,6 +139,18 @@ export function SearchHistoryDialog() {
 									<div className="overflow-hidden text-ellipsis whitespace-nowrap">
 										{task.question}
 									</div>
+									<button
+										type="button"
+										className="ml-auto inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:text-foreground"
+										aria-label="Delete history"
+										onClick={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											void handleDelete(String(task.id));
+										}}
+									>
+										<Trash2 size={16} />
+									</button>
 								</CommandItem>
 							))}
 						</CommandGroup>
