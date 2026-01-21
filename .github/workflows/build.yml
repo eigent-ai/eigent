@@ -25,31 +25,38 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: warp-macos-15-arm64-12x
+          - os: [self-hosted, macOS, ARM64]
             arch: arm64
+            artifact_name: macos-arm64
           - os: windows-latest
             arch: x64
+            artifact_name: windows-latest
           - os: ubuntu-latest
             arch: x64
+            artifact_name: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          clean: true
 
       - name: Setup Node.js
+        if: "!contains(matrix.os, 'self-hosted')"
         uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Setup Python
+        if: "!contains(matrix.os, 'self-hosted')"
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install Python Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install uv
+          python3 -m pip install --upgrade pip
+          pip3 install uv
 
       - name: Install Dependencies
         run: npm install
@@ -83,7 +90,6 @@ jobs:
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signing variables (CSC_LINK, CSC_KEY_PASSWORD) are omitted for Windows
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
@@ -103,7 +109,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
-          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*
             !release/builder-debug.yml
@@ -120,7 +126,7 @@ jobs:
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-warp-macos-15-arm64-6x-arm64
+          name: release-macos-arm64-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
