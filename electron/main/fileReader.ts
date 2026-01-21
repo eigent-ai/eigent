@@ -514,6 +514,15 @@ export class FileReader {
 		})
 	}
 
+	// Folders to hide in the Agent Folder view
+	private readonly hiddenFolders = [
+		'browser_agent',
+		'developer_agent',
+		'document_agent',
+		'multi_modal_agent',
+		'terminal_logs'
+	];
+
 	private getFilesRecursive(dirPath: string, basePath: string): FileInfo[] {
 		try {
 			const files = fs.readdirSync(dirPath);
@@ -521,6 +530,8 @@ export class FileReader {
 
 			for (const file of files) {
 				if (file.startsWith(".")) continue;
+				// Skip hidden folders
+				if (this.hiddenFolders.includes(file)) continue;
 
 				const filePath = path.join(dirPath, file);
 				const stats = fs.statSync(filePath);

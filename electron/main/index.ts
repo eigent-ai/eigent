@@ -34,12 +34,9 @@ import { zipFolder } from './utils/log';
 import mime from 'mime';
 import axios from 'axios';
 import FormData from 'form-data';
-import {
-  checkAndInstallDepsOnUpdate,
-  PromiseReturnType,
-  getInstallationStatus,
-} from './install-deps';
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
+import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import { setVibrancy, setRoundedCorners, setTransparentTitlebar } from './native/macos-window'
 
 const userData = app.getPath('userData');
 
@@ -1279,9 +1276,7 @@ async function createWindow() {
     minHeight: 650,
     frame: false,
     transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    backgroundColor: '#00000000',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
@@ -1298,6 +1293,28 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // Apply native macOS effects
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+          setVibrancy(win, 'HUDWindow');
+
+          // Apply rounded corners
+          setRoundedCorners(win, 20);
+
+          // Make titlebar transparent
+          setTransparentTitlebar(win);
+
+          log.info('[MacOS] Applied native visual effects');
+        } catch (error) {
+          log.error('[MacOS] Failed to apply native visual effects:', error);
+        }
+      }
+    });
+  }
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
