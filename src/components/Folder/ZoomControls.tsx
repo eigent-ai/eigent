@@ -11,7 +11,8 @@ interface ZoomControlsProps {
 
 export const ZoomControls = ({ zoom, onZoomIn, onZoomOut, onZoomReset }: ZoomControlsProps) => {
   return (
-    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-3 py-1.5 bg-gray-100/90 backdrop-blur-xl rounded-full shadow-lg border border-gray-300/50">
+    <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 group">
+      <div className="flex items-center gap-1 px-3 py-1.5 bg-gray-100/90 backdrop-blur-xl rounded-full shadow-lg border border-gray-300/50 translate-y-[calc(-100%-8px)] group-hover:translate-y-[20px] transition-transform duration-300 ease-out">
       <Button 
         size="icon" 
         variant="ghost" 
@@ -41,6 +42,7 @@ export const ZoomControls = ({ zoom, onZoomIn, onZoomOut, onZoomReset }: ZoomCon
       >
         <RotateCcw className="w-3.5 h-3.5" />
       </Button>
+      </div>
     </div>
   );
 }
