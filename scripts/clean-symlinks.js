@@ -46,7 +46,7 @@ function isValidSymlink(symlinkPath, bundleRoot) {
 }
 
 /**
- * Fix Python symlinks in venv/bin
+ * Fix Python symlinks in venv/bin (Unix) or venv/Scripts (Windows)
  * Remove symlinks that point outside the bundle (to cache directory)
  */
 function fixPythonSymlinks(venvBinDir, bundleRoot) {
@@ -55,7 +55,10 @@ function fixPythonSymlinks(venvBinDir, bundleRoot) {
   }
 
   const bundlePath = path.resolve(bundleRoot);
-  const pythonNames = ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
+  const isWindows = process.platform === 'win32';
+  const pythonNames = isWindows
+    ? ['python.exe', 'python3.exe', 'python3.10.exe', 'python3.11.exe', 'python3.12.exe']
+    : ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
 
   for (const pythonName of pythonNames) {
     const pythonSymlink = path.join(venvBinDir, pythonName);
@@ -127,7 +130,8 @@ function main() {
   console.log('🧹 Cleaning invalid symbolic links...');
 
   const bundleRoot = path.join(projectRoot, 'resources', 'prebuilt');
-  const venvBinDir = path.join(bundleRoot, 'venv', 'bin');
+  const isWindows = process.platform === 'win32';
+  const venvBinDir = path.join(bundleRoot, 'venv', isWindows ? 'Scripts' : 'bin');
 
   // First, try to fix Python symlinks specifically
   if (fs.existsSync(venvBinDir)) {

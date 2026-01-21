@@ -124,6 +124,19 @@ npm run dev
 #### 3. 本地开发(使用完全和云端服务分离的版本)
 [server/README_CN.md](./server/README_CN.md)
 
+#### 4. 更新依赖
+
+拉取新代码（`git pull`）后，需要分别更新前端和后端依赖：
+
+```bash
+# 1. 更新前端依赖（在项目根目录）
+npm install
+
+# 2. 更新后端/Python 依赖（在 backend 目录）
+cd backend
+uv sync
+```
+
 ### 🏢 企业版
 
 适合需要最高安全性、定制化和控制的组织：
@@ -281,13 +294,13 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 | 主题                   | 问题   | Discord 频道 |
 | ------------------------ | -- |-- |
-| **上下文工程** | - 提示缓存<br> - 系统提示优化<br> - 工具包文档优化<br> - 上下文压缩 | [**加入 Discord →**](https://discord.gg/D2e3rBWD) |
-| **多模态增强** | - 使用浏览器时更准确的图像理解<br> - 高级视频生成 | [**加入 Discord →**](https://discord.gg/kyapNCeJ) |
-| **多智能体系统** | - 工作流支持固定流程<br> - 工作流支持多轮对话 | [**加入 Discord →**](https://discord.gg/bFRmPuDB) |
-| **浏览器工具包** | - BrowseComp 集成<br> - 基准测试改进<br> - 禁止重复访问页面<br> - 自动缓存按钮点击 | [**加入 Discord →**](https://discord.gg/NF73ze5v) |
-| **文档工具包** | - 支持动态文件编辑 | [**加入 Discord →**](https://discord.gg/4yAWJxYr) |
-| **终端工具包** | - 基准测试改进<br> - Terminal-Bench 集成 | [**加入 Discord →**](https://discord.gg/FjQfnsrV) |
-| **环境与强化学习** | - 环境设计<br> - 数据生成<br> - 强化学习框架集成（VERL, TRL, OpenRLHF） | [**加入 Discord →**](https://discord.gg/MaVZXEn8) |
+| **上下文工程** | - 提示缓存<br> - 系统提示优化<br> - 工具包文档优化<br> - 上下文压缩 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **多模态增强** | - 使用浏览器时更准确的图像理解<br> - 高级视频生成 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **多智能体系统** | - 工作流支持固定流程<br> - 工作流支持多轮对话 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **浏览器工具包** | - BrowseComp 集成<br> - 基准测试改进<br> - 禁止重复访问页面<br> - 自动缓存按钮点击 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **文档工具包** | - 支持动态文件编辑 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **终端工具包** | - 基准测试改进<br> - Terminal-Bench 集成 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **环境与强化学习** | - 环境设计<br> - 数据生成<br> - 强化学习框架集成（VERL, TRL, OpenRLHF） | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
 
 ## [🤝 贡献][contribution-link]
 

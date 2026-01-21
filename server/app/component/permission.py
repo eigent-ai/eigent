@@ -10,7 +10,7 @@ def permissions():
     return [
         {
             "name": _("User"),
-            "description": _("User manger"),
+            "description": _("User manager"),
             "children": [
                 {
                     "identity": "user:view",
@@ -26,7 +26,7 @@ def permissions():
         },
         {
             "name": _("Admin"),
-            "description": _("Admin manger"),
+            "description": _("Admin manager"),
             "children": [
                 {
                     "identity": "admin:view",
@@ -42,7 +42,7 @@ def permissions():
         },
         {
             "name": _("Role"),
-            "description": _("Role manger"),
+            "description": _("Role manager"),
             "children": [
                 {
                     "identity": "role:view",
@@ -58,7 +58,7 @@ def permissions():
         },
         {
             "name": _("Mcp"),
-            "description": _("Mcp manger"),
+            "description": _("Mcp manager"),
             "children": [
                 {
                     "identity": "mcp:edit",

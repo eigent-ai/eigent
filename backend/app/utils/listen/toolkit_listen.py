@@ -185,6 +185,8 @@ def listen_toolkit(
                     raise error
                 return res
 
+            # Mark this wrapper as decorated by @listen_toolkit for detection in agent.py
+            async_wrapper.__listen_toolkit__ = True
             return async_wrapper
 
         else:
@@ -291,6 +293,8 @@ def listen_toolkit(
                     raise error
                 return res
 
+            # Mark this wrapper as decorated by @listen_toolkit for detection in agent.py
+            sync_wrapper.__listen_toolkit__ = True
             return sync_wrapper
 
     return decorator
@@ -350,14 +354,9 @@ def auto_listen_toolkit(base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type
                 # Method is overridden, check if it already has @listen_toolkit decorator
                 overridden_method = cls.__dict__[method_name]
 
-                # Check if already decorated by looking for the wrapper attributes
-                # that listen_toolkit adds (like __wrapped__ or specific markers)
-                is_already_decorated = (
-                    hasattr(overridden_method, '__wrapped__') or
-                    (hasattr(overridden_method, '__name__') and
-                     hasattr(getattr(overridden_method, '__code__', None), 'co_freevars') and
-                     'toolkit' in getattr(overridden_method.__code__, 'co_freevars', []))
-                )
+                # Check if already decorated by looking for the __listen_toolkit__ marker
+                # that listen_toolkit adds to its wrappers
+                is_already_decorated = getattr(overridden_method, '__listen_toolkit__', False)
 
                 if is_already_decorated:
                     # Already has @listen_toolkit, skip
