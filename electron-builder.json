@@ -20,7 +20,7 @@
     {
       "from": "backend",
       "to": "backend",
-      "filter": ["**/*", "!.venv/**/*"]
+      "filter": ["**/*", "!.venv/**/*", "!workspace/.initial_env/**/*"]
     },
     {
       "from": "utils",
