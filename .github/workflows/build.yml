@@ -27,8 +27,8 @@ jobs:
         include:
           - os: warp-macos-15-arm64-12x
             arch: arm64
-          - os: windows-latest
-            arch: x64
+          # - os: windows-latest
+          #   arch: x64
           - os: ubuntu-latest
             arch: x64
 
@@ -40,6 +40,20 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 20
+
+      - name: Cache npm dependencies (WarpBuild)
+        if: startsWith(matrix.os, 'warp-')
+        uses: WarpBuilds/cache@v1.4.7
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+
+      - name: Cache npm dependencies (GitHub)
+        if: "!startsWith(matrix.os, 'warp-')"
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -77,17 +91,16 @@ jobs:
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
 
-      # Step for Windows builds without signing
-      - name: Build Release Files (Windows without signing)
-        if: runner.os == 'Windows'
-        run: npm run build -- --arch ${{ matrix.arch }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signing variables (CSC_LINK, CSC_KEY_PASSWORD) are omitted for Windows
-          VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
-          VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
-          VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
-          VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+      # Step for Windows builds without signing (temporarily disabled)
+      # - name: Build Release Files (Windows without signing)
+      #   if: runner.os == 'Windows'
+      #   run: npm run build -- --arch ${{ matrix.arch }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+      #     VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
+      #     VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
+      #     VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
 
       # Step for Linux builds
       - name: Build Release Files (Linux)
@@ -115,19 +128,20 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
+          mkdir -p release/mac-arm64 release/linux-x64
+          # mkdir -p release/win-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-warp-macos-15-arm64-6x-arm64
+          name: release-warp-macos-15-arm64-12x-arm64
           path: temp-mac-arm64
 
-      - name: Download win-x64 artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: release-windows-latest-x64
-          path: temp-win-x64
+      # - name: Download win-x64 artifact
+      #   uses: actions/download-artifact@v7
+      #   with:
+      #     name: release-windows-latest-x64
+      #     path: temp-win-x64
 
       - name: Download linux-x64 artifact
         uses: actions/download-artifact@v7
@@ -146,12 +160,12 @@ jobs:
             mv temp-mac-arm64/* release/mac-arm64/ || true
           fi
 
-          # win-x64
-          if [ -d "temp-win-x64/release" ]; then
-            mv temp-win-x64/release/* release/win-x64/ || true
-          else
-            mv temp-win-x64/* release/win-x64/ || true
-          fi
+          # win-x64 (temporarily disabled)
+          # if [ -d "temp-win-x64/release" ]; then
+          #   mv temp-win-x64/release/* release/win-x64/ || true
+          # else
+          #   mv temp-win-x64/* release/win-x64/ || true
+          # fi
 
           # linux-x64
           if [ -d "temp-linux-x64/release" ]; then
@@ -167,7 +181,7 @@ jobs:
         with:
           files: |
             release/mac-arm64/*
-            release/win-x64/*
+            # release/win-x64/*
             release/linux-x64/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
