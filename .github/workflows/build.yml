@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: namespace-profile-mac-large
+          - os: depot-macos-latest
             arch: arm64
           # - os: windows-latest
           #   arch: x64
