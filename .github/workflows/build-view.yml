@@ -145,14 +145,6 @@ jobs:
           find node_modules -name "*.test.js" -delete 2>/dev/null || true
           find node_modules -name "*.spec.js" -delete 2>/dev/null || true
 
-          echo "Cleaning Python cache..."
-          find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-          find . -name "*.pyc" -delete 2>/dev/null || true
-          find . -name "*.pyo" -delete 2>/dev/null || true
-
-          rm -rf ~/.cache/pip 2>/dev/null || true
-          rm -rf ~/.cache/npm 2>/dev/null || true
-
           echo "Disk space after cleanup:"
           df -h
 
@@ -170,20 +162,8 @@ jobs:
             exit 1
           }
 
-          # Immediately clean up .app directories after ZIP is created
-          echo "=== Cleaning up build artifacts ==="
-          rm -rf release/mac 2>/dev/null || true
-          rm -rf release/mac-arm64 2>/dev/null || true
-          rm -rf release/mac-universal 2>/dev/null || true
-
-          # Clean up any unpacked directories
-          find release -type d -name "mac-*" -exec rm -rf {} + 2>/dev/null || true
-          find release -type d -name "*-unpacked" -exec rm -rf {} + 2>/dev/null || true
-
           echo "=== Final disk space ==="
           df -h
-          echo "=== Final release directory ==="
-          ls -lh release/ 2>/dev/null || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
