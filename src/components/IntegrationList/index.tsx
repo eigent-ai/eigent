@@ -88,8 +88,8 @@ export default function IntegrationList({
 			console.log(item);
 			const searchKey = isSelectMode ? "EXA Search" : "Search";
 
-			if (item.key === searchKey) {
-				const mcp = createMcpFromItem(item, 13);
+			if (item.key === searchKey || item.key === "Lark") {
+				const mcp = createMcpFromItem(item, item.key === "Lark" ? 15 : 13);
 				if (isSelectMode) {
 					onShowEnvConfig?.(mcp);
 				} else {

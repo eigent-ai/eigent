@@ -4,7 +4,7 @@
 
 [![][image-seperator]][eigent-site]
 
-### Eigent: The World's First Multi-agent Workforce to Unlock Your Exceptional Productivity
+### Eigent: The Open Source Cowork Desktop to Unlock Your Exceptional Productivity
 
 <!-- SHIELD GROUP -->
 
@@ -23,12 +23,12 @@
 <hr/>
 <div align="center">
 
-**English** · [简体中文](./README_CN.md) · [Official Site][eigent-site] · [Documents][docs-site] · [Feedback][github-issue-link]
+**English** · [Português](./README_PT-BR.md) · [简体中文](./README_CN.md) · [日本語](./README_JA.md) · [Official Site][eigent-site] · [Documents][docs-site] · [Feedback][github-issue-link]
 
 </div>
 <br/>
 
-**Eigent** is the world’s first **Multi-agent Workforce** desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. 
+**Eigent** is the open source cowork desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. 
 
 Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection.
 
@@ -52,9 +52,10 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 #### TOC
 
 - [🚀 Getting Started](#-getting-started)
-  - [☁️ Cloud Version](#️-cloud-version)
-  - [🏠 Self-Hosting (Community Edition)](#-self-hosting-community-edition)
+  - [🏠 Local Deployment (Recommended)](#-local-deployment-recommended)
+  - [⚡ Quick Start (Cloud-Connected)](#-quick-start-cloud-connected)
   - [🏢 Enterprise](#-enterprise)
+  - [☁️ Cloud Version](#️-cloud-version)
 - [✨ Key features](#-key-features)
   - [🏭 Workforce](#-workforce)
   - [🧠 Comprehensive Model Support](#-comprehensive-model-support)
@@ -82,11 +83,65 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 ## **🚀 Getting Started**
 
-There are three ways to get started with Eigent:
+> **🔓 Build in Public** — Eigent is **100% open source** from day one. Every feature, every commit, every decision is transparent. We believe the best AI tools should be built openly with the community, not behind closed doors.
+
+### 🏠 Local Deployment (Recommended)
+
+The recommended way to run Eigent — fully standalone with complete control over your data, no cloud account required.
+
+👉 **[Full Local Deployment Guide](./server/README_EN.md)**
+
+This setup includes:
+- Local backend server with full API
+- Local model integration (vLLM, Ollama, LM Studio, etc.)
+- Complete isolation from cloud services
+- Zero external dependencies
+
+### ⚡ Quick Start (Cloud-Connected)
+
+For a quick preview using our cloud backend — get started in seconds:
+
+#### Prerequisites
+
+- Node.js (version 18-22) and npm
+
+#### Steps
+
+```bash
+git clone https://github.com/eigent-ai/eigent.git
+cd eigent
+npm install
+npm run dev
+```
+
+> Note: This mode connects to Eigent cloud services and requires account registration. For a fully standalone experience, use [Local Deployment](#-local-deployment-recommended) instead.
+
+#### Updating Dependencies
+
+After pulling new code (`git pull`), update both frontend and backend dependencies:
+
+```bash
+# 1. Update frontend dependencies (in project root)
+npm install
+
+# 2. Update backend/Python dependencies (in backend directory)
+cd backend
+uv sync
+```
+
+### 🏢 Enterprise
+
+For organizations requiring maximum security, customization, and control:
+
+- **Exclusive Features** (like SSO & custom development)
+- **Scalable Enterprise Deployment**
+- **Negotiated SLAs** & implementation services
+
+📧 For further details, please contact us at [info@eigent.ai](mailto:info@eigent.ai).
 
 ### ☁️ Cloud Version
 
-The fastest way to experience Eigent's multi-agent AI capabilities is through our cloud platform, perfect for teams and individuals who want immediate access without setup complexity. We'll host the models, APIs, and cloud storage, ensuring Eigent runs flawlessly.
+For teams who prefer managed infrastructure, we also offer a cloud platform. The fastest way to experience Eigent's multi-agent AI capabilities without setup complexity. We'll host the models, APIs, and cloud storage, ensuring Eigent runs flawlessly.
 
 - **Instant Access** - Start building multi-agent workflows in minutes.
 - **Managed Infrastructure** - We handle scaling, updates, and maintenance.
@@ -100,41 +155,6 @@ The fastest way to experience Eigent's multi-agent AI capabilities is through ou
 <a href="https://www.eigent.ai/download">Get started at Eigent.ai →</a>
 </div>
 
-### 🏠 Self-Hosting (Community Edition)
-
-For users who prefer local control, data privacy, or customization, this option is ideal for organizations requiring:
-
-- **Data Privacy** - Keep sensitive data within your infrastructure.
-- **Customization** - Modify and extend the platform to fit your needs.
-- **Cost Control** - Avoid recurring cloud fees for large-scale deployments.
-
-#### 1. Prerequisites
-
-- Node.js (version 18-22) and npm
-
-#### 2. Quick Start
-
-```bash
-git clone https://github.com/eigent-ai/eigent.git
-cd eigent
-npm install
-npm run dev
-```
-
-#### 3. Local Development (Use the version that is completely separated from the cloud service)
-[server/README_EN.md](./server/README_EN.md)
-
-### 🏢 Enterprise
-
-For organizations requiring maximum security, customization, and control:
-
-- **Commercial License** - [Check our license →](LICENSE)
-- **Exclusive Features** (like SSO & custom development)
-- **Scalable Enterprise Deployment**
-- **Negotiated SLAs** & implementation services
-
-📧 For further details, please contact us at [info@eigent.ai](mailto:info@eigent.ai).
-
 ## **✨ Key features**
 Unlock the full potential of exceptional productivity with Eigent’s powerful features—built for seamless integration, smarter task execution, and boundless automation.
 
@@ -144,7 +164,7 @@ Employs a team of specialized AI agents that collaborate to solve complex tasks.
 Eigent pre-defined the following agent workers:
 
 - **Developer Agent:** Writes and executes code, runs terminal commands.
-- **Search Agent:** Searches the web and extracts content.
+- **Browser Agent:** Searches the web and extracts content.
 - **Document Agent:** Creates and manages documents.
 - **Multi-Modal Agent:** Processes images and audio.
 
@@ -287,18 +307,29 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 
 | Topics                   | Issues   | Discord Channel |
 | ------------------------ | -- |-- |
-| **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.gg/D2e3rBWD) |
-| **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.gg/kyapNCeJ) |
-| **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.gg/bFRmPuDB) |
-| **Browser Toolkit** | - BrowseCamp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
-| **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.gg/4yAWJxYr) |
-| **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.gg/FjQfnsrV) |
-| **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.gg/MaVZXEn8) |
+| **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Browser Toolkit** | - BrowseComp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
 
 
 ## [🤝 Contributing][contribution-link]
 
 We believe in building trust and embracing all forms of open-source collaborations. Your creative contributions help drive the innovation of `Eigent`. Explore our GitHub issues and projects to dive in and show us what you’ve got 🤝❤️ [Contribution Guideline][contribution-link]
+
+
+## Contributors
+
+<a href="https://github.com/eigent-ai/eigent/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=eigent-ai/eigent" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+<br>
 
 ## [❤️ Sponsor][sponsor-link]
 
@@ -306,14 +337,14 @@ Eigent is built on top of [CAMEL-AI.org][camel-ai-org-github]'s research and inf
 
 ## **📄 Open Source License**
 
-This repository is licensed under the [**Eigent Open Source License**](LICENSE), based on Apache 2.0 with additional conditions.
+This repository is licensed under the [Apache License 2.0](LICENSE).
 
 ## 🌐 Community & Contact
 For more information please contact info@eigent.ai
 
 - **GitHub Issues:** Report bugs, request features, and track development. [Submit an issue][github-issue-link]
 
-- **Discord:** Get real-time support, chat with the community, and stay updated. [Join us](https://discord.camel-ai.org/)
+- **Discord:** Get real-time support, chat with the community, and stay updated. [Join us](https://discord.com/invite/CNcNpquyDc)
 
 - **X (Twitter):** Follow for updates, AI insights, and key announcements. [Follow us][social-x-link]
 
@@ -327,7 +358,7 @@ For more information please contact info@eigent.ai
 
 <!-- LINK GROUP -->
 <!-- Social -->
-[discord-url]: https://discord.camel-ai.org/
+[discord-url]: https://discord.com/invite/CNcNpquyDc
 [discord-image]: https://img.shields.io/discord/1082486657678311454?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb
 
 [built-with-camel]:https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=

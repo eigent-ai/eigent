@@ -38,7 +38,7 @@ declare global {
 			toolkitStatus?: AgentStatus;
 		}[];
 		failure_count?: number;
-		reAssignTo?:string;
+		reAssignTo?: string;
 	}
 
 	interface File {
@@ -66,7 +66,7 @@ declare global {
 		log: AgentMessage[];
 		img?: string[];
 		activeWebviewIds?: ActiveWebView[];
-		tools?:string[];
+		tools?: string[];
 		workerInfo?: {
 			name: string;
 			description: string;
@@ -94,13 +94,13 @@ declare global {
 		task_id?: string;
 		summary?: string;
 		agent_name?: string;
-		attaches?:File[]
+		attaches?: File[]
 	}
 
 	interface AgentMessage {
 		step: string;
 		data: {
-			project_id?:string;
+			project_id?: string;
 			failure_count?: number;
 			tokens?: number;
 			sub_tasks?: TaskInfo[];
@@ -125,26 +125,27 @@ declare global {
 			tools?: string[];
 			//Context Length
 			current_length?: number;
-			max_length?: number
+			max_length?: number;
+			text?: string;
 		};
 		status?: 'running' | 'filled' | 'completed';
 	}
 
 	type AgentNameType =
 		| "developer_agent"
-		| "search_agent"
+		| "browser_agent"
 		| "document_agent"
 		| "multi_modal_agent"
 		| "social_medium_agent";
 
 	interface AgentNameMap {
 		developer_agent: "Developer Agent";
-		search_agent: "Search Agent";
+		browser_agent: "Browser Agent";
 		document_agent: "Document Agent";
 		multi_modal_agent: "Multi Modal Agent";
 		social_medium_agent: "Social Media Agent";
 	}
-	type WorkspaceType = 'workflow' | 'developer_agent' | 'search_agent' | 'document_agent' | 'multi_modal_agent' | 'social_medium_agent' | null;
+	type WorkspaceType = 'workflow' | 'developer_agent' | 'browser_agent' | 'document_agent' | 'multi_modal_agent' | 'social_medium_agent' | null;
 }
 
 
