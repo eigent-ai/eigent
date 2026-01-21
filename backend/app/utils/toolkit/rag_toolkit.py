@@ -171,7 +171,13 @@ class RAGToolkit(BaseToolkit, AbstractToolkit):
                 score = result.get("score", result.get("similarity", "N/A"))
                 metadata = result.get("metadata", {})
                 
-                result_text = f"[Result {i}] (relevance: {score:.3f})\n{content}"
+                # Format score - handle both float and string
+                if isinstance(score, (int, float)):
+                    score_str = f"{score:.3f}"
+                else:
+                    score_str = str(score)
+                
+                result_text = f"[Result {i}] (relevance: {score_str})\n{content}"
                 if metadata:
                     source = metadata.get("source", metadata.get("doc_id", ""))
                     if source:
