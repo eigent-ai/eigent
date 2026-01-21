@@ -12,8 +12,6 @@ jobs:
     timeout-minutes: 120
 
     strategy:
-      max-parallel: 1
-      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -157,8 +155,6 @@ jobs:
 
           echo "Disk space after cleanup:"
           df -h
-
-          export DEBUG=electron-builder
 
           if [ "${{ matrix.arch }}" = "arm64" ]; then
             npm run build:mac -- --arm64 --config.mac.target=dmg --publish always
