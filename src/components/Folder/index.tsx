@@ -10,9 +10,6 @@ import {
   ChevronRight,
   ChevronDown,
   AlertTriangle,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -24,6 +21,7 @@ import { proxyFetchGet } from '@/api/http';
 import { useTranslation } from 'react-i18next';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import DOMPurify from 'dompurify';
+import { ZoomControls } from './ZoomControls';
 
 // Type definitions
 interface FileTreeNode {
@@ -549,22 +547,22 @@ export default function Folder({ data }: { data?: Agent }) {
               {selectedFile?.type === 'html' && !isShowSourceCode && htmlHasScripts && !htmlScriptsApproved && (
                 <Button
                   size="sm"
-                  variant="primary"
+                  variant="success"
                   className="flex-shrink-0"
                   onClick={() => {
                     setHtmlScriptsApproved(true);
-                    toast.success('Scripts approved. Rendering with full functionality.', {
+                    toast.success(t('chat.scripts-approved'), {
                       duration: 3000,
                     });
                   }}
                 >
-                  Safe to Run
+                  {t('chat.safe-to-run')}
                 </Button>
               )}
               {selectedFile?.type === 'html' && !isShowSourceCode && htmlScriptsApproved && htmlHasScripts && (
                 <span className="text-xs text-yellow-600 flex items-center gap-1 flex-shrink-0">
                   <AlertTriangle className="w-3 h-3" />
-                  Scripts running
+                  {t('chat.scripts-running')}
                 </span>
               )}
               <Button
@@ -714,6 +712,7 @@ function HtmlRenderer({
   scriptsApproved: boolean;
   onScriptsDetected: (hasScripts: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [processedHtml, setProcessedHtml] = useState<string>('');
   const [hasScripts, setHasScripts] = useState<boolean>(false);
   const [rawHtmlWithScriptsCache, setRawHtmlWithScriptsCache] = useState<string>('');
@@ -766,7 +765,7 @@ function HtmlRenderer({
         hasShownWarningRef.current = selectedFile.path;
         setHasScripts(true);
         onScriptsDetected(true);
-        toast.warning('HTML render found related scripts. Make sure scripts are safe to run.', {
+        toast.warning(t('chat.scripts-warning'), {
           duration: 5000,
           icon: <AlertTriangle className="w-4 h-4" />,
         });
@@ -1128,22 +1127,14 @@ function HtmlRenderer({
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
-      {/* Toolbar with zoom controls */}
-      <div className="flex items-center justify-center gap-2 p-2 border-b border-zinc-200 bg-zinc-50 flex-shrink-0">
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={handleZoomOut} title="Zoom Out">
-            <ZoomOut className="w-4 h-4" />
-          </Button>
-          <span className="text-sm text-zinc-600 min-w-[3rem] text-center">{zoom}%</span>
-          <Button size="icon" variant="ghost" onClick={handleZoomIn} title="Zoom In">
-            <ZoomIn className="w-4 h-4" />
-          </Button>
-          <Button size="icon" variant="ghost" onClick={handleZoomReset} title="Reset Zoom">
-            <RotateCcw className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
+    <div className="w-full h-full flex flex-col relative">
+      {/* Floating notch-style zoom controls */}
+      <ZoomControls
+        zoom={zoom}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
+      />
 
       {/* Content area with zoom */}
       <div
