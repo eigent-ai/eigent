@@ -65,10 +65,10 @@
                 "icon": "brain",
                 "expanded": true,
                 "pages": [
+                  "/core/models/byok",
+                  "/core/models/local-model",
                   "/core/models/gemini",
-                  "/core/models/minimax",
-                  "/core/models/local-model"
-                  "/core/models/byok"
+                  "/core/models/minimax"
                 ]
               },
               "/core/tools",
