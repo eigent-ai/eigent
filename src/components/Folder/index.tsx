@@ -248,17 +248,22 @@ export default function Folder({ data }: { data?: Agent }) {
     nodeMap.set('', root);
 
     const sortedFiles = [...files].sort((a, b) => {
-      const depthA = (a.relativePath || '').split('/').filter(Boolean).length;
-      const depthB = (b.relativePath || '').split('/').filter(Boolean).length;
+      // Normalize paths to use forward slashes for cross-platform compatibility
+      const normalizedPathA = (a.relativePath || '').replace(/\\/g, '/');
+      const normalizedPathB = (b.relativePath || '').replace(/\\/g, '/');
+      const depthA = normalizedPathA.split('/').filter(Boolean).length;
+      const depthB = normalizedPathB.split('/').filter(Boolean).length;
       return depthA - depthB;
     });
 
     for (const file of sortedFiles) {
-      const fullRelativePath = file.relativePath
-        ? `${file.relativePath}/${file.name}`
+      // Normalize paths to use forward slashes for cross-platform compatibility
+      const normalizedRelativePath = (file.relativePath || '').replace(/\\/g, '/');
+      const fullRelativePath = normalizedRelativePath
+        ? `${normalizedRelativePath}/${file.name}`
         : file.name;
 
-      const parentPath = file.relativePath || '';
+      const parentPath = normalizedRelativePath;
       const parentNode = nodeMap.get(parentPath) || root;
 
       const node: FileTreeNode = {
