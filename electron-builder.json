@@ -29,7 +29,13 @@
     {
       "from": "resources/prebuilt",
       "to": "prebuilt",
-      "filter": ["**/*", "!cache/**/*", "!**/.npm-cache/**/*"]
+      "filter": [
+        "**/*",
+        "!cache/**/*",
+        "!**/.npm-cache/**/*",
+        "!uv_python/**/*.pyc",
+        "!uv_python/**/__pycache__"
+      ]
     }
   ],
   "protocols": [
@@ -67,7 +73,6 @@
     }
   },
   "win": {
-    "certificateFile": null,
     "icon": "build/icon.ico",
     "artifactName": "${productName}.Setup.${version}.exe",
     "target": [
@@ -76,6 +81,11 @@
         "arch": ["x64"]
       }
     ]
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": ["AppImage"],
+    "category": "Development"
   },
   "nsis": {
     "oneClick": false,

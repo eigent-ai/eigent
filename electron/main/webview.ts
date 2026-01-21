@@ -72,13 +72,108 @@ export class WebViewManager {
           backgroundThrottling: true,
           offscreen: false,
           sandbox: true,
-          disableBlinkFeatures: 'Accelerated2dCanvas',
+          disableBlinkFeatures: 'Accelerated2dCanvas,AutomationControlled',
           enableBlinkFeatures: 'IdleDetection',
           autoplayPolicy: 'document-user-activation-required',
         },
       })
       view.webContents.on('did-finish-load', () => {
+        // Inject stealth script to avoid bot detection
         view.webContents.executeJavaScript(`
+          // Save original values before overriding to maintain consistency
+          const originalLanguages = navigator.languages ? [...navigator.languages] : ['en-US', 'en'];
+          const originalHardwareConcurrency = navigator.hardwareConcurrency || 8;
+          const originalDeviceMemory = navigator.deviceMemory || 8;
+
+          // Hide webdriver property
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+            configurable: true
+          });
+
+          // Override plugins with proper PluginArray-like behavior
+          Object.defineProperty(navigator, 'plugins', {
+            get: () => {
+              const plugins = {
+                length: 3,
+                0: { name: 'Chrome PDF Plugin', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+                1: { name: 'Chrome PDF Viewer', description: '', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+                2: { name: 'Native Client', description: '', filename: 'internal-nacl-plugin' },
+                item: function(index) { return this[index] || null; },
+                namedItem: function(name) {
+                  for (let i = 0; i < this.length; i++) {
+                    if (this[i].name === name) return this[i];
+                  }
+                  return null;
+                },
+                refresh: function() {},
+                [Symbol.iterator]: function* () {
+                  for (let i = 0; i < this.length; i++) {
+                    yield this[i];
+                  }
+                }
+              };
+              return plugins;
+            },
+            configurable: true
+          });
+
+          // Use original system languages for consistency with other browser data
+          Object.defineProperty(navigator, 'languages', {
+            get: () => originalLanguages,
+            configurable: true
+          });
+
+          // Use original hardwareConcurrency, clamped to common range (4-16) to avoid extreme fingerprints
+          Object.defineProperty(navigator, 'hardwareConcurrency', {
+            get: () => Math.min(Math.max(originalHardwareConcurrency, 4), 16),
+            configurable: true
+          });
+
+          // Use original deviceMemory, clamped to common range (4-16) to avoid extreme fingerprints
+          Object.defineProperty(navigator, 'deviceMemory', {
+            get: () => Math.min(Math.max(originalDeviceMemory, 4), 16),
+            configurable: true
+          });
+
+          // Fix WebGL vendor/renderer for both WebGL and WebGL2
+          const getParameter = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.';
+            if (parameter === 37446) return 'Intel(R) Iris(TM) Graphics 6100';
+            return getParameter.call(this, parameter);
+          };
+
+          // Also patch WebGL2RenderingContext
+          if (typeof WebGL2RenderingContext !== 'undefined') {
+            const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+            WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+              if (parameter === 37445) return 'Intel Inc.';
+              if (parameter === 37446) return 'Intel(R) Iris(TM) Graphics 6100';
+              return getParameter2.call(this, parameter);
+            };
+          }
+
+          // Override chrome runtime - real Chrome has window.chrome but runtime is undefined
+          if (!window.chrome) {
+            window.chrome = {};
+          }
+          // In real Chrome, runtime exists but is undefined outside extensions
+          // Don't set it to an object, that's detectable
+
+          // Hide automation variables
+          const automationVars = ['__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_fn',
+            '__driver_evaluate', '__fxdriver_evaluate', '__driver_unwrapped', 'domAutomation', 'domAutomationController'];
+          automationVars.forEach(v => {
+            Object.defineProperty(window, v, {
+              get: () => undefined,
+              set: () => {},
+              configurable: true,
+              enumerable: false
+            });
+          });
+
+          // Mouse event handler
           window.addEventListener('mousedown', (e) => {
             if (!(e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement)) {
               e.preventDefault();

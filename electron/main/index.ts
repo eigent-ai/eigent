@@ -34,12 +34,9 @@ import { zipFolder } from './utils/log';
 import mime from 'mime';
 import axios from 'axios';
 import FormData from 'form-data';
-import {
-  checkAndInstallDepsOnUpdate,
-  PromiseReturnType,
-  getInstallationStatus,
-} from './install-deps';
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
+import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import { setVibrancy, setRoundedCorners, setTransparentTitlebar } from './native/macos-window'
 
 const userData = app.getPath('userData');
 
@@ -111,6 +108,32 @@ app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
 app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
+
+// ==================== Anti-fingerprint settings ====================
+// Disable automation controlled indicator to avoid detection
+app.commandLine.appendSwitch(
+  'disable-blink-features',
+  'AutomationControlled'
+);
+
+// Override User Agent to remove Electron/eigent identifiers
+// Dynamically generate User Agent based on actual platform and Chrome version
+const getPlatformUA = () => {
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
+  switch (process.platform) {
+    case 'darwin':
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'win32':
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'linux':
+      return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    default:
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  }
+};
+const normalUserAgent = getPlatformUA();
+app.userAgentFallback = normalUserAgent;
 
 // ==================== protocol privileges ====================
 // Register custom protocol privileges before app ready
@@ -1253,9 +1276,7 @@ async function createWindow() {
     minHeight: 650,
     frame: false,
     transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    backgroundColor: '#00000000',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
@@ -1272,6 +1293,28 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // Apply native macOS effects
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+          setVibrancy(win, 'HUDWindow');
+
+          // Apply rounded corners
+          setRoundedCorners(win, 20);
+
+          // Make titlebar transparent
+          setTransparentTitlebar(win);
+
+          log.info('[MacOS] Applied native visual effects');
+        } catch (error) {
+          log.error('[MacOS] Failed to apply native visual effects:', error);
+        }
+      }
+    });
+  }
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1826,6 +1869,15 @@ app.whenReady().then(async () => {
       // Don't throw - allow app to continue even if extension installation fails
     }
   }
+
+  // ==================== Anti-fingerprint: Set User Agent for all sessions ====================
+  // Use the same dynamic User Agent as app.userAgentFallback
+  session.defaultSession.setUserAgent(normalUserAgent);
+  // Also set for the user_login partition used by webviews
+  session.fromPartition('persist:user_login').setUserAgent(normalUserAgent);
+  // And for main_window partition
+  session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
+  log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {
