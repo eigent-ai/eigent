@@ -4,8 +4,14 @@ Handles forgot password and reset password functionality.
 """
 import secrets
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+from app.model.password_reset import (
+    DirectResetPasswordRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+)
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("password_reset_controller")
@@ -16,16 +22,6 @@ router = APIRouter()
 password_reset_tokens = {}
 
 TOKEN_EXPIRATION_HOURS = 24
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
-    confirm_password: str
 
 
 def generate_reset_token() -> str:
@@ -86,26 +82,10 @@ async def verify_reset_token(token: str):
 async def reset_password(data: ResetPasswordRequest):
     """
     Reset password using a valid token.
+    Password validation is handled by Pydantic model.
     """
-    token = data.token
-    new_password = data.new_password
-    confirm_password = data.confirm_password
-    
-    # Validate passwords match
-    if new_password != confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match.")
-    
-    # Validate password strength (basic check)
-    if len(new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
-    
-    has_letter = any(c.isalpha() for c in new_password)
-    has_number = any(c.isdigit() for c in new_password)
-    if not (has_letter and has_number):
-        raise HTTPException(status_code=400, detail="Password must contain both letters and numbers.")
-    
     # Verify token
-    token_data = password_reset_tokens.get(token)
+    token_data = password_reset_tokens.get(data.token)
     
     if not token_data:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
@@ -127,34 +107,16 @@ async def reset_password(data: ResetPasswordRequest):
     }
 
 
-class DirectResetPasswordRequest(BaseModel):
-    """Request model for direct password reset (local deployment only)."""
-    email: str
-    new_password: str
-    confirm_password: str
-
-
 @router.post("/reset-password-direct", name="reset password directly")
 async def reset_password_direct(data: DirectResetPasswordRequest):
     """
     Reset password directly without token verification.
     This endpoint is for Full Local Deployment only where email verification is not needed.
+    Password validation is handled by Pydantic model.
+    
     Note: This is a simplified implementation for the Electron backend.
     The actual password update happens in the server backend for Docker deployments.
     """
-    # Validate passwords match
-    if data.new_password != data.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match.")
-    
-    # Validate password strength
-    if len(data.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
-    
-    has_letter = any(c.isalpha() for c in data.new_password)
-    has_number = any(c.isdigit() for c in data.new_password)
-    if not (has_letter and has_number):
-        raise HTTPException(status_code=400, detail="Password must contain both letters and numbers.")
-    
     logger.info(f"Direct password reset requested for email: {data.email}")
     
     # Note: In the Electron backend, this endpoint acts as a proxy.

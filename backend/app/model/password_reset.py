@@ -1,40 +1,26 @@
-from datetime import datetime
-from sqlmodel import Field
-from app.model.abstract.model import AbstractModel, DefaultTimes
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+"""
+Password Reset Models
+Pydantic models for password reset functionality with validation.
+"""
+from pydantic import BaseModel, field_validator, model_validator
 
 
-class PasswordResetToken(AbstractModel, DefaultTimes, table=True):
-    """Model for storing password reset tokens."""
-    id: int = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    token: str = Field(unique=True, max_length=255, index=True)
-    expires_at: datetime = Field()
-    used: bool = Field(default=False)
-
-    def is_valid(self) -> bool:
-        """Check if the token is still valid (not expired and not used)."""
-        return not self.used and datetime.now() < self.expires_at
-
-
-class ForgotPasswordRequest(BaseModel):
-    """Request model for forgot password endpoint."""
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    """Request model for reset password endpoint."""
-    token: str
+class DirectResetPasswordRequest(BaseModel):
+    """Request model for direct password reset (local deployment only)."""
+    email: str
     new_password: str
     confirm_password: str
 
-    @field_validator("token")
+    @field_validator("email")
     @classmethod
-    def validate_token(cls, v: str) -> str:
-        """Validate token is not empty."""
-        if not v or not v.strip():
-            raise ValueError("Token is required")
-        return v.strip()
+    def validate_email(cls, v: str) -> str:
+        """Validate email format."""
+        v = v.strip().lower()
+        if not v:
+            raise ValueError("Email is required")
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Invalid email format")
+        return v
 
     @field_validator("new_password")
     @classmethod
@@ -61,11 +47,35 @@ class ResetPasswordRequest(BaseModel):
         return self
 
 
-class DirectResetPasswordRequest(BaseModel):
-    """Request model for direct password reset (local deployment only)."""
-    email: EmailStr
+class ForgotPasswordRequest(BaseModel):
+    """Request model for forgot password (token-based flow)."""
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        """Validate email format."""
+        v = v.strip().lower()
+        if not v:
+            raise ValueError("Email is required")
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Invalid email format")
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request model for reset password with token."""
+    token: str
     new_password: str
     confirm_password: str
+
+    @field_validator("token")
+    @classmethod
+    def validate_token(cls, v: str) -> str:
+        """Validate token is not empty."""
+        if not v or not v.strip():
+            raise ValueError("Token is required")
+        return v.strip()
 
     @field_validator("new_password")
     @classmethod

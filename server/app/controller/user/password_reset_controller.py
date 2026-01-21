@@ -1,7 +1,6 @@
 import secrets
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlmodel import Session, col
 
 from app.component import code
@@ -9,6 +8,7 @@ from app.component.database import session
 from app.component.encrypt import password_hash
 from app.exception.exception import UserException
 from app.model.user.password_reset import (
+    DirectResetPasswordRequest,
     ForgotPasswordRequest,
     PasswordResetToken,
     ResetPasswordRequest,
@@ -105,19 +105,8 @@ async def reset_password(
 ):
     """
     Reset password using a valid reset token.
+    Password validation is handled by Pydantic model.
     """
-    # Validate passwords match
-    if data.new_password != data.confirm_password:
-        logger.warning("Password reset failed: passwords do not match")
-        raise UserException(code.error, _("Passwords do not match"))
-    
-    # Validate password strength
-    if len(data.new_password) < 8:
-        raise UserException(code.error, _("Password must be at least 8 characters long"))
-    
-    if not any(c.isdigit() for c in data.new_password) or not any(c.isalpha() for c in data.new_password):
-        raise UserException(code.error, _("Password must contain both letters and numbers"))
-    
     # Find the token
     reset_token = PasswordResetToken.by(
         PasswordResetToken.token == data.token,
@@ -192,13 +181,6 @@ async def verify_reset_token(
     }
 
 
-class DirectResetPasswordRequest(BaseModel):
-    """Request model for direct password reset (local deployment only)."""
-    email: str
-    new_password: str
-    confirm_password: str
-
-
 @router.post("/reset-password-direct", name="reset password directly")
 @traceroot.trace()
 async def reset_password_direct(
@@ -209,19 +191,8 @@ async def reset_password_direct(
     Reset password directly without token verification.
     This endpoint is for Full Local Deployment only where email verification is not needed.
     The password is updated directly in the local Docker database.
+    Password validation is handled by Pydantic model.
     """
-    # Validate passwords match
-    if data.new_password != data.confirm_password:
-        logger.warning("Direct password reset failed: passwords do not match")
-        raise UserException(code.error, _("Passwords do not match"))
-    
-    # Validate password strength
-    if len(data.new_password) < 8:
-        raise UserException(code.error, _("Password must be at least 8 characters long"))
-    
-    if not any(c.isdigit() for c in data.new_password) or not any(c.isalpha() for c in data.new_password):
-        raise UserException(code.error, _("Password must contain both letters and numbers"))
-    
     # Find the user by email
     user = User.by(User.email == data.email, col(User.deleted_at).is_(None), s=session).one_or_none()
     
