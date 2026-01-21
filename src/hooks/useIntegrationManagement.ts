@@ -63,15 +63,40 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 		const map: { [key: string]: boolean } = {};
 		
 		items.forEach((item) => {
-			if (item.key === "Google Calendar" || item.key === "Google Gmail") {
-				// Only mark installed when refresh token is present (auth completed)
+			if (item.key === "Google Calendar") {
+				// Mark as installed when either:
+				// 1. Refresh token has value (auth completed), OR
+				// 2. Client credentials are present (configured but auth pending/completed)
 				const hasRefreshToken = configs.some(
 					(c: any) =>
-						c.config_group?.toLowerCase() === item.key.toLowerCase() &&
-						 ["GOOGLE_REFRESH_TOKEN", "GMAIL_GOOGLE_REFRESH_TOKEN"].includes(c.config_name) &&
+						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
 						c.config_value && String(c.config_value).length > 0
 				);
-				map[item.key] = hasRefreshToken;
+				const hasClientCredentials = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_name === "GOOGLE_CLIENT_ID" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken || hasClientCredentials;
+			} else if (item.key === "Google Gmail") {
+				// Mark as installed when either:
+				// 1. Refresh token has value (auth completed), OR
+				// 2. Client credentials are present (configured but auth pending/completed)
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google gmail" &&
+						c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				const hasClientCredentials = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google gmail" &&
+						c.config_name === "GMAIL_GOOGLE_CLIENT_ID" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken || hasClientCredentials;
 			} else {
 				// For other integrations, use config_group presence
 				const hasConfig = configs.some(
