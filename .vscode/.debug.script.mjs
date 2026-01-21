@@ -14,10 +14,22 @@ fs.writeFileSync(path.join(__dirname, '.debug.env'), envContent.join('\n'))
 // bootstrap
 spawn(
   // TODO: terminate `npm run dev` when Debug exits.
-  process.platform === 'win32' ? 'npm.cmd' : 'npm',
+  'npm',
   ['run', 'dev'],
   {
+    shell: true,
     stdio: 'inherit',
-    env: Object.assign(process.env, { VSCODE_DEBUG: 'true' }),
+    // On Windows, Node's spawn can throw EINVAL if the env object contains
+    // special keys that start with '=' (e.g. '=C:'). Filter those out.
+    env: (() => {
+      const env = {}
+      for (const [key, val] of Object.entries(process.env)) {
+        if (!key || key.startsWith('=') || key.includes('\0')) continue
+        if (typeof val !== 'string' || val.includes('\0')) continue
+        env[key] = val
+      }
+      env.VSCODE_DEBUG = 'true'
+      return env
+    })(),
   },
 )

@@ -9,9 +9,9 @@ type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-p
 // auth info interface
 interface AuthInfo {
 	token: string;
-	username: string;
+	username?: string | null;
 	email: string;
-	user_id: number;
+	user_id?: number | null;
 }
 
 // auth state interface
@@ -84,7 +84,7 @@ const authStore = create<AuthState>()(
 
 			// auth related methods
 			setAuth: ({ token, username, email, user_id }) =>
-				set({ token, username, email, user_id }),
+				set({ token, email, username: username ?? null, user_id: user_id ?? null }),
 
 			logout: () =>
 				set({
