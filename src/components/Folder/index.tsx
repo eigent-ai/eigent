@@ -760,8 +760,8 @@ function HtmlRenderer({
       const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
       const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
 
-      // Detect inline scripts in HTML content
-      const inlineScriptRegex = /<script[\s\S]*?>[\s\S]*?<\/script>/gi;
+      // Detect inline scripts in HTML content (handle malformed closing tags like </script > or </script foo="bar">)
+      const inlineScriptRegex = /<script\b[^>]*>[\s\S]*?<\/\s*script\b[^>]*>/gi;
       const hasInlineScripts = inlineScriptRegex.test(html);
       
       // Detect inline event handlers (onclick, onload, etc.)
