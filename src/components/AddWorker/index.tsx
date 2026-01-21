@@ -60,8 +60,8 @@ export function AddWorker({
 		return <div>Loading...</div>;
 	}
 	const activeProjectId = projectStore.activeProjectId;
-	const activeTaskId = chatStore.activeTaskId;
-	const tasks = chatStore.tasks;
+	const activeTaskId = chatStore.taskId;
+	const task = chatStore.task;
 	const [showEnvConfig, setShowEnvConfig] = useState(false);
 	const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
 	const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -301,7 +301,7 @@ export function AddWorker({
 			});
 			setWorkerList(newWorkerList);
 		} else if (
-			activeTaskId && tasks[activeTaskId].messages.length === 0
+			activeTaskId && task && task.messages.length === 0
 		) {
 			const worker: Agent = {
 				tasks: [],

@@ -40,8 +40,8 @@ const Layout = () => {
 
 	useEffect(() => {
 		const handleBeforeClose = () => {
-			const currentStatus = chatStore.tasks[chatStore.activeTaskId as string]?.status;
-			if(["running", "pause"].includes(currentStatus)) {
+			const currentStatus = chatStore.task?.status;
+			if(currentStatus && ["running", "pause"].includes(currentStatus)) {
 				setNoticeOpen(true);
 			} else {
 				window.electronAPI.closeWindow(true);
@@ -53,7 +53,7 @@ const Layout = () => {
 		return () => {
 			window.ipcRenderer.removeAllListeners("before-close");
 		};
-	}, [chatStore.tasks, chatStore.activeTaskId]);
+	}, [chatStore.task, chatStore.taskId]);
 
 	// Determine what to show based on states
 	const shouldShowOnboarding = initState === "done" && isFirstLaunch && !isInstalling;

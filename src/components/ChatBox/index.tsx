@@ -150,7 +150,7 @@ export default function ChatBox(): JSX.Element {
   const share_token = searchParams.get('share_token');
 
   const handleSend = async (messageStr?: string, taskId?: string) => {
-    const _taskId = taskId || chatStore.activeTaskId;
+    const _taskId = taskId || chatStore.taskId;
     if (message.trim() === '' && !messageStr) return;
 
     // Check model first, then privacy
@@ -165,25 +165,28 @@ export default function ChatBox(): JSX.Element {
     }
 
     const tempMessageContent = messageStr || message;
-    chatStore.setHasMessages(_taskId as string, true);
+    chatStore.setHasMessages(true);
     if (!_taskId) return;
 
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
-    const task = chatStore.tasks[_taskId];
+    const task = chatStore.task;
     const requiresHumanReply = Boolean(task?.activeAsk);
-    const isTaskBusy =
-      // running or paused counts as busy
-      (task.status === 'running' && task.hasMessages) ||
-      task.status === 'pause' ||
-      // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
-      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
-      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      task.isTakeControl ||
-      // explicit confirm wait while task is pending but card not confirmed yet
-      (!!task.messages.find((m) => m.step === 'to_sub_tasks' && !m.isConfirm) &&
-        task.status === 'pending');
+    const isTaskBusy = task
+      ? // running or paused counts as busy
+        (task.status === 'running' && task.hasMessages) ||
+        task.status === 'pause' ||
+        // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+        task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+        (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
+          !task.hasWaitComfirm &&
+          task.messages.length > 0) ||
+        task.isTakeControl ||
+        // explicit confirm wait while task is pending but card not confirmed yet
+        (!!task.messages.find(
+          (m) => m.step === 'to_sub_tasks' && !m.isConfirm
+        ) &&
+          task.status === 'pending')
+      : false;
     const isReplayChatStore = task?.type === 'replay';
     if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
       toast.error(
@@ -198,13 +201,12 @@ export default function ChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
       if (requiresHumanReply) {
-        chatStore.addMessages(_taskId, {
+        chatStore.addMessages({
           id: generateUniqueId(),
           role: 'user',
           content: tempMessageContent,
           attaches:
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [],
+            JSON.parse(JSON.stringify(chatStore.task?.attaches)) || [],
         });
         setMessage('');
 
@@ -213,39 +215,36 @@ export default function ChatBox(): JSX.Element {
           scrollToBottom();
         }, 200);
 
-        chatStore.setIsPending(_taskId, true);
+        chatStore.setIsPending(true);
 
         await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
-          agent: chatStore.tasks[_taskId].activeAsk,
+          agent: chatStore.task?.activeAsk,
           reply: tempMessageContent,
         });
-        if (chatStore.tasks[_taskId].askList.length === 0) {
-          chatStore.setActiveAsk(_taskId, '');
+        if ((chatStore.task?.askList?.length ?? 0) === 0) {
+          chatStore.setActiveAsk('');
         } else {
-          let activeAskList = chatStore.tasks[_taskId].askList;
+          let activeAskList = [...(chatStore.task?.askList || [])];
           console.log(
             'activeAskList',
             JSON.parse(JSON.stringify(activeAskList))
           );
           let message = activeAskList.shift();
-          chatStore.setActiveAskList(_taskId, [...activeAskList]);
-          chatStore.setActiveAsk(_taskId, message?.agent_name || '');
-          chatStore.setIsPending(_taskId, false);
-          chatStore.addMessages(_taskId, message!);
+          chatStore.setActiveAskList([...activeAskList]);
+          chatStore.setActiveAsk(message?.agent_name || '');
+          chatStore.setIsPending(false);
+          chatStore.addMessages(message!);
         }
       } else {
         // Check if we should continue the conversation or start a new task
-        const hasMessages =
-          chatStore.tasks[_taskId as string].messages.length > 0;
-        const isFinished =
-          chatStore.tasks[_taskId as string].status === 'finished';
-        const hasWaitComfirm =
-          chatStore.tasks[_taskId as string]?.hasWaitComfirm;
+        const hasMessages = (chatStore.task?.messages?.length ?? 0) > 0;
+        const isFinished = chatStore.task?.status === 'finished';
+        const hasWaitComfirm = chatStore.task?.hasWaitComfirm;
 
         // Check if this task was manually stopped (finished but without natural completion)
         const wasTaskStopped =
           isFinished &&
-          !chatStore.tasks[_taskId as string].messages.some(
+          !chatStore.task?.messages?.some(
             (m) => m.step === 'end' // Natural completion has an "end" step message
           );
 
@@ -256,41 +255,36 @@ export default function ChatBox(): JSX.Element {
         const shouldContinueConversation =
           (hasWaitComfirm && !wasTaskStopped) ||
           (isFinished && !wasTaskStopped) ||
-          (hasMessages &&
-            chatStore.tasks[_taskId as string].status === 'pending');
+          (hasMessages && chatStore.task?.status === 'pending');
 
         if (shouldContinueConversation) {
           // Check if this is the very first message and task hasn't started
-          const hasSimpleResponse = chatStore.tasks[
-            _taskId as string
-          ].messages.some((m) => m.step === 'wait_confirm');
-          const hasComplexTask = chatStore.tasks[
-            _taskId as string
-          ].messages.some((m) => m.step === 'to_sub_tasks');
-          const hasErrorMessage = chatStore.tasks[
-            _taskId as string
-          ].messages.some(
+          const hasSimpleResponse = chatStore.task?.messages?.some(
+            (m) => m.step === 'wait_confirm'
+          );
+          const hasComplexTask = chatStore.task?.messages?.some(
+            (m) => m.step === 'to_sub_tasks'
+          );
+          const hasErrorMessage = chatStore.task?.messages?.some(
             (m) => m.role === 'agent' && m.content.startsWith('❌ **Error**:')
           );
 
           // Only start a new task if: pending, no messages processed yet
           // OR while or after replaying a project
           if (
-            (chatStore.tasks[_taskId as string].status === 'pending' &&
+            (chatStore.task?.status === 'pending' &&
               !hasSimpleResponse &&
               !hasComplexTask &&
               !isFinished) ||
-            chatStore.tasks[_taskId].type === 'replay' ||
+            chatStore.task?.type === 'replay' ||
             hasErrorMessage
           ) {
             setMessage('');
             // Pass the message content to startTask instead of adding it to current chatStore
             const attachesToSend =
-              JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-              [];
+              JSON.parse(JSON.stringify(chatStore.task?.attaches)) || [];
             try {
               await chatStore.startTask(
-                _taskId,
                 undefined,
                 undefined,
                 undefined,
@@ -322,18 +316,16 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
             });
-            chatStore.setIsPending(_taskId, true);
+            chatStore.setIsPending(true);
             // Add the user message to show it in UI
-            chatStore.addMessages(_taskId, {
+            chatStore.addMessages({
               id: generateUniqueId(),
               role: 'user',
               content: tempMessageContent,
               attaches:
-                JSON.parse(
-                  JSON.stringify(chatStore.tasks[_taskId]?.attaches)
-                ) || [],
+                JSON.parse(JSON.stringify(chatStore.task?.attaches)) || [],
             });
-            chatStore.setAttaches(_taskId, []);
+            chatStore.setAttaches([]);
             setMessage('');
           }
         } else {
@@ -360,19 +352,17 @@ export default function ChatBox(): JSX.Element {
 
           // For the very first message, add it to the current chatStore first, then call startTask
           const attachesToSend =
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [];
+            JSON.parse(JSON.stringify(chatStore.task?.attaches)) || [];
           setMessage('');
           try {
             await chatStore.startTask(
-              _taskId,
               undefined,
               undefined,
               undefined,
               tempMessageContent,
               attachesToSend
             );
-            chatStore.setHasWaitComfirm(_taskId as string, true);
+            chatStore.setHasWaitComfirm(true);
           } catch (err: any) {
             console.error('Failed to start task:', err);
             toast.error(
@@ -418,24 +408,19 @@ export default function ChatBox(): JSX.Element {
     }
 
     let _token: string = token.split('__')[0];
-    let taskId: string = token.split('__')[1];
-    chatStore.create(taskId, 'share');
-    chatStore.setHasMessages(taskId, true);
+    let shareTaskId: string = token.split('__')[1];
+    chatStore.create(shareTaskId, 'share');
+    chatStore.setHasMessages(true);
     const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
     if (res?.question) {
-      chatStore.addMessages(taskId, {
+      chatStore.addMessages({
         id: generateUniqueId(),
         role: 'user',
         content: res.question.split('|')[0],
       });
       try {
-        await chatStore.startTask(taskId, 'share', _token, 0.1);
-        chatStore.setActiveTaskId(taskId);
-        chatStore.handleConfirmTask(
-          projectStore.activeProjectId,
-          taskId,
-          'share'
-        );
+        await chatStore.startTask('share', _token, 0.1);
+        chatStore.handleConfirmTask(projectStore.activeProjectId, 'share');
       } catch (err: any) {
         console.error('Failed to start shared task:', err);
         toast.error(
@@ -495,13 +480,12 @@ export default function ChatBox(): JSX.Element {
   }, []);
 
   const [loading, setLoading] = useState(false);
-  const handleConfirmTask = async (taskId?: string) => {
-    const _taskId = taskId || chatStore.activeTaskId;
-    if (!_taskId || !projectStore.activeProjectId) {
+  const handleConfirmTask = async () => {
+    if (!chatStore.taskId || !projectStore.activeProjectId) {
       return;
     }
     setLoading(true);
-    await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
+    await chatStore.handleConfirmTask(projectStore.activeProjectId);
     setLoading(false);
   };
 
@@ -514,14 +498,13 @@ export default function ChatBox(): JSX.Element {
       });
 
       if (result.success && result.files && result.files.length > 0) {
-        const taskId = chatStore.activeTaskId as string;
         const files = [
-          ...chatStore.tasks[taskId].attaches.filter(
+          ...(chatStore.task?.attaches || []).filter(
             (f) => !result.files.find((r: File) => r.filePath === f.filePath)
           ),
           ...result.files,
         ];
-        chatStore.setAttaches(taskId, files);
+        chatStore.setAttaches(files);
       }
     } catch (error) {
       console.error('Select File Error:', error);
@@ -539,8 +522,8 @@ export default function ChatBox(): JSX.Element {
   // Pause/Resume handler
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
   const handlePauseResume = () => {
-    const taskId = chatStore.activeTaskId as string;
-    const task = chatStore.tasks[taskId];
+    const task = chatStore.task;
+    if (!task) return;
     const type = task.status === 'running' ? 'pause' : 'resume';
 
     setIsPauseResumeLoading(true);
@@ -548,12 +531,12 @@ export default function ChatBox(): JSX.Element {
       let { taskTime, elapsed } = task;
       const now = Date.now();
       elapsed += now - taskTime;
-      chatStore.setElapsed(taskId, elapsed);
-      chatStore.setTaskTime(taskId, 0);
-      chatStore.setStatus(taskId, 'pause');
+      chatStore.setElapsed(elapsed);
+      chatStore.setTaskTime(0);
+      chatStore.setStatus('pause');
     } else {
-      chatStore.setTaskTime(taskId, Date.now());
-      chatStore.setStatus(taskId, 'running');
+      chatStore.setTaskTime(Date.now());
+      chatStore.setStatus('running');
     }
 
     fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
@@ -564,7 +547,7 @@ export default function ChatBox(): JSX.Element {
 
   // Stop task handler - triggers Action.skip_task which preserves context
   const handleSkip = async () => {
-    const taskId = chatStore.activeTaskId as string;
+    const taskId = chatStore.taskId as string;
     console.log('='.repeat(80));
     console.log('🛑 [STOP-BUTTON] handleSkip CALLED from frontend');
     console.log(
@@ -592,7 +575,7 @@ export default function ChatBox(): JSX.Element {
       );
 
       // Only set isPending to false so UI shows task is stopped
-      chatStore.setIsPending(taskId, false);
+      chatStore.setIsPending(false);
       console.log(
         '[STOP-BUTTON] ✅ Task marked as not pending, SSE connection remains open'
       );
@@ -608,8 +591,8 @@ export default function ChatBox(): JSX.Element {
         '[STOP-BUTTON] Backend call failed, closing SSE connection as fallback'
       );
       try {
-        chatStore.stopTask(taskId);
-        chatStore.setIsPending(taskId, false);
+        chatStore.stopTask();
+        chatStore.setIsPending(false);
         console.log(
           '[STOP-BUTTON] ⚠️  SSE connection closed due to backend failure'
         );
@@ -640,20 +623,20 @@ export default function ChatBox(): JSX.Element {
 
   // Edit query handler
   const handleEditQuery = async () => {
-    const taskId = chatStore.activeTaskId as string;
+    const taskId = chatStore.taskId as string;
     const projectId = projectStore.activeProjectId;
 
     // Early validation
-    if (!projectId) {
+    if (!projectId || !chatStore.task) {
       console.error('No active project ID found for edit operation');
       return;
     }
 
     // Get question and attachments before any deletions
-    const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
+    const messageIndex = chatStore.task.messages.findLastIndex(
       (item) => item.step === 'to_sub_tasks'
     );
-    const questionMessage = chatStore.tasks[taskId].messages[messageIndex - 2];
+    const questionMessage = chatStore.task.messages[messageIndex - 2];
     const question = questionMessage.content;
     // Get the file attachments from the original user message (not from task.attaches which gets cleared after sending)
     const attachments = questionMessage.attaches || [];
@@ -685,51 +668,49 @@ export default function ChatBox(): JSX.Element {
 
     // Create new task and clean up locally
     let id = chatStore.create();
-    chatStore.setHasMessages(id, true);
+    chatStore.setHasMessages(true);
     // Copy the file attachments to the new task
     if (attachments.length > 0) {
-      chatStore.setAttaches(id, attachments);
+      chatStore.setAttaches(attachments);
     }
-    chatStore.removeTask(taskId);
+    chatStore.removeTask();
     setMessage(question);
   };
 
   // Task time tracking
-  const [taskTime, setTaskTime] = useState(
-    chatStore.getFormattedTaskTime(chatStore.activeTaskId as string)
-  );
+  const [taskTime, setTaskTime] = useState(chatStore.getFormattedTaskTime());
   useEffect(() => {
     const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
+      if (chatStore.taskId) {
+        setTaskTime(chatStore.getFormattedTaskTime());
       }
     }, 500);
     return () => clearInterval(interval);
-  }, [chatStore.activeTaskId]);
+  }, [chatStore.taskId]);
 
   // Determine BottomBox state
   const getBottomBoxState = () => {
-    if (!chatStore.activeTaskId) return 'input';
-    const task = chatStore.tasks[chatStore.activeTaskId];
+    if (!chatStore.taskId) return 'input';
+    const task = chatStore.task;
 
     // Queued messages no longer change BottomBox state; QueuedBox renders independently
 
     // Check for any to_sub_tasks message (confirmed or not)
-    const anyToSubTasksMessage = task.messages.find(
-      (m) => m.step === 'to_sub_tasks'
+    const anyToSubTasksMessage = task?.messages.find(
+      (m: Message) => m.step === 'to_sub_tasks'
     );
-    const toSubTasksMessage = task.messages.find(
-      (m) => m.step === 'to_sub_tasks' && !m.isConfirm
+    const toSubTasksMessage = task?.messages.find(
+      (m: Message) => m.step === 'to_sub_tasks' && !m.isConfirm
     );
 
     // Determine if we're in the "splitting in progress" phase (skeleton visible)
     // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
     const isSkeletonPhase =
-      (task.status !== 'finished' &&
+      (task?.status !== 'finished' &&
         !anyToSubTasksMessage &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      (task.isTakeControl && !anyToSubTasksMessage);
+        !task?.hasWaitComfirm &&
+        (task?.messages?.length ?? 0) > 0) ||
+      (task?.isTakeControl && !anyToSubTasksMessage);
     if (isSkeletonPhase) {
       return 'splitting';
     }
@@ -739,7 +720,7 @@ export default function ChatBox(): JSX.Element {
     if (
       toSubTasksMessage &&
       !toSubTasksMessage.isConfirm &&
-      task.status === 'pending'
+      task?.status === 'pending'
     ) {
       return 'confirm';
     }
@@ -750,11 +731,11 @@ export default function ChatBox(): JSX.Element {
     }
 
     // Check task status
-    if (task.status === 'running' || task.status === 'pause') {
+    if (task?.status === 'running' || task?.status === 'pause') {
       return 'running';
     }
 
-    if (task.status === 'finished' && task.type !== '') {
+    if (task?.status === 'finished' && task?.type !== '') {
       return 'finished';
     }
 
@@ -764,22 +745,20 @@ export default function ChatBox(): JSX.Element {
   const [hasSubTask, setHasSubTask] = useState(false);
 
   useEffect(() => {
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === 'to_sub_tasks')
+    const _hasSubTask = chatStore.task?.messages?.find(
+      (message: Message) => message.step === 'to_sub_tasks'
+    )
       ? true
       : false;
     setHasSubTask(_hasSubTask);
-  }, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages]);
+  }, [chatStore.task?.messages]);
 
   useEffect(() => {
-    const activeAsk =
-      chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
+    const activeAsk = chatStore.task?.activeAsk;
     let timer: NodeJS.Timeout;
     if (activeAsk && activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
       timer = setTimeout(() => {
-        handleSend('skip', _taskId);
+        handleSend('skip');
       }, 30000); // 30 seconds
       return () => clearTimeout(timer); // clear previous timer
     }
@@ -788,7 +767,7 @@ export default function ChatBox(): JSX.Element {
       clearTimeout(timer);
     };
   }, [
-    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk,
+    chatStore.task?.activeAsk,
     message, // depend on message
   ]);
 
@@ -825,7 +804,7 @@ export default function ChatBox(): JSX.Element {
       // Always try to call the backend to remove the task
       // The backend will handle the error gracefully if workforce is not initialized
       // Note: Replay creates a new chatstore, so no conflicts
-      const task = chatStore.tasks[chatStore.activeTaskId as string];
+      const task = chatStore.task;
       // Only skip backend call if task is finished or hasn't started yet (no messages)
       if (task && task.messages.length > 0 && task.status !== 'finished') {
         try {
@@ -856,8 +835,8 @@ export default function ChatBox(): JSX.Element {
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
     // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
+    if (chatStore.taskId && chatStore.task) {
+      const activeTask = chatStore.task;
       if (
         (activeTask.messages && activeTask.messages.length > 0) ||
         activeTask.hasMessages
@@ -867,40 +846,39 @@ export default function ChatBox(): JSX.Element {
     }
 
     // Then check all other chat stores in the project
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
-      const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
-      );
-    });
+    return getAllChatStoresMemoized.some(
+      ({ chatStore: store }: { chatStore: any }) => {
+        const state = store.getState();
+        return (
+          state.taskId &&
+          state.task &&
+          (state.task.messages.length > 0 || state.task.hasMessages)
+        );
+      }
+    );
   }, [chatStore, getAllChatStoresMemoized]);
 
   const isTaskBusy = useMemo(() => {
-    if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return false;
-    const task = chatStore.tasks[chatStore.activeTaskId];
+    if (!chatStore.taskId || !chatStore.task) return false;
+    const task = chatStore.task;
     return (
       // running or paused
       task.status === 'running' ||
       task.status === 'pause' ||
       // splitting phase
-      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+      task.messages.some((m: Message) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
       // skeleton/computing phase
-      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
+      (!task.messages.find((m: Message) => m.step === 'to_sub_tasks') &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
       task.isTakeControl
     );
-  }, [chatStore.activeTaskId, chatStore.tasks]);
+  }, [chatStore.taskId, chatStore.task]);
 
   const isInputDisabled = useMemo(() => {
-    if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return true;
+    if (!chatStore.taskId || !chatStore.task) return true;
 
-    const task = chatStore.tasks[chatStore.activeTaskId];
+    const task = chatStore.task;
 
     // If ask human is active, allow input
     if (task.activeAsk) return false;
@@ -915,8 +893,8 @@ export default function ChatBox(): JSX.Element {
 
     return false;
   }, [
-    chatStore.activeTaskId,
-    chatStore.tasks,
+    chatStore.taskId,
+    chatStore.task,
     privacy,
     hasModel,
     useCloudModelInDev,
@@ -933,7 +911,7 @@ export default function ChatBox(): JSX.Element {
             onSkip={handleSkip}
             isPauseResumeLoading={isPauseResumeLoading}
           />
-          {chatStore.activeTaskId && (
+          {chatStore.taskId && (
             <BottomBox
               state={getBottomBoxState()}
               queuedMessages={
@@ -952,28 +930,24 @@ export default function ChatBox(): JSX.Element {
                 getBottomBoxState() === 'confirm'
                   ? (() => {
                       // Find the last message where role is "user"
-                      const messages =
-                        chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+                      const messages = chatStore.task?.messages || [];
                       const lastUserMessage = messages
                         .slice()
                         .reverse()
-                        .find((msg) => msg.role === 'user');
+                        .find((msg: Message) => msg.role === 'user');
                       return (
-                        lastUserMessage?.content ||
-                        chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                        lastUserMessage?.content || chatStore.task?.summaryTask
                       );
                     })()
-                  : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                  : chatStore.task?.summaryTask
               }
               onStartTask={() => handleConfirmTask()}
               onEdit={handleEditQuery}
-              tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+              tokens={chatStore.task?.tokens || 0}
               taskTime={taskTime}
-              taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+              taskStatus={chatStore.task?.status}
               onReplay={handleReplay}
-              replayDisabled={
-                chatStore.tasks[chatStore.activeTaskId]?.status !== 'finished'
-              }
+              replayDisabled={chatStore.task?.status !== 'finished'}
               replayLoading={isReplayLoading}
               onPauseResume={handlePauseResume}
               pauseResumeLoading={isPauseResumeLoading}
@@ -983,17 +957,11 @@ export default function ChatBox(): JSX.Element {
                 onChange: setMessage,
                 onSend: handleSend,
                 files:
-                  chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                    (f) => ({
-                      fileName: f.fileName,
-                      filePath: f.filePath,
-                    })
-                  ) || [],
-                onFilesChange: (files) =>
-                  chatStore.setAttaches(
-                    chatStore.activeTaskId as string,
-                    files as any
-                  ),
+                  chatStore.task?.attaches?.map((f: any) => ({
+                    fileName: f.fileName,
+                    filePath: f.filePath,
+                  })) || [],
+                onFilesChange: (files) => chatStore.setAttaches(files as any),
                 onAddFile: handleFileSelect,
                 placeholder: t('chat.ask-placeholder'),
                 disabled: isInputDisabled,
@@ -1019,7 +987,7 @@ export default function ChatBox(): JSX.Element {
               </div>
             </div>
 
-            {chatStore.activeTaskId && (
+            {chatStore.taskId && (
               <BottomBox
                 state="input"
                 inputProps={{
@@ -1027,17 +995,11 @@ export default function ChatBox(): JSX.Element {
                   onChange: setMessage,
                   onSend: handleSend,
                   files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
+                    chatStore.task?.attaches?.map((f: any) => ({
+                      fileName: f.fileName,
+                      filePath: f.filePath,
+                    })) || [],
+                  onFilesChange: (files) => chatStore.setAttaches(files as any),
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.ask-placeholder'),
                   disabled: isInputDisabled,

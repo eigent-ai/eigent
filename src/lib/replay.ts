@@ -40,7 +40,7 @@ export const replayActiveTask = async (
 	projectStore: ProjectStore,
 	navigate: NavigateFunction
 ) => {
-	const taskId = chatStore.activeTaskId as string;
+	const taskId = chatStore.taskId as string;
 	const projectId = projectStore.activeProjectId as string;
 	
 	if (!taskId || !projectId) {
@@ -75,8 +75,8 @@ export const replayActiveTask = async (
 	}
 	
 	// Fallback to current task's first message if no question found
-	if (!question && chatStore.tasks[taskId] && chatStore.tasks[taskId].messages[0]) {
-		question = chatStore.tasks[taskId].messages[0].content;
+	if (!question && chatStore.task && chatStore.task.messages[0]) {
+		question = chatStore.task.messages[0].content;
 		console.log("[REPLAY] question fall back to ", question);
 	}
 

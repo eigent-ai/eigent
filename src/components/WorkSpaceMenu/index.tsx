@@ -68,25 +68,21 @@ export function WorkSpaceMenu() {
 	];
 	const [agentList, setAgentList] = useState<Agent[]>([]);
 	useEffect(() => {
-		const taskAssigning =
-			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
+		const taskAssigning = chatStore.task?.taskAssigning;
 		const base = [...baseWorker, ...workerList].filter(
-			(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
+			(worker) => !taskAssigning?.find((agent) => agent.type === worker.type)
 		);
-		setAgentList([...base, ...taskAssigning]);
+		setAgentList([...base, ...(taskAssigning || [])]);
 	}, [
-		chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning,
+		chatStore.task?.taskAssigning,
 		workerList,
 	]);
 
 	useEffect(() => {
 		const cleanup = window.electronAPI.onWebviewNavigated((id: string, url: string) => {
-			let webViewUrls = [
-				...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls,
-			];
-			let taskAssigning = [
-				...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
-			];
+			if (!chatStore.task) return;
+			let webViewUrls = [...chatStore.task.webViewUrls];
+			let taskAssigning = [...chatStore.task.taskAssigning];
 			const hasId = taskAssigning.find((item) =>
 				item.activeWebviewIds?.find((webview) => webview.id === id)
 			);
@@ -109,10 +105,7 @@ export function WorkSpaceMenu() {
 								img: "",
 								processTaskId: hasUrl?.processTaskId || "",
 							});
-							chatStore.setTaskAssigning(
-								chatStore.activeTaskId as string,
-								taskAssigning
-							);
+							chatStore.setTaskAssigning(taskAssigning);
 						}
 					} else {
 						taskAssigning[activeAgentIndex].activeWebviewIds?.push({
@@ -121,18 +114,13 @@ export function WorkSpaceMenu() {
 							img: "",
 							processTaskId: hasUrl?.processTaskId || "",
 						});
-						chatStore.setTaskAssigning(
-							chatStore.activeTaskId as string,
-							taskAssigning
-						);
+						chatStore.setTaskAssigning(taskAssigning);
 					}
 					const urlIndex = webViewUrls.findIndex((item) => item.url === url);
 					if (urlIndex !== -1) {
 						webViewUrls.splice(urlIndex, 1);
 					}
-					chatStore.setWebViewUrls(chatStore.activeTaskId as string, [
-						...webViewUrls,
-					]);
+					chatStore.setWebViewUrls([...webViewUrls]);
 				} else {
 					// If no URL match found, also try to add to browser_agent
 					const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
@@ -143,10 +131,7 @@ export function WorkSpaceMenu() {
 							img: "",
 							processTaskId: webViewUrls[0]?.processTaskId || "",
 						});
-						chatStore.setTaskAssigning(
-							chatStore.activeTaskId as string,
-							taskAssigning
-						);
+						chatStore.setTaskAssigning(taskAssigning);
 					}
 				}
 			}
@@ -171,10 +156,8 @@ export function WorkSpaceMenu() {
 					window.ipcRenderer
 						.invoke("capture-webview", webview.id)
 						.then((base64: string) => {
-							let taskAssigning = [
-								...chatStore.tasks[chatStore.activeTaskId as string]
-									.taskAssigning,
-							];
+							if (!chatStore.task) return;
+							let taskAssigning = [...chatStore.task.taskAssigning];
 							const browserAgentIndex = taskAssigning.findIndex(
 								(agent) => agent.agent_id === webview.agent_id
 							);
@@ -188,10 +171,7 @@ export function WorkSpaceMenu() {
 									webview.index
 								].img = base64;
 
-								chatStore.setTaskAssigning(
-									chatStore.activeTaskId as string,
-									taskAssigning
-								);
+								chatStore.setTaskAssigning(taskAssigning);
 							}
 						})
 						.catch((error) => {
@@ -207,9 +187,9 @@ export function WorkSpaceMenu() {
 		// Cleanup function to remove listener when component unmounts or dependencies change
 		return cleanup;
 	}, [
-		chatStore.activeTaskId,
-		chatStore.tasks[chatStore.activeTaskId as string]?.webViewUrls,
-		chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning,
+		chatStore.taskId,
+		chatStore.task?.webViewUrls,
+		chatStore.task?.taskAssigning,
 	]);
 
 	const agentMap = {
@@ -288,15 +268,15 @@ export function WorkSpaceMenu() {
 	};
 
 	const onValueChange = (val: string) => {
-		if (!chatStore.activeTaskId) return;
+		if (!chatStore.taskId) return;
 		if (val === "") {
-			chatStore.setActiveWorkSpace(chatStore.activeTaskId, "workflow");
+			chatStore.setActiveWorkSpace("workflow");
 			return;
 		}
 		if (val === "documentWorkSpace") {
-			chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
+			chatStore.setNuwFileNum(0);
 		}
-		chatStore.setActiveWorkSpace(chatStore.activeTaskId, val);
+		chatStore.setActiveWorkSpace(val);
 
 		window.electronAPI.hideAllWebview();
 	};
@@ -305,13 +285,12 @@ export function WorkSpaceMenu() {
 		<div className="h-full">
 			<div className="h-full flex items-center flex-start">
 				<div className="flex items-center flex-start gap-1 mr-3">
-					{chatStore.activeTaskId && (
+					{chatStore.taskId && (
 						<ToggleGroup
 							type="single"
 							size="sm"
 							value={
-								chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace as string
+								chatStore.task?.activeWorkSpace as string
 							}
 							onValueChange={onValueChange}
 							className="flex items-center gap-2"
@@ -323,16 +302,13 @@ export function WorkSpaceMenu() {
 								value="documentWorkSpace"
 								className="!w-10 !h-10 p-2 relative"
 							>
-								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
+								{(chatStore.task?.nuwFileNum ?? 0) >
 									0 && (
 									<Badge
 										className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
 										variant="destructive"
 									>
-										{
-											chatStore.tasks[chatStore.activeTaskId as string]
-												.nuwFileNum
-										}
+										{chatStore.task?.nuwFileNum}
 									</Badge>
 								)}
 								<Inbox className="!h-6 !w-6" />
@@ -353,8 +329,7 @@ export function WorkSpaceMenu() {
 							<ToggleGroup
 								type="single"
 								value={
-									chatStore.tasks[chatStore.activeTaskId as string]
-										.activeWorkSpace as string
+									chatStore.task?.activeWorkSpace as string
 								}
 								onValueChange={onValueChange}
 								className="flex items-center gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"

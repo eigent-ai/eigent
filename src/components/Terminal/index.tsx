@@ -305,7 +305,7 @@ export default function TerminalComponent({
 			}
 
 			// if there is history data, re-write
-			if (chatStore.activeTaskId) {
+			if (chatStore.taskId) {
 				const terminalData = content || [];
 				if (terminalData.length > 0) {
 					xtermRef.current.writeln("\x1b[90m--- Previous Output ---\x1b[0m");
@@ -332,7 +332,7 @@ export default function TerminalComponent({
 			// show prompt
 			xtermRef.current.write(promptText);
 		}, 200);
-	}, [chatStore.activeTaskId, showWelcome, instanceId]);
+	}, [chatStore.taskId, showWelcome, instanceId]);
 
 	// render terminal component
 	return (

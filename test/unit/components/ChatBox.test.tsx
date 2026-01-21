@@ -126,29 +126,27 @@ describe('ChatBox Component', async () => {
   const mockUseProjectStore = vi.mocked((await import('../../../src/store/projectStore')).useProjectStore)
 
   const defaultChatStoreState = {
-    activeTaskId: 'test-task-id',
-    tasks: {
-      'test-task-id': {
-        messages: [],
-        hasMessages: false,
-        isPending: false,
-        activeAsk: '',
-        askList: [],
-        hasWaitComfirm: false,
-        isTakeControl: false,
-        type: 'normal',
-        delayTime: 0,
-        status: 'pending',
-        taskInfo: [],
-        attaches: [],
-        taskRunning: [],
-        taskAssigning: [],
-        cotList: [],
-        activeWorkSpace: null,
-        snapshots: [],
-        isTaskEdit: false,
-        isContextExceeded: false
-      }
+    taskId: 'test-task-id',
+    task: {
+      messages: [],
+      hasMessages: false,
+      isPending: false,
+      activeAsk: '',
+      askList: [],
+      hasWaitComfirm: false,
+      isTakeControl: false,
+      type: 'normal',
+      delayTime: 0,
+      status: 'pending',
+      taskInfo: [],
+      attaches: [],
+      taskRunning: [],
+      taskAssigning: [],
+      cotList: [],
+      activeWorkSpace: null,
+      snapshots: [],
+      isTaskEdit: false,
+      isContextExceeded: false
     },
     setHasMessages: vi.fn(),
     addMessages: vi.fn(),
@@ -158,7 +156,6 @@ describe('ChatBox Component', async () => {
     setActiveAskList: vi.fn(),
     setHasWaitComfirm: vi.fn(),
     handleConfirmTask: vi.fn(),
-    setActiveTaskId: vi.fn(),
     create: vi.fn(),
     setSelectedFile: vi.fn(),
     setActiveWorkSpace: vi.fn(),
@@ -221,7 +218,7 @@ describe('ChatBox Component', async () => {
     })
     mockUseProjectStore.mockReturnValue(defaultProjectStoreState as any)
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any)
-    
+
     // Setup default API responses
     mockProxyFetchGet.mockImplementation((url: string) => {
       if (url === '/api/user/privacy') {
@@ -239,7 +236,7 @@ describe('ChatBox Component', async () => {
       }
       return Promise.resolve({})
     })
-    
+
     mockFetchPost.mockResolvedValue({ success: true })
 
     // Mock import.meta.env
@@ -277,7 +274,7 @@ describe('ChatBox Component', async () => {
 
     it('should fetch privacy settings on mount', async () => {
       renderChatBox()
-      
+
       await waitFor(() => {
         expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/user/privacy')
       })
@@ -285,7 +282,7 @@ describe('ChatBox Component', async () => {
 
     it('should fetch API configurations on mount', async () => {
       renderChatBox()
-      
+
       await waitFor(() => {
         expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/configs')
       })
@@ -310,13 +307,13 @@ describe('ChatBox Component', async () => {
 
       const user = userEvent.setup()
       renderChatBox()
-      
+
       // Type a message and send it
       const input = screen.getByPlaceholderText('Type your message...')
       await user.type(input, 'Test message')
       const sendButton = screen.getByTestId('send-button')
       await user.click(sendButton)
-      
+
       // When privacy is incomplete, it should automatically accept all permissions
       await waitFor(() => {
         expect(mockProxyFetchPut).toHaveBeenCalledWith('/api/user/privacy', {
@@ -345,13 +342,13 @@ describe('ChatBox Component', async () => {
 
       const user = userEvent.setup()
       renderChatBox()
-      
+
       // Type a message and send it
       const input = screen.getByPlaceholderText('Type your message...')
       await user.type(input, 'Test message')
       const sendButton = screen.getByTestId('send-button')
       await user.click(sendButton)
-      
+
       // Should not call privacy update when already complete
       await new Promise(resolve => setTimeout(resolve, 100))
       expect(mockProxyFetchPut).not.toHaveBeenCalledWith('/api/user/privacy', expect.anything())
@@ -362,25 +359,23 @@ describe('ChatBox Component', async () => {
     beforeEach(() => {
       const updatedChatState = {
         ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
-            messages: [
-              {
-                id: '1',
-                role: 'user',
-                content: 'Hello',
-                attaches: []
-              },
-              {
-                id: '2',
-                role: 'assistant',
-                content: 'Hi there!',
-                attaches: []
-              }
-            ],
-            hasMessages: true
-          }
+        task: {
+          ...defaultChatStoreState.task,
+          messages: [
+            {
+              id: '1',
+              role: 'user',
+              content: 'Hello',
+              attaches: []
+            },
+            {
+              id: '2',
+              role: 'assistant',
+              content: 'Hi there!',
+              attaches: []
+            }
+          ],
+          hasMessages: true
         }
       }
 
@@ -402,28 +397,26 @@ describe('ChatBox Component', async () => {
       // Create a proper pending state where we can continue a conversation
       const updatedChatState = {
         ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
-            messages: [
-              {
-                id: '1',
-                role: 'user',
-                content: 'Hello',
-                attaches: []
-              },
-              {
-                id: '2',
-                role: 'assistant',
-                content: 'Hi there!',
-                step: 'wait_confirm',  // Add wait_confirm to allow continuation
-                attaches: []
-              }
-            ],
-            hasMessages: true,
-            hasWaitComfirm: true,  // Set hasWaitComfirm to true
-            status: 'pending'  // Keep it pending
-          }
+        task: {
+          ...defaultChatStoreState.task,
+          messages: [
+            {
+              id: '1',
+              role: 'user',
+              content: 'Hello',
+              attaches: []
+            },
+            {
+              id: '2',
+              role: 'assistant',
+              content: 'Hi there!',
+              step: 'wait_confirm',  // Add wait_confirm to allow continuation
+              attaches: []
+            }
+          ],
+          hasMessages: true,
+          hasWaitComfirm: true,  // Set hasWaitComfirm to true
+          status: 'pending'  // Keep it pending
         }
       }
 
@@ -448,12 +441,12 @@ describe('ChatBox Component', async () => {
 
     it('should not send empty messages', async () => {
       const user = userEvent.setup()
-      
+
       renderChatBox()
-      
+
       const sendButton = screen.getByTestId('send-button')
       await user.click(sendButton)
-      
+
       expect(defaultChatStoreState.addMessages).not.toHaveBeenCalled()
     })
   })
@@ -463,10 +456,9 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             messages: [
               {
                 id: '1',
@@ -480,8 +472,7 @@ describe('ChatBox Component', async () => {
             isTakeControl: false,
             cotList: []
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()
@@ -494,10 +485,9 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             messages: [
               {
                 id: '1',
@@ -510,8 +500,7 @@ describe('ChatBox Component', async () => {
             isTakeControl: false,
             cotList: ['item1']
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()
@@ -526,10 +515,9 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             messages: [
               {
                 id: '1',
@@ -541,8 +529,7 @@ describe('ChatBox Component', async () => {
             hasWaitComfirm: false,
             isTakeControl: false
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()
@@ -557,10 +544,9 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             messages: [
               {
                 id: '1',
@@ -578,8 +564,7 @@ describe('ChatBox Component', async () => {
             ],
             hasMessages: true
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()
@@ -592,10 +577,9 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             messages: [
               {
                 id: '1',
@@ -613,8 +597,7 @@ describe('ChatBox Component', async () => {
             ],
             hasMessages: true
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()
@@ -631,16 +614,14 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             activeAsk: 'test-agent',
             askList: [],
             hasMessages: true
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()
@@ -665,7 +646,7 @@ describe('ChatBox Component', async () => {
 
     it('should process ask list when human reply is sent', async () => {
       const user = userEvent.setup()
-      
+
       const mockMessage = {
         id: '2',
         role: 'assistant',
@@ -676,13 +657,11 @@ describe('ChatBox Component', async () => {
       // Create a store object we can assert against so we capture the exact mocked functions
       const storeObj = {
         ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
-            activeAsk: 'test-agent',
-            askList: [mockMessage],
-            hasMessages: true
-          }
+        task: {
+          ...defaultChatStoreState.task,
+          activeAsk: 'test-agent',
+          askList: [mockMessage],
+          hasMessages: true
         }
       } as any
 
@@ -692,13 +671,13 @@ describe('ChatBox Component', async () => {
       })
 
       renderChatBox()
-      
-  // Type a non-empty message so handleSend proceeds to process the ask list
-  const messageInput = screen.getByTestId('message-input')
-  await user.type(messageInput, 'Reply to ask')
-  const sendButton = screen.getByTestId('send-button')
-  await user.click(sendButton)
-      
+
+      // Type a non-empty message so handleSend proceeds to process the ask list
+      const messageInput = screen.getByTestId('message-input')
+      await user.type(messageInput, 'Reply to ask')
+      const sendButton = screen.getByTestId('send-button')
+      await user.click(sendButton)
+
       await waitFor(() => {
         // Assert that the ask processing resulted in either store updates or an API call
         const storeCalled = (storeObj.setActiveAskList as any).mock.calls.length > 0 ||
@@ -721,7 +700,7 @@ describe('ChatBox Component', async () => {
       } as any)
 
       renderChatBox()
-      
+
       await waitFor(() => {
         // Relaxed: either the cloud-mode warning shows or the example prompts are present
         const foundCloud = !!(document.body.textContent && document.body.textContent.includes('Self-hosted'))
@@ -750,7 +729,7 @@ describe('ChatBox Component', async () => {
       } as any)
 
       renderChatBox()
-      
+
       // When no API keys are configured, the component should show example prompts
       // or allow normal chat without search functionality
       await waitFor(() => {
@@ -788,7 +767,7 @@ describe('ChatBox Component', async () => {
 
     it('should show example prompts when conditions are met', async () => {
       renderChatBox()
-      
+
       await waitFor(() => {
         expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument()
         expect(screen.getByText('Bank Transfer CSV Analysis and Visualization')).toBeInTheDocument()
@@ -798,20 +777,20 @@ describe('ChatBox Component', async () => {
 
     it('should set message when example prompt is clicked', async () => {
       const user = userEvent.setup()
-      
+
       renderChatBox()
-      
+
       await waitFor(() => {
         expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument()
       })
-      
+
       const examplePrompt = screen.getByText('IT Ticket Creation')
       await user.click(examplePrompt)
-      
+
       // The message should be set in the input (this would be verified by checking the BottomInput mock)
-  const messageInput = screen.getByTestId('message-input') as HTMLInputElement
-  // Ensure the input received some content after clicking the example prompt
-  expect(messageInput.value.length).toBeGreaterThan(10)
+      const messageInput = screen.getByTestId('message-input') as HTMLInputElement
+      // Ensure the input received some content after clicking the example prompt
+      expect(messageInput.value.length).toBeGreaterThan(10)
     })
   })
 
@@ -857,15 +836,13 @@ describe('ChatBox Component', async () => {
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: {
-        ...defaultChatStoreState,
-        tasks: {
-          'test-task-id': {
-            ...defaultChatStoreState.tasks['test-task-id'],
+          ...defaultChatStoreState,
+          task: {
+            ...defaultChatStoreState.task,
             activeAsk: 'agent-x',
             hasMessages: true
           }
-        }
-      } as any
+        } as any
       })
 
       renderChatBox()

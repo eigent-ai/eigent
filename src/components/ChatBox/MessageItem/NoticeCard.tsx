@@ -34,7 +34,7 @@ export function NoticeCard() {
 			}, 100);
 		}
 	}, [
-		chatStore.tasks[chatStore.activeTaskId as string].cotList.length,
+		chatStore.task?.cotList?.length,
 		isExpanded,
 	]);
 
@@ -62,16 +62,16 @@ export function NoticeCard() {
 								isExpanded ? "overflow-y-auto" : "overflow-y-auto max-h-[200px]"
 							} transition-all duration-300 ease-in-out scrollbar-hide relative`}
 							style={{
-								maskImage: isExpanded 
-									? 'none' 
+								maskImage: isExpanded
+									? 'none'
 									: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
-								WebkitMaskImage: isExpanded 
-									? 'none' 
+								WebkitMaskImage: isExpanded
+									? 'none'
 									: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)'
 							}}
 						>
 							<div className="mt-sm flex flex-col px-2 gap-2">
-								{chatStore.tasks[chatStore.activeTaskId as string].cotList.map(
+								{(chatStore.task?.cotList || []).map(
 									(cot: string, index: number) => {
 										return (
 											<div
