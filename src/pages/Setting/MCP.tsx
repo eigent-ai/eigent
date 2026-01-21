@@ -311,7 +311,7 @@ export default function SettingMCP() {
 								);
 							}
 						}
-					} else if (key.toLowerCase() === 'google gmail mcp') {
+					} else if (key.toLowerCase() === 'google gmail') {
 					onInstall = async () => {
 						try {
 							const response = await fetchPost("/install/tool/google_gmail");
@@ -320,14 +320,14 @@ export default function SettingMCP() {
                                 const existingConfigs = await proxyFetchGet("/api/configs");
                                 const existing = Array.isArray(existingConfigs) 
                                     ? existingConfigs.find((c: any) => 
-                                        c.config_group?.toLowerCase() === "google gmail mcp" &&
-                                        c.config_name === "GOOGLE_REFRESH_TOKEN"
+                                        c.config_group?.toLowerCase() === "google gmail" &&
+                                        c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN"
                                     )
                                     : null;
                                 
                                 const configPayload = {
-                                    config_group: "Google Gmail MCP",
-                                    config_name: "GOOGLE_REFRESH_TOKEN",
+                                    config_group: "Google Gmail",
+                                    config_name: "GMAIL_GOOGLE_REFRESH_TOKEN",
                                     config_value: "exists",
                                 };
                                 
@@ -358,14 +358,14 @@ export default function SettingMCP() {
                                                 const configs = await proxyFetchGet("/api/configs");
                                                 const existing = Array.isArray(configs)
                                                     ? configs.find((c: any) =>
-                                                        c.config_group?.toLowerCase() === "google gmail mcp" &&
-                                                        c.config_name === "GOOGLE_REFRESH_TOKEN"
+                                                        c.config_group?.toLowerCase() === "google gmail" &&
+                                                        c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN"
                                                     )
                                                     : null;
                                                 
                                                 const payload = {
-                                                    config_group: "Google Gmail MCP",
-                                                    config_name: "GOOGLE_REFRESH_TOKEN",
+                                                    config_group: "Google Gmail",
+                                                    config_name: "GMAIL_GOOGLE_REFRESH_TOKEN",
                                                     config_value: "exists",
                                                 };
                                                 
@@ -420,7 +420,7 @@ export default function SettingMCP() {
 								? t("setting.notion-workspace-integration")
 								: key.toLowerCase() === "google calendar"
 								? t("setting.google-calendar-integration")
-								: key.toLowerCase() === 'google gmail mcp'
+								: key.toLowerCase() === 'google gmail'
 								? "Google Gmail integration for managing emails, drafts, and contacts"
 								: "",
 						onInstall,

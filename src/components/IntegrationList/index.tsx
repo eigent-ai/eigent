@@ -110,7 +110,7 @@ export default function IntegrationList({
 				return;
 			} 
 			
-			if (item.key === "Google Gmail MCP") {
+			if (item.key === "Google Gmail") {
 				const mcp = createMcpFromItem(item, 15);
 				if (isSelectMode) {
 					onShowEnvConfig?.(mcp);
@@ -210,13 +210,13 @@ export default function IntegrationList({
 				console.log("[IntegrationList onConnect] Polling timeout");
 				return;
 			}
-		} else if (mcp.key === "Google Gmail MCP") {
+		} else if (mcp.key === "Google Gmail") {
 			console.log(
 				"[IntegrationList onConnect] Google Gmail detected, starting auth flow"
 			);
 
 			// Trigger install/authorization
-			const gmailItem = items.find((item) => item.key === "Google Gmail MCP");
+			const gmailItem = items.find((item) => item.key === "Google Gmail");
 			try {
 				if (gmailItem && gmailItem.onInstall) {
 					await gmailItem.onInstall();

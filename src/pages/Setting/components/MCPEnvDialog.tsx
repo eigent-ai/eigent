@@ -106,7 +106,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 				if (key === 'EXA_API_KEY') {
 					initialValues[key].required = false;
 				}
-				if (key === 'GOOGLE_REFRESH_TOKEN') {
+				if (key === 'GOOGLE_REFRESH_TOKEN' || key === 'GMAIL_GOOGLE_REFRESH_TOKEN') {
 					initialValues[key].required = false;
 				}
 			});

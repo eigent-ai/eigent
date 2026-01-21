@@ -96,7 +96,7 @@ export function AddWorker({
 							?.replace(/}}/g, "") || "",
 				};
 				// GOOGLE_REFRESH_TOKEN is obtained via OAuth and does not require manual input
-				if (key === "GOOGLE_REFRESH_TOKEN") {
+				if (key === "GOOGLE_REFRESH_TOKEN" || key === "GMAIL_GOOGLE_REFRESH_TOKEN") {
 					initialValues[key].required = false;
 				}
 				initialVisibility[key] = false;
@@ -164,7 +164,7 @@ export function AddWorker({
 		// call ToolSelect's install method
 		if (toolSelectRef.current) {
 			try {
-				if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar" || activeMcp.key === "Google Gmail MCP") {
+				if (activeMcp.key === "EXA Search" || activeMcp.key === "Google Calendar" || activeMcp.key === "Google Gmail") {
 					await toolSelectRef.current.installMcp(
 						activeMcp.id,
 						{ ...envValues },
@@ -179,7 +179,7 @@ export function AddWorker({
 		}
 
 		// For Google Calendar, close dialog after installMcp completes
-		if (activeMcp.key === "Google Calendar" || activeMcp.key === "Google Gmail MCP") {
+		if (activeMcp.key === "Google Calendar" || activeMcp.key === "Google Gmail") {
 			setShowEnvConfig(false);
 		}
 

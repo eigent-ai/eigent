@@ -315,9 +315,9 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
 
         # If no token file, try environment variables
         if not creds:
-            client_id = env("GOOGLE_CLIENT_ID")
-            client_secret = env("GOOGLE_CLIENT_SECRET")
-            refresh_token = env("GOOGLE_REFRESH_TOKEN")
+            client_id = env("GMAIL_GOOGLE_CLIENT_ID")
+            client_secret = env("GMAIL_GOOGLE_CLIENT_SECRET")
+            refresh_token = env("GMAIL_GOOGLE_REFRESH_TOKEN")
             token_uri = env("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
             
             if refresh_token and client_id and client_secret:
@@ -390,14 +390,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
                 state.status = "authorizing"
                 oauth_state_manager.update_status("google_gmail", "authorizing")
                 
-                client_id = env("GOOGLE_CLIENT_ID")
-                client_secret = env("GOOGLE_CLIENT_SECRET")
+                client_id = env("GMAIL_GOOGLE_CLIENT_ID")
+                client_secret = env("GMAIL_GOOGLE_CLIENT_SECRET")
                 token_uri = env("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
                 
                 logger.info(f"Google Gmail auth - client_id present: {bool(client_id)}, client_secret present: {bool(client_secret)}")
                 
                 if not client_id or not client_secret:
-                    error_msg = "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in environment variables"
+                    error_msg = "GMAIL_GOOGLE_CLIENT_ID and GMAIL_GOOGLE_CLIENT_SECRET must be set in environment variables"
                     logger.error(error_msg)
                     raise ValueError(error_msg)
                 
@@ -488,9 +488,9 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
     def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
         """Check if Gmail toolkit can be used and return available tools.
         
-        Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.
+        Requires GMAIL_GOOGLE_CLIENT_ID and GMAIL_GOOGLE_CLIENT_SECRET environment variables.
         """
-        if env("GOOGLE_CLIENT_ID") and env("GOOGLE_CLIENT_SECRET"):
+        if env("GMAIL_GOOGLE_CLIENT_ID") and env("GMAIL_GOOGLE_CLIENT_SECRET"):
             return cls(api_task_id).get_tools()
         else:
             return []
