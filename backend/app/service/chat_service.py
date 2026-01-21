@@ -648,6 +648,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.status = Status.processing
                 if not sub_tasks:
                     sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
+                logger.info(f"[Action.start] About to call eigent_start with {len(sub_tasks)} tasks")
+                for i, t in enumerate(sub_tasks):
+                    logger.info(f"[Action.start] Task {i}: id={t.id}, content={t.content[:50]}...")
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
