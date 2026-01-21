@@ -37,10 +37,10 @@ function isValidZip(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     return buffer.length > 4 &&
-           buffer[0] === 0x50 &&
-           buffer[1] === 0x4B &&
-           buffer[2] === 0x03 &&
-           buffer[3] === 0x04;
+      buffer[0] === 0x50 &&
+      buffer[1] === 0x4B &&
+      buffer[2] === 0x03 &&
+      buffer[3] === 0x04;
   } catch {
     return false;
   }
@@ -53,8 +53,8 @@ function isValidTarGz(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     return buffer.length > 2 &&
-           buffer[0] === 0x1F &&
-           buffer[1] === 0x8B;
+      buffer[0] === 0x1F &&
+      buffer[1] === 0x8B;
   } catch {
     return false;
   }
@@ -88,7 +88,7 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
             }, (response) => {
               // Handle redirects (301, 302, 307, 308)
               if (response.statusCode === 301 || response.statusCode === 302 ||
-                  response.statusCode === 307 || response.statusCode === 308) {
+                response.statusCode === 307 || response.statusCode === 308) {
                 redirectCount++;
                 if (redirectCount > maxRedirects) {
                   reject(new Error(`Too many redirects (${redirectCount})`));
@@ -340,21 +340,21 @@ async function installUv() {
       // Find installed uv
       const possiblePaths = process.platform === 'win32'
         ? [
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
-            'C:\\Python311\\Scripts\\uv.exe',
-            'C:\\Python312\\Scripts\\uv.exe',
-            'C:\\Python313\\Scripts\\uv.exe',
-          ]
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
+          'C:\\Python311\\Scripts\\uv.exe',
+          'C:\\Python312\\Scripts\\uv.exe',
+          'C:\\Python313\\Scripts\\uv.exe',
+        ]
         : [
-            path.join(os.homedir(), '.local', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
-            '/usr/local/bin/uv',
-          ];
+          path.join(os.homedir(), '.local', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
+          '/usr/local/bin/uv',
+        ];
 
       let foundUvPath = null;
       try {
@@ -431,7 +431,7 @@ async function installUv() {
 
   // Handle nested directory from tarball if needed
   if (!isWindows) {
-    const nestedDir = fs.readdirSync(BIN_DIR).find(f => 
+    const nestedDir = fs.readdirSync(BIN_DIR).find(f =>
       fs.statSync(path.join(BIN_DIR, f)).isDirectory() && f.startsWith('uv-')
     );
     if (nestedDir) {
@@ -711,6 +711,36 @@ async function installPythonDeps(uvPath) {
   } catch (error) {
     console.log(`⚠️  Failed to bundle Python: ${error.message}`);
     console.log('   The app may fail to start without internet connection');
+  }
+
+  // Recreate venv with bundled Python to fix hardcoded CI paths
+  console.log('🔧 Recreating venv with bundled Python paths...');
+  try {
+    // Remove the old venv with CI paths
+    if (fs.existsSync(venvPath)) {
+      fs.rmSync(venvPath, { recursive: true, force: true });
+    }
+
+    // Update env to use bundled Python
+    const newEnv = {
+      ...process.env,
+      UV_PYTHON_INSTALL_DIR: path.join(PREBUILT_DIR, 'uv_python'),
+      UV_TOOL_DIR: toolCacheDir,
+      UV_PROJECT_ENVIRONMENT: venvPath,
+      UV_HTTP_TIMEOUT: '300',
+    };
+
+    // Recreate venv with bundled Python
+    console.log('   Recreating venv...');
+    execSync(
+      `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}" --python-preference only-managed`,
+      { cwd: BACKEND_DIR, env: newEnv, stdio: 'inherit' }
+    );
+
+    console.log('✅ Venv recreated with correct bundled Python paths');
+  } catch (error) {
+    console.log(`⚠️  Failed to recreate venv: ${error.message}`);
+    console.log('   The venv may have hardcoded paths and require repair on first run');
   }
 
   console.log('✅ Python dependencies installed');
