@@ -107,7 +107,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         include_attachments: bool = True,
     ) -> Dict[str, Any]:
         return super().gmail_forward_email(message_id, to, forward_body, cc, bcc, include_attachments)
-    
+
     @listen_toolkit(
         BaseGmailToolkit.gmail_send_draft,
         lambda _, draft_id: f"Sending draft {draft_id}"
@@ -183,13 +183,6 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         remove_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         return super().gmail_modify_thread_labels(thread_id, add_labels, remove_labels)
-
-    @listen_toolkit(
-        BaseGmailToolkit.gmail_list_gmail_labels,
-        lambda _: "Listing all Gmail labels"
-    )
-    def list_gmail_labels(self) -> Dict[str, Any]:
-        return super().gmail_list_gmail_labels()
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_create_label,
