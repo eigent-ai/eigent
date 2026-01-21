@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: warp-macos-15-arm64-12x
+          - os: warp-macos-13-arm64-6x
             arch: arm64
           # - os: windows-latest
           #   arch: x64
