@@ -760,8 +760,18 @@ function HtmlRenderer({
       const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
       const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
 
-      // Show warning if JS files are found
-      if (jsFiles.length > 0 && hasShownWarningRef.current !== selectedFile.path) {
+      // Detect inline scripts in HTML content
+      const inlineScriptRegex = /<script[\s\S]*?>[\s\S]*?<\/script>/gi;
+      const hasInlineScripts = inlineScriptRegex.test(html);
+      
+      // Detect inline event handlers (onclick, onload, etc.)
+      const eventHandlerRegex = /\s+on\w+\s*=\s*["'][^"']*["']/gi;
+      const hasEventHandlers = eventHandlerRegex.test(html);
+      
+      const hasAnyScripts = jsFiles.length > 0 || hasInlineScripts || hasEventHandlers;
+
+      // Show warning if any scripts are found (external JS files, inline scripts, or event handlers)
+      if (hasAnyScripts && hasShownWarningRef.current !== selectedFile.path) {
         hasShownWarningRef.current = selectedFile.path;
         setHasScripts(true);
         onScriptsDetected(true);
@@ -769,9 +779,13 @@ function HtmlRenderer({
           duration: 5000,
           icon: <AlertTriangle className="w-4 h-4" />,
         });
-      } else if (jsFiles.length === 0) {
+      } else if (!hasAnyScripts) {
         setHasScripts(false);
         onScriptsDetected(false);
+      } else if (hasAnyScripts) {
+        // Scripts exist but warning already shown for this file
+        setHasScripts(true);
+        onScriptsDetected(true);
       }
 
       // Strict dangerous content detection to prevent various bypass techniques
