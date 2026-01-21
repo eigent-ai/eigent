@@ -25,10 +25,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          - os: warp-macos-15-arm64-12x
             arch: arm64
-          - os: macos-15-intel
-            arch: x64
           - os: windows-latest
             arch: x64
           - os: ubuntu-latest
@@ -117,19 +115,12 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64 release/linux-x64
-
-       # Download all artifacts with correct names
-      - name: Download mac-x64 artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: release-macos-15-intel-x64
-          path: temp-mac-x64
+          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-macos-latest-arm64
+          name: release-warp-macos-15-arm64-6x-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
@@ -148,13 +139,6 @@ jobs:
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-x64
-          if [ -d "temp-mac-x64/release" ]; then
-            mv temp-mac-x64/release/* release/mac-x64/ || true
-          else
-            mv temp-mac-x64/* release/mac-x64/ || true
-          fi
-
           # mac-arm64
           if [ -d "temp-mac-arm64/release" ]; then
             mv temp-mac-arm64/release/* release/mac-arm64/ || true
@@ -176,18 +160,12 @@ jobs:
             mv temp-linux-x64/* release/linux-x64/ || true
           fi
 
-      - name: Rename duplicate files
-        run: |
-          mv release/mac-x64/latest-mac.yml release/mac-x64/latest-x64-mac.yml || true
-          mv release/mac-arm64/latest-mac.yml release/mac-arm64/latest-arm64-mac.yml || true
-
       # Create GitHub Release
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release/mac-x64/*
             release/mac-arm64/*
             release/win-x64/*
             release/linux-x64/*

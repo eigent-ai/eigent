@@ -53,7 +53,7 @@ export function VerticalNavigation({
 		>
 			<TabsList
 				className={cn(
-					"flex w-48 flex-col gap-1 bg-transparent p-0 border-0",
+					"flex w-48 flex-col gap-1 bg-transparent rounded-0 p-0 border-0",
 					listClassName
 				)}
 			>
