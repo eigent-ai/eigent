@@ -517,10 +517,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if not sub_tasks:
                     sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
                 sub_tasks = update_sub_tasks(sub_tasks, update_tasks)
+                # Also update camel_task.subtasks to remove deleted tasks (used by to_sub_tasks)
+                update_sub_tasks(camel_task.subtasks, update_tasks)
                 # Add new tasks (with empty id) to both camel_task and sub_tasks
                 new_tasks = add_sub_tasks(camel_task, item.data.task)
                 # Also add new tasks to sub_tasks so workforce.eigent_start uses correct list
                 sub_tasks.extend(new_tasks)
+                # Save updated sub_tasks back to task_lock so Action.start uses the correct list
+                setattr(task_lock, "decompose_sub_tasks", sub_tasks)
+                logger.info(f"[update_task] Saved {len(sub_tasks)} tasks to task_lock.decompose_sub_tasks, camel_task.subtasks has {len(camel_task.subtasks)} tasks")
                 summary_task_content_local = getattr(task_lock, "summary_task_content", summary_task_content)
                 yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
