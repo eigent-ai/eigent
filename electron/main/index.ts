@@ -1297,30 +1297,22 @@ async function createWindow() {
 
   // Apply native macOS effects
   if (process.platform === 'darwin') {
-    log.info('[MacOS] Setting up ready-to-show listener for native effects...');
     win.once('ready-to-show', () => {
-      log.info('[MacOS] ready-to-show event fired');
       if (win && !win.isDestroyed()) {
         try {
-          log.info('[MacOS] Applying vibrancy...');
           // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
           setVibrancy(win, 'HUDWindow');
 
-          log.info('[MacOS] Applying rounded corners...');
           // Apply rounded corners
           setRoundedCorners(win, 20);
 
-          log.info('[MacOS] Applying transparent titlebar...');
           // Make titlebar transparent
           setTransparentTitlebar(win);
 
-          log.info('[MacOS] ✅ All native visual effects applied successfully');
+          log.info('[MacOS] Applied native visual effects');
         } catch (error) {
-          log.error('[MacOS] ❌ Failed to apply native visual effects:', error);
-          log.error('[MacOS] This may cause white screen!');
+          log.error('[MacOS] Failed to apply native visual effects:', error);
         }
-      } else {
-        log.warn('[MacOS] Window was destroyed before ready-to-show completed');
       }
     });
   }
