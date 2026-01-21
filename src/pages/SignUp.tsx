@@ -1,8 +1,10 @@
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useStackApp } from "@stackframe/react";
 import loginGif from "@/assets/login.gif";
+import background from "@/assets/background.png";
+import eigentLogo from "@/assets/logo/eigent_icon.png";
 import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
@@ -14,6 +16,7 @@ import eyeOff from "@/assets/eye-off.svg";
 import { proxyFetchPost } from "@/api/http";
 import { hasStackKeys } from "@/lib";
 import { useTranslation } from "react-i18next";
+import WindowControls from "@/components/WindowControls";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -36,6 +39,8 @@ export default function SignUp() {
 	});
 	const [isLoading, setIsLoading] = useState(false);
 	const [generalError, setGeneralError] = useState("");
+	const titlebarRef = useRef<HTMLDivElement | null>(null);
+	const [platform, setPlatform] = useState<string>("");
 
 	const validateEmail = (email: string) => {
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -229,24 +234,73 @@ export default function SignUp() {
 		};
 	}, []);
 
+	useEffect(() => {
+		const p = window.electronAPI.getPlatform();
+		setPlatform(p);
+
+		if (platform === "darwin") {
+			titlebarRef.current?.classList.add("mac");
+		}
+	}, [platform]);
+
 	return (
-		<div className={`p-2 flex items-center justify-center gap-2 h-full`}>
-			<div className="flex items-center justify-center h-[calc(800px-16px)] rounded-3xl bg-white-100%">
-				<img src={loginGif} className=" rounded-3xl h-full object-cover" />
+		<div className="h-full flex flex-col relative overflow-hidden">
+			{/* Titlebar with drag region and window controls */}
+			<div
+				className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50"
+				id="signup-titlebar"
+				ref={titlebarRef}
+				style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+			>
+				{/* Center drag region */}
+				<div
+					className="h-full flex-1 flex items-center"
+					style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+				>
+					<div className="flex-1 h-10" />
+				</div>
+
+				{/* Right window controls */}
+				<div
+					style={
+						{
+							WebkitAppRegion: "no-drag",
+							pointerEvents: "auto",
+						} as React.CSSProperties
+					}
+					onMouseDown={(e) => e.stopPropagation()}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<WindowControls />
+				</div>
 			</div>
-			<div className="h-full flex-1 flex flex-col items-center justify-center">
-				<div className="flex-1 flex flex-col w-80 items-center justify-center">
+
+			{/* Main content - image extends to top, form has padding */}
+			<div className={`px-2 pb-2 pt-10 flex items-center justify-center gap-2 h-full`}>
+				<div
+					className="w-full h-full min-h-0 flex flex-col items-center justify-center overflow-hidden px-2 pb-2 bg-surface-secondary border-solid border-border-tertiary rounded-2xl"
+					style={{
+						backgroundImage: `url(${background})`,
+						backgroundSize: "cover",
+						backgroundPosition: "center",
+					}}
+				>
+					<div className="relative flex-1 flex flex-col w-80 items-center justify-center pt-8">
+						<img
+							src={eigentLogo}
+							className="w-16 h-16 absolute top-10 left-1/2 -translate-x-1/2"
+						/>
 						<div className="flex self-stretch items-end justify-between mb-4">
-							  <div className="text-text-heading text-heading-lg font-bold ">
-								  {t("layout.sign-up")}
-								</div>
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() => navigate("/login")}
-								>
-									{t("layout.login")}
-								</Button>
+							<div className="text-text-heading text-heading-lg font-bold ">
+								{t("layout.sign-up")}
+							</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => navigate("/login")}
+							>
+								{t("layout.login")}
+							</Button>
 						</div>
 						{HAS_STACK_KEYS && (
 							<div className="w-full pt-6">
@@ -258,7 +312,9 @@ export default function SignUp() {
 									disabled={isLoading}
 								>
 									<img src={google} className="w-5 h-5" />
-									<span className="ml-2">{t("layout.continue-with-google-sign-up")}</span>
+									<span className="ml-2">
+										{t("layout.continue-with-google-sign-up")}
+									</span>
 								</Button>
 								<Button
 									variant="primary"
@@ -268,7 +324,9 @@ export default function SignUp() {
 									disabled={isLoading}
 								>
 									<img src={github2} className="w-5 h-5" />
-									<span className="ml-2">{t("layout.continue-with-github-sign-up")}</span>
+									<span className="ml-2">
+										{t("layout.continue-with-github-sign-up")}
+									</span>
 								</Button>
 							</div>
 						)}
@@ -284,49 +342,49 @@ export default function SignUp() {
 								</p>
 							)}
 							<div className="flex flex-col gap-4 w-full mb-4 relative">
-									<Input
-										id="email"
-										type="email"
-										size="default"
-										title={t("layout.email")}
-										placeholder={t("layout.enter-your-email")}
-										required
-										value={formData.email}
-										onChange={(e) => handleInputChange("email", e.target.value)}
-										state={errors.email ? "error" : undefined}
-										note={errors.email}
-									/>
+								<Input
+									id="email"
+									type="email"
+									size="default"
+									title={t("layout.email")}
+									placeholder={t("layout.enter-your-email")}
+									required
+									value={formData.email}
+									onChange={(e) => handleInputChange("email", e.target.value)}
+									state={errors.email ? "error" : undefined}
+									note={errors.email}
+								/>
 
-									<Input
-										id="password"
-										title={t("layout.password")}
-										size="default"
-										type={hidePassword ? "password" : "text"}
-										required
-										placeholder={t("layout.enter-your-password")}
-										value={formData.password}
-										onChange={(e) =>
-											handleInputChange("password", e.target.value)
-										}
-										state={errors.password ? "error" : undefined}
-										note={errors.password}
-										backIcon={<img src={hidePassword ? eye : eyeOff} />}
-										onBackIconClick={() => setHidePassword(!hidePassword)}
-									/>
+								<Input
+									id="password"
+									title={t("layout.password")}
+									size="default"
+									type={hidePassword ? "password" : "text"}
+									required
+									placeholder={t("layout.enter-your-password")}
+									value={formData.password}
+									onChange={(e) =>
+										handleInputChange("password", e.target.value)
+									}
+									state={errors.password ? "error" : undefined}
+									note={errors.password}
+									backIcon={<img src={hidePassword ? eye : eyeOff} />}
+									onBackIconClick={() => setHidePassword(!hidePassword)}
+								/>
 
-									<Input
-										id="invite_code"
-										title={t("layout.invitation-code-optional")}
-										size="default"
-										type="text"
-										placeholder={t("layout.enter-your-invite-code")}
-										value={formData.invite_code}
-										onChange={(e) =>
-											handleInputChange("invite_code", e.target.value)
-										}
-										state={errors.invite_code ? "error" : undefined}
-										note={errors.invite_code}
-									/>
+								<Input
+									id="invite_code"
+									title={t("layout.invitation-code-optional")}
+									size="default"
+									type="text"
+									placeholder={t("layout.enter-your-invite-code")}
+									value={formData.invite_code}
+									onChange={(e) =>
+										handleInputChange("invite_code", e.target.value)
+									}
+									state={errors.invite_code ? "error" : undefined}
+									note={errors.invite_code}
+								/>
 							</div>
 						</div>
 						<Button
@@ -341,14 +399,21 @@ export default function SignUp() {
 								{isLoading ? t("layout.signing-up") : t("layout.sign-up")}
 							</span>
 						</Button>
+					</div>
+					<Button
+						variant="ghost"
+						size="xs"
+						onClick={() =>
+							window.open(
+								"https://www.eigent.ai/privacy-policy",
+								"_blank",
+								"noopener,noreferrer"
+							)
+						}
+					>
+						{t("layout.privacy-policy")}
+					</Button>
 				</div>
-				<Button 
-				  variant="ghost"
-					size="xs"
-					onClick={() => window.open("https://www.eigent.ai/privacy-policy", "_blank", "noopener,noreferrer")}
-				>
-					{t("layout.privacy-policy")}
-				</Button>
 			</div>
 		</div>
 	);

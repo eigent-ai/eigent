@@ -10,13 +10,18 @@ const ProgressInstall = React.forwardRef<
 	<ProgressPrimitive.Root
 		ref={ref}
 		className={cn(
-			"relative h-3 w-full overflow-hidden rounded-full bg-specialty-progress-surface",
+			"relative h-3 w-full overflow-hidden rounded-full bg-surface-tertiary",
 			className
 		)}
 		{...props}
 	>
+		{/* Shimmer background layer */}
+		<div className="progress-install-shimmer" />
+
 		<ProgressPrimitive.Indicator
-			className={`h-full w-full flex-1 transition-all`}
+			className={cn(
+				"relative z-10 h-full w-full flex-1 transition-all rounded-full",
+			)}
 			style={{
 				transform: `translateX(-${100 - (value || 0)}%)`,
 				background:

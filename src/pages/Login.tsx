@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useStackApp } from '@stackframe/react';
 import loginGif from '@/assets/login.gif';
+import background from '@/assets/background.png';
+import eigentLogo from '@/assets/logo/eigent_icon.png';
 import { Button } from '@/components/ui/button';
 
 import { Input } from '@/components/ui/input';
@@ -294,19 +296,6 @@ export default function Login() {
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        {/* Left spacer for macOS */}
-        <div
-          className={`${
-            platform === 'darwin' ? 'w-[70px]' : 'w-0'
-          } flex items-center justify-center`}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          {platform === 'darwin' && (
-            <span className="text-label-md text-text-heading font-bold">
-              Eigent
-            </span>
-          )}
-        </div>
 
         {/* Center drag region */}
         <div
@@ -332,12 +321,20 @@ export default function Login() {
       </div>
 
       {/* Main content - image extends to top, form has padding */}
-      <div className={`p-2 flex items-center justify-center gap-2 h-full`}>
-        <div className="flex items-center justify-center h-full rounded-3xl bg-white-100%">
-          <img src={loginGif} className="rounded-3xl h-full object-cover" />
-        </div>
-        <div className="h-full flex-1 flex flex-col items-center justify-center pt-11">
-          <div className="flex-1 flex flex-col w-80 items-center justify-center">
+      <div className={`px-2 pb-2 pt-10 flex items-center justify-center gap-2 h-full`}>
+        <div
+          className="w-full h-full min-h-0 flex flex-col items-center justify-center overflow-hidden px-2 pb-2 bg-surface-secondary border-solid border-border-tertiary rounded-2xl"
+          style={{
+            backgroundImage: `url(${background})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >
+          <div className="relative flex-1 flex flex-col w-80 items-center justify-center pt-8">
+            <img
+              src={eigentLogo}
+              className="w-16 h-16 absolute top-10 left-1/2 -translate-x-1/2"
+            />
             <div className="flex self-stretch items-end justify-between mb-4">
               <div className="text-text-heading text-heading-lg font-bold ">
                 {t('layout.login')}

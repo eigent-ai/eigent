@@ -22,13 +22,31 @@ export const InstallDependencies: React.FC = () => {
 					{/* {isInstalling.toString()} */}
 					<div>
 						<ProgressInstall
-							value={isInstalling || installationState === 'waiting-backend' ? progress : 100}
+							value={
+								isInstalling || installationState === "waiting-backend"
+									? progress
+									: 100
+							}
 							className="w-full"
 						/>
-						<div className="flex items-center gap-2 justify-between">
-							<div className="text-text-label text-xs font-normal leading-tight ">
-								{isInstalling ? "System Installing ..." : installationState === 'waiting-backend' ? "Starting backend service..." : ""}
-								<span className="pl-2">{latestLog?.data}</span>
+						<div className="flex flex-row w-full items-start justify-between gap-4 mt-2">
+							<div className="flex items-center gap-2 justify-between">
+								<div className="text-text-label text-body-sm font-medium leading-normal">
+									{isInstalling
+										? "System Installing ..."
+										: installationState === "waiting-backend"
+											? "Starting backend service..."
+											: ""}
+									<span className="pl-2">{latestLog?.data}</span>
+								</div>
+							</div>
+							<div className="text-text-heading text-body-sm font-medium leading-normal">
+								{Math.round(
+									(isInstalling || installationState === "waiting-backend"
+										? progress
+										: 100) ?? 0
+								)}
+								%
 							</div>
 						</div>
 					</div>

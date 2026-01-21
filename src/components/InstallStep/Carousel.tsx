@@ -136,7 +136,7 @@ export const CarouselStep: React.FC = () => {
 													}
 												}
 											}}
-											className="rounded-3xl w-full h-full object-contain"
+											className="rounded-3xl w-full h-full object-cover"
 										/>
 									</CardContent>
 								</div>

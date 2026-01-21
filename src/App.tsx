@@ -3,8 +3,6 @@ import React, { useEffect, useState } from "react";
 import { stackClientApp } from "@/stack/client";
 import { StackProvider, StackTheme } from "@stackframe/react";
 import { useNavigate } from "react-router-dom";
-import { AnimationJson } from "@/components/AnimationJson";
-import animationData from "@/assets/animation/openning_animaiton.json";
 import { useAuthStore } from "./store/authStore";
 import { Toaster } from "sonner";
 import { hasStackKeys } from "./lib";
@@ -14,8 +12,6 @@ const HAS_STACK_KEYS = hasStackKeys();
 function App() {
 	const navigate = useNavigate();
 	const { setInitState } = useAuthStore();
-	const [animationFinished, setAnimationFinished] = useState(false);
-	const { isFirstLaunch } = useAuthStore();
 
 	useEffect(() => {
 		const handleShareCode = (event: any, share_token: string) => {
@@ -53,19 +49,6 @@ function App() {
 		};
 	}, [navigate, setInitState]);
 
-	// render main content
-	const renderMainContent = () => {
-		if (isFirstLaunch && !animationFinished) {
-			return (
-				<AnimationJson
-					onComplete={() => setAnimationFinished(true)}
-					animationData={animationData}
-				/>
-			);
-		}
-		return <AppRoutes />;
-	};
-
 	// render wrapper
 	const renderWrapper = (children: React.ReactNode) => {
 		if (HAS_STACK_KEYS) {
@@ -84,7 +67,7 @@ function App() {
 		);
 	};
 
-	return renderWrapper(renderMainContent());
+	return renderWrapper(<AppRoutes />);
 }
 
 export default App;

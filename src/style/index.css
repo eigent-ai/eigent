@@ -420,3 +420,28 @@ code {
   padding-left: 1rem;
   font-size: 12px; /* text-sm */
 }
+
+/* ProgressInstall shimmer background */
+.progress-install-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+      120deg,
+      rgba(148, 163, 184, 0.08) 20%,
+      rgba(148, 163, 184, 0.4) 40%,
+      rgba(148, 163, 184, 0.08) 60%
+  );
+  background-size: 200% 100%;
+  animation: progress-install-shimmer 2.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes progress-install-shimmer {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(60%);
+  }
+}
