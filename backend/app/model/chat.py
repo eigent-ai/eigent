@@ -34,6 +34,10 @@ class QuestionAnalysisResult(BaseModel):
 
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
+PLATFORM_MAPPING = {
+    "Z.ai": "openai-compatible-model",
+    "ModelArk": "openai-compatible-model",
+}
 
 class Chat(BaseModel):
     task_id: str
@@ -64,6 +68,11 @@ class Chat(BaseModel):
     new_agents: list["NewAgent"] = []
     extra_params: dict | None = None  # For provider-specific parameters like Azure
     search_config: dict[str, str] | None = None  # User-specific search engine configurations (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
+
+    @field_validator("model_platform")
+    @classmethod
+    def map_model_platform(cls, v: str) -> str:
+        return PLATFORM_MAPPING.get(v, v)
 
     @field_validator("model_type")
     @classmethod

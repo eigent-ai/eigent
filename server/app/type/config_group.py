@@ -7,6 +7,7 @@ class ConfigGroup(str, Enum):
     LINKEDIN = "LinkedIn"
     REDDIT = "Reddit"
     SLACK = "Slack"
+    LARK = "Lark"
     NOTION = "Notion"
     GOOGLE_SUITE = "GoogleSuite"
     DISCORD = "Discord"

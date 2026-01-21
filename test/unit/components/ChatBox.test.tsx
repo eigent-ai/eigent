@@ -44,10 +44,10 @@ vi.mock('react-i18next', () => ({
       const translations: Record<string, string> = {
         'layout.welcome-to-eigent': 'Welcome to Eigent',
         'layout.how-can-i-help-you': 'How can I help you today?',
-        'layout.palm-springs-tennis-trip-planner': 'Palm Springs Tennis Trip Planner',
+        'layout.it-ticket-creation': 'IT Ticket Creation',
         'layout.bank-transfer-csv-analysis': 'Bank Transfer CSV Analysis and Visualization',
-        'layout.find-duplicate-files': 'Find Duplicate Files in Downloads Folder',
-        'layout.palm-springs-tennis-trip-planner-message': 'Plan a 3-day tennis trip to Palm Springs',
+        'layout.find-duplicate-files': 'Please Help Organize My Desktop',
+        'layout.it-ticket-creation-message': 'Plan a 3-day tennis trip to Palm Springs',
         'layout.bank-transfer-csv-analysis-message': 'Analyze bank transfer CSV',
         'layout.find-duplicate-files-message': 'Find duplicate files',
         'chat.ask-placeholder': 'Type your message...',
@@ -725,7 +725,7 @@ describe('ChatBox Component', async () => {
       await waitFor(() => {
         // Relaxed: either the cloud-mode warning shows or the example prompts are present
         const foundCloud = !!(document.body.textContent && document.body.textContent.includes('Self-hosted'))
-        const foundExamples = !!screen.queryByText('Palm Springs Tennis Trip Planner')
+        const foundExamples = !!screen.queryByText('IT Ticket Creation')
         expect(foundCloud || foundExamples).toBe(true)
       })
     })
@@ -755,7 +755,7 @@ describe('ChatBox Component', async () => {
       // or allow normal chat without search functionality
       await waitFor(() => {
         // Either example prompts show up or the input is available
-        const hasExamples = screen.queryByText('Palm Springs Tennis Trip Planner')
+        const hasExamples = screen.queryByText('IT Ticket Creation')
         const hasInput = screen.queryByPlaceholderText('Type your message...')
         expect(hasExamples || hasInput).toBeTruthy()
       })
@@ -790,9 +790,9 @@ describe('ChatBox Component', async () => {
       renderChatBox()
       
       await waitFor(() => {
-        expect(screen.getByText('Palm Springs Tennis Trip Planner')).toBeInTheDocument()
+        expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument()
         expect(screen.getByText('Bank Transfer CSV Analysis and Visualization')).toBeInTheDocument()
-        expect(screen.getByText('Find Duplicate Files in Downloads Folder')).toBeInTheDocument()
+        expect(screen.getByText('Please Help Organize My Desktop')).toBeInTheDocument()
       })
     })
 
@@ -802,10 +802,10 @@ describe('ChatBox Component', async () => {
       renderChatBox()
       
       await waitFor(() => {
-        expect(screen.getByText('Palm Springs Tennis Trip Planner')).toBeInTheDocument()
+        expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument()
       })
       
-      const examplePrompt = screen.getByText('Palm Springs Tennis Trip Planner')
+      const examplePrompt = screen.getByText('IT Ticket Creation')
       await user.click(examplePrompt)
       
       // The message should be set in the input (this would be verified by checking the BottomInput mock)

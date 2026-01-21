@@ -105,20 +105,22 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         print(f"\nAgent Message:\n{message_title} \n{message_description}\n")
         if message_attachment:
             print(message_attachment)
-        logger.info(f"\nAgent Message:\n{message_title} {message_description} {message_attachment}")
-        task_lock = get_task_lock(self.api_task_id)
-        # Capture ContextVar value before creating async task
-        current_process_task_id = process_task.get("")
 
-        # Use _safe_put_queue to handle both sync and async contexts
+        task_lock = get_task_lock(self.api_task_id)
+
+        # Get process_task_id from ContextVar with fallback
+        current_process_task_id = process_task.get("")
+        if not current_process_task_id:
+            current_process_task_id = self.api_task_id
+            logger.warning(f"[send_message_to_user] ContextVar process_task is empty, using api_task_id as fallback: '{current_process_task_id}'")
+
         from app.utils.listen.toolkit_listen import _safe_put_queue
-        _safe_put_queue(
-            task_lock,
-            ActionNoticeData(
-                process_task_id=current_process_task_id,
-                data=f"{message_description}",
-            )
+
+        notice_data = ActionNoticeData(
+            process_task_id=current_process_task_id,
+            data=f"{message_description}",
         )
+        _safe_put_queue(task_lock, notice_data)
 
         attachment_info = f" {message_attachment}" if message_attachment else ""
         return f"Message successfully sent to user: '{message_title} {message_description}{attachment_info}'"
@@ -141,4 +143,6 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         human = cls(api_task_id, agent_name)
         return [
             FunctionTool(human.ask_human_via_gui),
+            # Note: send_message_to_user is not included in get_can_use_tools
+            # It is only available via get_tools() if needed
         ]

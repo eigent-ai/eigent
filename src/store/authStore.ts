@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 // type definition
 type InitState = 'permissions' | 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
-type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-3-flash-preview' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-sonnet-4-5' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5-mini';
+type CloudModelType = 'gemini/gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-3-flash-preview' | 'gpt-4.1-mini' | 'gpt-4.1' | 'claude-sonnet-4-5' | 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'gpt-5' | 'gpt-5.1' | 'gpt-5.2' | 'gpt-5-mini';
 
 // auth info interface
 interface AuthInfo {
@@ -57,6 +57,12 @@ interface AuthState {
 	checkAgentTool: (tool: string) => void;
 }
 
+// random default model selection
+const getRandomDefaultModel = (): CloudModelType => {
+	const models: CloudModelType[] = ['gpt-5.2', 'gpt-5.1', 'gpt-4.1'];
+	return models[Math.floor(Math.random() * models.length)];
+};
+
 // create store
 const authStore = create<AuthState>()(
 	persist(
@@ -70,7 +76,7 @@ const authStore = create<AuthState>()(
 			language: 'system',
 			isFirstLaunch: true,
 			modelType: 'cloud',
-			cloud_model_type: 'gpt-4.1',
+			cloud_model_type: getRandomDefaultModel(),
 			initState: 'permissions',
 			share_token: null,
 			localProxyValue: null,

@@ -20,6 +20,8 @@ class Action(str, Enum):
     update_task = "update_task"  # user -> backend
     task_state = "task_state"  # backend -> user
     new_task_state = "new_task_state"  # backend -> user
+    decompose_progress = "decompose_progress"  # backend -> user (streaming decomposition)
+    decompose_text = "decompose_text"  # backend -> user (raw streaming text)
     start = "start"  # user -> backend
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
@@ -43,6 +45,7 @@ class Action(str, Enum):
     add_task = "add_task"  # user -> backend
     remove_task = "remove_task"  # user -> backend
     skip_task = "skip_task"  # user -> backend
+    timeout = "timeout"  # backend -> user (task timeout error)
 
 
 class ActionImproveData(BaseModel):
@@ -63,6 +66,17 @@ class ActionUpdateTaskData(BaseModel):
 class ActionTaskStateData(BaseModel):
     action: Literal[Action.task_state] = Action.task_state
     data: dict[Literal["task_id", "content", "state", "result", "failure_count"], str | int]
+
+
+class ActionDecomposeProgressData(BaseModel):
+    action: Literal[Action.decompose_progress] = Action.decompose_progress
+    data: dict
+
+
+class ActionDecomposeTextData(BaseModel):
+    action: Literal[Action.decompose_text] = Action.decompose_text
+    data: dict
+
 
 class ActionNewTaskStateData(BaseModel):
     action: Literal[Action.new_task_state] = Action.new_task_state
@@ -160,6 +174,11 @@ class ActionEndData(BaseModel):
     action: Literal[Action.end] = Action.end
 
 
+class ActionTimeoutData(BaseModel):
+    action: Literal[Action.timeout] = Action.timeout
+    data: dict[Literal["message", "in_flight_tasks", "pending_tasks", "timeout_seconds"], str | int]
+
+
 class ActionSupplementData(BaseModel):
     action: Literal[Action.supplement] = Action.supplement
     data: SupplementChat
@@ -220,6 +239,7 @@ ActionData = (
     | ActionTerminalData
     | ActionStopData
     | ActionEndData
+    | ActionTimeoutData
     | ActionSupplementData
     | ActionTakeControl
     | ActionNewAgent
@@ -227,6 +247,8 @@ ActionData = (
     | ActionAddTaskData
     | ActionRemoveTaskData
     | ActionSkipTaskData
+    | ActionDecomposeTextData
+    | ActionDecomposeProgressData
 )
 
 
@@ -255,6 +277,8 @@ class TaskLock:
     last_accessed: datetime
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
+    registered_toolkits: list[Any]
+    """Track toolkits for cleanup (e.g., TerminalToolkit venvs)"""
 
     # Context management fields
     conversation_history: List[Dict[str, Any]]
@@ -275,6 +299,7 @@ class TaskLock:
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.background_tasks = set()
+        self.registered_toolkits = []
 
         # Initialize context management fields
         self.conversation_history = []
@@ -324,7 +349,41 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+        
+        # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
+        for toolkit in self.registered_toolkits:
+            try:
+                if hasattr(toolkit, 'cleanup'):
+                    toolkit.cleanup()
+                    logger.info("Toolkit cleanup completed", extra={"task_id": self.id, "toolkit": type(toolkit).__name__})
+            except Exception as e:
+                logger.warning(f"Failed to cleanup toolkit: {e}", extra={"task_id": self.id, "toolkit": type(toolkit).__name__})
+        self.registered_toolkits.clear()
+        
         logger.info("Task lock cleanup completed", extra={"task_id": self.id})
+
+    def register_toolkit(self, toolkit: Any) -> None:
+        """Register a toolkit for cleanup when task ends.
+
+        This is used to track toolkits that create resources (like venvs) that
+        should be cleaned up when the task is complete.
+
+        Note: Duplicate registrations of the same toolkit instance are ignored.
+        """
+        # Prevent duplicate registration of the same toolkit instance
+        if any(t is toolkit for t in self.registered_toolkits):
+            logger.debug("Toolkit already registered, skipping", extra={
+                "task_id": self.id,
+                "toolkit": type(toolkit).__name__
+            })
+            return
+
+        self.registered_toolkits.append(toolkit)
+        logger.debug("Toolkit registered for cleanup", extra={
+            "task_id": self.id,
+            "toolkit": type(toolkit).__name__,
+            "total_registered": len(self.registered_toolkits)
+        })
 
     def add_conversation(self, role: str, content: str | dict):
         """Add a conversation entry to history"""
@@ -444,7 +503,7 @@ async def _periodic_cleanup():
             await asyncio.sleep(300)  # Run every 5 minutes
 
             current_time = datetime.now()
-            stale_timeout = timedelta(hours=2)  # Consider tasks stale after 2 hours
+            stale_timeout = timedelta(hours=4)  # Consider tasks stale after 4 hours
 
             stale_ids = []
             for task_id, task_lock in task_locks.items():

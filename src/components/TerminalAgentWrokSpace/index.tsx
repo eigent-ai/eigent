@@ -41,7 +41,7 @@ export default function TerminalAgentWrokSpace() {
 			bgColorLight: "bg-emerald-200",
 		},
 		browser_agent: {
-			name: "Browser agent",
+			name: "Browser Agent",
 			icon: <Globe size={16} className="text-text-primary" />,
 			textColor: "text-blue-700",
 			bgColor: "bg-bg-fill-browser-active",

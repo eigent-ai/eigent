@@ -737,6 +737,10 @@ export default function SettingModels() {
 																? t("setting.gemini-3-pro-preview")
 																: cloud_model_type === "gpt-5"
 																	? t("setting.gpt-5")
+																	: cloud_model_type === "gpt-5.1"
+																		? t("setting.gpt-5")
+																		: cloud_model_type === "gpt-5.2"
+																			? t("setting.gpt-5")
 																	: cloud_model_type === "gpt-5-mini"
 																		? t("setting.gpt-5-mini")
 																		: cloud_model_type === "gemini-3-flash-preview"
@@ -762,6 +766,8 @@ export default function SettingModels() {
 									<SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
 									<SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
+									<SelectItem value="gpt-5.1">GPT-5.1</SelectItem>
+									<SelectItem value="gpt-5.2">GPT-5.2</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
@@ -1063,7 +1069,7 @@ export default function SettingModels() {
 						<SelectContent className="bg-white-100%">
 							<SelectItem value="ollama">Ollama</SelectItem>
 							<SelectItem value="vllm">vLLM</SelectItem>
-							<SelectItem value="sglang">Sglang</SelectItem>
+							<SelectItem value="sglang">SGLang</SelectItem>
 							<SelectItem value="lmstudio">LMStudio</SelectItem>
 						</SelectContent>
 					</Select>

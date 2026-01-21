@@ -3,7 +3,7 @@ import datetime
 import json
 from pathlib import Path
 import platform
-from typing import Literal
+from typing import Any, Literal
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -14,9 +14,12 @@ from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
+    ActionTimeoutData,
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+    ActionDecomposeProgressData,
+    ActionDecomposeTextData,
 )
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
@@ -37,6 +40,7 @@ from app.utils.agent import (
     social_medium_agent,
     task_summary_agent,
     question_confirm_agent,
+    set_main_event_loop,
 )
 from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
@@ -150,7 +154,7 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
     return "\n".join(context_parts)
 
 
-def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100000) -> tuple[bool, int]:
+def check_conversation_history_length(task_lock: TaskLock, max_length: int = 200000) -> tuple[bool, int]:
     """
     Check if conversation history exceeds maximum length
 
@@ -234,15 +238,9 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 @sync_step
 @traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
-    # if True:
-    #     import faulthandler
-
-    #     faulthandler.enable()
-    #     for second in [5, 10, 20, 30, 60, 120, 240]:
-    #         faulthandler.dump_traceback_later(second)
-
     start_event_loop = True
 
+    # Initialize task_lock attributes
     if not hasattr(task_lock, 'conversation_history'):
         task_lock.conversation_history = []
     if not hasattr(task_lock, 'last_task_result'):
@@ -255,18 +253,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Create or reuse persistent question_agent
     if task_lock.question_agent is None:
         task_lock.question_agent = question_confirm_agent(options)
-        logger.info(f"Created new persistent question_agent for project {options.project_id}")
     else:
-        logger.info(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
+        logger.debug(f"Reusing existing question_agent with {len(task_lock.conversation_history)} history entries")
 
     question_agent = task_lock.question_agent
 
     # Other variables
     camel_task = None
     workforce = None
+    mcp = None
     last_completed_task_result = ""  # Track the last completed task result
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
+    event_loop = asyncio.get_running_loop()
+    sub_tasks: list[Task] = []
 
     logger.info("=" * 80)
     logger.info("🚀 [LIFECYCLE] step_solve STARTED", extra={"project_id": options.project_id, "task_id": options.task_id})
@@ -334,14 +334,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     })
                     continue
 
-                # Simplified logic: attachments mean workforce, otherwise let agent decide
+                # Determine task complexity: attachments mean workforce, otherwise let agent decide
                 is_complex_task: bool
                 if len(options.attaches) > 0:
-                    # Questions with attachments always need workforce
                     is_complex_task = True
                     logger.info(f"[NEW-QUESTION] Has attachments, treating as complex task")
                 else:
-                    logger.info(f"[NEW-QUESTION] Calling question_confirm to determine complexity")
                     is_complex_task = await question_confirm(question_agent, question, task_lock)
                     logger.info(f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}")
 
@@ -381,103 +379,147 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         except Exception as e:
                             logger.error(f"Error cleaning up folder: {e}")
                 else:
-                    logger.info(f"[NEW-QUESTION] 🔧 Complex task, creating workforce and decomposing")
+                    logger.info(f"[NEW-QUESTION] Complex task, creating workforce and decomposing")
                     # Update the sync_step with new task_id
                     if hasattr(item, 'new_task_id') and item.new_task_id:
                         set_current_task_id(options.project_id, item.new_task_id)
-                        # Reset summary generation flag for new tasks to ensure proper summaries
                         task_lock.summary_generated = False
-                        logger.info("[NEW-QUESTION] Reset summary_generated flag for new task", extra={"project_id": options.project_id, "new_task_id": item.new_task_id})
 
-                    logger.info(f"[NEW-QUESTION] Sending 'confirmed' SSE to frontend")
                     yield sse_json("confirmed", {"question": question})
 
-                    logger.info(f"[NEW-QUESTION] Building context for coordinator")
                     context_for_coordinator = build_context_for_workforce(task_lock, options)
 
-                    # Check if workforce exists - if so, reuse it (agents are preserved)
-                    # Otherwise create new workforce
+                    # Check if workforce exists - if so, reuse it; otherwise create new workforce
                     if workforce is not None:
-                        logger.info(f"[NEW-QUESTION] 🔄 Workforce exists (id={id(workforce)}), state={workforce._state.name}, _running={workforce._running}")
-                        logger.info(f"[NEW-QUESTION] ✅ Reusing existing workforce with preserved agents")
-                        # Workforce is already stopped from skip_task, ready for new decomposition
+                        logger.debug(f"[NEW-QUESTION] Reusing existing workforce (id={id(workforce)})")
                     else:
-                        logger.info(f"[NEW-QUESTION] 🏭 Creating NEW workforce instance (workforce=None)")
+                        logger.info(f"[NEW-QUESTION] Creating NEW workforce instance")
                         (workforce, mcp) = await construct_workforce(options)
-                        logger.info(f"[NEW-QUESTION] ✅ NEW Workforce instance created, id={id(workforce)}")
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent), await new_agent_model(new_agent, options)
                             )
                     task_lock.status = Status.confirmed
 
-                    # If camel_task already exists (from previous paused task), add new question as subtask
-                    # Otherwise, create a new camel_task
-                    if camel_task is not None:
-                        logger.info(f"[NEW-QUESTION] 🔄 camel_task exists (id={camel_task.id}), adding new question as context")
-                        # Update the task content with new question
-                        clean_task_content = question + options.summary_prompt
-                        logger.info(f"[NEW-QUESTION] Updating existing camel_task content with new question")
-                        # We keep the existing task structure but update content for new decomposition
-                        camel_task = Task(content=clean_task_content, id=options.task_id)
-                        if len(options.attaches) > 0:
-                            camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
-                    else:
-                        clean_task_content = question + options.summary_prompt
-                        logger.info(f"[NEW-QUESTION] Creating NEW camel_task with id={options.task_id}")
-                        camel_task = Task(content=clean_task_content, id=options.task_id)
-                        if len(options.attaches) > 0:
-                            camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
+                    # Create camel_task for the question
+                    clean_task_content = question + options.summary_prompt
+                    camel_task = Task(content=clean_task_content, id=options.task_id)
+                    if len(options.attaches) > 0:
+                        camel_task.additional_info = {Path(file_path).name: file_path for file_path in options.attaches}
 
-                    logger.info(f"[NEW-QUESTION] 🧩 Starting task decomposition via workforce.eigent_make_sub_tasks")
-                    sub_tasks = await asyncio.to_thread(
-                        workforce.eigent_make_sub_tasks,
-                        camel_task,
-                        context_for_coordinator
-                    )
-                    logger.info(f"[NEW-QUESTION] ✅ Task decomposed into {len(sub_tasks)} subtasks")
+                    # Stream decomposition in background
+                    stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
+                    state_holder: dict[str, Any] = {"sub_tasks": [], "summary_task": ""}
 
-                    logger.info(f"[NEW-QUESTION] Generating task summary")
-                    summary_task_agent = task_summary_agent(options)
-                    try:
-                        summary_task_content = await asyncio.wait_for(
-                            summary_task(summary_task_agent, camel_task), timeout=10
-                        )
-                        task_lock.summary_generated = True
-                        logger.info("[NEW-QUESTION] ✅ Summary generated successfully", extra={"project_id": options.project_id})
-                    except asyncio.TimeoutError:
-                        logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
-                        # Fallback to a minimal summary to unblock UI
-                        fallback_name = "Task"
-                        content_preview = camel_task.content if hasattr(camel_task, "content") else ""
-                        if content_preview is None:
-                            content_preview = ""
-                        fallback_summary = (
-                            (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
-                        )
-                        summary_task_content = f"{fallback_name}|{fallback_summary}"
-                        task_lock.summary_generated = True
+                    def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
+                        fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
+                        for t in fresh_tasks:
+                            stream_state["seen_ids"].add(t.id)
+                        stream_state["subtasks"].extend(fresh_tasks)
 
-                    logger.info(f"[NEW-QUESTION] 📤 Sending to_sub_tasks SSE to frontend (task card)")
-                    logger.info(f"[NEW-QUESTION] to_sub_tasks data: task_id={camel_task.id}, summary={summary_task_content[:50]}..., subtasks_count={len(camel_task.subtasks)}")
-                    yield to_sub_tasks(camel_task, summary_task_content)
-                    logger.info(f"[NEW-QUESTION] ✅ to_sub_tasks SSE sent")
-                    # tracer.stop()
-                    # tracer.save("trace.json")
+                    def on_stream_text(chunk):
+                        try:
+                            accumulated_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
+                            last_content = stream_state["last_content"]
 
-                    # Only auto-start in debug mode
-                    if env("debug") == "on":
-                        logger.info(f"[DEBUG] Auto-starting workforce in debug mode")
-                        task_lock.status = Status.processing
-                        task = asyncio.create_task(workforce.eigent_start(sub_tasks))
-                        task_lock.add_background_task(task)
+                            # Calculate delta: new content that wasn't in the previous chunk
+                            if accumulated_content.startswith(last_content):
+                                delta_content = accumulated_content[len(last_content):]
+                            else:
+                                delta_content = accumulated_content
+
+                            stream_state["last_content"] = accumulated_content
+
+                            if delta_content:
+                                asyncio.run_coroutine_threadsafe(
+                                    task_lock.put_queue(
+                                        ActionDecomposeTextData(
+                                            data={
+                                                "project_id": options.project_id,
+                                                "task_id": options.task_id,
+                                                "content": delta_content,
+                                            }
+                                        )
+                                    ),
+                                    event_loop,
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to stream decomposition text: {e}")
+
+                    async def run_decomposition():
+                        nonlocal camel_task, summary_task_content
+                        try:
+                            sub_tasks = await asyncio.to_thread(
+                                workforce.eigent_make_sub_tasks,
+                                camel_task,
+                                context_for_coordinator,
+                                on_stream_batch,
+                                on_stream_text,
+                            )
+
+                            if stream_state["subtasks"]:
+                                sub_tasks = stream_state["subtasks"]
+                            state_holder["sub_tasks"] = sub_tasks
+                            logger.info(f"Task decomposed into {len(sub_tasks)} subtasks")
+                            try:
+                                setattr(task_lock, "decompose_sub_tasks", sub_tasks)
+                            except Exception:
+                                pass
+
+                            # Generate task summary
+                            summary_task_agent = task_summary_agent(options)
+                            try:
+                                summary_task_content = await asyncio.wait_for(
+                                    summary_task(summary_task_agent, camel_task), timeout=10
+                                )
+                                task_lock.summary_generated = True
+                            except asyncio.TimeoutError:
+                                logger.warning("summary_task timeout", extra={"project_id": options.project_id, "task_id": options.task_id})
+                                task_lock.summary_generated = True
+                                content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                                if content_preview is None:
+                                    content_preview = ""
+                                summary_task_content = (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                                summary_task_content = f"Task|{summary_task_content}"
+                            except Exception:
+                                task_lock.summary_generated = True
+                                content_preview = camel_task.content if hasattr(camel_task, "content") else ""
+                                if content_preview is None:
+                                    content_preview = ""
+                                summary_task_content = (content_preview[:80] + "...") if len(content_preview) > 80 else content_preview
+                                summary_task_content = f"Task|{summary_task_content}"
+
+                            state_holder["summary_task"] = summary_task_content
+                            try:
+                                setattr(task_lock, "summary_task_content", summary_task_content)
+                            except Exception:
+                                pass
+
+                            payload = {
+                                "project_id": options.project_id,
+                                "task_id": options.task_id,
+                                "sub_tasks": tree_sub_tasks(camel_task.subtasks),
+                                "delta_sub_tasks": tree_sub_tasks(sub_tasks),
+                                "is_final": True,
+                                "summary_task": summary_task_content,
+                            }
+                            await task_lock.put_queue(ActionDecomposeProgressData(data=payload))
+                        except Exception as e:
+                            logger.error(f"Error in background decomposition: {e}", exc_info=True)
+
+                    bg_task = asyncio.create_task(run_decomposition())
+                    task_lock.add_background_task(bg_task)
 
             elif item.action == Action.update_task:
                 assert camel_task is not None
                 update_tasks = {item.id: item for item in item.data.task}
+                # Use stored decomposition results if available
+                if not sub_tasks:
+                    sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
                 sub_tasks = update_sub_tasks(sub_tasks, update_tasks)
                 add_sub_tasks(camel_task, item.data.task)
-                yield to_sub_tasks(camel_task, summary_task_content)
+                summary_task_content_local = getattr(task_lock, "summary_task_content", summary_task_content)
+                yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
 
                 # Check if this might be a misrouted second question
@@ -596,6 +638,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     continue
 
                 task_lock.status = Status.processing
+                if not sub_tasks:
+                    sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
@@ -699,12 +743,50 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(f"[LIFECYCLE] Multi-turn: building context for workforce")
                         context_for_multi_turn = build_context_for_workforce(task_lock, options)
 
-                        logger.info(f"[LIFECYCLE] Multi-turn: calling workforce.handle_decompose_append_task for new task decomposition")
+                        stream_state = {"subtasks": [], "seen_ids": set(), "last_content": ""}
+
+                        def on_stream_batch(new_tasks: list[Task], is_final: bool = False):
+                            fresh_tasks = [t for t in new_tasks if t.id not in stream_state["seen_ids"]]
+                            for t in fresh_tasks:
+                                stream_state["seen_ids"].add(t.id)
+                            stream_state["subtasks"].extend(fresh_tasks)
+
+                        def on_stream_text(chunk):
+                            try:
+                                accumulated_content = chunk.msg.content if hasattr(chunk, 'msg') and chunk.msg else str(chunk)
+                                last_content = stream_state["last_content"]
+
+                                if accumulated_content.startswith(last_content):
+                                    delta_content = accumulated_content[len(last_content):]
+                                else:
+                                    delta_content = accumulated_content
+
+                                stream_state["last_content"] = accumulated_content
+
+                                if delta_content:
+                                    asyncio.run_coroutine_threadsafe(
+                                        task_lock.put_queue(
+                                            ActionDecomposeTextData(
+                                                data={
+                                                    "project_id": options.project_id,
+                                                    "task_id": options.task_id,
+                                                    "content": delta_content,
+                                                }
+                                            )
+                                        ),
+                                        event_loop,
+                                    )
+                            except Exception as e:
+                                logger.warning(f"Failed to stream decomposition text: {e}")
                         new_sub_tasks = await workforce.handle_decompose_append_task(
                             camel_task,
                             reset=False,
-                            coordinator_context=context_for_multi_turn
+                            coordinator_context=context_for_multi_turn,
+                            on_stream_batch=on_stream_batch,
+                            on_stream_text=on_stream_text,
                         )
+                        if stream_state["subtasks"]:
+                            new_sub_tasks = stream_state["subtasks"]
                         logger.info(f"[LIFECYCLE] Multi-turn: task decomposed into {len(new_sub_tasks)} subtasks")
 
                         # Generate proper LLM summary for multi-turn tasks instead of hardcoded fallback
@@ -731,8 +813,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             else:
                                 new_summary_content = f"Follow-up Task|{task_content_for_summary}"
 
-                        # Send the extracted events
-                        yield to_sub_tasks(camel_task, new_summary_content)
+                        # Emit final subtasks once when decomposition is complete
+                        final_payload = {
+                            "project_id": options.project_id,
+                            "task_id": options.task_id,
+                            "sub_tasks": tree_sub_tasks(camel_task.subtasks),
+                            "delta_sub_tasks": tree_sub_tasks(new_sub_tasks),
+                            "is_final": True,
+                            "summary_task": new_summary_content,
+                        }
+                        await task_lock.put_queue(ActionDecomposeProgressData(data=final_payload))
 
                         # Update the context with new task data
                         sub_tasks = new_sub_tasks
@@ -776,6 +866,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.search_mcp:
                 yield sse_json("search_mcp", item.data)
             elif item.action == Action.install_mcp:
+                if mcp is None:
+                    logger.error(f"Cannot install MCP: mcp agent not initialized for project {options.project_id}")
+                    yield sse_json("error", {"message": "MCP agent not initialized. Please start a complex task first."})
+                    continue
                 task = asyncio.create_task(install_mcp(mcp, item))
                 task_lock.add_background_task(task)
             elif item.action == Action.terminal:
@@ -795,6 +889,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info(f"Workforce resumed for project {options.project_id}")
                 else:
                     logger.warning(f"Cannot resume: workforce is None for project {options.project_id}")
+            elif item.action == Action.decompose_text:
+                yield sse_json("decompose_text", item.data)
+            elif item.action == Action.decompose_progress:
+                yield sse_json("to_sub_tasks", item.data)
             elif item.action == Action.new_agent:
                 if workforce is not None:
                     workforce.pause()
@@ -802,6 +900,28 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         format_agent_description(item), await new_agent_model(item, options)
                     )
                     workforce.resume()
+            elif item.action == Action.timeout:
+                logger.info("=" * 80)
+                logger.info(f"⏰ [LIFECYCLE] TIMEOUT action received for project {options.project_id}, task {options.task_id}")
+                logger.info(f"[LIFECYCLE] Timeout data: {item.data}")
+                logger.info("=" * 80)
+
+                # Send timeout error to frontend
+                timeout_message = item.data.get("message", "Task execution timeout")
+                in_flight = item.data.get("in_flight_tasks", 0)
+                pending = item.data.get("pending_tasks", 0)
+                timeout_seconds = item.data.get("timeout_seconds", 0)
+
+                yield sse_json("error", {
+                    "message": timeout_message,
+                    "type": "timeout",
+                    "details": {
+                        "in_flight_tasks": in_flight,
+                        "pending_tasks": pending,
+                        "timeout_seconds": timeout_seconds,
+                    }
+                })
+
             elif item.action == Action.end:
                 logger.info("=" * 80)
                 logger.info(f"🏁 [LIFECYCLE] END action received for project {options.project_id}, task {options.task_id}")
@@ -1143,89 +1263,132 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
 
 @traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
-    logger.info("Constructing workforce", extra={"project_id": options.project_id, "task_id": options.task_id})
+    """Construct a workforce with all required agents.
+
+    This function creates all agents in PARALLEL to minimize startup time.
+    Sync functions are run in thread pool, async functions are awaited concurrently.
+    """
+    logger.debug("construct_workforce started", extra={"project_id": options.project_id, "task_id": options.task_id})
+
+    # Store main event loop reference for thread-safe async task scheduling
+    # This allows agent_model() to schedule tasks when called from worker threads
+    set_main_event_loop(asyncio.get_running_loop())
+
     working_directory = get_working_directory(options)
-    logger.debug("Working directory set", extra={"working_directory": working_directory})
-    [coordinator_agent, task_agent] = [
-        agent_model(
-            key,
-            prompt,
-            options,
-            [
-                *(
-                    ToolkitMessageIntegration(
-                        message_handler=HumanToolkit(options.project_id, key).send_message_to_user
-                    ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
-                ).get_tools()
-            ],
-        )
-        for key, prompt in {
-            Agents.coordinator_agent: f"""
+
+    # ========================================================================
+    # Define agent creation functions
+    # ========================================================================
+
+    def _create_coordinator_and_task_agents() -> list[ListenChatAgent]:
+        """Create coordinator and task agents (sync, runs in thread pool)."""
+        return [
+            agent_model(
+                key,
+                prompt,
+                options,
+                [
+                    *(
+                        ToolkitMessageIntegration(
+                            message_handler=HumanToolkit(options.project_id, key).send_message_to_user
+                        ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
+                    ).get_tools()
+                ],
+            )
+            for key, prompt in {
+                Agents.coordinator_agent: f"""
 You are a helpful coordinator.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
-
-- If a task assigned to another agent fails, you should re-assign it to the 
-`Developer_Agent`. The `Developer_Agent` is a powerful agent with terminal 
-access and can resolve a wide range of issues. 
             """,
-            Agents.task_agent: f"""
+                Agents.task_agent: f"""
 You are a helpful task planner.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
         """,
-        }.items()
-    ]
-    new_worker_agent = agent_model(
-        Agents.new_worker_agent,
-        f"""
+            }.items()
+        ]
+
+    def _create_new_worker_agent() -> ListenChatAgent:
+        """Create new worker agent (sync, runs in thread pool)."""
+        return agent_model(
+            Agents.new_worker_agent,
+            f"""
         You are a helpful assistant.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
         """,
-        options,
-        [
-            *HumanToolkit.get_can_use_tools(options.project_id, Agents.new_worker_agent),
-            *(
-                ToolkitMessageIntegration(
-                    message_handler=HumanToolkit(options.project_id, Agents.new_worker_agent).send_message_to_user
-                ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
-            ).get_tools(),
-        ],
-    )
-    # msg_toolkit = AgentCommunicationToolkit(max_message_history=100)
+            options,
+            [
+                *HumanToolkit.get_can_use_tools(options.project_id, Agents.new_worker_agent),
+                *(
+                    ToolkitMessageIntegration(
+                        message_handler=HumanToolkit(options.project_id, Agents.new_worker_agent).send_message_to_user
+                    ).register_toolkits(NoteTakingToolkit(options.project_id, working_directory=working_directory))
+                ).get_tools(),
+            ],
+        )
 
-    searcher = browser_agent(options)
-    developer = await developer_agent(options)
-    documenter = await document_agent(options)
-    multi_modaler = multi_modal_agent(options)
+    # ========================================================================
+    # Execute all agent creations in PARALLEL
+    # ========================================================================
 
-    # msg_toolkit.register_agent("Worker", new_worker_agent)
-    # msg_toolkit.register_agent("browser_agent", searcher)
-    # msg_toolkit.register_agent("Developer_Agent", developer)
-    # msg_toolkit.register_agent("Document_Agent", documenter)
-    # msg_toolkit.register_agent("Multi_Modal_Agent", multi_modaler)
+    try:
+        # asyncio.gather runs all coroutines concurrently
+        # asyncio.to_thread runs sync functions in thread pool without blocking event loop
+        results = await asyncio.gather(
+            asyncio.to_thread(_create_coordinator_and_task_agents),
+            asyncio.to_thread(_create_new_worker_agent),
+            asyncio.to_thread(browser_agent, options),
+            developer_agent(options),
+            document_agent(options),
+            asyncio.to_thread(multi_modal_agent, options),
+            mcp_agent(options),
+        )
+    except Exception as e:
+        logger.error(f"Failed to create agents in parallel: {e}", exc_info=True)
+        raise
+    finally:
+        # Always clear event loop reference after parallel agent creation completes
+        # This prevents stale references and potential cross-request interference
+        set_main_event_loop(None)
 
-    # Convert string model_platform to enum for comparison
+    # Unpack results
+    (
+        coord_task_agents,
+        new_worker_agent,
+        searcher,
+        developer,
+        documenter,
+        multi_modaler,
+        mcp,
+    ) = results
+
+    coordinator_agent, task_agent = coord_task_agents
+
+    # ========================================================================
+    # Create Workforce instance and add workers (must be sequential)
+    # ========================================================================
+
     try:
         model_platform_enum = ModelPlatformType(options.model_platform.lower())
     except (ValueError, AttributeError):
-        # If conversion fails, default to non-OpenAI behavior
         model_platform_enum = None
 
     workforce = Workforce(
         options.project_id,
         "A workforce",
-        graceful_shutdown_timeout=3,  # 30 seconds for debugging
+        graceful_shutdown_timeout=3,
         share_memory=False,
         coordinator_agent=coordinator_agent,
         task_agent=task_agent,
         new_worker_agent=new_worker_agent,
         use_structured_output_handler=False if model_platform_enum == ModelPlatformType.OPENAI else True,
     )
+
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
@@ -1253,18 +1416,7 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         "generate new images from text prompts.",
         multi_modaler,
     )
-    # workforce.add_single_agent_worker(
-    #     "Social Media Agent: A social media management assistant for "
-    #     "handling tasks related to WhatsApp, Twitter, LinkedIn, Reddit, "
-    #     "Notion, Slack, and other social platforms.",
-    #     await social_medium_agent(options),
-    # )
-    mcp = await mcp_agent(options)
-    # workforce.add_single_agent_worker(
-    #     "MCP Agent: A Model Context Protocol agent that provides access "
-    #     "to external tools and services through MCP integrations.",
-    #     mcp,
-    # )
+
     return workforce, mcp
 
 

@@ -133,7 +133,7 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Browser agent, RoleType.ASSISTANT, gpt-5)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-5)'
       }
     },
     delay:  100
@@ -157,7 +157,7 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Browser agent, RoleType.ASSISTANT, gpt-5)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-5)'
       }
     },
     delay:  100
@@ -204,7 +204,7 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Browser agent, RoleType.ASSISTANT, gpt-4.1)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-4.1)'
       }
     },
     delay:  100
@@ -276,7 +276,7 @@ export const issue619SseSequence = [
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Browser agent, RoleType.ASSISTANT, gpt-4.1)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-4.1)'
       }
     },
     delay:  1100

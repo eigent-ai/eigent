@@ -1,10 +1,11 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useSyncExternalStore } from 'react';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
 import { TaskCard } from './TaskBox/TaskCard';
+import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { VanillaChatStore } from '@/store/chatStore';
 import { FileText } from 'lucide-react';
 
@@ -38,24 +39,35 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
 
+  // Subscribe to streaming decompose text separately for efficient updates
+  const streamingDecomposeText = useSyncExternalStore(
+    (callback) => chatStore.subscribe(callback),
+    () => {
+      const state = chatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId || !state.tasks[taskId]) return '';
+      return state.tasks[taskId].streamingDecomposeText || '';
+    }
+  );
+
   // Show task if this query group has a task message OR if it's the most recent user query during splitting
   // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
   // Exclude human-reply scenarios (when user is replying to an activeAsk)
-  const isHumanReply = queryGroup.userMessage && 
+  const isHumanReply = queryGroup.userMessage &&
     activeTaskId &&
     chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk || 
-     // Check if this user message follows an 'ask' message in the message sequence
-     (() => {
-       const messages = chatState.tasks[activeTaskId].messages;
-       const userMessageIndex = messages.findIndex((m: any) => m.id === queryGroup.userMessage.id);
-       if (userMessageIndex > 0) {
-         // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
-         const prevMessage = messages[userMessageIndex - 1];
-         return prevMessage?.role === 'agent' && prevMessage?.step === 'ask';
-       }
-       return false;
-     })());
+    (chatState.tasks[activeTaskId].activeAsk ||
+      // Check if this user message follows an 'ask' message in the message sequence
+      (() => {
+        const messages = chatState.tasks[activeTaskId].messages;
+        const userMessageIndex = messages.findIndex((m: any) => m.id === queryGroup.userMessage.id);
+        if (userMessageIndex > 0) {
+          // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
+          const prevMessage = messages[userMessageIndex - 1];
+          return prevMessage?.role === 'agent' && prevMessage?.step === 'ask';
+        }
+        return false;
+      })());
 
   const isLastUserQuery = !queryGroup.taskMessage &&
     !isHumanReply &&
@@ -68,8 +80,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
   // Only show the fallback task box for the newest query while the agent is still splitting work.
   // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
+  // Also, do not show fallback task if we are currently decomposing (streaming text).
+  const isDecomposing = streamingDecomposeText.length > 0;
   const shouldShowFallbackTask =
-    isLastUserQuery && activeTaskId && !chatState.tasks[activeTaskId].hasWaitComfirm;
+    isLastUserQuery && activeTaskId && !chatState.tasks[activeTaskId].hasWaitComfirm && !isDecomposing;
 
   const task =
     (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
@@ -114,7 +128,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     sentinel.style.height = '1px';
     sentinel.style.pointerEvents = 'none';
     sentinel.style.zIndex = '-1';
-    
+
     // Insert sentinel before the sticky element
     taskBoxRef.current.parentNode?.insertBefore(sentinel, taskBoxRef.current);
 
@@ -144,9 +158,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const anyToSubTasksMessage = task?.messages.find((m: any) => m.step === "to_sub_tasks");
   const isSkeletonPhase = task && (
     (task.status !== 'finished' &&
-     !anyToSubTasksMessage && 
-     !task.hasWaitComfirm && 
-     task.messages.length > 0) || 
+      !anyToSubTasksMessage &&
+      !task.hasWaitComfirm &&
+      task.messages.length > 0) ||
     (task.isTakeControl && !anyToSubTasksMessage)
   );
 
@@ -156,7 +170,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       data-query-id={queryGroup.queryId}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ 
+      transition={{
         duration: 0.3,
         delay: index * 0.1 // Stagger animation for multiple groups
       }}
@@ -191,16 +205,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         >
           <motion.div
             initial={{ opacity: 0, y: 20 }}
-            animate={{ 
-              opacity: 1, 
+            animate={{
+              opacity: 1,
               y: 0
             }}
-            transition={{ 
+            transition={{
               duration: 0.3,
               delay: 0.1 // Slight delay for sequencing
             }}
           >
-            <div 
+            <div
               style={{
                 transition: 'all 0.3s ease-in-out',
                 transformOrigin: 'top'
@@ -236,105 +250,28 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
-          if (message.content.length > 0) {
-            if (message.step === "end") {
-              return (
-                <motion.div
-                  key={`end-${message.id}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex flex-col pl-3 gap-4"
-                >
-                  <AgentMessageCard
-                    typewriter={
-                      task?.type !== "replay" ||
-                      (task?.type === "replay" && task?.delayTime !== 0)
-                    }
-                    id={message.id}
-                    content={message.content}
-                    onTyping={() => {}}
-                  />
-                  {/* File List */}
-                  {message.fileList && (
-                    <div className="flex pl-3 gap-2 flex-wrap">
-                      {message.fileList.map((file: any, fileIndex: number) => (
-                        <motion.div
-                          key={`file-${message.id}-${file.name}-${fileIndex}`}
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: 0.3 }}
-                          onClick={() => {
-                            chatState.setSelectedFile(activeTaskId as string, file);
-                            chatState.setActiveWorkSpace(activeTaskId as string, "documentWorkSpace");
-                          }}
-                          className="flex items-center gap-2 bg-message-fill-default rounded-sm px-2 py-1 w-[140px] cursor-pointer hover:bg-message-fill-hover transition-colors"
-                        >
-                          <div className="flex flex-col">
-                            <div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
-                              {file.name.split(".")[0]}
-                            </div>
-                            <div className="font-medium leading-29 text-xs text-text-body">
-                              {file.type}
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              );
-            } else if (message.content === "skip") {
-              return (
-                <motion.div
-                  key={`skip-${message.id}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex flex-col pl-3 gap-4"
-                >
+        if (message.content.length > 0) {
+          if (message.step === "end") {
+            return (
+              <motion.div
+                key={`end-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex flex-col pl-3 gap-4"
+              >
                 <AgentMessageCard
-                  key={message.id}
-                  id={message.id}
-                  content="No reply received, task continues..."
-                  onTyping={() => {}}
-                />
-                </motion.div>
-              );
-            } else {
-              return (
-                <motion.div
-                  key={`message-${message.id}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex flex-col pl-3 gap-4"
-                >
-                <AgentMessageCard
-                  key={message.id}
                   typewriter={
                     task?.type !== "replay" ||
                     (task?.type === "replay" && task?.delayTime !== 0)
                   }
                   id={message.id}
                   content={message.content}
-                  onTyping={() => {}}
-                  attaches={message.attaches}
+                  onTyping={() => { }}
                 />
-                </motion.div>
-              );
-            }
-          } else if (message.step === "end" && message.content === "") {
-            return (
-              <motion.div
-                key={`end-empty-${message.id}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="flex flex-col pl-3 gap-4"
-              >
+                {/* File List */}
                 {message.fileList && (
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex pl-3 gap-2 flex-wrap">
                     {message.fileList.map((file: any, fileIndex: number) => (
                       <motion.div
                         key={`file-${message.id}-${file.name}-${fileIndex}`}
@@ -345,11 +282,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                           chatState.setSelectedFile(activeTaskId as string, file);
                           chatState.setActiveWorkSpace(activeTaskId as string, "documentWorkSpace");
                         }}
-                        className="flex items-center gap-2 bg-message-fill-default rounded-2xl px-2 py-1 w-[120px] cursor-pointer hover:bg-message-fill-hover transition-colors"
+                        className="flex items-center gap-2 bg-message-fill-default rounded-sm px-2 py-1 w-[140px] cursor-pointer hover:bg-message-fill-hover transition-colors"
                       >
-                        <FileText size={16} className="text-icon-primary flex-shrink-0" />
                         <div className="flex flex-col">
-                          <div className="max-w-48 font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
+                          <div className="max-w-[100px] font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
                             {file.name.split(".")[0]}
                           </div>
                           <div className="font-medium leading-29 text-xs text-text-body">
@@ -362,30 +298,113 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 )}
               </motion.div>
             );
+          } else if (message.content === "skip") {
+            return (
+              <motion.div
+                key={`skip-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex flex-col pl-3 gap-4"
+              >
+                <AgentMessageCard
+                  key={message.id}
+                  id={message.id}
+                  content="No reply received, task continues..."
+                  onTyping={() => { }}
+                />
+              </motion.div>
+            );
+          } else {
+            return (
+              <motion.div
+                key={`message-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex flex-col pl-3 gap-4"
+              >
+                <AgentMessageCard
+                  key={message.id}
+                  typewriter={
+                    task?.type !== "replay" ||
+                    (task?.type === "replay" && task?.delayTime !== 0)
+                  }
+                  id={message.id}
+                  content={message.content}
+                  onTyping={() => { }}
+                  attaches={message.attaches}
+                />
+              </motion.div>
+            );
           }
+        } else if (message.step === "end" && message.content === "") {
+          return (
+            <motion.div
+              key={`end-empty-${message.id}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="flex flex-col pl-3 gap-4"
+            >
+              {message.fileList && (
+                <div className="flex gap-2 flex-wrap">
+                  {message.fileList.map((file: any, fileIndex: number) => (
+                    <motion.div
+                      key={`file-${message.id}-${file.name}-${fileIndex}`}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.3 }}
+                      onClick={() => {
+                        chatState.setSelectedFile(activeTaskId as string, file);
+                        chatState.setActiveWorkSpace(activeTaskId as string, "documentWorkSpace");
+                      }}
+                      className="flex items-center gap-2 bg-message-fill-default rounded-2xl px-2 py-1 w-[120px] cursor-pointer hover:bg-message-fill-hover transition-colors"
+                    >
+                      <FileText size={16} className="text-icon-primary flex-shrink-0" />
+                      <div className="flex flex-col">
+                        <div className="max-w-48 font-bold text-sm text-body text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
+                          {file.name.split(".")[0]}
+                        </div>
+                        <div className="font-medium leading-29 text-xs text-text-body">
+                          {file.type}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          );
+        }
 
-          // Notice Card
-          if (
-            message.step === "notice_card" &&
-            !task?.isTakeControl &&
-            task?.cotList && task.cotList.length > 0
-          ) {
-            return <NoticeCard key={`notice-${message.id}`} />;
-          }
+        // Notice Card
+        if (
+          message.step === "notice_card" &&
+          !task?.isTakeControl &&
+          task?.cotList && task.cotList.length > 0
+        ) {
+          return <NoticeCard key={`notice-${message.id}`} />;
+        }
 
-          return null;
-        })}
+        return null;
+      })}
 
-        {/* Skeleton for loading state */}
-        {isSkeletonPhase && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <TypeCardSkeleton isTakeControl={task?.isTakeControl || false} />
-          </motion.div>
-        )}
+      {/* Streaming Decompose Text - rendered separately to avoid flickering */}
+      {isLastUserQuery && streamingDecomposeText && (
+        <StreamingTaskList streamingText={streamingDecomposeText} />
+      )}
+
+      {/* Skeleton for loading state */}
+      {isSkeletonPhase && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <TypeCardSkeleton isTakeControl={task?.isTakeControl || false} />
+        </motion.div>
+      )}
     </motion.div>
   );
 };
