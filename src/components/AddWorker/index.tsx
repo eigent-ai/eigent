@@ -151,9 +151,9 @@ export function AddWorker({
 
 		setIsValidating(true);
 
-		// For Google Calendar, keep dialog open during authorization
+		// For Google Calendar and Google Gmail, keep dialog open during authorization
 		// For other tools, close dialog immediately
-		if (activeMcp.key !== "Google Calendar") {
+		if (activeMcp.key !== "Google Calendar" && activeMcp.key !== "Google Gmail") {
 			// switch back to tool selection interface, ensure ToolSelect component is visible
 			setShowEnvConfig(false);
 

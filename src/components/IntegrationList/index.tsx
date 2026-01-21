@@ -215,14 +215,9 @@ export default function IntegrationList({
 				"[IntegrationList onConnect] Google Gmail detected, starting auth flow"
 			);
 
-			// Trigger install/authorization
-			const gmailItem = items.find((item) => item.key === "Google Gmail");
+			// Trigger install/authorization - exactly like Google Calendar
 			try {
-				if (gmailItem && gmailItem.onInstall) {
-					await gmailItem.onInstall();
-				} else {
-					await fetchPost("/install/tool/google_gmail");
-				}
+				await fetchPost("/install/tool/google_gmail");
 			} catch (_) {}
 
 			// Select mode: poll OAuth status

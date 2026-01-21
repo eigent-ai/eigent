@@ -397,7 +397,7 @@ const ToolSelect = forwardRef<
 				// Continue anyway to trigger installation
 			}
 			
-			if (activeMcp.key !== "Google Calendar") {
+			if (activeMcp.key !== "Google Calendar" && activeMcp.key !== "Google Gmail") {
 				const integrationItem = integrations.find(
 					(item) => item.key === activeMcp.key
 				);
@@ -626,7 +626,7 @@ const ToolSelect = forwardRef<
 										key: activeMcp.key,
 										name: activeMcp.name,
 										description: "Gmail integration for managing emails, drafts, labels, and contacts",
-										toolkit: "google_gmail_toolkit",
+										toolkit: "google_gmail_native_toolkit",
 										isLocal: true
 									};
 									addOption(selectedItem, true);

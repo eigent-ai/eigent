@@ -116,11 +116,27 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         return super().gmail_send_draft(draft_id)
 
     @listen_toolkit(
-        BaseGmailToolkit.gmail_list_drafts,
-        lambda _, max_results=10: f"Listing {max_results} drafts"
+        BaseGmailToolkit.gmail_create_draft,
+        lambda _, to, subject, **kwargs: f"Creating draft for '{to}' with subject '{subject}'"
     )
-    def list_drafts(self, max_results: int = 10) -> Dict[str, Any]:
-        return super().gmail_list_drafts(max_results)
+    def create_draft(
+        self,
+        to: Union[str, List[str]],
+        subject: str,
+        body: str,
+        cc: Optional[Union[str, List[str]]] = None,
+        bcc: Optional[Union[str, List[str]]] = None,
+        attachments: Optional[List[str]] = None,
+        is_html: bool = False,
+    ) -> Dict[str, Any]:
+        return super().gmail_create_draft(to, subject, body, cc, bcc, attachments, is_html)
+
+    @listen_toolkit(
+        BaseGmailToolkit.gmail_list_drafts,
+        lambda _, max_results=10, **kwargs: f"Listing {max_results} drafts"
+    )
+    def list_drafts(self, max_results: int = 10, page_token: Optional[str] = None) -> Dict[str, Any]:
+        return super().gmail_list_drafts(max_results, page_token)
 
     # Email Fetching Operations
     @listen_toolkit(
@@ -133,8 +149,16 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         max_results: int = 10,
         include_spam_trash: bool = False,
         label_ids: Optional[List[str]] = None,
+        page_token: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return super().gmail_fetch_emails(query, max_results, include_spam_trash, label_ids)
+        try:
+            return super().gmail_fetch_emails(query, max_results, include_spam_trash, label_ids, page_token)
+        except ValueError as e:
+            logger.error(f"Gmail authentication error in fetch_emails: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in fetch_emails: {type(e).__name__}: {e}")
+            raise
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_fetch_thread_by_id,
@@ -183,6 +207,13 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         remove_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         return super().gmail_modify_thread_labels(thread_id, add_labels, remove_labels)
+
+    @listen_toolkit(
+        BaseGmailToolkit.gmail_list_labels,
+        lambda _: "Listing all labels"
+    )
+    def list_labels(self) -> Dict[str, Any]:
+        return super().gmail_list_labels()
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_create_label,
@@ -234,14 +265,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
     # Contact Operations
     @listen_toolkit(
         BaseGmailToolkit.gmail_get_contacts,
-        lambda _, query="", max_results=100: f"Getting contacts with query '{query}' (max: {max_results})"
+        lambda _, max_results=100, **kwargs: f"Getting contacts (max: {max_results})"
     )
     def get_contacts(
         self,
-        query: str = "",
         max_results: int = 100,
+        page_token: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return super().gmail_get_contacts(query, max_results)
+        return super().gmail_get_contacts(max_results, page_token)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_search_people,
@@ -314,8 +345,25 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
                 logger.info("Using credentials from background authorization")
                 creds = state.result
             else:
-                # No credentials available
-                raise ValueError("No credentials available. Please run authorization first via /api/install/tool/google_gmail")
+                # No credentials available - provide detailed error info
+                error_details = []
+                if not os.path.exists(self._token_path):
+                    error_details.append(f"Token file not found at: {self._token_path}")
+                if not env("GMAIL_GOOGLE_REFRESH_TOKEN"):
+                    error_details.append("GMAIL_GOOGLE_REFRESH_TOKEN environment variable not set")
+                if not env("GMAIL_GOOGLE_CLIENT_ID") or not env("GMAIL_GOOGLE_CLIENT_SECRET"):
+                    error_details.append("GMAIL_GOOGLE_CLIENT_ID or GMAIL_GOOGLE_CLIENT_SECRET not set")
+                
+                oauth_status = oauth_state_manager.get_state("google_gmail")
+                if oauth_status:
+                    error_details.append(f"OAuth state: {oauth_status.status}")
+                
+                error_msg = "Gmail authentication failed. " + " | ".join(error_details)
+                logger.error(error_msg)
+                raise ValueError(
+                    f"{error_msg}\n"
+                    "Please complete Gmail authorization via: /install/tool/google_gmail"
+                )
 
         # Refresh if expired
         if creds and creds.expired and creds.refresh_token:
@@ -344,7 +392,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         Returns the status of the authorization
         """
         from google_auth_oauthlib.flow import InstalledAppFlow
-        
+        from dotenv import load_dotenv
+
+        # Force reload environment variables from default .env file
+        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        if os.path.exists(default_env_path):
+            logger.info(f"Reloading environment variables from {default_env_path}")
+            load_dotenv(dotenv_path=default_env_path, override=True)
+
         # Check if there's an existing authorization and force stop it
         old_state = oauth_state_manager.get_state("google_gmail")
         if old_state and old_state.status in ["pending", "authorizing"]:
@@ -365,10 +420,16 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
             try:
                 state.status = "authorizing"
                 oauth_state_manager.update_status("google_gmail", "authorizing")
-                
-                client_id = env("GMAIL_GOOGLE_CLIENT_ID")
-                client_secret = env("GMAIL_GOOGLE_CLIENT_SECRET")
-                token_uri = env("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
+
+                # Reload environment variables in this thread
+                from dotenv import load_dotenv
+                default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+                if os.path.exists(default_env_path):
+                    load_dotenv(dotenv_path=default_env_path, override=True)
+
+                client_id = os.environ.get("GMAIL_GOOGLE_CLIENT_ID")
+                client_secret = os.environ.get("GMAIL_GOOGLE_CLIENT_SECRET")
+                token_uri = os.environ.get("GOOGLE_TOKEN_URI") or "https://oauth2.googleapis.com/token"
                 
                 logger.info(f"Google Gmail auth - client_id present: {bool(client_id)}, client_secret present: {bool(client_secret)}")
                 
@@ -477,7 +538,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
             FunctionTool(self.send_email),
             FunctionTool(self.reply_to_email),
             FunctionTool(self.forward_email),
-            FunctionTool(self.create_email_draft),
+            FunctionTool(self.create_draft),
             FunctionTool(self.send_draft),
             FunctionTool(self.list_drafts),
             FunctionTool(self.fetch_emails),
@@ -485,7 +546,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
             FunctionTool(self.list_threads),
             FunctionTool(self.modify_email_labels),
             FunctionTool(self.modify_thread_labels),
-            FunctionTool(self.list_gmail_labels),
+            FunctionTool(self.list_labels),
             FunctionTool(self.create_label),
             FunctionTool(self.delete_label),
             FunctionTool(self.move_to_trash),
