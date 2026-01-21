@@ -14,44 +14,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          - os: warp-macos-15-arm64-12x
             arch: arm64
-          - os: macos-15-intel
-            arch: x64
           - os: windows-latest
             arch: x64
           - os: ubuntu-latest
             arch: x64
 
     steps:
-      - name: Free Disk Space (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "Disk space before cleanup:"
-          df -h
-          # Remove iOS simulators
-          sudo rm -rf ~/Library/Developer/CoreSimulator/Devices/* || true
-          # Remove watchOS simulators
-          sudo rm -rf ~/Library/Developer/Xcode/watchOS\ DeviceSupport/* || true
-          # Remove tvOS simulators
-          sudo rm -rf ~/Library/Developer/Xcode/tvOS\ DeviceSupport/* || true
-          # Remove iOS DeviceSupport
-          sudo rm -rf ~/Library/Developer/Xcode/iOS\ DeviceSupport/* || true
-          # Remove derived data
-          sudo rm -rf ~/Library/Developer/Xcode/DerivedData/* || true
-          # Remove old archives
-          sudo rm -rf ~/Library/Developer/Xcode/Archives/* || true
-          # Remove Android SDK if present
-          sudo rm -rf ~/Library/Android/sdk || true
-          # Remove .NET
-          sudo rm -rf /usr/local/share/dotnet || true
-          # Remove Homebrew cache
-          rm -rf ~/Library/Caches/Homebrew/* || true
-          # Remove npm cache
-          npm cache clean --force || true
-          echo "Disk space after cleanup:"
-          df -h
-
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -160,19 +130,12 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64 release/linux-x64
-
-        # Download all artifacts with correct names
-      - name: Download mac-x64 artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: release-macos-15-intel-x64
-          path: temp-mac-x64
+          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-macos-latest-arm64
+          name: release-warp-macos-15-arm64-6x-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
@@ -191,13 +154,6 @@ jobs:
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-x64 - only move dmg files
-          if [ -d "temp-mac-x64/release" ]; then
-            find temp-mac-x64/release -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
-          else
-            find temp-mac-x64 -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
-          fi
-
           # mac-arm64 - only move dmg files
           if [ -d "temp-mac-arm64/release" ]; then
             find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true

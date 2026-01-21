@@ -1,4 +1,4 @@
-import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript, killProcessByName } from "./utils/process";
+import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript, killProcessByName, getPrebuiltPythonDir, getPrebuiltVenvPath } from "./utils/process";
 import { spawn, exec } from 'child_process'
 import log from 'electron-log'
 import fs from 'fs'
@@ -225,21 +225,34 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     log.warn(`Failed to remove lock file: ${e}`);
                 }
 
-                // Cleanup corrupted python cache
+                // Cleanup corrupted python cache ONLY if we don't have bundled Python
+                // If we have bundled Python, we want to keep it and reuse it
+                const prebuiltPythonDir = getPrebuiltPythonDir();
                 try {
                     const pythonCacheDir = getCachePath('uv_python');
-                    if (fs.existsSync(pythonCacheDir)) {
+                    // Only remove cache if we DON'T have prebuilt Python available
+                    // When prebuilt Python exists, UV will use it via UV_PYTHON_INSTALL_DIR
+                    if (fs.existsSync(pythonCacheDir) && !prebuiltPythonDir) {
                         log.info(`Removing potentially corrupted Python cache: ${pythonCacheDir}`);
                         fs.rmSync(pythonCacheDir, { recursive: true, force: true });
+                    } else if (prebuiltPythonDir) {
+                        log.info(`Preserving bundled Python at: ${prebuiltPythonDir}`);
                     }
                 } catch (e) {
                     log.warn(`Failed to remove Python cache: ${e}`);
                 }
 
                 // Cleanup corrupted venv (pyvenv.cfg may reference non-existent Python version)
+                // This is especially important for prebuilt venvs with hardcoded paths from CI
+                const prebuiltVenvPath = getPrebuiltVenvPath();
                 try {
+                    // If the broken venv is the prebuilt venv, we need to remove it
+                    // and let UV recreate it from the bundled Python
                     if (fs.existsSync(venvPath)) {
                         log.info(`Removing potentially corrupted venv: ${venvPath}`);
+                        if (venvPath === prebuiltVenvPath) {
+                            log.info(`This is the prebuilt venv with hardcoded paths - will recreate from bundled Python`);
+                        }
                         fs.rmSync(venvPath, { recursive: true, force: true });
                     }
                 } catch (e) {

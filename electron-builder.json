@@ -20,7 +20,7 @@
     {
       "from": "backend",
       "to": "backend",
-      "filter": ["**/*", "!.venv/**/*"]
+      "filter": ["**/*", "!.venv/**/*", "!workspace/.initial_env/**/*"]
     },
     {
       "from": "utils",
@@ -29,7 +29,13 @@
     {
       "from": "resources/prebuilt",
       "to": "prebuilt",
-      "filter": ["**/*", "!cache/**/*", "!**/.npm-cache/**/*"]
+      "filter": [
+        "**/*",
+        "!cache/**/*",
+        "!**/.npm-cache/**/*",
+        "!uv_python/**/*.pyc",
+        "!uv_python/**/__pycache__"
+      ]
     }
   ],
   "protocols": [
