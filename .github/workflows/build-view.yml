@@ -158,7 +158,11 @@ jobs:
           echo "Disk space after cleanup:"
           df -h
 
-          npm run build:mac -- --arch ${{ matrix.arch }} --mac.target=dmg --publish always || {
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+           npm run build:mac -- --arm64 --mac.target=dmg --publish always
+          else
+            npm run build:mac -- --x64 --mac.target=dmg --publish always
+          fi || {
             echo "Build failed, checking disk space:"
             df -h
             echo "Largest directories:"
