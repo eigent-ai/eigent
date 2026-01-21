@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 120
 
     strategy:
+      max-parallel: 1
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -108,7 +110,7 @@ jobs:
         run: npm install -g bun
 
       - name: Install Dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit
 
       # Install libfuse2 for Linux AppImage builds
       - name: Install libfuse2 (Linux)
@@ -131,7 +133,43 @@ jobs:
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
         timeout-minutes: 90
-        run: npm run build -- --arch ${{ matrix.arch }}
+        run: |
+          echo "Disk space before build:"
+          df -h
+
+          echo "Cleaning node_modules..."
+          find node_modules -name "*.md" -delete 2>/dev/null || true
+          find node_modules -name "*.txt" -delete 2>/dev/null || true
+          find node_modules -name "*.map" -delete 2>/dev/null || true
+          find node_modules -name "test" -type d -exec rm -rf {} + 2>/dev/null || true
+          find node_modules -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true
+          find node_modules -name "__tests__" -type d -exec rm -rf {} + 2>/dev/null || true
+          find node_modules -name "*.test.js" -delete 2>/dev/null || true
+          find node_modules -name "*.spec.js" -delete 2>/dev/null || true
+
+          echo "Cleaning Python cache..."
+          find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+          find . -name "*.pyc" -delete 2>/dev/null || true
+          find . -name "*.pyo" -delete 2>/dev/null || true
+
+          rm -rf ~/.cache/pip 2>/dev/null || true
+          rm -rf ~/.cache/npm 2>/dev/null || true
+
+          echo "Disk space after cleanup:"
+          df -h
+
+          npm run preinstall-deps && npm run clean-symlinks && npm run compile-babel && tsc && vite build && npx electron-builder --mac --config.mac.target=dmg --arch ${{ matrix.arch }} --publish always || {
+            echo "Build failed, checking disk space:"
+            df -h
+            echo "Largest directories:"
+            du -sh ~/* 2>/dev/null | sort -rh | head -10 || true
+            echo "Release directory:"
+            ls -lh release/ 2>/dev/null || true
+            exit 1
+          }
+
+          echo "Disk space after build:"
+          df -h
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
