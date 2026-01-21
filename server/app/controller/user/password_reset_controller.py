@@ -144,7 +144,7 @@ async def reset_password(
     
     logger.info(
         "Password reset successful",
-        extra={"user_id": user.id, "email": user.email}
+        extra={"user_id": user.id}
     )
     
     return {
@@ -197,10 +197,7 @@ async def reset_password_direct(
     user = User.by(User.email == data.email, col(User.deleted_at).is_(None), s=session).one_or_none()
     
     if not user:
-        logger.warning(
-            "Direct password reset failed: user not found",
-            extra={"email": data.email}
-        )
+        logger.warning("Direct password reset failed: user not found")
         raise UserException(code.error, _("User with this email not found"))
     
     # Update password
@@ -209,7 +206,7 @@ async def reset_password_direct(
     
     logger.info(
         "Direct password reset successful",
-        extra={"user_id": user.id, "email": user.email}
+        extra={"user_id": user.id}
     )
     
     return {

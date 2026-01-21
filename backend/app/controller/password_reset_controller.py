@@ -99,7 +99,7 @@ async def reset_password(data: ResetPasswordRequest):
     # Mark token as used
     token_data["used"] = True
     
-    logger.info(f"Password reset successful for email: {token_data['email']}")
+    logger.info("Password reset successful")
     
     return {
         "status": "success",
@@ -117,7 +117,7 @@ async def reset_password_direct(data: DirectResetPasswordRequest):
     Note: This is a simplified implementation for the Electron backend.
     The actual password update happens in the server backend for Docker deployments.
     """
-    logger.info(f"Direct password reset requested for email: {data.email}")
+    logger.info("Direct password reset requested")
     
     # Note: In the Electron backend, this endpoint acts as a proxy.
     # The actual password update is handled by the server backend for Docker deployments.
