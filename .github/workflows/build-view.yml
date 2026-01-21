@@ -149,9 +149,9 @@ jobs:
           df -h
 
           if [ "${{ matrix.arch }}" = "arm64" ]; then
-            npm run build:mac -- --arm64 --config.mac.target=zip --publish always
+            npm run build:mac -- --arm64 --config.mac.target=dmg --publish always
           else
-            npm run build:mac -- --x64 --config.mac.target=zip --publish always
+            npm run build:mac -- --x64 --config.mac.target=dmg --publish always
           fi || {
             echo "Build failed, checking disk space:"
             df -h
@@ -204,13 +204,13 @@ jobs:
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
           USE_NPM_INSTALL_BUN: 'true'
 
-      - name: Upload Artifact (macOS - zip only)
+      - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            release/*.zip
+            release/*.dmg
           retention-days: 5
 
       - name: Upload Artifact (Windows - exe only)
@@ -264,22 +264,22 @@ jobs:
           name: release-ubuntu-latest-x64
           path: temp-linux-x64
 
-      # Move only zip files for macOS, exe files for Windows, and AppImage for Linux
+      # Move only dmg files for macOS, exe files for Windows, and AppImage for Linux
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-x64 - only move zip files
+          # mac-x64 - only move dmg files
           if [ -d "temp-mac-x64/release" ]; then
-            find temp-mac-x64/release -name "*.zip" -exec mv {} release/mac-x64/ \; || true
+            find temp-mac-x64/release -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
           else
-            find temp-mac-x64 -name "*.zip" -exec mv {} release/mac-x64/ \; || true
+            find temp-mac-x64 -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
           fi
 
-          # mac-arm64 - only move zip files
+          # mac-arm64 - only move dmg files
           if [ -d "temp-mac-arm64/release" ]; then
-            find temp-mac-arm64/release -name "*.zip" -exec mv {} release/mac-arm64/ \; || true
+            find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
           else
-            find temp-mac-arm64 -name "*.zip" -exec mv {} release/mac-arm64/ \; || true
+            find temp-mac-arm64 -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
           fi
 
           # win-x64 - only move exe files
