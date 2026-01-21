@@ -446,7 +446,7 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					<div
 						ref={toolsRef}
-						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3 text-"
+						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3"
 					>
 						{/* {JSON.stringify(data.agent)} */}
 						{agentToolkits[
