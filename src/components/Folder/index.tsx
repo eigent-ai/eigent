@@ -9,7 +9,12 @@ import {
   Folder as FolderIcon,
   ChevronRight,
   ChevronDown,
+  AlertTriangle,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import FolderComponent from './FolderComponent';
 
@@ -220,6 +225,16 @@ export default function Folder({ data }: { data?: Agent }) {
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
   };
+
+  // State for HTML script approval (lifted from HtmlRenderer)
+  const [htmlHasScripts, setHtmlHasScripts] = useState(false);
+  const [htmlScriptsApproved, setHtmlScriptsApproved] = useState(false);
+
+  // Reset script approval when file changes
+  useEffect(() => {
+    setHtmlScriptsApproved(false);
+    setHtmlHasScripts(false);
+  }, [selectedFile?.path]);
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -530,6 +545,28 @@ export default function Folder({ data }: { data?: Agent }) {
                   <Download className="w-4 h-4 text-zinc-500" />
                 </Button>
               </div>
+              {/* Safe to Run button for HTML files with scripts */}
+              {selectedFile?.type === 'html' && !isShowSourceCode && htmlHasScripts && !htmlScriptsApproved && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  className="flex-shrink-0"
+                  onClick={() => {
+                    setHtmlScriptsApproved(true);
+                    toast.success('Scripts approved. Rendering with full functionality.', {
+                      duration: 3000,
+                    });
+                  }}
+                >
+                  Safe to Run
+                </Button>
+              )}
+              {selectedFile?.type === 'html' && !isShowSourceCode && htmlScriptsApproved && htmlHasScripts && (
+                <span className="text-xs text-yellow-600 flex items-center gap-1 flex-shrink-0">
+                  <AlertTriangle className="w-3 h-3" />
+                  Scripts running
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -543,8 +580,8 @@ export default function Folder({ data }: { data?: Agent }) {
         )}
 
         {/* content */}
-        <div className="flex-1 overflow-y-auto min-h-0 scrollbar">
-          <div className="p-6 h-full">
+        <div className={`flex-1 min-h-0 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'overflow-y-auto scrollbar'}`}>
+          <div className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}>
             {selectedFile ? (
               !loading ? (
                 selectedFile.type === 'md' && !isShowSourceCode ? (
@@ -568,7 +605,12 @@ export default function Folder({ data }: { data?: Agent }) {
                   isShowSourceCode ? (
                     <>{selectedFile.content}</>
                   ) : (
-                    <HtmlRenderer selectedFile={selectedFile} />
+                    <HtmlRenderer
+                      selectedFile={selectedFile}
+                      projectFiles={fileGroups[0]?.files || []}
+                      scriptsApproved={htmlScriptsApproved}
+                      onScriptsDetected={setHtmlHasScripts}
+                    />
                   )
                 ) : selectedFile.type === 'zip' ? (
                   <div className="flex items-center justify-center h-full text-zinc-500">
@@ -661,17 +703,77 @@ function joinPath(...paths: string[]): string {
 }
 
 // Component to render HTML with relative image paths resolved
-function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
+function HtmlRenderer({
+  selectedFile,
+  projectFiles,
+  scriptsApproved,
+  onScriptsDetected,
+}: {
+  selectedFile: FileInfo;
+  projectFiles: FileInfo[];
+  scriptsApproved: boolean;
+  onScriptsDetected: (hasScripts: boolean) => void;
+}) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
+  const [hasScripts, setHasScripts] = useState<boolean>(false);
+  const [rawHtmlWithScriptsCache, setRawHtmlWithScriptsCache] = useState<string>('');
+  const hasShownWarningRef = useRef<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const processHtml = async () => {
       if (!selectedFile.content) {
         setProcessedHtml('');
+        setHasScripts(false);
         return;
       }
 
       let html = selectedFile.content;
+
+      // Get the directory of the HTML file
+      const htmlDir = getDirPath(selectedFile.path);
+      const htmlFileName = selectedFile.name.replace(/\.html?$/i, '');
+
+      // Find related JS and CSS files in the project
+      const relatedFiles = projectFiles.filter((file) => {
+        if (file.isFolder) return false;
+        const fileType = file.type?.toLowerCase();
+        if (fileType !== 'js' && fileType !== 'css') return false;
+
+        // Check if the file is in the same directory or a subdirectory
+        const fileDir = getDirPath(file.path);
+        const isInSameOrSubDir = fileDir.startsWith(htmlDir) || htmlDir.startsWith(fileDir);
+
+        // Check if the filename matches or if it's a common asset name
+        const fileName = file.name.replace(/\.(js|css)$/i, '');
+        const isRelated =
+          fileName === htmlFileName ||
+          fileName === 'style' ||
+          fileName === 'styles' ||
+          fileName === 'script' ||
+          fileName === 'main' ||
+          fileName === 'index' ||
+          fileName === 'app';
+
+        return isInSameOrSubDir || isRelated;
+      });
+
+      const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
+      const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
+
+      // Show warning if JS files are found
+      if (jsFiles.length > 0 && hasShownWarningRef.current !== selectedFile.path) {
+        hasShownWarningRef.current = selectedFile.path;
+        setHasScripts(true);
+        onScriptsDetected(true);
+        toast.warning('HTML render found related scripts. Make sure scripts are safe to run.', {
+          duration: 5000,
+          icon: <AlertTriangle className="w-4 h-4" />,
+        });
+      } else if (jsFiles.length === 0) {
+        setHasScripts(false);
+        onScriptsDetected(false);
+      }
 
       // Strict dangerous content detection to prevent various bypass techniques
       const dangerousPatterns = [
@@ -779,9 +881,6 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
         return;
       }
 
-      // Get the directory of the HTML file
-      const htmlDir = getDirPath(selectedFile.path);
-
       // Find all img tags with relative paths (match various formats)
       const imgRegex = /<img\s+([^>]*?)(?:\s*\/\s*>|>)/gi;
       const matches = Array.from(html.matchAll(imgRegex));
@@ -848,7 +947,72 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
         );
       });
 
-      // Sanitize the processed HTML
+      // Load and inject CSS files, replacing external link tags
+      for (const cssFile of cssFiles) {
+        try {
+          const cssContent = await window.ipcRenderer.invoke(
+            'open-file',
+            'css',
+            cssFile.path,
+            false
+          );
+          if (cssContent) {
+            const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
+            
+            // Try to replace the external link tag with inline style
+            const linkRegex = new RegExp(
+              `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
+              'gi'
+            );
+            if (linkRegex.test(processedHtmlContent)) {
+              processedHtmlContent = processedHtmlContent.replace(linkRegex, styleTag);
+            } else {
+              // Fallback: inject CSS at the beginning of the HTML
+              if (processedHtmlContent.includes('<head>')) {
+                processedHtmlContent = processedHtmlContent.replace(
+                  '<head>',
+                  `<head>${styleTag}`
+                );
+              } else {
+                processedHtmlContent = styleTag + processedHtmlContent;
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to load CSS file: ${cssFile.path}`, error);
+        }
+      }
+
+      // Load JS files content and replace external script tags
+      const jsContents: { name: string; content: string }[] = [];
+      for (const jsFile of jsFiles) {
+        try {
+          const jsContent = await window.ipcRenderer.invoke(
+            'open-file',
+            'js',
+            jsFile.path,
+            false
+          );
+          if (jsContent) {
+            jsContents.push({ name: jsFile.name, content: jsContent });
+            
+            // Replace external script tag with inline script
+            const scriptRegex = new RegExp(
+              `<script[^>]*src=["'](?:[^"']*[/\\\\])?${jsFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`,
+              'gi'
+            );
+            const inlineScript = `<script data-source="${jsFile.name}">${jsContent}</script>`;
+            processedHtmlContent = processedHtmlContent.replace(scriptRegex, inlineScript);
+          }
+        } catch (error) {
+          console.error(`Failed to load JS file: ${jsFile.path}`, error);
+        }
+      }
+
+      // Store raw HTML with inline scripts for iframe rendering (before sanitization)
+      const rawHtmlWithScripts = processedHtmlContent;
+
+      // Sanitize the processed HTML (for non-iframe rendering)
       const sanitized = DOMPurify.sanitize(processedHtmlContent, {
         USE_PROFILES: { html: true },
         ALLOWED_TAGS: [
@@ -881,6 +1045,12 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
           'h5',
           'h6',
           'style',
+          'canvas',
+          'html',
+          'head',
+          'body',
+          'title',
+          'meta',
         ],
         ALLOWED_ATTR: [
           'href',
@@ -928,16 +1098,85 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
         KEEP_CONTENT: false,
       });
 
-      setProcessedHtml(sanitized);
+      // Inject JS content after sanitization (only if user is aware of scripts)
+      let finalHtml = sanitized;
+      
+      // Cache raw HTML with scripts for iframe rendering (before sanitization stripped them)
+      setRawHtmlWithScriptsCache(rawHtmlWithScripts);
+
+      setProcessedHtml(finalHtml);
     };
 
     processHtml();
-  }, [selectedFile]);
+  }, [selectedFile, projectFiles, onScriptsDetected]);
+
+  // Zoom state and controls
+  const [zoom, setZoom] = useState(100);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 10, 200));
+  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 10, 50));
+  const handleZoomReset = () => setZoom(100);
+
+  // Handle scroll wheel zoom (Ctrl+scroll or pinch)
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -10 : 10;
+      setZoom((prev) => Math.min(Math.max(prev + delta, 50), 200));
+    }
+  };
 
   return (
-    <div
-      className="w-full overflow-auto"
-      dangerouslySetInnerHTML={{ __html: processedHtml }}
-    />
+    <div className="w-full h-full flex flex-col">
+      {/* Toolbar with zoom controls */}
+      <div className="flex items-center justify-center gap-2 p-2 border-b border-zinc-200 bg-zinc-50 flex-shrink-0">
+        <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" onClick={handleZoomOut} title="Zoom Out">
+            <ZoomOut className="w-4 h-4" />
+          </Button>
+          <span className="text-sm text-zinc-600 min-w-[3rem] text-center">{zoom}%</span>
+          <Button size="icon" variant="ghost" onClick={handleZoomIn} title="Zoom In">
+            <ZoomIn className="w-4 h-4" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={handleZoomReset} title="Reset Zoom">
+            <RotateCcw className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Content area with zoom */}
+      <div
+        ref={containerRef}
+        className={`flex-1 min-h-0 bg-zinc-100 ${scriptsApproved && hasScripts ? 'overflow-hidden' : 'overflow-auto'}`}
+        onWheel={handleWheel}
+      >
+        <div
+          className="origin-top-left transition-transform duration-150 h-full"
+          style={{
+            transform: `scale(${zoom / 100})`,
+            width: `${10000 / zoom}%`,
+            height: `${10000 / zoom}%`,
+          }}
+        >
+          {scriptsApproved && hasScripts ? (
+            <iframe
+              ref={iframeRef}
+              srcDoc={rawHtmlWithScriptsCache}
+              className="w-full h-full border-0 bg-white"
+              sandbox="allow-scripts allow-forms allow-same-origin"
+              title={selectedFile.name}
+              tabIndex={0}
+              onLoad={() => iframeRef.current?.focus()}
+            />
+          ) : (
+            <div
+              className="w-full bg-white p-4"
+              dangerouslySetInnerHTML={{ __html: processedHtml }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
