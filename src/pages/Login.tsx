@@ -437,7 +437,17 @@ export default function Login() {
               <Button
                 variant="ghost"
                 size="xs"
-                onClick={() => navigate('/forgot-password')}
+                onClick={() => {
+                  if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+                    navigate('/forgot-password');
+                  } else {
+                    window.open(
+                      'https://www.eigent.ai/forgot-password',
+                      '_blank',
+                      'noopener,noreferrer'
+                    );
+                  }
+                }}
               >
                 {t('layout.forgot-password')}
               </Button>
