@@ -29,7 +29,7 @@ def create_agent(
         model_type=mtype,
         api_key=api_key,
         url=url,
-        timeout=10,
+        timeout=60,  # 1 minute for validation
         model_config_dict=model_config_dict,
         **kwargs,
     )
@@ -37,6 +37,6 @@ def create_agent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
         model=model,
         tools=[get_website_content],
-        step_timeout=900,
+        step_timeout=1800,  # 30 minutes
     )
     return agent
