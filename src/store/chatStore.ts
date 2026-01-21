@@ -2155,8 +2155,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			setTaskTime(taskId, Date.now());
 			// Filter out empty tasks from the user-edited taskInfo
 			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
-			console.log('[handleConfirmTask] Original taskInfo from store:', tasks[taskId].taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 40)}`));
-			console.log('[handleConfirmTask] Filtered taskInfo to send:', taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 40)}`));
 			setTaskInfo(taskId, taskInfo)
 			// Sync taskRunning with the filtered taskInfo (user edits should be reflected in execution)
 			setTaskRunning(taskId, taskInfo)
@@ -2175,7 +2173,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}
 
 			if (!type) {
-				console.log('[handleConfirmTask] Sending to backend PUT /task:', taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 40)}`));
 				await fetchPut(`/task/${project_id}`, {
 					task: taskInfo,
 				});
@@ -2190,7 +2187,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		},
 		addTaskInfo() {
 			const { tasks, activeTaskId, setTaskInfo } = get()
-			console.log('[addTaskInfo] Called, activeTaskId:', activeTaskId);
 			if (!activeTaskId) return
 			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
 			const newTaskInfo = {
@@ -2198,7 +2194,6 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				content: "",
 			};
 			targetTaskInfo.push(newTaskInfo)
-			console.log('[addTaskInfo] New taskInfo length:', targetTaskInfo.length);
 			setTaskInfo(activeTaskId, targetTaskInfo)
 		},
 		addTerminal(taskId, processTaskId, terminal) {
@@ -2338,26 +2333,21 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		},
 		updateTaskInfo(index: number, content: string) {
 			const { tasks, activeTaskId, setTaskInfo } = get()
-			console.log('[updateTaskInfo] Called, activeTaskId:', activeTaskId, 'index:', index, 'content:', content?.slice(0, 30));
 			if (!activeTaskId) return
 			// Deep copy the array with updated item to ensure React detects the change
 			const targetTaskInfo = tasks[activeTaskId].taskInfo.map((item, i) =>
 				i === index ? { ...item, content } : item
 			)
-			console.log('[updateTaskInfo] Updated taskInfo:', targetTaskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 30)}`));
 			setTaskInfo(activeTaskId, targetTaskInfo)
 		},
 		deleteTaskInfo(index: number) {
 			const { tasks, activeTaskId, setTaskInfo } = get()
-			console.log('[deleteTaskInfo] Called, activeTaskId:', activeTaskId, 'index:', index);
 			if (!activeTaskId) return
-			console.log('[deleteTaskInfo] Before delete:', tasks[activeTaskId].taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 30)}`));
 			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
 
 			if (targetTaskInfo) {
 				targetTaskInfo.splice(index, 1)
 			}
-			console.log('[deleteTaskInfo] After delete:', targetTaskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 30)}`));
 			setTaskInfo(activeTaskId, targetTaskInfo)
 
 		},

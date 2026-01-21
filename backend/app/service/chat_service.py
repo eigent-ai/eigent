@@ -525,7 +525,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 sub_tasks.extend(new_tasks)
                 # Save updated sub_tasks back to task_lock so Action.start uses the correct list
                 setattr(task_lock, "decompose_sub_tasks", sub_tasks)
-                logger.info(f"[update_task] Saved {len(sub_tasks)} tasks to task_lock.decompose_sub_tasks, camel_task.subtasks has {len(camel_task.subtasks)} tasks")
                 summary_task_content_local = getattr(task_lock, "summary_task_content", summary_task_content)
                 yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
@@ -648,9 +647,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.status = Status.processing
                 if not sub_tasks:
                     sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
-                logger.info(f"[Action.start] About to call eigent_start with {len(sub_tasks)} tasks")
-                for i, t in enumerate(sub_tasks):
-                    logger.info(f"[Action.start] Task {i}: id={t.id}, content={t.content[:50]}...")
                 task = asyncio.create_task(workforce.eigent_start(sub_tasks))
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
@@ -1097,10 +1093,6 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
 
 
 def update_sub_tasks(sub_tasks: list[Task], update_tasks: dict[str, TaskContent], depth: int = 0):
-    logger.info(f"[update_sub_tasks] Called with {len(sub_tasks)} sub_tasks, {len(update_tasks)} update_tasks, depth={depth}")
-    logger.info(f"[update_sub_tasks] sub_tasks ids: {[t.id for t in sub_tasks]}")
-    logger.info(f"[update_sub_tasks] update_tasks keys: {list(update_tasks.keys())}")
-
     if depth > 5:  # limit the depth of the recursion
         return []
 
@@ -1108,32 +1100,25 @@ def update_sub_tasks(sub_tasks: list[Task], update_tasks: dict[str, TaskContent]
     while i < len(sub_tasks):
         item = sub_tasks[i]
         if item.id in update_tasks:
-            logger.info(f"[update_sub_tasks] Updating task {item.id}: {item.content[:30]}... -> {update_tasks[item.id].content[:30]}...")
             item.content = update_tasks[item.id].content
             update_sub_tasks(item.subtasks, update_tasks, depth + 1)
             i += 1
         else:
-            logger.info(f"[update_sub_tasks] Removing task {item.id}: {item.content[:30]}... (not in update_tasks)")
             sub_tasks.pop(i)
-    logger.info(f"[update_sub_tasks] After update: {len(sub_tasks)} tasks remain")
     return sub_tasks
 
 
 def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]) -> list[Task]:
     """Add new tasks (with empty id) to camel_task and return the list of added tasks."""
-    logger.info(f"[add_sub_tasks] Called with {len(update_tasks)} update_tasks")
     added_tasks = []
-    for i, item in enumerate(update_tasks):
-        logger.info(f"[add_sub_tasks] Task {i}: id='{item.id}', content='{item.content[:30]}...'")
-        if item.id == "":  #
-            logger.info(f"[add_sub_tasks] Adding new task: {item.content[:30]}...")
+    for item in update_tasks:
+        if item.id == "":
             new_task = Task(
                 content=item.content,
                 id=f"{camel_task.id}.{len(camel_task.subtasks) + 1}",
             )
             camel_task.add_subtask(new_task)
             added_tasks.append(new_task)
-    logger.info(f"[add_sub_tasks] Added {len(added_tasks)} new tasks")
     return added_tasks
 
 

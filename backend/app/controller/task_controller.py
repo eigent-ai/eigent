@@ -37,10 +37,6 @@ def start(id: str):
 @traceroot.trace()
 def put(id: str, data: UpdateData):
     logger.info("Updating task", extra={"task_id": id, "task_items_count": len(data.task)})
-    # Log each task content for debugging
-    for i, task in enumerate(data.task):
-        task_content = task.content[:50] if hasattr(task, 'content') and task.content else str(task)[:50]
-        logger.info(f"[PUT /task] Task {i}: {task_content}...")
     logger.debug("Update task data", extra={"task_id": id, "data": data.model_dump_json()})
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_queue(ActionUpdateTaskData(action=Action.update_task, data=data)))

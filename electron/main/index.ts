@@ -1276,8 +1276,8 @@ async function createWindow() {
     minHeight: 650,
     frame: false,
     show: false, // Don't show until content is ready
-    transparent: process.platform === 'darwin', // Only transparent on macOS for vibrancy effects
-    backgroundColor: process.platform === 'darwin' ? '#00000000' : '#1a1a2e', // Visible fallback on non-macOS
+    transparent: true,
+    backgroundColor: '#00000000',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
