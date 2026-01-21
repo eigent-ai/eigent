@@ -155,7 +155,7 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
     return "\n".join(context_parts)
 
 
-def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100000) -> tuple[bool, int]:
+def check_conversation_history_length(task_lock: TaskLock, max_length: int = 200000) -> tuple[bool, int]:
     """
     Check if conversation history exceeds maximum length
 

@@ -173,7 +173,7 @@ class ListenChatAgent(ChatAgent):
         pause_event: asyncio.Event | None = None,
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
-        step_timeout: float | None = 900,
+        step_timeout: float | None = 1800,  # 30 minutes
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -782,6 +782,7 @@ def agent_model(
         api_key=options.api_key,
         url=options.api_url,
         model_config_dict=model_config or None,
+        timeout=600,  # 10 minutes
         **init_params,
     )
 
@@ -1811,6 +1812,7 @@ async def mcp_agent(options: Chat):
                 if options.is_cloud()
                 else None
             ),
+            timeout=600,  # 10 minutes
             **{
                 k: v
                 for k, v in (options.extra_params or {}).items()

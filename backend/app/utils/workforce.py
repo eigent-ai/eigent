@@ -62,7 +62,7 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
-            task_timeout_seconds=1800,  # 30 minutes
+            task_timeout_seconds=3600,  # 60 minutes
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"], ),
         )

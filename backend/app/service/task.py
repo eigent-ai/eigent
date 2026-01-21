@@ -503,7 +503,7 @@ async def _periodic_cleanup():
             await asyncio.sleep(300)  # Run every 5 minutes
 
             current_time = datetime.now()
-            stale_timeout = timedelta(hours=2)  # Consider tasks stale after 2 hours
+            stale_timeout = timedelta(hours=4)  # Consider tasks stale after 4 hours
 
             stale_ids = []
             for task_id, task_lock in task_locks.items():

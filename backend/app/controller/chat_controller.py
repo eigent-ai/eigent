@@ -36,8 +36,8 @@ router = APIRouter()
 # Logger for chat controller
 chat_logger = logging.getLogger("chat_controller")
 
-# SSE timeout configuration (30 minutes in seconds)
-SSE_TIMEOUT_SECONDS = 30 * 60
+# SSE timeout configuration (60 minutes in seconds)
+SSE_TIMEOUT_SECONDS = 60 * 60
 
 
 async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
