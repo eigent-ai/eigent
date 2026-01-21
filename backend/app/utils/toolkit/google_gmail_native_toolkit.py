@@ -78,7 +78,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         attachments: Optional[List[str]] = None,
         is_html: bool = False,
     ) -> Dict[str, Any]:
-        return super().send_email(to, subject, body, cc, bcc, attachments, is_html)
+        return super().gmail_send_email(to, subject, body, cc, bcc, attachments, is_html)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_reply_to_email,
@@ -91,7 +91,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         reply_all: bool = False,
         is_html: bool = False,
     ) -> Dict[str, Any]:
-        return super().reply_to_email(message_id, reply_body, reply_all, is_html)
+        return super().gmail_reply_to_email(message_id, reply_body, reply_all, is_html)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_forward_email,
@@ -106,38 +106,21 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         bcc: Optional[Union[str, List[str]]] = None,
         include_attachments: bool = True,
     ) -> Dict[str, Any]:
-        return super().forward_email(message_id, to, forward_body, cc, bcc, include_attachments)
-
-    # Draft Operations
-    @listen_toolkit(
-        BaseGmailToolkit.gmail_create_email_draft,
-        lambda _, to, subject, **kwargs: f"Creating draft to '{to}' with subject '{subject}'"
-    )
-    def create_email_draft(
-        self,
-        to: Union[str, List[str]],
-        subject: str,
-        body: str,
-        cc: Optional[Union[str, List[str]]] = None,
-        bcc: Optional[Union[str, List[str]]] = None,
-        attachments: Optional[List[str]] = None,
-        is_html: bool = False,
-    ) -> Dict[str, Any]:
-        return super().create_email_draft(to, subject, body, cc, bcc, attachments, is_html)
-
+        return super().gmail_forward_email(message_id, to, forward_body, cc, bcc, include_attachments)
+    
     @listen_toolkit(
         BaseGmailToolkit.gmail_send_draft,
         lambda _, draft_id: f"Sending draft {draft_id}"
     )
     def send_draft(self, draft_id: str) -> Dict[str, Any]:
-        return super().send_draft(draft_id)
+        return super().gmail_send_draft(draft_id)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_list_drafts,
         lambda _, max_results=10: f"Listing {max_results} drafts"
     )
     def list_drafts(self, max_results: int = 10) -> Dict[str, Any]:
-        return super().list_drafts(max_results)
+        return super().gmail_list_drafts(max_results)
 
     # Email Fetching Operations
     @listen_toolkit(
@@ -151,14 +134,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         include_spam_trash: bool = False,
         label_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        return super().fetch_emails(query, max_results, include_spam_trash, label_ids)
+        return super().gmail_fetch_emails(query, max_results, include_spam_trash, label_ids)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_fetch_thread_by_id,
         lambda _, thread_id: f"Fetching thread {thread_id}"
     )
     def fetch_thread_by_id(self, thread_id: str) -> Dict[str, Any]:
-        return super().fetch_thread_by_id(thread_id)
+        return super().gmail_fetch_thread_by_id(thread_id)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_list_threads,
@@ -172,7 +155,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         label_ids: Optional[List[str]] = None,
         page_token: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return super().list_threads(query, max_results, include_spam_trash, label_ids, page_token)
+        return super().gmail_list_threads(query, max_results, include_spam_trash, label_ids, page_token)
 
     # Label Management
     @listen_toolkit(
@@ -186,7 +169,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         add_labels: Optional[List[str]] = None,
         remove_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        return super().modify_email_labels(message_id, add_labels, remove_labels)
+        return super().gmail_modify_email_labels(message_id, add_labels, remove_labels)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_modify_thread_labels,
@@ -199,14 +182,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         add_labels: Optional[List[str]] = None,
         remove_labels: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        return super().modify_thread_labels(thread_id, add_labels, remove_labels)
+        return super().gmail_modify_thread_labels(thread_id, add_labels, remove_labels)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_list_gmail_labels,
         lambda _: "Listing all Gmail labels"
     )
     def list_gmail_labels(self) -> Dict[str, Any]:
-        return super().list_gmail_labels()
+        return super().gmail_list_gmail_labels()
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_create_label,
@@ -218,14 +201,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         label_list_visibility: Literal["labelShow", "labelHide"] = "labelShow",
         message_list_visibility: Literal["show", "hide"] = "show",
     ) -> Dict[str, Any]:
-        return super().create_label(name, label_list_visibility, message_list_visibility)
+        return super().gmail_create_label(name, label_list_visibility, message_list_visibility)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_delete_label,
         lambda _, label_id: f"Deleting label {label_id}"
     )
     def delete_label(self, label_id: str) -> Dict[str, Any]:
-        return super().delete_label(label_id)
+        return super().gmail_delete_label(label_id)
 
     # Utility Operations
     @listen_toolkit(
@@ -233,7 +216,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         lambda _, message_id: f"Moving message {message_id} to trash"
     )
     def move_to_trash(self, message_id: str) -> Dict[str, Any]:
-        return super().move_to_trash(message_id)
+        return super().gmail_move_to_trash(message_id)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_get_attachment,
@@ -246,14 +229,14 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         attachment_id: str,
         save_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return super().get_attachment(message_id, attachment_id, save_path)
+        return super().gmail_get_attachment(message_id, attachment_id, save_path)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_get_profile,
         lambda _: "Getting Gmail profile"
     )
     def get_profile(self) -> Dict[str, Any]:
-        return super().get_profile()
+        return super().gmail_get_profile()
 
     # Contact Operations
     @listen_toolkit(
@@ -265,7 +248,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         query: str = "",
         max_results: int = 100,
     ) -> Dict[str, Any]:
-        return super().get_contacts(query, max_results)
+        return super().gmail_get_contacts(query, max_results)
 
     @listen_toolkit(
         BaseGmailToolkit.gmail_search_people,
@@ -276,7 +259,7 @@ class GoogleGmailNativeToolkit(BaseGmailToolkit, AbstractToolkit):
         query: str,
         max_results: int = 10,
     ) -> Dict[str, Any]:
-        return super().search_people(query, max_results)
+        return super().gmail_search_people(query, max_results)
 
     def _get_gmail_service(self):
         """Get Gmail service with authenticated credentials."""
