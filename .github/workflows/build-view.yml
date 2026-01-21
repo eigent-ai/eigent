@@ -35,14 +35,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Cache npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
