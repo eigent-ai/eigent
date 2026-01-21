@@ -342,49 +342,49 @@ export default function SignUp() {
 								</p>
 							)}
 							<div className="flex flex-col gap-4 w-full mb-4 relative">
-								<Input
-									id="email"
-									type="email"
-									size="default"
-									title={t("layout.email")}
-									placeholder={t("layout.enter-your-email")}
-									required
-									value={formData.email}
-									onChange={(e) => handleInputChange("email", e.target.value)}
-									state={errors.email ? "error" : undefined}
-									note={errors.email}
-								/>
+									<Input
+										id="email"
+										type="email"
+										size="default"
+										title={t("layout.email")}
+										placeholder={t("layout.enter-your-email")}
+										required
+										value={formData.email}
+										onChange={(e) => handleInputChange("email", e.target.value)}
+										state={errors.email ? "error" : undefined}
+										note={errors.email}
+									/>
 
-								<Input
-									id="password"
-									title={t("layout.password")}
-									size="default"
-									type={hidePassword ? "password" : "text"}
-									required
-									placeholder={t("layout.enter-your-password")}
-									value={formData.password}
-									onChange={(e) =>
-										handleInputChange("password", e.target.value)
-									}
-									state={errors.password ? "error" : undefined}
-									note={errors.password}
-									backIcon={<img src={hidePassword ? eye : eyeOff} />}
-									onBackIconClick={() => setHidePassword(!hidePassword)}
-								/>
+									<Input
+										id="password"
+										title={t("layout.password")}
+										size="default"
+										type={hidePassword ? "password" : "text"}
+										required
+										placeholder={t("layout.enter-your-password")}
+										value={formData.password}
+										onChange={(e) =>
+											handleInputChange("password", e.target.value)
+										}
+										state={errors.password ? "error" : undefined}
+										note={errors.password}
+										backIcon={<img src={hidePassword ? eye : eyeOff} />}
+										onBackIconClick={() => setHidePassword(!hidePassword)}
+									/>
 
-								<Input
-									id="invite_code"
-									title={t("layout.invitation-code-optional")}
-									size="default"
-									type="text"
-									placeholder={t("layout.enter-your-invite-code")}
-									value={formData.invite_code}
-									onChange={(e) =>
-										handleInputChange("invite_code", e.target.value)
-									}
-									state={errors.invite_code ? "error" : undefined}
-									note={errors.invite_code}
-								/>
+									<Input
+										id="invite_code"
+										title={t("layout.invitation-code-optional")}
+										size="default"
+										type="text"
+										placeholder={t("layout.enter-your-invite-code")}
+										value={formData.invite_code}
+										onChange={(e) =>
+											handleInputChange("invite_code", e.target.value)
+										}
+										state={errors.invite_code ? "error" : undefined}
+										note={errors.invite_code}
+									/>
 							</div>
 						</div>
 						<Button
@@ -404,11 +404,7 @@ export default function SignUp() {
 						variant="ghost"
 						size="xs"
 						onClick={() =>
-							window.open(
-								"https://www.eigent.ai/privacy-policy",
-								"_blank",
-								"noopener,noreferrer"
-							)
+							window.open("https://www.eigent.ai/privacy-policy", "_blank", "noopener,noreferrer")
 						}
 					>
 						{t("layout.privacy-policy")}
