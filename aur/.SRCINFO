@@ -1,0 +1,18 @@
+pkgbase = eigent-bin
+	pkgdesc = AI-powered desktop agent for browser automation
+	pkgver = 0.0.80
+	pkgrel = 1
+	url = https://github.com/eigent-ai/eigent
+	arch = x86_64
+	license = MIT
+	depends = hicolor-icon-theme
+	optdepends = tesseract: OCR support
+	optdepends = ffmpeg: video processing
+	provides = eigent
+	conflicts = eigent
+	conflicts = eigent-git
+	options = !strip
+	source = eigent-bin-0.0.80.AppImage::https://github.com/eigent-ai/eigent/releases/download/v0.0.80/Eigent-0.0.80.AppImage
+	sha256sums = SKIP
+
+pkgname = eigent-bin
