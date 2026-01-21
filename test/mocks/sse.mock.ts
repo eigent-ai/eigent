@@ -81,7 +81,7 @@ export const issue619SseSequence = [
     event: {
       step: 'create_agent',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         agent_id: 'c249ac7b-6745-4832-a5c1-3238f9176434',
         tools: ['Search Toolkit', 'Browser Toolkit', 'Human Toolkit', 'Note Taking Toolkit', 'Terminal Toolkit']
       }
@@ -92,7 +92,7 @@ export const issue619SseSequence = [
     event: {
       step: 'deactivate_toolkit',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
@@ -129,11 +129,11 @@ export const issue619SseSequence = [
     event: {
       step: 'activate_toolkit',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-5)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-5)'
       }
     },
     delay:  100
@@ -153,11 +153,11 @@ export const issue619SseSequence = [
     event: {
       step: 'activate_toolkit',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-5)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-5)'
       }
     },
     delay:  100
@@ -200,11 +200,11 @@ export const issue619SseSequence = [
     event: {
       step: 'activate_toolkit',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-4.1)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-4.1)'
       }
     },
     delay:  100
@@ -248,7 +248,7 @@ export const issue619SseSequence = [
     event: {
       step: 'deactivate_toolkit',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
@@ -272,11 +272,11 @@ export const issue619SseSequence = [
     event: {
       step: 'activate_toolkit',
       data: {
-        agent_name: 'search_agent',
+        agent_name: 'browser_agent',
         process_task_id: '',
         toolkit_name: 'Browser Toolkit',
         method_name: 'register agent',
-        message: 'ChatAgent(Search Agent, RoleType.ASSISTANT, gpt-4.1)'
+        message: 'ChatAgent(Browser Agent, RoleType.ASSISTANT, gpt-4.1)'
       }
     },
     delay:  1100

@@ -19,7 +19,7 @@ from app.utils.agent import (
     question_confirm_agent,
     task_summary_agent,
     developer_agent,
-    search_agent,
+    browser_agent,
     document_agent,
     multi_modal_agent,
     social_medium_agent,
@@ -520,8 +520,8 @@ class TestAgentFactoryFunctions:
             tools_arg = call_args[0][3]  # tools argument
             assert isinstance(tools_arg, list)
 
-    def test_search_agent_creation(self, sample_chat_data):
-        """Test search_agent creates agent with search tools."""
+    def test_browser_agent_creation(self, sample_chat_data):
+        """Test browser_agent creates agent with search tools."""
         options = Chat(**sample_chat_data)
         
         # Setup task lock in the registry before calling agent function
@@ -557,14 +557,14 @@ class TestAgentFactoryFunctions:
             mock_agent = MagicMock()
             mock_agent_model.return_value = mock_agent
             
-            result = search_agent(options)
+            result = browser_agent(options)
             
             assert result is mock_agent
             mock_agent_model.assert_called_once()
             
-            # Check that it was called with search agent configuration
+            # Check that it was called with browser agent configuration
             call_args = mock_agent_model.call_args
-            assert "search_agent" in str(call_args[0][0])  # agent_name (enum contains this value)
+            assert "browser_agent" in str(call_args[0][0])  # agent_name (enum contains this value)
             # The system_prompt is a BaseMessage, so check its content attribute
             system_message = call_args[0][1]
             if hasattr(system_message, 'content'):

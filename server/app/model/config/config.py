@@ -43,6 +43,10 @@ class ConfigInfo:
             "env_vars": ["SLACK_BOT_TOKEN"],
             "toolkit": "slack_toolkit",
         },
+        ConfigGroup.LARK.value: {
+            "env_vars": ["LARK_APP_ID", "LARK_APP_SECRET"],
+            "toolkit": "lark_toolkit",
+        },
         ConfigGroup.NOTION.value: {
             "env_vars": ["MCP_REMOTE_CONFIG_DIR"],
             "toolkit": "notion_mcp_toolkit",

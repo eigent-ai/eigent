@@ -73,9 +73,9 @@ export default function SettingModels() {
 		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => false)
 	);
 	const [loading, setLoading] = useState<number | null>(null);
-const [errors, setErrors] = useState<
-    { apiKey?: string; apiHost?: string; model_type?: string; externalConfig?: string }[]
->(() =>
+	const [errors, setErrors] = useState<
+		{ apiKey?: string; apiHost?: string; model_type?: string; externalConfig?: string }[]
+	>(() =>
 		INIT_PROVODERS.filter((p) => p.id !== "local").map(() => ({
 			apiKey: "",
 			apiHost: "",
@@ -123,14 +123,14 @@ const [errors, setErrors] = useState<
 								model_type: found.model_type ?? "",
 								externalConfig: fi.externalConfig
 									? fi.externalConfig.map((ec) => {
-											if (
-												found.encrypted_config &&
-												found.encrypted_config[ec.key] !== undefined
-											) {
-												return { ...ec, value: found.encrypted_config[ec.key] };
-											}
-											return ec;
-									  })
+										if (
+											found.encrypted_config &&
+											found.encrypted_config[ec.key] !== undefined
+										) {
+											return { ...ec, value: found.encrypted_config[ec.key] };
+										}
+										return ec;
+									})
 									: undefined,
 							};
 						}
@@ -146,8 +146,8 @@ const [errors, setErrors] = useState<
 					setLocalEndpoint(local.endpoint_url || "");
 					setLocalPlatform(
 						local.encrypted_config?.model_platform ||
-							local.provider_name ||
-							"ollama"
+						local.provider_name ||
+						"ollama"
 					);
 					setLocalType(local.encrypted_config?.model_type || "llama3.2");
 					setLocalEnabled(local.is_valid ?? true);
@@ -216,7 +216,7 @@ const [errors, setErrors] = useState<
 		}
 
 		console.log(form[idx]);
-      try {
+		try {
 			const res = await fetchPost("/model/validate", {
 				model_platform: item.id,
 				model_type: form[idx].model_type,
@@ -224,7 +224,7 @@ const [errors, setErrors] = useState<
 				url: form[idx].apiHost,
 				extra_params: external,
 			});
-        if (res.is_tool_calls && res.is_valid) {
+			if (res.is_tool_calls && res.is_valid) {
 				console.log("success");
 				toast(t("setting.validate-success"), {
 					description: t(
@@ -233,27 +233,27 @@ const [errors, setErrors] = useState<
 					closeButton: true,
 				});
 			} else {
-          console.log("failed", res.message);
-          // Surface error inline on API Key input
-          setErrors((prev) => {
-            const next = [...prev];
-            if (!next[idx]) next[idx] = {} as any;
-            next[idx].apiKey = getValidateMessage(res);
-            return next;
-          });
-          return;
+				console.log("failed", res.message);
+				// Surface error inline on API Key input
+				setErrors((prev) => {
+					const next = [...prev];
+					if (!next[idx]) next[idx] = {} as any;
+					next[idx].apiKey = getValidateMessage(res);
+					return next;
+				});
+				return;
 			}
 			console.log(res);
 		} catch (e) {
-        console.log(e);
-        // Network/exception case: show inline error
-        setErrors((prev) => {
-          const next = [...prev];
-          if (!next[idx]) next[idx] = {} as any;
-          next[idx].apiKey = getValidateMessage(e);
-          return next;
-        });
-        return;
+			console.log(e);
+			// Network/exception case: show inline error
+			setErrors((prev) => {
+				const next = [...prev];
+				if (!next[idx]) next[idx] = {} as any;
+				next[idx].apiKey = getValidateMessage(e);
+				return next;
+			});
+			return;
 		} finally {
 			setLoading(null);
 		}
@@ -296,14 +296,14 @@ const [errors, setErrors] = useState<
 							prefer: found.prefer ?? false,
 							externalConfig: fi.externalConfig
 								? fi.externalConfig.map((ec) => {
-										if (
-											found.encrypted_config &&
-											found.encrypted_config[ec.key] !== undefined
-										) {
-											return { ...ec, value: found.encrypted_config[ec.key] };
-										}
-										return ec;
-								  })
+									if (
+										found.encrypted_config &&
+										found.encrypted_config[ec.key] !== undefined
+									) {
+										return { ...ec, value: found.encrypted_config[ec.key] };
+									}
+									return ec;
+								})
 								: undefined,
 						};
 					}
@@ -436,8 +436,8 @@ const [errors, setErrors] = useState<
 				setLocalPrefer(local.prefer ?? false);
 				setLocalPlatform(
 					local.encrypted_config?.model_platform ||
-						local.provider_name ||
-						localPlatform
+					local.provider_name ||
+					localPlatform
 				);
 				await handleLocalSwitch(true, local.id);
 			}
@@ -583,7 +583,7 @@ const [errors, setErrors] = useState<
 		}
 	};
 
-// removed bulk reset; only single-provider delete is supported
+	// removed bulk reset; only single-provider delete is supported
 
 	const checkHasSearchKey = async () => {
 		const configsRes = await proxyFetchGet("/api/configs");
@@ -630,37 +630,37 @@ const [errors, setErrors] = useState<
 							<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
 								{t("setting.eigent-cloud-version")}
 							</div>
-						{cloudPrefer ? (
-							<Button
-								variant="success"
-								size="sm"
-								className="focus-none"
-								onClick={() => {
-									// currently selected -> unselect
-									setCloudPrefer(false);
-									setModelType("custom");
-								}}
-							>
-								Default
-								<Check/>
-							</Button>
-						) : (
-							<Button
-								variant="ghost"
-								size="sm"
-								className="!text-text-label"
-								onClick={() => {
-									// not selected -> select cloud prefer
-									setLocalPrefer(false);
-									setActiveModelIdx(null);
-									setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-									setCloudPrefer(true);
-									setModelType("cloud");
-								}}
-							>
-								Set as Default
-							</Button>
-						)}
+							{cloudPrefer ? (
+								<Button
+									variant="success"
+									size="sm"
+									className="focus-none"
+									onClick={() => {
+										// currently selected -> unselect
+										setCloudPrefer(false);
+										setModelType("custom");
+									}}
+								>
+									Default
+									<Check />
+								</Button>
+							) : (
+								<Button
+									variant="ghost"
+									size="sm"
+									className="!text-text-label"
+									onClick={() => {
+										// not selected -> select cloud prefer
+										setLocalPrefer(false);
+										setActiveModelIdx(null);
+										setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+										setCloudPrefer(true);
+										setModelType("cloud");
+									}}
+								>
+									Set as Default
+								</Button>
+							)}
 						</div>
 						<div className="self-stretch justify-center">
 							<span className="text-text-label text-body-sm">
@@ -726,20 +726,26 @@ const [errors, setErrors] = useState<
 										{cloud_model_type === "gpt-4.1-mini"
 											? t("setting.gpt-4.1-mini")
 											: cloud_model_type === "gpt-4.1"
-											? t("setting.gpt-4.1")
-											: cloud_model_type === "claude-sonnet-4-5"
-											? t("setting.claude-sonnet-4-5")
-											: cloud_model_type === "claude-sonnet-4-20250514"
-											? t("setting.claude-sonnet-4")
-											: cloud_model_type === "claude-3-5-haiku-20241022"
-											? t("setting.claude-3.5-haiku")
-											: cloud_model_type === "gemini-3-pro-preview"
-											? t("setting.gemini-3-pro-preview")
-											: cloud_model_type === "gpt-5"
-											? t("setting.gpt-5")
-											: cloud_model_type === "gpt-5-mini"
-											? t("setting.gpt-5-mini")
-											: t("setting.gemini-2.5-pro")}
+												? t("setting.gpt-4.1")
+												: cloud_model_type === "claude-sonnet-4-5"
+													? t("setting.claude-sonnet-4-5")
+													: cloud_model_type === "claude-sonnet-4-20250514"
+														? t("setting.claude-sonnet-4")
+														: cloud_model_type === "claude-3-5-haiku-20241022"
+															? t("setting.claude-3.5-haiku")
+															: cloud_model_type === "gemini-3-pro-preview"
+																? t("setting.gemini-3-pro-preview")
+																: cloud_model_type === "gpt-5"
+																	? t("setting.gpt-5")
+																	: cloud_model_type === "gpt-5.1"
+																		? t("setting.gpt-5")
+																		: cloud_model_type === "gpt-5.2"
+																			? t("setting.gpt-5")
+																	: cloud_model_type === "gpt-5-mini"
+																		? t("setting.gpt-5-mini")
+																		: cloud_model_type === "gemini-3-flash-preview"
+																			? t("setting.gemini-3-flash-preview")
+																			: t("setting.gemini-2.5-pro")}
 									</span>
 								</TooltipContent>
 							</Tooltip>
@@ -756,9 +762,12 @@ const [errors, setErrors] = useState<
 									<SelectItem value="gemini/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
 									<SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
 									<SelectItem value="gemini-3-pro-preview">Gemini 3 Pro Preview</SelectItem>
+									<SelectItem value="gemini-3-flash-preview">Gemini 3 Flash Preview</SelectItem>
 									<SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
 									<SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
 									<SelectItem value="gpt-5">GPT-5</SelectItem>
+									<SelectItem value="gpt-5.1">GPT-5.1</SelectItem>
+									<SelectItem value="gpt-5.2">GPT-5.2</SelectItem>
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
@@ -779,14 +788,14 @@ const [errors, setErrors] = useState<
 			<div className="self-stretch my-2 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
 				{/* header */}
 				<div className="sticky top-[87px] py-2 z-10 bg-surface-tertiary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 my-6 border-y-0 border-r-0 border-solid border-border-secondary">
-						<div className="flex flex-col w-full items-start gap-1">
-								<span className="justify-center text-text-body text-body-md font-bold">
-									{t("setting.custom-model")}
-								</span>
-								<span className="justify-center text-text-body text-label-sm font-normal">
-									{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
-								</span>
-						</div>
+					<div className="flex flex-col w-full items-start gap-1">
+						<span className="justify-center text-text-body text-body-md font-bold">
+							{t("setting.custom-model")}
+						</span>
+						<span className="justify-center text-text-body text-label-sm font-normal">
+							{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
+						</span>
+					</div>
 					<Button
 						variant="ghost"
 						size="md"
@@ -806,11 +815,10 @@ const [errors, setErrors] = useState<
 
 				{/*  model list */}
 				<div
-					className={`self-stretch inline-flex flex-col justify-start items-start gap-8 transition-all duration-300 ease-in-out overflow-hidden ${
-						collapsed
-							? "max-h-0 opacity-0 pointer-events-none"
-							: "opacity-100"
-					}`}
+					className={`self-stretch inline-flex flex-col justify-start items-start gap-8 transition-all duration-300 ease-in-out overflow-hidden ${collapsed
+						? "max-h-0 opacity-0 pointer-events-none"
+						: "opacity-100"
+						}`}
 					style={{
 						transform: collapsed ? "translateY(-10px)" : "translateY(0)",
 					}}
@@ -823,119 +831,116 @@ const [errors, setErrors] = useState<
 								className="w-full bg-surface-secondary rounded-2xl overflow-hidden"
 							>
 								<div className="flex flex-col justify-between items-start gap-1 px-6 py-4">
-								  <div className="self-stretch inline-flex justify-between items-center gap-2">
+									<div className="self-stretch inline-flex justify-between items-center gap-2">
 										<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
 											{item.name}
 										</div>
-									{form[idx].prefer ? (
-										<Button
-											variant="success"
-											size="sm"
-											className="focus-none"
-											disabled={!canSwitch || loading === idx}
-											onClick={() => handleSwitch(idx, false)}
-										>
-											Default
-											<Check />
-										</Button>
-									) : (
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={!canSwitch || loading === idx}
-											onClick={() => handleSwitch(idx, true)}
-											className={canSwitch ? "!text-text-label" : ""}
-										>
-											{!canSwitch ? "Not Configured" : "Set as Default"}
-										</Button>
-									)}
+										{form[idx].prefer ? (
+											<Button
+												variant="success"
+												size="sm"
+												className="focus-none"
+												disabled={!canSwitch || loading === idx}
+												onClick={() => handleSwitch(idx, false)}
+											>
+												Default
+												<Check />
+											</Button>
+										) : (
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={!canSwitch || loading === idx}
+												onClick={() => handleSwitch(idx, true)}
+												className={canSwitch ? "!text-text-label" : ""}
+											>
+												{!canSwitch ? "Not Configured" : "Set as Default"}
+											</Button>
+										)}
 									</div>
 									<div className="text-body-sm text-text-label">
-											{item.description}
-										</div>
+										{item.description}
+									</div>
 								</div>
 								<div className="flex flex-col w-full items-center gap-4 px-6">
-										{/* API Key Setting */}
-										<Input
-											id={`apiKey-${item.id}`}
-											type={showApiKey[idx] ? "text" : "password"}
-											size="default"
-											title="API Key Setting"
-											state={errors[idx]?.apiKey ? "error" : "default"}
-											note={errors[idx]?.apiKey ?? undefined}
-											placeholder={` ${t("setting.enter-your-api-key")} ${
-											    item.name
-													} ${t("setting.key")}`}
-											backIcon={showApiKey[idx] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
-											onBackIconClick={() =>
-														setShowApiKey((arr) => arr.map((v, i) => (i === idx ? !v : v)))
-													}
-											value={form[idx].apiKey}
-											onChange={(e) => {
-													const v = e.target.value;
-													setForm((f) =>
-														f.map((fi, i) =>
-															i === idx ? { ...fi, apiKey: v } : fi
-														)
-													);
-													setErrors((errs) =>
-														errs.map((er, i) =>
-															i === idx ? { ...er, apiKey: "" } : er
-														)
-													);
-											}}
-										/>
-										{/* API Host Setting */}
-										<Input
-											id={`apiHost-${item.id}`}
-											size="default"
-											title="API Host Setting"
-											state={errors[idx]?.apiHost ? "error" : "default"}
-											note={errors[idx]?.apiHost ?? undefined}
-											placeholder={`${t("setting.enter-your-api-host")} ${
-												item.name
+									{/* API Key Setting */}
+									<Input
+										id={`apiKey-${item.id}`}
+										type={showApiKey[idx] ? "text" : "password"}
+										size="default"
+										title="API Key Setting"
+										state={errors[idx]?.apiKey ? "error" : "default"}
+										note={errors[idx]?.apiKey ?? undefined}
+										placeholder={` ${t("setting.enter-your-api-key")} ${item.name
+											} ${t("setting.key")}`}
+										backIcon={showApiKey[idx] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+										onBackIconClick={() =>
+											setShowApiKey((arr) => arr.map((v, i) => (i === idx ? !v : v)))
+										}
+										value={form[idx].apiKey}
+										onChange={(e) => {
+											const v = e.target.value;
+											setForm((f) =>
+												f.map((fi, i) =>
+													i === idx ? { ...fi, apiKey: v } : fi
+												)
+											);
+											setErrors((errs) =>
+												errs.map((er, i) =>
+													i === idx ? { ...er, apiKey: "" } : er
+												)
+											);
+										}}
+									/>
+									{/* API Host Setting */}
+									<Input
+										id={`apiHost-${item.id}`}
+										size="default"
+										title="API Host Setting"
+										state={errors[idx]?.apiHost ? "error" : "default"}
+										note={errors[idx]?.apiHost ?? undefined}
+										placeholder={`${t("setting.enter-your-api-host")} ${item.name
 											} ${t("setting.url")}`}
-											value={form[idx].apiHost}
-											onChange={(e) => {
-												const v = e.target.value;
-												setForm((f) =>
-													f.map((fi, i) =>
-														i === idx ? { ...fi, apiHost: v } : fi
-													)
-												);
-												setErrors((errs) =>
-													errs.map((er, i) =>
-														i === idx ? { ...er, apiHost: "" } : er
-													)
-												);
-											}}
-										/>
-										{/* Model Type Setting */}
-										<Input
-											id={`modelType-${item.id}`}
-											size="default"
-											title="Model Type Setting"
-											state={errors[idx]?.model_type ? "error" : "default"}
-											note={errors[idx]?.model_type ?? undefined}
-											placeholder={`${t("setting.enter-your-model-type")} ${
-												item.name
+										value={form[idx].apiHost}
+										onChange={(e) => {
+											const v = e.target.value;
+											setForm((f) =>
+												f.map((fi, i) =>
+													i === idx ? { ...fi, apiHost: v } : fi
+												)
+											);
+											setErrors((errs) =>
+												errs.map((er, i) =>
+													i === idx ? { ...er, apiHost: "" } : er
+												)
+											);
+										}}
+									/>
+									{/* Model Type Setting */}
+									<Input
+										id={`modelType-${item.id}`}
+										size="default"
+										title="Model Type Setting"
+										state={errors[idx]?.model_type ? "error" : "default"}
+										note={errors[idx]?.model_type ?? undefined}
+										placeholder={`${t("setting.enter-your-model-type")} ${item.name
 											} ${t("setting.model-type")}`}
-											value={form[idx].model_type}
-											onChange={(e) => {
-												const v = e.target.value;
-												setForm((f) =>
-													f.map((fi, i) =>
-														i === idx ? { ...fi, model_type: v } : fi
-													)
-												);
-												setErrors((errs) =>
-													errs.map((er, i) =>
-														i === idx ? { ...er, model_type: "" } : er
-													)
-												);
-											}}
-										/>
-										{/* externalConfig render */}
+										value={form[idx].model_type}
+										onChange={(e) => {
+											const v = e.target.value;
+											setForm((f) =>
+												f.map((fi, i) =>
+													i === idx ? { ...fi, model_type: v } : fi
+												)
+											);
+											setErrors((errs) =>
+												errs.map((er, i) =>
+													i === idx ? { ...er, model_type: "" } : er
+												)
+											);
+										}}
+									/>
+									{/* externalConfig render */}
 									{item.externalConfig &&
 										form[idx].externalConfig &&
 										form[idx].externalConfig.map((ec, ecIdx) => (
@@ -948,14 +953,14 @@ const [errors, setErrors] = useState<
 																f.map((fi, i) =>
 																	i === idx
 																		? {
-																				...fi,
-																				externalConfig: fi.externalConfig?.map(
-																					(eec, i2) =>
-																						i2 === ecIdx
-																							? { ...eec, value: v }
-																							: eec
-																				),
-																		  }
+																			...fi,
+																			externalConfig: fi.externalConfig?.map(
+																				(eec, i2) =>
+																					i2 === ecIdx
+																						? { ...eec, value: v }
+																						: eec
+																			),
+																		}
 																		: fi
 																)
 															);
@@ -985,14 +990,14 @@ const [errors, setErrors] = useState<
 																f.map((fi, i) =>
 																	i === idx
 																		? {
-																				...fi,
-																				externalConfig: fi.externalConfig?.map(
-																					(eec, i2) =>
-																						i2 === ecIdx
-																							? { ...eec, value: v }
-																							: eec
-																				),
-																		  }
+																			...fi,
+																			externalConfig: fi.externalConfig?.map(
+																				(eec, i2) =>
+																					i2 === ecIdx
+																						? { ...eec, value: v }
+																						: eec
+																			),
+																		}
 																		: fi
 																)
 															);
@@ -1002,9 +1007,9 @@ const [errors, setErrors] = useState<
 											</div>
 										))}
 								</div>
-						{/* Action Button */}
+								{/* Action Button */}
 								<div className="flex justify-end mt-6 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
-							    <Button variant="ghost" size="sm" className="!text-text-label" onClick={() => handleDelete(idx)}>{t("setting.reset")}</Button>
+									<Button variant="ghost" size="sm" className="!text-text-label" onClick={() => handleDelete(idx)}>{t("setting.reset")}</Button>
 									<Button
 										variant="primary"
 										size="sm"
@@ -1050,48 +1055,48 @@ const [errors, setErrors] = useState<
 				</div>
 				<div className="flex flex-col gap-4 px-6">
 
-						<Select
-							value={localPlatform}
-							onValueChange={(v) => {
-								console.log(v);
-								setLocalPlatform(v);
-							}}
-							disabled={!localEnabled}
-						>
-							<SelectTrigger size="default" title={t("setting.model-platform")} state={localInputError ? "error" : undefined} note={localError ?? undefined}>
-								<SelectValue placeholder="Select platform" />
-							</SelectTrigger>
-							<SelectContent className="bg-white-100%">
-								<SelectItem value="ollama">Ollama</SelectItem>
-								<SelectItem value="vllm">vLLM</SelectItem>
-								<SelectItem value="sglang">Sglang</SelectItem>
-								<SelectItem value="lmstudio">LMStudio</SelectItem>
-							</SelectContent>
-						</Select>
+					<Select
+						value={localPlatform}
+						onValueChange={(v) => {
+							console.log(v);
+							setLocalPlatform(v);
+						}}
+						disabled={!localEnabled}
+					>
+						<SelectTrigger size="default" title={t("setting.model-platform")} state={localInputError ? "error" : undefined} note={localError ?? undefined}>
+							<SelectValue placeholder="Select platform" />
+						</SelectTrigger>
+						<SelectContent className="bg-white-100%">
+							<SelectItem value="ollama">Ollama</SelectItem>
+							<SelectItem value="vllm">vLLM</SelectItem>
+							<SelectItem value="sglang">SGLang</SelectItem>
+							<SelectItem value="lmstudio">LMStudio</SelectItem>
+						</SelectContent>
+					</Select>
 
-						<Input
-						  size="default"
-							title={t("setting.model-endpoint-url")}
-							state={localInputError ? "error" : "default"}
-							value={localEndpoint}
-							onChange={(e) => {
-								setLocalEndpoint(e.target.value);
-								setLocalInputError(false);
-								setLocalError(null);
-							}}
-							disabled={!localEnabled}
-							placeholder="http://localhost:11434/v1"
-							note={localError ?? undefined}
-						/>
-						<Input
-							size="default"
-							title={t("setting.model-type")}
-							state={localInputError ? "error" : "default"}
-							placeholder={t("setting.enter-your-local-model-type")}
-							value={localType}
-							onChange={(e) => setLocalType(e.target.value)}
-							disabled={!localEnabled}
-						/>
+					<Input
+						size="default"
+						title={t("setting.model-endpoint-url")}
+						state={localInputError ? "error" : "default"}
+						value={localEndpoint}
+						onChange={(e) => {
+							setLocalEndpoint(e.target.value);
+							setLocalInputError(false);
+							setLocalError(null);
+						}}
+						disabled={!localEnabled}
+						placeholder="http://localhost:11434/v1"
+						note={localError ?? undefined}
+					/>
+					<Input
+						size="default"
+						title={t("setting.model-type")}
+						state={localInputError ? "error" : "default"}
+						placeholder={t("setting.enter-your-local-model-type")}
+						value={localType}
+						onChange={(e) => setLocalType(e.target.value)}
+						disabled={!localEnabled}
+					/>
 				</div>
 				<div className="flex justify-end mt-2 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
 					<Button variant="ghost" size="sm" className="!text-text-label" onClick={handleLocalReset}>{t("setting.reset")}</Button>
