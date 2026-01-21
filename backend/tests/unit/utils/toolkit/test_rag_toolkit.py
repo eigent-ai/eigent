@@ -169,7 +169,11 @@ class TestRAGToolkitIntegration:
             
             assert "Successfully added" in result
             assert "doc-001" in result
+            # Verify process was called with extra_info (CAMEL's parameter name)
             mock_retriever.process.assert_called_once()
+            call_kwargs = mock_retriever.process.call_args[1]
+            assert "extra_info" in call_kwargs
+            assert call_kwargs["extra_info"]["doc_id"] == "doc-001"
 
     @patch('app.utils.toolkit.rag_toolkit.OpenAIEmbedding')
     @patch('app.utils.toolkit.rag_toolkit.QdrantStorage')

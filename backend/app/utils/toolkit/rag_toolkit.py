@@ -124,7 +124,7 @@ class RAGToolkit(BaseToolkit, AbstractToolkit):
             # Process content into chunks and store
             retriever.process(
                 content=content,
-                metadata=doc_metadata,
+                extra_info=doc_metadata,
             )
             
             logger.info(f"Added document {doc_id} to collection {self.collection_name}")
