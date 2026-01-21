@@ -126,7 +126,7 @@ jobs:
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-namespace-profile-mac-large-arm64
+          name: release-depot-macos-latest-arm64
           path: temp-mac-arm64
 
       # - name: Download win-x64 artifact
