@@ -343,7 +343,7 @@ function HeaderWin() {
 									onClick={exportLog}
 									variant="ghost"
 									size="icon"
-									className="no-drag"
+									className="no-drag rounded-full"
 								>
 									<FileDown className="w-4 h-4" />
 								</Button>
