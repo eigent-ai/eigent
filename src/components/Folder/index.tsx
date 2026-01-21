@@ -700,6 +700,37 @@ function joinPath(...paths: string[]): string {
     .replace(/\/+/g, '/');
 }
 
+// Helper function to resolve relative paths (handles ../ and ./)
+function resolveRelativePath(basePath: string, relativePath: string): string {
+  // Normalize paths
+  const normalizedBase = basePath.replace(/\\/g, '/');
+  const normalizedRelative = relativePath.replace(/\\/g, '/');
+
+  // If it's not a relative path, return as-is
+  if (!normalizedRelative.startsWith('./') && !normalizedRelative.startsWith('../')) {
+    // It's a simple relative path like "script.js" or "js/script.js"
+    return joinPath(normalizedBase, normalizedRelative);
+  }
+
+  const baseParts = normalizedBase.split('/').filter(Boolean);
+  const relativeParts = normalizedRelative.split('/').filter(Boolean);
+
+  for (const part of relativeParts) {
+    if (part === '.') {
+      // Current directory, skip
+      continue;
+    } else if (part === '..') {
+      // Parent directory, go up one level
+      baseParts.pop();
+    } else {
+      // Regular path segment
+      baseParts.push(part);
+    }
+  }
+
+  return baseParts.join('/');
+}
+
 // Component to render HTML with relative image paths resolved
 function HtmlRenderer({
   selectedFile,
@@ -731,30 +762,38 @@ function HtmlRenderer({
 
       // Get the directory of the HTML file
       const htmlDir = getDirPath(selectedFile.path);
-      const htmlFileName = selectedFile.name.replace(/\.html?$/i, '');
 
-      // Find related JS and CSS files in the project
+      // Parse HTML to find referenced JS and CSS files via relative paths
+      const scriptSrcRegex = /<script[^>]*src\s*=\s*["']([^"']+)["'][^>]*>/gi;
+      const linkHrefRegex = /<link[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*>/gi;
+
+      const referencedPaths: Set<string> = new Set();
+
+      // Helper to extract and resolve paths
+      const addReferencedPath = (url: string) => {
+        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+          const resolvedPath = resolveRelativePath(htmlDir, url);
+          referencedPaths.add(resolvedPath.toLowerCase());
+        }
+      };
+
+      // Extract script sources
+      let scriptMatch;
+      while ((scriptMatch = scriptSrcRegex.exec(html)) !== null) {
+        addReferencedPath(scriptMatch[1]);
+      }
+
+      // Extract CSS link hrefs
+      let linkMatch;
+      while ((linkMatch = linkHrefRegex.exec(html)) !== null) {
+        addReferencedPath(linkMatch[1]);
+      }
+
+      // Find matching files (exact path match only)
       const relatedFiles = projectFiles.filter((file) => {
-        if (file.isFolder) return false;
-        const fileType = file.type?.toLowerCase();
-        if (fileType !== 'js' && fileType !== 'css') return false;
-
-        // Check if the file is in the same directory or a subdirectory
-        const fileDir = getDirPath(file.path);
-        const isInSameOrSubDir = fileDir.startsWith(htmlDir) || htmlDir.startsWith(fileDir);
-
-        // Check if the filename matches or if it's a common asset name
-        const fileName = file.name.replace(/\.(js|css)$/i, '');
-        const isRelated =
-          fileName === htmlFileName ||
-          fileName === 'style' ||
-          fileName === 'styles' ||
-          fileName === 'script' ||
-          fileName === 'main' ||
-          fileName === 'index' ||
-          fileName === 'app';
-
-        return isInSameOrSubDir || isRelated;
+        if (file.isFolder || !['js', 'css'].includes(file.type?.toLowerCase() || '')) return false;
+        const normalizedFilePath = file.path.replace(/\\/g, '/').toLowerCase();
+        return referencedPaths.has(normalizedFilePath);
       });
 
       const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
