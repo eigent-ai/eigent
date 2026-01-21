@@ -845,6 +845,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						clearStreamingDecomposeText(currentTaskId);
 						// Clean up TTFT tracking
 						delete ttftTracking[currentTaskId];
+
+						// Check if task is already confirmed - don't overwrite user edits
+						const existingToSubTasksMessage = tasks[currentTaskId].messages.findLast((m: Message) => m.step === 'to_sub_tasks');
+						if (existingToSubTasksMessage?.isConfirm) {
+							return;
+						}
+
 						// Check if this is a multi-turn scenario after task completion
 						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
@@ -2146,20 +2153,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// record task start time
 			setTaskTime(taskId, Date.now());
+			// Filter out empty tasks from the user-edited taskInfo
 			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
+			console.log('[handleConfirmTask] Original taskInfo from store:', tasks[taskId].taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 40)}`));
+			console.log('[handleConfirmTask] Filtered taskInfo to send:', taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 40)}`));
 			setTaskInfo(taskId, taskInfo)
-			// Also update taskRunning with the filtered tasks to keep counts consistent
-			const taskRunning = tasks[taskId].taskRunning.filter((task) => task.content !== '')
-			setTaskRunning(taskId, taskRunning)
-			if (!type) {
-				await fetchPut(`/task/${project_id}`, {
-					task: taskInfo,
-				});
-				await fetchPost(`/task/${project_id}/start`, {});
+			// Sync taskRunning with the filtered taskInfo (user edits should be reflected in execution)
+			setTaskRunning(taskId, taskInfo)
 
-				setActiveWorkSpace(taskId, 'workflow')
-				setStatus(taskId, 'running')
-			}
+			// IMPORTANT: Set isConfirm BEFORE sending API requests to prevent race condition
+			// where backend sends to_sub_tasks SSE event before we mark task as confirmed
 			let messages = [...tasks[taskId].messages]
 			const cardTaskIndex = messages.findLastIndex((message) => message.step === 'to_sub_tasks')
 			if (cardTaskIndex !== -1) {
@@ -2171,11 +2174,23 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				setMessages(taskId, messages)
 			}
 
+			if (!type) {
+				console.log('[handleConfirmTask] Sending to backend PUT /task:', taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 40)}`));
+				await fetchPut(`/task/${project_id}`, {
+					task: taskInfo,
+				});
+				await fetchPost(`/task/${project_id}/start`, {});
+
+				setActiveWorkSpace(taskId, 'workflow')
+				setStatus(taskId, 'running')
+			}
+
 			// Reset editing state after manual confirmation so next round can auto-start
 			setIsTaskEdit(taskId, false);
 		},
 		addTaskInfo() {
 			const { tasks, activeTaskId, setTaskInfo } = get()
+			console.log('[addTaskInfo] Called, activeTaskId:', activeTaskId);
 			if (!activeTaskId) return
 			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
 			const newTaskInfo = {
@@ -2183,6 +2198,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				content: "",
 			};
 			targetTaskInfo.push(newTaskInfo)
+			console.log('[addTaskInfo] New taskInfo length:', targetTaskInfo.length);
 			setTaskInfo(activeTaskId, targetTaskInfo)
 		},
 		addTerminal(taskId, processTaskId, terminal) {
@@ -2322,21 +2338,26 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		},
 		updateTaskInfo(index: number, content: string) {
 			const { tasks, activeTaskId, setTaskInfo } = get()
+			console.log('[updateTaskInfo] Called, activeTaskId:', activeTaskId, 'index:', index, 'content:', content?.slice(0, 30));
 			if (!activeTaskId) return
-			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
-			if (targetTaskInfo) {
-				targetTaskInfo[index].content = content
-			}
+			// Deep copy the array with updated item to ensure React detects the change
+			const targetTaskInfo = tasks[activeTaskId].taskInfo.map((item, i) =>
+				i === index ? { ...item, content } : item
+			)
+			console.log('[updateTaskInfo] Updated taskInfo:', targetTaskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 30)}`));
 			setTaskInfo(activeTaskId, targetTaskInfo)
 		},
 		deleteTaskInfo(index: number) {
 			const { tasks, activeTaskId, setTaskInfo } = get()
+			console.log('[deleteTaskInfo] Called, activeTaskId:', activeTaskId, 'index:', index);
 			if (!activeTaskId) return
+			console.log('[deleteTaskInfo] Before delete:', tasks[activeTaskId].taskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 30)}`));
 			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
 
 			if (targetTaskInfo) {
 				targetTaskInfo.splice(index, 1)
 			}
+			console.log('[deleteTaskInfo] After delete:', targetTaskInfo.map((t, i) => `${i}: ${t.content?.slice(0, 30)}`));
 			setTaskInfo(activeTaskId, targetTaskInfo)
 
 		},
