@@ -75,6 +75,7 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.17.0",
     "gsap": "^3.13.0",
+    "koffi": "^2.14.1",
     "lodash-es": "^4.17.21",
     "lottie-web": "^5.13.0",
     "lucide-react": "^0.509.0",
