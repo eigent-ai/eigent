@@ -1472,4 +1472,13 @@ The current date is {datetime.date.today()}. For any date-related tasks, you
 MUST use this as the current date.
 """
 
-    return agent_model(data.name, enhanced_description, options, tools, tool_names=tool_names)
+    # Pass per-agent model config override if available
+    model_config_override = getattr(data, 'model_config_override', None)
+    return agent_model(
+        data.name,
+        enhanced_description,
+        options,
+        tools,
+        tool_names=tool_names,
+        model_config_override=model_config_override,
+    )

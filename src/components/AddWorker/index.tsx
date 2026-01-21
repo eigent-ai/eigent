@@ -14,7 +14,17 @@ import {
 	Edit,
 	Eye,
 	EyeOff,
+	ChevronDown,
+	ChevronUp,
 } from "lucide-react";
+import {
+	Select,
+	SelectTrigger,
+	SelectContent,
+	SelectItem,
+	SelectValue,
+} from "@/components/ui/select";
+import { INIT_PROVODERS } from "@/lib/llm";
 import ToolSelect from "./ToolSelect";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useRef } from "react";
@@ -79,6 +89,12 @@ export function AddWorker({
 	
 	// error status management
 	const [nameError, setNameError] = useState<string>("");
+
+	// Model configuration state
+	const [showModelConfig, setShowModelConfig] = useState(false);
+	const [useCustomModel, setUseCustomModel] = useState(false);
+	const [customModelPlatform, setCustomModelPlatform] = useState("");
+	const [customModelType, setCustomModelType] = useState("");
 
 	// environment variable management
 	const initializeEnvValues = (mcp: McpItem) => {
@@ -224,6 +240,10 @@ export function AddWorker({
 		setEnvValues({});
 		setSecretVisible({});
 		setNameError("");
+		setShowModelConfig(false);
+		setUseCustomModel(false);
+		setCustomModelPlatform("");
+		setCustomModelType("");
 	};
 
 	// tool function
@@ -323,12 +343,19 @@ export function AddWorker({
 			};
 			setWorkerList([...workerList, worker]);
 		} else {
+			// Build model config override if custom model is enabled
+			const modelConfigOverride = useCustomModel && customModelPlatform ? {
+				model_platform: customModelPlatform,
+				model_type: customModelType || undefined,
+			} : undefined;
+
 			fetchPost(`/task/${activeProjectId}/add-agent`, {
 				name: workerName,
 				description: workerDescription,
 				tools: localTool,
 				mcp_tools: mcpLocal,
 				email: email,
+				model_config_override: modelConfigOverride,
 			});
 			const worker: Agent = {
 				tasks: [],
@@ -523,6 +550,62 @@ export function AddWorker({
 									initialSelectedTools={selectedTools}
 									ref={toolSelectRef}
 								/>
+
+								{/* Model Configuration Section */}
+								<div className="flex flex-col gap-2 mt-2">
+									<button
+										type="button"
+										className="flex items-center gap-1 text-sm text-text-body hover:text-text-action"
+										onClick={() => setShowModelConfig(!showModelConfig)}
+									>
+										{showModelConfig ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+										{t("workforce.advanced-model-config")}
+									</button>
+									
+									{showModelConfig && (
+										<div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
+											<label className="flex items-center gap-2 text-sm">
+												<input
+													type="checkbox"
+													checked={useCustomModel}
+													onChange={(e) => setUseCustomModel(e.target.checked)}
+													className="rounded border-gray-300"
+												/>
+												{t("workforce.use-custom-model")}
+											</label>
+											
+											{useCustomModel && (
+												<>
+													<div className="flex flex-col gap-1">
+														<label className="text-xs text-text-body">{t("workforce.model-platform")}</label>
+														<Select value={customModelPlatform} onValueChange={setCustomModelPlatform}>
+															<SelectTrigger className="w-full">
+																<SelectValue placeholder={t("workforce.select-platform")} />
+															</SelectTrigger>
+															<SelectContent>
+																{INIT_PROVODERS.map((provider) => (
+																	<SelectItem key={provider.id} value={provider.id}>
+																		{provider.name}
+																	</SelectItem>
+																))}
+															</SelectContent>
+														</Select>
+													</div>
+													
+													<div className="flex flex-col gap-1">
+														<label className="text-xs text-text-body">{t("workforce.model-type")}</label>
+														<Input
+															size="sm"
+															placeholder={t("workforce.model-type-placeholder")}
+															value={customModelType}
+															onChange={(e) => setCustomModelType(e.target.value)}
+														/>
+													</div>
+												</>
+											)}
+										</div>
+									)}
+								</div>
 							</DialogContentSection>
 							<DialogFooter 
 								className="bg-white-100% !rounded-b-xl p-md"

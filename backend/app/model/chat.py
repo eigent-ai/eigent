@@ -123,12 +123,29 @@ class UpdateData(BaseModel):
     task: list[TaskContent]
 
 
+class AgentModelConfig(BaseModel):
+    """Optional per-agent model configuration to override the default task model."""
+    model_platform: str | None = None
+    model_type: str | None = None
+    api_key: str | None = None
+    api_url: str | None = None
+    extra_params: dict | None = None
+
+    def has_custom_config(self) -> bool:
+        """Check if any custom model configuration is set."""
+        return any([
+            self.model_platform is not None,
+            self.model_type is not None,
+        ])
+
+
 class NewAgent(BaseModel):
     name: str
     description: str
     tools: list[str]
     mcp_tools: McpServers | None
     env_path: str | None = None
+    model_config_override: AgentModelConfig | None = None
 
 
 class AddTaskRequest(BaseModel):

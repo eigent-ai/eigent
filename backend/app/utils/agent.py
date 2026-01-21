@@ -5,7 +5,10 @@ import os
 import platform
 from threading import Event, Lock
 import traceback
-from typing import Any, Callable, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple
+
+if TYPE_CHECKING:
+    from app.model.chat import AgentModelConfig
 import uuid
 from utils import traceroot_wrapper as traceroot
 
@@ -726,6 +729,7 @@ def agent_model(
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
+    model_config_override: "AgentModelConfig | None" = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -745,8 +749,22 @@ def agent_model(
         )
     )
 
-    # Build model config, defaulting to streaming for planner
-    extra_params = options.extra_params or {}
+    # Determine model configuration - use override if provided, otherwise use task defaults
+    if model_config_override and model_config_override.has_custom_config():
+        effective_model_platform = model_config_override.model_platform or options.model_platform
+        effective_model_type = model_config_override.model_type or options.model_type
+        effective_api_key = model_config_override.api_key or options.api_key
+        effective_api_url = model_config_override.api_url or options.api_url
+        extra_params = model_config_override.extra_params or options.extra_params or {}
+        traceroot_logger.info(
+            f"Agent {agent_name} using custom model config: platform={effective_model_platform}, type={effective_model_type}"
+        )
+    else:
+        effective_model_platform = options.model_platform
+        effective_model_type = options.model_type
+        effective_api_key = options.api_key
+        effective_api_url = options.api_url
+        extra_params = options.extra_params or {}
     init_param_keys = {
         "api_version",
         "azure_ad_token",
@@ -783,7 +801,7 @@ def agent_model(
         model_config["stream"] = True
     if agent_name == Agents.browser_agent:
         try:
-            model_platform_enum = ModelPlatformType(options.model_platform.lower())
+            model_platform_enum = ModelPlatformType(effective_model_platform.lower())
             if model_platform_enum in {
                 ModelPlatformType.OPENAI,
                 ModelPlatformType.AZURE,
@@ -794,16 +812,16 @@ def agent_model(
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
             traceroot_logger.error(
-                f"Invalid model platform for browser agent: {options.model_platform}",
+                f"Invalid model platform for browser agent: {effective_model_platform}",
                 exc_info=True,
             )
             model_platform_enum = None
 
     model = ModelFactory.create(
-        model_platform=options.model_platform,
-        model_type=options.model_type,
-        api_key=options.api_key,
-        url=options.api_url,
+        model_platform=effective_model_platform,
+        model_type=effective_model_type,
+        api_key=effective_api_key,
+        url=effective_api_url,
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
         **init_params,
