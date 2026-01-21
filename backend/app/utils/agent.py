@@ -97,6 +97,7 @@ from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.toolkit.github_toolkit import GithubToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
+from app.utils.toolkit.rag_toolkit import RAGToolkit
 from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.utils.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
@@ -1889,6 +1890,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "mcp_search_toolkit": McpSearchToolkit,
         "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
+        "rag_toolkit": RAGToolkit,
         "reddit_toolkit": RedditToolkit,
         "search_toolkit": SearchToolkit,
         "slack_toolkit": SlackToolkit,
