@@ -148,13 +148,13 @@ jobs:
             ls -la release/
           fi
 
-      - name: Upload Artifact (macOS - dmg only)
+      - name: Upload Artifact (macOS - zip instead of dmg)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
-            release/*.dmg
+            release/*-mac.zip
           retention-days: 5
 
       - name: Upload Artifact (Windows - exe only)
@@ -200,15 +200,15 @@ jobs:
           name: release-ubuntu-latest-x64
           path: temp-linux-x64
 
-      # Move only dmg files for macOS, exe files for Windows, and AppImage for Linux
+      # Move zip files for macOS, exe files for Windows, and AppImage for Linux
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-arm64 - only move dmg files
+          # mac-arm64 - move zip files (not dmg due to Electron Framework issue)
           if [ -d "temp-mac-arm64/release" ]; then
-            find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
+            find temp-mac-arm64/release -name "*-mac.zip" -exec mv {} release/mac-arm64/ \; || true
           else
-            find temp-mac-arm64 -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
+            find temp-mac-arm64 -name "*-mac.zip" -exec mv {} release/mac-arm64/ \; || true
           fi
 
           # win-x64 - only move exe files
