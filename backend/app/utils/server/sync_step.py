@@ -51,6 +51,12 @@ def sync_step(func):
                     task_id = chat.task_id
 
             if task_id:
+                # TODO: Filter out unnecessary events to avoid database bloat
+                # - Skip "decompose_text" streaming events (sent 50-200+ times per task)
+                # - Only sync structural events: decompose_progress, task_state, create_agent, etc.
+                # - Consider batching or deduplication for high-frequency events
+                # - Extract and add task dependencies for analytics
+
                 asyncio.create_task(
                     send_to_api(
                         sync_url,

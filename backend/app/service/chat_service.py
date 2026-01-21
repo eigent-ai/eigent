@@ -1069,7 +1069,8 @@ def to_sub_tasks(task: Task, summary_task_content: str):
 def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
     if depth > 5:
         return []
-    return (
+
+    result = (
         chain(sub_tasks)
         .filter(lambda x: x.content != "")
         .map(
@@ -1082,6 +1083,8 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
         )
         .value()
     )
+
+    return result
 
 
 def update_sub_tasks(sub_tasks: list[Task], update_tasks: dict[str, TaskContent], depth: int = 0):
