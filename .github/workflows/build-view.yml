@@ -157,9 +157,9 @@ jobs:
           df -h
 
           if [ "${{ matrix.arch }}" = "arm64" ]; then
-            npm run build:mac -- --arm64 --config.mac.target=dmg --publish always
+            npm run build:mac -- --arm64 --config.mac.target=zip --publish always
           else
-            npm run build:mac -- --x64 --config.mac.target=dmg --publish always
+            npm run build:mac -- --x64 --config.mac.target=zip --publish always
           fi || {
             echo "Build failed, checking disk space:"
             df -h
