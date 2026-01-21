@@ -170,8 +170,20 @@ jobs:
             exit 1
           }
 
-          echo "Disk space after build:"
+          # Immediately clean up .app directories after DMG is created
+          echo "=== Cleaning up build artifacts ==="
+          rm -rf release/mac 2>/dev/null || true
+          rm -rf release/mac-arm64 2>/dev/null || true
+          rm -rf release/mac-universal 2>/dev/null || true
+
+          # Clean up any unpacked directories
+          find release -type d -name "mac-*" -exec rm -rf {} + 2>/dev/null || true
+          find release -type d -name "*-unpacked" -exec rm -rf {} + 2>/dev/null || true
+
+          echo "=== Final disk space ==="
           df -h
+          echo "=== Final release directory ==="
+          ls -lh release/ 2>/dev/null || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
