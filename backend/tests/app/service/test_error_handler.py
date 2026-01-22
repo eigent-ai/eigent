@@ -127,7 +127,7 @@ def test_prepare_model_error_response_with_quota_error(mock_logger,
     task_id = "test-task"
 
     # Call function
-    error_payload, message, error_code = prepare_model_error_response(
+    _, message, error_code = prepare_model_error_response(
         error, project_id, task_id, "test context")
 
     # Assertions
