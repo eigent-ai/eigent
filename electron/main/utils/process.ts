@@ -169,6 +169,38 @@ export function getPrebuiltVenvPath(): string | null {
   return null;
 }
 
+/**
+ * Get path to prebuilt terminal venv (if available in packaged app)
+ */
+export function getPrebuiltTerminalVenvPath(): string | null {
+  if (!app.isPackaged) {
+    return null;
+  }
+
+  const prebuiltTerminalVenvPath = path.join(process.resourcesPath, 'prebuilt', 'terminal_venv');
+  if (fs.existsSync(prebuiltTerminalVenvPath)) {
+    const pyvenvCfg = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
+    const installedMarker = path.join(prebuiltTerminalVenvPath, '.packages_installed');
+    if (fs.existsSync(pyvenvCfg) && fs.existsSync(installedMarker)) {
+      const isWindows = process.platform === 'win32';
+      const pythonExePath = isWindows
+        ? path.join(prebuiltTerminalVenvPath, 'Scripts', 'python.exe')
+        : path.join(prebuiltTerminalVenvPath, 'bin', 'python');
+
+      if (fs.existsSync(pythonExePath)) {
+        log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
+        return prebuiltTerminalVenvPath;
+      } else {
+        log.warn(
+          `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
+            `Falling back to user terminal venv.`
+        );
+      }
+    }
+  }
+  return null;
+}
+
 export function getVenvPath(version: string): string {
   // First check for prebuilt venv in packaged app
   if (app.isPackaged) {
@@ -219,6 +251,14 @@ export const TERMINAL_BASE_PACKAGES = [
  * separate from the backend venv.
  */
 export function getTerminalVenvPath(version: string): string {
+  // First check for prebuilt terminal venv in packaged app
+  if (app.isPackaged) {
+    const prebuiltTerminalVenv = getPrebuiltTerminalVenvPath();
+    if (prebuiltTerminalVenv) {
+      return prebuiltTerminalVenv;
+    }
+  }
+
   const venvDir = path.join(
     os.homedir(),
     '.eigent',
