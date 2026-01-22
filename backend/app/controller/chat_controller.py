@@ -137,11 +137,7 @@ async def post(data: Chat, request: Request):
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
-    # TEMPORARY: Force fake API key to test error handling
-    fake_key = "sk-fake-invalid-key-for-testing-12345"
-    chat_logger.error(f"🔧 TESTING: Using fake API key: {fake_key}")
-    os.environ[
-        "OPENAI_API_KEY"] = fake_key  # TODO: Change back to data.api_key
+    os.environ["OPENAI_API_KEY"] = data.api_key
     os.environ[
         "OPENAI_API_BASE_URL"] = data.api_url or "https://api.openai.com/v1"
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"

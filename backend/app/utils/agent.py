@@ -767,15 +767,10 @@ def agent_model(
             )
             model_platform_enum = None
 
-    # TEMPORARY: Force fake API key to test error handling
-    fake_api_key = "sk-fake-invalid-key-for-testing-12345"  # TODO: Change back to options.api_key
-    traceroot_logger.error(
-        f"🔧 TESTING: Agent '{agent_name}' using fake API key: {fake_api_key}")
-
     model = ModelFactory.create(
         model_platform=options.model_platform,
         model_type=options.model_type,
-        api_key=fake_api_key,
+        api_key=options.api_key,
         url=options.api_url,
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
