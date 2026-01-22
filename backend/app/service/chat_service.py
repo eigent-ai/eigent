@@ -433,17 +433,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "[NEW-QUESTION] Has attachments, treating as complex task"
                     )
                 else:
-                    try:
-                        is_complex_task = await question_confirm(
-                            question_agent, question, task_lock)
-                        logger.info(
-                            f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}"
-                        )
-                    except Exception as e:
-                        # Log the error and treat as complex task
-                        # (Model validation should have caught critical errors upfront)
-                        logger.error(f"Error in question_confirm: {e}", exc_info=True)
-                        is_complex_task = True
+                    is_complex_task = await question_confirm(
+                        question_agent, question, task_lock)
+                    logger.info(
+                        f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}"
+                    )
 
                 if not is_complex_task:
                     logger.info(
@@ -670,13 +664,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             }
                             await task_lock.put_queue(
                                 ActionDecomposeProgressData(data=payload))
-                        except ModelProcessingError as e:
-                            # Log model errors during task decomposition (background task)
-                            logger.error(
-                                f"Task decomposition failed due to model error: {e}",
-                                exc_info=True)
-                            # TODO: Error is only logged, not sent to UI (background task limitation)
-                            # To send to UI, we'd need to restore Action.error + ActionErrorData + handler
                         except Exception as e:
                             logger.error(
                                 f"Error in background decomposition: {e}",
@@ -1544,18 +1531,8 @@ Is this a complex task? (yes/no):"""
 
         return is_complex
 
-    except ModelProcessingError as e:
-        logger.error(f"Model error in question_confirm: {e}")
-        raise ModelProcessingError(
-            f"Failed to determine task complexity due to model error: {str(e)}"
-        )
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")
-        # Check if this is an authentication/API key error
-        error_str = str(e).lower()
-        if "401" in error_str or "authentication" in error_str or "api key" in error_str or "unauthorized" in error_str:
-            # This is an API key error, raise it as ModelProcessingError so it gets caught properly
-            raise ModelProcessingError(f"Invalid API key: {str(e)}")
         return True
 
 
