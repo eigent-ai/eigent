@@ -557,6 +557,21 @@ class ListenChatAgent(ChatAgent):
                         )
                     )
                 )
+                # Stream tool activity to frontend as "thinking" text
+                tool_display = func_name.replace("_", " ").title()
+                asyncio.create_task(
+                    task_lock.put_queue(
+                        ActionStreamingAgentOutputData(
+                            data={
+                                "agent_name": self.agent_name,
+                                "process_task_id": self.process_task_id,
+                                "agent_id": self.agent_id,
+                                "content": f"[Tool] {tool_display}...\n",
+                                "is_final": False,
+                            },
+                        )
+                    )
+                )
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)
@@ -680,6 +695,19 @@ class ListenChatAgent(ChatAgent):
                         "toolkit_name": toolkit_name,
                         "method_name": func_name,
                         "message": json.dumps(args, ensure_ascii=False),
+                    },
+                )
+            )
+            # Stream tool activity to frontend as "thinking" text
+            tool_display = func_name.replace("_", " ").title()
+            await task_lock.put_queue(
+                ActionStreamingAgentOutputData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
+                        "content": f"[Tool] {tool_display}...\n",
+                        "is_final": False,
                     },
                 )
             )
