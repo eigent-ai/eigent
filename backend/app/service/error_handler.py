@@ -1,19 +1,34 @@
-from camel.models import ModelProcessingError
 from app.component.error_format import normalize_error_to_openai_format
+from camel.models import ModelProcessingError
+
 from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("error_handler")
 
 
-def prepare_model_error_response(
-    error: ModelProcessingError,
-    project_id: str,
-    task_id: str,
-    context: str = "task decomposition"
-) -> tuple[dict, str, str | None]:
-    """Prepare error response for ModelProcessingError.
+def should_stop_task(error_code: str | None) -> bool:
+    """Check if the error code represents a critical error that should stop
+    the task. This includes invalid API keys, quota errors, and model not
+    found errors.
 
-    This function normalizes the error and prepares the payload for frontend notification.
+    Args:
+        error_code: Error code from normalize_error_to_openai_format
+
+    Returns:
+        bool: True if this is a critical error that should stop the task
+    """
+    return error_code in ("invalid_api_key", "insufficient_quota",
+                          "model_not_found")
+
+
+def prepare_model_error_response(
+        error: ModelProcessingError,
+        project_id: str,
+        task_id: str,
+        context: str = "task decomposition") -> tuple[dict, str, str | None]:
+    """Prepare error response for ModelProcessingError. This function
+    normalizes the error and prepares the payload for frontend
+    notification.
 
     Args:
         error: The ModelProcessingError to handle
@@ -37,8 +52,7 @@ def prepare_model_error_response(
             "error_code": error_code,
             "error": str(error)
         },
-        exc_info=True
-    )
+        exc_info=True)
 
     # Prepare error payload
     error_payload = {

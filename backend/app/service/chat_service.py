@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
-from app.service.error_handler import prepare_model_error_response
+from app.service.error_handler import (prepare_model_error_response,
+                                       should_stop_task)
 from app.service.task import (Action, ActionDecomposeProgressData,
                               ActionDecomposeTextData, ActionImproveData,
                               ActionInstallMcpData, ActionNewAgent, Agents,
@@ -1100,16 +1101,26 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         summary_task_content = new_summary_content
 
                     except ModelProcessingError as e:
-                        # Handle model errors (especially invalid API keys) during multi-turn task decomposition
-                        error_payload, _, _ = prepare_model_error_response(
+                        # Handle model errors (especially invalid API keys)
+                        # during multi-turn task decomposition
+                        error_payload, _, error_code = prepare_model_error_response(
                             e, options.project_id, task_id,
                             "multi-turn task decomposition")
 
-                        # Send error notification to frontend
-                        yield sse_json("error", error_payload)
+                        logger.error(f"Multi-turn error_code: {error_code}")
 
-                        # Mark task as done (failed state)
-                        task_lock.status = Status.done
+                        # Only send error and stop workforce for critical errors
+                        if should_stop_task(error_code):
+                            # Send error notification to frontend
+                            yield sse_json("error", error_payload)
+
+                            # Stop workforce if running
+                            if "workforce" in locals(
+                            ) and workforce is not None and workforce._running:
+                                workforce.stop()
+
+                            # Mark task as done (failed state)
+                            task_lock.status = Status.done
                     except Exception as e:
                         import traceback
                         logger.error(
@@ -1390,20 +1401,23 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     f"ModelProcessingError for task {options.task_id}, action {item.action}: {e}",
                     exc_info=True)
                 # Use error formatter to send properly formatted error to frontend
-                from app.service.error_handler import \
-                    prepare_model_error_response
-                error_payload, _, _ = prepare_model_error_response(
+                error_payload, _, error_code = prepare_model_error_response(
                     e, options.project_id, options.task_id,
                     f"action {item.action}")
-                yield sse_json("error", error_payload)
 
-                # Stop workforce if running
-                if "workforce" in locals(
-                ) and workforce is not None and workforce._running:
-                    workforce.stop()
+                logger.error(f"Main flow error_code: {error_code}")
 
-                # Mark task as done
-                task_lock.status = Status.done
+                # Only send error and stop workforce for critical errors
+                if should_stop_task(error_code):
+                    yield sse_json("error", error_payload)
+
+                    # Stop workforce if running
+                    if "workforce" in locals(
+                    ) and workforce is not None and workforce._running:
+                        workforce.stop()
+
+                    # Mark task as done
+                    task_lock.status = Status.done
         except Exception as e:
             logger.error(
                 f"Unhandled exception for task {options.task_id}, action {item.action}: {e}",
