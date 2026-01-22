@@ -129,6 +129,9 @@ class Workforce(BaseWorkforce):
         logger.debug(f"[WF-LIFECYCLE] eigent_start called with {len(subtasks)} subtasks", extra={
             "api_task_id": self.api_task_id
         })
+        # Clear existing pending tasks to use the user-edited task list
+        # (tasks may have been added during decomposition before user edits)
+        self._pending_tasks.clear()
         self._pending_tasks.extendleft(reversed(subtasks))
         self.save_snapshot("Initial task decomposition")
 
