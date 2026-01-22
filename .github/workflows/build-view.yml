@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: [self-hosted, macOS, ARM64]
+          - os: macos-latest
             arch: arm64
             artifact_name: macos-arm64
           - os: windows-latest
