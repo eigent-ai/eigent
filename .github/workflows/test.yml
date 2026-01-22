@@ -35,7 +35,7 @@ jobs:
           cd backend
           PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_error_handler.py -v
 
-      - name: Run chat_service tests
+      - name: Run chat_service_error_handling tests
         run: |
           cd backend
-          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_chat_service.py -v
+          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_chat_service_error_handling.py -v
