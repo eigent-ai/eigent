@@ -2156,8 +2156,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			// Filter out empty tasks from the user-edited taskInfo
 			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
 			setTaskInfo(taskId, taskInfo)
-			// Sync taskRunning with the filtered taskInfo (user edits should be reflected in execution)
-			setTaskRunning(taskId, taskInfo)
+			// Sync taskRunning with the filtered taskInfo (user edits should be reflected 
+			setTaskRunning(taskId, taskInfo.map(task => ({ ...task })))
 
 			// IMPORTANT: Set isConfirm BEFORE sending API requests to prevent race condition
 			// where backend sends to_sub_tasks SSE event before we mark task as confirmed
