@@ -37,7 +37,7 @@ export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm
 				</div>
 				<DialogFooter className="bg-white-100% !rounded-b-xl p-md">
 					<DialogClose asChild>
-						<Button variant="ghost" size="md">{t("layout.cancel")}</Button>
+						<Button variant="ghost" size="md" disabled={loading}>{t("layout.cancel")}</Button>
 					</DialogClose>
 					<Button size="md" onClick={onSubmit} variant="cuation" disabled={loading}>{t("layout.yes-end-project")}</Button>
 				</DialogFooter>
