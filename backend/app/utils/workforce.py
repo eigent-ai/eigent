@@ -61,7 +61,7 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
-            task_timeout_seconds=1800,  # 30 minutes
+            task_timeout_seconds=3600,  # 60 minutes
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"],
             ),
@@ -449,6 +449,11 @@ class Workforce(BaseWorkforce):
         logger.debug(f"[WF] FAIL  {task.id} retry={task.failure_count}")
 
         result = await super()._handle_failed_task(task)
+
+        # Only send completion report to frontend when all retries are exhausted
+        max_retries = self.failure_handling_config.max_retries
+        if task.failure_count < max_retries:
+            return result
 
         error_message = ""
         # Use proper CAMEL pattern for metrics logging
