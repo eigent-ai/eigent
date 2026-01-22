@@ -34,7 +34,9 @@
         "!cache/**/*",
         "!**/.npm-cache/**/*",
         "!uv_python/**/*.pyc",
-        "!uv_python/**/__pycache__"
+        "!uv_python/**/__pycache__",
+        "!terminal_venv/**/*.pyc",
+        "!terminal_venv/**/__pycache__"
       ]
     }
   ],
