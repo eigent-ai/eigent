@@ -1135,13 +1135,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         sub_tasks = new_sub_tasks
                         summary_task_content = new_summary_content
 
-                    except ModelProcessingError as e:
-                        # Log error - validation should have caught config issues
-                        logger.error(f"Multi-turn task decomposition error: {e}", exc_info=True)
-                        yield sse_json("error", {"message": f"Task decomposition failed: {str(e)}"})
-                        if "workforce" in locals() and workforce is not None and workforce._running:
-                            workforce.stop()
-                        task_lock.status = Status.done
                     except Exception as e:
                         import traceback
                         logger.error(
