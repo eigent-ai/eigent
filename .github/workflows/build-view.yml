@@ -89,7 +89,7 @@ jobs:
           # Increase file descriptor limit to prevent EMFILE errors during signing
           # This is needed because electron-builder signs all files recursively,
           # and Python venvs contain thousands of files
-          ulimit -n 10240
+          ulimit -n 65536 || ulimit -n 10240
           echo "File descriptor limit set to: $(ulimit -n)"
           npm run build -- --arch ${{ matrix.arch }}
         env:
