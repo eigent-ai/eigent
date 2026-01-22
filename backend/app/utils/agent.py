@@ -3,17 +3,18 @@ import contextvars
 import json
 import os
 import platform
-from threading import Event, Lock
-import traceback
-from typing import Any, Callable, Dict, List, Tuple
 import uuid
+from threading import Event, Lock
+from typing import Any, Callable, Dict, List, Tuple
+
 from utils import traceroot_wrapper as traceroot
 
 # Thread-safe reference to main event loop using contextvars
 # This ensures each request has its own event loop reference, avoiding race conditions
-_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
-    '_main_event_loop', default=None
-)
+_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop
+                                             | None] = contextvars.ContextVar(
+                                                 '_main_event_loop',
+                                                 default=None)
 
 # Global fallback for main event loop reference
 # Used when contextvars don't propagate to worker threads (e.g., asyncio.to_thread)
@@ -59,110 +60,97 @@ def _schedule_async_task(coro):
                 "No event loop available for async task scheduling, task skipped. "
                 "Ensure set_main_event_loop() is called before parallel agent creation."
             )
-from camel.agents import ChatAgent
-from camel.agents.chat_agent import (
-    StreamingChatAgentResponse,
-    AsyncStreamingChatAgentResponse,
-)
-from camel.agents._types import ToolCallRequest
-from camel.memories import AgentMemory
-from camel.messages import BaseMessage
-from camel.models import (
-    BaseModelBackend,
-    ModelFactory,
-    ModelManager,
-    OpenAIAudioModels,
-    ModelProcessingError,
-)
-from camel.responses import ChatAgentResponse
-from camel.terminators import ResponseTerminator
-from camel.toolkits import FunctionTool, RegisteredAgentToolkit
-from camel.types.agents import ToolCallingRecord
+
+
+import datetime
+
 from app.component.environment import env
+from app.model.chat import Chat, McpServers
 from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.utils.toolkit.excel_toolkit import ExcelToolkit
 from app.utils.toolkit.file_write_toolkit import FileToolkit
+from app.utils.toolkit.github_toolkit import GithubToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
+from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
+from app.utils.toolkit.lark_toolkit import LarkToolkit
+from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
 from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
-from app.utils.toolkit.pptx_toolkit import PPTXToolkit
-from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.github_toolkit import GithubToolkit
-from app.utils.toolkit.search_toolkit import SearchToolkit
-from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
-from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
-from app.utils.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
-from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
+from app.utils.toolkit.pptx_toolkit import PPTXToolkit
+from app.utils.toolkit.reddit_toolkit import RedditToolkit
+from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.utils.toolkit.search_toolkit import SearchToolkit
+from app.utils.toolkit.slack_toolkit import SlackToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
+from app.utils.toolkit.twitter_toolkit import TwitterToolkit
+from app.utils.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
+from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.utils.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.utils.toolkit.whatsapp_toolkit import WhatsAppToolkit
-from app.utils.toolkit.twitter_toolkit import TwitterToolkit
-from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
-from app.utils.toolkit.reddit_toolkit import RedditToolkit
-from app.utils.toolkit.slack_toolkit import SlackToolkit
-from app.utils.toolkit.lark_toolkit import LarkToolkit
+from camel.agents import ChatAgent
+from camel.agents._types import ToolCallRequest
+from camel.agents.chat_agent import (AsyncStreamingChatAgentResponse,
+                                     StreamingChatAgentResponse)
+from camel.memories import AgentMemory
+from camel.messages import BaseMessage
+from camel.models import (BaseModelBackend, ModelFactory, ModelManager,
+                          ModelProcessingError, OpenAIAudioModels)
+from camel.responses import ChatAgentResponse
+from camel.terminators import ResponseTerminator
+from camel.toolkits import (FunctionTool, MCPToolkit, RegisteredAgentToolkit,
+                            ToolkitMessageIntegration)
 from camel.types import ModelPlatformType, ModelType
-from camel.toolkits import MCPToolkit, ToolkitMessageIntegration
-import datetime
+from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
-from app.model.chat import Chat, McpServers
 
 # Create traceroot logger for agent tracking
 traceroot_logger = traceroot.get_logger("agent")
-from app.service.task import (
-    Action,
-    ActionActivateAgentData,
-    ActionActivateToolkitData,
-    ActionBudgetNotEnough,
-    ActionCreateAgentData,
-    ActionDeactivateAgentData,
-    ActionDeactivateToolkitData,
-    Agents,
-    get_task_lock,
-)
-from app.service.task import set_process_task
+from app.service.task import (Action, ActionActivateAgentData,
+                              ActionActivateToolkitData, ActionBudgetNotEnough,
+                              ActionCreateAgentData, ActionDeactivateAgentData,
+                              ActionDeactivateToolkitData, Agents,
+                              get_task_lock, set_process_task)
 
 NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
 
 
 class ListenChatAgent(ChatAgent):
+
     @traceroot.trace()
     def __init__(
         self,
         api_task_id: str,
         agent_name: str,
         system_message: BaseMessage | str | None = None,
-        model: (
-            BaseModelBackend
-            | ModelManager
-            | Tuple[str, str]
-            | str
-            | ModelType
-            | Tuple[ModelPlatformType, ModelType]
-            | List[BaseModelBackend]
-            | List[str]
-            | List[ModelType]
-            | List[Tuple[str, str]]
-            | List[Tuple[ModelPlatformType, ModelType]]
-            | None
-        ) = None,
+        model: (BaseModelBackend
+                | ModelManager
+                | Tuple[str, str]
+                | str
+                | ModelType
+                | Tuple[ModelPlatformType, ModelType]
+                | List[BaseModelBackend]
+                | List[str]
+                | List[ModelType]
+                | List[Tuple[str, str]]
+                | List[Tuple[ModelPlatformType, ModelType]]
+                | None) = None,
         memory: AgentMemory | None = None,
         message_window_size: int | None = None,
         token_limit: int | None = None,
         output_language: str | None = None,
         tools: List[FunctionTool | Callable[..., Any]] | None = None,
         toolkits_to_register_agent: List[RegisteredAgentToolkit] | None = None,
-        external_tools: (
-            List[FunctionTool | Callable[..., Any] | Dict[str, Any]] | None
-        ) = None,
+        external_tools: (List[FunctionTool | Callable[..., Any]
+                              | Dict[str, Any]] | None) = None,
         response_terminators: List[ResponseTerminator] | None = None,
         scheduling_strategy: str = "round_robin",
         max_iteration: int | None = None,
@@ -213,20 +201,16 @@ class ListenChatAgent(ChatAgent):
         task_lock = get_task_lock(self.api_task_id)
         asyncio.create_task(
             task_lock.put_queue(
-                ActionActivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": (
-                            input_message.content
-                            if isinstance(input_message, BaseMessage)
-                            else input_message
-                        ),
-                    },
-                )
-            )
-        )
+                ActionActivateAgentData(data={
+                    "agent_name":
+                    self.agent_name,
+                    "process_task_id":
+                    self.process_task_id,
+                    "agent_id":
+                    self.agent_id,
+                    "message": (input_message.content if isinstance(
+                        input_message, BaseMessage) else input_message),
+                }, )))
         error_info = None
         message = None
         res = None
@@ -240,20 +224,21 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
-                traceroot_logger.warning(f"Agent {self.agent_name} budget exceeded")
-                asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
+                traceroot_logger.warning(
+                    f"Agent {self.agent_name} budget exceeded")
+                asyncio.create_task(
+                    task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
                 traceroot_logger.error(
-                    f"Agent {self.agent_name} model processing error: {e}"
-                )
+                    f"Agent {self.agent_name} model processing error: {e}")
             total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
             traceroot_logger.error(
-                f"Agent {self.agent_name} unexpected error in step: {e}", exc_info=True
-            )
+                f"Agent {self.agent_name} unexpected error in step: {e}",
+                exc_info=True)
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
@@ -274,32 +259,34 @@ class ListenChatAgent(ChatAgent):
                     finally:
                         total_tokens = 0
                         if last_response:
-                            usage_info = (
-                                last_response.info.get("usage")
-                                or last_response.info.get("token_usage")
-                                or {}
-                            )
+                            usage_info = (last_response.info.get("usage") or
+                                          last_response.info.get("token_usage")
+                                          or {})
                             if usage_info:
-                                total_tokens = usage_info.get("total_tokens", 0)
+                                total_tokens = usage_info.get(
+                                    "total_tokens", 0)
                         asyncio.create_task(
                             task_lock.put_queue(
-                                ActionDeactivateAgentData(
-                                    data={
-                                        "agent_name": self.agent_name,
-                                        "process_task_id": self.process_task_id,
-                                        "agent_id": self.agent_id,
-                                        "message": accumulated_content,
-                                        "tokens": total_tokens,
-                                    },
-                                )
-                            )
-                        )
+                                ActionDeactivateAgentData(data={
+                                    "agent_name":
+                                    self.agent_name,
+                                    "process_task_id":
+                                    self.process_task_id,
+                                    "agent_id":
+                                    self.agent_id,
+                                    "message":
+                                    accumulated_content,
+                                    "tokens":
+                                    total_tokens,
+                                }, )))
 
                 return StreamingChatAgentResponse(_stream_with_deactivate())
 
             message = res.msg.content if res.msg else ""
-            usage_info = res.info.get("usage") or res.info.get("token_usage") or {}
-            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
+            usage_info = res.info.get("usage") or res.info.get(
+                "token_usage") or {}
+            total_tokens = usage_info.get("total_tokens",
+                                          0) if usage_info else 0
             traceroot_logger.info(
                 f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
             )
@@ -308,17 +295,13 @@ class ListenChatAgent(ChatAgent):
 
         asyncio.create_task(
             task_lock.put_queue(
-                ActionDeactivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": message,
-                        "tokens": total_tokens,
-                    },
-                )
-            )
-        )
+                ActionDeactivateAgentData(data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "agent_id": self.agent_id,
+                    "message": message,
+                    "tokens": total_tokens,
+                }, )))
 
         if error_info is not None:
             raise error_info
@@ -336,17 +319,16 @@ class ListenChatAgent(ChatAgent):
             ActionActivateAgentData(
                 action=Action.activate_agent,
                 data={
-                    "agent_name": self.agent_name,
-                    "process_task_id": self.process_task_id,
-                    "agent_id": self.agent_id,
-                    "message": (
-                        input_message.content
-                        if isinstance(input_message, BaseMessage)
-                        else input_message
-                    ),
+                    "agent_name":
+                    self.agent_name,
+                    "process_task_id":
+                    self.process_task_id,
+                    "agent_id":
+                    self.agent_id,
+                    "message": (input_message.content if isinstance(
+                        input_message, BaseMessage) else input_message),
                 },
-            )
-        )
+            ))
 
         error_info = None
         message = None
@@ -364,13 +346,14 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
-                traceroot_logger.warning(f"Agent {self.agent_name} budget exceeded")
-                asyncio.create_task(task_lock.put_queue(ActionBudgetNotEnough()))
+                traceroot_logger.warning(
+                    f"Agent {self.agent_name} budget exceeded")
+                asyncio.create_task(
+                    task_lock.put_queue(ActionBudgetNotEnough()))
             else:
                 message = str(e)
                 traceroot_logger.error(
-                    f"Agent {self.agent_name} model processing error: {e}"
-                )
+                    f"Agent {self.agent_name} model processing error: {e}")
             total_tokens = 0
         except Exception as e:
             res = None
@@ -393,17 +376,13 @@ class ListenChatAgent(ChatAgent):
 
         asyncio.create_task(
             task_lock.put_queue(
-                ActionDeactivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": message,
-                        "tokens": total_tokens,
-                    },
-                )
-            )
-        )
+                ActionDeactivateAgentData(data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "agent_id": self.agent_id,
+                    "message": message,
+                    "tokens": total_tokens,
+                }, )))
 
         if error_info is not None:
             raise error_info
@@ -411,7 +390,8 @@ class ListenChatAgent(ChatAgent):
         return res
 
     @traceroot.trace()
-    def _execute_tool(self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
+    def _execute_tool(self,
+                      tool_call_request: ToolCallRequest) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
         tool: FunctionTool = self._internal_tools[func_name]
         # Route async functions to async execution even if they have __wrapped__
@@ -432,11 +412,8 @@ class ListenChatAgent(ChatAgent):
         try:
             task_lock = get_task_lock(self.api_task_id)
 
-            toolkit_name = (
-                getattr(tool, "_toolkit_name")
-                if hasattr(tool, "_toolkit_name")
-                else "mcp_toolkit"
-            )
+            toolkit_name = (getattr(tool, "_toolkit_name") if hasattr(
+                tool, "_toolkit_name") else "mcp_toolkit")
             traceroot_logger.debug(
                 f"Agent {self.agent_name} executing tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
             )
@@ -445,17 +422,18 @@ class ListenChatAgent(ChatAgent):
             if not has_listen_decorator:
                 asyncio.create_task(
                     task_lock.put_queue(
-                        ActionActivateToolkitData(
-                            data={
-                                "agent_name": self.agent_name,
-                                "process_task_id": self.process_task_id,
-                                "toolkit_name": toolkit_name,
-                                "method_name": func_name,
-                                "message": json.dumps(args, ensure_ascii=False),
-                            },
-                        )
-                    )
-                )
+                        ActionActivateToolkitData(data={
+                            "agent_name":
+                            self.agent_name,
+                            "process_task_id":
+                            self.process_task_id,
+                            "toolkit_name":
+                            toolkit_name,
+                            "method_name":
+                            func_name,
+                            "message":
+                            json.dumps(args, ensure_ascii=False),
+                        }, )))
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)
@@ -464,8 +442,7 @@ class ListenChatAgent(ChatAgent):
                 self._secure_result_store[tool_call_id] = raw_result
                 result = (
                     "[The tool has been executed successfully, but the output"
-                    " from the tool is masked. You can move forward]"
-                )
+                    " from the tool is masked. You can move forward]")
                 mask_flag = True
             else:
                 result = raw_result
@@ -478,8 +455,8 @@ class ListenChatAgent(ChatAgent):
                 MAX_RESULT_LENGTH = 500
                 if len(result_str) > MAX_RESULT_LENGTH:
                     result_msg = (
-                        result_str[:MAX_RESULT_LENGTH]
-                        + f"... (truncated, total length: {len(result_str)} chars)"
+                        result_str[:MAX_RESULT_LENGTH] +
+                        f"... (truncated, total length: {len(result_str)} chars)"
                     )
                 else:
                     result_msg = result_str
@@ -488,25 +465,20 @@ class ListenChatAgent(ChatAgent):
             if not has_listen_decorator:
                 asyncio.create_task(
                     task_lock.put_queue(
-                        ActionDeactivateToolkitData(
-                            data={
-                                "agent_name": self.agent_name,
-                                "process_task_id": self.process_task_id,
-                                "toolkit_name": toolkit_name,
-                                "method_name": func_name,
-                                "message": result_msg,
-                            },
-                        )
-                    )
-                )
+                        ActionDeactivateToolkitData(data={
+                            "agent_name": self.agent_name,
+                            "process_task_id": self.process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": func_name,
+                            "message": result_msg,
+                        }, )))
         except Exception as e:
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
             result = f"Tool execution failed: {error_msg}"
             mask_flag = False
             traceroot_logger.error(
-                f"Tool execution failed for {func_name}: {e}", exc_info=True
-            )
+                f"Tool execution failed for {func_name}: {e}", exc_info=True)
 
         return self._record_tool_calling(
             func_name,
@@ -519,8 +491,7 @@ class ListenChatAgent(ChatAgent):
 
     @traceroot.trace()
     async def _aexecute_tool(
-        self, tool_call_request: ToolCallRequest
-    ) -> ToolCallingRecord:
+            self, tool_call_request: ToolCallRequest) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
         tool: FunctionTool = self._internal_tools[func_name]
 
@@ -537,24 +508,20 @@ class ListenChatAgent(ChatAgent):
             toolkit_name = tool._toolkit_name
 
         # Method 2: For MCP tools, check if func has __self__ (the toolkit instance)
-        if (
-            not toolkit_name
-            and hasattr(tool, "func")
-            and hasattr(tool.func, "__self__")
-        ):
+        if (not toolkit_name and hasattr(tool, "func")
+                and hasattr(tool.func, "__self__")):
             toolkit_instance = tool.func.__self__
             if hasattr(toolkit_instance, "toolkit_name") and callable(
-                toolkit_instance.toolkit_name
-            ):
+                    toolkit_instance.toolkit_name):
                 toolkit_name = toolkit_instance.toolkit_name()
 
         # Method 3: Check if tool.func is a bound method with toolkit
         if not toolkit_name and hasattr(tool, "func"):
-            if hasattr(tool.func, "func") and hasattr(tool.func.func, "__self__"):
+            if hasattr(tool.func, "func") and hasattr(tool.func.func,
+                                                      "__self__"):
                 toolkit_instance = tool.func.func.__self__
                 if hasattr(toolkit_instance, "toolkit_name") and callable(
-                    toolkit_instance.toolkit_name
-                ):
+                        toolkit_instance.toolkit_name):
                     toolkit_name = toolkit_instance.toolkit_name()
 
         # Default fallback
@@ -572,16 +539,18 @@ class ListenChatAgent(ChatAgent):
         # Only send activate event if tool is NOT wrapped by @listen_toolkit
         if not has_listen_decorator:
             await task_lock.put_queue(
-                ActionActivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": json.dumps(args, ensure_ascii=False),
-                    },
-                )
-            )
+                ActionActivateToolkitData(data={
+                    "agent_name":
+                    self.agent_name,
+                    "process_task_id":
+                    self.process_task_id,
+                    "toolkit_name":
+                    toolkit_name,
+                    "method_name":
+                    func_name,
+                    "message":
+                    json.dumps(args, ensure_ascii=False),
+                }, ))
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
@@ -611,7 +580,8 @@ class ListenChatAgent(ChatAgent):
                         # Async tool: use async_call
                         result = await tool.async_call(**args)
 
-                elif hasattr(tool, "func") and asyncio.iscoroutinefunction(tool.func):
+                elif hasattr(tool, "func") and asyncio.iscoroutinefunction(
+                        tool.func):
                     # Case: tool wraps a direct async function
                     result = await tool.func(**args)
 
@@ -632,8 +602,8 @@ class ListenChatAgent(ChatAgent):
             error_msg = f"Error executing async tool '{func_name}': {e!s}"
             result = {"error": error_msg}
             traceroot_logger.error(
-                f"Async tool execution failed for {func_name}: {e}", exc_info=True
-            )
+                f"Async tool execution failed for {func_name}: {e}",
+                exc_info=True)
 
         # Prepare result message with truncation
         if isinstance(result, str):
@@ -643,25 +613,21 @@ class ListenChatAgent(ChatAgent):
             MAX_RESULT_LENGTH = 500
             if len(result_str) > MAX_RESULT_LENGTH:
                 result_msg = (
-                    result_str[:MAX_RESULT_LENGTH]
-                    + f"... (truncated, total length: {len(result_str)} chars)"
-                )
+                    result_str[:MAX_RESULT_LENGTH] +
+                    f"... (truncated, total length: {len(result_str)} chars)")
             else:
                 result_msg = result_str
 
         # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
         if not has_listen_decorator:
             await task_lock.put_queue(
-                ActionDeactivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": result_msg,
-                    },
-                )
-            )
+                ActionDeactivateToolkitData(data={
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "toolkit_name": toolkit_name,
+                    "method_name": func_name,
+                    "message": result_msg,
+                }, ))
         return self._record_tool_calling(
             func_name,
             args,
@@ -685,13 +651,17 @@ class ListenChatAgent(ChatAgent):
             model=self.model_backend.models,  # Pass the existing model_backend
             memory=None,  # clone memory later
             message_window_size=getattr(self.memory, "window_size", None),
-            token_limit=getattr(self.memory.get_context_creator(), "token_limit", None),
+            token_limit=getattr(self.memory.get_context_creator(),
+                                "token_limit", None),
             output_language=self._output_language,
             tools=cloned_tools,
             toolkits_to_register_agent=toolkits_to_register,
-            external_tools=[schema for schema in self._external_tool_schemas.values()],
+            external_tools=[
+                schema for schema in self._external_tool_schemas.values()
+            ],
             response_terminators=self.response_terminators,
-            scheduling_strategy=self.model_backend.scheduling_strategy.__name__,
+            scheduling_strategy=self.model_backend.scheduling_strategy.
+            __name__,
             max_iteration=self.max_iteration,
             stop_event=self.stop_event,
             tool_execution_timeout=self.tool_execution_timeout,
@@ -740,10 +710,7 @@ def agent_model(
                     "agent_name": agent_name,
                     "agent_id": agent_id,
                     "tools": tool_names or [],
-                }
-            )
-        )
-    )
+                })))
 
     # Build model config, defaulting to streaming for planner
     extra_params = options.extra_params or {}
@@ -783,13 +750,14 @@ def agent_model(
         model_config["stream"] = True
     if agent_name == Agents.browser_agent:
         try:
-            model_platform_enum = ModelPlatformType(options.model_platform.lower())
+            model_platform_enum = ModelPlatformType(
+                options.model_platform.lower())
             if model_platform_enum in {
-                ModelPlatformType.OPENAI,
-                ModelPlatformType.AZURE,
-                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
-                ModelPlatformType.LITELLM,
-                ModelPlatformType.OPENROUTER,
+                    ModelPlatformType.OPENAI,
+                    ModelPlatformType.AZURE,
+                    ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                    ModelPlatformType.LITELLM,
+                    ModelPlatformType.OPENROUTER,
             }:
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
@@ -799,10 +767,15 @@ def agent_model(
             )
             model_platform_enum = None
 
+    # TEMPORARY: Force fake API key to test error handling
+    fake_api_key = "sk-fake-invalid-key-for-testing-12345"  # TODO: Change back to options.api_key
+    traceroot_logger.error(
+        f"🔧 TESTING: Agent '{agent_name}' using fake API key: {fake_api_key}")
+
     model = ModelFactory.create(
         model_platform=options.model_platform,
         model_type=options.model_type,
-        api_key=options.api_key,
+        api_key=fake_api_key,
         url=options.api_url,
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
@@ -849,9 +822,7 @@ async def developer_agent(options: Chat):
     )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.developer_agent
-        ).send_message_to_user
-    )
+            options.project_id, Agents.developer_agent).send_message_to_user)
     note_toolkit = NoteTakingToolkit(
         api_task_id=options.project_id,
         agent_name=Agents.developer_agent,
@@ -859,11 +830,12 @@ async def developer_agent(options: Chat):
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
-    web_deploy_toolkit = message_integration.register_toolkits(web_deploy_toolkit)
-    screenshot_toolkit = ScreenshotToolkit(
-        options.project_id, working_directory=working_directory
-    )
-    screenshot_toolkit = message_integration.register_toolkits(screenshot_toolkit)
+    web_deploy_toolkit = message_integration.register_toolkits(
+        web_deploy_toolkit)
+    screenshot_toolkit = ScreenshotToolkit(options.project_id,
+                                           working_directory=working_directory)
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit)
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -875,7 +847,8 @@ async def developer_agent(options: Chat):
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.developer_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id,
+                                        Agents.developer_agent),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
@@ -1041,9 +1014,7 @@ def browser_agent(options: Chat):
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.browser_agent
-        ).send_message_to_user
-    )
+            options.project_id, Agents.browser_agent).send_message_to_user)
 
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
@@ -1073,7 +1044,8 @@ def browser_agent(options: Chat):
 
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
-    web_toolkit_custom = message_integration.register_toolkits(web_toolkit_custom)
+    web_toolkit_custom = message_integration.register_toolkits(
+        web_toolkit_custom)
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -1083,12 +1055,11 @@ def browser_agent(options: Chat):
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_functions(
-        [terminal_toolkit.shell_exec]
-    )
+        [terminal_toolkit.shell_exec])
 
-    note_toolkit = NoteTakingToolkit(
-        options.project_id, Agents.browser_agent, working_directory=working_directory
-    )
+    note_toolkit = NoteTakingToolkit(options.project_id,
+                                     Agents.browser_agent,
+                                     working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
@@ -1098,7 +1069,8 @@ def browser_agent(options: Chat):
         search_tools = []
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.browser_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id,
+                                        Agents.browser_agent),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
@@ -1246,24 +1218,22 @@ async def document_agent(options: Chat):
     )
 
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(
-            options.project_id, Agents.task_agent
-        ).send_message_to_user
-    )
-    file_write_toolkit = FileToolkit(
-        options.project_id, working_directory=working_directory
-    )
-    pptx_toolkit = PPTXToolkit(options.project_id, working_directory=working_directory)
+        message_handler=HumanToolkit(options.project_id,
+                                     Agents.task_agent).send_message_to_user)
+    file_write_toolkit = FileToolkit(options.project_id,
+                                     working_directory=working_directory)
+    pptx_toolkit = PPTXToolkit(options.project_id,
+                               working_directory=working_directory)
     pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
     mark_it_down_toolkit = MarkItDownToolkit(options.project_id)
-    mark_it_down_toolkit = message_integration.register_toolkits(mark_it_down_toolkit)
-    excel_toolkit = ExcelToolkit(
-        options.project_id, working_directory=working_directory
-    )
+    mark_it_down_toolkit = message_integration.register_toolkits(
+        mark_it_down_toolkit)
+    excel_toolkit = ExcelToolkit(options.project_id,
+                                 working_directory=working_directory)
     excel_toolkit = message_integration.register_toolkits(excel_toolkit)
-    note_toolkit = NoteTakingToolkit(
-        options.project_id, Agents.document_agent, working_directory=working_directory
-    )
+    note_toolkit = NoteTakingToolkit(options.project_id,
+                                     Agents.document_agent,
+                                     working_directory=working_directory)
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
     terminal_toolkit = TerminalToolkit(
@@ -1276,13 +1246,13 @@ async def document_agent(options: Chat):
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     google_drive_tools = await GoogleDriveMCPToolkit.get_can_use_tools(
-        options.project_id, options.get_bun_env()
-    )
+        options.project_id, options.get_bun_env())
 
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.document_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id,
+                                        Agents.document_agent),
         *mark_it_down_toolkit.get_tools(),
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
@@ -1476,19 +1446,14 @@ def multi_modal_agent(options: Chat):
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.multi_modal_agent
-        ).send_message_to_user
-    )
+            options.project_id, Agents.multi_modal_agent).send_message_to_user)
     video_download_toolkit = VideoDownloaderToolkit(
-        options.project_id, working_directory=working_directory
-    )
+        options.project_id, working_directory=working_directory)
     video_download_toolkit = message_integration.register_toolkits(
-        video_download_toolkit
-    )
+        video_download_toolkit)
     image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
     image_analysis_toolkit = message_integration.register_toolkits(
-        image_analysis_toolkit
-    )
+        image_analysis_toolkit)
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -1508,7 +1473,8 @@ def multi_modal_agent(options: Chat):
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.multi_modal_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id,
+                                        Agents.multi_modal_agent),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
     ]
@@ -1524,8 +1490,7 @@ def multi_modal_agent(options: Chat):
             url=options.api_url,
         )
         open_ai_image_toolkit = message_integration.register_toolkits(
-            open_ai_image_toolkit
-        )
+            open_ai_image_toolkit)
         tools = [
             *tools,
             *open_ai_image_toolkit.get_tools(),
@@ -1546,8 +1511,7 @@ def multi_modal_agent(options: Chat):
             ),
         )
         audio_analysis_toolkit = message_integration.register_toolkits(
-            audio_analysis_toolkit
-        )
+            audio_analysis_toolkit)
         tools.extend(audio_analysis_toolkit.get_tools())
 
     # if env("EXA_API_KEY") or options.is_cloud():
@@ -1680,11 +1644,11 @@ async def social_medium_agent(options: Chat):
         *RedditToolkit.get_can_use_tools(options.project_id),
         *await NotionMCPToolkit.get_can_use_tools(options.project_id),
         # *SlackToolkit.get_can_use_tools(options.project_id),
-        *await GoogleGmailMCPToolkit.get_can_use_tools(
-            options.project_id, options.get_bun_env()
-        ),
+        *await GoogleGmailMCPToolkit.get_can_use_tools(options.project_id,
+                                                       options.get_bun_env()),
         *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
-        *HumanToolkit.get_can_use_tools(options.project_id, Agents.social_medium_agent),
+        *HumanToolkit.get_can_use_tools(options.project_id,
+                                        Agents.social_medium_agent),
         *TerminalToolkit(
             options.project_id,
             agent_name=Agents.social_medium_agent,
@@ -1809,14 +1773,9 @@ async def mcp_agent(options: Chat):
                 f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}"
             )
             if mcp_tools:
-                tool_names = [
-                    (
-                        tool.get_function_name()
-                        if hasattr(tool, "get_function_name")
-                        else str(tool)
-                    )
-                    for tool in mcp_tools
-                ]
+                tool_names = [(tool.get_function_name() if hasattr(
+                    tool, "get_function_name") else str(tool))
+                              for tool in mcp_tools]
                 traceroot_logger.debug(f"MCP tools: {tool_names}")
             tools = [*tools, *mcp_tools]
         except Exception as e:
@@ -1831,31 +1790,28 @@ async def mcp_agent(options: Chat):
         task_lock.put_queue(
             ActionCreateAgentData(
                 data={
-                    "agent_name": Agents.mcp_agent,
-                    "agent_id": agent_id,
+                    "agent_name":
+                    Agents.mcp_agent,
+                    "agent_id":
+                    agent_id,
                     "tools": [
-                        key for key in options.installed_mcp["mcpServers"].keys()
+                        key
+                        for key in options.installed_mcp["mcpServers"].keys()
                     ],
-                }
-            )
-        )
-    )
+                })))
     return ListenChatAgent(
         options.project_id,
         Agents.mcp_agent,
-        system_message="You are a helpful assistant that can help users search mcp servers. The found mcp services will be returned to the user, and you will ask the user via ask_human_via_gui whether they want to install these mcp services.",
+        system_message=
+        "You are a helpful assistant that can help users search mcp servers. The found mcp services will be returned to the user, and you will ask the user via ask_human_via_gui whether they want to install these mcp services.",
         model=ModelFactory.create(
             model_platform=options.model_platform,
             model_type=options.model_type,
             api_key=options.api_key,
             url=options.api_url,
-            model_config_dict=(
-                {
-                    "user": str(options.project_id),
-                }
-                if options.is_cloud()
-                else None
-            ),
+            model_config_dict=({
+                "user": str(options.project_id),
+            } if options.is_cloud() else None),
             timeout=600,  # 10 minutes
             **{
                 k: v
@@ -1904,22 +1860,20 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
             toolkit_tools = toolkit.get_can_use_tools(api_task_id)
-            toolkit_tools = (
-                await toolkit_tools
-                if asyncio.iscoroutine(toolkit_tools)
-                else toolkit_tools
-            )
+            toolkit_tools = (await toolkit_tools
+                             if asyncio.iscoroutine(toolkit_tools) else
+                             toolkit_tools)
             res.extend(toolkit_tools)
         else:
-            traceroot_logger.warning(f"Toolkit {item} not found for agent {agent_name}")
+            traceroot_logger.warning(
+                f"Toolkit {item} not found for agent {agent_name}")
     return res
 
 
 @traceroot.trace()
 async def get_mcp_tools(mcp_server: McpServers):
     traceroot_logger.info(
-        f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers"
-    )
+        f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
     if len(mcp_server["mcpServers"]) == 0:
         return []
 
@@ -1931,8 +1885,7 @@ async def get_mcp_tools(mcp_server: McpServers):
         # Set global auth directory to persist authentication across tasks
         if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
             server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
-                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
-            )
+                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
 
     mcp_toolkit = None
     try:
@@ -1944,19 +1897,14 @@ async def get_mcp_tools(mcp_server: McpServers):
         )
         tools = mcp_toolkit.get_tools()
         if tools:
-            tool_names = [
-                (
-                    tool.get_function_name()
-                    if hasattr(tool, "get_function_name")
-                    else str(tool)
-                )
-                for tool in tools
-            ]
+            tool_names = [(tool.get_function_name() if hasattr(
+                tool, "get_function_name") else str(tool)) for tool in tools]
             traceroot_logger.debug(f"MCP tool names: {tool_names}")
         return tools
     except asyncio.CancelledError:
         traceroot_logger.info("MCP connection cancelled during get_mcp_tools")
         return []
     except Exception as e:
-        traceroot_logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
+        traceroot_logger.error(f"Failed to connect MCP toolkit: {e}",
+                               exc_info=True)
         return []

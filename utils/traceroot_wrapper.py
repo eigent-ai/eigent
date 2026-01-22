@@ -33,7 +33,8 @@ env_path = Path(__file__).resolve().parents[1] / '.env'
 
 load_dotenv(env_path)
 
-if TRACEROOT_AVAILABLE and traceroot.init():
+# DISABLED: Do not initialize traceroot to avoid OpenTelemetry connection errors
+if False:  # TRACEROOT_AVAILABLE and traceroot.init():
     from traceroot.logger import get_logger as _get_traceroot_logger
 
     trace = traceroot.trace

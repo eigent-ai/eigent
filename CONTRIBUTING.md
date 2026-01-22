@@ -235,7 +235,9 @@ npm run dev
 
 # In a separate terminal, start the backend server
 cd eigent/server
-docker compose up
+docker compose up -d
+# Stream the logs if you needed
+docker compose logs -f
 ```
 
 To run the application locally in developer mode:
