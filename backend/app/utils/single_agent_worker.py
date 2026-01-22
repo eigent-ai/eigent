@@ -106,10 +106,17 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 if isinstance(response, AsyncStreamingChatAgentResponse):
                     # With stream_accumulate=False, we need to accumulate delta content
                     accumulated_content = ""
+                    last_chunk = None
+                    chunk_count = 0
                     async for chunk in response:
+                        chunk_count += 1
+                        last_chunk = chunk
                         if chunk.msg and chunk.msg.content:
                             accumulated_content += chunk.msg.content
+                    logger.info(f"Streaming complete: {chunk_count} chunks, content_length={len(accumulated_content)}")
                     response_content = accumulated_content
+                    # Store usage info from last chunk for later use
+                    response._last_chunk_info = last_chunk.info if last_chunk else {}
                 else:
                     # Regular ChatAgentResponse
                     response_content = response.msg.content if response.msg else ""
@@ -124,20 +131,32 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 )
             else:
                 # Use native structured output if supported
-                response = await worker_agent.astep(prompt, response_format=TaskResult)
+                # NOTE: Temporarily disable streaming for structured output because
+                # the camel library doesn't properly handle AsyncChatCompletionStreamManager
+                # from OpenAI's structured output streaming API
+                original_stream = worker_agent.model_backend.model_config_dict.get("stream", False)
+                worker_agent.model_backend.model_config_dict["stream"] = False
+                try:
+                    response = await worker_agent.astep(prompt, response_format=TaskResult)
+                finally:
+                    worker_agent.model_backend.model_config_dict["stream"] = original_stream
 
-                # Handle streaming response for native output
+                # Handle streaming response for native output (shouldn't happen now but keep for safety)
                 if isinstance(response, AsyncStreamingChatAgentResponse):
                     task_result = None
                     # With stream_accumulate=False, we need to accumulate delta content
                     accumulated_content = ""
+                    last_chunk = None
                     async for chunk in response:
+                        last_chunk = chunk
                         if chunk.msg:
                             if chunk.msg.content:
                                 accumulated_content += chunk.msg.content
                             if chunk.msg.parsed:
                                 task_result = chunk.msg.parsed
                     response_content = accumulated_content
+                    # Store usage info from last chunk for later use
+                    response._last_chunk_info = last_chunk.info if last_chunk else {}
                     # If no parsed result found in streaming, create fallback
                     if task_result is None:
                         task_result = TaskResult(
@@ -151,9 +170,9 @@ class SingleAgentWorker(BaseSingleAgentWorker):
 
             # Get token usage from the response
             if isinstance(response, AsyncStreamingChatAgentResponse):
-                # For streaming responses, get the final response info
-                final_response = await response
-                usage_info = final_response.info.get("usage") or final_response.info.get("token_usage")
+                # For streaming responses, get info from last chunk captured during iteration
+                chunk_info = getattr(response, '_last_chunk_info', {})
+                usage_info = chunk_info.get("usage") or chunk_info.get("token_usage")
             else:
                 usage_info = response.info.get("usage") or response.info.get("token_usage")
             total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
