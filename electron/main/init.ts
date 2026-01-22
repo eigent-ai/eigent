@@ -225,14 +225,13 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                     log.warn(`Failed to remove lock file: ${e}`);
                 }
 
-                // Cleanup corrupted python cache ONLY if we don't have bundled Python
+                // Cleanup corrupted python cache ONLY if it's not the bundled Python
                 // If we have bundled Python, we want to keep it and reuse it
                 const prebuiltPythonDir = getPrebuiltPythonDir();
                 try {
                     const pythonCacheDir = getCachePath('uv_python');
-                    // Only remove cache if we DON'T have prebuilt Python available
-                    // When prebuilt Python exists, UV will use it via UV_PYTHON_INSTALL_DIR
-                    if (fs.existsSync(pythonCacheDir) && !prebuiltPythonDir) {
+                    // Only remove if it's NOT the prebuilt Python directory
+                    if (fs.existsSync(pythonCacheDir) && pythonCacheDir !== prebuiltPythonDir) {
                         log.info(`Removing potentially corrupted Python cache: ${pythonCacheDir}`);
                         fs.rmSync(pythonCacheDir, { recursive: true, force: true });
                     } else if (prebuiltPythonDir) {

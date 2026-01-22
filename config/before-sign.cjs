@@ -147,5 +147,12 @@ exports.default = async function afterPack(context) {
   }
 
   cleanSymlinks(prebuiltPath, appPath);
+
+  // Also clean symlinks in backend directory (e.g., backend/workspace/.initial_env)
+  const backendPath = path.join(resourcesPath, 'backend');
+  if (fs.existsSync(backendPath)) {
+    cleanSymlinks(backendPath, appPath);
+  }
+
   console.log('✅ Symlink cleanup completed');
 };
