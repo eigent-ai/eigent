@@ -16,9 +16,10 @@ interface Props {
 	onOpenChange: (open: boolean) => void;
 	trigger?: React.ReactNode;
 	onConfirm: () => void;
+	loading?: boolean;
 }
 
-export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm }: Props) {
+export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm, loading = false }: Props) {
 	const { t } = useTranslation();
 	const onSubmit = useCallback(() => {
 		onConfirm();
@@ -38,7 +39,7 @@ export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm
 					<DialogClose asChild>
 						<Button variant="ghost" size="md">{t("layout.cancel")}</Button>
 					</DialogClose>
-					<Button size="md" onClick={onSubmit} variant="cuation">{t("layout.yes-end-project")}</Button>
+					<Button size="md" onClick={onSubmit} variant="cuation" disabled={loading}>{t("layout.yes-end-project")}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
