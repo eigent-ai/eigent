@@ -169,7 +169,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         source_cfg = os.path.join(source_venv, "pyvenv.cfg")
         python_home = None
 
-        with open(source_cfg, 'r') as f:
+        with open(source_cfg, 'r', encoding='utf-8') as f:
             for line in f:
                 if line.startswith('home = '):
                     python_home = line.split('=', 1)[1].strip()
