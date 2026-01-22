@@ -72,7 +72,7 @@ export default function Setting() {
 								const Icon = menu.icon;
 								return {
 									value: menu.id,
-									label: <span className="text-sm font-bold leading-13">{menu.name}</span>,
+									label: <span className="text-sm font-bold leading-13 text-text-primary">{menu.name}</span>,
 								};
 							}) as VerticalNavItem[]}
 							value={activeTab}

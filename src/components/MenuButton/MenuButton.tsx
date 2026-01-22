@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { AnimateIcon as AnimateIconProvider } from "@/components/animate-ui/icons/icon";
 
 const menuButtonVariants = cva(
-	"relative inline-flex items-center justify-center select-none rounded-xs transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default border border-solid border-menubutton-border-default hover:bg-menubutton-fill-hover hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-active data-[state=on]:bg-menubutton-fill-active data-[state=on]:border-menubutton-border-active text-foreground cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg",
+	"relative inline-flex items-center justify-center select-none rounded-xs transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default border border-solid border-menubutton-border-default hover:bg-menubutton-fill-hover hover:border-menubutton-border-hover hover:text-text-primary focus:bg-menubutton-fill-active focus:border-menubutton-border-active focus:text-text-primary data-[state=on]:bg-menubutton-fill-active data-[state=on]:border-menubutton-border-active data-[state=on]:text-text-primary text-text-secondary disabled:text-text-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg",
 	{
 		variants: {
 			size: {
