@@ -137,9 +137,6 @@ async def post(data: Chat, request: Request):
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
-
-    # Override API key with fake key for testing
-    data.api_key = "sk-fake-invalid-key-for-testing"
     os.environ["OPENAI_API_KEY"] = data.api_key
     os.environ[
         "OPENAI_API_BASE_URL"] = data.api_url or "https://api.openai.com/v1"

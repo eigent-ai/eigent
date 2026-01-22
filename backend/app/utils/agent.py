@@ -770,7 +770,7 @@ def agent_model(
     model = ModelFactory.create(
         model_platform=options.model_platform,
         model_type=options.model_type,
-        api_key="sk-fake-invalid-key-for-testing",  # Fake key for testing
+        api_key=options.api_key,
         url=options.api_url,
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
