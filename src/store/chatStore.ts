@@ -44,6 +44,8 @@ interface Task {
 	isContextExceeded?: boolean;
 	// Streaming decompose text - stored separately to avoid frequent re-renders
 	streamingDecomposeText: string;
+	// Streaming agent output - real-time agent output during task execution
+	streamingAgentOutput: { [processTaskId: string]: string };
 }
 
 export interface ChatStore {
@@ -107,6 +109,8 @@ export interface ChatStore {
 	setNextTaskId: (taskId: string | null) => void;
 	setStreamingDecomposeText: (taskId: string, text: string) => void;
 	clearStreamingDecomposeText: (taskId: string) => void;
+	updateStreamingAgentOutput: (taskId: string, processTaskId: string, content: string) => void;
+	clearStreamingAgentOutput: (taskId: string, processTaskId: string) => void;
 }
 
 export type VanillaChatStore = {
@@ -207,6 +211,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						isTakeControl: false,
 						isTaskEdit: false,
 						streamingDecomposeText: '',
+						streamingAgentOutput: {},
 					},
 				}
 			}))
@@ -794,6 +799,8 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						setIsContextExceeded,
 						setStreamingDecomposeText,
 						clearStreamingDecomposeText,
+						updateStreamingAgentOutput,
+						clearStreamingAgentOutput,
 						setIsTaskEdit } = getCurrentChatStore()
 
 					currentTaskId = getCurrentTaskId();
@@ -836,6 +843,24 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 								}
 								delete streamingDecomposeTextTimers[currentId];
 							}, 16);
+						}
+						return;
+					}
+
+					// Handle streaming agent output during task execution
+					if (agentMessages.step === "streaming_agent_output") {
+						const data = agentMessages.data as { process_task_id?: string; content?: string; is_final?: boolean };
+						const { process_task_id, content, is_final } = data;
+						const currentId = getCurrentTaskId();
+						
+						if (!process_task_id) return;
+						
+						if (is_final) {
+							// Clear streaming output when final marker received
+							clearStreamingAgentOutput(currentId, process_task_id);
+						} else if (content) {
+							// Append streaming content
+							updateStreamingAgentOutput(currentId, process_task_id, content);
 						}
 						return;
 					}
@@ -2602,6 +2627,42 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						[taskId]: {
 							...state.tasks[taskId],
 							streamingDecomposeText: '',
+						},
+					},
+				};
+			});
+		},
+		updateStreamingAgentOutput: (taskId, processTaskId, content) => {
+			set((state) => {
+				if (!state.tasks[taskId]) return state;
+				const currentOutput = state.tasks[taskId].streamingAgentOutput[processTaskId] || '';
+				return {
+					...state,
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...state.tasks[taskId],
+							streamingAgentOutput: {
+								...state.tasks[taskId].streamingAgentOutput,
+								[processTaskId]: currentOutput + content,
+							},
+						},
+					},
+				};
+			});
+		},
+		clearStreamingAgentOutput: (taskId, processTaskId) => {
+			set((state) => {
+				if (!state.tasks[taskId]) return state;
+				const newStreamingAgentOutput = { ...state.tasks[taskId].streamingAgentOutput };
+				delete newStreamingAgentOutput[processTaskId];
+				return {
+					...state,
+					tasks: {
+						...state.tasks,
+						[taskId]: {
+							...state.tasks[taskId],
+							streamingAgentOutput: newStreamingAgentOutput,
 						},
 					},
 				};

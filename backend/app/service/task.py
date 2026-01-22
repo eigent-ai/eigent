@@ -22,6 +22,7 @@ class Action(str, Enum):
     new_task_state = "new_task_state"  # backend -> user
     decompose_progress = "decompose_progress"  # backend -> user (streaming decomposition)
     decompose_text = "decompose_text"  # backend -> user (raw streaming text)
+    streaming_agent_output = "streaming_agent_output"  # backend -> user (streaming agent output during task execution)
     start = "start"  # user -> backend
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
@@ -76,6 +77,11 @@ class ActionDecomposeProgressData(BaseModel):
 class ActionDecomposeTextData(BaseModel):
     action: Literal[Action.decompose_text] = Action.decompose_text
     data: dict
+
+
+class ActionStreamingAgentOutputData(BaseModel):
+    action: Literal[Action.streaming_agent_output] = Action.streaming_agent_output
+    data: dict[Literal["agent_name", "process_task_id", "agent_id", "content", "is_final"], str | bool]
 
 
 class ActionNewTaskStateData(BaseModel):
@@ -249,6 +255,7 @@ ActionData = (
     | ActionSkipTaskData
     | ActionDecomposeTextData
     | ActionDecomposeProgressData
+    | ActionStreamingAgentOutputData
 )
 
 

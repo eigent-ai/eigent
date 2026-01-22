@@ -891,6 +891,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.warning(f"Cannot resume: workforce is None for project {options.project_id}")
             elif item.action == Action.decompose_text:
                 yield sse_json("decompose_text", item.data)
+            elif item.action == Action.streaming_agent_output:
+                yield sse_json("streaming_agent_output", item.data)
             elif item.action == Action.decompose_progress:
                 yield sse_json("to_sub_tasks", item.data)
             elif item.action == Action.new_agent:

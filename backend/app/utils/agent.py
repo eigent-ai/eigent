@@ -125,6 +125,7 @@ from app.service.task import (
     ActionCreateAgentData,
     ActionDeactivateAgentData,
     ActionDeactivateToolkitData,
+    ActionStreamingAgentOutputData,
     Agents,
     get_task_lock,
 )
@@ -269,7 +270,22 @@ class ListenChatAgent(ChatAgent):
                             last_response = chunk
                             # Accumulate content from each chunk (delta mode)
                             if chunk.msg and chunk.msg.content:
-                                accumulated_content += chunk.msg.content
+                                delta_content = chunk.msg.content
+                                accumulated_content += delta_content
+                                # Stream output chunk to frontend (non-blocking)
+                                asyncio.create_task(
+                                    task_lock.put_queue(
+                                        ActionStreamingAgentOutputData(
+                                            data={
+                                                "agent_name": self.agent_name,
+                                                "process_task_id": self.process_task_id,
+                                                "agent_id": self.agent_id,
+                                                "content": delta_content,
+                                                "is_final": False,
+                                            },
+                                        )
+                                    )
+                                )
                             yield chunk
                     finally:
                         total_tokens = 0
@@ -281,6 +297,20 @@ class ListenChatAgent(ChatAgent):
                             )
                             if usage_info:
                                 total_tokens = usage_info.get("total_tokens", 0)
+                        # Send final streaming output marker
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionStreamingAgentOutputData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "content": "",
+                                        "is_final": True,
+                                    },
+                                )
+                            )
+                        )
                         asyncio.create_task(
                             task_lock.put_queue(
                                 ActionDeactivateAgentData(
