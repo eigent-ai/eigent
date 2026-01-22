@@ -9,6 +9,7 @@ import {
   getCachePath,
   getVenvPath,
   getTerminalVenvPath,
+  getPrebuiltTerminalVenvPath,
   getUvEnv,
   cleanupOldVenvs,
   isBinaryExists,
@@ -109,12 +110,33 @@ export const checkAndInstallDepsOnUpdate = async ({
 
   return new Promise(async (resolve, reject) => {
     try {
-      // If prebuilt dependencies are available, use them and skip installation
+      // If prebuilt dependencies are available, use them and skip main installation
       if (hasPrebuiltDeps()) {
         log.info(
           '[DEPS INSTALL] Using prebuilt dependencies, creating version file'
         );
         checkInstallOperations.createVersionFile();
+
+        // Check if prebuilt terminal venv exists
+        const prebuiltTerminalVenv = getPrebuiltTerminalVenvPath();
+        if (prebuiltTerminalVenv) {
+          log.info('[DEPS INSTALL] Using prebuilt terminal venv:', prebuiltTerminalVenv);
+        } else {
+          // Create terminal base venv if not prebuilt
+          log.info('[DEPS INSTALL] Creating terminal base venv (not prebuilt)...');
+          try {
+            uv_path = await getBinaryPath('uv');
+            const terminalResult = await installTerminalBaseVenv(currentVersion);
+            if (!terminalResult.success) {
+              log.warn('[DEPS INSTALL] Terminal base venv installation failed, but continuing...', terminalResult.message);
+            } else {
+              log.info('[DEPS INSTALL] Terminal base venv created successfully');
+            }
+          } catch (error) {
+            log.warn('[DEPS INSTALL] Failed to create terminal base venv:', error);
+          }
+        }
+
         resolve({ message: 'Using prebuilt dependencies', success: true });
         return;
       }
