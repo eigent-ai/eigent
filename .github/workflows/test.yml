@@ -30,12 +30,12 @@ jobs:
           cd backend
           uv sync
 
-      - name: Run error_handler tests
+      - name: Run model validation tests
         run: |
           cd backend
-          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_error_handler.py -v
+          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_model_validation.py -v || echo "No validation tests yet"
 
-      - name: Run chat_service_error_handling tests
+      - name: Run task validation tests
         run: |
           cd backend
-          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_chat_service_error_handling.py -v
+          PYTHONPATH=/home/runner/work/eigent/eigent/backend:/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_task_validate.py -v

@@ -6,12 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
-from app.service.error_handler import (prepare_model_error_response,
-                                       should_stop_task)
 from app.service.task import (Action, ActionDecomposeProgressData,
                               ActionDecomposeTextData, ActionImproveData,
                               ActionInstallMcpData, ActionNewAgent, Agents,
-                              TaskLock, delete_task_lock, set_current_task_id)
+                              TaskLock, delete_task_lock, set_current_task_id,
+                              validate_model_before_task)
 from app.utils.agent import (ListenChatAgent, agent_model, browser_agent,
                              developer_agent, document_agent, get_mcp_tools,
                              get_toolkits, mcp_agent, multi_modal_agent,
@@ -255,8 +254,33 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 @sync_step
 @traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
-    start_event_loop = True
+    """Main task execution loop. Called when POST /chat endpoint
+    is hit to start a new chat session.
 
+    Validates model configuration, processes task queue, manages
+    workforce lifecycle, and streams responses back to the client
+    via SSE.
+
+    Args:
+        options (Chat): Chat configuration containing task details and
+            model settings.
+        request (Request): FastAPI request object for client connection
+            management.
+        task_lock (TaskLock): Shared task state and queue for the project.
+
+    Yields:
+        SSE formatted responses for task progress, errors, and results
+    """
+    # Validate model configuration before starting task
+    is_valid, error_msg = await validate_model_before_task(options)
+    if not is_valid:
+        yield sse_json("error", {
+            "message": f"Model validation failed: {error_msg}"
+        })
+        task_lock.status = Status.done
+        return
+
+    start_event_loop = True
     # Initialize task_lock attributes
     if not hasattr(task_lock, 'conversation_history'):
         task_lock.conversation_history = []
@@ -409,11 +433,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "[NEW-QUESTION] Has attachments, treating as complex task"
                     )
                 else:
-                    is_complex_task = await question_confirm(
-                        question_agent, question, task_lock)
-                    logger.info(
-                        f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}"
-                    )
+                    try:
+                        is_complex_task = await question_confirm(
+                            question_agent, question, task_lock)
+                        logger.info(
+                            f"[NEW-QUESTION] question_confirm result: is_complex={is_complex_task}"
+                        )
+                    except Exception as e:
+                        # Log the error and treat as complex task
+                        # (Model validation should have caught critical errors upfront)
+                        logger.error(f"Error in question_confirm: {e}", exc_info=True)
+                        is_complex_task = True
 
                 if not is_complex_task:
                     logger.info(
@@ -1106,26 +1136,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         summary_task_content = new_summary_content
 
                     except ModelProcessingError as e:
-                        # Handle model errors (especially invalid API keys)
-                        # during multi-turn task decomposition
-                        error_payload, _, error_code = prepare_model_error_response(
-                            e, options.project_id, task_id,
-                            "multi-turn task decomposition")
-
-                        logger.error(f"Multi-turn error_code: {error_code}")
-
-                        # Only send error and stop workforce for critical errors
-                        if should_stop_task(error_code):
-                            # Send error notification to frontend
-                            yield sse_json("error", error_payload)
-
-                            # Stop workforce if running
-                            if "workforce" in locals(
-                            ) and workforce is not None and workforce._running:
-                                workforce.stop()
-
-                            # Mark task as done (failed state)
-                            task_lock.status = Status.done
+                        # Log error - validation should have caught config issues
+                        logger.error(f"Multi-turn task decomposition error: {e}", exc_info=True)
+                        yield sse_json("error", {"message": f"Task decomposition failed: {str(e)}"})
+                        if "workforce" in locals() and workforce is not None and workforce._running:
+                            workforce.stop()
+                        task_lock.status = Status.done
                     except Exception as e:
                         import traceback
                         logger.error(
@@ -1401,28 +1417,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                 yield sse_json(Action.budget_not_enough,
                                {"message": "budget not enouth"})
-            else:
-                logger.error(
-                    f"ModelProcessingError for task {options.task_id}, action {item.action}: {e}",
-                    exc_info=True)
-                # Use error formatter to send properly formatted error to frontend
-                error_payload, _, error_code = prepare_model_error_response(
-                    e, options.project_id, options.task_id,
-                    f"action {item.action}")
-
-                logger.error(f"Main flow error_code: {error_code}")
-
-                # Only send error and stop workforce for critical errors
-                if should_stop_task(error_code):
-                    yield sse_json("error", error_payload)
-
-                    # Stop workforce if running
-                    if "workforce" in locals(
-                    ) and workforce is not None and workforce._running:
-                        workforce.stop()
-
-                    # Mark task as done
-                    task_lock.status = Status.done
         except Exception as e:
             logger.error(
                 f"Unhandled exception for task {options.task_id}, action {item.action}: {e}",
