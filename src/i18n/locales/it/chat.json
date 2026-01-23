@@ -47,6 +47,10 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Il tuo spazio di archiviazione cloud ha raggiunto il limite del tuo piano attuale.",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Stiamo riscontrando un traffico elevato. Riprova tra qualche istante.",
 	"new-project": "Nuovo Progetto",
-	"no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua"
+	"no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua",
+	"safe-to-run": "Esegui in sicurezza",
+	"scripts-running": "Script in esecuzione",
+	"scripts-warning": "Il renderer HTML ha trovato script correlati. Assicurati che gli script siano sicuri.",
+	"scripts-approved": "Script approvati. Rendering con funzionalità complete."
 }
 	 

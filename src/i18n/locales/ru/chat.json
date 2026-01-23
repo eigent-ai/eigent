@@ -47,6 +47,10 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Ваше облачное хранилище достигло лимита вашего текущего плана.",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Мы испытываем высокую нагрузку. Пожалуйста, попробуйте еще раз через несколько минут.",
 	"new-project": "Новый проект",
-	"no-reply-received-task-continue": "Ответ не получен, задача продолжается"
+	"no-reply-received-task-continue": "Ответ не получен, задача продолжается",
+	"safe-to-run": "Безопасно запустить",
+	"scripts-running": "Скрипты выполняются",
+	"scripts-warning": "HTML-рендерер обнаружил связанные скрипты. Убедитесь, что скрипты безопасны.",
+	"scripts-approved": "Скрипты одобрены. Рендеринг с полной функциональностью."
 }
 	 
