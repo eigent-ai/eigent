@@ -542,7 +542,6 @@ class Workforce(BaseWorkforce):
                     )
                 else:
                     cb.log_worker_created(event)
-            metrics_callbacks[0].log_worker_created(event)
 
         return self
 
