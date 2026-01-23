@@ -386,10 +386,10 @@ class ListenChatAgent(ChatAgent):
         )
 
         try:
-            # NOTE: Streaming with tool calls causes AsyncChatCompletionStreamManager error in camel library
-            # The library doesn't properly handle streaming responses when tools are attached.
-            # Disable streaming for ALL astep calls to avoid this issue.
-            # Streaming output is still achieved via the decompose_text event during task decomposition.
+            # NOTE: Streaming with response_format (structured output) causes AsyncChatCompletionStreamManager error
+            # in camel library. OpenAI returns AsyncChatCompletionStreamManager when combining streaming + structured
+            # output, but _handle_batch_response tries to access .choices which doesn't exist on that object.
+            # Disable streaming for astep calls that use response_format to avoid this issue.
             self.model_backend.model_config_dict["stream"] = False
             
             res = await super().astep(input_message, response_format)
