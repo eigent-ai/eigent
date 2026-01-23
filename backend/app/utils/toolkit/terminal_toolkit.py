@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import locale
 import platform
 import shutil
 import subprocess
@@ -22,6 +23,31 @@ logger = traceroot.get_logger("terminal_toolkit")
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
 APP_VERSION = "0.0.80"
+
+
+def _patch_camel_terminal_popen_for_windows() -> None:
+    if platform.system() != "Windows":
+        return
+    try:
+        import camel.toolkits.terminal_toolkit.terminal_toolkit as camel_terminal
+    except Exception:
+        return
+    if getattr(camel_terminal, "_eigent_popen_patched", False):
+        return
+    if not hasattr(camel_terminal, "subprocess"):
+        return
+
+    original_popen = camel_terminal.subprocess.Popen
+
+    def patched_popen(*args, **kwargs):
+        if kwargs.get("text") or kwargs.get("universal_newlines") or "encoding" in kwargs:
+            kwargs.setdefault("errors", "replace")
+            if "encoding" not in kwargs:
+                kwargs["encoding"] = "utf-8"
+        return original_popen(*args, **kwargs)
+
+    camel_terminal.subprocess.Popen = patched_popen
+    camel_terminal._eigent_popen_patched = True
 
 
 def get_terminal_base_venv_path() -> str:
@@ -53,6 +79,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = True,
     ):
+        _patch_camel_terminal_popen_for_windows()
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
