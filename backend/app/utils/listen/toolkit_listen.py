@@ -10,7 +10,6 @@ from datetime import datetime
 from app.service.task import (
     ActionActivateToolkitData,
     ActionDeactivateToolkitData,
-    ActionStreamingAgentOutputData,
     get_task_lock,
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
@@ -138,19 +137,6 @@ def listen_toolkit(
                         },
                     )
                     await task_lock.put_queue(activate_data)
-                    # Stream tool activity to frontend as "thinking" text
-                    tool_display = method_name.replace("_", " ").title()
-                    await task_lock.put_queue(
-                        ActionStreamingAgentOutputData(
-                            data={
-                                "agent_name": toolkit.agent_name,
-                                "process_task_id": process_task_id,
-                                "agent_id": getattr(toolkit, 'agent_id', ''),
-                                "content": f"[Tool] {tool_display}...\n",
-                                "is_final": False,
-                            },
-                        )
-                    )
                 error = None
                 res = None
                 try:
@@ -256,20 +242,6 @@ def listen_toolkit(
                         },
                     )
                     _safe_put_queue(task_lock, activate_data)
-                    # Stream tool activity to frontend as "thinking" text
-                    tool_display = method_name.replace("_", " ").title()
-                    _safe_put_queue(
-                        task_lock,
-                        ActionStreamingAgentOutputData(
-                            data={
-                                "agent_name": toolkit.agent_name,
-                                "process_task_id": process_task_id,
-                                "agent_id": getattr(toolkit, 'agent_id', ''),
-                                "content": f"[Tool] {tool_display}...\n",
-                                "is_final": False,
-                            },
-                        )
-                    )
 
                 error = None
                 res = None
