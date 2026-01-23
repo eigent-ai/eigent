@@ -226,11 +226,42 @@ export function getPrebuiltTerminalVenvPath(): string | null {
         log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
         return prebuiltTerminalVenvPath;
       } else {
-        // If it's missing here, fall back to user terminal venv
+        // Try to fix the missing Python executable by creating a symlink to 
+        // prebuilt Python
         log.warn(
           `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
-            `Falling back to user terminal venv.`
+            `Attempting to fix...`
         );
+        const prebuiltPython = findPrebuiltPythonExecutable();
+        if (prebuiltPython && fs.existsSync(prebuiltPython)) {
+          try {
+            const binDir = isWindows
+              ? path.join(prebuiltTerminalVenvPath, 'Scripts')
+              : path.join(prebuiltTerminalVenvPath, 'bin');
+
+            // Ensure bin directory exists
+            if (!fs.existsSync(binDir)) {
+              fs.mkdirSync(binDir, { recursive: true });
+            }
+
+            // Create symlink to prebuilt Python
+            if (fs.existsSync(pythonExePath)) {
+              // Remove existing broken symlink or file
+              fs.unlinkSync(pythonExePath);
+            }
+
+            // Calculate relative path for symlink
+            const relativePath = path.relative(binDir, prebuiltPython);
+            fs.symlinkSync(relativePath, pythonExePath);
+
+            log.info(`Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`);
+            return prebuiltTerminalVenvPath;
+          } catch (error) {
+            log.warn(`Failed to fix terminal venv Python symlink: ${error}`);
+          }
+        }
+
+        log.warn(`Falling back to user terminal venv.`);
       }
     }
   }
