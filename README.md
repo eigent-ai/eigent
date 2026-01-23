@@ -28,7 +28,7 @@
 </div>
 <br/>
 
-**Eigent** is the open source cowork desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. As a leading opensource cowork product, Eigent brings together the best of open-source collaboration and AI-powered automation.
+**Eigent** is the open source Cowork desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. As a leading open-source Cowork product, Eigent brings together the best of open-source collaboration and AI-powered automation.
 
 Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection.
 
@@ -51,23 +51,23 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 #### TOC
 
-- [🚀 Getting Started](#-getting-started)
+- [🚀 Getting Started with Open Source Cowork](#-getting-started-with-open-source-Cowork)
   - [🏠 Local Deployment (Recommended)](#-local-deployment-recommended)
   - [⚡ Quick Start (Cloud-Connected)](#-quick-start-cloud-connected)
   - [🏢 Enterprise](#-enterprise)
   - [☁️ Cloud Version](#️-cloud-version)
-- [✨ Key features](#-key-features)
+- [✨ Key features - Open Source Cowork](#-key-features---open-source-Cowork)
   - [🏭 Workforce](#-workforce)
   - [🧠 Comprehensive Model Support](#-comprehensive-model-support)
   - [🔌 MCP Tools Integration (MCP)](#-mcp-tools-integration-mcp)
   - [✋ Human-in-the-Loop](#-human-in-the-loop)
   - [👐 100% Open Source](#-100-open-source)
-- [🧩 Use Cases](#-use-cases)
+- [🧩 Use Cases - Open Source Cowork](#-use-cases---open-source-Cowork)
 - [🛠️ Tech Stack](#-tech-stack)
   - [Backend](#backend)
   - [Frontend](#frontend)
-- [🌟 Staying ahead](#staying-ahead)
-- [🗺️ Roadmap](#-roadmap)
+- [🌟 Staying ahead - Open Source Cowork](#-staying-ahead---open-source-Cowork)
+- [🗺️ Roadmap - Open Source Cowork](#️-roadmap---open-source-Cowork)
 - [📖 Contributing](#-contributing)
   - [Main Contributors](#main-contributors)
   - [Distinguished amabssador](#distinguished-amabssador)
@@ -156,10 +156,10 @@ For teams who prefer managed infrastructure, we also offer a cloud platform. The
 </div>
 
 ## **✨ Key features - Open Source Cowork**
-Unlock the full potential of exceptional productivity with Eigent open-source cowork powerful features — built for seamless integration, smarter task execution, and boundless automation.
+Unlock the full potential of exceptional productivity with Eigent's open-source Cowork powerful features — built for seamless integration, smarter task execution, and boundless automation.
 
 ### 🏭 Workforce 
-Employs a team of specialized AI agents that collaborate to solve complex tasks. Eigent open-source cowork dynamically breaks down tasks and activates multiple agents to work **in parallel.** 
+Employs a team of specialized AI agents that collaborate to solve complex tasks. Eigent's open-source Cowork dynamically breaks down tasks and activates multiple agents to work **in parallel.** 
 
 Eigent pre-defined the following agent workers:
 
@@ -173,7 +173,7 @@ Eigent pre-defined the following agent workers:
 <br/>
 
 ### 🧠 Comprehensive Model Support
-Deploy Eigent open-source cowork desktop locally with your preferred models.
+Deploy the Eigent open-source Cowork desktop locally with your preferred models.
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
 
@@ -202,7 +202,7 @@ Eigent is completely open-sourced. You can download, inspect, and modify the cod
 
 ## 🧩 Use Cases - Open Source Cowork
 
-Discover how developers worldwide leverage Eigent's open-source cowork capabilities to automate complex workflows and boost productivity across diverse industries.
+Discover how developers worldwide leverage Eigent's open-source Cowork capabilities to automate complex workflows and boost productivity across diverse industries.
 
 ### 1. Palm Springs Tennis Trip Itinerary with Slack Summary [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
 
@@ -281,7 +281,7 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 
 ## 🛠️ Tech Stack
 
-Eigent open-source cowork desktop is built on modern, reliable technologies that ensure scalability, performance, and extensibility.
+Eigent open-source Cowork desktop is built on modern, reliable technologies that ensure scalability, performance, and extensibility.
 
 ### Backend
 - **Framework:** FastAPI
@@ -309,7 +309,7 @@ Eigent open-source cowork desktop is built on modern, reliable technologies that
 
 ## 🗺️ Roadmap - Open Source Cowork
 
-Our open-source cowork continues to evolve with input from the community. Here's what's coming next:
+Our open-source Cowork continues to evolve with input from the community. Here's what's coming next:
 
 | Topics                   | Issues   | Discord Channel |
 | ------------------------ | -- |-- |
