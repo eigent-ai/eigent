@@ -31,6 +31,22 @@ describe('stackAuthApi', () => {
     expect(secondUrl).toContain('type=signup')
   })
 
+  it('does not fall back to signup for account/password error', async () => {
+    const { proxyFetchPost } = await import('@/api/http')
+
+    vi.mocked(proxyFetchPost).mockResolvedValueOnce({ code: 10, text: 'Account or password error' })
+
+    const res = await loginByStackWithAutoCreate('stack-token')
+
+    expect(res.code).toBe(10)
+    expect(res.text).toBe('Account or password error')
+    expect(vi.mocked(proxyFetchPost)).toHaveBeenCalledTimes(1)
+
+    const firstUrl = vi.mocked(proxyFetchPost).mock.calls[0][0] as string
+    expect(firstUrl).toContain('/api/login-by_stack?')
+    expect(firstUrl).toContain('type=login')
+  })
+
   it('includes invite_code in query when provided', async () => {
     const { proxyFetchPost } = await import('@/api/http')
 

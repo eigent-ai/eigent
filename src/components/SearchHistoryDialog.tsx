@@ -139,9 +139,11 @@ export function SearchHistoryDialog() {
 									<div className="overflow-hidden text-ellipsis whitespace-nowrap">
 										{task.question}
 									</div>
-									<button
+									<Button
 										type="button"
-										className="ml-auto inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground hover:text-foreground"
+										variant="ghost"
+										size="icon"
+										className="ml-auto text-muted-foreground hover:text-foreground"
 										aria-label="Delete history"
 										onClick={(e) => {
 											e.preventDefault();
@@ -150,7 +152,7 @@ export function SearchHistoryDialog() {
 										}}
 									>
 										<Trash2 size={16} />
-									</button>
+									</Button>
 								</CommandItem>
 							))}
 						</CommandGroup>

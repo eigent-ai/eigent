@@ -170,6 +170,11 @@ export default function Login() {
       // 2) If not found, auto-create profile via signup and continue
       const data = await loginByStackWithAutoCreate(token);
 
+      if (!data) {
+        setGeneralError(t('layout.login-failed-please-try-again'));
+        return;
+      }
+
       const errorMessage = getLoginErrorMessage(data);
       if (errorMessage) {
         setGeneralError(errorMessage);
