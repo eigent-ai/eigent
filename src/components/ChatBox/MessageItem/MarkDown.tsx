@@ -73,6 +73,29 @@ export const MarkDown = memo(
 			return () => clearInterval(timer);
 		}, [content, speed, enableTypewriter]);
 
+		// Check if content is pure HTML document
+		const isHtmlDocument = (text: string) => {
+			const trimmed = text.trim();
+			return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
+		};
+
+		// If content is a pure HTML document, render in a styled pre block
+		if (isHtmlDocument(displayedContent)) {
+			// Trim leading whitespace from each line for consistent alignment
+			const formattedHtml = displayedContent
+				.split('\n')
+				.map(line => line.trimStart())
+				.join('\n')
+				.trim();
+			return (
+				<div className="max-w-none markdown-container overflow-hidden">
+					<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style={{ wordBreak: 'break-all' }}>
+						<code>{formattedHtml}</code>
+					</pre>
+				</div>
+			);
+		}
+
 		return (
 			<div className="max-w-none markdown-container overflow-hidden">
 				<ReactMarkdown
@@ -120,8 +143,8 @@ export const MarkDown = memo(
 							</code>
 						),
 						pre: ({ children }) => (
-							<pre 
-								className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto whitespace-pre-wrap break-all"
+							<pre
+								className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all"
 								style={{ wordBreak: 'break-all' }}
 							>
 								{children}

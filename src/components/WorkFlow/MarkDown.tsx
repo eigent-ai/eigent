@@ -61,6 +61,30 @@ export const MarkDown = ({
 	const processContent = (text: string) => {
 		return text.replace(/\\n/g, "  \n "); // add two spaces before \n, so ReactMarkdown will recognize it as a line break
 	};
+
+	// Check if content is pure HTML document
+	const isHtmlDocument = (text: string) => {
+		const trimmed = text.trim();
+		return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
+	};
+
+	// If content is a pure HTML document, render in a styled pre block
+	if (isHtmlDocument(displayedContent)) {
+		// Trim leading whitespace from each line for consistent alignment
+		const formattedHtml = displayedContent
+			.split('\n')
+			.map(line => line.trimStart())
+			.join('\n')
+			.trim();
+		return (
+			<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto markdown-container">
+				<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+					<code>{formattedHtml}</code>
+				</pre>
+			</div>
+		);
+	}
+
 	return (
 		<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto markdown-container">
 			<ReactMarkdown
@@ -121,7 +145,7 @@ export const MarkDown = ({
 						</code>
 					),
 					pre: ({ children }) => (
-						<pre className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto">
+						<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
 							{children}
 						</pre>
 					),

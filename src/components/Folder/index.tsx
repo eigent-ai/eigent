@@ -1169,11 +1169,35 @@ function HtmlRenderer({
 
       // Inject JS content after sanitization (only if user is aware of scripts)
       let finalHtml = sanitized;
-      
-      // Cache raw HTML with scripts for iframe rendering (before sanitization stripped them)
-      setRawHtmlWithScriptsCache(rawHtmlWithScripts);
 
-      setProcessedHtml(finalHtml);
+      // Inject consistent font styles to ensure clean rendering
+      const fontStyleTag = `<style data-eigent-fonts>
+        *, *::before, *::after {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+        }
+        code, pre, kbd, samp {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace !important;
+        }
+      </style>`;
+
+      // Helper to inject font styles into HTML
+      const injectFontStyles = (html: string): string => {
+        // If HTML has <head>, inject after <head>
+        if (/<head[^>]*>/i.test(html)) {
+          return html.replace(/(<head[^>]*>)/i, `$1${fontStyleTag}`);
+        }
+        // If HTML has <html>, inject after <html>
+        if (/<html[^>]*>/i.test(html)) {
+          return html.replace(/(<html[^>]*>)/i, `$1${fontStyleTag}`);
+        }
+        // Otherwise prepend to content
+        return fontStyleTag + html;
+      };
+
+      // Cache raw HTML with scripts for iframe rendering (before sanitization stripped them)
+      setRawHtmlWithScriptsCache(injectFontStyles(rawHtmlWithScripts));
+
+      setProcessedHtml(injectFontStyles(finalHtml));
     };
 
     processHtml();

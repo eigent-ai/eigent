@@ -56,6 +56,29 @@ export const SummaryMarkDown = ({
 		return () => clearInterval(timer);
 	}, [content, speed, onTyping]);
 
+	// Check if content is pure HTML document
+	const isHtmlDocument = (text: string) => {
+		const trimmed = text.trim();
+		return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
+	};
+
+	// If content is a pure HTML document, render in a styled pre block
+	if (isHtmlDocument(displayedContent)) {
+		// Trim leading whitespace from each line for consistent alignment
+		const formattedHtml = displayedContent
+			.split('\n')
+			.map(line => line.trimStart())
+			.join('\n')
+			.trim();
+		return (
+			<div className="prose prose-sm max-w-none">
+				<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap mb-3">
+					<code>{formattedHtml}</code>
+				</pre>
+			</div>
+		);
+	}
+
 	return (
 		<div className="prose prose-sm max-w-none">
 			<ReactMarkdown
@@ -99,7 +122,7 @@ export const SummaryMarkDown = ({
 						</code>
 					),
 					pre: ({ children }) => (
-						<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs overflow-x-auto mb-3">
+						<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap mb-3">
 							{children}
 						</pre>
 					),

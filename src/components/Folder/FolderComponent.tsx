@@ -47,7 +47,17 @@ export default function FolderComponent({ selectedFile }: Props) {
 			}
 		}
 
-		return DOMPurify.sanitize(raw, {
+		// Inject consistent font styles to ensure clean rendering
+		const fontStyleTag = `<style data-eigent-fonts>
+			*, *::before, *::after {
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+			}
+			code, pre, kbd, samp {
+				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace !important;
+			}
+		</style>`;
+
+		const sanitized = DOMPurify.sanitize(raw, {
 			USE_PROFILES: { html: true },
 			ALLOWED_TAGS: [
 				"a",
@@ -117,6 +127,9 @@ export default function FolderComponent({ selectedFile }: Props) {
 			SANITIZE_DOM: true,
 			KEEP_CONTENT: false,
 		});
+
+		// Prepend font styles to sanitized HTML
+		return fontStyleTag + sanitized;
 	}, [selectedFile?.content]);
 
 	return (
