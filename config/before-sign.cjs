@@ -109,6 +109,35 @@ exports.default = async function afterPack(context) {
     }
   }
 
+  // Clean Python symlinks in terminal_venv/bin (same as venv/bin)
+  const terminalVenvBinDir = path.join(prebuiltPath, 'terminal_venv', 'bin');
+  if (fs.existsSync(terminalVenvBinDir)) {
+    const pythonNames = ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
+    const bundlePath = path.resolve(appPath);
+
+    for (const pythonName of pythonNames) {
+      const pythonSymlink = path.join(terminalVenvBinDir, pythonName);
+
+      if (fs.existsSync(pythonSymlink)) {
+        try {
+          const stats = fs.lstatSync(pythonSymlink);
+          if (stats.isSymbolicLink()) {
+            const target = fs.readlinkSync(pythonSymlink);
+            const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
+
+            // If symlink points outside bundle, remove it
+            if (!resolvedPath.startsWith(bundlePath)) {
+              console.log(`Removing invalid terminal_venv ${pythonName} symlink: ${target}`);
+              fs.unlinkSync(pythonSymlink);
+            }
+          }
+        } catch (error) {
+          console.warn(`Warning: Could not process terminal_venv ${pythonName} symlink: ${error.message}`);
+        }
+      }
+    }
+  }
+
   // Recursively clean other invalid symlinks
   function cleanSymlinks(dir, bundleRoot) {
     if (!fs.existsSync(dir)) {
