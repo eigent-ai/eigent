@@ -1021,8 +1021,9 @@ function HtmlRenderer({
               `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
               'gi'
             );
-            if (linkRegex.test(processedHtmlContent)) {
-              processedHtmlContent = processedHtmlContent.replace(linkRegex, styleTag);
+            const replacedCss = processedHtmlContent.replace(linkRegex, styleTag);
+            if (replacedCss !== processedHtmlContent) {
+              processedHtmlContent = replacedCss;
             } else {
               // Fallback: inject CSS at the beginning of the HTML
               if (processedHtmlContent.includes('<head>')) {
@@ -1041,7 +1042,6 @@ function HtmlRenderer({
       }
 
       // Load JS files content and replace external script tags
-      const jsContents: { name: string; content: string }[] = [];
       for (const jsFile of jsFiles) {
         try {
           const jsContent = await window.ipcRenderer.invoke(
@@ -1051,15 +1051,13 @@ function HtmlRenderer({
             false
           );
           if (jsContent) {
-            jsContents.push({ name: jsFile.name, content: jsContent });
-            
             // Replace external script tag with inline script
             const scriptRegex = new RegExp(
               `<script[^>]*src=["'](?:[^"']*[/\\\\])?${jsFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`,
               'gi'
             );
-            const inlineScript = `<script data-source="${jsFile.name}">${jsContent}</script>`;
-            processedHtmlContent = processedHtmlContent.replace(scriptRegex, inlineScript);
+            const inlineScriptTag = `<script data-source="${jsFile.name}">${jsContent}</script>`;
+            processedHtmlContent = processedHtmlContent.replace(scriptRegex, inlineScriptTag);
           }
         } catch (error) {
           console.error(`Failed to load JS file: ${jsFile.path}`, error);
@@ -1165,11 +1163,10 @@ function HtmlRenderer({
     };
 
     processHtml();
-  }, [selectedFile, projectFiles, onScriptsDetected]);
+  }, [selectedFile, projectFiles, onScriptsDetected, t]);
 
   // Zoom state and controls
   const [zoom, setZoom] = useState(100);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 10, 200));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 10, 50));
@@ -1196,7 +1193,6 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        ref={containerRef}
         className={`flex-1 min-h-0 bg-zinc-100 ${scriptsApproved && hasScripts ? 'overflow-hidden' : 'overflow-auto'}`}
         onWheel={handleWheel}
       >
