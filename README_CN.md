@@ -28,7 +28,7 @@
 </div>
 <br/>
 
-**Eigent** 是全球首个 **多智能体工作流** 桌面应用程序，帮助您构建、管理和部署定制化的 AI 工作团队，将最复杂的工作流程转化为自动化任务。
+**Eigent** 是全球首个 **多智能体工作流** 桌面应用程序，帮助您构建、管理和部署定制化的 AI 工作团队，将最复杂的工作流程转化为自动化任务。作为领先的开源 Cowork产品，Eigent融合了开源 Cowork 和AI驱动自动化的优势。
 
 基于 [CAMEL-AI][camel-site] 广受赞誉的开源项目，我们的系统引入了 **多智能体工作流**，通过并行执行、定制化和隐私保护 **提升生产力**。
 
@@ -51,22 +51,22 @@
 
 #### 目录
 
-- [🚀 快速开始](#-快速开始)
+- [🚀 快速开始 - 开源 Cowork](#-快速开始---开源 Cowork)
   - [☁️ 云版本](#️-云版本)
   - [🏠 自托管（社区版）](#-自托管社区版)
   - [🏢 企业版](#-企业版)
-- [✨ 核心功能](#-核心功能)
+- [✨ 核心功能 - 开源 Cowork](#-核心功能---开源 Cowork)
   - [🏭 工作流](#-工作流)
   - [🧠 全面模型支持](#-全面模型支持)
   - [🔌 MCP 工具集成](#-mcp-工具集成)
   - [✋ 人工介入](#-人工介入)
   - [👐 100% 开源](#-100-开源)
-- [🧩 使用案例](#-使用案例)
+- [🧩 使用案例 - 开源 Cowork](#-使用案例---开源 Cowork)
 - [🛠️ 技术栈](#️-技术栈)
   - [后端](#后端)
   - [前端](#前端)
-- [🌟 保持领先](#保持领先)
-- [🗺️ 路线图](#️-路线图)
+- [🌟 保持领先 - 开源 Cowork](#保持领先---开源 Cowork)
+- [🗺️ 路线图 - 开源 Cowork](#️-路线图---开源 Cowork)
 - [📖 贡献](#-贡献)
   - [核心贡献者](#核心贡献者)
   - [杰出大使](#杰出大使)
@@ -80,7 +80,7 @@
 
 </details>
 
-## **🚀 快速开始**
+## **🚀 快速开始 - 开源 Cowork**
 
 有三种方式开始使用 Eigent：
 
@@ -124,6 +124,19 @@ npm run dev
 #### 3. 本地开发(使用完全和云端服务分离的版本)
 [server/README_CN.md](./server/README_CN.md)
 
+#### 4. 更新依赖
+
+拉取新代码（`git pull`）后，需要分别更新前端和后端依赖：
+
+```bash
+# 1. 更新前端依赖（在项目根目录）
+npm install
+
+# 2. 更新后端/Python 依赖（在 backend 目录）
+cd backend
+uv sync
+```
+
 ### 🏢 企业版
 
 适合需要最高安全性、定制化和控制的组织：
@@ -135,11 +148,11 @@ npm run dev
 
 📧 更多详情，请联系 [info@eigent.ai](mailto:info@eigent.ai)。
 
-## **✨ 核心功能**
-通过 Eigent 的强大功能释放卓越生产力的全部潜力——专为无缝集成、智能任务执行和无边界自动化而设计。
+## **✨ 核心功能 - 开源 Cowork**
+通过 Eigent 开源 Cowork的强大功能释放卓越生产力的全部潜力——专为无缝集成、智能任务执行和无边界自动化而设计。
 
-### 🏭 工作流  
-部署一支专业 AI 智能体团队，协作解决复杂任务。Eigent 动态分解任务并激活多个智能体 **并行工作**。
+### 🏭 工作流
+部署一支专业 AI 智能体团队，协作解决复杂任务。Eigent 开源 Cowork动态分解任务并激活多个智能体 **并行工作**。
 
 Eigent 预定义了以下智能体工作者：
 
@@ -152,8 +165,8 @@ Eigent 预定义了以下智能体工作者：
 
 <br/>
 
-### 🧠 全面模型支持  
-使用您偏好的模型本地部署 Eigent。  
+### 🧠 全面模型支持
+使用您偏好的模型本地部署 Eigent 开源 Cowork桌面应用。  
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
 
@@ -180,7 +193,9 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 <br/>
 
-## 🧩 使用案例
+## 🧩 使用案例 - 开源 Cowork
+
+了解全球开发者如何利用 Eigent 的开源 Cowork能力，在各行各业自动化复杂工作流程并提升生产力。
 
 ### 1. 棕榈泉网球旅行行程与 Slack 摘要 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
 
@@ -254,6 +269,8 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 ## 🛠️ 技术栈
 
+Eigent 开源 Cowork桌面应用基于现代、可靠的技术构建，确保可扩展性、性能和可扩展性。
+
 ### 后端
 - **框架：** FastAPI  
 - **包管理器：** uv  
@@ -269,7 +286,7 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 - **状态管理：** Zustand  
 - **流程编辑器：** React Flow  
 
-## 🌟 保持领先
+## 🌟 保持领先 - 开源 Cowork
 
 > \[!重要]
 >
@@ -277,21 +294,23 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 ![][image-star-us]
 
-## 🗺️ 路线图
+## 🗺️ 路线图 - 开源 Cowork
+
+我们的开源 Cowork将继续在社区的参与下发展。以下是接下来的计划：
 
 | 主题                   | 问题   | Discord 频道 |
 | ------------------------ | -- |-- |
-| **上下文工程** | - 提示缓存<br> - 系统提示优化<br> - 工具包文档优化<br> - 上下文压缩 | [**加入 Discord →**](https://discord.gg/D2e3rBWD) |
-| **多模态增强** | - 使用浏览器时更准确的图像理解<br> - 高级视频生成 | [**加入 Discord →**](https://discord.gg/kyapNCeJ) |
-| **多智能体系统** | - 工作流支持固定流程<br> - 工作流支持多轮对话 | [**加入 Discord →**](https://discord.gg/bFRmPuDB) |
-| **浏览器工具包** | - BrowseComp 集成<br> - 基准测试改进<br> - 禁止重复访问页面<br> - 自动缓存按钮点击 | [**加入 Discord →**](https://discord.gg/NF73ze5v) |
-| **文档工具包** | - 支持动态文件编辑 | [**加入 Discord →**](https://discord.gg/4yAWJxYr) |
-| **终端工具包** | - 基准测试改进<br> - Terminal-Bench 集成 | [**加入 Discord →**](https://discord.gg/FjQfnsrV) |
-| **环境与强化学习** | - 环境设计<br> - 数据生成<br> - 强化学习框架集成（VERL, TRL, OpenRLHF） | [**加入 Discord →**](https://discord.gg/MaVZXEn8) |
+| **上下文工程** | - 提示缓存<br> - 系统提示优化<br> - 工具包文档优化<br> - 上下文压缩 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **多模态增强** | - 使用浏览器时更准确的图像理解<br> - 高级视频生成 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **多智能体系统** | - 工作流支持固定流程<br> - 工作流支持多轮对话 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **浏览器工具包** | - BrowseComp 集成<br> - 基准测试改进<br> - 禁止重复访问页面<br> - 自动缓存按钮点击 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **文档工具包** | - 支持动态文件编辑 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **终端工具包** | - 基准测试改进<br> - Terminal-Bench 集成 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **环境与强化学习** | - 环境设计<br> - 数据生成<br> - 强化学习框架集成（VERL, TRL, OpenRLHF） | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
 
 ## [🤝 贡献][contribution-link]
 
-我们相信通过开源协作建立信任。您的创意贡献将推动 `Eigent` 的创新。探索我们的 GitHub 问题与项目，加入我们 🤝❤️ [贡献指南][contribution-link]
+我们相信通过开源 Cowork建立信任。您的创意贡献将推动 `Eigent` 的创新。探索我们的 GitHub 问题与项目，加入我们 🤝❤️ [贡献指南][contribution-link]
 
 ## Contributors
 

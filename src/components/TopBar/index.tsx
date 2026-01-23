@@ -14,17 +14,10 @@ import {
 	ChevronLeft,
 	House,
 	Share,
-	MoreHorizontal,
 } from "lucide-react";
 import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
@@ -55,6 +48,7 @@ function HeaderWin() {
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
+	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
@@ -157,6 +151,7 @@ function HeaderWin() {
 
 		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 
+		setEndProjectLoading(true);
 		try {
 			const task = chatStore.tasks[taskId];
 
@@ -204,6 +199,7 @@ function HeaderWin() {
 				closeButton: true,
 			});
 		} finally {
+			setEndProjectLoading(false);
 			setEndDialogOpen(false);
 		}
 	};
@@ -264,16 +260,16 @@ function HeaderWin() {
 									<House className="w-4 h-4" />
 							</Button>
 						</TooltipSimple>
-						<Button
-							 variant="ghost"
-							 size="icon"
-							 className="no-drag"
-							 onClick={createNewProject}
-									>
-								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-									<Plus className="w-4 h-4" />
-								</TooltipSimple>
-						</Button>
+						<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
+							<Button
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+								onClick={createNewProject}
+							>
+								<Plus className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
@@ -344,37 +340,42 @@ function HeaderWin() {
 								</Button>
 							</TooltipSimple>
 						)}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
+						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+							<TooltipSimple content={t("layout.report-bug")} side="bottom" align="end">
 								<Button
+									onClick={exportLog}
 									variant="ghost"
 									size="icon"
-									className="no-drag"
+									className="no-drag rounded-full"
 								>
-									<MoreHorizontal className="w-4 h-4" />
+									<FileDown className="w-4 h-4" />
 								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-36">
-								{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
-									<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
-										<FileDown className="w-4 h-4" />
-										{t("layout.report-bug")}
-									</DropdownMenuItem>
-								)}
-								<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
-									<img
-										src={giftIcon}
-										alt="gift-icon"
-										className="w-4 h-4"
-									/>
-									{t("layout.refer-friends")}
-								</DropdownMenuItem>
-								<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
-									<Settings className="w-4 h-4" />
-									{t("layout.settings")}
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
+							</TooltipSimple>
+						)}
+						<TooltipSimple content={t("layout.refer-friends")} side="bottom" align="end">
+							<Button
+								onClick={getReferFriendsLink}
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+							>
+								<img
+									src={giftIcon}
+									alt="gift-icon"
+									className="w-4 h-4"
+								/>
+							</Button>
+						</TooltipSimple>
+						<TooltipSimple content={t("layout.settings")} side="bottom" align="end">
+							<Button
+								onClick={() => navigate("/history?tab=settings")}
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+							>
+								<Settings className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
 					</div>
 				)}
 				{location.pathname === "/history" && (
@@ -416,6 +417,7 @@ function HeaderWin() {
 				open={endDialogOpen}
 				onOpenChange={setEndDialogOpen}
 				onConfirm={handleEndProject}
+				loading={endProjectLoading}
 			/>
 		</div>
 	);
