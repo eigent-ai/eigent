@@ -47,5 +47,9 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "您的雲存儲已達到當前計劃的限制。",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "我們正在經歷高流量。請稍後再試。",
 	"new-project": "新項目",
-	"no-reply-received-task-continue": "沒有收到回复，任務繼續"
+	"no-reply-received-task-continue": "沒有收到回复，任務繼續",
+	"safe-to-run": "安全運行",
+	"scripts-running": "腳本運行中",
+	"scripts-warning": "HTML渲染器發現相關腳本。請確保腳本可以安全運行。",
+	"scripts-approved": "腳本已批准。正在以完整功能渲染。"
 }	

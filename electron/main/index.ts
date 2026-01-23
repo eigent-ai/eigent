@@ -34,12 +34,8 @@ import { zipFolder } from './utils/log';
 import mime from 'mime';
 import axios from 'axios';
 import FormData from 'form-data';
-import {
-  checkAndInstallDepsOnUpdate,
-  PromiseReturnType,
-  getInstallationStatus,
-} from './install-deps';
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
+import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
 
 const userData = app.getPath('userData');
 
@@ -1278,6 +1274,7 @@ async function createWindow() {
     minWidth: 1050,
     minHeight: 650,
     frame: false,
+    show: false, // Don't show until content is ready to avoid white screen
     transparent: true,
     vibrancy: 'sidebar',
     visualEffectState: 'active',
@@ -1297,6 +1294,41 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('render-process-gone', (event, details) => {
+    log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    if (win && !win.isDestroyed()) {
+      // Reload the window after a brief delay
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Attempting to reload after crash...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 1000);
+    }
+  });
+
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    log.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`);
+    // Retry loading after a delay
+    if (errorCode !== -3) { // -3 is USER_CANCELLED, don't retry
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Retrying load after failure...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 2000);
+    }
   });
 
   // Main window now uses default userData directly with partition 'persist:main_window'
@@ -1546,15 +1578,27 @@ async function createWindow() {
     win.loadFile(indexHtml);
   }
 
-  // Wait for window to be ready
+  // Wait for window to be ready with timeout
   await new Promise<void>((resolve) => {
+    const loadTimeout = setTimeout(() => {
+      log.warn('Window content load timeout (10s), showing window anyway...');
+      resolve();
+    }, 10000);
+
     win!.webContents.once('did-finish-load', () => {
+      clearTimeout(loadTimeout);
       log.info(
         'Window content loaded, starting dependency check immediately...'
       );
       resolve();
     });
   });
+
+  // Show window now that content is loaded (or timeout reached)
+  if (win && !win.isDestroyed()) {
+    win.show();
+    log.info('Window shown after content loaded');
+  }
 
   // Mark window as ready and process any queued protocol URLs
   isWindowReady = true;

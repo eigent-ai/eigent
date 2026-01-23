@@ -61,7 +61,7 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
-            task_timeout_seconds=1800,  # 30 minutes
+            task_timeout_seconds=3600,  # 60 minutes
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"],
             ),
@@ -129,6 +129,9 @@ class Workforce(BaseWorkforce):
         logger.debug(f"[WF-LIFECYCLE] eigent_start called with {len(subtasks)} subtasks", extra={
             "api_task_id": self.api_task_id
         })
+        # Clear existing pending tasks to use the user-edited task list
+        # (tasks may have been added during decomposition before user edits)
+        self._pending_tasks.clear()
         self._pending_tasks.extendleft(reversed(subtasks))
         self.save_snapshot("Initial task decomposition")
 
@@ -442,13 +445,33 @@ class Workforce(BaseWorkforce):
             )
         )
 
-        return await super()._handle_completed_task(task)
+        # IMPORTANT: Sync this subtask's result back to parent.subtasks BEFORE calling super()
+        # This fixes the issue where parent.subtasks[i].result is None because CAMEL's
+        # _handle_completed_task stores results in _completed_tasks but doesn't sync
+        # them back to the parent.subtasks list.
+        # We only sync the current task (not all subtasks) for efficiency - O(n) vs O(n²).
+        parent = task.parent
+        if parent and parent.subtasks:
+            for sub in parent.subtasks:
+                if sub.id == task.id:
+                    sub.result = task.result
+                    sub.state = task.state
+                    logger.debug(f"[SYNC] Synced subtask {task.id} result to parent.subtasks")
+                    break
+
+        # Call parent implementation
+        await super()._handle_completed_task(task)
 
     async def _handle_failed_task(self, task: Task) -> bool:
         # DEBUG ▶ Task failed
         logger.debug(f"[WF] FAIL  {task.id} retry={task.failure_count}")
 
         result = await super()._handle_failed_task(task)
+
+        # Only send completion report to frontend when all retries are exhausted
+        max_retries = self.failure_handling_config.max_retries
+        if task.failure_count < max_retries:
+            return result
 
         error_message = ""
         # Use proper CAMEL pattern for metrics logging

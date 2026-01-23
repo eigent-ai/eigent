@@ -149,8 +149,53 @@ export function getPrebuiltVenvPath(): string | null {
   if (fs.existsSync(prebuiltVenvPath)) {
     const pyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
     if (fs.existsSync(pyvenvCfg)) {
-      log.info(`Using prebuilt venv: ${prebuiltVenvPath}`);
-      return prebuiltVenvPath;
+      // Verify Python executable exists (Windows: Scripts/python.exe, Unix: bin/python)
+      const isWindows = process.platform === 'win32';
+      const pythonExePath = isWindows
+        ? path.join(prebuiltVenvPath, 'Scripts', 'python.exe')
+        : path.join(prebuiltVenvPath, 'bin', 'python');
+
+      if (fs.existsSync(pythonExePath)) {
+        log.info(`Using prebuilt venv: ${prebuiltVenvPath}`);
+        return prebuiltVenvPath;
+      } else {
+        log.warn(
+          `Prebuilt venv found but Python executable missing at: ${pythonExePath}. ` +
+            `Falling back to user venv.`
+        );
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Get path to prebuilt terminal venv (if available in packaged app)
+ */
+export function getPrebuiltTerminalVenvPath(): string | null {
+  if (!app.isPackaged) {
+    return null;
+  }
+
+  const prebuiltTerminalVenvPath = path.join(process.resourcesPath, 'prebuilt', 'terminal_venv');
+  if (fs.existsSync(prebuiltTerminalVenvPath)) {
+    const pyvenvCfg = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
+    const installedMarker = path.join(prebuiltTerminalVenvPath, '.packages_installed');
+    if (fs.existsSync(pyvenvCfg) && fs.existsSync(installedMarker)) {
+      const isWindows = process.platform === 'win32';
+      const pythonExePath = isWindows
+        ? path.join(prebuiltTerminalVenvPath, 'Scripts', 'python.exe')
+        : path.join(prebuiltTerminalVenvPath, 'bin', 'python');
+
+      if (fs.existsSync(pythonExePath)) {
+        log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
+        return prebuiltTerminalVenvPath;
+      } else {
+        log.warn(
+          `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
+            `Falling back to user terminal venv.`
+        );
+      }
     }
   }
   return null;
@@ -206,6 +251,14 @@ export const TERMINAL_BASE_PACKAGES = [
  * separate from the backend venv.
  */
 export function getTerminalVenvPath(version: string): string {
+  // First check for prebuilt terminal venv in packaged app
+  if (app.isPackaged) {
+    const prebuiltTerminalVenv = getPrebuiltTerminalVenvPath();
+    if (prebuiltTerminalVenv) {
+      return prebuiltTerminalVenv;
+    }
+  }
+
   const venvDir = path.join(
     os.homedir(),
     '.eigent',
@@ -273,14 +326,35 @@ export async function isBinaryExists(name: string): Promise<boolean> {
 }
 
 /**
+ * Get path to prebuilt Python installation (if available in packaged app)
+ */
+export function getPrebuiltPythonDir(): string | null {
+  if (!app.isPackaged) {
+    return null;
+  }
+
+  const prebuiltPythonDir = path.join(process.resourcesPath, 'prebuilt', 'uv_python');
+  if (fs.existsSync(prebuiltPythonDir)) {
+    log.info(`Using prebuilt Python: ${prebuiltPythonDir}`);
+    return prebuiltPythonDir;
+  }
+
+  return null;
+}
+
+/**
  * Get unified UV environment variables for consistent Python environment management.
  * This ensures both installation and runtime use the same paths.
  * @param version - The app version for venv path
  * @returns Environment variables for UV commands
  */
 export function getUvEnv(version: string): Record<string, string> {
+  // Use prebuilt Python if available (packaged app)
+  const prebuiltPython = getPrebuiltPythonDir();
+  const pythonInstallDir = prebuiltPython || getCachePath('uv_python');
+
   return {
-    UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+    UV_PYTHON_INSTALL_DIR: pythonInstallDir,
     UV_TOOL_DIR: getCachePath('uv_tool'),
     UV_PROJECT_ENVIRONMENT: getVenvPath(version),
     UV_HTTP_TIMEOUT: '300',

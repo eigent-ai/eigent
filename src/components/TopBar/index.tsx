@@ -49,6 +49,7 @@ function HeaderWin() {
 	const { token } = getAuthStore();
 	const appearance = useAuthStore((state) => state.appearance);
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
+	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
@@ -151,6 +152,7 @@ function HeaderWin() {
 
 		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 
+		setEndProjectLoading(true);
 		try {
 			const task = chatStore.tasks[taskId];
 
@@ -198,6 +200,7 @@ function HeaderWin() {
 				closeButton: true,
 			});
 		} finally {
+			setEndProjectLoading(false);
 			setEndDialogOpen(false);
 		}
 	};
@@ -344,7 +347,7 @@ function HeaderWin() {
 									onClick={exportLog}
 									variant="ghost"
 									size="icon"
-									className="no-drag"
+									className="no-drag rounded-full"
 								>
 									<FileDown className="w-4 h-4" />
 								</Button>
@@ -415,6 +418,7 @@ function HeaderWin() {
 				open={endDialogOpen}
 				onOpenChange={setEndDialogOpen}
 				onConfirm={handleEndProject}
+				loading={endProjectLoading}
 			/>
 		</div>
 	);

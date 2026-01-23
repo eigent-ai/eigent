@@ -9,6 +9,7 @@ import {
   getCachePath,
   getVenvPath,
   getTerminalVenvPath,
+  getPrebuiltTerminalVenvPath,
   getUvEnv,
   cleanupOldVenvs,
   isBinaryExists,
@@ -109,12 +110,33 @@ export const checkAndInstallDepsOnUpdate = async ({
 
   return new Promise(async (resolve, reject) => {
     try {
-      // If prebuilt dependencies are available, use them and skip installation
+      // If prebuilt dependencies are available, use them and skip main installation
       if (hasPrebuiltDeps()) {
         log.info(
           '[DEPS INSTALL] Using prebuilt dependencies, creating version file'
         );
         checkInstallOperations.createVersionFile();
+
+        // Check if prebuilt terminal venv exists
+        const prebuiltTerminalVenv = getPrebuiltTerminalVenvPath();
+        if (prebuiltTerminalVenv) {
+          log.info('[DEPS INSTALL] Using prebuilt terminal venv:', prebuiltTerminalVenv);
+        } else {
+          // Create terminal base venv if not prebuilt
+          log.info('[DEPS INSTALL] Creating terminal base venv (not prebuilt)...');
+          try {
+            uv_path = await getBinaryPath('uv');
+            const terminalResult = await installTerminalBaseVenv(currentVersion);
+            if (!terminalResult.success) {
+              log.warn('[DEPS INSTALL] Terminal base venv installation failed, but continuing...', terminalResult.message);
+            } else {
+              log.info('[DEPS INSTALL] Terminal base venv created successfully');
+            }
+          } catch (error) {
+            log.warn('[DEPS INSTALL] Failed to create terminal base venv:', error);
+          }
+        }
+
         resolve({ message: 'Using prebuilt dependencies', success: true });
         return;
       }
@@ -493,51 +515,64 @@ async function installTerminalBaseVenv(version: string): Promise<PromiseReturnTy
   const pythonPath = process.platform === 'win32'
     ? path.join(terminalVenvPath, 'Scripts', 'python.exe')
     : path.join(terminalVenvPath, 'bin', 'python');
+  // Marker file to indicate packages were installed successfully
+  const installedMarker = path.join(terminalVenvPath, '.packages_installed');
 
-  // Check if terminal base venv already exists and is valid
-  if (fs.existsSync(pythonPath)) {
-    log.info('[DEPS INSTALL] Terminal base venv already exists, skipping creation');
+  // Check if terminal base venv already exists and packages are installed
+  if (fs.existsSync(pythonPath) && fs.existsSync(installedMarker)) {
+    log.info('[DEPS INSTALL] Terminal base venv already exists with packages, skipping creation');
     return { message: 'Terminal base venv already exists', success: true };
   }
 
-  log.info('[DEPS INSTALL] Creating terminal base venv...');
+  // If python exists but marker doesn't, packages may not be installed - need to reinstall
+  const needsPackageInstall = fs.existsSync(pythonPath) && !fs.existsSync(installedMarker);
+
+  if (needsPackageInstall) {
+    log.info('[DEPS INSTALL] Terminal venv exists but packages not installed, installing packages...');
+  } else {
+    log.info('[DEPS INSTALL] Creating terminal base venv...');
+  }
   safeMainWindowSend('install-dependencies-log', {
     type: 'stdout',
-    data: 'Creating terminal base environment...\n',
+    data: needsPackageInstall
+      ? 'Installing missing packages in terminal environment...\n'
+      : 'Creating terminal base environment...\n',
   });
 
   try {
-    // Create the venv using uv
-    await new Promise<void>((resolve, reject) => {
-      const createVenv = spawn(
-        uv_path,
-        ['venv', '--python', '3.10', terminalVenvPath],
-        {
-          env: {
-            ...process.env,
-            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
-          },
-        }
-      );
+    // Create the venv using uv (skip if only need package install)
+    if (!needsPackageInstall) {
+      await new Promise<void>((resolve, reject) => {
+        const createVenv = spawn(
+          uv_path,
+          ['venv', '--python', '3.10', terminalVenvPath],
+          {
+            env: {
+              ...process.env,
+              UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+            },
+          }
+        );
 
-      createVenv.stdout.on('data', (data) => {
-        log.info(`[DEPS INSTALL] terminal venv: ${data}`);
+        createVenv.stdout.on('data', (data) => {
+          log.info(`[DEPS INSTALL] terminal venv: ${data}`);
+        });
+
+        createVenv.stderr.on('data', (data) => {
+          log.info(`[DEPS INSTALL] terminal venv: ${data}`);
+        });
+
+        createVenv.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`Failed to create terminal venv, exit code: ${code}`));
+          }
+        });
+
+        createVenv.on('error', reject);
       });
-
-      createVenv.stderr.on('data', (data) => {
-        log.info(`[DEPS INSTALL] terminal venv: ${data}`);
-      });
-
-      createVenv.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Failed to create terminal venv, exit code: ${code}`));
-        }
-      });
-
-      createVenv.on('error', reject);
-    });
+    }
 
     // Install base packages
     log.info('[DEPS INSTALL] Installing terminal base packages...');
@@ -591,6 +626,8 @@ async function installTerminalBaseVenv(version: string): Promise<PromiseReturnTy
       installPkgs.on('error', reject);
     });
 
+    // Create marker file to indicate successful installation
+    fs.writeFileSync(installedMarker, new Date().toISOString());
     log.info('[DEPS INSTALL] Terminal base venv created successfully');
     return { message: 'Terminal base venv created successfully', success: true };
   } catch (error) {

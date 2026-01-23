@@ -145,7 +145,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.83"
+version = "0.2.85a0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -162,9 +162,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/d1/36f0982862ba2b992968ace43b1c04dd72f7114ce3954342a99e18619d6a/camel_ai-0.2.83.tar.gz", hash = "sha256:c25eb414e9353aab166021852fb54d1d3a0c0e17485fefa996de2cccdf4c8eb9", size = 1125708, upload-time = "2026-01-19T20:37:45.197Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/ab/7d305f80e868a60c7097ab510063a171e1798d163b5f8fd7fe7c16553e13/camel_ai-0.2.85a0.tar.gz", hash = "sha256:432de9bac1e40bd4ebf434ca80eaf3993121f87924820e26ad2bad69c1fb5cf5", size = 1126159, upload-time = "2026-01-23T02:24:08.868Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/e2/4e2964059794af9161889223fa7d17630c1bcc74005c9892cd1e1627650c/camel_ai-0.2.83-py3-none-any.whl", hash = "sha256:3a183efdcccd211ae216b2a7903d48a8811ad0f4541223cacc05cb25a11279a6", size = 1599355, upload-time = "2026-01-19T20:37:41.985Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/0c/35d73b5d648413844bdfeaf95172a6b7c19802150829f5f907753a773d19/camel_ai-0.2.85a0-py3-none-any.whl", hash = "sha256:6045e9af72fee918ca3acc92f3b4af8af084af7b0cf6435c01a1252bd04ae6b3", size = 1599866, upload-time = "2026-01-23T02:24:06.78Z" },
 ]
 
 [[package]]
@@ -364,7 +364,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.15.2" },
     { name = "arrow", specifier = ">=1.3.0" },
     { name = "bcrypt", specifier = "==4.0.1" },
-    { name = "camel-ai", specifier = "==0.2.83" },
+    { name = "camel-ai", specifier = "==0.2.85a0" },
     { name = "click", specifier = ">=8.1.8" },
     { name = "convert-case", specifier = ">=1.2.3" },
     { name = "cryptography", specifier = ">=45.0.4" },

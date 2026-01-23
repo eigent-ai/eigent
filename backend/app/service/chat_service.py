@@ -154,7 +154,7 @@ def collect_previous_task_context(working_directory: str, previous_task_content:
     return "\n".join(context_parts)
 
 
-def check_conversation_history_length(task_lock: TaskLock, max_length: int = 100000) -> tuple[bool, int]:
+def check_conversation_history_length(task_lock: TaskLock, max_length: int = 200000) -> tuple[bool, int]:
     """
     Check if conversation history exceeds maximum length
 
@@ -517,7 +517,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if not sub_tasks:
                     sub_tasks = getattr(task_lock, "decompose_sub_tasks", [])
                 sub_tasks = update_sub_tasks(sub_tasks, update_tasks)
-                add_sub_tasks(camel_task, item.data.task)
+                # Also update camel_task.subtasks to remove deleted tasks (used by to_sub_tasks)
+                update_sub_tasks(camel_task.subtasks, update_tasks)
+                # Add new tasks (with empty id) to both camel_task and sub_tasks
+                new_tasks = add_sub_tasks(camel_task, item.data.task)
+                # Also add new tasks to sub_tasks so workforce.eigent_start uses correct list
+                sub_tasks.extend(new_tasks)
+                # Save updated sub_tasks back to task_lock so Action.start uses the correct list
+                setattr(task_lock, "decompose_sub_tasks", sub_tasks)
                 summary_task_content_local = getattr(task_lock, "summary_task_content", summary_task_content)
                 yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
@@ -1101,15 +1108,18 @@ def update_sub_tasks(sub_tasks: list[Task], update_tasks: dict[str, TaskContent]
     return sub_tasks
 
 
-def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]):
+def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]) -> list[Task]:
+    """Add new tasks (with empty id) to camel_task and return the list of added tasks."""
+    added_tasks = []
     for item in update_tasks:
-        if item.id == "":  #
-            camel_task.add_subtask(
-                Task(
-                    content=item.content,
-                    id=f"{camel_task.id}.{len(camel_task.subtasks) + 1}",
-                )
+        if item.id == "":
+            new_task = Task(
+                content=item.content,
+                id=f"{camel_task.id}.{len(camel_task.subtasks) + 1}",
             )
+            camel_task.add_subtask(new_task)
+            added_tasks.append(new_task)
+    return added_tasks
 
 
 async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None) -> bool:
@@ -1301,10 +1311,6 @@ You are a helpful coordinator.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory `{working_directory}`. All local file operations must occur here, but you can access files from any place in the file system. For all file system operations, you MUST use absolute paths to ensure precision and avoid ambiguity.
 The current date is {datetime.date.today()}. For any date-related tasks, you MUST use this as the current date.
-
-- If a task assigned to another agent fails, you should re-assign it to the
-`Developer_Agent`. The `Developer_Agent` is a powerful agent with terminal
-access and can resolve a wide range of issues.
             """,
                 Agents.task_agent: f"""
 You are a helpful task planner.

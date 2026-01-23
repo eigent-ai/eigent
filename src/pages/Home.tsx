@@ -208,7 +208,7 @@ export default function Home() {
 									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
 										<BrowserAgentWorkSpace />
 									</div>
-								)}
+								)}	
 								{chatStore.tasks[chatStore.activeTaskId as string]
 									?.activeWorkSpace === "workflow" && (
 									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">

@@ -16,37 +16,63 @@ jobs:
         include:
           - os: macos-latest
             arch: arm64
-          - os: macos-15-intel
-            arch: x64
+            artifact_name: macos-arm64
           - os: windows-latest
             arch: x64
+            artifact_name: windows-latest
           - os: ubuntu-latest
             arch: x64
+            artifact_name: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          clean: true
+
+      # Clean node_modules on self-hosted runner to ensure fresh install
+      - name: Clean node_modules (self-hosted)
+        if: contains(matrix.os, 'self-hosted')
+        run: |
+          rm -rf node_modules
+          rm -rf release
 
       - name: Setup Node.js
+        if: "!contains(matrix.os, 'self-hosted')"
         uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Setup Python
+        if: "!contains(matrix.os, 'self-hosted')"
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Install Python Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install uv
+          python3 -m pip install --upgrade pip
+          pip3 install uv
 
       - name: Install bun
         run: npm install -g bun
 
       - name: Install Dependencies
         run: npm install
+
+      # Verify Electron installation on macOS
+      - name: Verify Electron Installation (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "Checking Electron installation..."
+          ls -la node_modules/electron/dist/ || echo "Electron dist not found"
+          if [ -d "node_modules/electron/dist/Electron.app" ]; then
+            echo "✅ Electron.app found"
+            ls -la "node_modules/electron/dist/Electron.app/Contents/Frameworks/" | head -5
+          else
+            echo "❌ Electron.app NOT found - this will cause build failure"
+            exit 1
+          fi
 
       # Install libfuse2 for Linux AppImage builds
       - name: Install libfuse2 (Linux)
@@ -59,7 +85,13 @@ jobs:
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
         timeout-minutes: 90
-        run: npm run build -- --arch ${{ matrix.arch }}
+        run: |
+          # Increase file descriptor limit to prevent EMFILE errors during signing
+          # This is needed because electron-builder signs all files recursively,
+          # and Python venvs contain thousands of files
+          ulimit -n 65536 || ulimit -n 10240
+          echo "File descriptor limit set to: $(ulimit -n)"
+          npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
@@ -80,7 +112,6 @@ jobs:
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signing variables (CSC_LINK, CSC_KEY_PASSWORD) are omitted for Windows
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
@@ -100,11 +131,34 @@ jobs:
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
           USE_NPM_INSTALL_BUN: 'true'
 
+      # Verify built app contains Electron Framework
+      - name: Verify Built App (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "Checking built app..."
+          APP_PATH=$(find release -name "*.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            echo "Found app at: $APP_PATH"
+            FRAMEWORKS_PATH="$APP_PATH/Contents/Frameworks"
+            if [ -d "$FRAMEWORKS_PATH/Electron Framework.framework" ]; then
+              echo "✅ Electron Framework found"
+              ls -la "$FRAMEWORKS_PATH/" | head -10
+            else
+              echo "❌ Electron Framework NOT found in built app!"
+              echo "Contents of Frameworks directory:"
+              ls -la "$FRAMEWORKS_PATH/" 2>/dev/null || echo "Frameworks directory does not exist"
+              exit 1
+            fi
+          else
+            echo "No .app found in release directory"
+            ls -la release/
+          fi
+
       - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
-          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*.dmg
           retention-days: 5
@@ -113,7 +167,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v6
         with:
-          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*.exe
           retention-days: 5
@@ -122,7 +176,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v6
         with:
-          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*.AppImage
           retention-days: 5
@@ -132,19 +186,12 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-x64 release/mac-arm64 release/win-x64 release/linux-x64
-
-        # Download all artifacts with correct names
-      - name: Download mac-x64 artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: release-macos-15-intel-x64
-          path: temp-mac-x64
+          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
-          name: release-macos-latest-arm64
+          name: release-macos-arm64-arm64
           path: temp-mac-arm64
 
       - name: Download win-x64 artifact
@@ -163,13 +210,6 @@ jobs:
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-x64 - only move dmg files
-          if [ -d "temp-mac-x64/release" ]; then
-            find temp-mac-x64/release -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
-          else
-            find temp-mac-x64 -name "*.dmg" -exec mv {} release/mac-x64/ \; || true
-          fi
-
           # mac-arm64 - only move dmg files
           if [ -d "temp-mac-arm64/release" ]; then
             find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
