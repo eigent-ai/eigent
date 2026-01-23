@@ -4,10 +4,6 @@
   "recommendations": [
     "mrmlnc.vscode-json5",
     "ms-python.python",
-    "ms-python.debugpy",
-    // Linting / Formatting
-    "esbenp.prettier-vscode",
-    "dbaeumer.vscode-eslint",
-    "bradlc.vscode-tailwindcss"
+    "ms-python.debugpy"
   ]
 }
