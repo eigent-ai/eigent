@@ -426,10 +426,14 @@ export function createProcessUtilsMock() {
     getBinaryPath: vi.fn(),
     getCachePath: vi.fn(),
     getVenvPath: vi.fn(),
+    getTerminalVenvPath: vi.fn(),
+    getPrebuiltTerminalVenvPath: vi.fn(),
+    findPrebuiltPythonExecutable: vi.fn(),
     getVenvsBaseDir: vi.fn(),
     cleanupOldVenvs: vi.fn(),
     isBinaryExists: vi.fn(),
     getUvEnv: vi.fn(),
+    TERMINAL_BASE_PACKAGES: ['pandas', 'numpy', 'matplotlib', 'requests', 'openpyxl', 'beautifulsoup4', 'pillow'],
     mockState: {} as MockEnvironmentState,
     
     setup: (mockState: MockEnvironmentState) => {
@@ -482,6 +486,14 @@ export function createProcessUtilsMock() {
       utilsMock.getVenvPath.mockImplementation((version: string) => {
         return `${mockState.system.homedir}/.eigent/venvs/backend-${version}`
       })
+
+      utilsMock.getTerminalVenvPath.mockImplementation((version: string) => {
+        return `${mockState.system.homedir}/.eigent/venvs/terminal-${version}`
+      })
+
+      utilsMock.getPrebuiltTerminalVenvPath.mockReturnValue(null)
+
+      utilsMock.findPrebuiltPythonExecutable.mockReturnValue(null)
       
       utilsMock.getVenvsBaseDir.mockReturnValue(
         `${mockState.system.homedir}/.eigent/venvs`
