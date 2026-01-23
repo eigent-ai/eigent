@@ -34,12 +34,8 @@ import { zipFolder } from './utils/log';
 import mime from 'mime';
 import axios from 'axios';
 import FormData from 'form-data';
-import {
-  checkAndInstallDepsOnUpdate,
-  PromiseReturnType,
-  getInstallationStatus,
-} from './install-deps';
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
+import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
+import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
 
 const userData = app.getPath('userData');
 
@@ -111,6 +107,32 @@ app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
 app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
+
+// ==================== Anti-fingerprint settings ====================
+// Disable automation controlled indicator to avoid detection
+app.commandLine.appendSwitch(
+  'disable-blink-features',
+  'AutomationControlled'
+);
+
+// Override User Agent to remove Electron/eigent identifiers
+// Dynamically generate User Agent based on actual platform and Chrome version
+const getPlatformUA = () => {
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
+  switch (process.platform) {
+    case 'darwin':
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'win32':
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'linux':
+      return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    default:
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  }
+};
+const normalUserAgent = getPlatformUA();
+app.userAgentFallback = normalUserAgent;
 
 // ==================== protocol privileges ====================
 // Register custom protocol privileges before app ready
@@ -1252,6 +1274,7 @@ async function createWindow() {
     minWidth: 1050,
     minHeight: 650,
     frame: false,
+    show: false, // Don't show until content is ready to avoid white screen
     transparent: true,
     vibrancy: 'sidebar',
     visualEffectState: 'active',
@@ -1271,6 +1294,41 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('render-process-gone', (event, details) => {
+    log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    if (win && !win.isDestroyed()) {
+      // Reload the window after a brief delay
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Attempting to reload after crash...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 1000);
+    }
+  });
+
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    log.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`);
+    // Retry loading after a delay
+    if (errorCode !== -3) { // -3 is USER_CANCELLED, don't retry
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Retrying load after failure...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 2000);
+    }
   });
 
   // Main window now uses default userData directly with partition 'persist:main_window'
@@ -1520,15 +1578,27 @@ async function createWindow() {
     win.loadFile(indexHtml);
   }
 
-  // Wait for window to be ready
+  // Wait for window to be ready with timeout
   await new Promise<void>((resolve) => {
+    const loadTimeout = setTimeout(() => {
+      log.warn('Window content load timeout (10s), showing window anyway...');
+      resolve();
+    }, 10000);
+
     win!.webContents.once('did-finish-load', () => {
+      clearTimeout(loadTimeout);
       log.info(
         'Window content loaded, starting dependency check immediately...'
       );
       resolve();
     });
   });
+
+  // Show window now that content is loaded (or timeout reached)
+  if (win && !win.isDestroyed()) {
+    win.show();
+    log.info('Window shown after content loaded');
+  }
 
   // Mark window as ready and process any queued protocol URLs
   isWindowReady = true;
@@ -1826,6 +1896,15 @@ app.whenReady().then(async () => {
       // Don't throw - allow app to continue even if extension installation fails
     }
   }
+
+  // ==================== Anti-fingerprint: Set User Agent for all sessions ====================
+  // Use the same dynamic User Agent as app.userAgentFallback
+  session.defaultSession.setUserAgent(normalUserAgent);
+  // Also set for the user_login partition used by webviews
+  session.fromPartition('persist:user_login').setUserAgent(normalUserAgent);
+  // And for main_window partition
+  session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
+  log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {

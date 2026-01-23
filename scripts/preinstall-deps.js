@@ -17,9 +17,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-const BIN_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'bin');
-const VENV_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'venv');
+const PREBUILT_DIR = path.join(projectRoot, 'resources', 'prebuilt');
+const BIN_DIR = path.join(PREBUILT_DIR, 'bin');
+const VENV_DIR = path.join(PREBUILT_DIR, 'venv');
+const TERMINAL_VENV_DIR = path.join(PREBUILT_DIR, 'terminal_venv');
 const BACKEND_DIR = path.join(projectRoot, 'backend');
+
+// Terminal base packages - keep in sync with electron/main/utils/process.ts
+const TERMINAL_BASE_PACKAGES = [
+  'pandas',
+  'numpy',
+  'matplotlib',
+  'requests',
+  'openpyxl',
+  'beautifulsoup4',
+  'pillow',
+];
 
 console.log('🚀 Starting pre-installation of dependencies...');
 console.log(`📦 Binaries will be installed to: ${BIN_DIR}`);
@@ -195,6 +208,45 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
   }
 
   throw new Error(`Failed to download ${fileType} from all sources`);
+}
+
+/**
+ * Recursively copy directory, handling symlinks properly
+ */
+function copyDirRecursiveSync(src, dest) {
+  if (!fs.existsSync(src)) {
+    return;
+  }
+
+  // Create destination directory
+  fs.mkdirSync(dest, { recursive: true });
+
+  // Get all files and directories
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursiveSync(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      try {
+        const realPath = fs.realpathSync(srcPath);
+        const realStat = fs.statSync(realPath);
+        if (realStat.isDirectory()) {
+          copyDirRecursiveSync(realPath, destPath);
+        } else {
+          fs.copyFileSync(realPath, destPath);
+        }
+      } catch (err) {
+        // If symlink target doesn't exist, skip it
+        console.log(`   Skipping broken symlink: ${srcPath}`);
+      }
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 /**
@@ -387,6 +439,28 @@ async function installUv() {
   } else {
     const tar = await import('tar');
     await tar.extract({ file: tempFilename, cwd: BIN_DIR });
+  }
+
+  // Handle nested directory from tarball if needed
+  if (!isWindows) {
+    const nestedDir = fs.readdirSync(BIN_DIR).find(f => 
+      fs.statSync(path.join(BIN_DIR, f)).isDirectory() && f.startsWith('uv-')
+    );
+    if (nestedDir) {
+      const nestedUvPath = path.join(BIN_DIR, nestedDir, 'uv');
+      const targetPath = path.join(BIN_DIR, 'uv');
+      if (fs.existsSync(nestedUvPath)) {
+        console.log(`   Found uv in ${nestedDir}, moving...`);
+        try {
+          if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+          fs.renameSync(nestedUvPath, targetPath);
+          // Clean up directory
+          fs.rmSync(path.join(BIN_DIR, nestedDir), { recursive: true, force: true });
+        } catch (e) {
+          console.log(`   Warning: Failed to move uv from nested dir: ${e.message}`);
+        }
+      }
+    }
   }
 
   const extractedUvPath = path.join(BIN_DIR, isWindows ? 'uv.exe' : 'uv');
@@ -591,10 +665,65 @@ async function installPythonDeps(uvPath) {
     console.log('📦 Creating Python venv...');
   }
 
+  // Ensure Python is installed before syncing
+  // This is critical for Windows where Python might not be in the venv
+  console.log('🐍 Ensuring Python is installed...');
+  try {
+    execSync(
+      `"${uvPath}" python install 3.10`,
+      { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
+    );
+  } catch (error) {
+    console.log('⚠️  Python install command failed, continuing with sync (Python may already be installed)...');
+  }
+
+  // Use --python-preference only-managed to ensure uv uses its own managed Python
+  // This makes the venv more portable
   execSync(
-    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}"`,
+    `"${uvPath}" sync --no-dev --cache-dir "${cacheDir}" --python-preference only-managed`,
     { cwd: BACKEND_DIR, env: env, stdio: 'inherit' }
   );
+
+  // Verify Python executable exists in the virtual environment
+  const isWindows = process.platform === 'win32';
+  const pythonExePath = isWindows
+    ? path.join(venvPath, 'Scripts', 'python.exe')
+    : path.join(venvPath, 'bin', 'python');
+
+  if (!fs.existsSync(pythonExePath)) {
+    throw new Error(
+      `Python executable not found in virtual environment at: ${pythonExePath}\n` +
+      `Virtual environment may be corrupted. Please ensure uv sync completed successfully.`
+    );
+  }
+
+  console.log(`✅ Python executable verified: ${pythonExePath}`);
+
+  // Bundle the actual Python installation from UV cache into prebuilt
+  console.log('📦 Bundling Python installation...');
+  try {
+    const uvPythonDir = pythonCacheDir;
+    const prebuiltPythonDir = path.join(PREBUILT_DIR, 'uv_python');
+
+    if (fs.existsSync(uvPythonDir)) {
+      console.log(`   Copying from: ${uvPythonDir}`);
+      console.log(`   Copying to: ${prebuiltPythonDir}`);
+
+      // Remove existing python dir if it exists
+      if (fs.existsSync(prebuiltPythonDir)) {
+        fs.rmSync(prebuiltPythonDir, { recursive: true, force: true });
+      }
+
+      // Copy the Python installation
+      copyDirRecursiveSync(uvPythonDir, prebuiltPythonDir);
+      console.log('✅ Python installation bundled');
+    } else {
+      console.log('⚠️  UV Python cache not found, venv may not be portable');
+    }
+  } catch (error) {
+    console.log(`⚠️  Failed to bundle Python: ${error.message}`);
+    console.log('   The app may fail to start without internet connection');
+  }
 
   console.log('✅ Python dependencies installed');
 
@@ -606,6 +735,57 @@ async function installPythonDeps(uvPath) {
   });
 
   console.log('✅ Babel compiled');
+}
+
+/**
+ * Install terminal base venv with common packages for terminal tasks
+ */
+async function installTerminalBaseVenv(uvPath) {
+  console.log('\n🖥️  Installing terminal base venv...');
+
+  const pythonCacheDir = path.join(projectRoot, 'resources', 'prebuilt', 'cache', 'uv_python');
+  const isWindows = process.platform === 'win32';
+  const pythonPath = isWindows
+    ? path.join(TERMINAL_VENV_DIR, 'Scripts', 'python.exe')
+    : path.join(TERMINAL_VENV_DIR, 'bin', 'python');
+  const installedMarker = path.join(TERMINAL_VENV_DIR, '.packages_installed');
+
+  // Check if already fully installed
+  if (fs.existsSync(pythonPath) && fs.existsSync(installedMarker)) {
+    console.log('✅ Terminal base venv already exists with packages');
+    return;
+  }
+
+  // Check if venv exists but packages not installed (partial install)
+  const needsPackageInstall = fs.existsSync(pythonPath) && !fs.existsSync(installedMarker);
+
+  const env = {
+    ...process.env,
+    UV_PYTHON_INSTALL_DIR: pythonCacheDir,
+  };
+
+  // Create the venv if needed
+  if (!needsPackageInstall) {
+    fs.mkdirSync(TERMINAL_VENV_DIR, { recursive: true });
+    console.log('📦 Creating terminal venv...');
+    execSync(
+      `"${uvPath}" venv --python 3.10 "${TERMINAL_VENV_DIR}"`,
+      { env: env, stdio: 'inherit' }
+    );
+  } else {
+    console.log('📦 Terminal venv exists, installing missing packages...');
+  }
+
+  // Install base packages
+  console.log(`📦 Installing packages: ${TERMINAL_BASE_PACKAGES.join(', ')}...`);
+  execSync(
+    `"${uvPath}" pip install --python "${pythonPath}" ${TERMINAL_BASE_PACKAGES.join(' ')}`,
+    { env: env, stdio: 'inherit' }
+  );
+
+  // Create marker file
+  fs.writeFileSync(installedMarker, new Date().toISOString());
+  console.log('✅ Terminal base venv installed');
 }
 
 /**
@@ -689,11 +869,13 @@ async function main() {
     const uvPath = await installUv();
     await installBun();
     await installPythonDeps(uvPath);
+    await installTerminalBaseVenv(uvPath);
     await installBrowserToolkitDeps(uvPath, VENV_DIR);
 
     console.log('\n✅ All dependencies installed!');
     console.log(`📦 Binaries: ${BIN_DIR}`);
     console.log(`🐍 Python venv: ${VENV_DIR}`);
+    console.log(`🖥️  Terminal venv: ${TERMINAL_VENV_DIR}`);
   } catch (error) {
     console.error('\n❌ Failed:', error);
     process.exit(1);

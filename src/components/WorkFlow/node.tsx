@@ -104,15 +104,58 @@ export function Node({ id, data }: NodeProps) {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();
 	const nodeRef = useRef<HTMLDivElement>(null);
+	const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		setIsExpanded(data.isExpanded);
 	}, [data.isExpanded]);
+
+	// Auto-expand when a task is running with toolkits
+	useEffect(() => {
+		const tasks = data.agent?.tasks || [];
+
+		// Find running task with active toolkits
+		const runningTaskWithToolkits = tasks.find(
+			(task) =>
+				task.status === "running" &&
+				task.toolkits &&
+				task.toolkits.length > 0
+		);
+
+		// Reset tracking when no tasks are running
+		const hasRunningTasks = tasks.some((task) => task.status === "running");
+		if (!hasRunningTasks && lastAutoExpandedTaskIdRef.current) {
+			lastAutoExpandedTaskIdRef.current = null;
+		}
+
+		// Auto-expand for new running task
+		if (runningTaskWithToolkits && runningTaskWithToolkits.id !== lastAutoExpandedTaskIdRef.current) {
+			// Always select the new task
+			setSelectedTask(runningTaskWithToolkits);
+
+			// Expand if not already expanded
+			if (!isExpanded) {
+				setIsExpanded(true);
+				data.onExpandChange(id, true);
+			}
+
+			lastAutoExpandedTaskIdRef.current = runningTaskWithToolkits.id;
+		}
+	}, [
+		data.agent?.tasks,
+		// Add specific dependencies that actually change
+		data.agent?.tasks?.length,
+		data.agent?.tasks?.find((t) => t.status === "running")?.id,
+		data.agent?.tasks?.find((t) => t.status === "running")?.toolkits?.length,
+		id,
+		data.onExpandChange,
+		isExpanded,
+	]);
 
 	// manually control node size
 	useEffect(() => {
@@ -403,7 +446,7 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					<div
 						ref={toolsRef}
-						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3 text-"
+						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3"
 					>
 						{/* {JSON.stringify(data.agent)} */}
 						{agentToolkits[
