@@ -13,6 +13,7 @@
   },
   "type": "module",
   "scripts": {
+    "prepare": "husky",
     "compile-babel": "cd backend && uv run pybabel compile -d lang",
     "clean-cache": "rimraf node_modules/.vite",
     "dev": "npm run clean-cache && vite",
