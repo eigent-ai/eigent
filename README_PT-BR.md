@@ -28,7 +28,7 @@
 </div>
 <br/>
 
-**Eigent** é a aplicação desktop cowork open source que capacita você a construir, gerenciar e implantar uma força de trabalho de IA personalizada, capaz de transformar seus fluxos de trabalho mais complexos em tarefas automatizadas.
+**Eigent** é a aplicação desktop Cowork código aberto que capacita você a construir, gerenciar e implantar uma força de trabalho de IA personalizada, capaz de transformar seus fluxos de trabalho mais complexos em tarefas automatizadas. Como um produto líder de Cowork código aberto, o Eigent reúne o melhor da colaboração open source e da automação impulsionada por IA.
 
 Construído sobre o aclamado projeto open source da [CAMEL-AI][camel-site], nosso sistema introduz uma **Força de Trabalho Multiagente** que **aumenta a produtividade** por meio de execução paralela, personalização e proteção de privacidade.
 
@@ -51,23 +51,23 @@ Construído sobre o aclamado projeto open source da [CAMEL-AI][camel-site], noss
 
 #### TOC
 
-- [🚀 Primeiros Passos](#-primeiros-passos)
+- [🚀 Primeiros Passos com Cowork Open Source](#-primeiros-passos-com-Cowork-open-source)
   - [🏠 Implantação Local (Recomendado)](#-implantação-local-recomendado)
   - [⚡ Início Rápido (Conectado à Nuvem)](#-início-rápido-conectado-à-nuvem)
   - [🏢 Empresarial](#-empresarial)
   - [☁️ Versão em Nuvem](#️-versão-em-nuvem)
-- [✨ Principais Recursos](#-principais-recursos)
+- [✨ Principais Recursos - Cowork Open Source](#-principais-recursos---Cowork-open-source)
   - [🏭 Força de Trabalho](#-força-de-trabalho)
   - [🧠 Suporte Abrangente a Modelos](#-suporte-abrangente-a-modelos)
   - [🔌 Integração de Ferramentas MCP (MCP)](#-integração-de-ferramentas-mcp-mcp)
   - [✋ Humano no Circuito](#-humano-no-circuito)
   - [👐 100% Código Aberto](#-100-código-aberto)
-- [🧩 Casos de Uso](#-casos-de-uso)
+- [🧩 Casos de Uso - Cowork Open Source](#-casos-de-uso---Cowork-open-source)
 - [🛠️ Stack Tecnológica](#-stack-tecnológica)
   - [Backend](#backend)
   - [Frontend](#frontend)
-- [🌟 Mantendo-se à Frente](#-mantendo-se-à-frente)
-- [🗺️ Roadmap](#-roadmap)
+- [🌟 Mantendo-se à Frente - Cowork Open Source](#-mantendo-se-à-frente---Cowork-open-source)
+- [🗺️ Roadmap - Cowork Open Source](#-roadmap---Cowork-open-source)
 - [🤝 Contribuição](#-contribuição)
   - [Contribuidores](#contribuidores)
 - [❤️ Patrocínio](#-patrocínio)
@@ -80,7 +80,7 @@ Construído sobre o aclamado projeto open source da [CAMEL-AI][camel-site], noss
 
 </details>
 
-## **🚀 Primeiros Passos**
+## **🚀 Primeiros Passos com Cowork Open Source**
 
 > **🔓 Construído em Público** — Eigent é **100% open source** desde o primeiro dia. Cada funcionalidade, cada commit e cada decisão são transparentes. Acreditamos que as melhores ferramentas de IA devem ser construídas abertamente com a comunidade, e não a portas fechadas.
 
@@ -154,11 +154,11 @@ Para equipes que preferem infraestrutura gerenciada, também oferecemos uma plat
 <a href="https://www.eigent.ai/download">Comece em Eigent.ai →</a>
 </div>
 
-## **✨ Principais recursos**
-Desbloqueie todo o potencial de produtividade excepcional com os poderosos recursos do Eigent—construídos para integração perfeita, execução de tarefas mais inteligente e automação ilimitada.
+## **✨ Principais recursos - Cowork Open Source**
+Desbloqueie todo o potencial de produtividade excepcional com os poderosos recursos do Eigent Cowork código aberto—construídos para integração perfeita, execução de tarefas mais inteligente e automação ilimitada.
 
 ### 🏭 Força de Trabalho 
-Emprega uma equipe de agentes de IA especializados que colaboram para resolver tarefas complexas. O Eigent divide dinamicamente as tarefas e ativa múltiplos agentes para trabalhar **em paralelo.**
+Emprega uma equipe de agentes de IA especializados que colaboram para resolver tarefas complexas. O Eigent Cowork código aberto divide dinamicamente as tarefas e ativa múltiplos agentes para trabalhar **em paralelo.**
 
 O Eigent pré-definiu os seguintes agentes trabalhadores:
 
@@ -172,7 +172,7 @@ O Eigent pré-definiu os seguintes agentes trabalhadores:
 <br/>
 
 ### 🧠 Suporte Abrangente a Modelos
-Implante o Eigent localmente com seus modelos preferidos.
+Implante o desktop Eigent Cowork código aberto localmente com seus modelos preferidos.
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
 
@@ -199,7 +199,9 @@ O Eigent é completamente de código aberto. Você pode baixar, inspecionar e mo
 
 <br/>
 
-## 🧩 Casos de Uso
+## 🧩 Casos de Uso - Cowork Open Source
+
+Descubra como desenvolvedores em todo o mundo aproveitam as capacidades de Cowork código aberto do Eigent para automatizar fluxos de trabalho complexos e aumentar a produtividade em diversos setores.
 
 ### 1. Itinerário de Viagem de Tênis em Palm Springs com Resumo no Slack [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
 
@@ -274,6 +276,8 @@ Por favor, adicione esta imagem de assinatura às áreas de assinatura no PDF. V
 
 ## 🛠️ Stack Tecnológica
 
+O desktop Eigent Cowork código aberto é construído com tecnologias modernas e confiáveis que garantem escalabilidade, desempenho e extensibilidade.
+
 ### Backend
 - **Framework:** FastAPI
 - **Gerenciador de Pacotes:** uv
@@ -290,7 +294,7 @@ Por favor, adicione esta imagem de assinatura às áreas de assinatura no PDF. V
 - **Gerenciamento de Estado:** Zustand
 - **Editor de Fluxo:** React Flow
 
-## 🌟 Mantendo-se à Frente
+## 🌟 Mantendo-se à Frente - Cowork Open Source
 
 > \[!IMPORTANT]
 >
@@ -298,7 +302,9 @@ Por favor, adicione esta imagem de assinatura às áreas de assinatura no PDF. V
 
 ![][image-star-us]
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap - Cowork Open Source
+
+Nosso Cowork código aberto continua a evoluir com feedback da comunidade. Aqui está o que vem a seguir:
 
 | Tópicos                   | Issues   | Canal do Discord |
 | ------------------------- | -- |-- |
