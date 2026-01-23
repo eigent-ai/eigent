@@ -8,7 +8,6 @@ import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
 import logging
-from utils import traceroot_wrapper as traceroot
 
 # Thread-safe reference to main event loop using contextvars
 # This ensures each request has its own event loop reference, avoiding race conditions
@@ -56,7 +55,7 @@ def _schedule_async_task(coro):
             asyncio.run_coroutine_threadsafe(coro, main_loop)
         else:
             # This should not happen in normal operation - log error and skip
-            traceroot.get_logger("agent").error(
+            logging.error(
                 "No event loop available for async task scheduling, task skipped. "
                 "Ensure set_main_event_loop() is called before parallel agent creation."
             )
@@ -770,7 +769,7 @@ def agent_model(
             }:
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
-            traceroot_logger.error(
+            logging.error(
                 f"Invalid model platform for browser agent: {options.model_platform}",
                 exc_info=True,
             )
@@ -1900,7 +1899,7 @@ async def get_mcp_tools(mcp_server: McpServers):
                 )
                 for tool in tools
             ]
-            traceroot_logger.debug(f"MCP tool names: {tool_names}")
+            logging.debug(f"MCP tool names: {tool_names}")
         return tools
     except asyncio.CancelledError:
         logger.info("MCP connection cancelled during get_mcp_tools")
