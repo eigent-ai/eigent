@@ -273,7 +273,7 @@ class ListenChatAgent(ChatAgent):
                                 delta_content = chunk.msg.content
                                 accumulated_content += delta_content
                                 # Stream output chunk to frontend (non-blocking)
-                                asyncio.create_task(
+                                _schedule_async_task(
                                     task_lock.put_queue(
                                         ActionStreamingAgentOutputData(
                                             data={
@@ -407,7 +407,7 @@ class ListenChatAgent(ChatAgent):
                                 delta_content = chunk.msg.content
                                 accumulated_content += delta_content
                                 # Stream output chunk to frontend (non-blocking)
-                                asyncio.create_task(
+                                _schedule_async_task(
                                     task_lock.put_queue(
                                         ActionStreamingAgentOutputData(
                                             data={
