@@ -173,11 +173,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         if (!data) return;
         const msg = data.toString().trimEnd();
 
-        // REMOVED: detectInstallationLogs(msg)
-        // Reason: Removed keyword-based detection to avoid false positives when backend
-        // outputs logs containing keywords like "Installing", "Updating", "Syncing" etc.
-        // Installation is now only handled through the explicit installation flow.
-
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
             log.error(`BACKEND: ${msg}`);
         } else if (msg.toLowerCase().includes("warn")) {
@@ -297,7 +292,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 cwd: backendPath,
                 env: env,
                 detached: process.platform !== 'win32',
-                stdio: ['ignore', 'pipe', 'pipe']
+                stdio: ['ignore', 'ignore', 'pipe']  // stdin=ignore, stdout=ignore, stderr=pipe (Python logs to stderr)
             }
         );
 
@@ -415,13 +410,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             }, intervalMs);
         };
 
-        node_process.stdout.on('data', (data) => {
-            log.debug(`Backend stdout received ${data.length} bytes`);
-            displayFilteredLogs(data);
-        });
-
         node_process.stderr.on('data', (data) => {
-            log.debug(`Backend stderr received ${data.length} bytes`);
             displayFilteredLogs(data);
 
             if (data.toString().includes("Address already in use") ||

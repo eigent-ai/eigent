@@ -21,7 +21,7 @@ logger = traceroot.get_logger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "0.0.80"
+APP_VERSION = "0.0.81"
 
 
 def get_terminal_base_venv_path() -> str:

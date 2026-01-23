@@ -47,6 +47,10 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "클라우드 스토리지가 현재 플랜의 한도에 도달했습니다.",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "트래픽이 많습니다. 잠시 후 다시 시도해 주세요.",
 	"new-project": "새 프로젝트",
-	"no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다."
+	"no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다.",
+	"safe-to-run": "안전하게 실행",
+	"scripts-running": "스크립트 실행 중",
+	"scripts-warning": "HTML 렌더러가 관련 스크립트를 발견했습니다. 스크립트가 안전한지 확인하세요.",
+	"scripts-approved": "스크립트가 승인되었습니다. 전체 기능으로 렌더링 중입니다."
 }
 	 
