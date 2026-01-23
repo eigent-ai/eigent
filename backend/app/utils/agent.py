@@ -5,11 +5,10 @@ import os
 import platform
 from threading import Event, Lock
 import traceback
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple
-
-if TYPE_CHECKING:
-    from app.model.chat import AgentModelConfig
+from typing import Any, Callable, Dict, List, Tuple
 import uuid
+
+from app.model.chat import AgentModelConfig
 from utils import traceroot_wrapper as traceroot
 
 # Thread-safe reference to main event loop using contextvars
@@ -729,7 +728,7 @@ def agent_model(
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
-    model_config_override: "AgentModelConfig | None" = None,
+    custom_model_config: AgentModelConfig | None = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -749,13 +748,13 @@ def agent_model(
         )
     )
 
-    # Determine model configuration - use override if provided, otherwise use task defaults
-    if model_config_override and model_config_override.has_custom_config():
-        effective_model_platform = model_config_override.model_platform or options.model_platform
-        effective_model_type = model_config_override.model_type or options.model_type
-        effective_api_key = model_config_override.api_key or options.api_key
-        effective_api_url = model_config_override.api_url or options.api_url
-        extra_params = model_config_override.extra_params or options.extra_params or {}
+    # Determine model configuration - use custom config if provided, otherwise use task defaults
+    if custom_model_config and custom_model_config.has_custom_config():
+        effective_model_platform = custom_model_config.model_platform or options.model_platform
+        effective_model_type = custom_model_config.model_type or options.model_type
+        effective_api_key = custom_model_config.api_key or options.api_key
+        effective_api_url = custom_model_config.api_url or options.api_url
+        extra_params = custom_model_config.extra_params or options.extra_params or {}
         traceroot_logger.info(
             f"Agent {agent_name} using custom model config: platform={effective_model_platform}, type={effective_model_type}"
         )

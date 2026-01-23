@@ -1482,13 +1482,13 @@ The current date is {datetime.date.today()}. For any date-related tasks, you
 MUST use this as the current date.
 """
 
-    # Pass per-agent model config override if available
-    model_config_override = getattr(data, 'model_config_override', None)
+    # Pass per-agent custom model config if available
+    custom_model_config = getattr(data, 'custom_model_config', None)
     return agent_model(
         data.name,
         enhanced_description,
         options,
         tools,
         tool_names=tool_names,
-        model_config_override=model_config_override,
+        custom_model_config=custom_model_config,
     )

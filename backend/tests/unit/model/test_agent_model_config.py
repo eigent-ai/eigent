@@ -1,5 +1,4 @@
 """Unit tests for AgentModelConfig and per-agent model configuration."""
-import pytest
 from app.model.chat import AgentModelConfig, NewAgent
 
 
@@ -53,28 +52,28 @@ class TestAgentModelConfig:
         )
         assert config.has_custom_config() is True
 
-    def test_has_custom_config_false_with_only_api_key(self):
-        """Test has_custom_config returns False with only api_key."""
+    def test_has_custom_config_true_with_only_api_key(self):
+        """Test has_custom_config returns True with only api_key."""
         config = AgentModelConfig(api_key="some-key")
-        assert config.has_custom_config() is False
+        assert config.has_custom_config() is True
 
 
 class TestNewAgentWithModelConfig:
-    """Tests for NewAgent with model_config_override."""
+    """Tests for NewAgent with custom_model_config."""
 
     def test_new_agent_without_model_config(self):
-        """Test NewAgent creation without model config override."""
+        """Test NewAgent creation without custom model config."""
         agent = NewAgent(
             name="TestAgent",
             description="A test agent",
-            tools=["search", "code"],
+            tools=[],
             mcp_tools=None
         )
         assert agent.name == "TestAgent"
-        assert agent.model_config_override is None
+        assert agent.custom_model_config is None
 
     def test_new_agent_with_model_config(self):
-        """Test NewAgent creation with model config override."""
+        """Test NewAgent creation with custom model config."""
         model_config = AgentModelConfig(
             model_platform="openai",
             model_type="gpt-4-turbo"
@@ -82,14 +81,14 @@ class TestNewAgentWithModelConfig:
         agent = NewAgent(
             name="CustomModelAgent",
             description="An agent with custom model",
-            tools=["file"],
+            tools=[],
             mcp_tools=None,
-            model_config_override=model_config
+            custom_model_config=model_config
         )
         assert agent.name == "CustomModelAgent"
-        assert agent.model_config_override is not None
-        assert agent.model_config_override.model_platform == "openai"
-        assert agent.model_config_override.model_type == "gpt-4-turbo"
+        assert agent.custom_model_config is not None
+        assert agent.custom_model_config.model_platform == "openai"
+        assert agent.custom_model_config.model_type == "gpt-4-turbo"
 
     def test_new_agent_serialization_with_model_config(self):
         """Test NewAgent serialization includes model config."""
@@ -98,13 +97,13 @@ class TestNewAgentWithModelConfig:
             model_type="claude-3-sonnet"
         )
         agent = NewAgent(
-            name="SerializableAgent",
+            name="SerializationTest",
             description="Test serialization",
             tools=[],
             mcp_tools=None,
-            model_config_override=model_config
+            custom_model_config=model_config
         )
         data = agent.model_dump()
-        assert "model_config_override" in data
-        assert data["model_config_override"]["model_platform"] == "anthropic"
-        assert data["model_config_override"]["model_type"] == "claude-3-sonnet"
+        assert "custom_model_config" in data
+        assert data["custom_model_config"]["model_platform"] == "anthropic"
+        assert data["custom_model_config"]["model_type"] == "claude-3-sonnet"

@@ -136,6 +136,9 @@ class AgentModelConfig(BaseModel):
         return any([
             self.model_platform is not None,
             self.model_type is not None,
+            self.api_key is not None,
+            self.api_url is not None,
+            self.extra_params is not None,
         ])
 
 
@@ -145,7 +148,7 @@ class NewAgent(BaseModel):
     tools: list[str]
     mcp_tools: McpServers | None
     env_path: str | None = None
-    model_config_override: AgentModelConfig | None = None
+    custom_model_config: AgentModelConfig | None = None
 
 
 class AddTaskRequest(BaseModel):

@@ -194,7 +194,7 @@ class ActionNewAgent(BaseModel):
     description: str
     tools: list[str]
     mcp_tools: McpServers | None
-    model_config_override: "AgentModelConfig | None" = None
+    custom_model_config: "AgentModelConfig | None" = None
 
 
 class ActionBudgetNotEnough(BaseModel):
