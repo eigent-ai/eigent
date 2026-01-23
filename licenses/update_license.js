@@ -50,7 +50,8 @@ function updateLicenseInFile(
   filePath,
   licenseTemplate,
   startLineStartWith,
-  endLineStartWith
+  endLineStartWith,
+  commentMarker
 ) {
   const content = fs.readFileSync(filePath, 'utf-8');
   const newLicense = licenseTemplate.trim();
@@ -60,7 +61,7 @@ function updateLicenseInFile(
   const lines = content.split('\n');
 
   for (const line of lines) {
-    if (line.trim().startsWith('//')) {
+    if (line.trim().startsWith(commentMarker)) {
       commentLines.push(line);
     } else if (line.trim() === '') {
       // Allow empty lines in the header
@@ -100,13 +101,14 @@ function updateLicenseInFile(
 }
 
 /**
- * Recursively update licenses in all TypeScript files in a directory
+ * Recursively update licenses in all files in a directory
  */
 function updateLicenseInDirectory(
   directoryPath,
   licenseTemplate,
   startLineStartWith,
   endLineStartWith,
+  commentMarker,
   extensions = ['.ts', '.tsx', '.d.ts']
 ) {
   let fileCount = 0;
@@ -145,7 +147,8 @@ function updateLicenseInDirectory(
               fullPath,
               licenseTemplate,
               startLineStartWith,
-              endLineStartWith
+              endLineStartWith,
+              commentMarker
             )
           ) {
             fileCount++;
@@ -158,10 +161,8 @@ function updateLicenseInDirectory(
   processDirectory(directoryPath);
   console.log(`\nLicense check complete: ${fileCount} file(s) updated`);
 
-  // Exit with code 1 if any files were modified (for pre-commit hook to catch)
-  if (fileCount > 0) {
-    process.exit(1);
-  }
+  // Exit with code 0 on success (files were properly updated)
+  process.exit(0);
 }
 
 /**
@@ -170,43 +171,60 @@ function updateLicenseInDirectory(
 function main() {
   const args = process.argv.slice(2);
 
-  if (args.length < 2) {
-    console.error(
-      'Usage: node update_license_ts.js <directory_path> <license_template_path>'
-    );
+  if (args.length < 1) {
+    console.error('Usage: node update_license.js <file1> [file2] [file3] ...');
+    console.error('\nProcesses individual files passed by lint-staged');
     process.exit(1);
   }
 
-  const [directoryPath, licenseTemplatePath] = args;
+  // Process each file passed as argument (from lint-staged)
+  let filesUpdated = 0;
 
-  // Check if directory exists
-  if (
-    !fs.existsSync(directoryPath) ||
-    !fs.statSync(directoryPath).isDirectory()
-  ) {
-    console.error(`Error: ${directoryPath} is not a valid directory`);
-    process.exit(1);
+  for (const filePath of args) {
+    // Determine template and comment marker based on file extension
+    const ext = path.extname(filePath);
+    let licenseTemplatePath, commentMarker;
+
+    if (['.ts', '.tsx', '.d.ts', '.js', '.jsx'].includes(ext)) {
+      licenseTemplatePath = path.join(__dirname, 'license_template_ts.txt');
+      commentMarker = '//';
+    } else if (ext === '.py') {
+      licenseTemplatePath = path.join(__dirname, 'license_template_py.txt');
+      commentMarker = '#';
+    } else {
+      console.log(`⊘ Skipping ${filePath} (unsupported extension)`);
+      continue;
+    }
+
+    // Check if license template exists
+    if (!fs.existsSync(licenseTemplatePath)) {
+      console.error(`Error: ${licenseTemplatePath} not found`);
+      continue;
+    }
+
+    const licenseTemplate = fs.readFileSync(licenseTemplatePath, 'utf-8');
+    const startLineStartWith = `${commentMarker} ========= Copyright`;
+    const endLineStartWith = `${commentMarker} ========= Copyright`;
+
+    if (
+      updateLicenseInFile(
+        filePath,
+        licenseTemplate,
+        startLineStartWith,
+        endLineStartWith,
+        commentMarker
+      )
+    ) {
+      filesUpdated++;
+    }
   }
 
-  // Check if license template exists
-  if (
-    !fs.existsSync(licenseTemplatePath) ||
-    !fs.statSync(licenseTemplatePath).isFile()
-  ) {
-    console.error(`Error: ${licenseTemplatePath} not found`);
-    process.exit(1);
+  if (filesUpdated > 0) {
+    console.log(`\n✔ License check complete: ${filesUpdated} file(s) updated`);
   }
 
-  const licenseTemplate = fs.readFileSync(licenseTemplatePath, 'utf-8');
-  const startLineStartWith = '// ========= Copyright';
-  const endLineStartWith = '// ========= Copyright';
-
-  updateLicenseInDirectory(
-    directoryPath,
-    licenseTemplate,
-    startLineStartWith,
-    endLineStartWith
-  );
+  // Exit with success code
+  process.exit(0);
 }
 
 main();
