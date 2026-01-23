@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
     Select,
     SelectContent,
@@ -7,7 +7,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar } from "lucide-react";
+import { InputSelect, type InputSelectOption } from "@/components/ui/input-select";
+import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 type FrequencyType = "hourly" | "daily" | "weekly" | "custom";
@@ -15,6 +16,78 @@ type FrequencyType = "hourly" | "daily" | "weekly" | "custom";
 type SchedulePickerProps = {
     value: string; // cron expression
     onChange: (cronExpression: string) => void;
+};
+
+type TimePickerInputProps = {
+    hour: string;
+    minute: string;
+    onTimeChange: (hour: string, minute: string) => void;
+    title?: string;
+};
+
+const TimePickerInput: React.FC<TimePickerInputProps> = ({
+    hour,
+    minute,
+    onTimeChange,
+    title,
+}) => {
+    const { t } = useTranslation();
+    
+    // Generate hourly time options (00:00 to 23:00)
+    const hourlyOptions: InputSelectOption[] = Array.from({ length: 24 }, (_, i) => ({
+        value: `${i}:0`, // Store as "hour:minute" for easy parsing
+        label: `${i.toString().padStart(2, "0")}:00`,
+    }));
+
+    // Current display value
+    const displayValue = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+
+    // Handle value change from input
+    const handleChange = (value: string) => {
+        // This is called when input value changes directly
+        // We don't update immediately - wait for commit
+    };
+
+    // Handle option selection from dropdown
+    const handleOptionSelect = (option: InputSelectOption) => {
+        const [h, m] = option.value.split(":");
+        onTimeChange(h, m);
+    };
+
+    // Validate and parse the input value
+    const handleInputCommit = (value: string): string | false => {
+        // Try to parse HH:MM format
+        const match = value.match(/^(\d{1,2}):?(\d{0,2})$/);
+        if (match) {
+            let h = parseInt(match[1], 10);
+            let m = match[2] ? parseInt(match[2], 10) : 0;
+            
+            // Check if values are within valid range
+            if (h > 23 || m > 59) {
+                return false; // Invalid - show error state
+            }
+            
+            onTimeChange(h.toString(), m.toString());
+            return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+        }
+        // Invalid input format - return false to show error
+        return false;
+    };
+
+    return (
+        <InputSelect
+            value={displayValue}
+            onChange={handleChange}
+            options={hourlyOptions}
+            title={title}
+            placeholder="00:00"
+            leadingIcon={<Clock className="h-4 w-4" />}
+            maxDropdownHeight={200}
+            onOptionSelect={handleOptionSelect}
+            onInputCommit={handleInputCommit}
+            errorNote={t("triggers.invalid-time-format")}
+        />
+    );
 };
 
 export const SchedulePicker: React.FC<SchedulePickerProps> = ({
@@ -25,46 +98,11 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     const [frequency, setFrequency] = useState<FrequencyType>("hourly");
     const [hour, setHour] = useState<string>("0");
     const [minute, setMinute] = useState<string>("0");
-
-    // Parse initial cron expression
-    useEffect(() => {
-        if (value) {
-            // Simple parsing - can be enhanced
-            if (value === "0 */1 * * *") {
-                setFrequency("hourly");
-            } else if (value.match(/^\d+ \d+ \* \* \*$/)) {
-                setFrequency("daily");
-                const parts = value.split(" ");
-                setMinute(parts[0]);
-                setHour(parts[1]);
-            }
-        }
-    }, [value]);
-
-    // Generate cron expression based on frequency
-    useEffect(() => {
-        // Don't update if frequency is custom - let the user control the value directly
-        if (frequency === "custom") {
-            return;
-        }
-        
-        let cron = "";
-        switch (frequency) {
-            case "hourly":
-                cron = "0 */1 * * *";
-                break;
-            case "daily":
-                cron = `${minute} ${hour} * * *`;
-                break;
-            case "weekly":
-                cron = `${minute} ${hour} * * 0`; // Sunday
-                break;
-        }
-        onChange(cron);
-    }, [frequency, hour, minute]);
+    const [weekday, setWeekday] = useState<string>("0"); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const [cronError, setCronError] = useState<string | null>(null);
 
     // Parse cron field (minute, hour, day, month, weekday)
-    const parseCronField = (field: string, min: number, max: number): number[] => {
+    const parseCronField = useCallback((field: string, min: number, max: number): number[] => {
         if (field === "*") {
             return Array.from({ length: max - min + 1 }, (_, i) => i + min);
         }
@@ -106,7 +144,120 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         }
 
         return [...new Set(values)].sort((a, b) => a - b);
-    };
+    }, []);
+
+    // Validate cron expression format
+    const validateCronExpression = useCallback((cronExpression: string): string | null => {
+        if (!cronExpression || cronExpression.trim() === "") {
+            return t("triggers.cron-empty");
+        }
+
+        const parts = cronExpression.trim().split(/\s+/);
+        if (parts.length !== 5) {
+            return t("triggers.cron-invalid-format");
+        }
+
+        const [minuteField, hourField, dayField, monthField, weekdayField] = parts;
+
+        try {
+            // Validate minute (0-59)
+            const minutes = parseCronField(minuteField, 0, 59);
+            if (minutes.length === 0 || minutes.some(m => m < 0 || m > 59)) {
+                return t("triggers.cron-invalid-minute");
+            }
+
+            // Validate hour (0-23)
+            const hours = parseCronField(hourField, 0, 23);
+            if (hours.length === 0 || hours.some(h => h < 0 || h > 23)) {
+                return t("triggers.cron-invalid-hour");
+            }
+
+            // Validate day of month (1-31)
+            const days = parseCronField(dayField, 1, 31);
+            if (days.length === 0 || days.some(d => d < 1 || d > 31)) {
+                return t("triggers.cron-invalid-day");
+            }
+
+            // Validate month (1-12)
+            const months = parseCronField(monthField, 1, 12);
+            if (months.length === 0 || months.some(m => m < 1 || m > 12)) {
+                return t("triggers.cron-invalid-month");
+            }
+
+            // Validate weekday (0-6)
+            const weekdays = parseCronField(weekdayField, 0, 6);
+            if (weekdays.length === 0 || weekdays.some(w => w < 0 || w > 6)) {
+                return t("triggers.cron-invalid-weekday");
+            }
+
+            return null; // Valid
+        } catch (error) {
+            return t("triggers.cron-invalid-format");
+        }
+    }, [t, parseCronField]);
+
+    // Parse initial cron expression
+    useEffect(() => {
+        if (value) {
+            // Simple parsing - can be enhanced
+            if (value === "0 */1 * * *") {
+                setFrequency("hourly");
+                setCronError(null);
+            } else if (value.match(/^\d+ \d+ \* \* \d+$/)) {
+                // Weekly: minute hour * * weekday
+                setFrequency("weekly");
+                const parts = value.split(" ");
+                setMinute(parts[0]);
+                setHour(parts[1]);
+                setWeekday(parts[4]);
+                setCronError(null);
+            } else if (value.match(/^\d+ \d+ \* \* \*$/)) {
+                // Daily: minute hour * * *
+                setFrequency("daily");
+                const parts = value.split(" ");
+                setMinute(parts[0]);
+                setHour(parts[1]);
+                setCronError(null);
+            } else {
+                // Custom cron - validate it
+                setFrequency("custom");
+                const error = validateCronExpression(value);
+                setCronError(error);
+            }
+        }
+    }, [value, validateCronExpression]);
+
+    // Validate cron when switching to custom mode
+    useEffect(() => {
+        if (frequency === "custom" && value) {
+            const error = validateCronExpression(value);
+            setCronError(error);
+        } else if (frequency !== "custom") {
+            setCronError(null);
+        }
+    }, [frequency, value, validateCronExpression]);
+
+    // Generate cron expression based on frequency
+    useEffect(() => {
+        // Don't update if frequency is custom - let the user control the value directly
+        if (frequency === "custom") {
+            return;
+        }
+        
+        let cron = "";
+        switch (frequency) {
+            case "hourly":
+                cron = "0 */1 * * *";
+                break;
+            case "daily":
+                cron = `${minute} ${hour} * * *`;
+                break;
+            case "weekly":
+                cron = `${minute} ${hour} * * ${weekday}`;
+                break;
+        }
+        onChange(cron);
+    }, [frequency, hour, minute, weekday]);
 
     // Calculate next execution time from a cron expression
     const getNextExecutionTime = (cronExpression: string, fromDate: Date): Date | null => {
@@ -270,19 +421,20 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                     nextTime = dailyTime;
                     break;
                 case "weekly":
-                    // Every Sunday at specified time
+                    // On specified weekday at specified time
                     const weeklyTime = new Date(now);
                     weeklyTime.setHours(parseInt(hour));
                     weeklyTime.setMinutes(parseInt(minute));
                     weeklyTime.setSeconds(0);
                     weeklyTime.setMilliseconds(0);
+                    const targetWeekday = parseInt(weekday);
                     if (i === 0) {
-                        const daysUntilSunday = (7 - weeklyTime.getDay()) % 7;
-                        if (daysUntilSunday === 0 && weeklyTime <= now) {
-                            weeklyTime.setDate(weeklyTime.getDate() + 7);
-                        } else {
-                            weeklyTime.setDate(weeklyTime.getDate() + daysUntilSunday);
+                        const currentWeekday = weeklyTime.getDay();
+                        let daysUntilTarget = (targetWeekday - currentWeekday + 7) % 7;
+                        if (daysUntilTarget === 0 && weeklyTime <= now) {
+                            daysUntilTarget = 7; // Move to next week
                         }
+                        weeklyTime.setDate(weeklyTime.getDate() + daysUntilTarget);
                     } else {
                         weeklyTime.setDate(times[i - 1].getDate() + 7);
                     }
@@ -307,7 +459,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         }
 
         return times;
-    }, [frequency, hour, minute, value]);
+    }, [frequency, hour, minute, weekday, value]);
 
     // Format date for display
     const formatScheduledTime = (date: Date): string => {
@@ -321,9 +473,6 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             timeZoneName: 'short'
         });
     };
-
-    const hours = Array.from({ length: 24 }, (_, i) => i.toString());
-    const minutes = Array.from({ length: 60 }, (_, i) => i.toString());
 
     return (
         <div className="w-full space-y-4">
@@ -353,32 +502,37 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             </div>
 
             {(frequency === "daily" || frequency === "weekly") && (
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Select value={hour} onValueChange={setHour}>
-                            <SelectTrigger title={t("triggers.schedule-time")}>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {hours.map((h) => (
-                                    <SelectItem key={h} value={h}>
-                                        {h.padStart(2, "0")}:00
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                        <TimePickerInput
+                            hour={hour}
+                            minute={minute}
+                            onTimeChange={(h, m) => {
+                                setHour(h);
+                                setMinute(m);
+                            }}
+                            title={t("triggers.schedule-time")}
+                        />
                     </div>
-                    <div className="space-y-2">
-                        <Select value={minute} onValueChange={setMinute}>
-                            <SelectTrigger title={t("triggers.schedule-time")}>
+                    <div className="flex-1">
+                        <Select
+                            value={weekday}
+                            onValueChange={setWeekday}
+                        >
+                            <SelectTrigger 
+                                title={t("triggers.schedule-weekday")}
+                                disabled={frequency === "daily"}
+                            >
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {minutes.filter((m) => parseInt(m) % 15 === 0).map((m) => (
-                                    <SelectItem key={m} value={m}>
-                                        :{m.padStart(2, "0")}
-                                    </SelectItem>
-                                ))}
+                                <SelectItem value="0">{t("triggers.weekday-sunday")}</SelectItem>
+                                <SelectItem value="1">{t("triggers.weekday-monday")}</SelectItem>
+                                <SelectItem value="2">{t("triggers.weekday-tuesday")}</SelectItem>
+                                <SelectItem value="3">{t("triggers.weekday-wednesday")}</SelectItem>
+                                <SelectItem value="4">{t("triggers.weekday-thursday")}</SelectItem>
+                                <SelectItem value="5">{t("triggers.weekday-friday")}</SelectItem>
+                                <SelectItem value="6">{t("triggers.weekday-saturday")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -390,11 +544,19 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                     title={t("triggers.cron-expression")}
                     type="text"
                     value={value}
-                    onChange={(e) => onChange(e.target.value)}
+                    onChange={(e) => {
+                        const newValue = e.target.value;
+                        const error = validateCronExpression(newValue);
+                        setCronError(error);
+                        // Auto-save even if there's an error, so user can see the error state
+                        onChange(newValue);
+                    }}
                     placeholder="0 */1 * * *"
-                    note={t("triggers.cron-help")}
+                    note={cronError || t("triggers.cron-help")}
+                    state={cronError ? "error" : "default"}
                 />
             )}
+
             {/* Scheduled Times Preview */}
             <div className="space-y-2">
                 <div className="flex items-center gap-2 text-text-heading text-label-sm">

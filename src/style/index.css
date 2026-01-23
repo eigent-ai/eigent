@@ -293,6 +293,40 @@ code {
   background: transparent;
 }
 
+/* Overlay scrollbar - sits on top of content without taking space */
+.scrollbar-overlay {
+  overflow-y: scroll;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: transparent transparent; /* Firefox - invisible by default */
+}
+
+.scrollbar-overlay:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent; /* Firefox - show on hover */
+}
+
+.scrollbar-overlay::-webkit-scrollbar {
+  width: 8px;
+  background: transparent;
+}
+
+.scrollbar-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-overlay::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.scrollbar-overlay:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.scrollbar-overlay::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
 
 .terminal-scrollbar::-webkit-scrollbar {
   width: 8px;

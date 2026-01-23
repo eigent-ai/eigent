@@ -21,6 +21,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import {
     Globe,
     Plus,
@@ -32,6 +33,7 @@ import {
     AlertTriangle,
     GlobeIcon,
     Slack,
+    CableIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -46,6 +48,9 @@ import {
 import { SchedulePicker } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import slackIcon from "@/assets/icon/slack.svg";
+import larkIcon from "@/assets/icon/lark.png";
+import telegramIcon from "@/assets/icon/telegram.svg";
 import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
 import { useTriggerConfigQuery, useTriggerCacheInvalidation } from "@/hooks/queries/useTriggerQueries";
 import DynamicTriggerConfig, { getDefaultTriggerConfig, filterExcludedFields, type ValidationError, type TriggerConfigSchema } from "./DynamicTriggerConfig";
@@ -291,7 +296,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         const needsAuth = selectedTrigger?.status === TriggerStatus.PendingAuth && selectedTrigger?.config?.authentication_required;
 
         return (
-            <div className="flex flex-col w-full h-full overflow-y-auto scrollbar-always-visible p-6 gap-6">
+            <div className="flex flex-col w-full pl-6 pr-4 py-6 gap-6">
                 {/* Trigger Name */}
                 <Input
                     id="name"
@@ -370,7 +375,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         <TabsList className="w-full">
                             <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4 mr-2" />{t("triggers.schedule-trigger")}</TabsTrigger>
                             <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4 mr-2" />{t("triggers.webhook-trigger")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><GlobeIcon className="w-4 h-4 mr-2" />{t("triggers.app-trigger")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><CableIcon className="w-4 h-4 mr-2" />{t("triggers.app-trigger")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
@@ -434,43 +439,35 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             </div>
                         </TabsContent>
                         {/* TODO: Select Slack Trigger only on App Select rather than section */}
-                        <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
+                        <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-2xl p-4">
                             {!selectedApp ? (
                                 <div className="space-y-4">
                                     <Label className="font-bold text-sm">{t("triggers.select-app")}</Label>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Button
-                                            variant="outline"
-                                            size="lg"
-                                            className="h-24 flex flex-col items-center justify-center gap-2"
+                                        <Card
+                                            className="h-24 flex flex-col items-center justify-center gap-2 cursor-pointer border-border-tertiary bg-surface-primary hover:border-border-secondary transition-colors relative"
                                             onClick={() => {
                                                 setSelectedApp("slack");
                                                 setFormData({ ...formData, trigger_type: TriggerType.Slack });
                                             }}
                                         >
-                                            <Slack className="w-8 h-8" />
-                                            <span className="font-semibold">Slack</span>
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="lg"
-                                            className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed"
-                                            disabled
+                                            <img src={slackIcon} alt="Slack" className="w-8 h-8" />
+                                            <span className="font-semibold text-body-md text-text-heading">Slack</span>
+                                        </Card>
+                                        <Card
+                                            className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed border-border-tertiary bg-surface-primary hover:border-border-secondary transition-colors relative"
                                         >
-                                            <Globe className="w-8 h-8" />
-                                            <span className="font-semibold">Lark</span>
-                                            <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="lg"
-                                            className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed"
-                                            disabled
+                                            <Badge variant="secondary" className="text-xs absolute top-2 right-2">Coming Soon</Badge>
+                                            <img src={larkIcon} alt="Lark" className="w-8 h-8" />
+                                            <span className="font-semibold text-body-md text-text-heading">Lark</span>
+                                        </Card>
+                                        <Card
+                                            className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed border-border-tertiary bg-surface-primary hover:border-border-secondary transition-colors relative"
                                         >
-                                            <Globe className="w-8 h-8" />
-                                            <span className="font-semibold">Telegram</span>
-                                            <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
-                                        </Button>
+                                            <Badge variant="secondary" className="text-xs absolute top-2 right-2">Coming Soon</Badge>
+                                            <img src={telegramIcon} alt="Telegram" className="w-8 h-8" />
+                                            <span className="font-semibold text-body-md text-text-heading">Telegram</span>
+                                        </Card>
                                     </div>
                                 </div>
                             ) : (
@@ -575,7 +572,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <DialogHeader
                         title={getDialogTitle()}
                     />
-                    <DialogContentSection className="p-0 flex-1 overflow-auto min-h-0">
+                    <DialogContentSection className="p-0 flex-1 min-h-0 scrollbar-overlay">
                         {renderCreateContent()}
                     </DialogContentSection>
                     {renderFooter()}

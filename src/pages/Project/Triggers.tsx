@@ -257,12 +257,12 @@ export default function Overview() {
                 {/* Left Side: Trigger List (70% width) */}
                 <div className="flex-[0.6] flex flex-col min-w-0">
                     {/* Header */}
-                    <div className="w-full flex items-center justify-between pl-4 pb-4 pt-2">
+                    <div className="w-full flex items-center justify-between pl-1 pb-4 pt-2">
                         <div className="text-body-sm font-bold text-text-heading">{t('triggers.title')}</div>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" className="text-text-label font-semibold text-label-sm">
+                                    <Button variant="ghost" size="sm" className="text-text-label font-semibold text-label-sm opacity-50">
                                         {getSortLabel()}
                                         <ArrowUpDown className="h-4 w-4" />
                                     </Button>
@@ -284,7 +284,7 @@ export default function Overview() {
                     </div>
 
                     {/* List View Section */}
-                    <div className="flex flex-col h-full pl-3 overflow-auto scrollbar-always-visible">
+                    <div className="flex flex-col h-full overflow-auto scrollbar-always-visible">
                         <div className="flex flex-col gap-2">
                             {sortedTriggers.length === 0 ? (
                                 <div

@@ -410,34 +410,11 @@ export default function Folder({ data }: { data?: Agent }) {
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleBack}
-                  size="sm"
-                  variant="ghost"
-                  className={`flex items-center gap-2`}
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="text-xl font-bold text-primary whitespace-nowrap">
+                <span className="text-body-base font-bold text-primary whitespace-nowrap">
                   {t('chat.agent-folder')}
                 </span>
               </div>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`${
-                isCollapsed ? 'w-full' : ''
-              } flex items-center justify-center`}
-              title={isCollapsed ? t('chat.open') : t('chat.close')}
-            >
-              <ChevronsLeft
-                className={`w-6 h-6 text-zinc-500 ${
-                  isCollapsed ? 'rotate-180' : ''
-                } transition-transform ease-in-out`}
-              />
-            </Button>
           </div>
         </div>
 
