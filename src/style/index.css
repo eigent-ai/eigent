@@ -428,20 +428,25 @@ code {
   z-index: 0;
   background: linear-gradient(
       120deg,
-      rgba(148, 163, 184, 0.08) 20%,
-      rgba(148, 163, 184, 0.4) 40%,
-      rgba(148, 163, 184, 0.08) 60%
+      transparent 0%,
+      color-mix(in srgb, var(--colors-primary-4) 8%, transparent) 25%,
+      color-mix(in srgb, var(--colors-primary-4) 20%, transparent) 50%,
+      color-mix(in srgb, var(--colors-primary-4) 8%, transparent) 75%,
+      transparent 100%
   );
   background-size: 200% 100%;
-  animation: progress-install-shimmer 2.2s linear infinite;
+  background-position: 200% 0;
+  animation: progress-install-shimmer 3s ease-in-out infinite;
   pointer-events: none;
+  border-radius: var(--borderRadius-lg);
+  will-change: background-position;
 }
 
 @keyframes progress-install-shimmer {
   0% {
-    transform: translateX(-60%);
+    background-position: 200% 0;
   }
   100% {
-    transform: translateX(60%);
+    background-position: -200% 0;
   }
 }

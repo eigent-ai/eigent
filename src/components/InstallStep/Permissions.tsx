@@ -67,13 +67,13 @@ export const Permissions: React.FC = () => {
 		);
 	};
 	return (
-		<div className="flex flex-col gap-lg">
-			<div className="flex gap-md h-[568px] ">
-				<div className=" flex flex-col gap-md w-[438px]">
-					<div className="text-text-heading font-bold text-4xl leading-5xl">
-						<div>Enable Permissions</div>
+		<div className="flex flex-col w-full h-full gap-lg">
+			<div className="flex gap-md w-full h-full">
+				<div className=" flex flex-col gap-md w-full">
+					<div className="text-text-heading font-bold text-heading-sm">
+						Enable Permissions
 					</div>
-					<div className="text-text-body text-xl leading-2xl font-medium">
+					<div className="text-text-body text-body-md font-medium">
 						Grant permission to activate the Agent's autonomous actions.
 					</div>
 					{settings.map((item, index) => (
@@ -99,9 +99,9 @@ export const Permissions: React.FC = () => {
 					<img className="absolute top-0 left-0 right-0 bottom-0 w-[899px] h-[533px]" src={privacy_settings} alt="" />
 				</div>
 			</div>
-			<div className="flex justify-end items-center gap-sm">
+			<div className="flex justify-end items-center gap-sm w-full h-full">
 				
-				<div className="flex  justify-center items-center gap-sm">
+				<div className="flex w-full justify-center items-center gap-sm">
 					<Button
 						onClick={() => setInitState("carousel")}
 						variant="ghost"

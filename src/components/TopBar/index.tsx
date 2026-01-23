@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
+import { useInstallationUI } from "@/store/installationStore";
  
 function HeaderWin() {
 	const { t } = useTranslation();
@@ -48,6 +49,8 @@ function HeaderWin() {
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
+	const { isInstalling, installationState } = useInstallationUI();
+	const isInstallationActive = isInstalling || installationState === "waiting-backend";
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
@@ -207,7 +210,7 @@ function HeaderWin() {
 
 	return (
 		<div
-			className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 "
+			className={`absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 ${isInstallationActive ? "opacity-50" : ""}`}
 			id="titlebar"
 			ref={titlebarRef}
 		>
