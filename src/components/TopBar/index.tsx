@@ -220,16 +220,14 @@ function HeaderWin() {
 			ref={titlebarRef}
 		>
 			{/* left */}
-			<div
-				className={`${
-					platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
-				} flex items-center justify-center no-drag`}
-			>
-				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
-			</div>
+			{platform !== "darwin" && (
+				<div className="w-[70px] flex items-center justify-center no-drag">
+					<span className="text-label-md text-text-heading font-bold">Eigent</span>
+				</div>
+			)}
 
 			{/* center */}
-			<div className="title h-full flex-1 flex items-center justify-between drag">
+			<div className="w-full h-full flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
 					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
 					<Button
@@ -309,7 +307,6 @@ function HeaderWin() {
 						</>
 					)}
 				</div>
-				<div id="maximize-window" className="flex-1 h-10"></div>
 				{/* right */}
 				{location.pathname !== "/history" && (
 					<div
