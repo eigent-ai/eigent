@@ -1,4 +1,10 @@
-"""Unit tests for RAGToolkit."""
+"""Unit tests for RAGToolkit.
+
+RAGToolkit extends CAMEL's RetrievalToolkit with eigent-specific features:
+- Task-based collection isolation
+- Persistent local storage
+- Integration with eigent's AbstractToolkit system
+"""
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
@@ -20,85 +26,80 @@ class TestRAGToolkit:
 
     @pytest.fixture
     def toolkit(self, temp_storage_path):
-        """Create a RAGToolkit instance with mocked dependencies."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            toolkit = RAGToolkit(
-                api_task_id="test-task-123",
-                storage_path=temp_storage_path,
-            )
-            return toolkit
+        """Create a RAGToolkit instance with mocked AutoRetriever."""
+        with patch('app.utils.toolkit.rag_toolkit.AutoRetriever'):
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                toolkit = RAGToolkit(
+                    api_task_id="test-task-123",
+                    storage_path=temp_storage_path,
+                )
+                return toolkit
 
     def test_toolkit_initialization(self, temp_storage_path):
         """Test RAGToolkit initializes correctly."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            toolkit = RAGToolkit(
-                api_task_id="test-task-456",
-                storage_path=temp_storage_path,
-            )
-            
-            assert toolkit.api_task_id == "test-task-456"
-            assert toolkit.collection_name == "task_test-task-456"
-            assert toolkit.storage_path == temp_storage_path
-            assert temp_storage_path.exists()
-
-    def test_toolkit_initialization_with_custom_collection(self, temp_storage_path):
-        """Test RAGToolkit with custom collection name."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            toolkit = RAGToolkit(
-                api_task_id="test-task",
-                collection_name="my-custom-kb",
-                storage_path=temp_storage_path,
-            )
-            
-            assert toolkit.collection_name == "my-custom-kb"
+        with patch('app.utils.toolkit.rag_toolkit.AutoRetriever') as mock_ar:
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                toolkit = RAGToolkit(
+                    api_task_id="test-task-456",
+                    storage_path=temp_storage_path,
+                )
+                
+                assert toolkit.api_task_id == "test-task-456"
+                assert toolkit.storage_path == temp_storage_path
+                assert temp_storage_path.exists()
+                # Verify AutoRetriever was initialized with task-isolated path
+                mock_ar.assert_called_once()
+                call_kwargs = mock_ar.call_args[1]
+                assert "task_test-task-456" in call_kwargs["vector_storage_local_path"]
 
     def test_toolkit_initialization_with_custom_agent(self, temp_storage_path):
         """Test RAGToolkit with custom agent name."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            toolkit = RAGToolkit(
-                api_task_id="test-task",
-                agent_name="custom_agent",
-                storage_path=temp_storage_path,
-            )
-            
-            assert toolkit.agent_name == "custom_agent"
-
-    def test_add_document_empty_content(self, toolkit):
-        """Test add_document with empty content returns error."""
-        result = toolkit.add_document("")
-        assert "Error" in result
-        assert "empty" in result.lower()
-
-    def test_add_document_whitespace_only(self, toolkit):
-        """Test add_document with whitespace-only content returns error."""
-        result = toolkit.add_document("   \n\t  ")
-        assert "Error" in result
-
-    def test_query_empty_query(self, toolkit):
-        """Test query_knowledge_base with empty query returns error."""
-        result = toolkit.query_knowledge_base("")
-        assert "Error" in result
-        assert "empty" in result.lower()
+        with patch('app.utils.toolkit.rag_toolkit.AutoRetriever'):
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                toolkit = RAGToolkit(
+                    api_task_id="test-task",
+                    agent_name="custom_agent",
+                    storage_path=temp_storage_path,
+                )
+                
+                assert toolkit.agent_name == "custom_agent"
 
     def test_list_knowledge_bases_empty(self, temp_storage_path):
         """Test list_knowledge_bases when no KBs exist."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            toolkit = RAGToolkit(
-                api_task_id="test-task",
-                storage_path=temp_storage_path,
-            )
-            
-            result = toolkit.list_knowledge_bases()
-            assert "No knowledge bases found" in result
+        with patch('app.utils.toolkit.rag_toolkit.AutoRetriever'):
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                toolkit = RAGToolkit(
+                    api_task_id="test-task",
+                    storage_path=temp_storage_path,
+                )
+                
+                result = toolkit.list_knowledge_bases()
+                assert "No knowledge bases found" in result
 
-    def test_get_tools_returns_three_tools(self, toolkit):
-        """Test get_tools returns all three RAG tools."""
+    def test_list_knowledge_bases_with_tasks(self, temp_storage_path):
+        """Test list_knowledge_bases when task directories exist."""
+        # Create some task directories
+        (temp_storage_path / "task_123").mkdir()
+        (temp_storage_path / "task_456").mkdir()
+        
+        with patch('app.utils.toolkit.rag_toolkit.AutoRetriever'):
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                toolkit = RAGToolkit(
+                    api_task_id="test-task",
+                    storage_path=temp_storage_path,
+                )
+                
+                result = toolkit.list_knowledge_bases()
+                assert "task_123" in result
+                assert "task_456" in result
+
+    def test_get_tools_returns_two_tools(self, toolkit):
+        """Test get_tools returns information_retrieval and list_knowledge_bases."""
         tools = toolkit.get_tools()
         
-        assert len(tools) == 3
+        assert len(tools) == 2
         tool_names = [t.func.__name__ for t in tools]
-        assert "add_document" in tool_names
-        assert "query_knowledge_base" in tool_names
+        assert "information_retrieval" in tool_names
         assert "list_knowledge_bases" in tool_names
 
     def test_get_can_use_tools_without_api_key(self, temp_storage_path):
@@ -111,15 +112,11 @@ class TestRAGToolkit:
     def test_get_can_use_tools_with_api_key(self, temp_storage_path):
         """Test get_can_use_tools returns tools when API key is set."""
         with patch('app.utils.toolkit.rag_toolkit.env', return_value='test-key'):
-            with patch.object(RAGToolkit, 'get_tools') as mock_get_tools:
-                mock_get_tools.return_value = [Mock(), Mock(), Mock()]
-                tools = RAGToolkit.get_can_use_tools("test-task")
-                assert len(tools) == 3
-
-    def test_toolkit_name(self):
-        """Test toolkit_name returns correct name."""
-        name = RAGToolkit.toolkit_name()
-        assert name == "Rag Toolkit"
+            with patch('app.utils.toolkit.rag_toolkit.AutoRetriever'):
+                with patch.object(RAGToolkit, 'get_tools') as mock_get_tools:
+                    mock_get_tools.return_value = [Mock(), Mock()]
+                    tools = RAGToolkit.get_can_use_tools("test-task")
+                    assert len(tools) == 2
 
     def test_default_storage_path_exists(self):
         """Test DEFAULT_STORAGE_PATH is defined correctly."""
@@ -129,7 +126,7 @@ class TestRAGToolkit:
 
 
 class TestRAGToolkitIntegration:
-    """Integration tests for RAGToolkit (requires mocking CAMEL components)."""
+    """Integration tests for RAGToolkit with mocked CAMEL components."""
 
     @pytest.fixture
     def temp_storage_path(self):
@@ -138,22 +135,19 @@ class TestRAGToolkitIntegration:
         yield Path(temp_dir)
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    @patch('app.utils.toolkit.rag_toolkit.OpenAIEmbedding')
-    @patch('app.utils.toolkit.rag_toolkit.QdrantStorage')
-    @patch('app.utils.toolkit.rag_toolkit.VectorRetriever')
-    def test_add_document_success(
+    @patch('app.utils.toolkit.rag_toolkit.AutoRetriever')
+    def test_information_retrieval_success(
         self,
-        mock_retriever_class,
-        mock_storage_class,
-        mock_embedding_class,
+        mock_auto_retriever_class,
         temp_storage_path
     ):
-        """Test successful document addition."""
+        """Test successful information retrieval."""
         # Setup mocks
-        mock_retriever = MagicMock()
-        mock_retriever_class.return_value = mock_retriever
-        mock_storage_class.return_value = MagicMock()
-        mock_embedding_class.return_value = MagicMock()
+        mock_auto_retriever = MagicMock()
+        mock_auto_retriever.run_vector_retriever.return_value = {
+            "text": ["Relevant content about the query"]
+        }
+        mock_auto_retriever_class.return_value = mock_auto_retriever
         
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             toolkit = RAGToolkit(
@@ -161,40 +155,27 @@ class TestRAGToolkitIntegration:
                 storage_path=temp_storage_path,
             )
             
-            result = toolkit.add_document(
-                content="This is test content for RAG.",
-                metadata={"source": "test"},
-                doc_id="doc-001"
+            result = toolkit.information_retrieval(
+                query="What is the content?",
+                contents="/path/to/document.pdf",
+                top_k=5,
             )
             
-            assert "Successfully added" in result
-            assert "doc-001" in result
-            # Verify process was called with extra_info (CAMEL's parameter name)
-            mock_retriever.process.assert_called_once()
-            call_kwargs = mock_retriever.process.call_args[1]
-            assert "extra_info" in call_kwargs
-            assert call_kwargs["extra_info"]["doc_id"] == "doc-001"
+            # Should return string representation of retrieved info
+            assert isinstance(result, str)
+            mock_auto_retriever.run_vector_retriever.assert_called_once()
 
-    @patch('app.utils.toolkit.rag_toolkit.OpenAIEmbedding')
-    @patch('app.utils.toolkit.rag_toolkit.QdrantStorage')
-    @patch('app.utils.toolkit.rag_toolkit.VectorRetriever')
-    def test_query_knowledge_base_success(
+    @patch('app.utils.toolkit.rag_toolkit.AutoRetriever')
+    def test_information_retrieval_with_error(
         self,
-        mock_retriever_class,
-        mock_storage_class,
-        mock_embedding_class,
+        mock_auto_retriever_class,
         temp_storage_path
     ):
-        """Test successful knowledge base query."""
-        # Setup mocks
-        mock_retriever = MagicMock()
-        mock_retriever.query.return_value = [
-            {"text": "Relevant content 1", "score": 0.95, "metadata": {"doc_id": "doc1"}},
-            {"text": "Relevant content 2", "score": 0.85, "metadata": {"doc_id": "doc2"}},
-        ]
-        mock_retriever_class.return_value = mock_retriever
-        mock_storage_class.return_value = MagicMock()
-        mock_embedding_class.return_value = MagicMock()
+        """Test information retrieval handles errors gracefully."""
+        # Setup mock to raise an exception
+        mock_auto_retriever = MagicMock()
+        mock_auto_retriever.run_vector_retriever.side_effect = Exception("Test error")
+        mock_auto_retriever_class.return_value = mock_auto_retriever
         
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             toolkit = RAGToolkit(
@@ -202,30 +183,26 @@ class TestRAGToolkitIntegration:
                 storage_path=temp_storage_path,
             )
             
-            result = toolkit.query_knowledge_base("What is the content?", top_k=3)
+            result = toolkit.information_retrieval(
+                query="What is the content?",
+                contents="/path/to/document.pdf",
+            )
             
-            assert "Relevant content 1" in result
-            assert "Relevant content 2" in result
-            assert "0.95" in result  # Score should be included
-            mock_retriever.query.assert_called_once_with(query="What is the content?", top_k=3)
+            assert "Error" in result
+            assert "Test error" in result
 
-    @patch('app.utils.toolkit.rag_toolkit.OpenAIEmbedding')
-    @patch('app.utils.toolkit.rag_toolkit.QdrantStorage')
-    @patch('app.utils.toolkit.rag_toolkit.VectorRetriever')
-    def test_query_knowledge_base_no_results(
+    @patch('app.utils.toolkit.rag_toolkit.AutoRetriever')
+    def test_information_retrieval_with_list_contents(
         self,
-        mock_retriever_class,
-        mock_storage_class,
-        mock_embedding_class,
+        mock_auto_retriever_class,
         temp_storage_path
     ):
-        """Test query with no results."""
-        # Setup mocks
-        mock_retriever = MagicMock()
-        mock_retriever.query.return_value = []
-        mock_retriever_class.return_value = mock_retriever
-        mock_storage_class.return_value = MagicMock()
-        mock_embedding_class.return_value = MagicMock()
+        """Test information retrieval with multiple content sources."""
+        mock_auto_retriever = MagicMock()
+        mock_auto_retriever.run_vector_retriever.return_value = {
+            "text": ["Combined results from multiple sources"]
+        }
+        mock_auto_retriever_class.return_value = mock_auto_retriever
         
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             toolkit = RAGToolkit(
@@ -233,6 +210,10 @@ class TestRAGToolkitIntegration:
                 storage_path=temp_storage_path,
             )
             
-            result = toolkit.query_knowledge_base("Unknown query")
+            result = toolkit.information_retrieval(
+                query="What is the content?",
+                contents=["/path/to/doc1.pdf", "/path/to/doc2.pdf"],
+            )
             
-            assert "No relevant information found" in result
+            assert isinstance(result, str)
+            mock_auto_retriever.run_vector_retriever.assert_called_once()
