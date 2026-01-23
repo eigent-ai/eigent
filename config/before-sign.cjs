@@ -80,67 +80,93 @@ exports.default = async function afterPack(context) {
     }
   }
 
-  // Clean Python symlinks in venv/bin
-  const venvBinDir = path.join(prebuiltPath, 'venv', 'bin');
-  if (fs.existsSync(venvBinDir)) {
+  // Find prebuilt Python executable in uv_python directory
+  function findPrebuiltPython() {
+    const uvPythonDir = path.join(prebuiltPath, 'uv_python');
+    if (!fs.existsSync(uvPythonDir)) {
+      return null;
+    }
+
+    // UV stores Python in cpython-* subdirectories
+    try {
+      const entries = fs.readdirSync(uvPythonDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+          const pythonPath = path.join(uvPythonDir, entry.name, 'install', 'bin', 'python');
+          if (fs.existsSync(pythonPath)) {
+            return pythonPath;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Warning: Could not search for prebuilt Python: ${error.message}`);
+    }
+    return null;
+  }
+
+  const prebuiltPython = findPrebuiltPython();
+  if (prebuiltPython) {
+    console.log(`Found prebuilt Python: ${prebuiltPython}`);
+  }
+
+  // Clean and fix Python symlinks in a venv bin directory
+  function fixPythonSymlinks(binDir, venvName) {
+    if (!fs.existsSync(binDir)) {
+      return;
+    }
+
     const pythonNames = ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
     const bundlePath = path.resolve(appPath);
 
     for (const pythonName of pythonNames) {
-      const pythonSymlink = path.join(venvBinDir, pythonName);
+      const pythonSymlink = path.join(binDir, pythonName);
 
-      if (fs.existsSync(pythonSymlink)) {
-        try {
-          const stats = fs.lstatSync(pythonSymlink);
-          if (stats.isSymbolicLink()) {
-            const target = fs.readlinkSync(pythonSymlink);
-            const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
+      try {
+        const stats = fs.lstatSync(pythonSymlink);
+        if (stats.isSymbolicLink()) {
+          const target = fs.readlinkSync(pythonSymlink);
+          const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
 
-            // If symlink points outside bundle, remove it
-            if (!resolvedPath.startsWith(bundlePath)) {
-              console.log(`Removing invalid ${pythonName} symlink: ${target}`);
-              fs.unlinkSync(pythonSymlink);
+          // If symlink points outside bundle or is broken, remove and recreate it
+          if (!resolvedPath.startsWith(bundlePath) || !fs.existsSync(resolvedPath)) {
+            console.log(`Removing invalid ${venvName} ${pythonName} symlink: ${target}`);
+            fs.unlinkSync(pythonSymlink);
+
+            // Recreate symlink pointing to prebuilt Python (only for main 'python')
+            if (prebuiltPython && pythonName === 'python') {
+              const relativePath = path.relative(binDir, prebuiltPython);
+              fs.symlinkSync(relativePath, pythonSymlink);
+              console.log(`Created ${venvName} ${pythonName} symlink -> ${relativePath}`);
             }
           }
-        } catch (error) {
-          console.warn(`Warning: Could not process ${pythonName} symlink: ${error.message}`);
+        }
+      } catch (error) {
+        // Symlink doesn't exist, create it if this is the main python symlink
+        if (error.code === 'ENOENT' && prebuiltPython && pythonName === 'python') {
+          try {
+            const relativePath = path.relative(binDir, prebuiltPython);
+            fs.symlinkSync(relativePath, pythonSymlink);
+            console.log(`Created missing ${venvName} ${pythonName} symlink -> ${relativePath}`);
+          } catch (createError) {
+            console.warn(`Warning: Could not create ${venvName} ${pythonName} symlink: ${createError.message}`);
+          }
         }
       }
     }
   }
 
-  // Clean Python symlinks in terminal_venv/bin (same as venv/bin)
-  const terminalVenvBinDir = path.join(prebuiltPath, 'terminal_venv', 'bin');
-  if (fs.existsSync(terminalVenvBinDir)) {
-    const pythonNames = ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
-    const bundlePath = path.resolve(appPath);
+  // Fix Python symlinks in both venv directories
+  fixPythonSymlinks(path.join(prebuiltPath, 'venv', 'bin'), 'venv');
+  fixPythonSymlinks(path.join(prebuiltPath, 'terminal_venv', 'bin'), 'terminal_venv');
 
-    for (const pythonName of pythonNames) {
-      const pythonSymlink = path.join(terminalVenvBinDir, pythonName);
+  // Recursively clean other invalid symlinks (skip already-processed venv bin directories)
+  const processedDirs = new Set([
+    path.join(prebuiltPath, 'venv', 'bin'),
+    path.join(prebuiltPath, 'terminal_venv', 'bin'),
+  ]);
 
-      if (fs.existsSync(pythonSymlink)) {
-        try {
-          const stats = fs.lstatSync(pythonSymlink);
-          if (stats.isSymbolicLink()) {
-            const target = fs.readlinkSync(pythonSymlink);
-            const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
-
-            // If symlink points outside bundle, remove it
-            if (!resolvedPath.startsWith(bundlePath)) {
-              console.log(`Removing invalid terminal_venv ${pythonName} symlink: ${target}`);
-              fs.unlinkSync(pythonSymlink);
-            }
-          }
-        } catch (error) {
-          console.warn(`Warning: Could not process terminal_venv ${pythonName} symlink: ${error.message}`);
-        }
-      }
-    }
-  }
-
-  // Recursively clean other invalid symlinks
   function cleanSymlinks(dir, bundleRoot) {
-    if (!fs.existsSync(dir)) {
+    if (!fs.existsSync(dir) || processedDirs.has(dir)) {
       return;
     }
 

@@ -170,39 +170,29 @@ export function getPrebuiltVenvPath(): string | null {
 }
 
 /**
- * Find Python executable in prebuilt Python directory for terminal venv
+ * Find Python executable in prebuilt Python directory
  */
-function findPythonForTerminalVenv(): string | null {
+export function findPrebuiltPythonExecutable(): string | null {
   const prebuiltPythonDir = getPrebuiltPythonDir();
   if (!prebuiltPythonDir) {
     return null;
   }
 
-  // Look for Python executable in the prebuilt directory
-  // UV stores Python in subdirectories like: cpython-3.10.19+.../install/bin/python
-  const possiblePaths: string[] = [];
+  const isWindows = process.platform === 'win32';
+  const pythonName = isWindows ? 'python.exe' : 'python';
+  const binPath = isWindows ? '' : path.join('install', 'bin');
 
-  // First, try common direct paths
-  possiblePaths.push(
-    path.join(prebuiltPythonDir, 'install', 'bin', 'python'),
-    path.join(prebuiltPythonDir, 'install', 'python.exe'),
-    path.join(prebuiltPythonDir, 'bin', 'python'),
-    path.join(prebuiltPythonDir, 'python.exe'),
-  );
-
-  // Then, search in subdirectories (UV stores Python in versioned directories)
+  // UV stores Python in cpython-* subdirectories
   try {
-    if (fs.existsSync(prebuiltPythonDir)) {
-      const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
-          const subDir = path.join(prebuiltPythonDir, entry.name);
-          possiblePaths.push(
-            path.join(subDir, 'install', 'bin', 'python'),
-            path.join(subDir, 'install', 'python.exe'),
-            path.join(subDir, 'bin', 'python'),
-            path.join(subDir, 'python.exe'),
-          );
+    const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+        const pythonPath = isWindows
+          ? path.join(prebuiltPythonDir, entry.name, 'install', pythonName)
+          : path.join(prebuiltPythonDir, entry.name, binPath, pythonName);
+        if (fs.existsSync(pythonPath)) {
+          log.info(`[PROCESS] Found prebuilt Python executable: ${pythonPath}`);
+          return pythonPath;
         }
       }
     }
@@ -210,12 +200,7 @@ function findPythonForTerminalVenv(): string | null {
     log.warn('[PROCESS] Error searching for prebuilt Python:', error);
   }
 
-  for (const pythonPath of possiblePaths) {
-    if (fs.existsSync(pythonPath)) {
-      return pythonPath;
-    }
-  }
-
+  log.info('[PROCESS] Prebuilt Python directory found but executable not found');
   return null;
 }
 
@@ -241,13 +226,13 @@ export function getPrebuiltTerminalVenvPath(): string | null {
         log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
         return prebuiltTerminalVenvPath;
       } else {
-        // Try to fix the missing Python executable by creating a symlink to prebuilt Python
+        // Try to fix the missing Python executable by creating a symlink to 
+        // prebuilt Python
         log.warn(
           `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
             `Attempting to fix...`
         );
-
-        const prebuiltPython = findPythonForTerminalVenv();
+        const prebuiltPython = findPrebuiltPythonExecutable();
         if (prebuiltPython && fs.existsSync(prebuiltPython)) {
           try {
             const binDir = isWindows
