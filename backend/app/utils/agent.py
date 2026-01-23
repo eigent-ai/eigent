@@ -86,7 +86,7 @@ from app.utils.toolkit.excel_toolkit import ExcelToolkit
 from app.utils.toolkit.file_write_toolkit import FileToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
-from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
+from app.utils.toolkit.google_gmail_native_toolkit import GoogleGmailNativeToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
 from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
@@ -1680,7 +1680,7 @@ async def social_medium_agent(options: Chat):
         *RedditToolkit.get_can_use_tools(options.project_id),
         *await NotionMCPToolkit.get_can_use_tools(options.project_id),
         # *SlackToolkit.get_can_use_tools(options.project_id),
-        *await GoogleGmailMCPToolkit.get_can_use_tools(
+        *await GoogleGmailNativeToolkit.get_can_use_tools(
             options.project_id, options.get_bun_env()
         ),
         *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
@@ -1784,7 +1784,7 @@ operations.
             LinkedInToolkit.toolkit_name(),
             RedditToolkit.toolkit_name(),
             NotionMCPToolkit.toolkit_name(),
-            GoogleGmailMCPToolkit.toolkit_name(),
+            GoogleGmailNativeToolkit.toolkit_name(),
             GoogleCalendarToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
@@ -1882,7 +1882,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "github_toolkit": GithubToolkit,
         "google_calendar_toolkit": GoogleCalendarToolkit,
         "google_drive_mcp_toolkit": GoogleDriveMCPToolkit,
-        "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
+        "google_gmail_native_toolkit": GoogleGmailNativeToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "lark_toolkit": LarkToolkit,

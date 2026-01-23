@@ -59,7 +59,6 @@ const ToolSelect = forwardRef<
 		proxyFetchGet("/api/config/info").then((res) => {
 			if (res && typeof res === "object" && !res.error) {
 				const baseURL = getProxyBaseURL();
-
 				const list = Object.entries(res)
 					.filter(([key]) => {
 						if (!keyword) return true;
@@ -164,7 +163,65 @@ const ToolSelect = forwardRef<
                                     return null; // Return null on authorization flow errors
                                 }
                             };
+														
+						} else if (key.toLowerCase() === 'google gmail') {
+					onInstall = async () => {
+						try {
+					const response = await fetchPost("/install/tool/google_gmail");
+					if (response.success) {
+						// Check if config exists first to avoid 400 error
+						const existingConfigs = await proxyFetchGet("/api/configs");
+						const existing = Array.isArray(existingConfigs)
+							? existingConfigs.find((c: any) =>
+								c.config_group?.toLowerCase() === "google gmail" &&
+								c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN"
+							)
+							: null;
+						
+						const configPayload = {
+							config_group: "Google Gmail", //According to backend config
+							config_name: "GMAIL_GOOGLE_REFRESH_TOKEN",
+							config_value: "exists",
+						};
+						
+						if (existing) {
+							await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
 						} else {
+							await proxyFetchPost("/api/configs", configPayload);
+						}
+						
+						console.log("Google Gmail installed successfully");
+								// After successful installation, add to selected tools
+								const gmailItem = {
+									id: 1, // Use 1 for integration items
+									key: key,
+									name: key,
+									description: "Google Gmail integration for managing emails and contacts",
+									toolkit: "google_gmail_native_toolkit", // Add the toolkit name
+									isLocal: true
+								};
+								addOption(gmailItem, true);
+                            } else if (response.status === "authorizing") {
+								// Authorization in progress - browser should have opened
+								console.log("Google Gmail authorization in progress. Please complete in browser.");
+								console.log(response.message);
+								// Don't throw error - this is expected behavior
+							} else {
+								// Real error
+								console.error("Failed to install Google Gmail:", response.error || "Unknown error");
+								throw new Error(response.error || "Failed to install Google Gmail");
+							}
+							// Return the response so IntegrationList can check the status
+							return response;
+						} catch (error: any) {
+							// Only throw if it's a real error, not authorization in progress
+							if (!error.message?.includes("authorization")) {
+								console.error("Failed to install Google Gmail:", error.message);
+								throw error;
+							}
+							return null; // Return null on error
+						}
+					}} else {
 							onInstall = () =>
 								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
 						}
@@ -183,6 +240,8 @@ const ToolSelect = forwardRef<
 									? t("layout.notion-workspace-integration")
 									: key.toLowerCase() === 'google calendar'
 									? t("layout.google-calendar-integration")
+									: key.toLowerCase() === 'google gmail'
+									? "Google Gmail integration for managing emails and contacts"
 									: "",
 							onInstall,
 						};
@@ -338,7 +397,7 @@ const ToolSelect = forwardRef<
 				// Continue anyway to trigger installation
 			}
 			
-			if (activeMcp.key !== "Google Calendar") {
+			if (activeMcp.key !== "Google Calendar" && activeMcp.key !== "Google Gmail") {
 				const integrationItem = integrations.find(
 					(item) => item.key === activeMcp.key
 				);
@@ -476,6 +535,126 @@ const ToolSelect = forwardRef<
 				}
 			} catch (error: any) {
 				console.error("Failed to install Google Calendar:", error.message);
+			}
+		}
+
+		// Trigger instantiation for Gmail
+		if (activeMcp.key === "Google Gmail") {
+			console.log("[ToolSelect installMcp] Starting Gmail installation");
+			try {
+				const response = await fetchPost("/install/tool/google_gmail");
+
+				if (response.success) {
+					console.log("[ToolSelect installMcp] Immediate success");
+					// Mark as successfully installed by writing refresh token marker
+					const existingConfigs = await proxyFetchGet("/api/configs");
+					const existing = Array.isArray(existingConfigs)
+						? existingConfigs.find((c: any) =>
+							c.config_group?.toLowerCase() === "google gmail" &&
+							c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN"
+						)
+						: null;
+
+					const configPayload = {
+						config_group: "Google Gmail",
+						config_name: "GMAIL_GOOGLE_REFRESH_TOKEN",
+						config_value: "exists",
+					};
+
+					if (existing) {
+						await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+					} else {
+						await proxyFetchPost("/api/configs", configPayload);
+					}
+
+					// Refresh integrations to update install status
+					fetchIntegrationsData();
+
+					const selectedItem = {
+						id: activeMcp.id,
+						key: activeMcp.key,
+						name: activeMcp.name,
+						description: "Gmail integration for managing emails, drafts, labels, and contacts",
+						toolkit: "google_gmail_native_toolkit",
+						isLocal: true
+					};
+					addOption(selectedItem, true);
+				} else if (response.status === "authorizing") {
+					// Authorization in progress - browser should have opened
+					console.log("[ToolSelect installMcp] Authorization required, starting polling loop");
+
+					// WAIT for OAuth status completion instead of using setInterval
+					const start = Date.now();
+					const timeoutMs = 5 * 60 * 1000; // 5 minutes
+
+					while (Date.now() - start < timeoutMs) {
+						try {
+							const statusResponse = await fetchGet("/oauth/status/google_gmail");
+							console.log("[ToolSelect installMcp] OAuth status:", statusResponse.status);
+
+							if (statusResponse.status === "success") {
+								console.log("[ToolSelect installMcp] Authorization completed successfully!");
+
+								// Try installing again now that authorization is complete
+								const retryResponse = await fetchPost("/install/tool/google_gmail");
+								if (retryResponse.success) {
+									// Mark as successfully installed
+									const existingConfigs = await proxyFetchGet("/api/configs");
+									const existing = Array.isArray(existingConfigs)
+										? existingConfigs.find((c: any) =>
+											c.config_group?.toLowerCase() === "google gmail" &&
+											c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN"
+										)
+										: null;
+
+									const configPayload = {
+										config_group: "Google Gmail",
+										config_name: "GMAIL_GOOGLE_REFRESH_TOKEN",
+										config_value: "exists",
+									};
+
+									if (existing) {
+										await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+									} else {
+										await proxyFetchPost("/api/configs", configPayload);
+									}
+
+									fetchIntegrationsData();
+
+									const selectedItem = {
+										id: activeMcp.id,
+										key: activeMcp.key,
+										name: activeMcp.name,
+										description: "Gmail integration for managing emails, drafts, labels, and contacts",
+										toolkit: "google_gmail_native_toolkit",
+										isLocal: true
+									};
+									addOption(selectedItem, true);
+								}
+								console.log("[ToolSelect installMcp] Installation complete, returning");
+								return;
+							} else if (statusResponse.status === "failed") {
+								console.error("[ToolSelect installMcp] Authorization failed:", statusResponse.error);
+								return;
+							} else if (statusResponse.status === "cancelled") {
+								console.log("[ToolSelect installMcp] Authorization cancelled");
+								return;
+							}
+						} catch (error) {
+							console.error("[ToolSelect installMcp] Error polling OAuth status:", error);
+						}
+
+						// Wait before next poll
+						await new Promise((r) => setTimeout(r, 1500));
+					}
+
+					console.log("[ToolSelect installMcp] Polling timeout");
+					return;
+				} else {
+					console.error("Failed to install Gmail:", response.error || "Unknown error");
+				}
+			} catch (error: any) {
+				console.error("Failed to install Gmail:", error.message);
 			}
 		}
 			return;

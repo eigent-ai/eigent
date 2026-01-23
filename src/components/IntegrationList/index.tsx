@@ -108,6 +108,17 @@ export default function IntegrationList({
 					setShowEnvConfig(true);
 				}
 				return;
+			} 
+			
+			if (item.key === "Google Gmail") {
+				const mcp = createMcpFromItem(item, 15);
+				if (isSelectMode) {
+					onShowEnvConfig?.(mcp);
+				} else {
+					setActiveMcp(mcp);
+					setShowEnvConfig(true);
+				}
+				return;
 			}
 
 			if (installed[item.key]) return;
@@ -168,6 +179,59 @@ export default function IntegrationList({
 					try {
 						const statusRes: any = await fetchGet(
 							"/oauth/status/google_calendar"
+						);
+						console.log(
+							"[IntegrationList onConnect] OAuth status:",
+							statusRes?.status
+						);
+
+						if (statusRes?.status === "success") {
+							console.log(
+								"[IntegrationList onConnect] Success! Closing dialog"
+							);
+							await fetchInstalled();
+							onClose();
+							return;
+						}
+						if (
+							statusRes?.status === "failed" ||
+							statusRes?.status === "cancelled"
+						) {
+							console.log(
+								"[IntegrationList onConnect] Failed/cancelled, keeping dialog open"
+							);
+							return;
+						}
+					} catch (err) {
+						console.log("[IntegrationList onConnect] Polling error:", err);
+					}
+					await new Promise((r) => setTimeout(r, 1500));
+				}
+				console.log("[IntegrationList onConnect] Polling timeout");
+				return;
+			}
+		} else if (mcp.key === "Google Gmail") {
+			console.log(
+				"[IntegrationList onConnect] Google Gmail detected, starting auth flow"
+			);
+
+			// Trigger install/authorization - exactly like Google Calendar
+			try {
+				await fetchPost("/install/tool/google_gmail");
+			} catch (_) {}
+
+			// Select mode: poll OAuth status
+			if (isSelectMode) {
+				console.log(
+					"[IntegrationList onConnect] Starting OAuth status polling"
+				);
+
+				const start = Date.now();
+				const timeoutMs = 5 * 60 * 1000; // 5 minutes
+				while (Date.now() - start < timeoutMs) {
+					try {
+						const statusRes: any = await fetchGet(
+							"/oauth/status/google_gmail"
 						);
 						console.log(
 							"[IntegrationList onConnect] OAuth status:",

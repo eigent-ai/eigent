@@ -64,14 +64,39 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 		
 		items.forEach((item) => {
 			if (item.key === "Google Calendar") {
-				// Only mark installed when refresh token is present (auth completed)
+				// Mark as installed when either:
+				// 1. Refresh token has value (auth completed), OR
+				// 2. Client credentials are present (configured but auth pending/completed)
 				const hasRefreshToken = configs.some(
 					(c: any) =>
 						c.config_group?.toLowerCase() === "google calendar" &&
 						c.config_name === "GOOGLE_REFRESH_TOKEN" &&
 						c.config_value && String(c.config_value).length > 0
 				);
-				map[item.key] = hasRefreshToken;
+				const hasClientCredentials = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google calendar" &&
+						c.config_name === "GOOGLE_CLIENT_ID" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken || hasClientCredentials;
+			} else if (item.key === "Google Gmail") {
+				// Mark as installed when either:
+				// 1. Refresh token has value (auth completed), OR
+				// 2. Client credentials are present (configured but auth pending/completed)
+				const hasRefreshToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google gmail" &&
+						c.config_name === "GMAIL_GOOGLE_REFRESH_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				const hasClientCredentials = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "google gmail" &&
+						c.config_name === "GMAIL_GOOGLE_CLIENT_ID" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasRefreshToken || hasClientCredentials;
 			} else {
 				// For other integrations, use config_group presence
 				const hasConfig = configs.some(
@@ -240,13 +265,20 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 				}
 			}
 			
-			// Clean up authentication tokens for Google Calendar and Notion
+			// Clean up authentication tokens for Google Calendar, Google Gmail, and Notion
 			if (item.key === "Google Calendar") {
 				try {
 					await fetchDelete("/uninstall/tool/google_calendar");
 					console.log("Cleaned up Google Calendar authentication tokens");
 				} catch (e) {
 					console.log("Failed to clean up Google Calendar tokens:", e);
+				}
+			} else if (item.key === "Google Gmail") {
+				try {
+					await fetchDelete("/uninstall/tool/google_gmail");
+					console.log("Cleaned up Google Gmail authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up Google Gmail tokens:", e);
 				}
 			} else if (item.key === "Notion") {
 				try {
