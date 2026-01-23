@@ -544,7 +544,7 @@ class ListenChatAgent(ChatAgent):
 
             # Only send activate event if tool is NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionActivateToolkitData(
                             data={
@@ -559,7 +559,7 @@ class ListenChatAgent(ChatAgent):
                 )
                 # Stream tool activity to frontend as "thinking" text
                 tool_display = func_name.replace("_", " ").title()
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionStreamingAgentOutputData(
                             data={
@@ -602,7 +602,7 @@ class ListenChatAgent(ChatAgent):
 
             # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionDeactivateToolkitData(
                             data={
