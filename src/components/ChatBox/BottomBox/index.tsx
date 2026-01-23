@@ -93,6 +93,7 @@ export default function BottomBox({
 								subtitle={subtitle}
 								onStartTask={onStartTask}
 								onEdit={onEdit}
+								loading={loading}
 						/>
 				)}
 
