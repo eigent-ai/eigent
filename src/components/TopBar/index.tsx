@@ -16,7 +16,6 @@ import {
 	Share,
 	MoreHorizontal,
 } from "lucide-react";
-import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
 import {
@@ -214,7 +213,9 @@ function HeaderWin() {
 
 	return (
 		<div
-			className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 "
+			className={`absolute top-0 left-0 right-0 flex !h-9 items-center justify-between py-1 z-50 drag ${
+				platform === "darwin" ? "pl-20" : "pl-2"
+			}`}
 			id="titlebar"
 			ref={titlebarRef}
 		>
@@ -287,7 +288,7 @@ function HeaderWin() {
 										onClick={toggle}
 										size="sm"
 									>
-									<span className="task-title-clamp">{t("layout.new-project")}</span>
+									<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{t("layout.new-project")}</span>
 										<ChevronDown />
 									</Button>
 								</TooltipSimple>
@@ -300,7 +301,7 @@ function HeaderWin() {
 										className="font-bold text-base no-drag"
 										onClick={toggle}
 									>
-										<span className="task-title-clamp">{activeTaskTitle}</span>
+										<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{activeTaskTitle}</span>
 										<ChevronDown />
 									</Button>
 								</TooltipSimple>
@@ -392,24 +393,24 @@ function HeaderWin() {
 			</div>
 			{platform !== "darwin" && (
 				<div
-					className="window-controls h-full flex items-center"
+					className="h-full flex items-center no-drag"
 					id="window-controls"
 					ref={controlsRef}
 				>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.minimizeWindow()}
 					>
 						<Minus className="w-4 h-4" />
 					</div>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.toggleMaximizeWindow()}
 					>
 						<Square className="w-4 h-4" />
 					</div>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.closeWindow()}
 					>
 						<X className="w-4 h-4" />
