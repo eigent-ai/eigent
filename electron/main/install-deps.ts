@@ -11,6 +11,7 @@ import {
   getTerminalVenvPath,
   getPrebuiltTerminalVenvPath,
   getUvEnv,
+  getPrebuiltPythonDir,
   cleanupOldVenvs,
   isBinaryExists,
   runInstallScript,
@@ -507,6 +508,59 @@ const runInstall = (extraArgs: string[], version: string) => {
 };
 
 /**
+ * Find Python executable in prebuilt Python directory
+ * UV stores Python installations in directories like: cpython-3.10.19+.../install/bin/python
+ */
+function findPrebuiltPythonExecutable(): string | null {
+  const prebuiltPythonDir = getPrebuiltPythonDir();
+  if (!prebuiltPythonDir) {
+    return null;
+  }
+
+  // Look for Python executable in the prebuilt directory
+  // UV stores Python in subdirectories like: cpython-3.10.19+.../install/bin/python
+  const possiblePaths: string[] = [];
+
+  // First, try common direct paths
+  possiblePaths.push(
+    path.join(prebuiltPythonDir, 'install', 'bin', 'python'),
+    path.join(prebuiltPythonDir, 'install', 'python.exe'),
+    path.join(prebuiltPythonDir, 'bin', 'python'),
+    path.join(prebuiltPythonDir, 'python.exe'),
+  );
+
+  // Then, search in subdirectories (UV stores Python in versioned directories)
+  try {
+    if (fs.existsSync(prebuiltPythonDir)) {
+      const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+          const subDir = path.join(prebuiltPythonDir, entry.name);
+          possiblePaths.push(
+            path.join(subDir, 'install', 'bin', 'python'),
+            path.join(subDir, 'install', 'python.exe'),
+            path.join(subDir, 'bin', 'python'),
+            path.join(subDir, 'python.exe'),
+          );
+        }
+      }
+    }
+  } catch (error) {
+    log.warn('[DEPS INSTALL] Error searching for prebuilt Python:', error);
+  }
+
+  for (const pythonPath of possiblePaths) {
+    if (fs.existsSync(pythonPath)) {
+      log.info(`[DEPS INSTALL] Found prebuilt Python executable: ${pythonPath}`);
+      return pythonPath;
+    }
+  }
+
+  log.info('[DEPS INSTALL] Prebuilt Python directory found but executable not found, will use UV_PYTHON_INSTALL_DIR');
+  return null;
+}
+
+/**
  * Install terminal base venv with common packages for terminal tasks.
  * This is a lightweight venv separate from the backend venv.
  */
@@ -540,16 +594,25 @@ async function installTerminalBaseVenv(version: string): Promise<PromiseReturnTy
   });
 
   try {
+    // Get UV environment variables (includes prebuilt Python if available)
+    const uvEnv = getUvEnv(version);
+
     // Create the venv using uv (skip if only need package install)
     if (!needsPackageInstall) {
+      // Try to use prebuilt Python directly if available
+      const prebuiltPython = findPrebuiltPythonExecutable();
+      const venvArgs = prebuiltPython
+        ? ['venv', '--python', prebuiltPython, terminalVenvPath]
+        : ['venv', '--python', '3.10', terminalVenvPath];
+
       await new Promise<void>((resolve, reject) => {
         const createVenv = spawn(
           uv_path,
-          ['venv', '--python', '3.10', terminalVenvPath],
+          venvArgs,
           {
             env: {
               ...process.env,
-              UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+              ...uvEnv,
             },
           }
         );
@@ -594,7 +657,7 @@ async function installTerminalBaseVenv(version: string): Promise<PromiseReturnTy
         {
           env: {
             ...process.env,
-            UV_PYTHON_INSTALL_DIR: getCachePath('uv_python'),
+            ...uvEnv,
           },
         }
       );
