@@ -445,25 +445,22 @@ class Workforce(BaseWorkforce):
             )
         )
 
-        # Call parent implementation
-        await super()._handle_completed_task(task)
-
-        # IMPORTANT: Sync subtask results from _completed_tasks back to parent.subtasks
+        # IMPORTANT: Sync this subtask's result back to parent.subtasks BEFORE calling super()
         # This fixes the issue where parent.subtasks[i].result is None because CAMEL's
         # _handle_completed_task stores results in _completed_tasks but doesn't sync
-        # them back to the parent.subtasks list
+        # them back to the parent.subtasks list.
+        # We only sync the current task (not all subtasks) for efficiency - O(n) vs O(n²).
         parent = task.parent
         if parent and parent.subtasks:
             for sub in parent.subtasks:
-                completed_subtask = next(
-                    (t for t in self._completed_tasks if t.id == sub.id),
-                    None,
-                )
-                if completed_subtask:
-                    # Sync result and state back to parent.subtasks
-                    sub.result = completed_subtask.result
-                    sub.state = completed_subtask.state
-                    logger.debug(f"[SYNC] Synced subtask {sub.id} result to parent.subtasks")
+                if sub.id == task.id:
+                    sub.result = task.result
+                    sub.state = task.state
+                    logger.debug(f"[SYNC] Synced subtask {task.id} result to parent.subtasks")
+                    break
+
+        # Call parent implementation
+        await super()._handle_completed_task(task)
 
     async def _handle_failed_task(self, task: Task) -> bool:
         # DEBUG ▶ Task failed
