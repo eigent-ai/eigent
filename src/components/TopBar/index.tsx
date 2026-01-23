@@ -22,8 +22,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import giftIcon from "@/assets/gift.svg";
-import giftwhiteIcon from "@/assets/gift-white.svg";
-import { getAuthStore } from "@/store/authStore";
+import giftWhiteIcon from "@/assets/gift-white.svg";
+import { getAuthStore, useAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
 import { toast } from "sonner";
@@ -47,6 +47,7 @@ function HeaderWin() {
 	const { toggle } = useSidebarStore();
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
+	const appearance = useAuthStore((state) => state.appearance);
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
@@ -357,7 +358,7 @@ function HeaderWin() {
 								className="no-drag"
 							>
 								<img
-									src={giftIcon}
+									src={appearance === "dark" ? giftWhiteIcon : giftIcon}
 									alt="gift-icon"
 									className="w-4 h-4"
 								/>

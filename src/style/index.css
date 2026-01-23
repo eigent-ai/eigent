@@ -87,6 +87,19 @@ body {
   [class*="bg-white-50"] {
     background-color: var(--surface-tertiary) !important;
   }
+
+  .theme-image-invert-dark {
+    filter: none;
+    transition: filter 150ms ease;
+  }
+
+  [data-theme="dark"] .theme-image-invert-dark {
+    filter: brightness(0) invert(1);
+  }
+
+  [data-theme="transparent"] .theme-image-invert-dark {
+    filter: brightness(0) invert(1);
+  }
 }
 
 #root,

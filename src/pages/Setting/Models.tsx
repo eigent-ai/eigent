@@ -624,7 +624,7 @@ export default function SettingModels() {
 	return (
 		<div className="flex flex-col gap-4 pb-40">
 			{import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && (
-				<div className="w-full pt-4 self-stretch px-6 py-4 bg-gradient-to-t from-orange-50 to-surface-tertiary rounded-2xl inline-flex flex-col justify-start items-start gap-4 border-solid border-border-disabled">
+				<div className="w-full pt-4 self-stretch px-6 py-4 bg-panel-gradient rounded-2xl inline-flex flex-col justify-start items-start gap-4 border-solid border-border-disabled">
 					<div className="self-stretch flex flex-col justify-start items-start gap-1">
 						<div className="self-stretch inline-flex justify-start items-center gap-2">
 							<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
