@@ -48,6 +48,7 @@ export interface BoxHeaderConfirmProps {
     onStartTask?: () => void;
     onEdit?: () => void;
     className?: string;
+    loading?: boolean;
 }
 
 export const BoxHeaderConfirm = ({
@@ -55,6 +56,7 @@ export const BoxHeaderConfirm = ({
     onStartTask,
     onEdit,
     className,
+    loading = false,
 }: BoxHeaderConfirmProps) => {
     return (
         <div
@@ -88,6 +90,7 @@ export const BoxHeaderConfirm = ({
                     size="sm"
                     className="rounded-full"
                     onClick={onStartTask}
+                    disabled={loading}
                 >
                     Start Task
                 </Button>
