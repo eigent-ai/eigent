@@ -1,5 +1,10 @@
 {
-  "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+  "*.{ts,tsx,d.ts}": [
+    "node licenses/update_license_ts.js . licenses/license_template_ts.txt",
+    "eslint --fix",
+    "prettier --write"
+  ],
   "*.{js,jsx}": ["eslint --fix", "prettier --write"],
-  "*.{json,css,md}": ["prettier --write"]
+  "*.{json,css,md}": ["prettier --write"],
+  "*.py": ["python licenses/update_license.py . licenses/license_template.txt"]
 }
