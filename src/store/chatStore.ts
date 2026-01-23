@@ -849,18 +849,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 					// Handle streaming agent output during task execution
 					if (agentMessages.step === "streaming_agent_output") {
-						const data = agentMessages.data as { process_task_id?: string; content?: string; is_final?: boolean };
-						const { process_task_id, content, is_final } = data;
-						const currentId = getCurrentTaskId();
+						const { process_task_id, content, is_final } = agentMessages.data;
 						
 						if (!process_task_id) return;
 						
 						if (is_final) {
 							// Clear streaming output when final marker received
-							clearStreamingAgentOutput(currentId, process_task_id);
+							clearStreamingAgentOutput(currentTaskId, process_task_id);
 						} else if (content) {
 							// Append streaming content
-							updateStreamingAgentOutput(currentId, process_task_id, content);
+							updateStreamingAgentOutput(currentTaskId, process_task_id, content);
 						}
 						return;
 					}

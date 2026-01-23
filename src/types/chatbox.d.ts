@@ -127,6 +127,8 @@ declare global {
 			current_length?: number;
 			max_length?: number;
 			text?: string;
+			// Streaming agent output
+			is_final?: boolean;
 		};
 		status?: 'running' | 'filled' | 'completed';
 	}
