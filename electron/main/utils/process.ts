@@ -169,6 +169,105 @@ export function getPrebuiltVenvPath(): string | null {
   return null;
 }
 
+/**
+ * Find Python executable in prebuilt Python directory
+ */
+export function findPrebuiltPythonExecutable(): string | null {
+  const prebuiltPythonDir = getPrebuiltPythonDir();
+  if (!prebuiltPythonDir) {
+    return null;
+  }
+
+  const isWindows = process.platform === 'win32';
+  const pythonName = isWindows ? 'python.exe' : 'python';
+  const binPath = isWindows ? '' : path.join('install', 'bin');
+
+  // UV stores Python in cpython-* subdirectories
+  try {
+    const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+        const pythonPath = isWindows
+          ? path.join(prebuiltPythonDir, entry.name, 'install', pythonName)
+          : path.join(prebuiltPythonDir, entry.name, binPath, pythonName);
+        if (fs.existsSync(pythonPath)) {
+          log.info(`[PROCESS] Found prebuilt Python executable: ${pythonPath}`);
+          return pythonPath;
+        }
+      }
+    }
+  } catch (error) {
+    log.warn('[PROCESS] Error searching for prebuilt Python:', error);
+  }
+
+  log.info('[PROCESS] Prebuilt Python directory found but executable not found');
+  return null;
+}
+
+/**
+ * Get path to prebuilt terminal venv (if available in packaged app)
+ */
+export function getPrebuiltTerminalVenvPath(): string | null {
+  if (!app.isPackaged) {
+    return null;
+  }
+
+  const prebuiltTerminalVenvPath = path.join(process.resourcesPath, 'prebuilt', 'terminal_venv');
+  if (fs.existsSync(prebuiltTerminalVenvPath)) {
+    const pyvenvCfg = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
+    const installedMarker = path.join(prebuiltTerminalVenvPath, '.packages_installed');
+    if (fs.existsSync(pyvenvCfg) && fs.existsSync(installedMarker)) {
+      const isWindows = process.platform === 'win32';
+      const pythonExePath = isWindows
+        ? path.join(prebuiltTerminalVenvPath, 'Scripts', 'python.exe')
+        : path.join(prebuiltTerminalVenvPath, 'bin', 'python');
+
+      if (fs.existsSync(pythonExePath)) {
+        log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
+        return prebuiltTerminalVenvPath;
+      } else {
+        // Try to fix the missing Python executable by creating a symlink to 
+        // prebuilt Python
+        log.warn(
+          `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
+            `Attempting to fix...`
+        );
+        const prebuiltPython = findPrebuiltPythonExecutable();
+        if (prebuiltPython && fs.existsSync(prebuiltPython)) {
+          try {
+            const binDir = isWindows
+              ? path.join(prebuiltTerminalVenvPath, 'Scripts')
+              : path.join(prebuiltTerminalVenvPath, 'bin');
+
+            // Ensure bin directory exists
+            if (!fs.existsSync(binDir)) {
+              fs.mkdirSync(binDir, { recursive: true });
+            }
+
+            // Create symlink to prebuilt Python
+            if (fs.existsSync(pythonExePath)) {
+              // Remove existing broken symlink or file
+              fs.unlinkSync(pythonExePath);
+            }
+
+            // Calculate relative path for symlink
+            const relativePath = path.relative(binDir, prebuiltPython);
+            fs.symlinkSync(relativePath, pythonExePath);
+
+            log.info(`Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`);
+            return prebuiltTerminalVenvPath;
+          } catch (error) {
+            log.warn(`Failed to fix terminal venv Python symlink: ${error}`);
+          }
+        }
+
+        log.warn(`Falling back to user terminal venv.`);
+      }
+    }
+  }
+  return null;
+}
+
 export function getVenvPath(version: string): string {
   // First check for prebuilt venv in packaged app
   if (app.isPackaged) {
@@ -219,6 +318,14 @@ export const TERMINAL_BASE_PACKAGES = [
  * separate from the backend venv.
  */
 export function getTerminalVenvPath(version: string): string {
+  // First check for prebuilt terminal venv in packaged app
+  if (app.isPackaged) {
+    const prebuiltTerminalVenv = getPrebuiltTerminalVenvPath();
+    if (prebuiltTerminalVenv) {
+      return prebuiltTerminalVenv;
+    }
+  }
+
   const venvDir = path.join(
     os.homedir(),
     '.eigent',

@@ -51,6 +51,7 @@ function HeaderWin() {
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
 	const { isInstalling, installationState } = useInstallationUI();
 	const isInstallationActive = isInstalling || installationState === "waiting-backend";
+	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
@@ -153,6 +154,7 @@ function HeaderWin() {
 
 		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 
+		setEndProjectLoading(true);
 		try {
 			const task = chatStore.tasks[taskId];
 
@@ -200,6 +202,7 @@ function HeaderWin() {
 				closeButton: true,
 			});
 		} finally {
+			setEndProjectLoading(false);
 			setEndDialogOpen(false);
 		}
 	};
@@ -417,6 +420,7 @@ function HeaderWin() {
 				open={endDialogOpen}
 				onOpenChange={setEndDialogOpen}
 				onConfirm={handleEndProject}
+				loading={endProjectLoading}
 			/>
 		</div>
 	);

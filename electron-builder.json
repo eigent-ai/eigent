@@ -20,7 +20,7 @@
     {
       "from": "backend",
       "to": "backend",
-      "filter": ["**/*", "!.venv/**/*"]
+      "filter": ["**/*", "!.venv/**/*", "!workspace/.initial_env/**/*"]
     },
     {
       "from": "utils",
@@ -34,7 +34,9 @@
         "!cache/**/*",
         "!**/.npm-cache/**/*",
         "!uv_python/**/*.pyc",
-        "!uv_python/**/__pycache__"
+        "!uv_python/**/__pycache__",
+        "!terminal_venv/**/*.pyc",
+        "!terminal_venv/**/__pycache__"
       ]
     }
   ],
@@ -63,6 +65,26 @@
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "notarize": false,
+    "signIgnore": [
+      ".*\\.py$",
+      ".*\\.pyc$",
+      ".*\\.pyo$",
+      ".*\\.pyi$",
+      ".*\\.typed$",
+      ".*\\.txt$",
+      ".*\\.md$",
+      ".*\\.rst$",
+      ".*\\.json$",
+      ".*\\.yaml$",
+      ".*\\.yml$",
+      ".*\\.toml$",
+      ".*\\.cfg$",
+      ".*\\.ini$",
+      ".*\\.csv$",
+      ".*\\.html$",
+      ".*\\.css$",
+      ".*\\.map$"
+    ],
     "extendInfo": {
       "CFBundleURLTypes": [
         {
