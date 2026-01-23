@@ -170,6 +170,41 @@ export function getPrebuiltVenvPath(): string | null {
 }
 
 /**
+ * Find Python executable in prebuilt Python directory
+ */
+export function findPrebuiltPythonExecutable(): string | null {
+  const prebuiltPythonDir = getPrebuiltPythonDir();
+  if (!prebuiltPythonDir) {
+    return null;
+  }
+
+  const isWindows = process.platform === 'win32';
+  const pythonName = isWindows ? 'python.exe' : 'python';
+  const binPath = isWindows ? '' : path.join('install', 'bin');
+
+  // UV stores Python in cpython-* subdirectories
+  try {
+    const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+        const pythonPath = isWindows
+          ? path.join(prebuiltPythonDir, entry.name, 'install', pythonName)
+          : path.join(prebuiltPythonDir, entry.name, binPath, pythonName);
+        if (fs.existsSync(pythonPath)) {
+          log.info(`[PROCESS] Found prebuilt Python executable: ${pythonPath}`);
+          return pythonPath;
+        }
+      }
+    }
+  } catch (error) {
+    log.warn('[PROCESS] Error searching for prebuilt Python:', error);
+  }
+
+  log.info('[PROCESS] Prebuilt Python directory found but executable not found');
+  return null;
+}
+
+/**
  * Get path to prebuilt terminal venv (if available in packaged app)
  */
 export function getPrebuiltTerminalVenvPath(): string | null {
@@ -191,10 +226,42 @@ export function getPrebuiltTerminalVenvPath(): string | null {
         log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
         return prebuiltTerminalVenvPath;
       } else {
+        // Try to fix the missing Python executable by creating a symlink to 
+        // prebuilt Python
         log.warn(
           `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
-            `Falling back to user terminal venv.`
+            `Attempting to fix...`
         );
+        const prebuiltPython = findPrebuiltPythonExecutable();
+        if (prebuiltPython && fs.existsSync(prebuiltPython)) {
+          try {
+            const binDir = isWindows
+              ? path.join(prebuiltTerminalVenvPath, 'Scripts')
+              : path.join(prebuiltTerminalVenvPath, 'bin');
+
+            // Ensure bin directory exists
+            if (!fs.existsSync(binDir)) {
+              fs.mkdirSync(binDir, { recursive: true });
+            }
+
+            // Create symlink to prebuilt Python
+            if (fs.existsSync(pythonExePath)) {
+              // Remove existing broken symlink or file
+              fs.unlinkSync(pythonExePath);
+            }
+
+            // Calculate relative path for symlink
+            const relativePath = path.relative(binDir, prebuiltPython);
+            fs.symlinkSync(relativePath, pythonExePath);
+
+            log.info(`Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`);
+            return prebuiltTerminalVenvPath;
+          } catch (error) {
+            log.warn(`Failed to fix terminal venv Python symlink: ${error}`);
+          }
+        }
+
+        log.warn(`Falling back to user terminal venv.`);
       }
     }
   }
