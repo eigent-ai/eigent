@@ -47,6 +47,10 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "クラウドストレージが現在のプランの制限に達しました。",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "トラフィックが多いため、しばらくしてからもう一度お試しください。",
 	"new-project": "新規プロジェクト",
-	"no-reply-received-task-continue": "応答がないため、タスクを続行します"
+	"no-reply-received-task-continue": "応答がないため、タスクを続行します",
+	"safe-to-run": "安全に実行",
+	"scripts-running": "スクリプト実行中",
+	"scripts-warning": "HTMLレンダラーが関連スクリプトを検出しました。スクリプトが安全であることを確認してください。",
+	"scripts-approved": "スクリプトが承認されました。完全な機能でレンダリングしています。"
 }
 	 
