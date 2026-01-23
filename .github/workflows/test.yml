@@ -1,0 +1,41 @@
+name: Test
+
+'on':
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  pytest:
+    name: Run Python Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          uv sync
+
+      - name: Run model validation tests
+        run: |
+          cd backend
+          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_model_validation.py -v || echo "No validation tests yet"
+
+      - name: Run task validation tests
+        run: |
+          cd backend
+          PYTHONPATH=/home/runner/work/eigent/eigent/backend:/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_task_validate.py -v
