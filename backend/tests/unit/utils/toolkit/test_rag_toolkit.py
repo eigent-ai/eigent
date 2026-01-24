@@ -1,9 +1,9 @@
 """Unit tests for RAGToolkit.
 
-RAGToolkit extends CAMEL's RetrievalToolkit with eigent-specific features:
-- Task-based collection isolation
-- Persistent local storage
-- Integration with eigent's AbstractToolkit system
+RAGToolkit is a generic RAG toolkit with configurable storage:
+- Raw text document support (add_document + query_knowledge_base)
+- File/URL retrieval via information_retrieval
+- Configurable collection_name and storage_path for flexibility
 """
 import pytest
 from unittest.mock import Mock, patch, MagicMock
@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 import shutil
 
-from app.utils.toolkit.rag_toolkit import RAGToolkit, DEFAULT_STORAGE_PATH
+from app.utils.toolkit.rag_toolkit import RAGToolkit
 
 
 class TestRAGToolkit:
@@ -41,16 +41,18 @@ class TestRAGToolkit:
             with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
                 toolkit = RAGToolkit(
                     api_task_id="test-task-456",
+                    collection_name="test_collection",
                     storage_path=temp_storage_path,
                 )
                 
                 assert toolkit.api_task_id == "test-task-456"
-                assert toolkit.storage_path == temp_storage_path
+                assert toolkit._storage_path == temp_storage_path
+                assert toolkit._collection_name == "test_collection"
                 assert temp_storage_path.exists()
-                # Verify AutoRetriever was initialized with task-isolated path
+                # Verify AutoRetriever was initialized with configured path
                 mock_ar.assert_called_once()
                 call_kwargs = mock_ar.call_args[1]
-                assert "task_test-task-456" in call_kwargs["vector_storage_local_path"]
+                assert str(temp_storage_path) in call_kwargs["vector_storage_local_path"]
 
     def test_toolkit_initialization_with_custom_agent(self, temp_storage_path):
         """Test RAGToolkit with custom agent name."""
@@ -93,12 +95,14 @@ class TestRAGToolkit:
                 assert "task_123" in result
                 assert "task_456" in result
 
-    def test_get_tools_returns_two_tools(self, toolkit):
-        """Test get_tools returns information_retrieval and list_knowledge_bases."""
+    def test_get_tools_returns_four_tools(self, toolkit):
+        """Test get_tools returns all RAG tools."""
         tools = toolkit.get_tools()
         
-        assert len(tools) == 2
+        assert len(tools) == 4
         tool_names = [t.func.__name__ for t in tools]
+        assert "add_document" in tool_names
+        assert "query_knowledge_base" in tool_names
         assert "information_retrieval" in tool_names
         assert "list_knowledge_bases" in tool_names
 
@@ -118,11 +122,15 @@ class TestRAGToolkit:
                     tools = RAGToolkit.get_can_use_tools("test-task")
                     assert len(tools) == 2
 
-    def test_default_storage_path_exists(self):
-        """Test DEFAULT_STORAGE_PATH is defined correctly."""
-        assert DEFAULT_STORAGE_PATH is not None
-        assert ".eigent" in str(DEFAULT_STORAGE_PATH)
-        assert "rag_storage" in str(DEFAULT_STORAGE_PATH)
+    def test_default_collection_name(self, temp_storage_path):
+        """Test default collection_name when not provided."""
+        with patch('app.utils.toolkit.rag_toolkit.AutoRetriever'):
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+                toolkit = RAGToolkit(
+                    api_task_id="test-task",
+                    storage_path=temp_storage_path,
+                )
+                assert toolkit._collection_name == "default"
 
 
 class TestRAGToolkitIntegration:

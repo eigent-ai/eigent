@@ -1,13 +1,12 @@
 """RAG (Retrieval-Augmented Generation) Toolkit for knowledge base queries.
 
-This toolkit wraps CAMEL's RetrievalToolkit with eigent-specific features:
-- Task-based collection isolation
-- Persistent storage per project
-- Integration with eigent's toolkit system
+This toolkit wraps CAMEL's RetrievalToolkit with generic RAG functionality:
 - Raw text document support (add_document + query_knowledge_base)
+- File/URL retrieval via information_retrieval
+- Configurable collection_name and storage_path for flexibility
 
-Uses composition to leverage CAMEL's existing RAG infrastructure while
-maintaining compatibility with eigent's AbstractToolkit system.
+The toolkit is generic and portable - task isolation and other application-specific
+concerns are handled at the orchestration layer (e.g., in get_toolkits()).
 """
 import hashlib
 import os
@@ -28,18 +27,18 @@ from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("rag_toolkit")
 
-# Default storage path for vector databases
-DEFAULT_STORAGE_PATH = Path(os.path.expanduser("~/.eigent/rag_storage"))
-
 
 class RAGToolkit(AbstractToolkit):
-    """Eigent-specific RAG toolkit wrapping CAMEL's RetrievalToolkit.
+    """Generic RAG toolkit wrapping CAMEL's RetrievalToolkit.
     
-    Uses composition to wrap CAMEL's RetrievalToolkit, adding eigent-specific features:
-    - Task-based collection isolation (each task gets its own knowledge base)
-    - Persistent local storage
-    - Integration with eigent's AbstractToolkit system
+    This toolkit provides RAG functionality with configurable storage:
     - Raw text document support via add_document + query_knowledge_base
+    - File/URL retrieval via information_retrieval
+    - Configurable collection_name and storage_path for flexibility
+    
+    Task isolation and other application-specific concerns should be handled
+    at the orchestration layer by passing appropriate collection_name and
+    storage_path values.
     """
     
     agent_name: str = Agents.task_agent
@@ -48,20 +47,34 @@ class RAGToolkit(AbstractToolkit):
         self,
         api_task_id: str,
         agent_name: str | None = None,
-        storage_path: Path | None = None,
+        collection_name: str | None = None,
+        storage_path: str | Path | None = None,
     ):
+        """Initialize RAGToolkit with configurable storage.
+        
+        Args:
+            api_task_id: Task ID for eigent integration.
+            agent_name: Optional agent name override.
+            collection_name: Name for the vector collection. If not provided,
+                defaults to a generic name.
+            storage_path: Path for vector storage. If not provided, uses
+                a default path.
+        """
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
         
-        self.storage_path = storage_path or DEFAULT_STORAGE_PATH
-        self.storage_path.mkdir(parents=True, exist_ok=True)
+        # Use provided paths or defaults
+        self._storage_path = Path(storage_path) if storage_path else Path(
+            os.path.expanduser("~/.eigent/rag_storage")
+        )
+        self._storage_path.mkdir(parents=True, exist_ok=True)
         
-        self._task_storage_path = self.storage_path / f"task_{api_task_id}"
+        self._collection_name = collection_name or "default"
         
-        # Initialize CAMEL's AutoRetriever with task-isolated storage
+        # Initialize CAMEL's AutoRetriever with configured storage
         auto_retriever = AutoRetriever(
-            vector_storage_local_path=str(self._task_storage_path),
+            vector_storage_local_path=str(self._storage_path),
             storage_type=StorageType.QDRANT,
         )
         
@@ -85,11 +98,10 @@ class RAGToolkit(AbstractToolkit):
     def _get_storage(self):
         """Lazily initialize vector storage for raw text."""
         if self._storage is None:
-            self._task_storage_path.mkdir(parents=True, exist_ok=True)
             self._storage = QdrantStorage(
                 vector_dim=1536,  # OpenAI embedding dimension
-                path=str(self._task_storage_path / "raw_text"),
-                collection_name=f"task_{self.api_task_id}_raw",
+                path=str(self._storage_path / "raw_text"),
+                collection_name=self._collection_name,
             )
         return self._storage
 
@@ -136,7 +148,7 @@ class RAGToolkit(AbstractToolkit):
                 top_k=top_k,
                 similarity_threshold=similarity_threshold,
             )
-            logger.info(f"Retrieved information for query in task {self.api_task_id}")
+            logger.info(f"Retrieved information for query in collection {self._collection_name}")
             return result
         except Exception as e:
             logger.error(f"Failed to retrieve information: {e}", exc_info=True)
@@ -181,13 +193,13 @@ class RAGToolkit(AbstractToolkit):
             # Prepare metadata
             doc_metadata = metadata or {}
             doc_metadata["doc_id"] = doc_id
-            doc_metadata["task_id"] = self.api_task_id
+            doc_metadata["collection"] = self._collection_name
             
             # Get vector retriever and add content
             retriever = self._get_vector_retriever()
             retriever.process(content=content, extra_info=doc_metadata)
             
-            logger.info(f"Added document {doc_id} to task {self.api_task_id}")
+            logger.info(f"Added document {doc_id} to collection {self._collection_name}")
             return f"Successfully added document (ID: {doc_id}) to knowledge base"
             
         except Exception as e:
@@ -245,7 +257,7 @@ class RAGToolkit(AbstractToolkit):
                         result_text += f"\n(Source: {source})"
                 formatted_results.append(result_text)
             
-            logger.info(f"Retrieved {len(results)} results for query in task {self.api_task_id}")
+            logger.info(f"Retrieved {len(results)} results for query in collection {self._collection_name}")
             return "\n\n---\n\n".join(formatted_results)
             
         except Exception as e:
@@ -260,9 +272,9 @@ class RAGToolkit(AbstractToolkit):
         """
         try:
             collections = []
-            if self.storage_path.exists():
-                for item in self.storage_path.iterdir():
-                    if item.is_dir() and item.name.startswith("task_"):
+            if self._storage_path.exists():
+                for item in self._storage_path.iterdir():
+                    if item.is_dir():
                         collections.append(item.name)
             
             if not collections:
@@ -284,12 +296,27 @@ class RAGToolkit(AbstractToolkit):
         ]
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
-        """Return tools that can be used based on available configuration."""
+    def get_can_use_tools(
+        cls,
+        api_task_id: str,
+        collection_name: str | None = None,
+        storage_path: str | Path | None = None,
+    ) -> list[FunctionTool]:
+        """Return tools that can be used based on available configuration.
+        
+        Args:
+            api_task_id: Task ID for eigent integration.
+            collection_name: Name for the vector collection.
+            storage_path: Path for vector storage.
+        """
         # RAG requires OpenAI API key for embeddings
         if not env("OPENAI_API_KEY"):
             logger.debug("RAG toolkit disabled: OPENAI_API_KEY not set")
             return []
         
-        toolkit = RAGToolkit(api_task_id)
+        toolkit = RAGToolkit(
+            api_task_id=api_task_id,
+            collection_name=collection_name,
+            storage_path=storage_path,
+        )
         return toolkit.get_tools()

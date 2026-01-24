@@ -1905,7 +1905,17 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         if item in toolkits:
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
-            toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+            
+            # Handle RAGToolkit with task-specific isolation
+            # Task isolation via collection_name; shared storage path for efficiency
+            if item == "rag_toolkit":
+                toolkit_tools = toolkit.get_can_use_tools(
+                    api_task_id=api_task_id,
+                    collection_name=f"task_{api_task_id}",
+                )
+            else:
+                toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+            
             toolkit_tools = (
                 await toolkit_tools
                 if asyncio.iscoroutine(toolkit_tools)
