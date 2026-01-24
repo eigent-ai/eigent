@@ -1788,6 +1788,18 @@ operations.
 - Provide clear explanations of what actions you're taking.
 - Handle rate limits and API restrictions appropriately.
 - Ask clarifying questions when user requests are ambiguous.
+
+Time-sensitive rules:
+- For any user request that depends on the current time, explicitly use the
+  current time provided in the system message and mention the assumed timezone
+  if needed.
+- If the user's timezone or required precision is unclear, ask a clarifying
+  question before proceeding.
+- If the request requires calendar data, you MUST call `get_events` with
+  `time_min`.
+- `time_min` must be an RFC3339 timestamp with explicit timezone (e.g.
+  "2026-01-24T10:15:00-08:00" or "2026-01-24T18:15:00Z"). Do not omit the
+  timezone.
 """,
         ),
         options,
