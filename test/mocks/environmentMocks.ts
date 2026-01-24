@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { vi } from 'vitest'
 
 /**
@@ -426,14 +440,10 @@ export function createProcessUtilsMock() {
     getBinaryPath: vi.fn(),
     getCachePath: vi.fn(),
     getVenvPath: vi.fn(),
-    getTerminalVenvPath: vi.fn(),
-    getPrebuiltTerminalVenvPath: vi.fn(),
-    findPrebuiltPythonExecutable: vi.fn(),
     getVenvsBaseDir: vi.fn(),
     cleanupOldVenvs: vi.fn(),
     isBinaryExists: vi.fn(),
     getUvEnv: vi.fn(),
-    TERMINAL_BASE_PACKAGES: ['pandas', 'numpy', 'matplotlib', 'requests', 'openpyxl', 'beautifulsoup4', 'pillow'],
     mockState: {} as MockEnvironmentState,
     
     setup: (mockState: MockEnvironmentState) => {
@@ -486,14 +496,6 @@ export function createProcessUtilsMock() {
       utilsMock.getVenvPath.mockImplementation((version: string) => {
         return `${mockState.system.homedir}/.eigent/venvs/backend-${version}`
       })
-
-      utilsMock.getTerminalVenvPath.mockImplementation((version: string) => {
-        return `${mockState.system.homedir}/.eigent/venvs/terminal-${version}`
-      })
-
-      utilsMock.getPrebuiltTerminalVenvPath.mockReturnValue(null)
-
-      utilsMock.findPrebuiltPythonExecutable.mockReturnValue(null)
       
       utilsMock.getVenvsBaseDir.mockReturnValue(
         `${mockState.system.homedir}/.eigent/venvs`
