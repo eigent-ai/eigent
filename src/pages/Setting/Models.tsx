@@ -745,9 +745,7 @@ export default function SettingModels() {
 													? t("setting.claude-sonnet-4-5")
 													: cloud_model_type === "claude-sonnet-4-20250514"
 														? t("setting.claude-sonnet-4")
-														: cloud_model_type === "claude-3-5-haiku-20241022"
-															? t("setting.claude-3.5-haiku")
-															: cloud_model_type === "gemini-3-pro-preview"
+														: cloud_model_type === "gemini-3-pro-preview"
 																? t("setting.gemini-3-pro-preview")
 																: cloud_model_type === "gpt-5"
 																	? t("setting.gpt-5")
@@ -757,9 +755,7 @@ export default function SettingModels() {
 																			? t("setting.gpt-5")
 																	: cloud_model_type === "gpt-5-mini"
 																		? t("setting.gpt-5-mini")
-																		: cloud_model_type === "gemini-3-flash-preview"
-																			? t("setting.gemini-3-flash-preview")
-																			: t("setting.gemini-2.5-pro")}
+																		: t("setting.gemini-3-flash-preview")}
 									</span>
 								</TooltipContent>
 							</Tooltip>
@@ -773,8 +769,6 @@ export default function SettingModels() {
 									<SelectValue placeholder="Select Model Type" />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="gemini/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-									<SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
 									<SelectItem value="gemini-3-pro-preview">Gemini 3 Pro Preview</SelectItem>
 									<SelectItem value="gemini-3-flash-preview">Gemini 3 Flash Preview</SelectItem>
 									<SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
@@ -788,9 +782,6 @@ export default function SettingModels() {
 									</SelectItem>
 									<SelectItem value="claude-sonnet-4-20250514">
 										Claude Sonnet 4
-									</SelectItem>
-									<SelectItem value="claude-3-5-haiku-20241022">
-										Claude 3.5 Haiku
 									</SelectItem>
 								</SelectContent>
 							</Select>
