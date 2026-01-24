@@ -38,6 +38,7 @@ from app.service.task import (
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
 from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
 from camel.tasks import Task
@@ -1478,9 +1479,22 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     logger.debug("New agent data", extra={"agent_data": data.model_dump_json()})
     working_directory = get_working_directory(options)
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
-    for item in data.tools:
+    # Filter out terminal_toolkit from user tools - we'll add it separately with proper config
+    agent_tools = list(data.tools) if data.tools else []
+    agent_tools = [t for t in agent_tools if t != "terminal_toolkit"]
+    tools = [*await get_toolkits(agent_tools, data.name, options.project_id)]
+    for item in agent_tools:
         tool_names.append(titleize(item))
+    # Always include terminal_toolkit with proper working directory
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        agent_name=data.name,
+        working_directory=working_directory,
+        safe_mode=True,
+        clone_current_env=True,
+    )
+    tools.extend(terminal_toolkit.get_tools())
+    tool_names.append(titleize("terminal_toolkit"))
     if data.mcp_tools is not None:
         tools = [*tools, *await get_mcp_tools(data.mcp_tools)]
         for item in data.mcp_tools["mcpServers"].keys():
