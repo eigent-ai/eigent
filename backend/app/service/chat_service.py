@@ -1479,11 +1479,8 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     logger.debug("New agent data", extra={"agent_data": data.model_dump_json()})
     working_directory = get_working_directory(options)
     tool_names = []
-    # Filter out terminal_toolkit from user tools - we'll add it separately with proper config
-    agent_tools = list(data.tools) if data.tools else []
-    agent_tools = [t for t in agent_tools if t != "terminal_toolkit"]
-    tools = [*await get_toolkits(agent_tools, data.name, options.project_id)]
-    for item in agent_tools:
+    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
+    for item in data.tools:
         tool_names.append(titleize(item))
     # Always include terminal_toolkit with proper working directory
     terminal_toolkit = TerminalToolkit(
