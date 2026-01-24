@@ -1207,7 +1207,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className={`flex-1 min-h-0 bg-zinc-100 ${scriptsApproved && hasScripts ? 'overflow-hidden' : 'overflow-auto'}`}
+        className="flex-1 min-h-0 bg-zinc-100 overflow-hidden"
         onWheel={handleWheel}
       >
         <div
@@ -1218,22 +1218,23 @@ function HtmlRenderer({
             height: `${10000 / zoom}%`,
           }}
         >
-          {scriptsApproved && hasScripts ? (
-            <iframe
-              ref={iframeRef}
-              srcDoc={rawHtmlWithScriptsCache}
-              className="w-full h-full border-0 bg-white"
-              sandbox="allow-scripts allow-forms allow-same-origin"
-              title={selectedFile.name}
-              tabIndex={0}
-              onLoad={() => iframeRef.current?.focus()}
-            />
-          ) : (
-            <div
-              className="w-full bg-white p-4"
-              dangerouslySetInnerHTML={{ __html: processedHtml }}
-            />
-          )}
+          <iframe
+            ref={iframeRef}
+            srcDoc={
+              scriptsApproved && hasScripts
+                ? rawHtmlWithScriptsCache
+                : processedHtml
+            }
+            className="w-full h-full border-0 bg-white"
+            sandbox={
+              scriptsApproved && hasScripts
+                ? 'allow-scripts allow-forms allow-same-origin'
+                : 'allow-same-origin'
+            }
+            title={selectedFile.name}
+            tabIndex={0}
+            onLoad={() => iframeRef.current?.focus()}
+          />
         </div>
       </div>
     </div>
