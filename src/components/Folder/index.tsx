@@ -33,6 +33,7 @@ import { proxyFetchGet } from '@/api/http';
 import { useTranslation } from 'react-i18next';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ZoomControls } from './ZoomControls';
+import { containsDangerousContent } from '@/lib/htmlSanitization';
 
 // Type definitions
 interface FileTreeNode {
@@ -772,6 +773,12 @@ function HtmlRenderer({
       const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
       const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
 
+      // Check for dangerous Electron/Node.js patterns as defense-in-depth
+      if (containsDangerousContent(html)) {
+        setProcessedHtml('');
+        return;
+      }
+
       // Skip image processing if file is remote (we can't resolve relative paths for remote files)
       if (selectedFile.isRemote) {
         setProcessedHtml(html);
@@ -902,6 +909,12 @@ function HtmlRenderer({
         } catch (error) {
           console.error(`Failed to load JS file: ${jsFile.path}`, error);
         }
+      }
+
+      // Final check for dangerous content after all processing (including injected JS)
+      if (containsDangerousContent(processedHtmlContent)) {
+        setProcessedHtml('');
+        return;
       }
 
       // Set the processed HTML directly - iframe sandbox provides security

@@ -19,16 +19,16 @@ import DOMPurify, { Config } from 'dompurify';
  * These should be blocked even in sandboxed iframes as a defense-in-depth measure.
  */
 export const DANGEROUS_PATTERNS = [
-  /ipcRenderer/gi,
-  /window\s*\[\s*['"`]ipcRenderer['"`]\s*\]/gi,
-  /parent\s*\.\s*ipcRenderer/gi,
-  /top\s*\.\s*ipcRenderer/gi,
-  /frames\s*\[\s*\d+\s*\]\s*\.\s*ipcRenderer/gi,
-  /require\s*\(\s*['"`]electron['"`]\s*\)/gi,
-  /process\s*\.\s*versions\s*\.\s*electron/gi,
-  /nodeIntegration/gi,
-  /webSecurity/gi,
-  /contextIsolation/gi,
+  /ipcRenderer/i,
+  /window\s*\[\s*['"`]ipcRenderer['"`]\s*\]/i,
+  /parent\s*\.\s*ipcRenderer/i,
+  /top\s*\.\s*ipcRenderer/i,
+  /frames\s*\[\s*\d+\s*\]\s*\.\s*ipcRenderer/i,
+  /require\s*\(\s*['"`]electron['"`]\s*\)/i,
+  /process\s*\.\s*versions\s*\.\s*electron/i,
+  /nodeIntegration/i,
+  /webSecurity/i,
+  /contextIsolation/i,
 ];
 
 /**
