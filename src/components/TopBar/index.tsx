@@ -19,15 +19,11 @@ import {
 	Square,
 	X,
 	FileDown,
-	Menu,
 	Plus,
-	Import,
-	XCircle,
 	Power,
 	ChevronDown,
 	ChevronLeft,
 	House,
-	Share,
 } from "lucide-react";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
@@ -35,7 +31,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import giftIcon from "@/assets/gift.svg";
-import giftwhiteIcon from "@/assets/gift-white.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
@@ -58,42 +53,12 @@ function HeaderWin() {
 	}
 	
 	const { toggle } = useSidebarStore();
-	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
 	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
-
-		if (platform === "darwin") {
-			titlebarRef.current?.classList.add("mac");
-			if (controlsRef.current) {
-				controlsRef.current.style.display = "none";
-			}
-		}
-	}, []);
-
-	useEffect(() => {
-		// use window.electronAPI instead of window.require
-		const handleFullScreen = async () => {
-			try {
-				// get fullscreen status through window.electronAPI
-				const isFull = await window.electronAPI.isFullScreen();
-				setIsFullscreen(isFull);
-			} catch (error) {
-				console.error("Failed to get fullscreen status:", error);
-			}
-		};
-		// add event listener
-		window.addEventListener("resize", handleFullScreen);
-
-		// initialize state
-		handleFullScreen();
-
-		return () => {
-			window.removeEventListener("resize", handleFullScreen);
-		};
 	}, []);
 
 	const exportLog = async () => {
