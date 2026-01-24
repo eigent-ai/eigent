@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import asyncio
 import datetime
 import json
@@ -24,6 +38,7 @@ from app.service.task import (
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
 from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
 from camel.tasks import Task
@@ -1467,6 +1482,16 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:
         tool_names.append(titleize(item))
+    # Always include terminal_toolkit with proper working directory
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        agent_name=data.name,
+        working_directory=working_directory,
+        safe_mode=True,
+        clone_current_env=True,
+    )
+    tools.extend(terminal_toolkit.get_tools())
+    tool_names.append(titleize("terminal_toolkit"))
     if data.mcp_tools is not None:
         tools = [*tools, *await get_mcp_tools(data.mcp_tools)]
         for item in data.mcp_tools["mcpServers"].keys():
