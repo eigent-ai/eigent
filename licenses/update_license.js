@@ -53,14 +53,29 @@ function updateLicenseInFile(
   endLineStartWith,
   commentMarker
 ) {
+  // Check if file exists
+  if (!fs.existsSync(filePath)) {
+    console.error(`Error: File not found: ${filePath}`);
+    return false;
+  }
+
   const content = fs.readFileSync(filePath, 'utf-8');
   const newLicense = licenseTemplate.trim();
-
-  // Extract all comment lines from the beginning of the file
-  const commentLines = [];
   const lines = content.split('\n');
 
-  for (const line of lines) {
+  // Check for shebang (must stay on first line)
+  let shebang = null;
+  let contentStartIndex = 0;
+  if (lines.length > 0 && lines[0].startsWith('#!')) {
+    shebang = lines[0];
+    contentStartIndex = 1;
+  }
+
+  // Extract all comment lines from the beginning of the file (after shebang if present)
+  const commentLines = [];
+
+  for (let i = contentStartIndex; i < lines.length; i++) {
+    const line = lines[i];
     if (line.trim().startsWith(commentMarker)) {
       commentLines.push(line);
     } else if (line.trim() === '') {
@@ -91,78 +106,21 @@ function updateLicenseInFile(
       hasChanges = true;
     }
   } else {
-    // No license header, add it to the beginning
-    fs.writeFileSync(filePath, newLicense + '\n\n' + content, 'utf-8');
+    // No license header, add it to the beginning (preserving shebang if present)
+    let newContent;
+    if (shebang) {
+      // Keep shebang on first line, add license after it
+      const contentAfterShebang = lines.slice(1).join('\n');
+      newContent = shebang + '\n' + newLicense + '\n\n' + contentAfterShebang;
+    } else {
+      newContent = newLicense + '\n\n' + content;
+    }
+    fs.writeFileSync(filePath, newContent, 'utf-8');
     console.log(`✓ Added license to ${filePath}`);
     hasChanges = true;
   }
 
   return hasChanges;
-}
-
-/**
- * Recursively update licenses in all files in a directory
- */
-function updateLicenseInDirectory(
-  directoryPath,
-  licenseTemplate,
-  startLineStartWith,
-  endLineStartWith,
-  commentMarker,
-  extensions = ['.ts', '.tsx', '.d.ts']
-) {
-  let fileCount = 0;
-
-  function processDirectory(dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-
-      // Skip hidden files and directories
-      if (entry.name.startsWith('.')) {
-        continue;
-      }
-
-      // Skip node_modules and other common directories
-      if (entry.isDirectory()) {
-        const skipDirs = [
-          'node_modules',
-          'dist',
-          'build',
-          'coverage',
-          '.git',
-          '__pycache__',
-        ];
-        if (skipDirs.includes(entry.name)) {
-          continue;
-        }
-        processDirectory(fullPath);
-      } else if (entry.isFile()) {
-        // Check if file has one of the target extensions
-        const ext = path.extname(entry.name);
-        if (extensions.includes(ext)) {
-          if (
-            updateLicenseInFile(
-              fullPath,
-              licenseTemplate,
-              startLineStartWith,
-              endLineStartWith,
-              commentMarker
-            )
-          ) {
-            fileCount++;
-          }
-        }
-      }
-    }
-  }
-
-  processDirectory(directoryPath);
-  console.log(`\nLicense check complete: ${fileCount} file(s) updated`);
-
-  // Exit with code 0 on success (files were properly updated)
-  process.exit(0);
 }
 
 /**
@@ -177,15 +135,43 @@ function main() {
     process.exit(1);
   }
 
+  // Directories to skip (third-party code, build outputs, etc.)
+  const skipDirs = [
+    'node_modules',
+    '.venv',
+    'venv',
+    '__pycache__',
+    'dist',
+    'dist-electron',
+    'build',
+    'coverage',
+    '.git',
+    '.next',
+    '.nuxt',
+  ];
+
   // Process each file passed as argument (from lint-staged)
   let filesUpdated = 0;
 
   for (const filePath of args) {
+    // Skip files in excluded directories
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const shouldSkip = skipDirs.some(
+      (dir) =>
+        normalizedPath.includes(`/${dir}/`) ||
+        normalizedPath.startsWith(`${dir}/`) ||
+        normalizedPath.includes(`/.${dir}/`)
+    );
+    if (shouldSkip) {
+      console.log(`⊘ Skipping ${filePath} (excluded directory)`);
+      continue;
+    }
+
     // Determine template and comment marker based on file extension
     const ext = path.extname(filePath);
     let licenseTemplatePath, commentMarker;
 
-    if (['.ts', '.tsx', '.d.ts', '.js', '.jsx'].includes(ext)) {
+    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
       licenseTemplatePath = path.join(__dirname, 'license_template_ts.txt');
       commentMarker = '//';
     } else if (ext === '.py') {
