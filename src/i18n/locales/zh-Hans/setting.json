@@ -53,6 +53,7 @@
 	"claude-opus-4.1": "Claude Opus 4.1: 更高成本，更慢响应，但更高质量和推理。",
 	"claude-sonnet-4": "Claude Sonnet 4: 更高成本，更慢响应，但更高质量和推理。",
 	"claude-3.5-haiku": "Claude 3.5 Haiku: 更高成本，更慢响应，但更高质量和推理。",
+	"claude-4.5-haiku": "Claude 4.5 Haiku: Anthropic最快的模型，日常任务表现卓越。",
 	"gpt-5": "GPT-5: 更高成本，更慢响应，但更高质量和推理。",
 	"gpt-5-mini": "GPT-5 mini: 更高成本，更慢响应，但更高质量和推理。",
 	"gpt-5-nano": "GPT-5 nano: 更高成本，更慢响应，但更高质量和推理。",

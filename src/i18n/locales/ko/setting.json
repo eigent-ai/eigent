@@ -52,6 +52,7 @@
 	"claude-opus-4.1": "Claude Opus 4.1: 높은 비용, 느린 응답, 하지만 우수한 품질 및 추론 능력.",
 	"claude-sonnet-4": "Claude Sonnet 4: 높은 비용, 느린 응답, 하지만 우수한 품질 및 추론 능력.",
 	"claude-3.5-haiku": "Claude 3.5 Haiku: 높은 비용, 느린 응답, 하지만 우수한 품질 및 추론 능력.",
+	"claude-4.5-haiku": "Claude 4.5 Haiku: 일상 작업에 뛰어난 성능을 제공하는 Anthropic의 가장 빠른 모델입니다.",
 	"gpt-5": "GPT-5: 높은 비용, 느린 응답, 하지만 우수한 품질 및 추론 능력.",
 	"gpt-5-mini": "GPT-5 mini: 높은 비용, 느린 응답, 하지만 우수한 품질 및 추론 능력.",
 	"gpt-5-nano": "GPT-5 nano: 높은 비용, 느린 응답, 하지만 우수한 품질 및 추론 능력.",

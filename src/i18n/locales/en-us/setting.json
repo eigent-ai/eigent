@@ -4,7 +4,6 @@
 	"privacy": "Privacy",
 	"models": "Models",
 	"mcp": "MCP & Tools",
-
 	"account": "Account",
 	"you-are-currently-signed-in-with": "You are currently signed in with {{email}}",
 	"manage": "Manage",
@@ -15,7 +14,6 @@
 	"appearance": "Appearance",
 	"light": "Light",
 	"transparent": "Transparent",
-
 	"data-privacy": "Data Privacy",
 	"data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",
 	"privacy-policy": "Privacy Policy",
@@ -24,13 +22,12 @@
 	"how-we-handle-your-data-line-1-line-1": "Eigent may capture screenshots to analyze UI elements, read text, and determine the next action, just as you would.",
 	"how-we-handle-your-data-line-1-line-2": "Eigent may use your mouse and keyboard to access local software and files you specify.",
 	"how-we-handle-your-data-line-1-line-3": "Only the minimum task data is sent to AI model providers or the third-party integrations you enable; we have zero data-retention",
-	"how-we-handle-your-data-line-2":"Task files, outputs and screenshots remain in your designated task folder locally.",
-	"how-we-handle-your-data-line-3":"Credentials are stored locally, encrypted, and used only for approved steps.",
-	"how-we-handle-your-data-line-4":"Your data is never used to train our AI models without your explicit consent.",
-	"how-we-handle-your-data-line-5":"We don’t sell your data to third parties.",
+	"how-we-handle-your-data-line-2": "Task files, outputs and screenshots remain in your designated task folder locally.",
+	"how-we-handle-your-data-line-3": "Credentials are stored locally, encrypted, and used only for approved steps.",
+	"how-we-handle-your-data-line-4": "Your data is never used to train our AI models without your explicit consent.",
+	"how-we-handle-your-data-line-5": "We don’t sell your data to third parties.",
 	"enable-privacy-permissions-settings": "Enable Privacy Permissions Settings",
 	"enable-privacy-permissions-settings-description": "By turning this on, you acknowledge that you have read and agree to our Privacy Policy regarding how your task data is collected, processed, and protected.",
-	
 	"api-key-can-not-be-empty": "API Key can not be empty!",
 	"api-host-can-not-be-empty": "API Host can not be empty!",
 	"model-type-can-not-be-empty": "Model Type can not be empty!",
@@ -52,6 +49,7 @@
 	"claude-opus-4.1": "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning.",
 	"claude-sonnet-4": "Claude Sonnet 4: Higher cost, slower responses, but superior quality and reasoning.",
 	"claude-3.5-haiku": "Claude 3.5 Haiku: Higher cost, slower responses, but superior quality and reasoning.",
+	"claude-4.5-haiku": "Claude 4.5 Haiku: Anthropic's fastest model with excellent performance for everyday tasks.",
 	"gpt-5": "GPT-5: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5-mini": "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5-nano": "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning.",
@@ -74,7 +72,6 @@
 	"url": "URL",
 	"enter-your-model-type": "Enter your Model Type",
 	"verifying": "Verifying...",
-
 	"mcp-and-tools": "MCP & Tools",
 	"add-mcp-server": "Add MCP Server",
 	"market": "Market",
@@ -163,7 +160,6 @@
 	"reset": "Reset",
 	"reset-success": "Reset successfully!",
 	"reset-failed": "Reset failed!",
-
 	"browser-login": "Browser Login",
 	"browser-login-description": "Open a Chrome browser to log in to your accounts. Your login data will be saved locally in a secure profile.",
 	"open-browser-login": "Open Browser for Login",
@@ -171,7 +167,6 @@
 	"browser-opened-successfully": "Browser opened successfully. Please log in to your accounts.",
 	"failed-to-open-browser": "Failed to open browser. Please try again.",
 	"restart-to-apply": "Restart to Apply",
-
 	"cookie-manager": "Cookie Manager",
 	"cookie-manager-description": "Manage cookies saved from your browser sessions. Delete cookies for specific sites or all at once.",
 	"refresh": "Refresh",
@@ -190,6 +185,4 @@
 	"confirm-delete-all-cookies": "Are you sure you want to delete all cookies? This action cannot be undone.",
 	"all-cookies-deleted": "All cookies have been deleted successfully.",
 	"cookie-delete-warning": "Note: Deleting cookies will log you out of the associated websites. You may need to restart the browser to see changes take effect."
-	}
-
-
+}
