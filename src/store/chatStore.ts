@@ -1,4 +1,4 @@
-import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete } from '@/api/http';
+import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete, waitForBackendReady } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { createStore } from 'zustand';
 import { generateUniqueId, uploadLog } from "@/lib";
@@ -331,10 +331,23 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			}
 		},
 		startTask: async (taskId: string, type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => {
-			// Note: Backend readiness is checked during app initialization (useInstallationSetup).
-			// We removed the per-task health check to avoid race conditions with task cleanup operations.
-			// When a previous task is being cleaned up (e.g., user clicked End Project), the health
-			// check could timeout incorrectly, blocking new task creation.
+			// ✅ Wait for backend to be ready before starting task (except for replay/share)
+			if (!type || type === 'normal') {
+				console.log('[startTask] Checking if backend is ready...');
+				const isBackendReady = await waitForBackendReady(60000, 500); // Wait up to 60 seconds
+
+				if (!isBackendReady) {
+					console.error('[startTask] Backend is not ready, cannot start task');
+					const { addMessages } = get();
+					addMessages(taskId, {
+						id: generateUniqueId(),
+						role: 'agent',
+						content: '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+					});
+					return;
+				}
+				console.log('[startTask] Backend is ready, proceeding with task...');
+			}
 
 			const { token, language, modelType, cloud_model_type, email } = getAuthStore()
 			const workerList = useWorkerList();
