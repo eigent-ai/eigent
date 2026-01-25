@@ -166,31 +166,38 @@ jobs:
             ls -la release/
           fi
 
-      - name: Upload Artifact (macOS - dmg only)
+      - name: Upload Artifact (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*.dmg
+            release/*.dmg.blockmap
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest*.yml
           retention-days: 5
 
-      - name: Upload Artifact (Windows - exe only)
+      - name: Upload Artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*.exe
+            release/*.exe.blockmap
+            release/latest*.yml
           retention-days: 5
 
-      - name: Upload Artifact (Linux - AppImage only)
+      - name: Upload Artifact (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
             release/*.AppImage
+            release/latest*.yml
           retention-days: 5
   merge-release:
     needs: build
@@ -218,29 +225,29 @@ jobs:
           name: release-ubuntu-latest-x64
           path: temp-linux-x64
 
-      # Move only dmg files for macOS, exe files for Windows, and AppImage for Linux
+      # Move release files for each platform
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-arm64 - only move dmg files
+          # mac-arm64 - move dmg, zip, blockmap, and yml files
           if [ -d "temp-mac-arm64/release" ]; then
-            find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
+            find temp-mac-arm64/release \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-arm64/ \; || true
           else
-            find temp-mac-arm64 -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
+            find temp-mac-arm64 \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-arm64/ \; || true
           fi
 
-          # win-x64 - only move exe files
+          # win-x64 - move exe, blockmap, and yml files
           if [ -d "temp-win-x64/release" ]; then
-            find temp-win-x64/release -name "*.exe" -exec mv {} release/win-x64/ \; || true
+            find temp-win-x64/release \( -name "*.exe" -o -name "*.exe.blockmap" -o -name "latest*.yml" \) -exec mv {} release/win-x64/ \; || true
           else
-            find temp-win-x64 -name "*.exe" -exec mv {} release/win-x64/ \; || true
+            find temp-win-x64 \( -name "*.exe" -o -name "*.exe.blockmap" -o -name "latest*.yml" \) -exec mv {} release/win-x64/ \; || true
           fi
 
-          # linux-x64 - only move AppImage files
+          # linux-x64 - move AppImage and yml files
           if [ -d "temp-linux-x64/release" ]; then
-            find temp-linux-x64/release -name "*.AppImage" -exec mv {} release/linux-x64/ \; || true
+            find temp-linux-x64/release \( -name "*.AppImage" -o -name "latest*.yml" \) -exec mv {} release/linux-x64/ \; || true
           else
-            find temp-linux-x64 -name "*.AppImage" -exec mv {} release/linux-x64/ \; || true
+            find temp-linux-x64 \( -name "*.AppImage" -o -name "latest*.yml" \) -exec mv {} release/linux-x64/ \; || true
           fi
 
       # Create GitHub Release

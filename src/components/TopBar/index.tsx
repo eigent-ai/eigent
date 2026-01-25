@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
 	Settings,
@@ -5,24 +19,18 @@ import {
 	Square,
 	X,
 	FileDown,
-	Menu,
 	Plus,
-	Import,
-	XCircle,
 	Power,
 	ChevronDown,
 	ChevronLeft,
 	House,
-	Share,
 } from "lucide-react";
-import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import giftIcon from "@/assets/gift.svg";
-import giftwhiteIcon from "@/assets/gift-white.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
@@ -45,42 +53,12 @@ function HeaderWin() {
 	}
 	
 	const { toggle } = useSidebarStore();
-	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
 	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
-
-		if (platform === "darwin") {
-			titlebarRef.current?.classList.add("mac");
-			if (controlsRef.current) {
-				controlsRef.current.style.display = "none";
-			}
-		}
-	}, []);
-
-	useEffect(() => {
-		// use window.electronAPI instead of window.require
-		const handleFullScreen = async () => {
-			try {
-				// get fullscreen status through window.electronAPI
-				const isFull = await window.electronAPI.isFullScreen();
-				setIsFullscreen(isFull);
-			} catch (error) {
-				console.error("Failed to get fullscreen status:", error);
-			}
-		};
-		// add event listener
-		window.addEventListener("resize", handleFullScreen);
-
-		// initialize state
-		handleFullScreen();
-
-		return () => {
-			window.removeEventListener("resize", handleFullScreen);
-		};
 	}, []);
 
 	const exportLog = async () => {
@@ -210,21 +188,21 @@ function HeaderWin() {
 
 	return (
 		<div
-			className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 "
+			className={`absolute top-0 left-0 right-0 flex !h-9 items-center justify-between py-1 z-50 drag ${
+				platform === "darwin" ? "pl-20" : "pl-2"
+			}`}
 			id="titlebar"
 			ref={titlebarRef}
 		>
 			{/* left */}
-			<div
-				className={`${
-					platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
-				} flex items-center justify-center no-drag`}
-			>
-				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
-			</div>
+			{platform !== "darwin" && (
+				<div className="w-[70px] flex items-center justify-center no-drag">
+					<span className="text-label-md text-text-heading font-bold">Eigent</span>
+				</div>
+			)}
 
 			{/* center */}
-			<div className="title h-full flex-1 flex items-center justify-between drag">
+			<div className="w-full h-full flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
 					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
 					<Button
@@ -275,32 +253,35 @@ function HeaderWin() {
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("layout.new-project") ? (
+								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
 									<Button 
 										id="active-task-title-btn"
 										variant="ghost" 
-											className="font-bold text-base no-drag truncate" 
+										className="font-bold text-base no-drag" 
 										onClick={toggle}
 										size="sm"
-										>
-									{t("layout.new-project")}
-									<ChevronDown />
-								</Button>
+									>
+									<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{t("layout.new-project")}</span>
+										<ChevronDown />
+									</Button>
+								</TooltipSimple>
 							) : (
-								<Button
-									id="active-task-title-btn"
-									variant="ghost"
-									size="sm"
-									className="font-bold text-base no-drag truncate"
-									onClick={toggle}
-								>
-									{activeTaskTitle}
-									<ChevronDown />
-								</Button>
+								<TooltipSimple content={activeTaskTitle} side="bottom" align="center">
+									<Button
+										id="active-task-title-btn"
+										variant="ghost"
+										size="sm"
+										className="font-bold text-base no-drag"
+										onClick={toggle}
+									>
+										<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{activeTaskTitle}</span>
+										<ChevronDown />
+									</Button>
+								</TooltipSimple>
 							)}
 						</>
 					)}
 				</div>
-				<div id="maximize-window" className="flex-1 h-10"></div>
 				{/* right */}
 				{location.pathname !== "/history" && (
 					<div
@@ -389,24 +370,24 @@ function HeaderWin() {
 			</div>
 			{platform !== "darwin" && (
 				<div
-					className="window-controls h-full flex items-center"
+					className="h-full flex items-center no-drag"
 					id="window-controls"
 					ref={controlsRef}
 				>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.minimizeWindow()}
 					>
 						<Minus className="w-4 h-4" />
 					</div>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.toggleMaximizeWindow()}
 					>
 						<Square className="w-4 h-4" />
 					</div>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.closeWindow()}
 					>
 						<X className="w-4 h-4" />

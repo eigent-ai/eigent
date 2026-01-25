@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import time
 import httpx
 import asyncio
@@ -6,9 +20,9 @@ import json
 from app.service.chat_service import Chat
 from app.component.environment import env
 from app.service.task import get_task_lock_if_exists
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("sync_step")
+logger = logging.getLogger("sync_step")
 
 
 def sync_step(func):
@@ -51,6 +65,12 @@ def sync_step(func):
                     task_id = chat.task_id
 
             if task_id:
+                # TODO: Filter out unnecessary events to avoid database bloat
+                # - Skip "decompose_text" streaming events (sent 50-200+ times per task)
+                # - Only sync structural events: decompose_progress, task_state, create_agent, etc.
+                # - Consider batching or deduplication for high-frequency events
+                # - Extract and add task dependencies for analytics
+
                 asyncio.create_task(
                     send_to_api(
                         sync_url,
