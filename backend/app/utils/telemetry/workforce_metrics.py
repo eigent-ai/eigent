@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import base64
 import json
 import logging
@@ -219,20 +233,20 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         langfuse_secret_key = os.getenv(ENV_LANGFUSE_SECRET_KEY)
         self.enabled = bool(langfuse_public_key and langfuse_secret_key)
 
-        # Get the global shared tracer provider
-        # This ensures only one BatchSpanProcessor is running
-        provider = get_tracer_provider()
-
-        # Get tracer from the shared provider
-        # Use CAMEL version for instrumentation versioning
-        self.tracer = provider.get_tracer(TRACER_NAME_WORKFORCE,
-                                          camel.__version__)
-
-        # Create a root span for the entire workforce execution
-        # All event spans will be children of this root span,
-        # sharing the same trace ID
+        # Initialize tracer and root_span as None by default
+        self.tracer = None
         self.root_span = None
+
+        # Only initialize OpenTelemetry resources when telemetry is enabled
         if self.enabled:
+            # Get the global shared tracer provider
+            # This ensures only one BatchSpanProcessor is running
+            provider = get_tracer_provider()
+
+            # Get tracer from the shared provider
+            # Use CAMEL version for instrumentation versioning
+            self.tracer = provider.get_tracer(TRACER_NAME_WORKFORCE,
+                                              camel.__version__)
             self.root_span = self.tracer.start_span(
                 f"{SPAN_WORKFORCE_EXECUTION}:{task_id}")
             # Langfuse-specific attributes
