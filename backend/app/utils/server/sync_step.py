@@ -1,12 +1,11 @@
 """
 Cloud sync step decorator.
 
-Syncs SSE step data to cloud server. Disabled by default.
+Syncs SSE step data to cloud server when SERVER_URL is configured.
+High-frequency events (decompose_text) are filtered to reduce database bloat.
 
 Config (~/.eigent/.env):
-    ENABLE_CLOUD_SYNC=true
     SERVER_URL=https://dev.eigent.ai/api
-    SERVER_AUTH_TOKEN=your-token
 """
 
 import asyncio
@@ -23,19 +22,18 @@ import logging
 logger = logging.getLogger("sync_step")
 
 
+# High-frequency events to skip (reduces database bloat and API load)
+SKIP_EVENTS = {"decompose_text"}
+
+
 @lru_cache(maxsize=1)
 def _get_config():
-    enabled = env("ENABLE_CLOUD_SYNC", "false").lower() == "true"
     server_url = env("SERVER_URL", "")
-    token = env("SERVER_AUTH_TOKEN", "")
     
-    if not enabled or not server_url:
+    if not server_url:
         return None
     
-    return {
-        "url": f"{server_url.rstrip('/')}/chat/steps",
-        "token": token or None
-    }
+    return f"{server_url.rstrip('/')}/chat/steps"
 
 
 def sync_step(func):
@@ -54,9 +52,13 @@ def sync_step(func):
     return wrapper
 
 
-def _try_sync(args, value, config):
+def _try_sync(args, value, sync_url):
     data = _parse_value(value)
     if not data:
+        return
+    
+    # Skip high-frequency events to reduce database bloat
+    if data.get("step") in SKIP_EVENTS:
         return
     
     task_id = _get_task_id(args)
@@ -70,7 +72,7 @@ def _try_sync(args, value, config):
         "timestamp": time.time_ns() / 1_000_000_000,
     }
     
-    asyncio.create_task(_send(config["url"], config["token"], payload))
+    asyncio.create_task(_send(sync_url, payload))
 
 
 def _parse_value(value):
@@ -100,13 +102,9 @@ def _get_task_id(args):
     return chat.task_id
 
 
-async def _send(url, token, data):
+async def _send(url, data):
     try:
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(url, json=data, headers=headers)
+            await client.post(url, json=data)
     except Exception:
         pass
