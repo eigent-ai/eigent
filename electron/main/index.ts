@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import {
   app,
   BrowserWindow,
@@ -36,7 +50,6 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
 import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
-import { setVibrancy, setRoundedCorners, setTransparentTitlebar } from './native/macos-window'
 
 const userData = app.getPath('userData');
 
@@ -1277,7 +1290,9 @@ async function createWindow() {
     frame: false,
     show: false, // Don't show until content is ready to avoid white screen
     transparent: true,
-    backgroundColor: '#00000000',
+    vibrancy: 'sidebar',
+    visualEffectState: 'active',
+    backgroundColor: '#f5f5f580',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
@@ -1294,28 +1309,6 @@ async function createWindow() {
       spellcheck: false,
     },
   });
-
-  // Apply native macOS effects
-  if (process.platform === 'darwin') {
-    win.once('ready-to-show', () => {
-      if (win && !win.isDestroyed()) {
-        try {
-          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
-          setVibrancy(win, 'HUDWindow');
-
-          // Apply rounded corners
-          setRoundedCorners(win, 20);
-
-          // Make titlebar transparent
-          setTransparentTitlebar(win);
-
-          log.info('[MacOS] Applied native visual effects');
-        } catch (error) {
-          log.error('[MacOS] Failed to apply native visual effects:', error);
-        }
-      }
-    });
-  }
 
   // ==================== Handle renderer crashes and failed loads ====================
   win.webContents.on('render-process-gone', (event, details) => {

@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { spawn } from 'child_process';
 import log from 'electron-log';
 import fs from 'fs';
@@ -170,6 +184,56 @@ export function getPrebuiltVenvPath(): string | null {
 }
 
 /**
+ * Find Python executable in prebuilt Python directory for terminal venv
+ */
+function findPythonForTerminalVenv(): string | null {
+  const prebuiltPythonDir = getPrebuiltPythonDir();
+  if (!prebuiltPythonDir) {
+    return null;
+  }
+
+  // Look for Python executable in the prebuilt directory
+  // UV stores Python in subdirectories like: cpython-3.10.19+.../install/bin/python
+  const possiblePaths: string[] = [];
+
+  // First, try common direct paths
+  possiblePaths.push(
+    path.join(prebuiltPythonDir, 'install', 'bin', 'python'),
+    path.join(prebuiltPythonDir, 'install', 'python.exe'),
+    path.join(prebuiltPythonDir, 'bin', 'python'),
+    path.join(prebuiltPythonDir, 'python.exe'),
+  );
+
+  // Then, search in subdirectories (UV stores Python in versioned directories)
+  try {
+    if (fs.existsSync(prebuiltPythonDir)) {
+      const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+          const subDir = path.join(prebuiltPythonDir, entry.name);
+          possiblePaths.push(
+            path.join(subDir, 'install', 'bin', 'python'),
+            path.join(subDir, 'install', 'python.exe'),
+            path.join(subDir, 'bin', 'python'),
+            path.join(subDir, 'python.exe'),
+          );
+        }
+      }
+    }
+  } catch (error) {
+    log.warn('[PROCESS] Error searching for prebuilt Python:', error);
+  }
+
+  for (const pythonPath of possiblePaths) {
+    if (fs.existsSync(pythonPath)) {
+      return pythonPath;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Get path to prebuilt terminal venv (if available in packaged app)
  */
 export function getPrebuiltTerminalVenvPath(): string | null {
@@ -191,10 +255,42 @@ export function getPrebuiltTerminalVenvPath(): string | null {
         log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
         return prebuiltTerminalVenvPath;
       } else {
+        // Try to fix the missing Python executable by creating a symlink to prebuilt Python
         log.warn(
           `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
-            `Falling back to user terminal venv.`
+            `Attempting to fix...`
         );
+
+        const prebuiltPython = findPythonForTerminalVenv();
+        if (prebuiltPython && fs.existsSync(prebuiltPython)) {
+          try {
+            const binDir = isWindows
+              ? path.join(prebuiltTerminalVenvPath, 'Scripts')
+              : path.join(prebuiltTerminalVenvPath, 'bin');
+
+            // Ensure bin directory exists
+            if (!fs.existsSync(binDir)) {
+              fs.mkdirSync(binDir, { recursive: true });
+            }
+
+            // Create symlink to prebuilt Python
+            if (fs.existsSync(pythonExePath)) {
+              // Remove existing broken symlink or file
+              fs.unlinkSync(pythonExePath);
+            }
+
+            // Calculate relative path for symlink
+            const relativePath = path.relative(binDir, prebuiltPython);
+            fs.symlinkSync(relativePath, pythonExePath);
+
+            log.info(`Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`);
+            return prebuiltTerminalVenvPath;
+          } catch (error) {
+            log.warn(`Failed to fix terminal venv Python symlink: ${error}`);
+          }
+        }
+
+        log.warn(`Falling back to user terminal venv.`);
       }
     }
   }
