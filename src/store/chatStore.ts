@@ -348,7 +348,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			// ✅ Wait for backend to be ready before starting task (except for replay/share)
 			if (!type || type === 'normal') {
 				console.log('[startTask] Checking if backend is ready...');
-				const isBackendReady = await waitForBackendReady(15000, 500); // Wait up to 15 seconds
+				const isBackendReady = await waitForBackendReady(60000, 500); // Wait up to 60 seconds
 
 				if (!isBackendReady) {
 					console.error('[startTask] Backend is not ready, cannot start task');
