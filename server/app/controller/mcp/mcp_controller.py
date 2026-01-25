@@ -27,9 +27,9 @@ from app.model.mcp.mcp_env import McpEnv, Status as McpEnvStatus
 from app.model.mcp.mcp_user import McpImportType, McpUser, Status
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_mcp_controller")
+logger = logging.getLogger("server_mcp_controller")
 
 from app.component.validator.McpServer import (
     McpRemoteServer,
@@ -81,7 +81,6 @@ async def pre_instantiate_mcp_toolkit(config_dict: dict) -> bool:
 
 
 @router.get("/mcps", name="mcp list")
-@traceroot.trace()
 async def gets(
     keyword: str | None = None,
     category_id: int | None = None,
@@ -121,7 +120,6 @@ async def gets(
 
 
 @router.get("/mcp", name="mcp detail", response_model=McpOut)
-@traceroot.trace()
 async def get(id: int, session: Session = Depends(session)):
     """Get MCP server details."""
     try:
@@ -135,7 +133,6 @@ async def get(id: int, session: Session = Depends(session)):
 
 
 @router.post("/mcp/install", name="mcp install")
-@traceroot.trace()
 async def install(mcp_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Install MCP server for user."""
     user_id = auth.user.id
@@ -191,7 +188,6 @@ async def install(mcp_id: int, session: Session = Depends(session), auth: Auth =
 
 
 @router.post("/mcp/import/{mcp_type}", name="mcp import")
-@traceroot.trace()
 async def import_mcp(
     mcp_type: McpImportType, mcp_data: dict, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):

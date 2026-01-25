@@ -15,7 +15,7 @@
 from enum import IntEnum
 from typing import Optional
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, SmallInteger, String
+from sqlalchemy import Boolean, Column, SmallInteger
 from sqlalchemy.orm import Mapped
 from sqlmodel import Field, JSON
 from sqlalchemy_utils import ChoiceType

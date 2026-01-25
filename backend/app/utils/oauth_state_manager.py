@@ -18,8 +18,8 @@ OAuth authorization state manager for background authorization flows
 import threading
 from typing import Dict, Optional, Literal, Any
 from datetime import datetime
-from utils import traceroot_wrapper as traceroot
-logger = traceroot.get_logger("main")
+import logging
+logger = logging.getLogger("main")
 
 AuthStatus = Literal["pending", "authorizing", "success", "failed", "cancelled"]
 

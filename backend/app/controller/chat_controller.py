@@ -20,7 +20,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from utils import traceroot_wrapper as traceroot
+import logging
 from app.component import code
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat, AddTaskRequest, sse_json
@@ -40,15 +40,15 @@ from app.service.task import (
     delete_task_lock,
     task_locks,
 )
-from app.component.environment import set_user_env_path
+from app.component.environment import set_user_env_path, sanitize_env_path
 from app.utils.workforce import Workforce
 from camel.tasks.task import Task
 
 
 router = APIRouter()
 
-# Create traceroot logger for chat controller
-chat_logger = traceroot.get_logger("chat_controller")
+# Logger for chat controller
+chat_logger = logging.getLogger("chat_controller")
 
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
@@ -127,7 +127,6 @@ async def timeout_stream_wrapper(stream_generator, timeout_seconds: int = SSE_TI
 
 
 @router.post("/chat", name="start chat")
-@traceroot.trace()
 async def post(data: Chat, request: Request):
     chat_logger.info(
         "Starting new chat session",
@@ -138,7 +137,10 @@ async def post(data: Chat, request: Request):
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
-    load_dotenv(dotenv_path=data.env_path)
+    # Load environment with validated path
+    safe_env_path = sanitize_env_path(data.env_path)
+    if safe_env_path:
+        load_dotenv(dotenv_path=safe_env_path)
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
@@ -185,7 +187,6 @@ async def post(data: Chat, request: Request):
 
 
 @router.post("/chat/{id}", name="improve chat")
-@traceroot.trace()
 def improve(id: str, data: SupplementChat):
     chat_logger.info("Chat improvement requested", extra={"task_id": id, "question_length": len(data.question)})
     task_lock = get_task_lock(id)
@@ -245,7 +246,6 @@ def improve(id: str, data: SupplementChat):
 
 
 @router.put("/chat/{id}", name="supplement task")
-@traceroot.trace()
 def supplement(id: str, data: SupplementChat):
     chat_logger.info("Chat supplement requested", extra={"task_id": id})
     task_lock = get_task_lock(id)
@@ -257,7 +257,6 @@ def supplement(id: str, data: SupplementChat):
 
 
 @router.delete("/chat/{id}", name="stop chat")
-@traceroot.trace()
 def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
@@ -277,7 +276,6 @@ def stop(id: str):
 
 
 @router.post("/chat/{id}/human-reply")
-@traceroot.trace()
 def human_reply(id: str, data: HumanReply):
     chat_logger.info("Human reply received", extra={"task_id": id, "reply_length": len(data.reply)})
     task_lock = get_task_lock(id)
@@ -287,7 +285,6 @@ def human_reply(id: str, data: HumanReply):
 
 
 @router.post("/chat/{id}/install-mcp")
-@traceroot.trace()
 def install_mcp(id: str, data: McpServers):
     chat_logger.info("Installing MCP servers", extra={"task_id": id, "servers_count": len(data.get("mcpServers", {}))})
     task_lock = get_task_lock(id)
@@ -297,7 +294,6 @@ def install_mcp(id: str, data: McpServers):
 
 
 @router.post("/chat/{id}/add-task", name="add task to workforce")
-@traceroot.trace()
 def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(f"Adding task to workforce for task_id: {id}, content: {data.content[:100]}...")
@@ -321,7 +317,6 @@ def add_task(id: str, data: AddTaskRequest):
 
 
 @router.delete("/chat/{project_id}/remove-task/{task_id}", name="remove task from workforce")
-@traceroot.trace()
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
     chat_logger.info(f"Removing task {task_id} from workforce for project_id: {project_id}")
@@ -341,7 +336,6 @@ def remove_task(project_id: str, task_id: str):
 
 
 @router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
-@traceroot.trace()
 def skip_task(project_id: str):
     """
     Skip/Stop current task execution while preserving context.
