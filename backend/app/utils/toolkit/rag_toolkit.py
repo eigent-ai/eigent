@@ -7,7 +7,11 @@ This toolkit wraps CAMEL's RetrievalToolkit with generic RAG functionality:
 
 The toolkit is generic and portable - task isolation and other application-specific
 concerns are handled at the orchestration layer (e.g., in get_toolkits()).
+
+# TODO: Support configurable embedding models (currently OpenAI only)
+# TODO: Add support for other vector storage backends
 """
+
 import hashlib
 import os
 from pathlib import Path
@@ -27,20 +31,24 @@ from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("rag_toolkit")
 
+# Default paths and constants
+DEFAULT_RAG_STORAGE_PATH = "~/.eigent/rag_storage"
+DEFAULT_COLLECTION_NAME = "default"
+
 
 class RAGToolkit(AbstractToolkit):
     """Generic RAG toolkit wrapping CAMEL's RetrievalToolkit.
-    
+
     This toolkit provides RAG functionality with configurable storage:
     - Raw text document support via add_document + query_knowledge_base
     - File/URL retrieval via information_retrieval
     - Configurable collection_name and storage_path for flexibility
-    
+
     Task isolation and other application-specific concerns should be handled
     at the orchestration layer by passing appropriate collection_name and
     storage_path values.
     """
-    
+
     agent_name: str = Agents.task_agent
 
     def __init__(
@@ -51,7 +59,7 @@ class RAGToolkit(AbstractToolkit):
         storage_path: str | Path | None = None,
     ):
         """Initialize RAGToolkit with configurable storage.
-        
+
         Args:
             api_task_id: Task ID for eigent integration.
             agent_name: Optional agent name override.
@@ -63,24 +71,22 @@ class RAGToolkit(AbstractToolkit):
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
-        
+
         # Use provided paths or defaults
-        self._storage_path = Path(storage_path) if storage_path else Path(
-            os.path.expanduser("~/.eigent/rag_storage")
-        )
+        self._storage_path = Path(storage_path) if storage_path else Path(os.path.expanduser(DEFAULT_RAG_STORAGE_PATH))
         self._storage_path.mkdir(parents=True, exist_ok=True)
-        
-        self._collection_name = collection_name or "default"
-        
+
+        self._collection_name = collection_name or DEFAULT_COLLECTION_NAME
+
         # Initialize CAMEL's AutoRetriever with configured storage
         auto_retriever = AutoRetriever(
             vector_storage_local_path=str(self._storage_path),
             storage_type=StorageType.QDRANT,
         )
-        
+
         # Wrap CAMEL's RetrievalToolkit using composition (for file/URL retrieval)
         self._retrieval_toolkit = RetrievalToolkit(auto_retriever=auto_retriever)
-        
+
         # Lazy-initialized components for raw text support
         self._embedding_model = None
         self._vector_retriever = None
@@ -122,7 +128,7 @@ class RAGToolkit(AbstractToolkit):
         similarity_threshold: float = 0.5,
     ) -> str:
         """Retrieves information from a local vector storage based on the query.
-        
+
         This method connects to a task-isolated vector storage and retrieves
         relevant information. Content is automatically indexed on first use.
 
@@ -161,7 +167,7 @@ class RAGToolkit(AbstractToolkit):
         doc_id: Optional[str] = None,
     ) -> str:
         """Add a raw text document to the knowledge base.
-        
+
         This method allows adding text content directly without requiring a file.
         Useful for adding API responses, conversation snippets, or any text data.
 
@@ -185,23 +191,23 @@ class RAGToolkit(AbstractToolkit):
         try:
             if not content or not content.strip():
                 return "Error: Cannot add empty document"
-            
+
             # Generate document ID if not provided
             if doc_id is None:
                 doc_id = hashlib.md5(content.encode()).hexdigest()[:12]
-            
+
             # Prepare metadata
             doc_metadata = metadata or {}
             doc_metadata["doc_id"] = doc_id
             doc_metadata["collection"] = self._collection_name
-            
+
             # Get vector retriever and add content
             retriever = self._get_vector_retriever()
             retriever.process(content=content, extra_info=doc_metadata)
-            
+
             logger.info(f"Added document {doc_id} to collection {self._collection_name}")
             return f"Successfully added document (ID: {doc_id}) to knowledge base"
-            
+
         except Exception as e:
             logger.error(f"Failed to add document: {e}", exc_info=True)
             return f"Error adding document: {str(e)}"
@@ -212,7 +218,7 @@ class RAGToolkit(AbstractToolkit):
         top_k: int = 5,
     ) -> str:
         """Query the knowledge base for relevant information from added documents.
-        
+
         This queries documents previously added via add_document().
         For querying files/URLs, use information_retrieval() instead.
 
@@ -230,43 +236,36 @@ class RAGToolkit(AbstractToolkit):
         try:
             if not query or not query.strip():
                 return "Error: Query cannot be empty"
-            
+
             retriever = self._get_vector_retriever()
             results = retriever.query(query=query, top_k=top_k)
-            
+
             if not results:
                 return f"No relevant information found for query: {query}"
-            
-            # Format results
+
+            # Format results as a simple numbered list
             formatted_results = []
             for i, result in enumerate(results, 1):
                 text = result.get("text", result.get("content", ""))
-                score = result.get("score", result.get("similarity", "N/A"))
                 metadata = result.get("metadata", {})
-                
-                # Format score
-                if isinstance(score, (int, float)):
-                    score_str = f"{score:.3f}"
-                else:
-                    score_str = str(score)
-                
-                result_text = f"[Result {i}] (relevance: {score_str})\n{text}"
+
+                result_text = f"{i}. {text}"
                 if metadata:
                     source = metadata.get("source", metadata.get("doc_id", ""))
                     if source:
-                        result_text += f"\n(Source: {source})"
+                        result_text += f" (Source: {source})"
                 formatted_results.append(result_text)
-            
+
             logger.info(f"Retrieved {len(results)} results for query in collection {self._collection_name}")
-            return "\n\n---\n\n".join(formatted_results)
-            
+            return "\n\n".join(formatted_results)
+
         except Exception as e:
             logger.error(f"Failed to query knowledge base: {e}", exc_info=True)
             return f"Error querying knowledge base: {str(e)}"
 
     def list_knowledge_bases(self) -> str:
         """List all available knowledge bases.
-        
+
         Returns:
             A list of available knowledge base collection names.
         """
@@ -276,23 +275,27 @@ class RAGToolkit(AbstractToolkit):
                 for item in self._storage_path.iterdir():
                     if item.is_dir():
                         collections.append(item.name)
-            
+
             if not collections:
                 return "No knowledge bases found. Use add_document or information_retrieval to create one."
-            
+
             return "Available knowledge bases:\n" + "\n".join(f"- {c}" for c in sorted(collections))
-            
+
         except Exception as e:
             logger.error(f"Failed to list knowledge bases: {e}", exc_info=True)
             return f"Error listing knowledge bases: {str(e)}"
 
     def get_tools(self) -> List[FunctionTool]:
-        """Return the list of tools provided by this toolkit."""
+        """Return the list of tools provided by this toolkit.
+
+        Note: list_knowledge_bases is not exposed as a tool since with task
+        isolation, each task has its own collection and listing all KBs
+        is not useful for the agent.
+        """
         return [
             FunctionTool(self.add_document),
             FunctionTool(self.query_knowledge_base),
             FunctionTool(self.information_retrieval),
-            FunctionTool(self.list_knowledge_bases),
         ]
 
     @classmethod
@@ -303,7 +306,7 @@ class RAGToolkit(AbstractToolkit):
         storage_path: str | Path | None = None,
     ) -> list[FunctionTool]:
         """Return tools that can be used based on available configuration.
-        
+
         Args:
             api_task_id: Task ID for eigent integration.
             collection_name: Name for the vector collection.
@@ -313,7 +316,7 @@ class RAGToolkit(AbstractToolkit):
         if not env("OPENAI_API_KEY"):
             logger.debug("RAG toolkit disabled: OPENAI_API_KEY not set")
             return []
-        
+
         toolkit = RAGToolkit(
             api_task_id=api_task_id,
             collection_name=collection_name,
