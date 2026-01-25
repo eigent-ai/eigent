@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
-from utils import traceroot_wrapper as traceroot
+import logging
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
@@ -24,7 +24,7 @@ from app.utils.cookie_manager import CookieManager
 import os
 import uuid
 
-logger = traceroot.get_logger("tool_controller")
+logger = logging.getLogger("tool_controller")
 router = APIRouter()
 
 

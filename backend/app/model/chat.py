@@ -19,9 +19,9 @@ import re
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from camel.types import ModelType, RoleType
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("chat_model")
+logger = logging.getLogger("chat_model")
 
 
 class Status(str, Enum):

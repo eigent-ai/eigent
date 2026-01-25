@@ -15,11 +15,11 @@
 import sqlite3
 import os
 from typing import List, Dict, Optional
-from utils import traceroot_wrapper as traceroot
+import logging
 import shutil
 from datetime import datetime
 
-logger = traceroot.get_logger("cookie_manager")
+logger = logging.getLogger("cookie_manager")
 
 
 class CookieManager:

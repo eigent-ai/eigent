@@ -24,9 +24,9 @@ from fastapi_babel import _
 from app.exception.exception import UserException
 from app.component.database import engine
 from convert_case import snake_case
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("abstract_model")
+logger = logging.getLogger("abstract_model")
 
 
 class AbstractModel(SQLModel):

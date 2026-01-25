@@ -14,9 +14,9 @@
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("health_controller")
+logger = logging.getLogger("health_controller")
 
 router = APIRouter(tags=["Health"])
 

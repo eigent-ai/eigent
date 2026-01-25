@@ -18,9 +18,9 @@ from app.component.model_validation import create_agent
 from app.model.chat import PLATFORM_MAPPING
 from camel.types import ModelType
 from app.component.error_format import normalize_error_to_openai_format
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("model_controller")
+logger = logging.getLogger("model_controller")
 
 
 router = APIRouter()
@@ -49,7 +49,6 @@ class ValidateModelResponse(BaseModel):
 
 
 @router.post("/model/validate")
-@traceroot.trace()
 async def validate_model(request: ValidateModelRequest):
     """Validate model configuration and tool call support."""
     platform = request.model_platform

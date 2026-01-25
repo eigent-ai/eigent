@@ -21,7 +21,7 @@ _project_root = pathlib.Path(__file__).parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from utils import traceroot_wrapper as traceroot
+import logging
 from app import api
 from app.component.environment import auto_include_routers, env
 from fastapi.staticfiles import StaticFiles
@@ -32,13 +32,7 @@ import app.middleware  # noqa: F401
 # Import exception handlers to register them
 import app.exception.handler  # noqa: F401
 
-# Only initialize traceroot if enabled
-if traceroot.is_enabled():
-    from traceroot.integrations.fastapi import connect_fastapi
-
-    connect_fastapi(api)
-
-logger = traceroot.get_logger("server_main")
+logger = logging.getLogger("server_main")
 
 prefix = env("url_prefix", "")
 auto_include_routers(api, prefix, "app/controller")
