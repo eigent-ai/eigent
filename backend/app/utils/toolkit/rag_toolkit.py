@@ -34,6 +34,7 @@ logger = traceroot.get_logger("rag_toolkit")
 # Default paths and constants
 DEFAULT_RAG_STORAGE_PATH = "~/.eigent/rag_storage"
 DEFAULT_COLLECTION_NAME = "default"
+RAW_TEXT_SUBDIR = "raw_text"
 
 
 class RAGToolkit(AbstractToolkit):
@@ -61,11 +62,11 @@ class RAGToolkit(AbstractToolkit):
         """Initialize RAGToolkit with configurable storage.
 
         Args:
-            api_task_id: Task ID for eigent integration.
-            agent_name: Optional agent name override.
-            collection_name: Name for the vector collection. If not provided,
+            api_task_id (str): Task ID for eigent integration.
+            agent_name (str | None): Optional agent name override.
+            collection_name (str | None): Name for the vector collection. If not provided,
                 defaults to a generic name.
-            storage_path: Path for vector storage. If not provided, uses
+            storage_path (str | Path | None): Path for vector storage. If not provided, uses
                 a default path.
         """
         self.api_task_id = api_task_id
@@ -106,7 +107,7 @@ class RAGToolkit(AbstractToolkit):
         if self._storage is None:
             self._storage = QdrantStorage(
                 vector_dim=1536,  # OpenAI embedding dimension
-                path=str(self._storage_path / "raw_text"),
+                path=str(self._storage_path / RAW_TEXT_SUBDIR),
                 collection_name=self._collection_name,
             )
         return self._storage
@@ -223,8 +224,8 @@ class RAGToolkit(AbstractToolkit):
         For querying files/URLs, use information_retrieval() instead.
 
         Args:
-            query: The question or search query to find relevant documents.
-            top_k: Maximum number of relevant chunks to return (default: 5).
+            query (str): The question or search query to find relevant documents.
+            top_k (int): Maximum number of relevant chunks to return (default: 5).
 
         Returns:
             Retrieved relevant text chunks from the knowledge base,
@@ -308,14 +309,21 @@ class RAGToolkit(AbstractToolkit):
         """Return tools that can be used based on available configuration.
 
         Args:
-            api_task_id: Task ID for eigent integration.
-            collection_name: Name for the vector collection.
-            storage_path: Path for vector storage.
+            api_task_id (str): Task ID for eigent integration.
+            collection_name (str | None): Name for the vector collection.
+            storage_path (str | Path | None): Path for vector storage.
+
+        Raises:
+            ValueError: If collection_name is None (must be explicitly specified).
         """
         # RAG requires OpenAI API key for embeddings
         if not env("OPENAI_API_KEY"):
-            logger.debug("RAG toolkit disabled: OPENAI_API_KEY not set")
+            logger.warning("RAG toolkit disabled: OPENAI_API_KEY not set")
             return []
+
+        # Require explicit collection_name for task isolation
+        if collection_name is None:
+            raise ValueError("collection_name must be explicitly specified for RAG toolkit")
 
         toolkit = RAGToolkit(
             api_task_id=api_task_id,

@@ -112,7 +112,7 @@ class TestRAGToolkit:
         """Test get_can_use_tools returns empty when no API key."""
         with patch.dict("os.environ", {}, clear=True):
             with patch("app.utils.toolkit.rag_toolkit.env", return_value=None):
-                tools = RAGToolkit.get_can_use_tools("test-task")
+                tools = RAGToolkit.get_can_use_tools("test-task", collection_name="test_collection")
                 assert tools == []
 
     def test_get_can_use_tools_with_api_key(self, temp_storage_path):
@@ -121,8 +121,14 @@ class TestRAGToolkit:
             with patch("app.utils.toolkit.rag_toolkit.AutoRetriever"):
                 with patch.object(RAGToolkit, "get_tools") as mock_get_tools:
                     mock_get_tools.return_value = [Mock(), Mock()]
-                    tools = RAGToolkit.get_can_use_tools("test-task")
+                    tools = RAGToolkit.get_can_use_tools("test-task", collection_name="test_collection")
                     assert len(tools) == 2
+
+    def test_get_can_use_tools_requires_collection_name(self, temp_storage_path):
+        """Test get_can_use_tools raises error when collection_name is None."""
+        with patch("app.utils.toolkit.rag_toolkit.env", return_value="test-key"):
+            with pytest.raises(ValueError, match="collection_name must be explicitly specified"):
+                RAGToolkit.get_can_use_tools("test-task")
 
     def test_default_collection_name(self, temp_storage_path):
         """Test default collection_name when not provided."""
