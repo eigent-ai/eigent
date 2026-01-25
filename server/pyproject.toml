@@ -34,7 +34,6 @@ dependencies = [
     "cryptography>=45.0.4",
     "sqids>=0.5.2",
     "exa-py>=1.14.16",
-    "traceroot>=0.0.7",
 ]
 
 [tool.ruff]

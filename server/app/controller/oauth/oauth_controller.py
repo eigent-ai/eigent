@@ -1,17 +1,30 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from app.component.environment import env
 from app.component.oauth_adapter import OauthCallbackPayload, get_oauth_adapter
 from typing import Optional
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_oauth_controller")
+logger = logging.getLogger("server_oauth_controller")
 
 router = APIRouter(prefix="/oauth", tags=["Oauth Servers"])
 
 
 @router.get("/{app}/login", name="OAuth Login Redirect")
-@traceroot.trace()
 def oauth_login(app: str, request: Request, state: Optional[str] = None):
     """Redirect user to OAuth provider's authorization endpoint."""
     try:
@@ -36,7 +49,6 @@ def oauth_login(app: str, request: Request, state: Optional[str] = None):
 
 
 @router.get("/{app}/callback", name="OAuth Callback")
-@traceroot.trace()
 def oauth_callback(app: str, request: Request, code: Optional[str] = None, state: Optional[str] = None):
     """Handle OAuth provider callback and redirect to client app."""
     if not code:
@@ -64,7 +76,6 @@ def oauth_callback(app: str, request: Request, code: Optional[str] = None, state
 
 
 @router.post("/{app}/token", name="OAuth Fetch Token")
-@traceroot.trace()
 def fetch_token(app: str, request: Request, data: OauthCallbackPayload):
     """Exchange authorization code for access token."""
     try:

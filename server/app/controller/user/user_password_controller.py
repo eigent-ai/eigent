@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
@@ -8,15 +22,14 @@ from app.component.encrypt import password_hash, password_verify
 from app.exception.exception import UserException
 from app.model.user.user import UpdatePassword, UserOut
 from fastapi_babel import _
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_password_controller")
+logger = logging.getLogger("server_password_controller")
 
 router = APIRouter(tags=["User"])
 
 
 @router.put("/user/update-password", name="update password", response_model=UserOut)
-@traceroot.trace()
 def update_password(data: UpdatePassword, auth: Auth = Depends(auth_must), session: Session = Depends(session)):
     """Update user password after verifying current password."""
     user_id = auth.user.id

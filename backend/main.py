@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import os
 import sys
 import pathlib
@@ -10,23 +24,27 @@ _project_root = pathlib.Path(__file__).parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-# 1) Load env and init traceroot BEFORE importing modules that get a logger
-from utils import traceroot_wrapper as traceroot
+import logging
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Disable verbose CAMEL logs
+logging.getLogger("camel").setLevel(logging.WARNING)
+logging.getLogger("camel.base_model").setLevel(logging.WARNING)
+logging.getLogger("camel.agents").setLevel(logging.WARNING)
+logging.getLogger("camel.societies").setLevel(logging.WARNING)
+
 from app import api
-
-# Only initialize traceroot if enabled
-if traceroot.is_enabled():
-    from traceroot.integrations.fastapi import connect_fastapi
-    connect_fastapi(api)
-
-# 2) Now safe to import modules that use traceroot.get_logger() at import-time
 from app.component.environment import env
 from app.router import register_routers
 
-
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
-app_logger = traceroot.get_logger("main")
+app_logger = logging.getLogger("main")
 
 # Log application startup
 app_logger.info("Starting Eigent Multi-Agent System API")
@@ -68,9 +86,19 @@ async def write_pid_file():
     app_logger.info(f"PID file written: {os.getpid()}")
 
 
-# Create task to write PID
-pid_task = asyncio.create_task(write_pid_file())
-app_logger.info("PID write task created")
+# PID task will be created on startup
+pid_task = None
+
+@api.on_event("startup")
+async def startup_event():
+    global pid_task
+    pid_task = asyncio.create_task(write_pid_file())
+    app_logger.info("PID write task created")
+
+    # Initialize telemetry tracer provider
+    from app.utils.telemetry.workforce_metrics import initialize_tracer_provider
+    initialize_tracer_provider()
+    app_logger.info("Telemetry tracer provider initialized")
 
 # Graceful shutdown handler
 shutdown_event = asyncio.Event()

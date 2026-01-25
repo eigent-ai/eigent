@@ -47,9 +47,5 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": ".لقد وصل تخزينك السحابي إلى الحد الأقصى لخطة الاشتراك الحالية الخاصة بك",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": ".نواجه حركة مرور عالية. يرجى المحاولة مرة أخرى بعد وقت قصيرة",
 	"new-project": "مشروع جديد",
-	"no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة",
-	"safe-to-run": "آمن للتشغيل",
-	"scripts-running": "البرامج النصية قيد التشغيل",
-	"scripts-warning": "وجد عارض HTML برامج نصية ذات صلة. تأكد من أن البرامج النصية آمنة للتشغيل.",
-	"scripts-approved": "تمت الموافقة على البرامج النصية. يتم العرض بكامل الوظائف."
+	"no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة"
 }

@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import importlib.util
 import os
 from pathlib import Path
@@ -5,9 +19,9 @@ from fastapi import APIRouter, FastAPI
 from dotenv import load_dotenv
 import importlib
 from typing import Any, overload
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("environment")
+logger = logging.getLogger("environment")
 
 logger.info("Loading environment variables from .env file")
 load_dotenv()
