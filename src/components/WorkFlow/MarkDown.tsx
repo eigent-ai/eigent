@@ -15,6 +15,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const MarkDown = ({
 	content,
@@ -60,12 +61,6 @@ export const MarkDown = ({
 	// process line breaks, convert \n to <br> tag
 	const processContent = (text: string) => {
 		return text.replace(/\\n/g, "  \n "); // add two spaces before \n, so ReactMarkdown will recognize it as a line break
-	};
-
-	// Check if content is pure HTML document
-	const isHtmlDocument = (text: string) => {
-		const trimmed = text.trim();
-		return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
 	};
 
 	// If content is a pure HTML document, render in a styled pre block

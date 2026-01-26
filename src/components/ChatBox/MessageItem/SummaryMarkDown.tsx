@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const SummaryMarkDown = ({
 	content,
@@ -55,12 +56,6 @@ export const SummaryMarkDown = ({
 
 		return () => clearInterval(timer);
 	}, [content, speed, onTyping]);
-
-	// Check if content is pure HTML document
-	const isHtmlDocument = (text: string) => {
-		const trimmed = text.trim();
-		return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
-	};
 
 	// If content is a pure HTML document, render in a styled pre block
 	if (isHtmlDocument(content)) {

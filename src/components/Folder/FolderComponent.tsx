@@ -14,6 +14,7 @@
 
 import React, { useMemo } from "react";
 import DOMPurify from "dompurify";
+import { injectFontStyles } from "@/lib/htmlFontStyles";
 
 type Props = {
 	selectedFile: {
@@ -46,16 +47,6 @@ export default function FolderComponent({ selectedFile }: Props) {
 				return "";
 			}
 		}
-
-		// Inject consistent font styles to ensure clean rendering
-		const fontStyleTag = `<style data-eigent-fonts>
-			*, *::before, *::after {
-				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
-			}
-			code, pre, kbd, samp {
-				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace !important;
-			}
-		</style>`;
 
 		const sanitized = DOMPurify.sanitize(raw, {
 			USE_PROFILES: { html: true },
@@ -128,8 +119,8 @@ export default function FolderComponent({ selectedFile }: Props) {
 			KEEP_CONTENT: false,
 		});
 
-		// Prepend font styles to sanitized HTML
-		return fontStyleTag + sanitized;
+		// Inject font styles into sanitized HTML
+		return injectFontStyles(sanitized);
 	}, [selectedFile?.content]);
 
 	return (

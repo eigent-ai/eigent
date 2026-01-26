@@ -15,6 +15,7 @@
 import { useState, useEffect, memo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const MarkDown = memo(
 	({
@@ -72,12 +73,6 @@ export const MarkDown = memo(
 
 			return () => clearInterval(timer);
 		}, [content, speed, enableTypewriter]);
-
-		// Check if content is pure HTML document
-		const isHtmlDocument = (text: string) => {
-			const trimmed = text.trim();
-			return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
-		};
 
 		// If content is a pure HTML document, render in a styled pre block
 		if (isHtmlDocument(content)) {

@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ZoomControls } from './ZoomControls';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
+import { injectFontStyles } from '@/lib/htmlFontStyles';
 
 // Type definitions
 interface FileTreeNode {
@@ -781,7 +782,7 @@ function HtmlRenderer({
 
       // Skip image processing if file is remote (we can't resolve relative paths for remote files)
       if (selectedFile.isRemote) {
-        setProcessedHtml(html);
+        setProcessedHtml(injectFontStyles(html));
         return;
       }
 
@@ -916,30 +917,6 @@ function HtmlRenderer({
         setProcessedHtml('');
         return;
       }
-
-      // Inject consistent font styles to ensure clean rendering
-      const fontStyleTag = `<style data-eigent-fonts>
-        *, *::before, *::after {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
-        }
-        code, pre, kbd, samp {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace !important;
-        }
-      </style>`;
-
-      // Helper to inject font styles into HTML
-      const injectFontStyles = (html: string): string => {
-        // If HTML has <head>, inject after <head>
-        if (/<head[^>]*>/i.test(html)) {
-          return html.replace(/(<head[^>]*>)/i, `$1${fontStyleTag}`);
-        }
-        // If HTML has <html>, inject after <html>
-        if (/<html[^>]*>/i.test(html)) {
-          return html.replace(/(<html[^>]*>)/i, `$1${fontStyleTag}`);
-        }
-        // Otherwise prepend to content
-        return fontStyleTag + html;
-      };
 
       // Set the processed HTML with font styles - iframe sandbox provides security
       setProcessedHtml(injectFontStyles(processedHtmlContent));
