@@ -21,12 +21,16 @@ import {
 	Settings,
 	ChevronUp,
 	ChevronDown,
+	ChevronRight,
 	Eye,
 	EyeOff,
 	Info,
 	RotateCcw,
 	Loader2,
 	Check,
+	Cloud,
+	Key,
+	Server,
 } from "lucide-react";
 import { INIT_PROVODERS } from "@/lib/llm";
 import { Provider } from "@/types";
@@ -44,6 +48,15 @@ import {
 	SelectItem,
 	SelectValue,
 } from "@/components/ui/select";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import {
 	Tooltip,
@@ -54,7 +67,37 @@ import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
+// Import model images
+import openaiImage from "@/assets/model/openai.svg";
+import anthropicImage from "@/assets/model/anthropic.svg";
+import geminiImage from "@/assets/model/gemini.svg";
+import openrouterImage from "@/assets/model/openrouter.svg";
+import qwenImage from "@/assets/model/qwen.svg";
+import deepseekImage from "@/assets/model/deepseek.svg";
+import minimaxImage from "@/assets/model/minimax.svg";
+import zaiImage from "@/assets/model/zai.svg";
+import moonshotImage from "@/assets/model/moonshot.svg";
+import modelarkImage from "@/assets/model/modelark.svg";
+import bedrockImage from "@/assets/model/bedrock.svg";
+import azureImage from "@/assets/model/azure.svg";
+import ollamaImage from "@/assets/model/ollama.svg";
+import vllmImage from "@/assets/model/vllm.svg";
+import sglangImage from "@/assets/model/sglang.svg";
+import lmstudioImage from "@/assets/model/lmstudio.svg";
+import eigentImage from "@/assets/model/eigent.svg";
+
 const LOCAL_PROVIDER_NAMES = ["ollama", "vllm", "sglang", "lmstudio"];
+
+// Sidebar tab types
+type SidebarTab = 
+	| "cloud" 
+	| "byok" 
+	| `byok-${string}` 
+	| "local" 
+	| "local-ollama" 
+	| "local-vllm" 
+	| "local-sglang" 
+	| "local-lmstudio";
 
 export default function SettingModels() {
 	const { modelType, cloud_model_type, setModelType, setCloudModelType } =
@@ -97,21 +140,36 @@ export default function SettingModels() {
 	);
 	const [collapsed, setCollapsed] = useState(false);
 
+	// Sidebar selected tab - default to cloud
+	const [selectedTab, setSelectedTab] = useState<SidebarTab>("cloud");
+	
+	// BYOK accordion state
+	const [byokCollapsed, setByokCollapsed] = useState(false);
+	
+	// Local Model accordion state
+	const [localCollapsed, setLocalCollapsed] = useState(false);
+
 	// Cloud Model
 	const [cloudPrefer, setCloudPrefer] = useState(false);
 
-	// Local Model independent state
+	// Local Model independent state - per platform
 	const [localEnabled, setLocalEnabled] = useState(true);
 	const [localPlatform, setLocalPlatform] = useState("ollama");
-	const [localEndpoint, setLocalEndpoint] = useState("");
-	const [localType, setLocalType] = useState("");
+	const [localEndpoints, setLocalEndpoints] = useState<Record<string, string>>({});
+	const [localTypes, setLocalTypes] = useState<Record<string, string>>({});
+	const [localProviderIds, setLocalProviderIds] = useState<Record<string, number | undefined>>({});
 	const [localVerifying, setLocalVerifying] = useState(false);
 	const [localError, setLocalError] = useState<string | null>(null);
 	const [localInputError, setLocalInputError] = useState(false);
-	const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state
-	const [localProviderId, setLocalProviderId] = useState<number | undefined>(
-		undefined
-	); // Local model provider_id
+	const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state (for current platform)
+
+	// Default model dropdown state (removed - using DropdownMenu's built-in state)
+
+	// Pending model to set as default after configuration
+	const [pendingDefaultModel, setPendingDefaultModel] = useState<{
+		category: "cloud" | "custom" | "local";
+		modelId: string;
+	} | null>(null);
 
 	// Load provider list and populate form
 	useEffect(() => {
@@ -151,22 +209,42 @@ export default function SettingModels() {
 						return fi;
 					})
 				);
-				// Handle local model
-				const local = providerList.find(
+				// Handle local models - load all local providers per platform
+				const localProviders = providerList.filter(
 					(p: any) => LOCAL_PROVIDER_NAMES.includes(p.provider_name)
 				);
-				console.log(123123, local);
-				if (local) {
-					setLocalEndpoint(local.endpoint_url || "");
-					setLocalPlatform(
-						local.encrypted_config?.model_platform ||
-						local.provider_name ||
-						"ollama"
-					);
-					setLocalType(local.encrypted_config?.model_type || "llama3.2");
-					setLocalEnabled(local.is_valid ?? true);
-					setLocalPrefer(local.prefer ?? false);
-					setLocalProviderId(local.id);
+				
+				const endpoints: Record<string, string> = {};
+				const types: Record<string, string> = {};
+				const providerIds: Record<string, number | undefined> = {};
+				
+				localProviders.forEach((local: any) => {
+					const platform = local.encrypted_config?.model_platform || local.provider_name;
+					endpoints[platform] = local.endpoint_url || "";
+					types[platform] = local.encrypted_config?.model_type || "";
+					providerIds[platform] = local.id;
+					
+					// Set prefer state if any local model is preferred
+					if (local.prefer) {
+						setLocalPrefer(true);
+						setLocalPlatform(platform);
+					}
+				});
+				
+				setLocalEndpoints(endpoints);
+				setLocalTypes(types);
+				setLocalProviderIds(providerIds);
+				
+				// If no local providers found, initialize empty state
+				if (localProviders.length === 0) {
+					LOCAL_PROVIDER_NAMES.forEach(platform => {
+						endpoints[platform] = "";
+						types[platform] = "";
+						providerIds[platform] = undefined;
+					});
+					setLocalEndpoints(endpoints);
+					setLocalTypes(types);
+					setLocalProviderIds(providerIds);
 				}
 				if (modelType === "cloud") {
 					setCloudPrefer(true);
@@ -191,6 +269,127 @@ export default function SettingModels() {
 			updateCredits();
 		}
 	}, []);
+
+
+	// Get current default model display text
+	const getDefaultModelDisplayText = (): string => {
+		if (cloudPrefer) {
+			const cloudModel = cloudModelOptions.find(m => m.id === cloud_model_type);
+			const modelName = cloudModel ? cloudModel.name : cloud_model_type.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+			return `Cloud / ${modelName}`;
+		}
+		
+		// Check for custom model preference
+		const preferredIdx = form.findIndex(f => f.prefer);
+		if (preferredIdx !== -1) {
+			const item = items[preferredIdx];
+			const modelType = form[preferredIdx].model_type || "";
+			return `Custom / ${item.name}${modelType ? ` (${modelType})` : ""}`;
+		}
+		
+		// Check for local model preference
+		if (localPrefer && localPlatform) {
+			const localModel = localModelOptions.find(m => m.id === localPlatform);
+			const platformName = localModel ? localModel.name : 
+				localPlatform === "ollama" ? "Ollama" : 
+				localPlatform === "vllm" ? "vLLM" : 
+				localPlatform === "sglang" ? "SGLang" : "LM Studio";
+			const modelType = localTypes[localPlatform] || "";
+			return `Local / ${platformName}${modelType ? ` (${modelType})` : ""}`;
+		}
+		
+		return t("setting.select-default-model");
+	};
+
+	// Check if a model is configured
+	const isModelConfigured = (category: "cloud" | "custom" | "local", modelId: string): boolean => {
+		if (category === "cloud") {
+			return import.meta.env.VITE_USE_LOCAL_PROXY !== "true";
+		}
+		if (category === "custom") {
+			const idx = items.findIndex(item => item.id === modelId);
+			return idx !== -1 && !!form[idx]?.provider_id;
+		}
+		if (category === "local") {
+			return !!localEndpoints[modelId];
+		}
+		return false;
+	};
+
+	// Handle model selection from dropdown
+	const handleDefaultModelSelect = async (category: "cloud" | "custom" | "local", modelId: string) => {
+		const configured = isModelConfigured(category, modelId);
+
+		if (!configured) {
+			// Store pending model to set as default after configuration
+			setPendingDefaultModel({ category, modelId });
+			
+			// Navigate to the appropriate tab for configuration
+			if (category === "cloud") {
+				setSelectedTab("cloud");
+			} else if (category === "custom") {
+				setSelectedTab(`byok-${modelId}` as SidebarTab);
+				// Expand BYOK section if collapsed
+				if (byokCollapsed) setByokCollapsed(false);
+			} else if (category === "local") {
+				setSelectedTab(`local-${modelId}` as SidebarTab);
+				// Expand Local section if collapsed
+				if (localCollapsed) setLocalCollapsed(false);
+			}
+			return;
+		}
+
+		// Model is configured, set it as default
+		await setModelAsDefault(category, modelId);
+	};
+
+	// Set a model as the default
+	const setModelAsDefault = async (category: "cloud" | "custom" | "local", modelId: string) => {
+		if (category === "cloud") {
+			setLocalPrefer(false);
+			setActiveModelIdx(null);
+			setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+			setCloudPrefer(true);
+			setModelType("cloud");
+			if (modelId !== "cloud") {
+				setCloudModelType(modelId as any);
+			}
+		} else if (category === "custom") {
+			const idx = items.findIndex(item => item.id === modelId);
+			if (idx !== -1) {
+				await handleSwitch(idx, true);
+			}
+		} else if (category === "local") {
+			// Update local platform if different
+			if (localPlatform !== modelId) {
+				setLocalPlatform(modelId);
+			}
+			const providerId = localProviderIds[modelId];
+			await handleLocalSwitch(true, providerId);
+		}
+		setPendingDefaultModel(null);
+	};
+
+	// Cloud model options
+	const cloudModelOptions = [
+		{ id: "gemini-3-pro-preview", name: "Gemini 3 Pro Preview" },
+		{ id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
+		{ id: "gpt-4.1-mini", name: "GPT-4.1 Mini" },
+		{ id: "gpt-4.1", name: "GPT-4.1" },
+		{ id: "gpt-5", name: "GPT-5" },
+		{ id: "gpt-5.1", name: "GPT-5.1" },
+		{ id: "gpt-5.2", name: "GPT-5.2" },
+		{ id: "gpt-5-mini", name: "GPT-5 Mini" },
+		{ id: "claude-sonnet-4-5", name: "Claude Sonnet 4-5" },
+	];
+
+	// Local model options
+	const localModelOptions = [
+		{ id: "ollama", name: "Ollama" },
+		{ id: "vllm", name: "vLLM" },
+		{ id: "sglang", name: "SGLang" },
+		{ id: "lmstudio", name: "LM Studio" },
+	];
 
 	const handleVerify = async (idx: number) => {
 		const { apiKey, apiHost, externalConfig, model_type, provider_id } =
@@ -324,7 +523,14 @@ export default function SettingModels() {
 					return fi;
 				})
 			);
-			handleSwitch(idx, true);
+			
+			// Check if this was a pending default model selection
+			if (pendingDefaultModel && pendingDefaultModel.category === "custom" && pendingDefaultModel.modelId === item.id) {
+				await handleSwitch(idx, true);
+				setPendingDefaultModel(null);
+			} else {
+				handleSwitch(idx, true);
+			}
 		} finally {
 			setLoading(null);
 		}
@@ -335,7 +541,10 @@ export default function SettingModels() {
 		setLocalVerifying(true);
 		setLocalError(null);
 		setLocalInputError(false);
-		if (!localEndpoint) {
+		const currentEndpoint = localEndpoints[localPlatform] || "";
+		const currentType = localTypes[localPlatform] || "";
+		
+		if (!currentEndpoint) {
 			setLocalError(t("setting.endpoint-url-can-not-be-empty"));
 			setLocalInputError(true);
 			setLocalVerifying(false);
@@ -381,9 +590,9 @@ export default function SettingModels() {
 			try {
 				const res = await fetchPost("/model/validate", {
 					model_platform: localPlatform,
-					model_type: localType,
+					model_type: currentType,
 					api_key: "not-required",
-					url: localEndpoint,
+					url: currentEndpoint,
 				});
 				if (res.is_tool_calls && res.is_valid) {
 					console.log("success");
@@ -425,35 +634,45 @@ export default function SettingModels() {
 			}
 
 			// 2. Save to /api/provider/ (save only base URL)
+			const currentProviderId = localProviderIds[localPlatform];
 			const data: any = {
 				provider_name: localPlatform,
 				api_key: "not-required",
-				endpoint_url: localEndpoint, // Save base URL without specific endpoints
+				endpoint_url: currentEndpoint, // Save base URL without specific endpoints
 				is_valid: true,
-				model_type: localType,
+				model_type: currentType,
 				encrypted_config: {
 					model_platform: localPlatform,
-					model_type: localType,
+					model_type: currentType,
 				},
 			};
-			await proxyFetchPost("/api/provider", data);
+			
+			// Update or create provider
+			if (currentProviderId) {
+				await proxyFetchPut(`/api/provider/${currentProviderId}`, data);
+			} else {
+				await proxyFetchPost("/api/provider", data);
+			}
+			
 			setLocalError(null);
 			setLocalInputError(false);
-			// add: refresh provider list after saving, update localProviderId and localPrefer
+			// add: refresh provider list after saving, update localProviderIds and localPrefer
 			const res = await proxyFetchGet("/api/providers");
 			const providerList = Array.isArray(res) ? res : res.items || [];
 			const local = providerList.find(
 				(p: any) => p.provider_name === localPlatform
 			);
 			if (local) {
-				setLocalProviderId(local.id);
+				setLocalProviderIds(prev => ({ ...prev, [localPlatform]: local.id }));
 				setLocalPrefer(local.prefer ?? false);
-				setLocalPlatform(
-					local.encrypted_config?.model_platform ||
-					local.provider_name ||
-					localPlatform
-				);
-				await handleLocalSwitch(true, local.id);
+				
+				// Check if this was a pending default model selection
+				if (pendingDefaultModel && pendingDefaultModel.category === "local" && pendingDefaultModel.modelId === localPlatform) {
+					await handleLocalSwitch(true, local.id);
+					setPendingDefaultModel(null);
+				} else {
+					await handleLocalSwitch(true, local.id);
+				}
 			}
 		} catch (e: any) {
 			setLocalError(
@@ -514,6 +733,7 @@ export default function SettingModels() {
 	const handleLocalSwitch = async (checked: boolean, providerId?: number) => {
 		if (!checked) {
 			setLocalEnabled(false);
+			setLocalPrefer(false);
 			return;
 		}
 		const hasSearchKey = await checkHasSearchKey();
@@ -528,7 +748,7 @@ export default function SettingModels() {
 		}
 		try {
 			const targetProviderId =
-				providerId !== undefined ? providerId : localProviderId;
+				providerId !== undefined ? providerId : localProviderIds[localPlatform];
 			if (targetProviderId === undefined) return;
 			await proxyFetchPost("/api/provider/prefer", {
 				provider_id: targetProviderId,
@@ -546,13 +766,17 @@ export default function SettingModels() {
 
 	const handleLocalReset = async () => {
 		try {
-			if (localProviderId !== undefined) {
-				await proxyFetchDelete(`/api/provider/${localProviderId}`);
+			const currentProviderId = localProviderIds[localPlatform];
+			if (currentProviderId !== undefined) {
+				await proxyFetchDelete(`/api/provider/${currentProviderId}`);
 			}
-			setLocalEndpoint("");
-			setLocalType("");
-			setLocalPrefer(false);
-			setLocalProviderId(undefined);
+			setLocalEndpoints(prev => ({ ...prev, [localPlatform]: "" }));
+			setLocalTypes(prev => ({ ...prev, [localPlatform]: "" }));
+			setLocalProviderIds(prev => ({ ...prev, [localPlatform]: undefined }));
+			// Reset prefer state only if this platform was the preferred one
+			if (localPrefer && localPlatform === localPlatform) {
+				setLocalPrefer(false);
+			}
 			setLocalEnabled(true);
 			setActiveModelIdx(null);
 			toast.success(t("setting.reset-success"));
@@ -635,36 +859,126 @@ export default function SettingModels() {
 		}
 	};
 
-	return (
-		<div className="flex flex-col gap-4 pb-40">
-			{import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && (
-				<div className="w-full pt-4 self-stretch px-6 py-4 bg-gradient-to-t from-orange-50 to-surface-tertiary rounded-2xl inline-flex flex-col justify-start items-start gap-4 border-solid border-border-disabled">
-					<div className="self-stretch flex flex-col justify-start items-start gap-1">
+	// Helper to get model image based on model ID
+	const getModelImage = (modelId: string | null): string | null => {
+		if (!modelId) return null;
+		const modelImageMap: Record<string, string> = {
+			// Cloud version
+			cloud: eigentImage,
+			// Cloud models
+			openai: openaiImage,
+			anthropic: anthropicImage,
+			gemini: geminiImage,
+			openrouter: openrouterImage,
+			"tongyi-qianwen": qwenImage,
+			deepseek: deepseekImage,
+			minimax: minimaxImage,
+			"Z.ai": zaiImage,
+			moonshot: moonshotImage,
+			ModelArk: modelarkImage,
+			"aws-bedrock": bedrockImage,
+			azure: azureImage,
+			"openai-compatible-model": openaiImage, // Use OpenAI icon as fallback
+			// Local models
+			ollama: ollamaImage,
+			vllm: vllmImage,
+			sglang: sglangImage,
+			lmstudio: lmstudioImage,
+			// Local model tab IDs
+			"local-ollama": ollamaImage,
+			"local-vllm": vllmImage,
+			"local-sglang": sglangImage,
+			"local-lmstudio": lmstudioImage,
+		};
+		return modelImageMap[modelId] || null;
+	};
+
+	// Helper to render sidebar tab item
+	const renderSidebarItem = (
+		tabId: SidebarTab,
+		label: string,
+		modelId: string | null,
+		isActive: boolean,
+		isSubItem: boolean = false,
+		isConfigured: boolean = false
+	) => {
+		const modelImage = getModelImage(modelId);
+		const fallbackIcon = modelId === "cloud" ? <Cloud className="w-5 h-5" /> : 
+			modelId?.startsWith("local") ? <Server className="w-5 h-5" /> : 
+			<Key className="w-5 h-5" />;
+
+		return (
+			<button
+				key={tabId}
+				onClick={() => setSelectedTab(tabId)}
+				className={`
+					w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-200
+					${isSubItem ? "pl-3" : ""}
+					${isActive 
+						? "bg-fill-fill-transparent-active" 
+						: "bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover"
+					}
+				`}
+			>
+				<div className="flex items-center justify-center gap-3">
+					{modelImage ? (
+						<img 
+							src={modelImage} 
+							alt={label}
+							className="w-5 h-5"
+						/>
+					) : (
+						<span className={isActive ? "text-text-body" : "text-text-label"}>
+							{fallbackIcon}
+						</span>
+					)}
+					<span className={`text-body-sm font-medium ${isActive ? "text-text-body" : "text-text-label"}`}>
+						{label}
+					</span>
+				</div>
+				{isConfigured && (
+					<div className="w-2 h-2 m-1 rounded-full bg-text-success" />
+				)}
+			</button>
+		);
+	};
+
+	// Render content based on selected tab
+	const renderContent = () => {
+		// Cloud version content
+		if (selectedTab === "cloud") {
+			if (import.meta.env.VITE_USE_LOCAL_PROXY === "true") {
+				return (
+					<div className="flex items-center justify-center h-64 text-text-label">
+						Cloud version is not available in local proxy mode
+					</div>
+				);
+			}
+			return (
+				<div className="w-full bg-surface-secondary rounded-2xl flex flex-col">
+					<div className="self-stretch flex flex-col justify-start mx-6 pt-2 pb-4 mb-4 border-t-0 border-b-[0.5px] border-x-0 border-solid border-border-secondary">
 						<div className="self-stretch inline-flex justify-start items-center gap-2">
-							<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
-								{t("setting.eigent-cloud-version")}
+							<div className="flex-1 justify-center text-body-base text-text-heading font-bold my-2">
+								{t("setting.eigent-cloud")}
 							</div>
 							{cloudPrefer ? (
 								<Button
 									variant="success"
-									size="sm"
-									className="focus-none"
+									size="xs"
+									className="focus-none rounded-full"
 									onClick={() => {
-										// currently selected -> unselect
 										setCloudPrefer(false);
 										setModelType("custom");
 									}}
 								>
 									Default
-									<Check />
 								</Button>
 							) : (
 								<Button
 									variant="ghost"
-									size="sm"
-									className="!text-text-label"
+									size="xs"
+									className="!text-text-label rounded-full"
 									onClick={() => {
-										// not selected -> select cloud prefer
 										setLocalPrefer(false);
 										setActiveModelIdx(null);
 										setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
@@ -691,12 +1005,21 @@ export default function SettingModels() {
 							>
 								{t("setting.pricing-options")}
 							</span>
-							<span className="text-text-body text-xs font-normal font-['Inter'] leading-tight">
+							<span className="text-text-body text-label-sm font-normal">
 								.
 							</span>
 						</div>
 					</div>
-					<div className="flex flex-row items-center justify-start gap-4 w-full pb-2">
+					{/*Content Area*/}
+					<div className="flex flex-row items-center justify-between gap-4 w-full px-6 pb-4">
+					  <div className="text-text-body text-body-sm">
+							{t("setting.credits")}:{" "}
+							{loadingCredits ? (
+								<Loader2 className="w-4 h-4 animate-spin" />
+							) : (
+								credits
+							)}
+						</div>
 						<Button
 							onClick={() => {
 								window.location.href = `https://www.eigent.ai/dashboard`;
@@ -712,16 +1035,8 @@ export default function SettingModels() {
 							)}
 							<Settings />
 						</Button>
-						<div className="text-text-body text-body-sm">
-							{t("setting.credits")}:{" "}
-							{loadingCredits ? (
-								<Loader2 className="w-4 h-4 animate-spin" />
-							) : (
-								credits
-							)}
-						</div>
 					</div>
-					<div className="w-full flex items-center flex-1 justify-between pt-6 border-b-0 border-x-0 border-solid border-border-disabled">
+					<div className="w-full flex items-center flex-1 justify-between px-6 pb-4">
 						<div className="flex items-center flex-1 min-w-0">
 							<span className="whitespace-nowrap overflow-hidden text-ellipsis text-body-sm">
 								{t("setting.select-model-type")}
@@ -783,333 +1098,576 @@ export default function SettingModels() {
 						</div>
 					</div>
 				</div>
-			)}
-			{/* customer models */}
-			<div className="self-stretch my-2 border-border-disabled inline-flex flex-col justify-start items-start border-x-0 border-solid">
-				{/* header */}
-				<div className="sticky top-[87px] py-2 z-10 bg-surface-tertiary self-stretch inline-flex justify-start items-start gap-2 pl-6 pr-2 my-6 border-y-0 border-r-0 border-solid border-border-secondary">
-					<div className="flex flex-col w-full items-start gap-1">
-						<span className="justify-center text-text-body text-body-md font-bold">
-							{t("setting.custom-model")}
-						</span>
-						<span className="justify-center text-text-body text-label-sm font-normal">
-							{t("setting.use-your-own-api-keys-or-set-up-a-local-model")}
-						</span>
-					</div>
-					<Button
-						variant="ghost"
-						size="md"
-						onClick={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							setCollapsed((c) => !c);
-						}}
-					>
-						{collapsed ? (
-							<ChevronDown className="w-4 h-4" />
-						) : (
-							<ChevronUp className="w-4 h-4" />
-						)}
-					</Button>
-				</div>
+			);
+		}
 
-				{/*  model list */}
-				<div
-					className={`self-stretch inline-flex flex-col justify-start items-start gap-8 transition-all duration-300 ease-in-out overflow-hidden ${collapsed
-						? "max-h-0 opacity-0 pointer-events-none"
-						: "opacity-100"
-						}`}
-					style={{
-						transform: collapsed ? "translateY(-10px)" : "translateY(0)",
-					}}
-				>
-					{items.map((item, idx) => {
-						const canSwitch = !!form[idx].provider_id;
-						return (
-							<div
-								key={item.id}
-								className="w-full bg-surface-secondary rounded-2xl overflow-hidden"
-							>
-								<div className="flex flex-col justify-between items-start gap-1 px-6 py-4">
-									<div className="self-stretch inline-flex justify-between items-center gap-2">
-										<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
-											{item.name}
-										</div>
-										{form[idx].prefer ? (
-											<Button
-												variant="success"
-												size="sm"
-												className="focus-none"
-												disabled={!canSwitch || loading === idx}
-												onClick={() => handleSwitch(idx, false)}
-											>
-												Default
-												<Check />
-											</Button>
-										) : (
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={!canSwitch || loading === idx}
-												onClick={() => handleSwitch(idx, true)}
-												className={canSwitch ? "!text-text-label" : ""}
-											>
-												{!canSwitch ? "Not Configured" : "Set as Default"}
-											</Button>
-										)}
-									</div>
-									<div className="text-body-sm text-text-label">
-										{item.description}
-									</div>
+		// BYOK (Bring Your Own Key) content - show specific model
+		if (selectedTab.startsWith("byok-")) {
+			const modelId = selectedTab.replace("byok-", "");
+			const idx = items.findIndex((item) => item.id === modelId);
+			if (idx === -1) return null;
+			
+			const item = items[idx];
+			const canSwitch = !!form[idx].provider_id;
+			
+			return (
+				<div className="w-full bg-surface-secondary rounded-2xl flex flex-col">
+					<div className="flex flex-col justify-between items-start mx-6 pt-2 pb-4 mb-4 border-t-0 border-b-[0.5px] border-x-0 border-solid border-border-secondary">
+						<div className="self-stretch inline-flex justify-between items-center gap-2">
+							<div className="flex items-center gap-2">
+								<div className="text-body-base text-text-heading font-bold my-2">
+									{item.name}
 								</div>
-								<div className="flex flex-col w-full items-center gap-4 px-6">
-									{/* API Key Setting */}
-									<Input
-										id={`apiKey-${item.id}`}
-										type={showApiKey[idx] ? "text" : "password"}
-										size="default"
-										title="API Key Setting"
-										state={errors[idx]?.apiKey ? "error" : "default"}
-										note={errors[idx]?.apiKey ?? undefined}
-										placeholder={` ${t("setting.enter-your-api-key")} ${item.name
-											} ${t("setting.key")}`}
-										backIcon={showApiKey[idx] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
-										onBackIconClick={() =>
-											setShowApiKey((arr) => arr.map((v, i) => (i === idx ? !v : v)))
-										}
-										value={form[idx].apiKey}
-										onChange={(e) => {
-											const v = e.target.value;
-											setForm((f) =>
-												f.map((fi, i) =>
-													i === idx ? { ...fi, apiKey: v } : fi
-												)
-											);
-											setErrors((errs) =>
-												errs.map((er, i) =>
-													i === idx ? { ...er, apiKey: "" } : er
-												)
-											);
-										}}
-									/>
-									{/* API Host Setting */}
-									<Input
-										id={`apiHost-${item.id}`}
-										size="default"
-										title="API Host Setting"
-										state={errors[idx]?.apiHost ? "error" : "default"}
-										note={errors[idx]?.apiHost ?? undefined}
-										placeholder={`${t("setting.enter-your-api-host")} ${item.name
-											} ${t("setting.url")}`}
-										value={form[idx].apiHost}
-										onChange={(e) => {
-											const v = e.target.value;
-											setForm((f) =>
-												f.map((fi, i) =>
-													i === idx ? { ...fi, apiHost: v } : fi
-												)
-											);
-											setErrors((errs) =>
-												errs.map((er, i) =>
-													i === idx ? { ...er, apiHost: "" } : er
-												)
-											);
-										}}
-									/>
-									{/* Model Type Setting */}
-									<Input
-										id={`modelType-${item.id}`}
-										size="default"
-										title="Model Type Setting"
-										state={errors[idx]?.model_type ? "error" : "default"}
-										note={errors[idx]?.model_type ?? undefined}
-										placeholder={`${t("setting.enter-your-model-type")} ${item.name
-											} ${t("setting.model-type")}`}
-										value={form[idx].model_type}
-										onChange={(e) => {
-											const v = e.target.value;
-											setForm((f) =>
-												f.map((fi, i) =>
-													i === idx ? { ...fi, model_type: v } : fi
-												)
-											);
-											setErrors((errs) =>
-												errs.map((er, i) =>
-													i === idx ? { ...er, model_type: "" } : er
-												)
-											);
-										}}
-									/>
-									{/* externalConfig render */}
-									{item.externalConfig &&
-										form[idx].externalConfig &&
-										form[idx].externalConfig.map((ec, ecIdx) => (
-											<div key={ec.key} className="w-full h-full flex flex-col gap-4">
-												{ec.options && ec.options.length > 0 ? (
-													<Select
-														value={ec.value}
-														onValueChange={(v) => {
-															setForm((f) =>
-																f.map((fi, i) =>
-																	i === idx
-																		? {
-																			...fi,
-																			externalConfig: fi.externalConfig?.map(
-																				(eec, i2) =>
-																					i2 === ecIdx
-																						? { ...eec, value: v }
-																						: eec
-																			),
-																		}
-																		: fi
-																)
-															);
-														}}
-													>
-														<SelectTrigger size="default" title={ec.name} state={errors[idx]?.externalConfig ? "error" : undefined} note={errors[idx]?.externalConfig ?? undefined}>
-															<SelectValue placeholder="please select" />
-														</SelectTrigger>
-														<SelectContent>
-															{ec.options.map((opt) => (
-																<SelectItem key={opt.value} value={opt.value}>
-																	{opt.label}
-																</SelectItem>
-															))}
-														</SelectContent>
-													</Select>
-												) : (
-													<Input
-														size="default"
-														title={ec.name}
-														state={errors[idx]?.externalConfig ? "error" : undefined}
-														note={errors[idx]?.externalConfig ?? undefined}
-														value={ec.value}
-														onChange={(e) => {
-															const v = e.target.value;
-															setForm((f) =>
-																f.map((fi, i) =>
-																	i === idx
-																		? {
-																			...fi,
-																			externalConfig: fi.externalConfig?.map(
-																				(eec, i2) =>
-																					i2 === ecIdx
-																						? { ...eec, value: v }
-																						: eec
-																			),
-																		}
-																		: fi
-																)
-															);
-														}}
-													/>
-												)}
-											</div>
-										))}
-								</div>
-								{/* Action Button */}
-								<div className="flex justify-end mt-6 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
-									<Button variant="ghost" size="sm" className="!text-text-label" onClick={() => handleDelete(idx)}>{t("setting.reset")}</Button>
+								{form[idx].prefer ? (
 									<Button
-										variant="primary"
-										size="sm"
-										onClick={() => handleVerify(idx)}
-										disabled={loading === idx}
+										variant="success"
+										size="xs"
+										className="focus-none rounded-full shadow-none"
+										disabled={!canSwitch || loading === idx}
+										onClick={() => handleSwitch(idx, false)}
 									>
-										<span className="text-text-inverse-primary">
-											{loading === idx ? "Configuring..." : "Save"}
-										</span>
+										Default
 									</Button>
-								</div>
+								) : (
+									<Button
+										variant="ghost"
+										size="xs"
+										disabled={!canSwitch || loading === idx}
+										onClick={() => handleSwitch(idx, true)}
+										className={canSwitch ? "!text-text-label rounded-full shadow-none bg-button-transparent-fill-hover" : ""}
+									>
+										{!canSwitch ? "Not Configured" : "Set as Default"}
+									</Button>
+								)}
 							</div>
-						);
-					})}
+							{form[idx].provider_id ? (
+								<div className="w-2 h-2 rounded-full bg-text-success" />
+							) : (
+								<div className="w-2 h-2 rounded-full bg-text-label opacity-10" />
+							)}
+						</div>
+						<div className="text-body-sm text-text-label">
+							{item.description}
+						</div>
+					</div>
+					<div className="flex flex-col w-full items-center gap-4 px-6">
+						{/* API Key Setting */}
+						<Input
+							id={`apiKey-${item.id}`}
+							type={showApiKey[idx] ? "text" : "password"}
+							size="default"
+							title="API Key Setting"
+							state={errors[idx]?.apiKey ? "error" : "default"}
+							note={errors[idx]?.apiKey ?? undefined}
+							placeholder={` ${t("setting.enter-your-api-key")} ${item.name
+								} ${t("setting.key")}`}
+							backIcon={showApiKey[idx] ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+							onBackIconClick={() =>
+								setShowApiKey((arr) => arr.map((v, i) => (i === idx ? !v : v)))
+							}
+							value={form[idx].apiKey}
+							onChange={(e) => {
+								const v = e.target.value;
+								setForm((f) =>
+									f.map((fi, i) =>
+										i === idx ? { ...fi, apiKey: v } : fi
+									)
+								);
+								setErrors((errs) =>
+									errs.map((er, i) =>
+										i === idx ? { ...er, apiKey: "" } : er
+									)
+								);
+							}}
+						/>
+						{/* API Host Setting */}
+						<Input
+							id={`apiHost-${item.id}`}
+							size="default"
+							title="API Host Setting"
+							state={errors[idx]?.apiHost ? "error" : "default"}
+							note={errors[idx]?.apiHost ?? undefined}
+							placeholder={`${t("setting.enter-your-api-host")} ${item.name
+								} ${t("setting.url")}`}
+							value={form[idx].apiHost}
+							onChange={(e) => {
+								const v = e.target.value;
+								setForm((f) =>
+									f.map((fi, i) =>
+										i === idx ? { ...fi, apiHost: v } : fi
+									)
+								);
+								setErrors((errs) =>
+									errs.map((er, i) =>
+										i === idx ? { ...er, apiHost: "" } : er
+									)
+								);
+							}}
+						/>
+						{/* Model Type Setting */}
+						<Input
+							id={`modelType-${item.id}`}
+							size="default"
+							title="Model Type Setting"
+							state={errors[idx]?.model_type ? "error" : "default"}
+							note={errors[idx]?.model_type ?? undefined}
+							placeholder={`${t("setting.enter-your-model-type")} ${item.name
+								} ${t("setting.model-type")}`}
+							value={form[idx].model_type}
+							onChange={(e) => {
+								const v = e.target.value;
+								setForm((f) =>
+									f.map((fi, i) =>
+										i === idx ? { ...fi, model_type: v } : fi
+									)
+								);
+								setErrors((errs) =>
+									errs.map((er, i) =>
+										i === idx ? { ...er, model_type: "" } : er
+									)
+								);
+							}}
+						/>
+						{/* externalConfig render */}
+						{item.externalConfig &&
+							form[idx].externalConfig &&
+							form[idx].externalConfig.map((ec, ecIdx) => (
+								<div key={ec.key} className="w-full h-full flex flex-col gap-4">
+									{ec.options && ec.options.length > 0 ? (
+										<Select
+											value={ec.value}
+											onValueChange={(v) => {
+												setForm((f) =>
+													f.map((fi, i) =>
+														i === idx
+															? {
+																...fi,
+																externalConfig: fi.externalConfig?.map(
+																	(eec, i2) =>
+																		i2 === ecIdx
+																			? { ...eec, value: v }
+																			: eec
+																),
+															}
+															: fi
+													)
+												);
+											}}
+										>
+											<SelectTrigger size="default" title={ec.name} state={errors[idx]?.externalConfig ? "error" : undefined} note={errors[idx]?.externalConfig ?? undefined}>
+												<SelectValue placeholder="please select" />
+											</SelectTrigger>
+											<SelectContent>
+												{ec.options.map((opt) => (
+													<SelectItem key={opt.value} value={opt.value}>
+														{opt.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									) : (
+										<Input
+											size="default"
+											title={ec.name}
+											state={errors[idx]?.externalConfig ? "error" : undefined}
+											note={errors[idx]?.externalConfig ?? undefined}
+											value={ec.value}
+											onChange={(e) => {
+												const v = e.target.value;
+												setForm((f) =>
+													f.map((fi, i) =>
+														i === idx
+															? {
+																...fi,
+																externalConfig: fi.externalConfig?.map(
+																	(eec, i2) =>
+																		i2 === ecIdx
+																			? { ...eec, value: v }
+																			: eec
+																),
+															}
+															: fi
+													)
+												);
+											}}
+										/>
+									)}
+								</div>
+							))}
+					</div>
+					{/* Action Button */}
+					<div className="flex justify-end px-6 py-4 gap-2">
+						<Button variant="ghost" size="sm" className="!text-text-label" onClick={() => handleDelete(idx)}>{t("setting.reset")}</Button>
+						<Button
+							variant="primary"
+							size="sm"
+							onClick={() => handleVerify(idx)}
+							disabled={loading === idx}
+						>
+							<span className="text-text-inverse-primary">
+								{loading === idx ? "Configuring..." : "Save"}
+							</span>
+						</Button>
+					</div>
+				</div>
+			);
+		}
+
+		// Local model content - specific platforms
+		if (selectedTab.startsWith("local-")) {
+			const platform = selectedTab.replace("local-", "");
+			// Update localPlatform when switching to a local model tab
+			if (localPlatform !== platform) {
+				setLocalPlatform(platform);
+			}
+			
+			const currentEndpoint = localEndpoints[platform] || "";
+			const currentType = localTypes[platform] || "";
+			const isConnected = !!currentEndpoint;
+			const isPreferred = localPrefer && localPlatform === platform;
+			
+			return (
+				<div className="w-full bg-surface-secondary rounded-2xl flex flex-col">
+					<div className="flex flex-col justify-between items-start mx-6 pt-2 pb-4 mb-4 border-t-0 border-b-[0.5px] border-x-0 border-solid border-border-secondary">
+						<div className="self-stretch inline-flex justify-between items-center gap-2">
+							<div className="flex items-center gap-2">
+								<div className="text-body-base text-text-heading font-bold my-2">
+									{platform === "ollama" ? "Ollama" : 
+									 platform === "vllm" ? "vLLM" : 
+									 platform === "sglang" ? "SGLang" : "LM Studio"}
+								</div>
+								{isPreferred ? (
+									<Button
+										variant="success"
+										size="xs"
+										className="focus-none rounded-full shadow-none"
+										disabled={!isConnected}
+										onClick={() => handleLocalSwitch(false)}
+									>
+										Default
+									</Button>
+								) : (
+									<Button
+										variant="ghost"
+										size="xs"
+										disabled={!isConnected}
+										onClick={() => handleLocalSwitch(true)}
+										className={isConnected ? "!text-text-label rounded-full shadow-none bg-button-transparent-fill-hover" : ""}
+									>
+										{!isConnected ? "Not Configured" : "Set as Default"}
+									</Button>
+								)}
+							</div>
+							{isConnected ? (
+								<div className="w-2 h-2 rounded-full bg-text-success" />
+							) : (
+								<div className="w-2 h-2 rounded-full bg-text-label opacity-10" />
+							)}
+						</div>
+					</div>
+					{/* Model Endpoint URL Setting */}
+					<div className="flex flex-col w-full items-center gap-4 px-6">
+						<Input
+							size="default"
+							title={t("setting.model-endpoint-url")}
+							state={localInputError ? "error" : "default"}
+							value={currentEndpoint}
+							onChange={(e) => {
+								setLocalEndpoints(prev => ({ ...prev, [platform]: e.target.value }));
+								setLocalInputError(false);
+								setLocalError(null);
+							}}
+							disabled={!localEnabled}
+							placeholder={platform === "ollama" ? "http://localhost:11434/v1" : 
+								platform === "lmstudio" ? "http://localhost:1234/v1" :
+								"http://localhost:8000/v1"}
+							note={localError ?? undefined}
+						/>
+						<Input
+							size="default"
+							title={t("setting.model-type")}
+							state={localInputError ? "error" : "default"}
+							placeholder={t("setting.enter-your-local-model-type")}
+							value={currentType}
+							onChange={(e) => setLocalTypes(prev => ({ ...prev, [platform]: e.target.value }))}
+							disabled={!localEnabled}
+						/>
+					</div>
+					{/* Action Button */}
+					<div className="flex justify-end px-6 py-4 gap-2">
+						<Button variant="ghost" size="sm" className="!text-text-label" onClick={handleLocalReset}>{t("setting.reset")}</Button>
+						<Button
+							onClick={handleLocalVerify}
+							disabled={!localEnabled || localVerifying}
+							variant="primary"
+							size="sm"
+						>
+							<span className="text-text-inverse-primary">
+								{localVerifying ? "Configuring..." : "Save"}
+							</span>
+						</Button>
+					</div>
+				</div>
+			);
+		}
+
+		return null;
+	};
+
+	return (
+		<div className="flex-1 w-full h-auto m-auto flex flex-col">
+			{/* Header Section */}
+			<div className="sticky top-0 z-10 bg-surface-primary flex pl-6 pt-8 pb-6 w-full items-center justify-between">
+				<div className="flex flex-row items-center justify-between w-full gap-4">
+					<div className="flex flex-col">
+						<div className="text-heading-sm font-bold text-text-heading">{t("setting.models")}</div>
+					</div>
+					{/* Default Model Cascading Dropdown */}
+					<div className="flex flex-row items-center w-fit gap-4">
+						<div className="text-body-sm text-text-body">Default</div>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<button className="flex items-center gap-2 px-3 py-1 rounded-lg border border-solid border-input-border-default bg-input-bg-input hover:bg-input-bg-hover hover:border-input-border-hover transition-colors w-fit justify-between">
+									<span className="text-body-sm text-text-body whitespace-nowrap">
+										{getDefaultModelDisplayText()}
+									</span>
+									<ChevronDown className="w-4 h-4 text-icon-primary flex-shrink-0" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-[180px]">
+								{/* Cloud Category */}
+								{import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && (
+									<DropdownMenuSub>
+										<DropdownMenuSubTrigger className="gap-2">
+											<img src={eigentImage} alt="Cloud" className="w-5 h-5" />
+											<span className="text-body-sm">{t("setting.eigent-cloud")}</span>
+										</DropdownMenuSubTrigger>
+										<DropdownMenuSubContent className="w-[200px] max-h-[300px] overflow-y-auto">
+											{cloudModelOptions.map((model) => (
+												<DropdownMenuItem
+													key={model.id}
+													onClick={() => handleDefaultModelSelect("cloud", model.id)}
+													className="flex items-center justify-between"
+												>
+													<span className="text-body-sm">{model.name}</span>
+													{cloudPrefer && cloud_model_type === model.id && (
+														<Check className="w-4 h-4 text-text-success" />
+													)}
+												</DropdownMenuItem>
+											))}
+										</DropdownMenuSubContent>
+									</DropdownMenuSub>
+								)}
+								
+								{/* Custom Model Category */}
+								<DropdownMenuSub>
+									<DropdownMenuSubTrigger className="gap-2">
+										<Key className="w-5 h-5 text-icon-primary" />
+										<span className="text-body-sm">{t("setting.custom-model")}</span>
+									</DropdownMenuSubTrigger>
+									<DropdownMenuSubContent className="w-[220px] max-h-[440px] overflow-y-auto">
+										{items.map((item, idx) => {
+											const isConfigured = !!form[idx]?.provider_id;
+											const isPreferred = form[idx]?.prefer;
+											const modelImage = getModelImage(item.id);
+											
+											return (
+												<DropdownMenuItem
+													key={item.id}
+													onClick={() => handleDefaultModelSelect("custom", item.id)}
+													className="flex items-center justify-between"
+												>
+													<div className="flex items-center gap-2">
+														{modelImage ? (
+															<img src={modelImage} alt={item.name} className="w-4 h-4" />
+														) : (
+															<Key className="w-4 h-4 text-icon-secondary" />
+														)}
+														<span className={`text-body-sm ${isConfigured ? "text-text-body" : "text-text-label"}`}>
+															{item.name}
+														</span>
+													</div>
+													<div className="flex items-center gap-1">
+														{!isConfigured && (
+															<div className="w-2 h-2 rounded-full bg-text-label opacity-10" />
+														)}
+														{isPreferred && (
+															<Check className="w-4 h-4 text-text-success" />
+														)}
+														{isConfigured && !isPreferred && (
+															<div className="w-2 h-2 rounded-full bg-text-success" />
+														)}
+													</div>
+												</DropdownMenuItem>
+											);
+										})}
+									</DropdownMenuSubContent>
+								</DropdownMenuSub>
+								
+								{/* Local Host Category */}
+								<DropdownMenuSub>
+									<DropdownMenuSubTrigger className="gap-2">
+										<Server className="w-5 h-5 text-icon-primary" />
+										<span className="text-body-sm">{t("setting.local-model")}</span>
+									</DropdownMenuSubTrigger>
+									<DropdownMenuSubContent className="w-[200px]">
+										{localModelOptions.map((model) => {
+											const isConfigured = !!localEndpoints[model.id];
+											const isPreferred = localPrefer && localPlatform === model.id;
+											const modelImage = getModelImage(`local-${model.id}`);
+											
+											return (
+												<DropdownMenuItem
+													key={model.id}
+													onClick={() => handleDefaultModelSelect("local", model.id)}
+													className="flex items-center justify-between"
+												>
+													<div className="flex items-center gap-2">
+														{modelImage ? (
+															<img src={modelImage} alt={model.name} className="w-4 h-4" />
+														) : (
+															<Server className="w-4 h-4 text-icon-secondary" />
+														)}
+														<span className={`text-body-sm ${isConfigured ? "text-text-body" : "text-text-label"}`}>
+															{model.name}
+														</span>
+													</div>
+													<div className="flex items-center gap-1">
+														{!isConfigured && (
+															<div className="w-2 h-2 rounded-full bg-text-label opacity-10" />
+														)}
+														{isPreferred && (
+															<Check className="w-4 h-4 text-text-success" />
+														)}
+														{isConfigured && !isPreferred && (
+															<div className="w-2 h-2 rounded-full bg-text-success" />
+														)}
+													</div>
+												</DropdownMenuItem>
+											);
+										})}
+									</DropdownMenuSubContent>
+								</DropdownMenuSub>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
 				</div>
 			</div>
-			{/* Local Model */}
-			<div className="mt-2 bg-surface-secondary rounded-2xl flex flex-col gap-4">
-				<div className="flex items-center justify-between mb-2 px-6 pt-4">
-					<div className="font-bold text-body-lg text-text-heading">{t("setting.local-model")}</div>
-					{localPrefer ? (
-						<Button
-							variant="success"
-							size="sm"
-							className="focus-none"
-							disabled={!localEndpoint}
-							onClick={() => handleLocalSwitch(false)}
-						>
-							Default
-							<Check />
-						</Button>
-					) : (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={!localEndpoint}
-							onClick={() => handleLocalSwitch(true)}
-							className={localEndpoint ? "!text-text-success" : ""}
-						>
-							{!localEndpoint ? "Not Configured" : "Set as Default"}
-						</Button>
-					)}
-				</div>
-				<div className="flex flex-col gap-4 px-6">
 
-					<Select
-						value={localPlatform}
-						onValueChange={(v) => {
-							console.log(v);
-							setLocalPlatform(v);
-						}}
-						disabled={!localEnabled}
-					>
-						<SelectTrigger size="default" title={t("setting.model-platform")} state={localInputError ? "error" : undefined} note={localError ?? undefined}>
-							<SelectValue placeholder="Select platform" />
-						</SelectTrigger>
-						<SelectContent className="bg-white-100%">
-							<SelectItem value="ollama">Ollama</SelectItem>
-							<SelectItem value="vllm">vLLM</SelectItem>
-							<SelectItem value="sglang">SGLang</SelectItem>
-							<SelectItem value="lmstudio">LMStudio</SelectItem>
-						</SelectContent>
-					</Select>
+			{/* Content Section with Sidebar */}
+			<div className="flex w-full mx-auto pb-8 flex-1 min-h-0 sticky top-[88px] self-start">
+				{/* Sidebar */}
+				<div className="w-[240px] flex-shrink-0 pl-3 pr-2 py-2 bg-surface-secondary rounded-2xl mr-4 overflow-y-auto max-h-[calc(100vh-200px)] hover-style-scrollbar">
+					<div className="flex flex-col gap-4">
+						{/* Eigent Cloud Section */}
+						<div className="flex flex-col gap-1">
+						  <div className="px-3 py-2 text-body-base font-bold text-text-heading">
+								{t("setting.eigent-cloud")}
+							</div>
+							{import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && (
+								renderSidebarItem(
+									"cloud",
+									t("setting.eigent-cloud"),
+									"cloud",
+									selectedTab === "cloud",
+									false,
+									cloudPrefer
+								)
+							)}
+						</div>
+						{/* Bring Your Own Key Section */}
+						<div className="flex flex-col gap-1">
+							<button
+								onClick={() => setByokCollapsed(!byokCollapsed)}
+								className="flex items-center justify-between px-3 py-2 bg-transparent hover:bg-surface-secondary rounded-lg transition-colors"
+							>
+								<div className="text-body-base font-bold text-text-heading">
+									{t("setting.custom-model")}
+								</div>
+								{byokCollapsed ? (
+									<ChevronDown className="w-4 h-4 text-text-label" />
+								) : (
+									<ChevronUp className="w-4 h-4 text-text-label" />
+								)}
+							</button>
+							<div
+								className={`overflow-hidden transition-all duration-300 ease-in-out ${
+									byokCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
+								}`}
+							>
+								{items.map((item, idx) => (
+									renderSidebarItem(
+										`byok-${item.id}` as SidebarTab,
+										item.name,
+										item.id,
+										selectedTab === `byok-${item.id}`,
+										true,
+										!!form[idx].provider_id
+									)
+								))}
+							</div>
+						</div>
 
-					<Input
-						size="default"
-						title={t("setting.model-endpoint-url")}
-						state={localInputError ? "error" : "default"}
-						value={localEndpoint}
-						onChange={(e) => {
-							setLocalEndpoint(e.target.value);
-							setLocalInputError(false);
-							setLocalError(null);
-						}}
-						disabled={!localEnabled}
-						placeholder="http://localhost:11434/v1"
-						note={localError ?? undefined}
-					/>
-					<Input
-						size="default"
-						title={t("setting.model-type")}
-						state={localInputError ? "error" : "default"}
-						placeholder={t("setting.enter-your-local-model-type")}
-						value={localType}
-						onChange={(e) => setLocalType(e.target.value)}
-						disabled={!localEnabled}
-					/>
+						{/* Local Model Section */}
+						<div className="flex flex-col gap-1">
+							<button
+								onClick={() => setLocalCollapsed(!localCollapsed)}
+								className="flex items-center justify-between px-3 py-2 bg-transparent hover:bg-surface-secondary rounded-lg transition-colors"
+							>
+								<div className="text-body-base font-bold text-text-heading">
+									{t("setting.local-model")}
+								</div>
+								{localCollapsed ? (
+									<ChevronDown className="w-4 h-4 text-text-label" />
+								) : (
+									<ChevronUp className="w-4 h-4 text-text-label" />
+								)}
+							</button>
+							<div
+								className={`overflow-hidden transition-all duration-300 ease-in-out ${
+									localCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
+								}`}
+							>
+								{renderSidebarItem(
+									"local-ollama",
+									"Ollama",
+									"local-ollama",
+									selectedTab === "local-ollama",
+									true,
+									!!localEndpoints["ollama"]
+								)}
+								{renderSidebarItem(
+									"local-vllm",
+									"vLLM",
+									"local-vllm",
+									selectedTab === "local-vllm",
+									true,
+									!!localEndpoints["vllm"]
+								)}
+								{renderSidebarItem(
+									"local-sglang",
+									"SGLang",
+									"local-sglang",
+									selectedTab === "local-sglang",
+									true,
+									!!localEndpoints["sglang"]
+								)}
+								{renderSidebarItem(
+									"local-lmstudio",
+									"LM Studio",
+									"local-lmstudio",
+									selectedTab === "local-lmstudio",
+									true,
+									!!localEndpoints["lmstudio"]
+								)}
+							</div>
+						</div>
+					</div>
 				</div>
-				<div className="flex justify-end mt-2 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
-					<Button variant="ghost" size="sm" className="!text-text-label" onClick={handleLocalReset}>{t("setting.reset")}</Button>
-					<Button
-						onClick={handleLocalVerify}
-						disabled={!localEnabled || localVerifying}
-						variant="primary"
-						size="sm"
-					>
-						<span className="text-text-inverse-primary">
-							{localVerifying ? "Configuring..." : "Save"}
-						</span>
-					</Button>
+
+				{/* Main Content */}
+				<div className="flex-1 min-w-0">
+					{renderContent()}
 				</div>
 			</div>
 		</div>

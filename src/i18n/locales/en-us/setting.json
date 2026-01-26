@@ -4,9 +4,11 @@
 	"privacy": "Privacy",
 	"models": "Models",
 	"mcp": "MCP & Tools",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "Default",
+	"profile": "Profile",
 	"account": "Account",
-	"you-are-currently-signed-in-with": "You are currently signed in with {{email}}",
+	"you-are-currently-signed-in-with": "You are currently signed in with <email>{{email}}</email>",
 	"manage": "Manage",
 	"log-out": "Log out",
 	"language": "Language",
@@ -160,6 +162,7 @@
 	"reset": "Reset",
 	"reset-success": "Reset successfully!",
 	"reset-failed": "Reset failed!",
+	"select-default-model": "Select Default Model",
 
 	"browser-login": "Browser Login",
 	"browser-login-description": "Open a Chrome browser to log in to your accounts. Your login data will be saved locally in a secure profile.",

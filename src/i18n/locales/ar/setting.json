@@ -4,9 +4,11 @@
 	"privacy": "خصوصية",
 	"models": "نماذج",
 	"mcp": "MCP الأدوات",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "افتراضي",
+	"profile": "الملف الشخصي",
 	"account": "حساب",
-	"you-are-currently-signed-in-with": "{{email}} أنت مسجل الدخول حاليًا باستخدام",
+	"you-are-currently-signed-in-with": "<email>{{email}}</email> أنت مسجل الدخول حاليًا باستخدام",
 	"manage": "إدارة",
 	"log-out": "تسجيل الخروج",
 	"language": "اللغة",
@@ -159,5 +161,6 @@
 	"recommended": "موصى به",
 	"reset": "إعادة تعيين",
 	"reset-success": "تمت إعادة التعيين بنجاح!",
-	"reset-failed": "فشل إعادة التعيين!"
+	"reset-failed": "فشل إعادة التعيين!",
+	"select-default-model": "اختر النموذج الافتراضي"
 }

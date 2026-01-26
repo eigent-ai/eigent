@@ -440,22 +440,20 @@ export default function IntegrationList({
 										{" "}
 										Default {item.name}
 									</div>
-									<div className="flex-1 max-w-[300px]">
-										<Select onValueChange={(v) => onSelectChange?.(v, item)}>
-											<SelectTrigger size="default">
-												<SelectValue placeholder={selectPlaceholder} />
-											</SelectTrigger>
-											<SelectContent className="z-100">
-												{selectContent ?? (
-													<>
-														<SelectItem value="more">
-															More integrations
-														</SelectItem>
-													</>
-												)}
-											</SelectContent>
-										</Select>
-									</div>
+									<Select onValueChange={(v) => onSelectChange?.(v, item)}>
+										<SelectTrigger size="default" className="w-[240px]">
+											<SelectValue placeholder={selectPlaceholder} />
+										</SelectTrigger>
+										<SelectContent className="z-100">
+											{selectContent ?? (
+												<>
+													<SelectItem value="more">
+														More integrations
+													</SelectItem>
+												</>
+											)}
+										</SelectContent>
+									</Select>
 								</div>
 							</div>
 						)}

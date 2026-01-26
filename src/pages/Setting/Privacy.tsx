@@ -127,91 +127,95 @@ export default function SettingPrivacy() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 pb-40 ">
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col gap-2">
-			<div className="text-body-lg font-bold text-text-heading">{t("setting.data-privacy")}</div>
-			<span className="text-body-sm font-normal text-text-body">
-				{t("setting.data-privacy-description")}
-				{" "}
-				<a
-					className="text-blue-500 no-underline"
-					href="https://www.eigent.ai/privacy-policy"
-					target="_blank"
-				>
-					{t("setting.privacy-policy")}
-				</a>
-				.
-			</span>
-			<Button
-			  variant="ghost"
-				size="sm"
-				className="-ml-2"
-				onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
-				aria-expanded={isHowWeHandleOpen}
-				aria-controls="how-we-handle-your-data"
-			>
-				<span>{t("setting.how-we-handle-your-data")}</span>
-				<ChevronDown
-					className={`w-4 h-4 transition-transform ${isHowWeHandleOpen ? "rotate-0" : "-rotate-90"}`}
-				/>
-			</Button>
-			{isHowWeHandleOpen && (
-				<ol id="how-we-handle-your-data" className="pl-5 text-body-sm text-text-body font-normal mt-2">
-					<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
-					<ul className="pl-4 mb-2">
-						<li>
-							{t("setting.how-we-handle-your-data-line-1-line-1")}
-						</li>
-						<li>
-							{t("setting.how-we-handle-your-data-line-1-line-2")}
-						</li>
-						<li>
-							{t("setting.how-we-handle-your-data-line-1-line-3")}
-						</li>
-					</ul>
-					<li>
-						{t("setting.how-we-handle-your-data-line-2")}
-					</li>
-					<li>
-						{t("setting.how-we-handle-your-data-line-3")}
-					</li>
-					<li>
-						{t("setting.how-we-handle-your-data-line-4")}
-					</li>
-					<li>{t("setting.how-we-handle-your-data-line-5")}</li>
-				</ol>
-			)}
-			</div>
-
-			{/* Privacy controls */}
-			{/* <h2 className="mb-2">Privacy controls</h2>
-			<div className="flex gap-2 h-[32px]">
-				<div className="font-bold leading-4">Task Directory</div>
-				<div className="flex-1 text-sm text-text-secondary bg-white-100% text-gray-400 h-[32px] flex items-center px-2 cursor-pointer">
-					<div className="text-ellipsis overflow-hidden">{logFolder || ""}</div>
-					<div className="ml-auto flex items-center">
-						<FolderSearch className="w-4 h-4 ml-2" />
+		<div className="flex-1 w-full h-auto m-auto">
+			{/* Header Section */}
+			<div className="flex px-6 pt-8 pb-6 max-w-[900px] mx-auto w-full items-center justify-between">
+				<div className="flex flex-row items-center justify-between w-full gap-4">
+					<div className="flex flex-col">
+						<div className="text-heading-sm font-bold text-text-heading">{t("setting.privacy")}</div>
 					</div>
 				</div>
-				<Button onClick={handleOpenFolder} size="sm" disabled={!logFolder}>
-					Open Folder
-				</Button>
-			</div> */}
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl mt-4">
-				<div className="flex gap-md items-center justify-between">
-					<div className="flex flex-col gap-2">
-						<div className="text-body-md font-bold text-text-heading">
-							{t("setting.enable-privacy-permissions-settings")}
+			</div>
+
+			{/* Content Section */}
+			<div className="flex flex-col gap-6">
+				{/* How We Handle Your Data Section */}
+				<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
+					<div className="flex items-start justify-between gap-4">
+						<div className="flex flex-col gap-2 flex-1">
+							<div className="text-body-base font-bold text-text-heading">{t("setting.how-we-handle-your-data")}</div>
+							<span className="text-body-sm font-normal text-text-body">
+								{t("setting.data-privacy-description")}
+								{" "}
+								<a
+									className="text-blue-500 no-underline"
+									href="https://www.eigent.ai/privacy-policy"
+									target="_blank"
+								>
+									{t("setting.privacy-policy")}
+								</a>
+								.
+							</span>
 						</div>
-						<div className="text-body-sm text-text-body font-normal">
-							{t("setting.enable-privacy-permissions-settings-description")}
-						</div>
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
+							aria-expanded={isHowWeHandleOpen}
+							aria-controls="how-we-handle-your-data"
+						>
+							<ChevronDown
+								className={`w-4 h-4 transition-transform ${isHowWeHandleOpen ? "rotate-0" : "-rotate-90"}`}
+							/>
+						</Button>
 					</div>
-					<div className="flex items-center justify-center">
-						<Switch
-							checked={_privacy}
-							onCheckedChange={() => handleTurnOnAll(!_privacy)}
-						/>
+					{isHowWeHandleOpen && (
+						<div className="mt-4 mr-10 border-b-0 border-x-0 border-t-[0.5px] border-solid border-border-secondary">
+							<ol id="how-we-handle-your-data" className="pl-5 text-body-sm text-text-body font-normal">
+								<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
+								<ul className="pl-4 mb-2">
+									<li>
+										{t("setting.how-we-handle-your-data-line-1-line-1")}
+									</li>
+									<li>
+										{t("setting.how-we-handle-your-data-line-1-line-2")}
+									</li>
+									<li>
+										{t("setting.how-we-handle-your-data-line-1-line-3")}
+									</li>
+								</ul>
+								<li>
+									{t("setting.how-we-handle-your-data-line-2")}
+								</li>
+								<li>
+									{t("setting.how-we-handle-your-data-line-3")}
+								</li>
+								<li>
+									{t("setting.how-we-handle-your-data-line-4")}
+								</li>
+								<li>{t("setting.how-we-handle-your-data-line-5")}</li>
+							</ol>
+						</div>
+					)}
+				</div>
+
+				{/* Enable Privacy Permissions Settings Section */}
+				<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
+					<div className="flex gap-md items-center justify-between">
+						<div className="flex flex-col gap-2">
+							<div className="text-body-base font-bold text-text-heading">
+								{t("setting.enable-privacy-permissions-settings")}
+							</div>
+							<div className="text-body-sm text-text-body font-normal">
+								{t("setting.enable-privacy-permissions-settings-description")}
+							</div>
+						</div>
+						<div className="flex items-center justify-center">
+							<Switch
+								checked={_privacy}
+								onCheckedChange={() => handleTurnOnAll(!_privacy)}
+							/>
+						</div>
 					</div>
 				</div>
 			</div>

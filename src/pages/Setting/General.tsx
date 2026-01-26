@@ -27,7 +27,7 @@ import { createRef, RefObject } from "react";
 import { useEffect, useState } from "react";
 import { useChatStore } from "@/store/chatStore";
 import { LocaleEnum, switchLanguage } from "@/i18n";
-import { useTranslation } from "react-i18next";
+import { useTranslation, Trans } from "react-i18next";
 import { toast } from "sonner";
 
 import {
@@ -152,52 +152,74 @@ export default function SettingGeneral() {
 	}, []);
 
 	return (
-		<div className="space-y-8">
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-base font-bold leading-12 text-text-body">
-					{t("setting.account")}
-				</div>
-				<div className="text-sm leading-13 mb-4">
-					{t("setting.you-are-currently-signed-in-with", {
-						email: authStore.email,
-					})}
-				</div>
-				<div className="flex items-center gap-sm">
-					<Button
-						onClick={() => {
-							window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
-						}}
-						variant="primary"
-						size="xs"
-					>
-						<Settings className="w-4 h-4 text-button-primary-icon-default" />
-						{t("setting.manage")}
-					</Button>
-					<Button
-						variant="outline"
-						size="xs"
-						onClick={() => {
-							chatStore.clearTasks();
-
-							resetInstallation(); // Reset installation state for new account
-							setNeedsBackendRestart(true); // Mark that backend is restarting
-
-							authStore.logout();
-							navigate("/login");
-						}}
-					>
-						<LogOut className="w-4 h-4 text-button-tertiery-text-default" />
-						{t("setting.log-out")}
-					</Button>
-				</div>
+		<div className="flex-1 w-full h-auto m-auto">
+      {/* Header Section */}
+			<div className="flex px-6 pt-8 pb-6 max-w-[900px] mx-auto w-full items-center justify-between">
+					<div className="flex flex-row items-center justify-between w-full gap-4">
+						<div className="flex flex-col">
+							<div className="text-heading-sm font-bold text-text-heading">{t("setting.general")}</div>
+						</div>
+					</div>
 			</div>
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-base font-bold leading-12 text-text-primary">
-					{t("setting.language")}
+      
+			{/* Content Section */}
+			<div className="flex flex-col gap-6">
+				{/* Profile Section */}
+				<div className="flex flex-row item-center justify-between px-6 py-4 bg-surface-secondary rounded-2xl">
+					<div className="flex flex-col gap-2">
+						<div className="text-body-base font-bold text-text-heading">
+							{t("setting.profile")}
+						</div>
+						<div className="text-body-sm">
+							<Trans
+								i18nKey="setting.you-are-currently-signed-in-with"
+								values={{ email: authStore.email }}
+								components={{
+									email: <span className="text-text-information underline" />,
+								}}
+							/>
+						</div>
+					</div>
+					<div className="flex items-center gap-sm">
+						<Button
+							onClick={() => {
+								window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
+							}}
+							variant="primary"
+							size="xs"
+						>
+							<Settings className="w-4 h-4 text-button-primary-icon-default" />
+							{t("setting.manage")}
+						</Button>
+						<Button
+							variant="outline"
+							size="xs"
+							onClick={() => {
+								chatStore.clearTasks();
+
+								resetInstallation(); // Reset installation state for new account
+								setNeedsBackendRestart(true); // Mark that backend is restarting
+
+								authStore.logout();
+								navigate("/login");
+							}}
+						>
+							<LogOut className="w-4 h-4 text-button-tertiery-text-default" />
+							{t("setting.log-out")}
+						</Button>
+					</div>
 				</div>
-				<div className="mt-md">
+
+				{/* Language Section */}
+				<div className="flex flex-row item-center justify-between px-6 py-4 bg-surface-secondary rounded-2xl">
+					<div className="flex flex-1 items-center">
+					  <div className="text-body-base font-bold text-text-heading">
+							{t("setting.language")}
+						</div>
+					</div>
+
 					<Select value={language} onValueChange={switchLanguage}>
-						<SelectTrigger>
+						<SelectTrigger className="w-48">
 							<SelectValue placeholder={t("setting.select-language")} />
 						</SelectTrigger>
 						<SelectContent className="bg-input-bg-default border">
@@ -214,34 +236,36 @@ export default function SettingGeneral() {
 						</SelectContent>
 					</Select>
 				</div>
-			</div>
-			<div className="px-6 py-4 bg-surface-secondary rounded-2xl">
-				<div className="text-base font-bold leading-12 text-text-primary">
-					{t("setting.appearance")}
-				</div>
-				<div className="flex items-center gap-md mt-md">
-					{themeList.map((item: any) => (
-						<div
-							key={item.label}
-							className="hover:cursor-pointer group flex flex-col items-center gap-sm "
-							onClick={() => setAppearance(item.value)}
-						>
-							<img
-								src={item.img}
-								className={`rounded-lg transition-all h-[91.67px] aspect-[183/91.67] border border-solid border-transparent group-hover:border-bg-fill-info-primary ${
-									item.value == appearance ? "border-bg-fill-info-primary" : ""
-								}`}
-								alt=""
-							/>
+
+				{/* Appearance Section */}
+				<div className="flex flex-row item-center justify-between px-6 py-4 bg-surface-secondary rounded-2xl">
+					<div className="text-body-base font-bold text-text-heading">
+						{t("setting.appearance")}
+					</div>
+					<div className="flex items-center gap-md">
+						{themeList.map((item: any) => (
 							<div
-								className={`text-sm leading-13 text-text-primary group-hover:underline ${
-									item.value == appearance ? "underline" : ""
-								}`}
+								key={item.label}
+								className="hover:cursor-pointer group flex flex-col items-center gap-sm "
+								onClick={() => setAppearance(item.value)}
 							>
-								{t(item.label)}
+								<img
+									src={item.img}
+									className={`rounded-lg transition-all h-[91.67px] aspect-[183/91.67] border border-solid border-transparent group-hover:border-bg-fill-info-primary ${
+										item.value == appearance ? "border-bg-fill-info-primary" : ""
+									}`}
+									alt=""
+								/>
+								<div
+									className={`text-sm text-text-primary group-hover:underline ${
+										item.value == appearance ? "underline" : ""
+									}`}
+								>
+									{t(item.label)}
+								</div>
 							</div>
-						</div>
-					))}
+						))}
+					</div>
 				</div>
 			</div>
 		</div>
