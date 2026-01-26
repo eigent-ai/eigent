@@ -650,13 +650,14 @@ class Workforce(BaseWorkforce):
                 }))
 
         if metrics_callbacks:
-
-            event = TaskFailedEvent(task_id=task.id, )
+            error_msg = error_message or str(task.result or "Unknown error")
+            event = TaskFailedEvent(
+                task_id=task.id,
+                error_message=error_msg,
+            )
             # Add failure details if available
             if hasattr(task, 'assigned_worker_id'):
                 event.worker_id = task.assigned_worker_id
-            event.error_message = error_message or str(task.result
-                                                       or "Unknown error")
             event.failure_count = task.failure_count
             metrics_callbacks[0].log_task_failed(event)
 
