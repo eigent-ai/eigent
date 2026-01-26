@@ -2,7 +2,7 @@
 Cloud sync step decorator.
 
 Syncs SSE step data to cloud server when SERVER_URL is configured.
-High-frequency events (decompose_text) are filtered to reduce database bloat.
+High-frequency events (decompose_text) are batched to reduce API calls.
 
 Config (~/.eigent/.env):
     SERVER_URL=https://dev.eigent.ai/api
@@ -22,8 +22,11 @@ import logging
 logger = logging.getLogger("sync_step")
 
 
-# High-frequency events to skip (reduces database bloat and API load)
-SKIP_EVENTS = {"decompose_text"}
+# Batch config for decompose_text events
+BATCH_WORD_THRESHOLD = 5
+
+# Buffer storage: task_id -> accumulated text
+_text_buffers: dict[str, str] = {}
 
 
 @lru_cache(maxsize=1)
@@ -57,18 +60,57 @@ def _try_sync(args, value, sync_url):
     if not data:
         return
     
-    # Skip high-frequency events to reduce database bloat
-    if data.get("step") in SKIP_EVENTS:
-        return
-    
     task_id = _get_task_id(args)
     if not task_id:
         return
     
+    step = data.get("step")
+    
+    # Batch decompose_text events to reduce API calls
+    if step == "decompose_text":
+        _buffer_text(task_id, data["data"].get("content", ""))
+        if _should_flush(task_id):
+            _flush_buffer(task_id, sync_url)
+        return
+    
+    # Flush any buffered text before sending other events (preserves order)
+    if task_id in _text_buffers:
+        _flush_buffer(task_id, sync_url)
+    
     payload = {
         "task_id": task_id,
-        "step": data["step"],
+        "step": step,
         "data": data["data"],
+        "timestamp": time.time_ns() / 1_000_000_000,
+    }
+    
+    asyncio.create_task(_send(sync_url, payload))
+
+
+def _buffer_text(task_id: str, content: str):
+    """Accumulate decompose_text content in buffer."""
+    if task_id not in _text_buffers:
+        _text_buffers[task_id] = ""
+    _text_buffers[task_id] = content
+
+
+def _should_flush(task_id: str) -> bool:
+    """Check if buffer has enough words to flush."""
+    text = _text_buffers.get(task_id, "")
+    word_count = len(text.split())
+    return word_count >= BATCH_WORD_THRESHOLD
+
+
+def _flush_buffer(task_id: str, sync_url: str):
+    """Send buffered text and clear buffer."""
+    text = _text_buffers.pop(task_id, "")
+    if not text:
+        return
+    
+    payload = {
+        "task_id": task_id,
+        "step": "decompose_text",
+        "data": {"content": text},
         "timestamp": time.time_ns() / 1_000_000_000,
     }
     
