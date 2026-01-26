@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
     Select,
     SelectContent,
@@ -7,410 +7,567 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { useTranslation } from "react-i18next";
 
-type FrequencyType = "hourly" | "daily" | "weekly" | "custom";
+type FrequencyType = "once" | "daily" | "weekly" | "monthly";
 
 type SchedulePickerProps = {
-    value: string; // cron expression
+    value: string; // cron expression or schedule data
     onChange: (cronExpression: string) => void;
+    onValidationChange?: (isValid: boolean) => void;
+};
+
+type ValidationErrors = {
+    date?: string;
+    time?: string;
+    weekdays?: string;
+    monthDay?: string;
+    expirationDate?: string;
 };
 
 export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     value,
     onChange,
+    onValidationChange,
 }) => {
     const { t } = useTranslation();
-    const [frequency, setFrequency] = useState<FrequencyType>("hourly");
-    const [hour, setHour] = useState<string>("0");
-    const [minute, setMinute] = useState<string>("0");
+    const [frequency, setFrequency] = useState<FrequencyType>("once");
+    const [date, setDate] = useState<string>("");
+    const [time, setTime] = useState<string>("");
+    const [hour, setHour] = useState<string>("00");
+    const [minute, setMinute] = useState<string>("00");
+    const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
+    const [monthDay, setMonthDay] = useState<string>("1");
+    const [expirationDate, setExpirationDate] = useState<string>("");
+    const [errors, setErrors] = useState<ValidationErrors>({});
+
+    const weekdays = [
+        { value: 1, label: t("triggers.weekday-monday") || "Monday" },
+        { value: 2, label: t("triggers.weekday-tuesday") || "Tuesday" },
+        { value: 3, label: t("triggers.weekday-wednesday") || "Wednesday" },
+        { value: 4, label: t("triggers.weekday-thursday") || "Thursday" },
+        { value: 5, label: t("triggers.weekday-friday") || "Friday" },
+        { value: 6, label: t("triggers.weekday-saturday") || "Saturday" },
+        { value: 0, label: t("triggers.weekday-sunday") || "Sunday" },
+    ];
+
+    // Sync hour and minute to time
+    useEffect(() => {
+        setTime(`${hour}:${minute}`);
+    }, [hour, minute]);
 
     // Parse initial cron expression
     useEffect(() => {
         if (value) {
-            // Simple parsing - can be enhanced
-            if (value === "0 */1 * * *") {
-                setFrequency("hourly");
-            } else if (value.match(/^\d+ \d+ \* \* \*$/)) {
+            // Try to parse existing cron expression
+            // This is a simplified parser - you may need to enhance it
+            if (value.match(/^\d+ \d+ \* \* \*$/)) {
                 setFrequency("daily");
                 const parts = value.split(" ");
-                setMinute(parts[0]);
-                setHour(parts[1]);
+                const m = parts[0];
+                const h = parts[1];
+                setHour(h.padStart(2, "0"));
+                setMinute(m.padStart(2, "0"));
             }
         }
     }, [value]);
 
+    // Validation logic
+    const validateInputs = (): boolean => {
+        const newErrors: ValidationErrors = {};
+        let isValid = true;
+
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        if (frequency === "once") {
+            // Validate date
+            if (!date) {
+                newErrors.date = t("triggers.date-required") || "Date is required";
+                isValid = false;
+            } else {
+                const selectedDate = new Date(date);
+                if (selectedDate < today) {
+                    newErrors.date = t("triggers.error-past-date") || "Please select today or a future date";
+                    isValid = false;
+                }
+            }
+
+            // Validate time
+            if (!time) {
+                newErrors.time = t("triggers.time-required") || "Time is required";
+                isValid = false;
+            } else if (date) {
+                const selectedDate = new Date(date);
+                const [hours, minutes] = time.split(":").map(Number);
+                const selectedDateTime = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hours, minutes);
+
+                // Check if selected time is in the past for today
+                if (selectedDate.getTime() === today.getTime() && selectedDateTime <= now) {
+                    newErrors.time = t("triggers.error-past-time") || "For today's tasks, please select current time or future time";
+                    isValid = false;
+                }
+            }
+        }
+
+        if (frequency === "daily") {
+            // Validate time
+            if (!time) {
+                newErrors.time = t("triggers.time-required") || "Time is required";
+                isValid = false;
+            }
+
+            // Validate expiration date (optional, but if provided must be valid)
+            if (expirationDate) {
+                const expDate = new Date(expirationDate);
+                if (expDate < today) {
+                    newErrors.expirationDate = t("triggers.error-past-date") || "Please select today or a future date";
+                    isValid = false;
+                }
+            }
+        }
+
+        if (frequency === "weekly") {
+            // Validate time
+            if (!time) {
+                newErrors.time = t("triggers.time-required") || "Time is required";
+                isValid = false;
+            }
+
+            // Validate weekdays
+            if (selectedWeekdays.length === 0) {
+                newErrors.weekdays = t("triggers.weekdays-required") || "Please select at least one weekday";
+                isValid = false;
+            }
+
+            // Validate expiration date (optional, but if provided must be valid)
+            if (expirationDate) {
+                const expDate = new Date(expirationDate);
+                if (expDate < today) {
+                    newErrors.expirationDate = t("triggers.error-past-date") || "Please select today or a future date";
+                    isValid = false;
+                }
+            }
+        }
+
+        if (frequency === "monthly") {
+            // Validate time
+            if (!time) {
+                newErrors.time = t("triggers.time-required") || "Time is required";
+                isValid = false;
+            }
+
+            // Validate month day
+            if (!monthDay) {
+                newErrors.monthDay = t("triggers.month-day-required") || "Day of month is required";
+                isValid = false;
+            } else {
+                const day = parseInt(monthDay);
+                if (day < 1 || day > 31) {
+                    newErrors.monthDay = t("triggers.invalid-month-day") || "Please select a day between 1 and 31";
+                    isValid = false;
+                }
+            }
+
+            // Validate expiration date (optional, but if provided must be valid)
+            if (expirationDate) {
+                const expDate = new Date(expirationDate);
+                if (expDate < today) {
+                    newErrors.expirationDate = t("triggers.error-past-date") || "Please select today or a future date";
+                    isValid = false;
+                }
+            }
+        }
+
+        setErrors(newErrors);
+        return isValid;
+    };
+
     // Generate cron expression based on frequency
     useEffect(() => {
-        // Don't update if frequency is custom - let the user control the value directly
-        if (frequency === "custom") {
+        const isValid = validateInputs();
+        onValidationChange?.(isValid);
+
+        if (!isValid) {
             return;
         }
-        
+
         let cron = "";
+        const [hour, minute] = time ? time.split(":") : ["0", "0"];
+
         switch (frequency) {
-            case "hourly":
-                cron = "0 */1 * * *";
+            case "once":
+                // For once, we'll use a special format with date
+                // Format: minute hour day month * (single execution)
+                if (date && time) {
+                    const d = new Date(date);
+                    const day = d.getDate();
+                    const month = d.getMonth() + 1;
+                    cron = `${minute} ${hour} ${day} ${month} *`;
+                }
                 break;
             case "daily":
+                // Daily at specified time
                 cron = `${minute} ${hour} * * *`;
                 break;
             case "weekly":
-                cron = `${minute} ${hour} * * 0`; // Sunday
+                // Weekly on selected days at specified time
+                if (selectedWeekdays.length > 0) {
+                    const sortedWeekdays = [...selectedWeekdays].sort((a, b) => a - b);
+                    cron = `${minute} ${hour} * * ${sortedWeekdays.join(",")}`;
+                }
+                break;
+            case "monthly":
+                // Monthly on specific day at specified time
+                if (monthDay && time) {
+                    cron = `${minute} ${hour} ${monthDay} * *`;
+                }
                 break;
         }
-        onChange(cron);
-    }, [frequency, hour, minute]);
 
-    // Parse cron field (minute, hour, day, month, weekday)
-    const parseCronField = (field: string, min: number, max: number): number[] => {
-        if (field === "*") {
-            return Array.from({ length: max - min + 1 }, (_, i) => i + min);
+        if (cron) {
+            onChange(cron);
         }
+    }, [frequency, date, time, selectedWeekdays, monthDay, expirationDate]);
 
-        const values: number[] = [];
-        const parts = field.split(",");
-
-        for (const part of parts) {
-            if (part.includes("/")) {
-                // Step values: */5, 0-59/15
-                const [range, step] = part.split("/");
-                const stepNum = parseInt(step);
-                
-                if (range === "*") {
-                    for (let i = min; i <= max; i += stepNum) {
-                        values.push(i);
-                    }
-                } else if (range.includes("-")) {
-                    const [start, end] = range.split("-").map(Number);
-                    for (let i = start; i <= end; i += stepNum) {
-                        values.push(i);
-                    }
-                } else {
-                    const start = parseInt(range);
-                    for (let i = start; i <= max; i += stepNum) {
-                        values.push(i);
-                    }
-                }
-            } else if (part.includes("-")) {
-                // Range: 1-5
-                const [start, end] = part.split("-").map(Number);
-                for (let i = start; i <= end; i++) {
-                    values.push(i);
-                }
+    const handleWeekdayToggle = (day: number) => {
+        setSelectedWeekdays((prev) => {
+            if (prev.includes(day)) {
+                return prev.filter((d) => d !== day);
             } else {
-                // Single value
-                values.push(parseInt(part));
+                return [...prev, day];
             }
-        }
-
-        return [...new Set(values)].sort((a, b) => a - b);
-    };
-
-    // Calculate next execution time from a cron expression
-    const getNextExecutionTime = (cronExpression: string, fromDate: Date): Date | null => {
-        const parts = cronExpression.trim().split(/\s+/);
-        if (parts.length !== 5) {
-            return null; // Invalid cron expression
-        }
-
-        const [minuteField, hourField, dayField, monthField, weekdayField] = parts;
-
-        try {
-            const minutes = parseCronField(minuteField, 0, 59);
-            const hours = parseCronField(hourField, 0, 23);
-            const days = parseCronField(dayField, 1, 31);
-            const months = parseCronField(monthField, 1, 12);
-            const weekdays = parseCronField(weekdayField, 0, 6);
-
-            const isDayWildcard = dayField === "*";
-            const isWeekdayWildcard = weekdayField === "*";
-
-            let current = new Date(fromDate);
-            current.setSeconds(0);
-            current.setMilliseconds(0);
-            
-            // Store the original fromDate for comparison (with seconds/milliseconds)
-            const fromDateWithTime = new Date(fromDate);
-
-            // Try up to 2 years ahead
-            for (let attempts = 0; attempts < 730; attempts++) {
-                const currentMonth = current.getMonth() + 1; // getMonth() returns 0-11
-                const currentDay = current.getDate();
-                const currentWeekday = current.getDay();
-                const currentHour = current.getHours();
-                const currentMinute = current.getMinutes();
-
-                // Check if month matches
-                if (!months.includes(currentMonth)) {
-                    // Find next matching month
-                    const nextMonth = months.find(m => m > currentMonth) || months[0];
-                    if (nextMonth > currentMonth) {
-                        current.setMonth(nextMonth - 1); // setMonth expects 0-11
-                    } else {
-                        // Wrap to next year
-                        current.setFullYear(current.getFullYear() + 1);
-                        current.setMonth(nextMonth - 1);
-                    }
-                    current.setDate(1);
-                    current.setHours(0);
-                    current.setMinutes(0);
-                    continue;
-                }
-
-                // Check if day matches (considering both day of month and weekday)
-                // Standard cron: if both specified, match if EITHER matches (OR logic)
-                let dayMatches = false;
-                if (isDayWildcard && isWeekdayWildcard) {
-                    dayMatches = true; // Both wildcards, any day matches
-                } else if (isDayWildcard) {
-                    dayMatches = weekdays.includes(currentWeekday); // Only check weekday
-                } else if (isWeekdayWildcard) {
-                    dayMatches = days.includes(currentDay); // Only check day of month
-                } else {
-                    // Both specified: match if either matches (standard cron behavior)
-                    dayMatches = days.includes(currentDay) || weekdays.includes(currentWeekday);
-                }
-
-                if (!dayMatches) {
-                    current.setDate(current.getDate() + 1);
-                    current.setHours(0);
-                    current.setMinutes(0);
-                    continue;
-                }
-
-                // Check if hour matches
-                if (!hours.includes(currentHour)) {
-                    const nextHour = hours.find(h => h > currentHour);
-                    if (nextHour !== undefined) {
-                        current.setHours(nextHour);
-                        current.setMinutes(0);
-                    } else {
-                        // Move to next day
-                        current.setDate(current.getDate() + 1);
-                        current.setHours(hours[0]);
-                        current.setMinutes(0);
-                    }
-                    continue;
-                }
-
-                // Check if minute matches
-                const matchingMinutes = minutes.filter(m => m >= currentMinute);
-                if (matchingMinutes.length > 0) {
-                    current.setMinutes(matchingMinutes[0]);
-                    // Ensure we return a time strictly in the future (compare with original fromDate)
-                    if (current > fromDateWithTime) {
-                        return current;
-                    }
-                    // If current minute matches but time is not in future, try next matching minute
-                    if (matchingMinutes.length > 1) {
-                        current.setMinutes(matchingMinutes[1]);
-                        if (current > fromDateWithTime) {
-                            return current;
-                        }
-                    }
-                }
-
-                // No matching minute in this hour, move to next hour
-                const nextHour = hours.find(h => h > currentHour);
-                if (nextHour !== undefined) {
-                    current.setHours(nextHour);
-                    current.setMinutes(minutes[0]);
-                } else {
-                    // Move to next day
-                    current.setDate(current.getDate() + 1);
-                    current.setHours(hours[0]);
-                    current.setMinutes(minutes[0]);
-                }
-            }
-
-            return null; // Could not find next execution time
-        } catch (error) {
-            return null; // Invalid cron expression
-        }
-    };
-
-    // Calculate next 5 scheduled times based on frequency
-    const nextScheduledTimes = useMemo(() => {
-        const times: Date[] = [];
-        const now = new Date();
-
-        for (let i = 0; i < 5; i++) {
-            let nextTime: Date | null = null;
-
-            switch (frequency) {
-                case "hourly":
-                    // Move to next hour
-                    const hourlyTime = new Date(now);
-                    hourlyTime.setMinutes(0);
-                    hourlyTime.setSeconds(0);
-                    hourlyTime.setMilliseconds(0);
-                    if (i === 0) {
-                        if (hourlyTime <= now) {
-                            hourlyTime.setHours(hourlyTime.getHours() + 1);
-                        }
-                    } else {
-                        hourlyTime.setHours(times[i - 1].getHours() + 1);
-                    }
-                    nextTime = hourlyTime;
-                    break;
-                case "daily":
-                    // At specified hour:minute each day
-                    const dailyTime = new Date(now);
-                    dailyTime.setHours(parseInt(hour));
-                    dailyTime.setMinutes(parseInt(minute));
-                    dailyTime.setSeconds(0);
-                    dailyTime.setMilliseconds(0);
-                    if (i === 0 && dailyTime <= now) {
-                        dailyTime.setDate(dailyTime.getDate() + 1);
-                    } else if (i > 0) {
-                        dailyTime.setDate(times[i - 1].getDate() + 1);
-                    }
-                    nextTime = dailyTime;
-                    break;
-                case "weekly":
-                    // Every Sunday at specified time
-                    const weeklyTime = new Date(now);
-                    weeklyTime.setHours(parseInt(hour));
-                    weeklyTime.setMinutes(parseInt(minute));
-                    weeklyTime.setSeconds(0);
-                    weeklyTime.setMilliseconds(0);
-                    if (i === 0) {
-                        const daysUntilSunday = (7 - weeklyTime.getDay()) % 7;
-                        if (daysUntilSunday === 0 && weeklyTime <= now) {
-                            weeklyTime.setDate(weeklyTime.getDate() + 7);
-                        } else {
-                            weeklyTime.setDate(weeklyTime.getDate() + daysUntilSunday);
-                        }
-                    } else {
-                        weeklyTime.setDate(times[i - 1].getDate() + 7);
-                    }
-                    nextTime = weeklyTime;
-                    break;
-                case "custom":
-                    // Parse custom cron expression
-                    if (i === 0) {
-                        nextTime = getNextExecutionTime(value || "0 */1 * * *", now);
-                    } else if (times[i - 1]) {
-                        nextTime = getNextExecutionTime(value || "0 */1 * * *", times[i - 1]);
-                    }
-                    break;
-            }
-
-            if (nextTime) {
-                times.push(nextTime);
-            } else {
-                // If we can't calculate more times, break
-                break;
-            }
-        }
-
-        return times;
-    }, [frequency, hour, minute, value]);
-
-    // Format date for display
-    const formatScheduledTime = (date: Date): string => {
-        return date.toLocaleString('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZoneName: 'short'
         });
     };
 
-    const hours = Array.from({ length: 24 }, (_, i) => i.toString());
-    const minutes = Array.from({ length: 60 }, (_, i) => i.toString());
+    const getTodayString = (): string => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
+
+    const getOrdinalSuffix = (day: number): string => {
+        if (day >= 11 && day <= 13) {
+            return "th";
+        }
+        switch (day % 10) {
+            case 1:
+                return "st";
+            case 2:
+                return "nd";
+            case 3:
+                return "rd";
+            default:
+                return "th";
+        }
+    };
+
+    // Generate hour options (00-23)
+    const hourOptions = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
+
+    // Generate minute options (00-59)
+    const minuteOptions = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0"));
 
     return (
         <div className="w-full space-y-4">
+            {/* Frequency Selector */}
             <div className="space-y-2">
+                <Label className="font-bold text-sm">{t("triggers.schedule-mode") || "Schedule"}</Label>
                 <Select
                     value={frequency}
-                    onValueChange={(value: FrequencyType) => setFrequency(value)}
+                    onValueChange={(value: FrequencyType) => {
+                        setFrequency(value);
+                        // Reset fields when changing frequency
+                        setErrors({});
+                        setDate("");
+                        setTime("");
+                        setHour("00");
+                        setMinute("00");
+                        setSelectedWeekdays([]);
+                        setMonthDay("1");
+                        setExpirationDate("");
+                    }}
                 >
-                    <SelectTrigger title={t("triggers.schedule-frequency")}>
+                    <SelectTrigger>
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="hourly">
-                            {t("triggers.frequency-hourly")}
+                        <SelectItem value="once">
+                            {t("triggers.frequency-once") || "Once"}
                         </SelectItem>
                         <SelectItem value="daily">
-                            {t("triggers.frequency-daily")}
+                            {t("triggers.frequency-daily") || "Daily"}
                         </SelectItem>
                         <SelectItem value="weekly">
-                            {t("triggers.frequency-weekly")}
+                            {t("triggers.frequency-weekly") || "Weekly"}
                         </SelectItem>
-                        <SelectItem value="custom">
-                            {t("triggers.frequency-custom")}
+                        <SelectItem value="monthly">
+                            {t("triggers.frequency-monthly") || "Monthly"}
                         </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
-            {(frequency === "daily" || frequency === "weekly") && (
-                <div className="grid grid-cols-2 gap-4">
+            {/* Once Mode */}
+            {frequency === "once" && (
+                <div className="space-y-4">
                     <div className="space-y-2">
-                        <Select value={hour} onValueChange={setHour}>
-                            <SelectTrigger title={t("triggers.schedule-time")}>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {hours.map((h) => (
-                                    <SelectItem key={h} value={h}>
-                                        {h.padStart(2, "0")}:00
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <Input
+                            type="date"
+                            title={t("triggers.date") || "Date"}
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            min={getTodayString()}
+                            state={errors.date ? "error" : "default"}
+                            note={errors.date}
+                            required
+                        />
                     </div>
                     <div className="space-y-2">
-                        <Select value={minute} onValueChange={setMinute}>
-                            <SelectTrigger title={t("triggers.schedule-time")}>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {minutes.filter((m) => parseInt(m) % 15 === 0).map((m) => (
-                                    <SelectItem key={m} value={m}>
-                                        :{m.padStart(2, "0")}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <Label className="font-bold text-sm">
+                            {t("triggers.time") || "Time"} <span className="text-text-body">*</span>
+                        </Label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Select value={hour} onValueChange={setHour}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="HH" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {hourOptions.map((h) => (
+                                        <SelectItem key={h} value={h}>
+                                            {h}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={minute} onValueChange={setMinute}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="MM" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {minuteOptions.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                            {m}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {errors.time && (
+                            <p className="text-xs text-text-error">{errors.time}</p>
+                        )}
                     </div>
                 </div>
             )}
 
-            {frequency === "custom" && (
-                <Input
-                    title={t("triggers.cron-expression")}
-                    type="text"
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder="0 */1 * * *"
-                    note={t("triggers.cron-help")}
-                />
-            )}
-            {/* Scheduled Times Preview */}
-            <div className="space-y-2">
-                <div className="flex items-center gap-2 text-text-heading text-label-sm">
-                    <span className="font-bold">{t("triggers.upcoming-executions")}</span>
-                </div>
-                <div className="bg-surface-primary rounded-lg p-4 space-y-2">
-                    {nextScheduledTimes.map((time, index) => (
-                        <div key={index} className="flex items-center gap-2 text-text-body text-label-sm">
-                            <span className="text-text-label font-mono text-xs w-5">
-                                {String(index + 1).padStart(2, '0')}
-                            </span>
-                            <span>{formatScheduledTime(time)}</span>
+            {/* Daily Mode */}
+            {frequency === "daily" && (
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label className="font-bold text-sm">
+                            {t("triggers.time") || "Time"} <span className="text-text-body">*</span>
+                        </Label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Select value={hour} onValueChange={setHour}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="HH" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {hourOptions.map((h) => (
+                                        <SelectItem key={h} value={h}>
+                                            {h}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={minute} onValueChange={setMinute}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="MM" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {minuteOptions.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                            {m}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                    ))}
+                        {errors.time && (
+                            <p className="text-xs text-text-error">{errors.time}</p>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        <Input
+                            type="date"
+                            title={t("triggers.expiration-date") || "Expiration Date"}
+                            value={expirationDate}
+                            onChange={(e) => setExpirationDate(e.target.value)}
+                            min={getTodayString()}
+                            state={errors.expirationDate ? "error" : "default"}
+                            note={errors.expirationDate}
+                            optional
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
+
+            {/* Weekly Mode */}
+            {frequency === "weekly" && (
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label className="font-bold text-sm">
+                            {t("triggers.time") || "Time"} <span className="text-text-body">*</span>
+                        </Label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Select value={hour} onValueChange={setHour}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="HH" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {hourOptions.map((h) => (
+                                        <SelectItem key={h} value={h}>
+                                            {h}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={minute} onValueChange={setMinute}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="MM" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {minuteOptions.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                            {m}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {errors.time && (
+                            <p className="text-xs text-text-error">{errors.time}</p>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="font-bold text-sm">
+                            {t("triggers.select-weekdays") || "Select Weekdays"}
+                        </Label>
+                        <div className="grid grid-cols-7 gap-2">
+                            {weekdays.map((day) => (
+                                <button
+                                    key={day.value}
+                                    type="button"
+                                    onClick={() => handleWeekdayToggle(day.value)}
+                                    className={`
+                                        px-2 py-2 rounded-md text-xs font-medium transition-colors
+                                        ${
+                                            selectedWeekdays.includes(day.value)
+                                                ? "bg-brand-primary text-white"
+                                                : "bg-surface-secondary text-text-body hover:bg-surface-primary"
+                                        }
+                                    `}
+                                >
+                                    {day.label.slice(0, 3)}
+                                </button>
+                            ))}
+                        </div>
+                        {errors.weekdays && (
+                            <p className="text-xs text-text-error">{errors.weekdays}</p>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        <Input
+                            type="date"
+                            title={t("triggers.expiration-date") || "Expiration Date"}
+                            value={expirationDate}
+                            onChange={(e) => setExpirationDate(e.target.value)}
+                            min={getTodayString()}
+                            state={errors.expirationDate ? "error" : "default"}
+                            note={errors.expirationDate}
+                            optional
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Monthly Mode */}
+            {frequency === "monthly" && (
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Select value={monthDay} onValueChange={setMonthDay}>
+                            <SelectTrigger
+                                title={t("triggers.day-of-month") || "Day"}
+                                state={errors.monthDay ? "error" : undefined}
+                                note={errors.monthDay}
+                                required
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                                    <SelectItem key={day} value={day.toString()}>
+                                        {day}{getOrdinalSuffix(day)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-text-label">
+                            {t("triggers.month-day-notice") || "Note: For months with fewer days (e.g., February, April), the task will be skipped if the selected day doesn't exist."}
+                        </p>
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="font-bold text-sm">
+                            {t("triggers.time") || "Time"} <span className="text-text-body">*</span>
+                        </Label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Select value={hour} onValueChange={setHour}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="HH" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {hourOptions.map((h) => (
+                                        <SelectItem key={h} value={h}>
+                                            {h}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={minute} onValueChange={setMinute}>
+                                <SelectTrigger state={errors.time ? "error" : undefined}>
+                                    <SelectValue placeholder="MM" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {minuteOptions.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                            {m}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {errors.time && (
+                            <p className="text-xs text-text-error">{errors.time}</p>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        <Input
+                            type="date"
+                            title={t("triggers.expiration-date") || "Expiration Date"}
+                            value={expirationDate}
+                            onChange={(e) => setExpirationDate(e.target.value)}
+                            min={getTodayString()}
+                            state={errors.expirationDate ? "error" : "default"}
+                            note={errors.expirationDate}
+                            optional
+                        />
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

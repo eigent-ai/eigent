@@ -10,6 +10,9 @@
     "name-placeholder": "输入触发器名称",
     "description-placeholder": "输入触发器描述",
     "schedule": "计划",
+    "schedule-trigger": "计划触发器",
+    "webhook-trigger": "Webhook 触发器",
+    "app-trigger": "应用触发器",
     "webhook": "Webhook",
     "slack": "Slack",
     "cron-expression": "Cron 表达式",
@@ -64,11 +67,43 @@
     "task-mode-text": "文本",
     "task-mode-json": "JSON",
     "schedule-frequency": "频率",
+    "schedule-mode": "调度模式",
     "schedule-time": "时间",
+    "date": "日期",
+    "time": "时间",
+    "expiration-date": "过期时间",
+    "select-weekdays": "选择星期",
+    "day-of-month": "日期",
+    "month-day-notice": "注意：对于天数较少的月份（如 2 月、4 月），如果所选日期不存在，任务将被跳过。",
+    "weekday-monday": "星期一",
+    "weekday-tuesday": "星期二",
+    "weekday-wednesday": "星期三",
+    "weekday-thursday": "星期四",
+    "weekday-friday": "星期五",
+    "weekday-saturday": "星期六",
+    "weekday-sunday": "星期日",
+    "date-required": "日期必填",
+    "time-required": "时间必填",
+    "expiration-date-required": "过期时间必填",
+    "weekdays-required": "请至少选择一个星期",
+    "month-day-required": "每月日期必填",
+    "invalid-month-day": "请选择 1 到 31 之间的日期",
+    "error-past-date": "请选择今天或未来日期",
+    "error-past-time": "对于今天的任务，请选择当前时间或未来时间",
+    "schedule-summary": "调度摘要",
+    "summary-once": "执行一次，时间为",
+    "summary-daily": "每天执行，时间为",
+    "summary-weekly": "每周执行，星期为",
+    "summary-monthly": "每月执行，日期为",
+    "at": "在",
+    "until": "直到",
+    "fill-all-fields": "请填写所有必填字段以查看调度摘要",
     "webhook-function": "Webhook 函数",
     "frequency-hourly": "每小时",
+    "frequency-once": "单次",
     "frequency-daily": "每天",
     "frequency-weekly": "每周",
+    "frequency-monthly": "每月",
     "frequency-custom": "自定义",
     "create-trigger-agent": "使用触发器自动化任务",
     "trigger-overview": "触发器概览",
@@ -153,5 +188,143 @@
     "add-trigger": "添加触发器",
     "never": "从不",
     "duplicate": "复制",
-    "no-task-prompt": "暂无提示词"
+    "no-task-prompt": "暂无提示词",
+    "extra-settings": "额外设置",
+    "select-app": "选择应用",
+    "change-app": "更换",
+    "select-method": "选择方法",
+    "dynamic": {
+        "credentials": "凭证",
+        "credentials-notice": "您的凭证安全存储，用于与服务进行身份验证。",
+        "credentials-saved": "凭证配置成功",
+        "configuration": "配置",
+        "behavior-settings": "行为设置",
+        "enter-value": "请输入值",
+        "add": "添加",
+        "update": "更新",
+        "config-saved": "配置保存成功",
+        "config-updated": "配置更新成功",
+        "config-save-error": "保存配置失败",
+        "loading": "加载中...",
+        "loading-config": "正在加载配置...",
+        "no-config-available": "此触发器类型无可用配置",
+        "failed-to-load-schema": "加载配置架构失败",
+        "select-options": "选择选项...",
+        "selected": "已选择",
+        "save-credentials-first": "请先保存凭证",
+        "search": "搜索...",
+        "no-options": "未找到选项",
+        "validation": {
+            "required": "{{field}} 必填",
+            "invalid-regex": "无效的正则表达式",
+            "invalid-email": "无效的电子邮件地址",
+            "invalid-url": "无效的 URL 格式",
+            "min-length": "至少需要 {{min}} 个字符",
+            "max-length": "最多 {{max}} 个字符",
+            "pattern-mismatch": "值不匹配所需模式"
+        },
+        "validation-failed": "请修复验证错误：{{errors}}"
+    },
+    "slack": {
+        "credentials-saved": "Slack 凭证配置成功",
+        "enter-bot-token": "请输入 bot token",
+        "bot-token-saved": "Bot token 保存成功",
+        "bot-token-updated": "Bot token 更新成功",
+        "bot-token-save-error": "保存 bot token 失败",
+        "signing-secret-saved": "签名密钥保存成功",
+        "signing-secret-updated": "签名密钥更新成功",
+        "signing-secret-save-error": "保存签名密钥失败",
+        "add": "添加",
+        "update": "更新",
+        "event-configuration": "事件配置",
+        "event-types": "事件类型",
+        "select-events": "选择要触发的事件...",
+        "search-events": "搜索事件...",
+        "no-events-found": "未找到事件",
+        "events-selected": "个事件已选择",
+        "channel-filter": "频道过滤器",
+        "select-channels": "所有频道（无过滤）",
+        "search-channels": "搜索频道...",
+        "no-channels-found": "未找到频道",
+        "channels-selected": "个频道已选择",
+        "save-credentials-first": "请先保存凭证以加载频道",
+        "loading-channels": "正在加载频道...",
+        "channels-fetch-error": "获取频道失败。请检查您的凭证。",
+        "behavior-settings": "行为设置",
+        "authentication_required": {
+            "label": "需要身份验证",
+            "notice": "Slack 触发器需要身份验证以验证 webhook 签名（需要 Slack 签名密钥）。在 https://api.slack.com/apps 验证 webhook 端点以激活触发器。"
+        },
+        "bot_token": {
+            "label": "Slack Bot Token",
+            "placeholder": "xoxb-...",
+            "notice": "您的 Slack Bot User OAuth Token（以 xoxb- 开头）"
+        },
+        "signing_secret": {
+            "label": "Slack 签名密钥",
+            "placeholder": "输入您的 Slack 签名密钥...",
+            "notice": "您的 Slack 应用的签名密钥，用于验证请求"
+        },
+        "events": {
+            "label": "事件类型",
+            "notice": "选择哪些 Slack 事件应触发此工作流"
+        },
+        "channel_id": {
+            "label": "频道 ID",
+            "placeholder": "选择一个频道...",
+            "notice": "要监视的特定频道（留空以监视所有频道）"
+        },
+        "ignore_bot_messages": {
+            "label": "忽略机器人消息"
+        },
+        "ignore_users": {
+            "label": "忽略用户",
+            "placeholder": "输入 Slack 用户 ID（例如 U1234567890）...",
+            "notice": "要忽略其消息的 Slack 用户 ID"
+        }
+    },
+    "verification-required": "等待验证。需要有效的事件消息才能激活触发器，或禁用触发器身份验证。",
+    "base": {
+        "authentication_required": {
+            "label": "需要身份验证",
+            "notice": "此触发器是否需要身份验证"
+        },
+        "message_filter": {
+            "label": "消息过滤器（正则表达式）",
+            "placeholder": "输入用于过滤消息的正则表达式...",
+            "notice": "使用正则表达式模式过滤哪些消息触发工作流"
+        }
+    },
+    "webhook": {
+        "authentication_required": {
+            "label": "需要身份验证",
+            "notice": "此 webhook 触发器是否需要身份验证"
+        },
+        "body_contains": {
+            "label": "主体包含",
+            "placeholder": "输入请求主体中必须包含的文本...",
+            "notice": "仅当请求主体包含此字符串时才触发"
+        },
+        "required_headers": {
+            "label": "必需的标头",
+            "placeholder": "输入标头名称（例如 Content-Type、Authorization）...",
+            "notice": "请求中必须存在的 HTTP 标头列表"
+        },
+        "header_match": {
+            "label": "标头匹配（正则表达式）",
+            "placeholder": "Header-Name: 正则表达式",
+            "notice": "将请求标头与正则表达式模式匹配（格式：Header-Name: pattern）"
+        },
+        "include_headers": {
+            "label": "包含标头",
+            "notice": "在工作流执行输入中包含请求标头"
+        },
+        "include_query_params": {
+            "label": "包含查询参数"
+        },
+        "include_request_metadata": {
+            "label": "包含请求元数据",
+            "notice": "在执行输入中包含请求元数据（方法、URL、客户端 IP）"
+        }
+    }
 }

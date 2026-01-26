@@ -92,6 +92,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [selectedApp, setSelectedApp] = useState<string>("");
     const [isConfigValid, setIsConfigValid] = useState<boolean>(true);
     const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
+    const [isScheduleValid, setIsScheduleValid] = useState<boolean>(false);
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
@@ -108,6 +109,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             // Clear validation errors when dialog opens
             setNameError("");
             setTaskPromptError("");
+            setIsScheduleValid(false);
 
             // If editing an existing trigger, populate the form with its data
             if (selectedTrigger) {
@@ -373,7 +375,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><GlobeIcon className="w-4 h-4 mr-2" />{t("triggers.app-trigger")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
-                            <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
+                            <SchedulePicker
+                                value={formData.custom_cron_expression || "0 */1 * * *"}
+                                onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })}
+                                onValidationChange={(isValid) => setIsScheduleValid(isValid)}
+                            />
                         </TabsContent>
                         <TabsContent value={TriggerType.Webhook} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <div className="space-y-4">
@@ -544,6 +550,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     };
 
     const renderFooter = () => {
+        // Disable save button if schedule validation fails for schedule triggers
+        const isSaveDisabled = isLoading || (formData.trigger_type === TriggerType.Schedule && !isScheduleValid);
+
         return (
             <DialogFooter>
                 <div className="flex w-full justify-end gap-2">
@@ -552,7 +561,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             {t("triggers.cancel")}
                         </Button>
                     )}
-                    <Button variant="primary" onClick={() => handleSubmit()} disabled={isLoading}>
+                    <Button variant="primary" onClick={() => handleSubmit()} disabled={isSaveDisabled}>
                         {isLoading
                             ? (selectedTrigger ? t("triggers.updating") : t("triggers.creating"))
                             : (selectedTrigger ? t("triggers.update") : t("triggers.create"))
