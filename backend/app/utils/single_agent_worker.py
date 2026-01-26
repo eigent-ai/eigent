@@ -145,15 +145,7 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 )
             else:
                 # Use native structured output if supported
-                # NOTE: Temporarily disable streaming for structured output because
-                # the camel library doesn't properly handle AsyncChatCompletionStreamManager
-                # from OpenAI's structured output streaming API
-                original_stream = worker_agent.model_backend.model_config_dict.get("stream", False)
-                worker_agent.model_backend.model_config_dict["stream"] = False
-                try:
-                    response = await worker_agent.astep(prompt, response_format=TaskResult)
-                finally:
-                    worker_agent.model_backend.model_config_dict["stream"] = original_stream
+                response = await worker_agent.astep(prompt, response_format=TaskResult)
 
                 # Handle streaming response for native output (shouldn't happen now but keep for safety)
                 if isinstance(response, AsyncStreamingChatAgentResponse):
