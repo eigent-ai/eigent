@@ -317,6 +317,8 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             FunctionTool(browser.browser_visit_page),
             FunctionTool(browser.browser_scroll),
             FunctionTool(browser.browser_get_som_screenshot),
+            FunctionTool(browser.browser_sheet_read),
+            FunctionTool(browser.browser_sheet_input),
             # FunctionTool(browser.select),
             # FunctionTool(browser.wait_user),
         ]

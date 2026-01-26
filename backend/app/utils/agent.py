@@ -175,13 +175,13 @@ class CdpBrowserPoolManager:
                 port = browser.get('port')
                 if port and port not in self._occupied_ports:
                     self._occupied_ports[port] = session_id
-                    traceroot_logger.info(
+                    logger.info(
                         f"Acquired browser on port {port} for session {session_id}. "
                         f"Occupied: {list(self._occupied_ports.keys())}"
                     )
                     return browser
 
-            traceroot_logger.warning(
+            logger.warning(
                 f"No available browsers in pool for session {session_id}. "
                 f"All occupied: {list(self._occupied_ports.keys())}"
             )
@@ -198,12 +198,12 @@ class CdpBrowserPoolManager:
         with self._lock:
             if port in self._occupied_ports and self._occupied_ports[port] == session_id:
                 del self._occupied_ports[port]
-                traceroot_logger.info(
+                logger.info(
                     f"Released browser on port {port} from session {session_id}. "
                     f"Occupied: {list(self._occupied_ports.keys())}"
                 )
             else:
-                traceroot_logger.warning(
+                logger.warning(
                     f"Attempted to release browser on port {port} but it was not occupied by {session_id}"
                 )
 
@@ -284,7 +284,7 @@ class ListenChatAgent(ChatAgent):
         self.api_task_id = api_task_id
         self.agent_name = agent_name
 
-        # CDP management callbacks (set by search_agent)
+        # CDP management callbacks (set by browser_agent)
         self._cdp_acquire_callback = None  # Called when cloning to acquire new CDP browser
         self._cdp_release_callback = None  # Called when agent is destroyed to release CDP browser
 
@@ -749,7 +749,7 @@ class ListenChatAgent(ChatAgent):
         if hasattr(self, 'process_task_id') and self.process_task_id:
             task_context = f"task_id={self.process_task_id}"
 
-        traceroot_logger.info(
+        logger.info(
             f"[CLONE START] Clone ID: {clone_id}, "
             f"Parent Agent: {self.agent_id}, "
             f"Agent Name: {self.agent_name}, "
@@ -779,12 +779,12 @@ class ListenChatAgent(ChatAgent):
 
                     if selected_browser:
                         new_cdp_port = selected_browser.get('port', env('browser_port', '9222'))
-                        traceroot_logger.info(
+                        logger.info(
                             f"[CLONE {clone_id}] Pre-acquired CDP browser port={new_cdp_port} for session={new_cdp_session}"
                         )
                     else:
                         new_cdp_port = cdp_browsers[0].get('port', env('browser_port', '9222'))
-                        traceroot_logger.warning(
+                        logger.warning(
                             f"[CLONE {clone_id}] No available browsers, using first: port={new_cdp_port}"
                         )
 
@@ -804,22 +804,22 @@ class ListenChatAgent(ChatAgent):
                         toolkit._temp_original_cdp_url = original_cdp_url
                         toolkit._temp_original_ws_config_cdp = original_ws_config_cdp
 
-                        traceroot_logger.info(
+                        logger.info(
                             f"[CLONE {clone_id}] Temporarily set CDP URL to http://localhost:{new_cdp_port} for cloning "
                             f"(parent config was {original_cdp_url}, parent ws_config was {original_ws_config_cdp})"
                         )
                     else:
-                        traceroot_logger.warning(f"[CLONE {clone_id}] No _browser_toolkit found on agent, CDP URL not modified")
+                        logger.warning(f"[CLONE {clone_id}] No _browser_toolkit found on agent, CDP URL not modified")
 
         # Clone tools and collect toolkits that need registration
-        traceroot_logger.info(f"[CLONE {clone_id}] Calling _clone_tools()...")
+        logger.info(f"[CLONE {clone_id}] Calling _clone_tools()...")
         cloned_tools, toolkits_to_register = self._clone_tools()
-        traceroot_logger.info(
+        logger.info(
             f"[CLONE {clone_id}] _clone_tools returned {len(cloned_tools)} tools, "
             f"{len(toolkits_to_register)} toolkits to register"
         )
         for idx, tk in enumerate(toolkits_to_register):
-            traceroot_logger.info(
+            logger.info(
                 f"[CLONE {clone_id}] Toolkit {idx}: {tk.__class__.__name__}, "
                 f"session={getattr(tk, '_session_id', 'N/A')}"
             )
@@ -834,7 +834,7 @@ class ListenChatAgent(ChatAgent):
                 if toolkit._temp_original_ws_config_cdp and hasattr(toolkit, '_ws_config') and toolkit._ws_config:
                     toolkit._ws_config['cdpUrl'] = toolkit._temp_original_ws_config_cdp
                 delattr(toolkit, '_temp_original_ws_config_cdp')
-            traceroot_logger.info(f"[CLONE {clone_id}] Restored original CDP URL in parent toolkit")
+            logger.info(f"[CLONE {clone_id}] Restored original CDP URL in parent toolkit")
 
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
@@ -871,22 +871,22 @@ class ListenChatAgent(ChatAgent):
 
         # Find and store the cloned browser toolkit on the new agent
         if toolkits_to_register:
-            traceroot_logger.info(f"[CLONE {clone_id}] toolkits_to_register has {len(toolkits_to_register)} items")
+            logger.info(f"[CLONE {clone_id}] toolkits_to_register has {len(toolkits_to_register)} items")
             for toolkit in toolkits_to_register:
                 toolkit_class_name = toolkit.__class__.__name__ if hasattr(toolkit, '__class__') else 'UNKNOWN'
-                traceroot_logger.info(f"[CLONE {clone_id}] Checking toolkit: {toolkit_class_name}")
+                logger.info(f"[CLONE {clone_id}] Checking toolkit: {toolkit_class_name}")
                 if hasattr(toolkit, '__class__') and toolkit.__class__.__name__ == 'HybridBrowserToolkit':
                     new_agent._browser_toolkit = toolkit
-                    traceroot_logger.info(f"[CLONE {clone_id}] Set _browser_toolkit to cloned HybridBrowserToolkit")
+                    logger.info(f"[CLONE {clone_id}] Set _browser_toolkit to cloned HybridBrowserToolkit")
                     break
         else:
-            traceroot_logger.warning(f"[CLONE {clone_id}] toolkits_to_register is empty!")
+            logger.warning(f"[CLONE {clone_id}] toolkits_to_register is empty!")
 
         # Set CDP info on cloned agent if we pre-acquired it
         if new_cdp_port is not None and new_cdp_session is not None:
             new_agent._cdp_port = new_cdp_port
             new_agent._cdp_session_id = new_cdp_session
-            traceroot_logger.info(
+            logger.info(
                 f"[CLONE {clone_id}] Set CDP info on new agent {new_agent.agent_id}: "
                 f"port={new_cdp_port}, session={new_cdp_session}"
             )
@@ -909,7 +909,7 @@ class ListenChatAgent(ChatAgent):
             for context_record in context_records:
                 new_agent.memory.write_record(context_record.memory_record)
 
-        traceroot_logger.info(
+        logger.info(
             f"[CLONE COMPLETE] Clone ID: {clone_id}, "
             f"New Agent ID: {new_agent.agent_id}, "
             f"CDP Port: {new_cdp_port if new_cdp_port else 'N/A'}"
@@ -1275,7 +1275,7 @@ def browser_agent(options: Chat):
             if selected_browser:
                 selected_port = selected_browser.get('port', env('browser_port', '9222'))
                 selected_is_external = selected_browser.get('isExternal', False)
-                traceroot_logger.info(
+                logger.info(
                     f"Acquired CDP browser from pool for agent {agent.agent_id}: "
                     f"port={selected_port}, isExternal={selected_is_external}, "
                     f"name={selected_browser.get('name', 'Unnamed')}, session_id={session_id}"
@@ -1284,7 +1284,7 @@ def browser_agent(options: Chat):
                 # No available browsers in pool, fall back to first browser
                 selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
                 selected_is_external = options.cdp_browsers[0].get('isExternal', False)
-                traceroot_logger.warning(
+                logger.warning(
                     f"No available browsers in pool for agent {agent.agent_id}, "
                     f"using first browser: port={selected_port}, session_id={session_id}"
                 )
@@ -1292,7 +1292,7 @@ def browser_agent(options: Chat):
             # Use default port from environment
             selected_port = env('browser_port', '9222')
             selected_is_external = False
-            traceroot_logger.info(
+            logger.info(
                 f"Using default CDP port for agent {agent.agent_id}: "
                 f"{selected_port}, session_id={session_id}"
             )
@@ -1321,6 +1321,8 @@ def browser_agent(options: Chat):
                 "browser_switch_tab",
                 "browser_enter",
                 "browser_visit_page",
+                "browser_sheet_read",
+                "browser_sheet_input",
                 "browser_get_page_snapshot"
             ],
         )
@@ -1334,7 +1336,7 @@ def browser_agent(options: Chat):
             for i, toolkit in enumerate(agent._toolkits_to_register_agent):
                 if hasattr(toolkit, '__class__') and toolkit.__class__.__name__ == 'HybridBrowserToolkit':
                     agent._toolkits_to_register_agent[i] = new_toolkit
-                    traceroot_logger.info(
+                    logger.info(
                         f"Replaced HybridBrowserToolkit for agent {agent.agent_id}: "
                         f"new port={selected_port}, session_id={session_id}"
                     )
@@ -1349,11 +1351,12 @@ def browser_agent(options: Chat):
                 if not any(name in tool.get_function_name() for name in [
                     'browser_open', 'browser_click', 'browser_type', 'browser_back',
                     'browser_forward', 'browser_switch_tab', 'browser_enter',
-                    'browser_visit_page', 'browser_get_page_snapshot'
+                    'browser_visit_page', 'browser_get_page_snapshot',"browser_sheet_read",
+                    "browser_sheet_input",
                 ])
             ]
             agent._tools.extend(new_tools)
-            traceroot_logger.info(f"Updated agent {agent.agent_id} tools with new browser toolkit")
+            logger.info(f"Updated agent {agent.agent_id} tools with new browser toolkit")
 
         # Store CDP info on agent for cleanup
         agent._cdp_port = selected_port
@@ -1366,7 +1369,7 @@ def browser_agent(options: Chat):
             port = agent._cdp_port
             session_id = agent._cdp_session_id
             _cdp_pool_manager.release_browser(port, session_id)
-            traceroot_logger.info(
+            logger.info(
                 f"Released CDP browser for agent {agent.agent_id}: "
                 f"port={port}, session_id={session_id}"
             )
@@ -1381,7 +1384,7 @@ def browser_agent(options: Chat):
         if selected_browser:
             selected_port = selected_browser.get('port', env('browser_port', '9222'))
             selected_is_external = selected_browser.get('isExternal', False)
-            traceroot_logger.info(
+            logger.info(
                 f"Acquired CDP browser from pool (initial): port={selected_port}, "
                 f"isExternal={selected_is_external}, "
                 f"name={selected_browser.get('name', 'Unnamed')}, session_id={toolkit_session_id}"
@@ -1389,14 +1392,14 @@ def browser_agent(options: Chat):
         else:
             selected_port = options.cdp_browsers[0].get('port', env('browser_port', '9222'))
             selected_is_external = options.cdp_browsers[0].get('isExternal', False)
-            traceroot_logger.warning(
+            logger.warning(
                 f"No available browsers in pool (initial), using first browser: "
                 f"port={selected_port}, session_id={toolkit_session_id}"
             )
     else:
         selected_port = env('browser_port', '9222')
         selected_is_external = False
-        traceroot_logger.info(f"Using default CDP port (initial): {selected_port}, session_id={toolkit_session_id}")
+        logger.info(f"Using default CDP port (initial): {selected_port}, session_id={toolkit_session_id}")
 
     # IMPORTANT: Always use cdp_keep_current_page=True to preserve browser state
     # across tasks (both internal and external browsers)
@@ -1589,12 +1592,12 @@ Your approach depends on available search tools:
             port = web_toolkit_custom._cdp_port
             session_id = web_toolkit_custom._cdp_session_id
             _cdp_pool_manager.release_browser(port, session_id)
-            traceroot_logger.info(
+            logger.info(
                 f"Cleanup: Released CDP browser on port {port} for session {session_id}"
             )
 
     agent = agent_model(
-        Agents.search_agent,
+        Agents.browser_agent,
 
         BaseMessage.make_assistant_message(
             role_name="Browser Agent",
