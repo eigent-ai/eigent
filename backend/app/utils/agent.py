@@ -794,9 +794,9 @@ class ListenChatAgent(ChatAgent):
 
         new_agent.process_task_id = self.process_task_id
 
-        # Preserve model_config_dict (including stream setting) from original agent
-        # Use deep copy to ensure isolation - nested dicts won't affect other agents
-        if hasattr(self, 'model_backend') and hasattr(self.model_backend, 'model_config_dict'):
+        # Preserve model_config_dict from original agent for consistent behavior
+        # Deep copy ensures isolation - config changes won't affect other agents
+        if hasattr(self, "model_backend") and hasattr(self.model_backend, "model_config_dict"):
             new_agent.model_backend.model_config_dict = copy.deepcopy(self.model_backend.model_config_dict)
 
         # Copy memory if requested
