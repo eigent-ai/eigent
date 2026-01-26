@@ -382,12 +382,6 @@ class ListenChatAgent(ChatAgent):
         )
 
         try:
-            # NOTE: Streaming with response_format (structured output) causes AsyncChatCompletionStreamManager error
-            # in camel library. OpenAI returns AsyncChatCompletionStreamManager when combining streaming + structured
-            # output, but _handle_batch_response tries to access .choices which doesn't exist on that object.
-            # Disable streaming for astep calls that use response_format to avoid this issue.
-            self.model_backend.model_config_dict["stream"] = False
-            
             res = await super().astep(input_message, response_format)
             if isinstance(res, AsyncStreamingChatAgentResponse):
                 # Wrap the async streaming response to send chunks to frontend
