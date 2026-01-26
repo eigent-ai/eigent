@@ -18,7 +18,6 @@ All routers are explicitly registered here for better visibility and maintainabi
 """
 from fastapi import FastAPI
 from app.controller import chat_controller, model_controller, task_controller, tool_controller, health_controller, password_reset_controller
-from utils import traceroot_wrapper as traceroot
 import logging
 
 logger = logging.getLogger("router")

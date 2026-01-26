@@ -7,14 +7,14 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+import logging
 from app.model.password_reset import (
     DirectResetPasswordRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
 )
-from utils import traceroot_wrapper as traceroot
 
-logger = traceroot.get_logger("password_reset_controller")
+logger = logging.getLogger("password_reset_controller")
 
 router = APIRouter()
 
