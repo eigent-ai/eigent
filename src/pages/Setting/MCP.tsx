@@ -605,7 +605,7 @@ export default function SettingMCP() {
 		<div className="flex-1 h-auto m-auto">
 			{/* Header Section */}
 			<div className="flex w-full">
-				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
+				<div className="flex px-6 pt-8 pb-4 max-w-[940px] mx-auto w-full items-center justify-between">
 					<div className="flex w-full items-center justify-between">
 						{showMarket ? (
 							<div className="flex w-full items-center justify-between gap-sm">
@@ -655,7 +655,7 @@ export default function SettingMCP() {
 
 			{/* Content Section */}
 			<div className="flex w-full">
-				<div className="flex px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
+				<div className="flex px-6 py-8 max-w-[940px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
 					<div className="flex flex-col w-full gap-8">
 						{showMarket ? (
 							<div className="pt-2">
