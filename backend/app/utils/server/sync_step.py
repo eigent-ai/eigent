@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """
 Cloud sync step decorator.
 
@@ -91,7 +105,7 @@ def _buffer_text(task_id: str, content: str):
     """Accumulate decompose_text content in buffer."""
     if task_id not in _text_buffers:
         _text_buffers[task_id] = ""
-    _text_buffers[task_id] = content
+    _text_buffers[task_id] += content
 
 
 def _should_flush(task_id: str) -> bool:
@@ -134,13 +148,19 @@ def _parse_value(value):
 def _get_task_id(args):
     if not args or not hasattr(args[0], "task_id"):
         return None
-    
+
     chat = args[0]
     task_lock = get_task_lock_if_exists(chat.project_id)
-    
+
     if task_lock and getattr(task_lock, "current_task_id", None):
         return task_lock.current_task_id
-    
+
+    if not task_lock:
+        logger.warning(
+            f"Task lock not found for project_id {chat.project_id}, "
+            f"using chat.task_id"
+        )
+
     return chat.task_id
 
 
@@ -148,5 +168,5 @@ async def _send(url, data):
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(url, json=data)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to sync step to {url}: {type(e).__name__}: {e}")
