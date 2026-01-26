@@ -111,9 +111,16 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     const inputRef = React.useRef<HTMLInputElement>(null)
     const dropdownRef = React.useRef<HTMLDivElement>(null)
     const isCommittingRef = React.useRef(false)
+    const optionSelectedRef = React.useRef(false)
+    const inputValueRef = React.useRef(inputValue)
 
     // Merge refs
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
+
+    // Keep inputValueRef in sync with inputValue
+    React.useEffect(() => {
+      inputValueRef.current = inputValue
+    }, [inputValue])
 
     // Sync input value with external value
     React.useEffect(() => {
@@ -123,15 +130,23 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
     // Commit value function - validates and saves input
     const commitValue = React.useCallback(() => {
+      // Skip commit if an option was just selected (it handles its own update)
+      if (optionSelectedRef.current) {
+        optionSelectedRef.current = false
+        return
+      }
+
       // Prevent double commits
       if (isCommittingRef.current) return
       isCommittingRef.current = true
 
-      let finalValue = inputValue
+      // Use ref to get the latest inputValue (avoids stale closure issue)
+      const currentInputValue = inputValueRef.current
+      let finalValue = currentInputValue
 
       // Run custom commit handler if provided
       if (onInputCommit) {
-        const result = onInputCommit(inputValue)
+        const result = onInputCommit(currentInputValue)
         if (result === false) {
           // Validation failed - show error state
           setHasError(true)
@@ -158,7 +173,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       }
       
       isCommittingRef.current = false
-    }, [inputValue, value, onInputCommit, validateInput, onChange])
+    }, [value, onInputCommit, validateInput, onChange])
 
     // Handle click outside to close dropdown
     React.useEffect(() => {
@@ -257,7 +272,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     }
 
     const handleOptionClick = (option: InputSelectOption) => {
+      // Mark that an option was selected so blur handler skips commit
+      optionSelectedRef.current = true
       setInputValue(option.label)
+      inputValueRef.current = option.label // Update ref immediately
       setHasError(false) // Clear error when selecting an option
       onChange(option.value)
       onOptionSelect?.(option)
