@@ -37,7 +37,7 @@ async def forgot_password(data: ForgotPasswordRequest):
     In development, returns the token directly for testing.
     """
     email = data.email
-    logger.info(f"Password reset requested for email: {email}")
+    logger.info("Password reset requested")
     
     # Generate token
     token = generate_reset_token()
