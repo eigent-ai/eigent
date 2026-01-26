@@ -69,7 +69,7 @@ export const MarkDown = ({
 	};
 
 	// If content is a pure HTML document, render in a styled pre block
-	if (isHtmlDocument(displayedContent)) {
+	if (isHtmlDocument(content)) {
 		// Trim leading whitespace from each line for consistent alignment
 		const formattedHtml = displayedContent
 			.split('\n')
