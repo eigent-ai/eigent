@@ -23,9 +23,7 @@ import {
   Folder as FolderIcon,
   ChevronRight,
   ChevronDown,
-  AlertTriangle,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import FolderComponent from './FolderComponent';
 
@@ -34,8 +32,8 @@ import { useAuthStore } from '@/store/authStore';
 import { proxyFetchGet } from '@/api/http';
 import { useTranslation } from 'react-i18next';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import DOMPurify from 'dompurify';
 import { ZoomControls } from './ZoomControls';
+import { containsDangerousContent } from '@/lib/htmlSanitization';
 
 // Type definitions
 interface FileTreeNode {
@@ -237,16 +235,6 @@ export default function Folder({ data }: { data?: Agent }) {
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
   };
-
-  // State for HTML script approval (lifted from HtmlRenderer)
-  const [htmlHasScripts, setHtmlHasScripts] = useState(false);
-  const [htmlScriptsApproved, setHtmlScriptsApproved] = useState(false);
-
-  // Reset script approval when file changes
-  useEffect(() => {
-    setHtmlScriptsApproved(false);
-    setHtmlHasScripts(false);
-  }, [selectedFile?.path]);
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -562,28 +550,6 @@ export default function Folder({ data }: { data?: Agent }) {
                   <Download className="w-4 h-4 text-zinc-500" />
                 </Button>
               </div>
-              {/* Safe to Run button for HTML files with scripts */}
-              {selectedFile?.type === 'html' && !isShowSourceCode && htmlHasScripts && !htmlScriptsApproved && (
-                <Button
-                  size="sm"
-                  variant="success"
-                  className="flex-shrink-0"
-                  onClick={() => {
-                    setHtmlScriptsApproved(true);
-                    toast.success(t('chat.scripts-approved'), {
-                      duration: 3000,
-                    });
-                  }}
-                >
-                  {t('chat.safe-to-run')}
-                </Button>
-              )}
-              {selectedFile?.type === 'html' && !isShowSourceCode && htmlScriptsApproved && htmlHasScripts && (
-                <span className="text-xs text-yellow-600 flex items-center gap-1 flex-shrink-0">
-                  <AlertTriangle className="w-3 h-3" />
-                  {t('chat.scripts-running')}
-                </span>
-              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -625,8 +591,6 @@ export default function Folder({ data }: { data?: Agent }) {
                     <HtmlRenderer
                       selectedFile={selectedFile}
                       projectFiles={fileGroups[0]?.files || []}
-                      scriptsApproved={htmlScriptsApproved}
-                      onScriptsDetected={setHtmlHasScripts}
                     />
                   )
                 ) : selectedFile.type === 'zip' ? (
@@ -754,26 +718,17 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
 function HtmlRenderer({
   selectedFile,
   projectFiles,
-  scriptsApproved,
-  onScriptsDetected,
 }: {
   selectedFile: FileInfo;
   projectFiles: FileInfo[];
-  scriptsApproved: boolean;
-  onScriptsDetected: (hasScripts: boolean) => void;
 }) {
-  const { t } = useTranslation();
   const [processedHtml, setProcessedHtml] = useState<string>('');
-  const [hasScripts, setHasScripts] = useState<boolean>(false);
-  const [rawHtmlWithScriptsCache, setRawHtmlWithScriptsCache] = useState<string>('');
-  const hasShownWarningRef = useRef<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const processHtml = async () => {
       if (!selectedFile.content) {
         setProcessedHtml('');
-        setHasScripts(false);
         return;
       }
 
@@ -818,137 +773,15 @@ function HtmlRenderer({
       const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
       const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
 
-      // Detect inline scripts in HTML content (handle malformed closing tags like </script > or </script foo="bar">)
-      const inlineScriptRegex = /<script\b[^>]*>[\s\S]*?<\/\s*script\b[^>]*>/gi;
-      const hasInlineScripts = inlineScriptRegex.test(html);
-      
-      // Detect inline event handlers (onclick, onload, etc.)
-      const eventHandlerRegex = /\s+on\w+\s*=\s*["'][^"']*["']/gi;
-      const hasEventHandlers = eventHandlerRegex.test(html);
-      
-      const hasAnyScripts = jsFiles.length > 0 || hasInlineScripts || hasEventHandlers;
-
-      // Show warning if any scripts are found (external JS files, inline scripts, or event handlers)
-      if (hasAnyScripts && hasShownWarningRef.current !== selectedFile.path) {
-        hasShownWarningRef.current = selectedFile.path;
-        setHasScripts(true);
-        onScriptsDetected(true);
-        toast.warning(t('chat.scripts-warning'), {
-          duration: 5000,
-          icon: <AlertTriangle className="w-4 h-4" />,
-        });
-      } else if (!hasAnyScripts) {
-        setHasScripts(false);
-        onScriptsDetected(false);
-      } else if (hasAnyScripts) {
-        // Scripts exist but warning already shown for this file
-        setHasScripts(true);
-        onScriptsDetected(true);
+      // Check for dangerous Electron/Node.js patterns as defense-in-depth
+      if (containsDangerousContent(html)) {
+        setProcessedHtml('');
+        return;
       }
 
-      // Strict dangerous content detection to prevent various bypass techniques
-      const dangerousPatterns = [
-        /ipcRenderer/gi,
-        /window\s*\[\s*['"`]ipcRenderer['"`]\s*\]/gi,
-        /parent\s*\.\s*ipcRenderer/gi,
-        /top\s*\.\s*ipcRenderer/gi,
-        /frames\s*\[\s*\d+\s*\]\s*\.\s*ipcRenderer/gi,
-        /require\s*\(\s*['"`]electron['"`]\s*\)/gi,
-        /process\s*\.\s*versions\s*\.\s*electron/gi,
-        /nodeIntegration/gi,
-        /webSecurity/gi,
-        /contextIsolation/gi,
-      ];
-
-      for (const pattern of dangerousPatterns) {
-        if (pattern.test(html)) {
-          console.warn('Detected forbidden content:', pattern);
-          setProcessedHtml('');
-          return;
-        }
-      }
-
-      // Skip processing if file is remote (we can't resolve relative paths for remote files)
+      // Skip image processing if file is remote (we can't resolve relative paths for remote files)
       if (selectedFile.isRemote) {
-        const sanitized = DOMPurify.sanitize(html, {
-          USE_PROFILES: { html: true },
-          ALLOWED_TAGS: [
-            'a',
-            'b',
-            'i',
-            'u',
-            'strong',
-            'em',
-            'p',
-            'br',
-            'ul',
-            'ol',
-            'li',
-            'img',
-            'div',
-            'span',
-            'table',
-            'thead',
-            'tbody',
-            'tr',
-            'td',
-            'th',
-            'pre',
-            'code',
-            'h1',
-            'h2',
-            'h3',
-            'h4',
-            'h5',
-            'h6',
-            'style',
-          ],
-          ALLOWED_ATTR: [
-            'href',
-            'src',
-            'alt',
-            'title',
-            'width',
-            'height',
-            'target',
-            'rel',
-            'colspan',
-            'rowspan',
-            'class',
-            'id',
-            'style',
-          ],
-          FORBID_ATTR: [
-            'onerror',
-            'onload',
-            'onclick',
-            'onmouseover',
-            'onfocus',
-            'onblur',
-            'onchange',
-            'onsubmit',
-            'onreset',
-            'onselect',
-            'onabort',
-            'onkeydown',
-            'onkeypress',
-            'onkeyup',
-            'onunload',
-          ],
-          FORBID_TAGS: [
-            'script',
-            'iframe',
-            'object',
-            'embed',
-            'form',
-            'input',
-            'button',
-          ],
-          ADD_ATTR: ['target'],
-          SANITIZE_DOM: true,
-          KEEP_CONTENT: false,
-        });
-        setProcessedHtml(sanitized);
+        setProcessedHtml(html);
         return;
       }
 
@@ -1078,97 +911,11 @@ function HtmlRenderer({
         }
       }
 
-      // Store raw HTML with inline scripts for iframe rendering (before sanitization)
-      const rawHtmlWithScripts = processedHtmlContent;
-
-      // Sanitize the processed HTML (for non-iframe rendering)
-      const sanitized = DOMPurify.sanitize(processedHtmlContent, {
-        USE_PROFILES: { html: true },
-        ALLOWED_TAGS: [
-          'a',
-          'b',
-          'i',
-          'u',
-          'strong',
-          'em',
-          'p',
-          'br',
-          'ul',
-          'ol',
-          'li',
-          'img',
-          'div',
-          'span',
-          'table',
-          'thead',
-          'tbody',
-          'tr',
-          'td',
-          'th',
-          'pre',
-          'code',
-          'h1',
-          'h2',
-          'h3',
-          'h4',
-          'h5',
-          'h6',
-          'style',
-          'canvas',
-          'html',
-          'head',
-          'body',
-          'title',
-          'meta',
-        ],
-        ALLOWED_ATTR: [
-          'href',
-          'src',
-          'alt',
-          'title',
-          'width',
-          'height',
-          'target',
-          'rel',
-          'colspan',
-          'rowspan',
-          'class',
-          'id',
-          'style',
-        ],
-        FORBID_ATTR: [
-          'onerror',
-          'onload',
-          'onclick',
-          'onmouseover',
-          'onfocus',
-          'onblur',
-          'onchange',
-          'onsubmit',
-          'onreset',
-          'onselect',
-          'onabort',
-          'onkeydown',
-          'onkeypress',
-          'onkeyup',
-          'onunload',
-        ],
-        FORBID_TAGS: [
-          'script',
-          'iframe',
-          'object',
-          'embed',
-          'form',
-          'input',
-          'button',
-        ],
-        ADD_ATTR: ['target'],
-        SANITIZE_DOM: true,
-        KEEP_CONTENT: false,
-      });
-
-      // Inject JS content after sanitization (only if user is aware of scripts)
-      let finalHtml = sanitized;
+      // Final check for dangerous content after all processing (including injected JS)
+      if (containsDangerousContent(processedHtmlContent)) {
+        setProcessedHtml('');
+        return;
+      }
 
       // Inject consistent font styles to ensure clean rendering
       const fontStyleTag = `<style data-eigent-fonts>
@@ -1194,14 +941,12 @@ function HtmlRenderer({
         return fontStyleTag + html;
       };
 
-      // Cache raw HTML with scripts for iframe rendering (before sanitization stripped them)
-      setRawHtmlWithScriptsCache(injectFontStyles(rawHtmlWithScripts));
-
-      setProcessedHtml(injectFontStyles(finalHtml));
+      // Set the processed HTML with font styles - iframe sandbox provides security
+      setProcessedHtml(injectFontStyles(processedHtmlContent));
     };
 
     processHtml();
-  }, [selectedFile, projectFiles, onScriptsDetected, t]);
+  }, [selectedFile, projectFiles]);
 
   // Zoom state and controls
   const [zoom, setZoom] = useState(100);
@@ -1231,7 +976,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className={`flex-1 min-h-0 bg-zinc-100 ${scriptsApproved && hasScripts ? 'overflow-hidden' : 'overflow-auto'}`}
+        className="flex-1 min-h-0 bg-zinc-100 overflow-hidden"
         onWheel={handleWheel}
       >
         <div
@@ -1242,22 +987,15 @@ function HtmlRenderer({
             height: `${10000 / zoom}%`,
           }}
         >
-          {scriptsApproved && hasScripts ? (
-            <iframe
-              ref={iframeRef}
-              srcDoc={rawHtmlWithScriptsCache}
-              className="w-full h-full border-0 bg-white"
-              sandbox="allow-scripts allow-forms allow-same-origin"
-              title={selectedFile.name}
-              tabIndex={0}
-              onLoad={() => iframeRef.current?.focus()}
-            />
-          ) : (
-            <div
-              className="w-full bg-white p-4"
-              dangerouslySetInnerHTML={{ __html: processedHtml }}
-            />
-          )}
+          <iframe
+            ref={iframeRef}
+            srcDoc={processedHtml}
+            className="w-full h-full border-0 bg-white"
+            sandbox="allow-scripts allow-forms"
+            title={selectedFile.name}
+            tabIndex={0}
+            onLoad={() => iframeRef.current?.focus()}
+          />
         </div>
       </div>
     </div>

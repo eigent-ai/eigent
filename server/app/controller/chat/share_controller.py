@@ -22,15 +22,14 @@ from starlette.responses import StreamingResponse
 from app.model.chat.chat_share import ChatHistoryShareOut, ChatShare, ChatShareIn
 from app.model.chat.chat_step import ChatStep
 from app.model.chat.chat_history import ChatHistory
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_chat_share")
+logger = logging.getLogger("server_chat_share")
 
 router = APIRouter(prefix="/chat", tags=["Chat Share"])
 
 
 @router.get("/share/info/{token}", name="Get shared chat info", response_model=ChatHistoryShareOut)
-@traceroot.trace()
 def get_share_info(token: str, session: Session = Depends(session)):
     """
     Get shared chat history info by token, excluding sensitive data.
@@ -56,7 +55,6 @@ def get_share_info(token: str, session: Session = Depends(session)):
 
 
 @router.get("/share/playback/{token}", name="Playback shared chat via SSE")
-@traceroot.trace()
 async def share_playback(token: str, session: Session = Depends(session), delay_time: float = 0):
     """
     Playbacks the chat history via a sharing token (SSE).
@@ -109,7 +107,6 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
 
 
 @router.post("/share", name="Generate sharable link for a task(1 day expiration)")
-@traceroot.trace()
 def create_share_link(data: ChatShareIn):
     """Generate sharing token with 1-day expiration for task."""
     try:

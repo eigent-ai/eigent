@@ -28,9 +28,9 @@ from app.service.task import (
 )
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import process_task
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("toolkit_listen")
+logger = logging.getLogger("toolkit_listen")
 
 
 def _safe_put_queue(task_lock, data):

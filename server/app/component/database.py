@@ -14,9 +14,9 @@
 
 from sqlmodel import Session, create_engine
 from app.component.environment import env, env_or_fail
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("database")
+logger = logging.getLogger("database")
 
 logger.info("Initializing database engine", extra={
     "database_url_prefix": env_or_fail("database_url")[:20] + "...",

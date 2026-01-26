@@ -20,9 +20,9 @@ import json
 from app.service.chat_service import Chat
 from app.component.environment import env
 from app.service.task import get_task_lock_if_exists
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("sync_step")
+logger = logging.getLogger("sync_step")
 
 
 def sync_step(func):
@@ -65,6 +65,12 @@ def sync_step(func):
                     task_id = chat.task_id
 
             if task_id:
+                # TODO: Filter out unnecessary events to avoid database bloat
+                # - Skip "decompose_text" streaming events (sent 50-200+ times per task)
+                # - Only sync structural events: decompose_progress, task_state, create_agent, etc.
+                # - Consider batching or deduplication for high-frequency events
+                # - Extract and add task dependencies for analytics
+
                 asyncio.create_task(
                     send_to_api(
                         sync_url,

@@ -243,9 +243,6 @@ To run the application locally in developer mode:
 1. Configure `.env.development`:
    - Set `VITE_USE_LOCAL_PROXY=true`
    - Set `VITE_PROXY_URL=http://localhost:3001`
-   - Set `TRACEROOT_ENABLE_SPAN_CLOUD_EXPORT=false`
-   - Set `TRACEROOT_ENABLE_LOG_CLOUD_EXPORT=false`
-   - Set `TRACEROOT_ENABLE_LOG_CONSOLE_EXPORT=false`
 2. Go to the settings to specify your model key and model type.
 
 ## Common Actions 🔄

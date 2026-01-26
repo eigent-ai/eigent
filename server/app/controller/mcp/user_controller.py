@@ -23,9 +23,9 @@ from app.model.mcp.mcp_user import McpUser, McpUserIn, McpUserOut, McpUserUpdate
 from app.model.mcp.mcp import Mcp
 from camel.toolkits.mcp_toolkit import MCPToolkit
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_mcp_user_controller")
+logger = logging.getLogger("server_mcp_user_controller")
 
 router = APIRouter(tags=["McpUser Management"])
 
@@ -70,7 +70,6 @@ async def pre_instantiate_mcp_toolkit(config_dict: dict) -> bool:
 
 
 @router.get("/mcp/users", name="list mcp users", response_model=List[McpUserOut])
-@traceroot.trace()
 async def list_mcp_users(
     mcp_id: Optional[int] = None,
     session: Session = Depends(session),
@@ -89,7 +88,6 @@ async def list_mcp_users(
 
 
 @router.get("/mcp/users/{mcp_user_id}", name="get mcp user", response_model=McpUserOut)
-@traceroot.trace()
 async def get_mcp_user(mcp_user_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get MCP user details."""
     query = select(McpUser).where(McpUser.id == mcp_user_id)
@@ -102,7 +100,6 @@ async def get_mcp_user(mcp_user_id: int, session: Session = Depends(session), au
 
 
 @router.post("/mcp/users", name="create mcp user", response_model=McpUserOut)
-@traceroot.trace()
 async def create_mcp_user(mcp_user: McpUserIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Create MCP user installation."""
     user_id = auth.user.id
@@ -145,7 +142,6 @@ async def create_mcp_user(mcp_user: McpUserIn, session: Session = Depends(sessio
 
 
 @router.put("/mcp/users/{id}", name="update mcp user")
-@traceroot.trace()
 async def update_mcp_user(
     id: int,
     update_item: McpUserUpdate,
@@ -175,7 +171,6 @@ async def update_mcp_user(
 
 
 @router.delete("/mcp/users/{mcp_user_id}", name="delete mcp user")
-@traceroot.trace()
 async def delete_mcp_user(mcp_user_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete MCP user installation."""
     user_id = auth.user.id
