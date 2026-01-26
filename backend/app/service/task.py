@@ -16,7 +16,7 @@ from typing_extensions import Any, Literal, TypedDict
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 from app.exception.exception import ProgramException
-from app.model.chat import McpServers, Status, SupplementChat, Chat, UpdateData
+from app.model.chat import AgentModelConfig, McpServers, Status, SupplementChat, Chat, UpdateData
 import asyncio
 from enum import Enum
 from camel.tasks import Task
@@ -214,6 +214,7 @@ class ActionNewAgent(BaseModel):
     description: str
     tools: list[str]
     mcp_tools: McpServers | None
+    custom_model_config: "AgentModelConfig | None" = None
 
 
 class ActionBudgetNotEnough(BaseModel):
