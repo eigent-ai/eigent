@@ -32,7 +32,7 @@ description: "Follow these simple steps to report bugs and help improve our prod
 
 ### For English-speaking Users:
 
-- Join our **CAMEL-AI Discord**  **🤖｜eigent** channel : https://discord.gg/HgSesTVC for bug discussions and community support
+- Join our **CAMEL-AI Discord**  **🤖｜eigent** channel : https://discord.com/invite/CNcNpquyDc for bug discussions and community support
 - Get direct assistance from our team and community members
 
 ### For Chinese-speaking Users:

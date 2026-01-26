@@ -70,7 +70,7 @@ const authStore = create<AuthState>()(
 			language: 'system',
 			isFirstLaunch: true,
 			modelType: 'cloud',
-			cloud_model_type: 'gpt-4.1',
+			cloud_model_type: 'gpt-5.2',
 			initState: 'permissions',
 			share_token: null,
 			localProxyValue: null,
