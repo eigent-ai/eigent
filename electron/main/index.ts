@@ -50,6 +50,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
 import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import { setVibrancy, setRoundedCorners, setTransparentTitlebar } from './native/macos-window'
 
 const userData = app.getPath('userData');
 
@@ -1290,9 +1291,10 @@ async function createWindow() {
     frame: false,
     show: false, // Don't show until content is ready to avoid white screen
     transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    backgroundColor: '#00000000',
+    // vibrancy: 'sidebar',
+    // visualEffectState: 'active',
+    // backgroundColor: '#f5f5f580',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
@@ -1612,6 +1614,29 @@ async function createWindow() {
   if (win && !win.isDestroyed()) {
     win.show();
     log.info('Window shown after content loaded');
+
+    // Apply native macOS effects AFTER window is shown to prevent white screen
+    // Use a small delay to ensure content is fully rendered
+    if (process.platform === 'darwin') {
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          try {
+            // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+            setVibrancy(win, 'HUDWindow');
+
+            // Apply rounded corners
+            setRoundedCorners(win, 20);
+
+            // Make titlebar transparent
+            setTransparentTitlebar(win);
+
+            log.info('[MacOS] Applied native visual effects after window shown');
+          } catch (error) {
+            log.error('[MacOS] Failed to apply native visual effects:', error);
+          }
+        }
+      }, 100); // Small delay to ensure content is rendered
+    }
   }
 
   // Mark window as ready and process any queued protocol URLs
