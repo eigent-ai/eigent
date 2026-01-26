@@ -12,12 +12,23 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import time
-import httpx
+"""
+Cloud sync step decorator.
+
+Syncs SSE step data to cloud server when SERVER_URL is configured.
+High-frequency events (decompose_text) are batched to reduce API calls.
+
+Config (~/.eigent/.env):
+    SERVER_URL=https://dev.eigent.ai/api
+"""
+
 import asyncio
-import os
 import json
-from app.service.chat_service import Chat
+import time
+from functools import lru_cache
+
+import httpx
+
 from app.component.environment import env
 from app.service.task import get_task_lock_if_exists
 import logging
@@ -25,72 +36,137 @@ import logging
 logger = logging.getLogger("sync_step")
 
 
+# Batch config for decompose_text events
+BATCH_WORD_THRESHOLD = 5
+
+# Buffer storage: task_id -> accumulated text
+_text_buffers: dict[str, str] = {}
+
+
+@lru_cache(maxsize=1)
+def _get_config():
+    server_url = env("SERVER_URL", "")
+    
+    if not server_url:
+        return None
+    
+    return f"{server_url.rstrip('/')}/chat/steps"
+
+
 def sync_step(func):
     async def wrapper(*args, **kwargs):
-        server_url = env("SERVER_URL")
-        sync_url = server_url + "/chat/steps" if server_url else None
+        config = _get_config()
+        
+        if not config:
+            async for value in func(*args, **kwargs):
+                yield value
+            return
+        
         async for value in func(*args, **kwargs):
-            if not server_url:
-                yield value
-                continue
-
-            if isinstance(value, str) and value.startswith("data: "):
-                value_json_str = value[len("data: ") :].strip()
-            else:
-                value_json_str = value
-
-            try:
-                json_data = json.loads(value_json_str)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON in sync_step: {e}. Value: {value_json_str}")
-                yield value
-                continue
-
-            if "step" not in json_data or "data" not in json_data:
-                logger.error(f"Missing 'step' or 'data' key in sync_step JSON. Keys: {list(json_data.keys())}")
-                yield value
-                continue
-
-            # Dynamic task_id extraction - prioritize runtime data over static args
-            chat: Chat = args[0] if args and hasattr(args[0], 'task_id') else None
-            task_id = None
-
-            if chat is not None:
-                task_lock = get_task_lock_if_exists(chat.project_id)
-                if task_lock is not None:
-                    task_id = task_lock.current_task_id \
-                        if hasattr(task_lock, 'current_task_id') and task_lock.current_task_id else chat.task_id
-                else:
-                    logger.warning(f"Task lock not found for project_id {chat.project_id}, using chat.task_id")
-                    task_id = chat.task_id
-
-            if task_id:
-                # TODO: Filter out unnecessary events to avoid database bloat
-                # - Skip "decompose_text" streaming events (sent 50-200+ times per task)
-                # - Only sync structural events: decompose_progress, task_state, create_agent, etc.
-                # - Consider batching or deduplication for high-frequency events
-                # - Extract and add task dependencies for analytics
-
-                asyncio.create_task(
-                    send_to_api(
-                        sync_url,
-                        {
-                            "task_id": task_id,
-                            "step": json_data["step"],
-                            "data": json_data["data"],
-                            "timestamp": time.time_ns() / 1_000_000_000,
-                        },
-                    )
-                )
+            _try_sync(args, value, config)
             yield value
-
+    
     return wrapper
 
 
-async def send_to_api(url, data):
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.post(url, json=data)
-            # logger.info(res)
-        except Exception as e:
-            logger.error(f"Failed to sync step to {url}: {type(e).__name__}: {e}")
+def _try_sync(args, value, sync_url):
+    data = _parse_value(value)
+    if not data:
+        return
+    
+    task_id = _get_task_id(args)
+    if not task_id:
+        return
+    
+    step = data.get("step")
+    
+    # Batch decompose_text events to reduce API calls
+    if step == "decompose_text":
+        _buffer_text(task_id, data["data"].get("content", ""))
+        if _should_flush(task_id):
+            _flush_buffer(task_id, sync_url)
+        return
+    
+    # Flush any buffered text before sending other events (preserves order)
+    if task_id in _text_buffers:
+        _flush_buffer(task_id, sync_url)
+    
+    payload = {
+        "task_id": task_id,
+        "step": step,
+        "data": data["data"],
+        "timestamp": time.time_ns() / 1_000_000_000,
+    }
+    
+    asyncio.create_task(_send(sync_url, payload))
+
+
+def _buffer_text(task_id: str, content: str):
+    """Accumulate decompose_text content in buffer."""
+    if task_id not in _text_buffers:
+        _text_buffers[task_id] = ""
+    _text_buffers[task_id] += content
+
+
+def _should_flush(task_id: str) -> bool:
+    """Check if buffer has enough words to flush."""
+    text = _text_buffers.get(task_id, "")
+    word_count = len(text.split())
+    return word_count >= BATCH_WORD_THRESHOLD
+
+
+def _flush_buffer(task_id: str, sync_url: str):
+    """Send buffered text and clear buffer."""
+    text = _text_buffers.pop(task_id, "")
+    if not text:
+        return
+    
+    payload = {
+        "task_id": task_id,
+        "step": "decompose_text",
+        "data": {"content": text},
+        "timestamp": time.time_ns() / 1_000_000_000,
+    }
+    
+    asyncio.create_task(_send(sync_url, payload))
+
+
+def _parse_value(value):
+    if isinstance(value, str) and value.startswith("data: "):
+        value = value[6:].strip()
+    
+    try:
+        data = json.loads(value)
+        if "step" in data and "data" in data:
+            return data
+    except (json.JSONDecodeError, TypeError):
+        pass
+    
+    return None
+
+
+def _get_task_id(args):
+    if not args or not hasattr(args[0], "task_id"):
+        return None
+
+    chat = args[0]
+    task_lock = get_task_lock_if_exists(chat.project_id)
+
+    if task_lock and getattr(task_lock, "current_task_id", None):
+        return task_lock.current_task_id
+
+    if not task_lock:
+        logger.warning(
+            f"Task lock not found for project_id {chat.project_id}, "
+            f"using chat.task_id"
+        )
+
+    return chat.task_id
+
+
+async def _send(url, data):
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(url, json=data)
+    except Exception as e:
+        logger.error(f"Failed to sync step to {url}: {type(e).__name__}: {e}")

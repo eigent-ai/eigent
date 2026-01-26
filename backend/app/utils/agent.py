@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, List, Tuple
 import uuid
 import logging
 
+from app.model.chat import AgentModelConfig
+
 # Thread-safe reference to main event loop using contextvars
 # This ensures each request has its own event loop reference, avoiding race conditions
 _main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
@@ -687,6 +689,7 @@ def agent_model(
     tool_names: list[str] | None = None,
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
+    custom_model_config: AgentModelConfig | None = None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -704,8 +707,21 @@ def agent_model(
         )
     )
 
-    # Build model config, defaulting to streaming for planner
-    extra_params = options.extra_params or {}
+    # Determine model configuration - use custom config if provided, otherwise use task defaults
+    config_attrs = ["model_platform", "model_type", "api_key", "api_url"]
+    effective_config = {}
+
+    if custom_model_config and custom_model_config.has_custom_config():
+        for attr in config_attrs:
+            effective_config[attr] = getattr(custom_model_config, attr, None) or getattr(options, attr)
+        extra_params = custom_model_config.extra_params or options.extra_params or {}
+        logger.info(
+            f"Agent {agent_name} using custom model config: platform={effective_config['model_platform']}, type={effective_config['model_type']}"
+        )
+    else:
+        for attr in config_attrs:
+            effective_config[attr] = getattr(options, attr)
+        extra_params = options.extra_params or {}
     init_param_keys = {
         "api_version",
         "azure_ad_token",
@@ -742,7 +758,7 @@ def agent_model(
         model_config["stream"] = True
     if agent_name == Agents.browser_agent:
         try:
-            model_platform_enum = ModelPlatformType(options.model_platform.lower())
+            model_platform_enum = ModelPlatformType(effective_config["model_platform"].lower())
             if model_platform_enum in {
                 ModelPlatformType.OPENAI,
                 ModelPlatformType.AZURE,
@@ -753,16 +769,16 @@ def agent_model(
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
             logging.error(
-                f"Invalid model platform for browser agent: {options.model_platform}",
+                f"Invalid model platform for browser agent: {effective_config['model_platform']}",
                 exc_info=True,
             )
             model_platform_enum = None
 
     model = ModelFactory.create(
-        model_platform=options.model_platform,
-        model_type=options.model_type,
-        api_key=options.api_key,
-        url=options.api_url,
+        model_platform=effective_config["model_platform"],
+        model_type=effective_config["model_type"],
+        api_key=effective_config["api_key"],
+        url=effective_config["api_url"],
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
         **init_params,
