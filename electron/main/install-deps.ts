@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import log from 'electron-log';
@@ -11,7 +25,7 @@ import {
   getTerminalVenvPath,
   getPrebuiltTerminalVenvPath,
   getUvEnv,
-  findPrebuiltPythonExecutable,
+  getPrebuiltPythonDir,
   cleanupOldVenvs,
   isBinaryExists,
   runInstallScript,
@@ -506,6 +520,59 @@ const runInstall = (extraArgs: string[], version: string) => {
     }
   });
 };
+
+/**
+ * Find Python executable in prebuilt Python directory
+ * UV stores Python installations in directories like: cpython-3.10.19+.../install/bin/python
+ */
+function findPrebuiltPythonExecutable(): string | null {
+  const prebuiltPythonDir = getPrebuiltPythonDir();
+  if (!prebuiltPythonDir) {
+    return null;
+  }
+
+  // Look for Python executable in the prebuilt directory
+  // UV stores Python in subdirectories like: cpython-3.10.19+.../install/bin/python
+  const possiblePaths: string[] = [];
+
+  // First, try common direct paths
+  possiblePaths.push(
+    path.join(prebuiltPythonDir, 'install', 'bin', 'python'),
+    path.join(prebuiltPythonDir, 'install', 'python.exe'),
+    path.join(prebuiltPythonDir, 'bin', 'python'),
+    path.join(prebuiltPythonDir, 'python.exe'),
+  );
+
+  // Then, search in subdirectories (UV stores Python in versioned directories)
+  try {
+    if (fs.existsSync(prebuiltPythonDir)) {
+      const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
+          const subDir = path.join(prebuiltPythonDir, entry.name);
+          possiblePaths.push(
+            path.join(subDir, 'install', 'bin', 'python'),
+            path.join(subDir, 'install', 'python.exe'),
+            path.join(subDir, 'bin', 'python'),
+            path.join(subDir, 'python.exe'),
+          );
+        }
+      }
+    }
+  } catch (error) {
+    log.warn('[DEPS INSTALL] Error searching for prebuilt Python:', error);
+  }
+
+  for (const pythonPath of possiblePaths) {
+    if (fs.existsSync(pythonPath)) {
+      log.info(`[DEPS INSTALL] Found prebuilt Python executable: ${pythonPath}`);
+      return pythonPath;
+    }
+  }
+
+  log.info('[DEPS INSTALL] Prebuilt Python directory found but executable not found, will use UV_PYTHON_INSTALL_DIR');
+  return null;
+}
 
 /**
  * Install terminal base venv with common packages for terminal tasks.
