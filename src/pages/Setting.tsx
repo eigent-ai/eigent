@@ -14,7 +14,6 @@
 
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import VerticalNavigation, { type VerticalNavItem } from "@/components/Navigation";
 import { useTranslation } from "react-i18next";
 import useAppVersion from "@/hooks/use-app-version";
@@ -25,11 +24,10 @@ import Models from "@/pages/Setting/Models";
 import MCP from "@/pages/Setting/MCP";
 import {
 	X,
-	CircleCheck,
 	Settings,
 	Fingerprint,
 	TextSelect,
-	Server,
+	TagIcon,
 } from "lucide-react";
 
 export default function Setting() {
@@ -78,15 +76,14 @@ export default function Setting() {
 	};
 
 	return (
-		<div className="max-w-[900px] h-auto px-4 m-auto flex flex-col py-4">
-			<div className="w-full h-auto flex px-3">
-					<div className="!w-[222px] flex-shrink-0 flex-grow-0 pt-md pr-4 flex flex-col sticky top-20 self-start">
+		<div className="max-w-[940px] h-auto m-auto flex flex-col">
+			<div className="w-full h-auto flex px-6">
+					<div className="w-40 h-full flex-shrink-0 flex-grow-0 pt-8 pr-6 flex flex-col justify-between sticky top-20 self-start">
 						<VerticalNavigation
 							items={settingMenus.map((menu) => {
-								const Icon = menu.icon;
 								return {
 									value: menu.id,
-									label: <span className="text-sm font-bold leading-13">{menu.name}</span>,
+									label: <span className="text-body-sm font-bold">{menu.name}</span>,
 								};
 							}) as VerticalNavItem[]}
 							value={activeTab}
@@ -95,21 +92,27 @@ export default function Setting() {
 							listClassName="w-full h-full overflow-y-auto"
 							contentClassName="hidden"
 						/>
-						<div className="w-full mt-8 pt-4 pb-2 flex items-center justify-center border-[0px] border-t border-solid border-white-80% flex-shrink-0 flex-grow-0">
-						<div className="flex items-center gap-1 leading-9">
-							<img src={vsersionLogo} alt="version-logo" className="h-6" />
-						</div>
-						<div className="px-sm py-0.5 bg-bg-surface-tertiary rounded-full gap-1 flex items-center justify-center">
-							<CircleCheck className="w-4 h-4 text-bg-fill-success-primary" />
-							<div className="text-primary text-xs font-bold leading-17">
-								{version}
-							</div>
-						</div>
+						<div className="w-full mt-4 py-4 flex flex-col gap-4 items-center justify-center flex-shrink-0 flex-grow-0 border-t-[0.5px] border-b-0 border-x-0 border-solid border-border-secondary">
+					  	<button 
+								onClick={() => window.open("https://github.com/eigent-ai/eigent", "_blank", "noopener,noreferrer")}
+								className="py-1.5 px-6 w-full bg-surface-tertiary rounded-lg gap-2 flex flex-row items-center justify-center cursor-pointer hover:opacity-60 transition-opacity duration-200"
+							>
+								<TagIcon className="w-4 h-4 text-text-success" />
+								<div className="text-text-body text-label-sm font-semibold">
+									{version}
+								</div>
+							</button>
+						  <button 
+								onClick={() => window.open("https://www.eigent.ai", "_blank", "noopener,noreferrer")}
+								className="flex items-center cursor-pointer bg-transparent hover:opacity-60 transition-opacity duration-200"
+							>
+								<img src={vsersionLogo} alt="version-logo" className="h-5" />
+							</button>
 					</div>
 				</div>
 
 				<div className="flex-1 flex flex-col w-full h-auto">
-					<div className="flex flex-col gap-4 pb-md py-md">
+					<div className="flex flex-col gap-4">
 						{activeTab === "general" && <General />}
 						{activeTab === "privacy" && <Privacy />}
 						{activeTab === "models" && <Models />}

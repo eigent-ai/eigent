@@ -4,9 +4,11 @@
 	"privacy": "Privacidad",
 	"models": "Modelos",
 	"mcp": "MCP & Herramientas",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "Predeterminado",
+	"profile": "Perfil",
 	"account": "Cuenta",
-	"you-are-currently-signed-in-with": "Estás actualmente conectado con {{email}}",
+	"you-are-currently-signed-in-with": "Estás actualmente conectado con <email>{{email}}</email>",
 	"manage": "Gestionar",
 	"log-out": "Cerrar sesión",
 	"language": "Idioma",
@@ -159,6 +161,7 @@
   "recommended": "Recomendado",
   "reset": "Restablecer",
   "reset-success": "¡Restablecido correctamente!",
-  "reset-failed": "¡Error al restablecer!"
+  "reset-failed": "¡Error al restablecer!",
+  "select-default-model": "Seleccionar modelo predeterminado"
 }
 

@@ -4,9 +4,11 @@
 	"privacy": "개인정보",
 	"models": "모델",
 	"mcp": "MCP 및 도구",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "기본값",
+	"profile": "프로필",
 	"account": "계정",
-	"you-are-currently-signed-in-with": "{{email}} 계정으로 로그인되어 있습니다.",
+	"you-are-currently-signed-in-with": "<email>{{email}}</email> 계정으로 로그인되어 있습니다.",
 	"manage": "관리",
 	"log-out": "로그아웃",
 	"language": "언어",
@@ -159,5 +161,6 @@
   "recommended": "추천",
   "reset": "초기화",
   "reset-success": "초기화 완료!",
-  "reset-failed": "초기화 실패!"
+  "reset-failed": "초기화 실패!",
+  "select-default-model": "기본 모델 선택"
 }

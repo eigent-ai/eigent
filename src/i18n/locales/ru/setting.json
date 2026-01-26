@@ -4,9 +4,11 @@
 	"privacy": "Конфиденциальность",
 	"models": "Модели",
 	"mcp": "MCP и Инструменты",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "По умолчанию",
+	"profile": "Профиль",
 	"account": "Аккаунт",
-	"you-are-currently-signed-in-with": "Вы вошли с аккаунтом {{email}}",
+	"you-are-currently-signed-in-with": "Вы вошли с аккаунтом <email>{{email}}</email>",
 	"manage": "Управление",
 	"log-out": "Выйти",
 	"language": "Язык",
@@ -159,6 +161,7 @@
   "recommended": "Рекомендуется",
   "reset": "Сброс",
   "reset-success": "Сброс выполнен успешно!",
-  "reset-failed": "Сбой сброса!"
+  "reset-failed": "Сбой сброса!",
+  "select-default-model": "Выбрать модель по умолчанию"
 }
 

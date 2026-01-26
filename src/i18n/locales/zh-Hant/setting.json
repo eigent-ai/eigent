@@ -4,9 +4,11 @@
 	"privacy": "隱私",
 	"models": "模型",
 	"mcp": "MCP & 工具",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "預設",
+	"profile": "個人資料",
 	"account": "帳戶",
-	"you-are-currently-signed-in-with": "您目前使用的是 {{email}} 帳戶",
+	"you-are-currently-signed-in-with": "您目前使用的是 <email>{{email}}</email> 帳戶",
 	"manage": "管理",
 	"log-out": "登出",
 	"language": "語言",
@@ -159,5 +161,6 @@
   "recommended": "推薦",
   "reset": "重設",
   "reset-success": "重設成功！",
-  "reset-failed": "重設失敗！"
+  "reset-failed": "重設失敗！",
+  "select-default-model": "選擇預設模型"
 }

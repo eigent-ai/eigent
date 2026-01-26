@@ -4,9 +4,11 @@
 	"privacy": "プライバシー",
 	"models": "モデル",
 	"mcp": "MCP & ツール",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "デフォルト",
+	"profile": "プロフィール",
 	"account": "アカウント",
-	"you-are-currently-signed-in-with": "{{email}}で現在サインインしています",
+	"you-are-currently-signed-in-with": "<email>{{email}}</email>で現在サインインしています",
 	"manage": "管理",
 	"log-out": "ログアウト",
 	"language": "言語",
@@ -159,6 +161,7 @@
   "recommended": "おすすめ",
   "reset": "リセット",
   "reset-success": "リセットに成功しました！",
-  "reset-failed": "リセットに失敗しました！"
+  "reset-failed": "リセットに失敗しました！",
+  "select-default-model": "デフォルトモデルを選択"
 }
 
