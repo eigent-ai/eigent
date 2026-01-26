@@ -253,6 +253,33 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 @sync_step
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
+    # Log CDP browsers received from frontend
+    logger.info(f"[BACKEND CDP] ========================================")
+    logger.info(f"[BACKEND CDP] Received task request for project: {options.project_id}")
+    logger.info(f"[BACKEND CDP] browser_port: {options.browser_port}")
+    logger.info(f"[BACKEND CDP] use_external_cdp: {options.use_external_cdp}")
+
+    if hasattr(options, 'cdp_browsers') and options.cdp_browsers:
+        logger.info(f"[BACKEND CDP] cdp_browsers count: {len(options.cdp_browsers)}")
+        for idx, browser in enumerate(options.cdp_browsers):
+            port = browser.get('port', 'N/A')
+            is_external = browser.get('isExternal', 'N/A')
+            name = browser.get('name', 'Unnamed')
+            browser_id = browser.get('id', 'N/A')
+            logger.info(f"[BACKEND CDP]   Browser {idx + 1}: port={port}, isExternal={is_external}, name=\"{name}\", id={browser_id}")
+    else:
+        logger.warn(f"[BACKEND CDP] ⚠️  NO CDP browsers configured - cdp_browsers is empty or missing")
+        logger.warn(f"[BACKEND CDP] ⚠️  Agents will all use default browser port: {options.browser_port}")
+
+    logger.info(f"[BACKEND CDP] ========================================")
+
+    # if True:
+    #     import faulthandler
+
+    #     faulthandler.enable()
+    #     for second in [5, 10, 20, 30, 60, 120, 240]:
+    #         faulthandler.dump_traceback_later(second)
+
     start_event_loop = True
 
     # Initialize task_lock attributes

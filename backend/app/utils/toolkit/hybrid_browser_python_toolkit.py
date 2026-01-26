@@ -155,6 +155,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         enabled_tools: List[str] | None = None,
         browser_log_to_file: bool = False,
         session_id: str | None = None,
+        log_base_dir: str | None = None,
         default_start_url: str = "https://google.com/",
         default_timeout: int | None = None,
         short_timeout: int | None = None,
@@ -170,6 +171,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         self._stealth = stealth
         self._cache_dir = cache_dir
         self._browser_log_to_file = browser_log_to_file
+        self._log_base_dir = log_base_dir
         self._default_start_url = default_start_url
         self._session_id = session_id or "default"
 
@@ -193,7 +195,12 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         # Set up log file if needed
         if self.log_to_file:
             # Create log directory if it doesn't exist
-            log_dir = "browser_log"
+            # If log_base_dir is provided, use task-specific directory; otherwise use default backend/browser_log
+            if log_base_dir:
+                log_dir = os.path.join(log_base_dir, "browser_logs")
+            else:
+                log_dir = "browser_log"  # Backward compatibility: use default location
+
             os.makedirs(log_dir, exist_ok=True)
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -310,6 +317,8 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             FunctionTool(browser.browser_visit_page),
             FunctionTool(browser.browser_scroll),
             FunctionTool(browser.browser_get_som_screenshot),
+            FunctionTool(browser.browser_sheet_read),
+            FunctionTool(browser.browser_sheet_input),
             # FunctionTool(browser.select),
             # FunctionTool(browser.wait_user),
         ]
@@ -334,6 +343,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             enabled_tools=self.enabled_tools.copy(),
             browser_log_to_file=self._browser_log_to_file,
             session_id=new_session_id,
+            log_base_dir=self._log_base_dir,
             default_start_url=self._default_start_url,
             default_timeout=self._default_timeout,
             short_timeout=self._short_timeout,

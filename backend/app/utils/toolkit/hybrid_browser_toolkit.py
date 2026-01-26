@@ -304,7 +304,7 @@ class WebSocketConnectionPool:
                         is_healthy = False
 
                 if is_healthy:
-                    logger.debug(f"Reusing healthy WebSocket connection for session {session_id}")
+                    logger.info(f"[CONNECTION POOL] Reusing healthy WebSocket connection for session {session_id}")
                     return wrapper
                 else:
                     # Connection is unhealthy, clean it up
@@ -317,11 +317,12 @@ class WebSocketConnectionPool:
                     del self._connections[session_id]
 
             # Create a new connection
-            logger.info(f"Creating new WebSocket connection for session {session_id}")
+            cdp_url = config.get('cdpUrl', 'NOT SET')
+            logger.info(f"[CONNECTION POOL] Creating new WebSocket connection for session {session_id}, CDP URL: {cdp_url}")
             wrapper = WebSocketBrowserWrapper(config)
             await wrapper.start()
             self._connections[session_id] = wrapper
-            logger.info(f"Successfully created WebSocket connection for session {session_id}")
+            logger.info(f"[CONNECTION POOL] Successfully created WebSocket connection for session {session_id}, CDP URL: {cdp_url}")
             return wrapper
 
     async def close_connection(self, session_id: str):
@@ -394,7 +395,10 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
         self.api_task_id = api_task_id
         logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
-        
+
+        # Store log_dir for use in clone()
+        self._log_dir = log_dir
+
         # Set default user_data_dir if not provided
         if user_data_dir is None:
             # Use browser port to determine profile directory
@@ -406,7 +410,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         else:
             logger.info(f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}")
 
-        logger.debug(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}")
+        logger.info(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}, cdp_url: {cdp_url}")
         super().__init__(
             headless=headless,
             user_data_dir=user_data_dir,
@@ -414,6 +418,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cache_dir=cache_dir,
             enabled_tools=enabled_tools,
             browser_log_to_file=browser_log_to_file,
+            log_dir=log_dir,
             session_id=session_id,
             default_start_url=default_start_url,
             default_timeout=default_timeout,
@@ -429,24 +434,28 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
-        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
+        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}, session_id: {self._session_id}")
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
-        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
+        import traceback
         global websocket_connection_pool
 
         # Get session ID from config or use default
         session_id = self._ws_config.get("session_id", "default")
-        logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
         # Log when connecting to browser
-        cdp_url = self._ws_config.get("cdp_url", f"http://localhost:{env('browser_port', '9222')}")
-        logger.info(f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}")
+        cdp_url = self._ws_config.get("cdpUrl", f"http://localhost:{env('browser_port', '9222')}")
+
+        # Log stack trace to see who's calling this
+        stack = traceback.extract_stack()
+        caller_info = f"{stack[-2].filename}:{stack[-2].lineno} in {stack[-2].name}"
+
+        logger.info(f"[TOOLKIT SESSION {session_id}] Connecting to browser via CDP at {cdp_url} (api_task_id: {getattr(self, 'api_task_id', 'UNKNOWN')}, toolkit_id: {id(self)}, caller: {caller_info})")
 
         # Get or create connection from pool
         self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
-        logger.info(f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}")
+        logger.info(f"[TOOLKIT SESSION {session_id}] WebSocket wrapper initialized, CDP URL in config: {cdp_url}")
 
         # Additional health check
         if self._ws_wrapper.websocket is None:
@@ -462,21 +471,30 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
         # For cloned sessions, use the same user_data_dir to share login state
         # This allows multiple agents to use the same browser profile without conflicts
-        logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
+        parent_session_id = self._session_id if hasattr(self, '_session_id') else 'UNKNOWN'
+        logger.info(f"[TOOLKIT CLONE] Parent session {parent_session_id} -> New session {new_session_id}, shared user_data_dir: {self._user_data_dir}")
+
+        # Use the same CDP URL as parent
+        cdp_url = self.config_loader.get_browser_config().cdp_url
+        logger.info(f"[TOOLKIT CLONE] Parent session {parent_session_id} -> New session {new_session_id}, CDP URL: {cdp_url}")
+
+        # When cloning with cdp_keep_current_page=True, don't use default_start_url
+        cdp_keep_current = self.config_loader.get_browser_config().cdp_keep_current_page
+        start_url = None if cdp_keep_current else self._default_start_url
 
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
-        return HybridBrowserToolkit(
+        cloned_toolkit = HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
             user_data_dir=self._user_data_dir,  # Use the same user_data_dir
             stealth=self._stealth,
             cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
-            enabled_tools=self.enabled_tools.copy(),
+            enabled_tools=getattr(self, '_enabled_tools', None).copy() if getattr(self, '_enabled_tools', None) else None,
             browser_log_to_file=self._browser_log_to_file,
-            log_dir=self.config_loader.get_toolkit_config().log_dir,
+            log_dir=self._log_dir,  # Use the same log_dir as parent
             session_id=new_session_id,
-            default_start_url=self._default_start_url,
+            default_start_url=start_url,
             default_timeout=self._default_timeout,
             short_timeout=self._short_timeout,
             navigation_timeout=self._navigation_timeout,
@@ -486,10 +504,11 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             dom_content_loaded_timeout=self._dom_content_loaded_timeout,
             viewport_limit=self._viewport_limit,
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
-            cdp_url=f"http://localhost:{env('browser_port', '9222')}",
-            cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
+            cdp_url=cdp_url,
+            cdp_keep_current_page=cdp_keep_current,
             full_visual_mode=self._full_visual_mode,
         )
+        return cloned_toolkit
 
     async def browser_sheet_input(self, *, cells: List[SheetCell]) -> Dict[str, Any]:
         # Use typing_extensions.TypedDict for Pydantic <3.12 compatibility.
@@ -500,21 +519,18 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         return "Browser Toolkit"
 
     async def close(self):
-        """Close the browser toolkit and release WebSocket connection."""
-        try:
-            # Close browser if needed
-            if self._ws_wrapper:
-                await super().browser_close()
-        except Exception as e:
-            logger.error(f"Error closing browser: {e}")
+        """Close the browser toolkit - but keep browser and connections open for reuse."""
+        logger.info(f"[HybridBrowserToolkit] close() called - browser and connections will remain open for reuse")
 
-        # Release connection from pool
-        session_id = self._ws_config.get("session_id", "default")
-        await websocket_connection_pool.close_connection(session_id)
-        logger.info(f"Released WebSocket connection for session {session_id}")
+        # DISABLED: Do not close browser - keep it open for reuse across tasks
+        # DISABLED: Do not release WebSocket connection - keep it in pool for reuse
+        # DISABLED: Do not release CDP browser port - use fixed port, no occupation management
 
     def __del__(self):
         """Cleanup when object is garbage collected."""
+        logger.info(f"[HybridBrowserToolkit] __del__ called for api_task_id: {getattr(self, 'api_task_id', 'UNKNOWN')} - browser will remain open")
+
+        # Log cleanup
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:
-            session_id = self._ws_config.get("session_id", "default")
+            session_id = self._ws_config.get("session_id", "default") if hasattr(self, "_ws_config") else "unknown"
             logger.debug(f"HybridBrowserToolkit for session {session_id} is being garbage collected")
