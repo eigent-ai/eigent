@@ -48,7 +48,6 @@ public/
 
 # Testing
 coverage/
-.traceroot-config.yaml
 
 # Python
 __pycache__/

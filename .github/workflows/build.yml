@@ -21,11 +21,12 @@ permissions:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
 
     strategy:
       matrix:
         include:
-          - os: [self-hosted, macOS, ARM64]
+          - os: macos-latest
             arch: arm64
             artifact_name: macos-arm64
           - os: windows-latest
@@ -58,12 +59,15 @@ jobs:
         if: "!contains(matrix.os, 'self-hosted')"
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install Python Dependencies
         run: |
           python3 -m pip install --upgrade pip
           pip3 install uv
+
+      - name: Install bun
+        run: npm install -g bun
 
       - name: Install Dependencies
         run: npm install
@@ -92,8 +96,11 @@ jobs:
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
+        timeout-minutes: 90
         run: |
           # Increase file descriptor limit to prevent EMFILE errors during signing
+          # This is needed because electron-builder signs all files recursively,
+          # and Python venvs contain thousands of files
           ulimit -n 65536 || ulimit -n 10240
           echo "File descriptor limit set to: $(ulimit -n)"
           npm run build -- --arch ${{ matrix.arch }}
@@ -108,10 +115,12 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          USE_NPM_INSTALL_BUN: 'true'
 
       # Step for Windows builds without signing
       - name: Build Release Files (Windows without signing)
         if: runner.os == 'Windows'
+        timeout-minutes: 90
         run: npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -119,10 +128,12 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          USE_NPM_INSTALL_BUN: 'true'
 
       # Step for Linux builds
       - name: Build Release Files (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 90
         run: npm run build:linux
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,6 +141,7 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          USE_NPM_INSTALL_BUN: 'true'
 
       # Verify built app contains Electron Framework
       - name: Verify Built App (macOS)
@@ -154,14 +166,38 @@ jobs:
             ls -la release/
           fi
 
-      - name: Upload Artifact
+      - name: Upload Artifact (macOS)
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
-            release/*
-            !release/builder-debug.yml
-            !release/builder-effective-config.yaml
+            release/*.dmg
+            release/*.dmg.blockmap
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest*.yml
+          retention-days: 5
+
+      - name: Upload Artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest*.yml
+          retention-days: 5
+
+      - name: Upload Artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
+          path: |
+            release/*.AppImage
+            release/latest*.yml
           retention-days: 5
   merge-release:
     needs: build
@@ -189,39 +225,38 @@ jobs:
           name: release-ubuntu-latest-x64
           path: temp-linux-x64
 
-      # Move files to final release directory, removing any nested release/ directory
+      # Move release files for each platform
       - name: Move files to clean folders
         shell: bash
         run: |
-          # mac-arm64
+          # mac-arm64 - move dmg, zip, blockmap, and yml files
           if [ -d "temp-mac-arm64/release" ]; then
-            mv temp-mac-arm64/release/* release/mac-arm64/ || true
+            find temp-mac-arm64/release \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-arm64/ \; || true
           else
-            mv temp-mac-arm64/* release/mac-arm64/ || true
+            find temp-mac-arm64 \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-arm64/ \; || true
           fi
 
-          # win-x64
+          # win-x64 - move exe, blockmap, and yml files
           if [ -d "temp-win-x64/release" ]; then
-            mv temp-win-x64/release/* release/win-x64/ || true
+            find temp-win-x64/release \( -name "*.exe" -o -name "*.exe.blockmap" -o -name "latest*.yml" \) -exec mv {} release/win-x64/ \; || true
           else
-            mv temp-win-x64/* release/win-x64/ || true
+            find temp-win-x64 \( -name "*.exe" -o -name "*.exe.blockmap" -o -name "latest*.yml" \) -exec mv {} release/win-x64/ \; || true
           fi
 
-          # linux-x64
+          # linux-x64 - move AppImage and yml files
           if [ -d "temp-linux-x64/release" ]; then
-            mv temp-linux-x64/release/* release/linux-x64/ || true
+            find temp-linux-x64/release \( -name "*.AppImage" -o -name "latest*.yml" \) -exec mv {} release/linux-x64/ \; || true
           else
-            mv temp-linux-x64/* release/linux-x64/ || true
+            find temp-linux-x64 \( -name "*.AppImage" -o -name "latest*.yml" \) -exec mv {} release/linux-x64/ \; || true
           fi
 
       # Create GitHub Release
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             release/mac-arm64/*
             release/win-x64/*
             release/linux-x64/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

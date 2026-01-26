@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from typing import List, Optional
 from fastapi import Depends, HTTPException, Query, Response, APIRouter
 from sqlmodel import Session, select, or_
@@ -5,15 +19,14 @@ from app.component.database import session
 from app.component.auth import Auth, auth_must
 from fastapi_babel import _
 from app.model.config.config import Config, ConfigCreate, ConfigUpdate, ConfigInfo, ConfigOut
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_config_controller")
+logger = logging.getLogger("server_config_controller")
 
 router = APIRouter(tags=["Config Management"])
 
 
 @router.get("/configs", name="list configs", response_model=list[ConfigOut])
-@traceroot.trace()
 async def list_configs(
     config_group: Optional[str] = None, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -30,7 +43,6 @@ async def list_configs(
 
 
 @router.get("/configs/{config_id}", name="get config", response_model=ConfigOut)
-@traceroot.trace()
 async def get_config(
     config_id: int,
     session: Session = Depends(session),
@@ -52,7 +64,6 @@ async def get_config(
 
 
 @router.post("/configs", name="create config", response_model=ConfigOut)
-@traceroot.trace()
 async def create_config(config: ConfigCreate, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Create new configuration."""
     user_id = auth.user.id
@@ -89,7 +100,6 @@ async def create_config(config: ConfigCreate, session: Session = Depends(session
 
 
 @router.put("/configs/{config_id}", name="update config", response_model=ConfigOut)
-@traceroot.trace()
 async def update_config(
     config_id: int, config_update: ConfigUpdate, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -135,7 +145,6 @@ async def update_config(
 
 
 @router.delete("/configs/{config_id}", name="delete config")
-@traceroot.trace()
 async def delete_config(config_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete configuration."""
     user_id = auth.user.id
@@ -157,7 +166,6 @@ async def delete_config(config_id: int, session: Session = Depends(session), aut
 
 
 @router.get("/config/info", name="get config info")
-@traceroot.trace()
 async def get_config_info(
     show_all: bool = Query(False, description="Show all config info, including those with empty env_vars"),
 ):
