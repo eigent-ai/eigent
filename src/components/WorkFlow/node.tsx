@@ -460,7 +460,7 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					<div
 						ref={toolsRef}
-						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3"
+						className="flex-shrink-0 text-text-label text-xs leading-normal min-h-4 font-normal mb-sm pr-3"
 					>
 						{/* {JSON.stringify(data.agent)} */}
 						{agentToolkits[
@@ -551,7 +551,7 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					{data.agent?.tasks && data.agent?.tasks.length > 0 && (
 						<div className="flex flex-col items-start justify-between gap-1 pt-sm border-[0px] border-t border-solid border-task-border-default pr-3">
-							{/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
+							{/* <div className="font-bold leading-normal text-xs">Subtasks</div> */}
 							<div className="flex-1 flex justify-end">
 								<TaskState
 									all={data.agent.tasks?.length || 0}
@@ -756,7 +756,7 @@ export function Node({ id, data }: NodeProps) {
 												<div className="flex flex-col gap-1 mt-xs animate-in fade-in-0 slide-in-from-bottom-2 duration-400">
 													{/* Streaming agent output */}
 													{chatStore.tasks[chatStore.activeTaskId as string]?.streamingAgentOutput?.[task.id] && (
-														<div className="flex-1 min-w-0 text-text-secondary text-xs leading-tight overflow-hidden animate-in fade-in-0 duration-200">
+														<div className="flex-1 min-w-0 text-text-secondary text-xs leading-normal overflow-hidden animate-in fade-in-0 duration-200">
 															<div className="line-clamp-2 whitespace-pre-wrap break-words">
 																{chatStore.tasks[chatStore.activeTaskId as string].streamingAgentOutput[task.id]}
 															</div>
