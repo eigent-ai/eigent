@@ -357,8 +357,8 @@ export function AddWorker({
 			};
 			setWorkerList([...workerList, worker]);
 		} else {
-			// Build model config override if custom model is enabled
-			const modelConfigOverride = useCustomModel && customModelPlatform ? {
+			// Build custom model config if custom model is enabled
+			const customModelConfig = useCustomModel && customModelPlatform ? {
 				model_platform: customModelPlatform,
 				model_type: customModelType || undefined,
 			} : undefined;
@@ -369,7 +369,7 @@ export function AddWorker({
 				tools: localTool,
 				mcp_tools: mcpLocal,
 				email: email,
-				model_config_override: modelConfigOverride,
+				custom_model_config: customModelConfig,
 			});
 			const worker: Agent = {
 				tasks: [],

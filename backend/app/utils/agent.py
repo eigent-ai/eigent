@@ -714,7 +714,7 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(custom_model_config, attr, None) or getattr(options, attr)
         extra_params = custom_model_config.extra_params or options.extra_params or {}
-        traceroot_logger.info(
+        logger.info(
             f"Agent {agent_name} using custom model config: platform={effective_config['model_platform']}, type={effective_config['model_type']}"
         )
     else:
