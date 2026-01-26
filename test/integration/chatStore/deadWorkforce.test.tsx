@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { generateUniqueId } from '../../../src/lib'
@@ -172,7 +186,7 @@ describe('Integration Test: Case 2 - same session new chat', () => {
       console.log("Progress test - task status:", task?.status);
     }, { timeout: 1500 })
 
-    // Test 3: Rerender untill status is "finished"
+    // Test 3: Rerender until status is "finished"
     await waitFor(() => {
       rerender()
       const {chatStore: newChatStore} = result.current;
@@ -392,7 +406,7 @@ describe('Integration Test: Case 2 - same session new chat', () => {
     })
   })
 
-  //TODO: Don't let new startTask untill newChatStore appended
+  //TODO: Don't let new startTask until newChatStore appended
   it("Parallel startTask calls with separate chatStores (startTask -> wait for append -> startTask)", async () => {
     const { result, rerender } = renderHook(() => useChatStoreAdapter())
     

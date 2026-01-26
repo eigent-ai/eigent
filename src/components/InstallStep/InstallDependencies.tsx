@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import React from "react";
 import { useAuthStore } from "@/store/authStore";
 import { ProgressInstall } from "@/components/ui/progress-install";
@@ -16,7 +30,7 @@ export const InstallDependencies: React.FC = () => {
 	} = useInstallationUI();
 
 	return (
-		<div className="fixed !z-[100] inset-0 !bg-bg-page  bg-opacity-80 h-full w-full  flex items-center justify-center backdrop-blur-sm">
+		<div className="fixed !z-[100] inset-0  bg-opacity-80 h-full w-full  flex items-center justify-center backdrop-blur-sm">
 			<div className="w-[1200px] p-[40px] h-full flex flex-col justify-center gap-xl">
 				<div className="relative">
 					{/* {isInstalling.toString()} */}

@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import type { ProgressInfo } from "electron-updater";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -9,22 +23,8 @@ const Update = () => {
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const { t } = useTranslation();
 
-  // Some updater errors (e.g. GitHub 503 / missing release) are noisy and not actionable for users.
-  const shouldSuppressError = (message?: string) => {
-    if (!message) return false;
-    const lower = message.toLowerCase();
-    return (
-      lower.includes("unable to find latest version on github")
-    );
-  };
-
-  const checkUpdate = async () => {
-    const result = await window.ipcRenderer.invoke("check-update");
-    if (result?.error && !shouldSuppressError(result.error.message)) {
-      toast.error(t("update.update-check-failed"), {
-        description: result.error.message,
-      });
-    }
+  const checkUpdate = () => {
+    window.ipcRenderer.invoke("check-update");
   };
 
   const onUpdateCanAvailable = useCallback(
@@ -50,10 +50,6 @@ const Update = () => {
 
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
-      if (shouldSuppressError(err.message)) {
-        console.warn("[update] suppressed updater error:", err.message);
-        return;
-      }
       toast.error(t("update.update-error"), {
         description: err.message,
       });
