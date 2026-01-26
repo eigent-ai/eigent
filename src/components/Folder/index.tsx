@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useEffect, useRef, useState } from 'react';
 import {
   ChevronsLeft,
@@ -18,7 +32,8 @@ import { useAuthStore } from '@/store/authStore';
 import { proxyFetchGet } from '@/api/http';
 import { useTranslation } from 'react-i18next';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import DOMPurify from 'dompurify';
+import { ZoomControls } from './ZoomControls';
+import { containsDangerousContent } from '@/lib/htmlSanitization';
 
 // Type definitions
 interface FileTreeNode {
@@ -235,17 +250,22 @@ export default function Folder({ data }: { data?: Agent }) {
     nodeMap.set('', root);
 
     const sortedFiles = [...files].sort((a, b) => {
-      const depthA = (a.relativePath || '').split('/').filter(Boolean).length;
-      const depthB = (b.relativePath || '').split('/').filter(Boolean).length;
+      // Normalize paths to use forward slashes for cross-platform compatibility
+      const normalizedPathA = (a.relativePath || '').replace(/\\/g, '/');
+      const normalizedPathB = (b.relativePath || '').replace(/\\/g, '/');
+      const depthA = normalizedPathA.split('/').filter(Boolean).length;
+      const depthB = normalizedPathB.split('/').filter(Boolean).length;
       return depthA - depthB;
     });
 
     for (const file of sortedFiles) {
-      const fullRelativePath = file.relativePath
-        ? `${file.relativePath}/${file.name}`
+      // Normalize paths to use forward slashes for cross-platform compatibility
+      const normalizedRelativePath = (file.relativePath || '').replace(/\\/g, '/');
+      const fullRelativePath = normalizedRelativePath
+        ? `${normalizedRelativePath}/${file.name}`
         : file.name;
 
-      const parentPath = file.relativePath || '';
+      const parentPath = normalizedRelativePath;
       const parentNode = nodeMap.get(parentPath) || root;
 
       const node: FileTreeNode = {
@@ -543,8 +563,8 @@ export default function Folder({ data }: { data?: Agent }) {
         )}
 
         {/* content */}
-        <div className="flex-1 overflow-y-auto min-h-0 scrollbar">
-          <div className="p-6 h-full">
+        <div className={`flex-1 min-h-0 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'overflow-y-auto scrollbar'}`}>
+          <div className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}>
             {selectedFile ? (
               !loading ? (
                 selectedFile.type === 'md' && !isShowSourceCode ? (
@@ -568,7 +588,10 @@ export default function Folder({ data }: { data?: Agent }) {
                   isShowSourceCode ? (
                     <>{selectedFile.content}</>
                   ) : (
-                    <HtmlRenderer selectedFile={selectedFile} />
+                    <HtmlRenderer
+                      selectedFile={selectedFile}
+                      projectFiles={fileGroups[0]?.files || []}
+                    />
                   )
                 ) : selectedFile.type === 'zip' ? (
                   <div className="flex items-center justify-center h-full text-zinc-500">
@@ -660,9 +683,47 @@ function joinPath(...paths: string[]): string {
     .replace(/\/+/g, '/');
 }
 
+// Helper function to resolve relative paths (handles ../ and ./)
+function resolveRelativePath(basePath: string, relativePath: string): string {
+  // Normalize paths
+  const normalizedBase = basePath.replace(/\\/g, '/');
+  const normalizedRelative = relativePath.replace(/\\/g, '/');
+
+  // If it's not a relative path, return as-is
+  if (!normalizedRelative.startsWith('./') && !normalizedRelative.startsWith('../')) {
+    // It's a simple relative path like "script.js" or "js/script.js"
+    return joinPath(normalizedBase, normalizedRelative);
+  }
+
+  const baseParts = normalizedBase.split('/').filter(Boolean);
+  const relativeParts = normalizedRelative.split('/').filter(Boolean);
+
+  for (const part of relativeParts) {
+    if (part === '.') {
+      // Current directory, skip
+      continue;
+    } else if (part === '..') {
+      // Parent directory, go up one level
+      baseParts.pop();
+    } else {
+      // Regular path segment
+      baseParts.push(part);
+    }
+  }
+
+  return baseParts.join('/');
+}
+
 // Component to render HTML with relative image paths resolved
-function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
+function HtmlRenderer({
+  selectedFile,
+  projectFiles,
+}: {
+  selectedFile: FileInfo;
+  projectFiles: FileInfo[];
+}) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const processHtml = async () => {
@@ -673,114 +734,56 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
 
       let html = selectedFile.content;
 
-      // Strict dangerous content detection to prevent various bypass techniques
-      const dangerousPatterns = [
-        /ipcRenderer/gi,
-        /window\s*\[\s*['"`]ipcRenderer['"`]\s*\]/gi,
-        /parent\s*\.\s*ipcRenderer/gi,
-        /top\s*\.\s*ipcRenderer/gi,
-        /frames\s*\[\s*\d+\s*\]\s*\.\s*ipcRenderer/gi,
-        /require\s*\(\s*['"`]electron['"`]\s*\)/gi,
-        /process\s*\.\s*versions\s*\.\s*electron/gi,
-        /nodeIntegration/gi,
-        /webSecurity/gi,
-        /contextIsolation/gi,
-      ];
+      // Get the directory of the HTML file
+      const htmlDir = getDirPath(selectedFile.path);
 
-      for (const pattern of dangerousPatterns) {
-        if (pattern.test(html)) {
-          console.warn('Detected forbidden content:', pattern);
-          setProcessedHtml('');
-          return;
+      // Parse HTML to find referenced JS and CSS files via relative paths
+      const scriptSrcRegex = /<script[^>]*src\s*=\s*["']([^"']+)["'][^>]*>/gi;
+      const linkHrefRegex = /<link[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*>/gi;
+
+      const referencedPaths: Set<string> = new Set();
+
+      // Helper to extract and resolve paths
+      const addReferencedPath = (url: string) => {
+        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+          const resolvedPath = resolveRelativePath(htmlDir, url);
+          referencedPaths.add(resolvedPath.toLowerCase());
         }
+      };
+
+      // Extract script sources
+      let scriptMatch;
+      while ((scriptMatch = scriptSrcRegex.exec(html)) !== null) {
+        addReferencedPath(scriptMatch[1]);
       }
 
-      // Skip processing if file is remote (we can't resolve relative paths for remote files)
-      if (selectedFile.isRemote) {
-        const sanitized = DOMPurify.sanitize(html, {
-          USE_PROFILES: { html: true },
-          ALLOWED_TAGS: [
-            'a',
-            'b',
-            'i',
-            'u',
-            'strong',
-            'em',
-            'p',
-            'br',
-            'ul',
-            'ol',
-            'li',
-            'img',
-            'div',
-            'span',
-            'table',
-            'thead',
-            'tbody',
-            'tr',
-            'td',
-            'th',
-            'pre',
-            'code',
-            'h1',
-            'h2',
-            'h3',
-            'h4',
-            'h5',
-            'h6',
-            'style',
-          ],
-          ALLOWED_ATTR: [
-            'href',
-            'src',
-            'alt',
-            'title',
-            'width',
-            'height',
-            'target',
-            'rel',
-            'colspan',
-            'rowspan',
-            'class',
-            'id',
-            'style',
-          ],
-          FORBID_ATTR: [
-            'onerror',
-            'onload',
-            'onclick',
-            'onmouseover',
-            'onfocus',
-            'onblur',
-            'onchange',
-            'onsubmit',
-            'onreset',
-            'onselect',
-            'onabort',
-            'onkeydown',
-            'onkeypress',
-            'onkeyup',
-            'onunload',
-          ],
-          FORBID_TAGS: [
-            'script',
-            'iframe',
-            'object',
-            'embed',
-            'form',
-            'input',
-            'button',
-          ],
-          ADD_ATTR: ['target'],
-          SANITIZE_DOM: true,
-          KEEP_CONTENT: false,
-        });
-        setProcessedHtml(sanitized);
+      // Extract CSS link hrefs
+      let linkMatch;
+      while ((linkMatch = linkHrefRegex.exec(html)) !== null) {
+        addReferencedPath(linkMatch[1]);
+      }
+
+      // Find matching files (exact path match only)
+      const relatedFiles = projectFiles.filter((file) => {
+        if (file.isFolder || !['js', 'css'].includes(file.type?.toLowerCase() || '')) return false;
+        const normalizedFilePath = file.path.replace(/\\/g, '/').toLowerCase();
+        return referencedPaths.has(normalizedFilePath);
+      });
+
+      const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
+      const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
+
+      // Check for dangerous Electron/Node.js patterns as defense-in-depth
+      if (containsDangerousContent(html)) {
+        setProcessedHtml('');
         return;
       }
 
-      // Get the directory of the HTML file
-      const htmlDir = getDirPath(selectedFile.path);
+      // Skip image processing if file is remote (we can't resolve relative paths for remote files)
+      if (selectedFile.isRemote) {
+        setProcessedHtml(html);
+        return;
+      }
 
       // Find all img tags with relative paths (match various formats)
       const imgRegex = /<img\s+([^>]*?)(?:\s*\/\s*>|>)/gi;
@@ -848,96 +851,129 @@ function HtmlRenderer({ selectedFile }: { selectedFile: FileInfo }) {
         );
       });
 
-      // Sanitize the processed HTML
-      const sanitized = DOMPurify.sanitize(processedHtmlContent, {
-        USE_PROFILES: { html: true },
-        ALLOWED_TAGS: [
-          'a',
-          'b',
-          'i',
-          'u',
-          'strong',
-          'em',
-          'p',
-          'br',
-          'ul',
-          'ol',
-          'li',
-          'img',
-          'div',
-          'span',
-          'table',
-          'thead',
-          'tbody',
-          'tr',
-          'td',
-          'th',
-          'pre',
-          'code',
-          'h1',
-          'h2',
-          'h3',
-          'h4',
-          'h5',
-          'h6',
-          'style',
-        ],
-        ALLOWED_ATTR: [
-          'href',
-          'src',
-          'alt',
-          'title',
-          'width',
-          'height',
-          'target',
-          'rel',
-          'colspan',
-          'rowspan',
-          'class',
-          'id',
-          'style',
-        ],
-        FORBID_ATTR: [
-          'onerror',
-          'onload',
-          'onclick',
-          'onmouseover',
-          'onfocus',
-          'onblur',
-          'onchange',
-          'onsubmit',
-          'onreset',
-          'onselect',
-          'onabort',
-          'onkeydown',
-          'onkeypress',
-          'onkeyup',
-          'onunload',
-        ],
-        FORBID_TAGS: [
-          'script',
-          'iframe',
-          'object',
-          'embed',
-          'form',
-          'input',
-          'button',
-        ],
-        ADD_ATTR: ['target'],
-        SANITIZE_DOM: true,
-        KEEP_CONTENT: false,
-      });
+      // Load and inject CSS files, replacing external link tags
+      for (const cssFile of cssFiles) {
+        try {
+          const cssContent = await window.ipcRenderer.invoke(
+            'open-file',
+            'css',
+            cssFile.path,
+            false
+          );
+          if (cssContent) {
+            const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
+            
+            // Try to replace the external link tag with inline style
+            const linkRegex = new RegExp(
+              `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
+              'gi'
+            );
+            const replacedCss = processedHtmlContent.replace(linkRegex, styleTag);
+            if (replacedCss !== processedHtmlContent) {
+              processedHtmlContent = replacedCss;
+            } else {
+              // Fallback: inject CSS at the beginning of the HTML
+              if (processedHtmlContent.includes('<head>')) {
+                processedHtmlContent = processedHtmlContent.replace(
+                  '<head>',
+                  `<head>${styleTag}`
+                );
+              } else {
+                processedHtmlContent = styleTag + processedHtmlContent;
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to load CSS file: ${cssFile.path}`, error);
+        }
+      }
 
-      setProcessedHtml(sanitized);
+      // Load JS files content and replace external script tags
+      for (const jsFile of jsFiles) {
+        try {
+          const jsContent = await window.ipcRenderer.invoke(
+            'open-file',
+            'js',
+            jsFile.path,
+            false
+          );
+          if (jsContent) {
+            // Replace external script tag with inline script
+            const scriptRegex = new RegExp(
+              `<script[^>]*src=["'](?:[^"']*[/\\\\])?${jsFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`,
+              'gi'
+            );
+            const inlineScriptTag = `<script data-source="${jsFile.name}">${jsContent}</script>`;
+            processedHtmlContent = processedHtmlContent.replace(scriptRegex, inlineScriptTag);
+          }
+        } catch (error) {
+          console.error(`Failed to load JS file: ${jsFile.path}`, error);
+        }
+      }
+
+      // Final check for dangerous content after all processing (including injected JS)
+      if (containsDangerousContent(processedHtmlContent)) {
+        setProcessedHtml('');
+        return;
+      }
+
+      // Set the processed HTML directly - iframe sandbox provides security
+      setProcessedHtml(processedHtmlContent);
     };
 
     processHtml();
-  }, [selectedFile]);
+  }, [selectedFile, projectFiles]);
+
+  // Zoom state and controls
+  const [zoom, setZoom] = useState(100);
+
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 10, 200));
+  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 10, 50));
+  const handleZoomReset = () => setZoom(100);
+
+  // Handle scroll wheel zoom (Ctrl+scroll or pinch)
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -10 : 10;
+      setZoom((prev) => Math.min(Math.max(prev + delta, 50), 200));
+    }
+  };
 
   return (
-    <div
-      className="w-full overflow-auto"
-      dangerouslySetInnerHTML={{ __html: processedHtml }}
-    />
+    <div className="w-full h-full flex flex-col relative">
+      {/* Floating notch-style zoom controls */}
+      <ZoomControls
+        zoom={zoom}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
+      />
+
+      {/* Content area with zoom */}
+      <div
+        className="flex-1 min-h-0 bg-zinc-100 overflow-hidden"
+        onWheel={handleWheel}
+      >
+        <div
+          className="origin-top-left transition-transform duration-150 h-full"
+          style={{
+            transform: `scale(${zoom / 100})`,
+            width: `${10000 / zoom}%`,
+            height: `${10000 / zoom}%`,
+          }}
+        >
+          <iframe
+            ref={iframeRef}
+            srcDoc={processedHtml}
+            className="w-full h-full border-0 bg-white"
+            sandbox="allow-scripts allow-forms"
+            title={selectedFile.name}
+            tabIndex={0}
+            onLoad={() => iframeRef.current?.focus()}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
