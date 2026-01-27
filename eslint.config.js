@@ -67,6 +67,8 @@ export default [
       '**/*.py',
       '__pycache__/**',
       '**/.venv/**',
+      // Prebuilt resources
+      'resources/prebuilt/**',
     ],
   },
 
