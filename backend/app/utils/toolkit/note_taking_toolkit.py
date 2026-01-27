@@ -12,15 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import os
-from camel.toolkits import NoteTakingToolkit as BaseNoteTakingToolkit
-
-from typing import Optional
-
-from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from camel.toolkits import NoteTakingToolkit as BaseNoteTakingToolkit
 
 
 @auto_listen_toolkit(BaseNoteTakingToolkit)
@@ -34,9 +29,16 @@ class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
         working_directory: str | None = None,
         timeout: float | None = None,
     ) -> None:
+        # Now the working_directory now is required to be specified
+        # as the notes are stored in task specific directory
+        if working_directory is None:
+            raise ValueError(
+                "working_directory is required for NoteTakingToolkit. "
+                "Notes must be stored in a task-specific directory.")
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
-        if working_directory is None:
-            working_directory = env("file_save_path", os.path.expanduser("~/.eigent/notes")) + "/note.md"
-        super().__init__(working_directory=working_directory, timeout=timeout)
+        super().__init__(
+            working_directory=working_directory,
+            timeout=timeout,
+        )
