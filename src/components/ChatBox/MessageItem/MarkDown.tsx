@@ -15,6 +15,7 @@
 import { useState, useEffect, memo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const MarkDown = memo(
 	({
@@ -73,6 +74,23 @@ export const MarkDown = memo(
 			return () => clearInterval(timer);
 		}, [content, speed, enableTypewriter]);
 
+		// If content is a pure HTML document, render in a styled pre block
+		if (isHtmlDocument(content)) {
+			// Trim leading whitespace from each line for consistent alignment
+			const formattedHtml = displayedContent
+				.split('\n')
+				.map(line => line.trimStart())
+				.join('\n')
+				.trim();
+			return (
+				<div className="max-w-none markdown-container overflow-hidden">
+					<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style={{ wordBreak: 'break-all' }}>
+						<code>{formattedHtml}</code>
+					</pre>
+				</div>
+			);
+		}
+
 		return (
 			<div className="max-w-none markdown-container overflow-hidden">
 				<ReactMarkdown
@@ -120,8 +138,8 @@ export const MarkDown = memo(
 							</code>
 						),
 						pre: ({ children }) => (
-							<pre 
-								className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto whitespace-pre-wrap break-all"
+							<pre
+								className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all"
 								style={{ wordBreak: 'break-all' }}
 							>
 								{children}

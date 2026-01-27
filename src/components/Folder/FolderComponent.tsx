@@ -14,6 +14,7 @@
 
 import React, { useMemo } from "react";
 import DOMPurify from "dompurify";
+import { injectFontStyles } from "@/lib/htmlFontStyles";
 
 type Props = {
 	selectedFile: {
@@ -47,7 +48,7 @@ export default function FolderComponent({ selectedFile }: Props) {
 			}
 		}
 
-		return DOMPurify.sanitize(raw, {
+		const sanitized = DOMPurify.sanitize(raw, {
 			USE_PROFILES: { html: true },
 			ALLOWED_TAGS: [
 				"a",
@@ -117,6 +118,9 @@ export default function FolderComponent({ selectedFile }: Props) {
 			SANITIZE_DOM: true,
 			KEEP_CONTENT: false,
 		});
+
+		// Inject font styles into sanitized HTML
+		return injectFontStyles(sanitized);
 	}, [selectedFile?.content]);
 
 	return (

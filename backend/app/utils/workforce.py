@@ -559,29 +559,69 @@ class Workforce(BaseWorkforce):
 
         return self
 
-    async def _handle_completed_task(self, task: Task) -> None:
-        # DEBUG ▶ Task completed
-        logger.debug(f"[WF] DONE  {task.id}")
+    def _sync_subtask_to_parent(self, task: Task) -> None:
+        """Sync completed subtask's :obj:`result` and :obj:`state`
+        back to its :obj:`parent.subtasks` list. CAMEL stores results
+        in :obj:`_completed_tasks` but doesn't update
+        :obj:`parent.subtasks`, causing :obj:`parent.subtasks[i].result`
+        to remain :obj:`None`. This ensures consistency.
+
+        Args:
+            task (Task): The completed subtask whose result/state should
+                be synced to :obj:`parent.subtasks`.
+        """
+        parent: Task = task.parent
+        if not parent or not parent.subtasks:
+            return
+
+        for sub in parent.subtasks:
+            if sub.id == task.id:
+                sub.result = task.result
+                sub.state = task.state
+                logger.debug(
+                    f"[SYNC] Synced subtask {task.id} "
+                    f"result to parent.subtasks")
+                return
+
+        logger.warning(
+            f"[SYNC] Subtask {task.id} not "
+            f"found in parent.subtasks")
+
+    async def _notify_task_completion(self, task: Task) -> None:
+        """Send task completion notification to frontend.
+
+        Args:
+            task (Task): The completed task to notify the frontend about.
+        """
         task_lock = get_task_lock(self.api_task_id)
 
-        # Log task completion with result details
-        is_main_task = self._task and task.id == self._task.id
+        # Log task completion
+        is_main_task = (self._task and task.id == self._task.id)
         task_type = "MAIN TASK" if is_main_task else "SUB-TASK"
         logger.info(f"[TASK-RESULT] {task_type} COMPLETED: {task.id}")
-        logger.info(f"[TASK-RESULT] Content: {task.content[:200]}..." if len(
-            task.content) > 200 else f"[TASK-RESULT] Content: {task.content}")
-        logger.info(f"[TASK-RESULT] Result: {task.result[:500]}..."
-                    if task.result and len(str(task.result)) > 500 else
-                    f"[TASK-RESULT] Result: {task.result}")
 
+        # Build preview strings for logging (with None safety)
+        if task.content and len(task.content) > 200:
+            content_preview = task.content[:200] + "..."
+        else:
+            content_preview = task.content or ""
+
+        if task.result and len(str(task.result)) > 500:
+            result_preview = str(task.result)[:500] + "..."
+        else:
+            result_preview = task.result
+
+        logger.info(f"[TASK-RESULT] Content: {content_preview}")
+        logger.info(f"[TASK-RESULT] Result: {result_preview}")
+
+        # Send to frontend
         task_data = {
             "task_id": task.id,
-            "content": task.content,
+            "content": task.content or "",
             "state": task.state,
             "result": task.result or "",
             "failure_count": task.failure_count,
         }
-
         await task_lock.put_queue(ActionTaskStateData(data=task_data))
 
         # Log task completion to metrics
@@ -597,21 +637,19 @@ class Workforce(BaseWorkforce):
             )
             metrics_callbacks[0].log_task_completed(event)
 
-        # IMPORTANT: Sync this subtask's result back to parent.subtasks BEFORE calling super()
-        # This fixes the issue where parent.subtasks[i].result is None because CAMEL's
-        # _handle_completed_task stores results in _completed_tasks but doesn't sync
-        # them back to the parent.subtasks list.
-        # We only sync the current task (not all subtasks) for efficiency - O(n) vs O(n²).
-        parent = task.parent
-        if parent and parent.subtasks:
-            for sub in parent.subtasks:
-                if sub.id == task.id:
-                    sub.result = task.result
-                    sub.state = task.state
-                    logger.debug(f"[SYNC] Synced subtask {task.id} result to parent.subtasks")
-                    break
+    async def _handle_completed_task(self, task: Task) -> None:
+        """Handle task completion: log, notify frontend, sync to parent,
+        and delegate to CAMEL.
 
-        # Call parent implementation
+        Args:
+            task (Task): The completed task to process.
+        """
+        logger.debug(f"[WF] DONE  {task.id}")
+        # Sync and fix internal at first before sending task state
+        # TODO: CAMEL should handle this task sync or have a more
+        # efficient sync
+        self._sync_subtask_to_parent(task)
+        await self._notify_task_completion(task)
         await super()._handle_completed_task(task)
 
     async def _handle_failed_task(self, task: Task) -> bool:
@@ -650,13 +688,14 @@ class Workforce(BaseWorkforce):
                 }))
 
         if metrics_callbacks:
-
-            event = TaskFailedEvent(task_id=task.id, )
+            error_msg = error_message or str(task.result or "Unknown error")
+            event = TaskFailedEvent(
+                task_id=task.id,
+                error_message=error_msg,
+            )
             # Add failure details if available
             if hasattr(task, 'assigned_worker_id'):
                 event.worker_id = task.assigned_worker_id
-            event.error_message = error_message or str(task.result
-                                                       or "Unknown error")
             event.failure_count = task.failure_count
             metrics_callbacks[0].log_task_failed(event)
 
