@@ -12,9 +12,9 @@ from app.model.password_reset import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
 )
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("password_reset_controller")
+logger = logging.getLogger("password_reset_controller")
 
 router = APIRouter()
 
