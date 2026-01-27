@@ -393,6 +393,10 @@
     --task-border-focus-success: var(--border-success);
     --task-border-focus-warning: var(--border-warning);
     --task-border-focus-error: var(--border-cuation);
+    --task-fill-running: var(--surface-secondary);
+
+    /* Log Component */
+    --log-default: #F5F5F5;
 
     /* Worker Component */
     --worker-surface-primary: var(--surface-tertiary);
@@ -810,6 +814,10 @@
     --bg-dark-tertiary: #2c3950;
     --bg-dark-default: #0d1424;
     --bg-page-default: #0d1424;
+    /* Task Component - Dark Mode Overrides */
+    --task-fill-running: #1f2937;
+    /* Log Component - Dark Mode */
+    --log-default: #1f2937;
   }
 
 }

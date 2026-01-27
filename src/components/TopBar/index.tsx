@@ -25,7 +25,8 @@ import {
 	ChevronLeft,
 	House,
 } from "lucide-react";
-import folderIcon from "@/assets/Folder.svg";
+import folderIconWhite from "@/assets/logo/icon_white.svg";
+import folderIconBlack from "@/assets/logo/icon_black.svg";
 import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
@@ -39,7 +40,7 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
- 
+
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -52,7 +53,7 @@ function HeaderWin() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { toggle } = useSidebarStore();
 	const { token } = getAuthStore();
 	const appearance = useAuthStore((state) => state.appearance);
@@ -62,6 +63,7 @@ function HeaderWin() {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
 	}, []);
+	const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
 
 	const exportLog = async () => {
 		try {
@@ -190,9 +192,8 @@ function HeaderWin() {
 
 	return (
 		<div
-			className={`absolute top-0 left-0 right-0 flex !h-9 items-center justify-between py-1 z-50 drag ${
-				platform === "darwin" ? "pl-20" : "pl-2"
-			}`}
+			className={`absolute top-0 left-0 right-0 flex !h-9 items-center justify-between py-1 z-50 drag ${platform === "darwin" ? "pl-20" : "pl-2"
+				}`}
 			id="titlebar"
 			ref={titlebarRef}
 		>
@@ -207,14 +208,14 @@ function HeaderWin() {
 			<div className="w-full h-full flex items-center justify-between drag">
 				<div className="flex h-full items-center z-50 relative">
 					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
-					<Button
-						onClick={() => navigate("/history")}
-						variant="ghost"
-						size="icon"
-						className="no-drag p-0 h-6 w-6"
-					>
-						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-					</Button>
+						<Button
+							onClick={() => navigate("/history")}
+							variant="ghost"
+							size="icon"
+							className="no-drag p-0 h-6 w-6"
+						>
+							<img className="w-6 h-6" src={logoSrc} alt="folder-icon" />
+						</Button>
 					</div>
 					{location.pathname === "/history" && (
 						<div className="flex items-center mr-1">
@@ -230,40 +231,40 @@ function HeaderWin() {
 					)}
 					{location.pathname !== "/history" && (
 						<div className="flex items-center mr-1">
-						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
-							<Button
-								 variant="ghost"
-								 size="icon"
-								 className="no-drag"
-								 onClick={() => navigate("/history")}
-									>
+							<TooltipSimple content={t("layout.home")} side="bottom" align="center">
+								<Button
+									variant="ghost"
+									size="icon"
+									className="no-drag"
+									onClick={() => navigate("/history")}
+								>
 									<House className="w-4 h-4" />
-							</Button>
-						</TooltipSimple>
-						<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-							<Button
-								variant="ghost"
-								size="icon"
-								className="no-drag"
-								onClick={createNewProject}
-							>
-								<Plus className="w-4 h-4" />
-							</Button>
-						</TooltipSimple>
+								</Button>
+							</TooltipSimple>
+							<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
+								<Button
+									variant="ghost"
+									size="icon"
+									className="no-drag"
+									onClick={createNewProject}
+								>
+									<Plus className="w-4 h-4" />
+								</Button>
+							</TooltipSimple>
 						</div>
 					)}
 					{location.pathname !== "/history" && (
 						<>
 							{activeTaskTitle === t("layout.new-project") ? (
 								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
-									<Button 
+									<Button
 										id="active-task-title-btn"
-										variant="ghost" 
-										className="font-bold text-base no-drag" 
+										variant="ghost"
+										className="font-bold text-base no-drag"
 										onClick={toggle}
 										size="sm"
 									>
-									<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{t("layout.new-project")}</span>
+										<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{t("layout.new-project")}</span>
 										<ChevronDown />
 									</Button>
 								</TooltipSimple>
@@ -287,9 +288,8 @@ function HeaderWin() {
 				{/* right */}
 				{location.pathname !== "/history" && (
 					<div
-						className={`${
-							platform === "darwin" && "pr-2"
-						} flex h-full items-center z-50 relative no-drag gap-1`}
+						className={`${platform === "darwin" && "pr-2"
+							} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string] &&
@@ -298,31 +298,31 @@ function HeaderWin() {
 								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
 								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
 							) && (
-							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
-								<Button
-									onClick={() => setEndDialogOpen(true)}
-									variant="outline"
-									size="xs"
-									className="no-drag !text-text-cuation justify-center"
-								>
-									<Power />
-									{t("layout.end-project")}
-								</Button>
-							</TooltipSimple>
-						)}
+								<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
+									<Button
+										onClick={() => setEndDialogOpen(true)}
+										variant="outline"
+										size="xs"
+										className="no-drag !text-text-cuation justify-center"
+									>
+										<Power />
+										{t("layout.end-project")}
+									</Button>
+								</TooltipSimple>
+							)}
 						{chatStore.activeTaskId &&
 							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
-								<Button
-									onClick={() => handleShare(chatStore.activeTaskId as string)}
-									variant="ghost"
-									size="xs"
-									className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
-								>
-									{t("layout.share")}
-								</Button>
-							</TooltipSimple>
-						)}
+								<TooltipSimple content={t("layout.share")} side="bottom" align="end">
+									<Button
+										onClick={() => handleShare(chatStore.activeTaskId as string)}
+										variant="ghost"
+										size="xs"
+										className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
+									>
+										{t("layout.share")}
+									</Button>
+								</TooltipSimple>
+							)}
 						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
 							<TooltipSimple content={t("layout.report-bug")} side="bottom" align="end">
 								<Button
@@ -363,9 +363,8 @@ function HeaderWin() {
 				)}
 				{location.pathname === "/history" && (
 					<div
-						className={`${
-							platform === "darwin" && "pr-2"
-						} flex h-full items-center z-50 relative no-drag gap-1`}
+						className={`${platform === "darwin" && "pr-2"
+							} flex h-full items-center z-50 relative no-drag gap-1`}
 					>
 					</div>
 				)}
