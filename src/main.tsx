@@ -12,34 +12,34 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import React, { Suspense } from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import { HashRouter } from "react-router-dom";
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/inter/600.css";
-import "@fontsource/inter/700.css";
-import "@fontsource/inter/800.css";
-import "./style/index.css";
-import { ThemeProvider } from "./components/ThemeProvider";
-import { TooltipProvider } from "./components/ui/tooltip";
-import "./i18n";
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
+import { Suspense } from 'react';
+import ReactDOM from 'react-dom/client';
+import { HashRouter } from 'react-router-dom';
+import App from './App';
+import { ThemeProvider } from './components/ThemeProvider';
+import { TooltipProvider } from './components/ui/tooltip';
+import './i18n';
+import './style/index.css';
 
 // If you want use Node.js, the`nodeIntegration` needs to be enabled in the Main process.
 // import './demos/node'
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-	// <React.StrictMode>
-	<Suspense fallback={<div></div>}>
-		<HashRouter>
-			<ThemeProvider>
-				<TooltipProvider>
-					<App />
-				</TooltipProvider>
-			</ThemeProvider>
-		</HashRouter>
-	</Suspense>
-	// </React.StrictMode>
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+  // <React.StrictMode>
+  <Suspense fallback={<div></div>}>
+    <HashRouter>
+      <ThemeProvider>
+        <TooltipProvider>
+          <App />
+        </TooltipProvider>
+      </ThemeProvider>
+    </HashRouter>
+  </Suspense>
+  // </React.StrictMode>
 );
 
-postMessage({ payload: "removeLoading" }, "*");
+postMessage({ payload: 'removeLoading' }, '*');

@@ -12,21 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Preview } from '@storybook/react-vite'
-import React from 'react'
-import '@fontsource/inter/400.css'
-import '@fontsource/inter/500.css'
-import '@fontsource/inter/600.css'
-import '@fontsource/inter/700.css'
-import '@fontsource/inter/800.css'
-import '../src/style/index.css'
-import './storybook.css' // Storybook-specific overrides
-import { Toaster } from 'sonner'
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
+import type { Preview } from '@storybook/react-vite';
+import { Toaster } from 'sonner';
+import '../src/style/index.css';
+import './storybook.css'; // Storybook-specific overrides
 
 // Apply theme immediately via script
 if (typeof document !== 'undefined') {
-  document.documentElement.setAttribute('data-theme', 'light')
-  document.documentElement.classList.add('root')
+  document.documentElement.setAttribute('data-theme', 'light');
+  document.documentElement.classList.add('root');
 }
 
 const preview: Preview = {
@@ -56,6 +55,6 @@ const preview: Preview = {
       </div>
     ),
   ],
-}
+};
 
-export default preview
+export default preview;

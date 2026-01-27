@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { vi } from "vitest";
+import { vi } from 'vitest';
 
 vi.mock('../../src/store/authStore', () => ({
   useAuthStore: {
@@ -43,5 +43,5 @@ vi.mock('../../src/store/authStore', () => ({
     share_token: null,
     workerListData: {},
   })),
-  useWorkerList: vi.fn(() => [])
-}))
+  useWorkerList: vi.fn(() => []),
+}));

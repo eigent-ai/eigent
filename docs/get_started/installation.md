@@ -14,6 +14,7 @@ icon: wrench
       **macOS Prerequisite**
       Please ensure you are running macOS 11 (Big Sur) or a newer version to install Eigent.
     </Warning>
+
   </Step>
   <Step title="Install the Application">
     - **On macOS:** Open the downloaded `.dmg` file and drag the Eigent icon into your Applications folder.

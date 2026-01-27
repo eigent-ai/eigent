@@ -14,20 +14,23 @@
 
 'use client';
 
-import * as React from 'react';
 import {
   motion,
   useAnimation,
+  type HTMLMotionProps,
+  type LegacyAnimationControls,
   type SVGMotionProps,
   type UseInViewOptions,
-  type LegacyAnimationControls,
   type Variants,
-  type HTMLMotionProps,
 } from 'motion/react';
+import * as React from 'react';
 
-import { cn } from '@/lib/utils';
+import {
+  Slot,
+  type WithAsChild,
+} from '@/components/animate-ui/primitives/animate/slot';
 import { useIsInView } from '@/hooks/use-is-in-view';
-import { Slot, type WithAsChild } from '@/components/animate-ui/primitives/animate/slot';
+import { cn } from '@/lib/utils';
 
 const staticAnimations = {
   path: {
@@ -103,7 +106,7 @@ type IconWrapperProps<T> = IconProps<T> & {
 };
 
 const AnimateIconContext = React.createContext<AnimateIconContextValue | null>(
-  null,
+  null
 );
 
 function useAnimateIconContext() {
@@ -126,7 +129,7 @@ function useAnimateIconContext() {
 
 function composeEventHandlers<E extends React.SyntheticEvent<unknown>>(
   theirs?: (event: E) => void,
-  ours?: (event: E) => void,
+  ours?: (event: E) => void
 ) {
   return (event: E) => {
     theirs?.(event);
@@ -134,7 +137,6 @@ function composeEventHandlers<E extends React.SyntheticEvent<unknown>>(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
 
 function AnimateIcon({
@@ -199,7 +201,7 @@ function AnimateIcon({
         setLocalAnimate(true);
       }
     },
-    [animation, delay, bumpGeneration],
+    [animation, delay, bumpGeneration]
   );
 
   const stopAnimation = React.useCallback(() => {
@@ -250,7 +252,7 @@ function AnimateIcon({
         return;
       }
     },
-    [controls],
+    [controls]
   );
 
   React.useEffect(() => {
@@ -394,14 +396,14 @@ function AnimateIcon({
     childProps.onMouseEnter,
     () => {
       if (animateOnHover) startAnimation(animateOnHover);
-    },
+    }
   );
 
   const handleMouseLeave = composeEventHandlers<React.MouseEvent<HTMLElement>>(
     childProps.onMouseLeave,
     () => {
       if (animateOnHover || animateOnTap) stopAnimation();
-    },
+    }
   );
 
   const handlePointerDown = composeEventHandlers<
@@ -414,7 +416,7 @@ function AnimateIcon({
     childProps.onPointerUp,
     () => {
       if (animateOnTap) stopAnimation();
-    },
+    }
   );
 
   const content = asChild ? (
@@ -542,7 +544,7 @@ function IconWrapper<T extends string>({
               className,
               ((animationProp ?? parentAnimation) === 'path' ||
                 (animationProp ?? parentAnimation) === 'path-loop') &&
-                pathClassName,
+                pathClassName
             )}
             {...props}
           />
@@ -573,7 +575,7 @@ function IconWrapper<T extends string>({
           className={cn(
             className,
             (animationToUse === 'path' || animationToUse === 'path-loop') &&
-              pathClassName,
+              pathClassName
           )}
           {...props}
         />
@@ -608,7 +610,7 @@ function IconWrapper<T extends string>({
           className={cn(
             className,
             (animationProp === 'path' || animationProp === 'path-loop') &&
-              pathClassName,
+              pathClassName
           )}
           {...props}
         />
@@ -622,7 +624,7 @@ function IconWrapper<T extends string>({
       className={cn(
         className,
         (animationProp === 'path' || animationProp === 'path-loop') &&
-          pathClassName,
+          pathClassName
       )}
       {...props}
     />
@@ -657,14 +659,14 @@ function getVariants<
 }
 
 export {
+  AnimateIcon,
+  getVariants,
+  IconWrapper,
   pathClassName,
   staticAnimations,
-  AnimateIcon,
-  IconWrapper,
   useAnimateIconContext,
-  getVariants,
+  type AnimateIconContextValue,
+  type AnimateIconProps,
   type IconProps,
   type IconWrapperProps,
-  type AnimateIconProps,
-  type AnimateIconContextValue,
 };

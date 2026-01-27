@@ -1,12 +1,12 @@
 {
-	"your-ai-workforce": "あなたのAIワーキングフォース",
-	"new-worker": "新規ワーカー",
-	"edit": "編集",
-	"configure-mcp-server": "MCPサーバーの設定",
-	"add-your-agent": "エージェントを追加",
-	"cancel": "キャンセル",
-	"save-changes": "変更を保存",
-	"description-optional": "説明（任意）",
-	"agent-tool": "エージェントツール",
-	"share": "共有"
+  "your-ai-workforce": "あなたのAIワーキングフォース",
+  "new-worker": "新規ワーカー",
+  "edit": "編集",
+  "configure-mcp-server": "MCPサーバーの設定",
+  "add-your-agent": "エージェントを追加",
+  "cancel": "キャンセル",
+  "save-changes": "変更を保存",
+  "description-optional": "説明（任意）",
+  "agent-tool": "エージェントツール",
+  "share": "共有"
 }

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { StorybookConfig } from '@storybook/react-vite'
+import type { StorybookConfig } from '@storybook/react-vite';
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.mdx', '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
@@ -20,8 +20,8 @@ const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   viteFinal: async (config) => {
     // Reuse project's vite config for path aliases
-    return config
+    return config;
   },
-}
+};
 
-export default config
+export default config;

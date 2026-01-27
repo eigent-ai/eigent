@@ -12,44 +12,52 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import axios from 'axios';
 import {
   app,
   BrowserWindow,
-  shell,
+  dialog,
   ipcMain,
   Menu,
-  dialog,
   nativeTheme,
   protocol,
   session,
+  shell,
 } from 'electron';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import os, { homedir } from 'node:os';
 import log from 'electron-log';
-import { update, registerUpdateIpcHandlers } from './update';
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
-import { WebViewManager } from './webview';
-import { FileReader } from './fileReader';
-import { ChildProcessWithoutNullStreams } from 'node:child_process';
-import fs, { existsSync, readFileSync } from 'node:fs';
-import fsp from 'fs/promises';
-import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig';
-import {
-  getEnvPath,
-  updateEnvBlock,
-  removeEnvKey,
-  getEmailFolderPath,
-} from './utils/envUtil';
-import { copyBrowserData } from './copy';
-import { findAvailablePort } from './init';
-import kill from 'tree-kill';
-import { zipFolder } from './utils/log';
-import mime from 'mime';
-import axios from 'axios';
 import FormData from 'form-data';
-import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import fsp from 'fs/promises';
+import mime from 'mime';
+import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import fs, { existsSync } from 'node:fs';
+import os, { homedir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import kill from 'tree-kill';
+import { copyBrowserData } from './copy';
+import { FileReader } from './fileReader';
+import {
+  checkToolInstalled,
+  findAvailablePort,
+  killProcessOnPort,
+  startBackend,
+} from './init';
+import {
+  checkAndInstallDepsOnUpdate,
+  getInstallationStatus,
+  PromiseReturnType,
+} from './install-deps';
+import { registerUpdateIpcHandlers, update } from './update';
+import {
+  getEmailFolderPath,
+  getEnvPath,
+  removeEnvKey,
+  updateEnvBlock,
+} from './utils/envUtil';
+import { zipFolder } from './utils/log';
+import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
+import { getBackendPath, getVenvPath, isBinaryExists } from './utils/process';
+import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
 
@@ -124,10 +132,7 @@ app.commandLine.appendSwitch('renderer-process-limit', '8');
 
 // ==================== Anti-fingerprint settings ====================
 // Disable automation controlled indicator to avoid detection
-app.commandLine.appendSwitch(
-  'disable-blink-features',
-  'AutomationControlled'
-);
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
 // Override User Agent to remove Electron/eigent identifiers
 // Dynamically generate User Agent based on actual platform and Chrome version
@@ -631,7 +636,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -653,7 +658,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -1328,22 +1333,28 @@ async function createWindow() {
     }
   });
 
-  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    log.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`);
-    // Retry loading after a delay
-    if (errorCode !== -3) { // -3 is USER_CANCELLED, don't retry
-      setTimeout(() => {
-        if (win && !win.isDestroyed()) {
-          log.info('[RENDERER] Retrying load after failure...');
-          if (VITE_DEV_SERVER_URL) {
-            win.loadURL(VITE_DEV_SERVER_URL);
-          } else {
-            win.loadFile(indexHtml);
+  win.webContents.on(
+    'did-fail-load',
+    (event, errorCode, errorDescription, validatedURL) => {
+      log.error(
+        `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
+      );
+      // Retry loading after a delay
+      if (errorCode !== -3) {
+        // -3 is USER_CANCELLED, don't retry
+        setTimeout(() => {
+          if (win && !win.isDestroyed()) {
+            log.info('[RENDERER] Retrying load after failure...');
+            if (VITE_DEV_SERVER_URL) {
+              win.loadURL(VITE_DEV_SERVER_URL);
+            } else {
+              win.loadFile(indexHtml);
+            }
           }
-        }
-      }, 2000);
+        }, 2000);
+      }
     }
-  });
+  );
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1898,9 +1909,8 @@ app.whenReady().then(async () => {
     try {
       log.info('[DEVTOOLS] Installing React DevTools extension...');
       // Dynamic import to avoid bundling in production
-      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
-        'electron-devtools-installer'
-      );
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } =
+        await import('electron-devtools-installer');
       const name = await installExtension(REACT_DEVELOPER_TOOLS, {
         loadExtensionOptions: { allowFileAccess: true },
       });
@@ -1921,8 +1931,8 @@ app.whenReady().then(async () => {
   log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
 
   // ==================== download handle ====================
-  session.defaultSession.on('will-download', (event, item, webContents) => {
-    item.once('done', (event, state) => {
+  session.defaultSession.on('will-download', (event, item, _webContents) => {
+    item.once('done', (_event, _state) => {
       shell.showItemInFolder(item.getURL().replace('localfile://', ''));
     });
   });

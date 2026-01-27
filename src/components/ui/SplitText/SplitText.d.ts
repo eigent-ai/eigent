@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-declare module "@/components/ui/SplitText/SplitText" {
-  import type { FC } from "react";
+declare module '@/components/ui/SplitText/SplitText' {
+  import type { FC } from 'react';
 
   export interface SplitTextProps {
     text: string;
@@ -34,8 +34,8 @@ declare module "@/components/ui/SplitText/SplitText" {
   const SplitText: FC<SplitTextProps>;
   export default SplitText;
 }
-declare module "@/components/SplitText" {
-  import type { FC } from "react";
+declare module '@/components/SplitText' {
+  import type { FC } from 'react';
 
   type SplitType = 'chars' | 'words' | 'lines' | 'chars,words,lines' | string;
 
@@ -58,5 +58,3 @@ declare module "@/components/SplitText" {
   const SplitText: FC<SplitTextProps>;
   export default SplitText;
 }
-
-

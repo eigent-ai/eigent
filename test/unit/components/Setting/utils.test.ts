@@ -12,8 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { describe, it, expect } from 'vitest';
-import { parseArgsToArray, arrayToArgsJson } from '../../../../src/pages/Setting/components/utils';
+import { describe, expect, it } from 'vitest';
+import {
+  arrayToArgsJson,
+  parseArgsToArray,
+} from '../../../../src/pages/Setting/components/utils';
 
 describe('parseArgsToArray', () => {
   it('should parse JSON array string to array', () => {
@@ -31,15 +34,27 @@ describe('parseArgsToArray', () => {
   });
 
   it('should parse JSON array string with file paths containing backslashes', () => {
-    const input = '["--directory", "C:\\\\Users\\\\ASUS\\\\Desktop\\\\project", "run", "main.py"]';
-    const expected = ['--directory', 'C:\\Users\\ASUS\\Desktop\\project', 'run', 'main.py'];
+    const input =
+      '["--directory", "C:\\\\Users\\\\ASUS\\\\Desktop\\\\project", "run", "main.py"]';
+    const expected = [
+      '--directory',
+      'C:\\Users\\ASUS\\Desktop\\project',
+      'run',
+      'main.py',
+    ];
     const result = parseArgsToArray(input);
     expect(result).toEqual(expected);
   });
 
   it('should parse JSON array string with file paths containing forward slashes', () => {
-    const input = '["--directory", "C:/Users/ASUS/Desktop/project", "run", "main.py"]';
-    const expected = ['--directory', 'C:/Users/ASUS/Desktop/project', 'run', 'main.py'];
+    const input =
+      '["--directory", "C:/Users/ASUS/Desktop/project", "run", "main.py"]';
+    const expected = [
+      '--directory',
+      'C:/Users/ASUS/Desktop/project',
+      'run',
+      'main.py',
+    ];
     const result = parseArgsToArray(input);
     expect(result).toEqual(expected);
   });
@@ -60,7 +75,12 @@ describe('parseArgsToArray', () => {
 
   it('should parse comma-separated string with file paths containing slashes', () => {
     const input = '--directory,C:/Users/ASUS/Desktop/project,run,main.py';
-    const expected = ['--directory', 'C:/Users/ASUS/Desktop/project', 'run', 'main.py'];
+    const expected = [
+      '--directory',
+      'C:/Users/ASUS/Desktop/project',
+      'run',
+      'main.py',
+    ];
     const result = parseArgsToArray(input);
     expect(result).toEqual(expected);
   });
@@ -119,21 +139,34 @@ describe('arrayToArgsJson', () => {
 
   it('should convert array with special characters to JSON string', () => {
     const input = ['-y', '@modelcontextprotocol/server-sequential-thinking'];
-    const expected = '["-y","@modelcontextprotocol/server-sequential-thinking"]';
+    const expected =
+      '["-y","@modelcontextprotocol/server-sequential-thinking"]';
     const result = arrayToArgsJson(input);
     expect(result).toBe(expected);
   });
 
   it('should convert array with file paths containing backslashes', () => {
-    const input = ['--directory', 'C:\\Users\\ASUS\\Desktop\\project', 'run', 'main.py'];
-    const expected = '["--directory","C:\\\\Users\\\\ASUS\\\\Desktop\\\\project","run","main.py"]';
+    const input = [
+      '--directory',
+      'C:\\Users\\ASUS\\Desktop\\project',
+      'run',
+      'main.py',
+    ];
+    const expected =
+      '["--directory","C:\\\\Users\\\\ASUS\\\\Desktop\\\\project","run","main.py"]';
     const result = arrayToArgsJson(input);
     expect(result).toBe(expected);
   });
 
   it('should convert array with file paths containing forward slashes', () => {
-    const input = ['--directory', 'C:/Users/ASUS/Desktop/project', 'run', 'main.py'];
-    const expected = '["--directory","C:/Users/ASUS/Desktop/project","run","main.py"]';
+    const input = [
+      '--directory',
+      'C:/Users/ASUS/Desktop/project',
+      'run',
+      'main.py',
+    ];
+    const expected =
+      '["--directory","C:/Users/ASUS/Desktop/project","run","main.py"]';
     const result = arrayToArgsJson(input);
     expect(result).toBe(expected);
   });
@@ -173,30 +206,41 @@ describe('bidirectional conversion', () => {
     const array = parseArgsToArray(original);
     const jsonString = arrayToArgsJson(array);
     const finalArray = parseArgsToArray(jsonString);
-    
-    expect(array).toEqual(['-y', '@modelcontextprotocol/server-filesystem', '.']);
-    expect(jsonString).toBe('["-y","@modelcontextprotocol/server-filesystem","."]');
+
+    expect(array).toEqual([
+      '-y',
+      '@modelcontextprotocol/server-filesystem',
+      '.',
+    ]);
+    expect(jsonString).toBe(
+      '["-y","@modelcontextprotocol/server-filesystem","."]'
+    );
     expect(finalArray).toEqual(array);
   });
 
   it('should correctly convert from JSON string to array and back', () => {
-    const original = '["-y","@modelcontextprotocol/server-sequential-thinking"]';
+    const original =
+      '["-y","@modelcontextprotocol/server-sequential-thinking"]';
     const array = parseArgsToArray(original);
     const jsonString = arrayToArgsJson(array);
-    
-    expect(array).toEqual(['-y', '@modelcontextprotocol/server-sequential-thinking']);
+
+    expect(array).toEqual([
+      '-y',
+      '@modelcontextprotocol/server-sequential-thinking',
+    ]);
     expect(jsonString).toBe(original);
   });
 
   it('should handle file paths with various slash types bidirectionally', () => {
-    const windowsPath = '["--directory","C:\\\\Users\\\\ASUS\\\\Desktop\\\\project","run"]';
+    const windowsPath =
+      '["--directory","C:\\\\Users\\\\ASUS\\\\Desktop\\\\project","run"]';
     const unixPath = '["--directory","/home/user/project","run"]';
-    
+
     // Test Windows paths
     const windowsArray = parseArgsToArray(windowsPath);
     const windowsJson = arrayToArgsJson(windowsArray);
     expect(parseArgsToArray(windowsJson)).toEqual(windowsArray);
-    
+
     // Test Unix paths
     const unixArray = parseArgsToArray(unixPath);
     const unixJson = arrayToArgsJson(unixArray);
@@ -208,8 +252,13 @@ describe('bidirectional conversion', () => {
     const array = parseArgsToArray(mixed);
     const jsonString = arrayToArgsJson(array);
     const finalArray = parseArgsToArray(jsonString);
-    
-    expect(array).toEqual(['--directory', 'C:/Users/ASUS\\Desktop/project', 'run', 'main.py']);
+
+    expect(array).toEqual([
+      '--directory',
+      'C:/Users/ASUS\\Desktop/project',
+      'run',
+      'main.py',
+    ]);
     expect(finalArray).toEqual(array);
   });
 });

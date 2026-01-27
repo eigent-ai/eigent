@@ -13,6 +13,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+/* global console, process */
+
 /**
  * Test script for macOS code signing
  * This script helps debug signing issues by:
@@ -21,9 +23,9 @@
  * 3. Testing codesign verification (without actual signing)
  */
 
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,7 +40,9 @@ const APP_BUNDLE_PATTERN = /Eigent\.app$/;
  */
 function findAppBundle() {
   if (!fs.existsSync(RELEASE_DIR)) {
-    console.log('❌ Release directory does not exist. Please build the app first.');
+    console.log(
+      '❌ Release directory does not exist. Please build the app first.'
+    );
     console.log('   Run: npm run build:mac');
     return null;
   }
@@ -92,13 +96,13 @@ function checkSymlinks(bundlePath) {
               invalidSymlinks.push({
                 path: fullPath,
                 target: target,
-                reason: 'Target does not exist'
+                reason: 'Target does not exist',
               });
             } else if (!resolvedPath.startsWith(bundlePathResolved)) {
               invalidSymlinks.push({
                 path: fullPath,
                 target: target,
-                reason: 'Target is outside bundle'
+                reason: 'Target is outside bundle',
               });
             }
           } else if (entry.isDirectory()) {
@@ -109,10 +113,12 @@ function checkSymlinks(bundlePath) {
             checkDir(fullPath);
           }
         } catch (error) {
+          console.error(`Error checking symlinks: ${error}`);
           // Ignore errors for individual files
         }
       }
     } catch (error) {
+      console.error(`Error checking symlinks: ${error}`);
       // Ignore errors for directories
     }
   }
@@ -121,7 +127,7 @@ function checkSymlinks(bundlePath) {
 
   if (invalidSymlinks.length > 0) {
     console.log(`❌ Found ${invalidSymlinks.length} invalid symlink(s):`);
-    invalidSymlinks.forEach(symlink => {
+    invalidSymlinks.forEach((symlink) => {
       console.log(`   - ${symlink.path}`);
       console.log(`     → ${symlink.target}`);
       console.log(`     Reason: ${symlink.reason}`);
@@ -142,7 +148,7 @@ function checkBundleStructure(bundlePath) {
   const requiredPaths = [
     'Contents/Info.plist',
     'Contents/MacOS',
-    'Contents/Resources'
+    'Contents/Resources',
   ];
 
   let allValid = true;
@@ -181,6 +187,7 @@ function checkEntitlements() {
     console.log('✅ Entitlements file is valid');
     return true;
   } catch (error) {
+    console.error(`Error validating entitlements file: ${error}`);
     console.log('⚠️  Could not validate entitlements file format');
     return true; // Don't fail on this
   }
@@ -194,13 +201,14 @@ function testCodesignVerification(bundlePath) {
 
   try {
     // First check if app is signed at all
-    const signCheck = execSync(
-      `codesign -dv "${bundlePath}" 2>&1 || true`,
-      { encoding: 'utf-8' }
-    );
+    const signCheck = execSync(`codesign -dv "${bundlePath}" 2>&1 || true`, {
+      encoding: 'utf-8',
+    });
 
     if (signCheck.includes('code object is not signed')) {
-      console.log('ℹ️  App is not signed (this is expected for local testing without certificates)');
+      console.log(
+        'ℹ️  App is not signed (this is expected for local testing without certificates)'
+      );
       return true;
     }
 
@@ -210,15 +218,26 @@ function testCodesignVerification(bundlePath) {
       { encoding: 'utf-8' }
     );
 
-    if (output.includes('valid on disk') || output.includes('satisfies its Designated Requirement')) {
+    if (
+      output.includes('valid on disk') ||
+      output.includes('satisfies its Designated Requirement')
+    ) {
       console.log('✅ App is properly signed');
       return true;
-    } else if (output.includes('code has no resources but signature indicates they must be present')) {
+    } else if (
+      output.includes(
+        'code has no resources but signature indicates they must be present'
+      )
+    ) {
       // This error often means the app was signed incorrectly or needs to be re-signed
       console.log('⚠️  Codesign verification issue detected:');
       console.log('   This usually means the app needs to be re-signed.');
-      console.log('   In CI/CD, this should be fixed by electron-builder during signing.');
-      console.log('   For local testing, you can ignore this if you don\'t have signing certificates.');
+      console.log(
+        '   In CI/CD, this should be fixed by electron-builder during signing.'
+      );
+      console.log(
+        "   For local testing, you can ignore this if you don't have signing certificates."
+      );
       return true; // Don't fail local testing
     } else {
       console.log('⚠️  Codesign verification issues:');
@@ -226,7 +245,10 @@ function testCodesignVerification(bundlePath) {
       return true; // Don't fail local testing
     }
   } catch (error) {
-    console.log('ℹ️  Could not verify signature (app may not be signed - expected for local testing)');
+    console.error(`Error testing codesign verification: ${error}`);
+    console.log(
+      'ℹ️  Could not verify signature (app may not be signed - expected for local testing)'
+    );
     return true; // Don't fail on this for local testing
   }
 }
@@ -240,11 +262,7 @@ function checkCommonIssues(bundlePath) {
   const issues = [];
 
   // Check for files that might cause issues
-  const problematicPatterns = [
-    /\.DS_Store$/,
-    /\.git$/,
-    /node_modules/,
-  ];
+  const problematicPatterns = [/\.DS_Store$/, /\.git$/, /node_modules/];
 
   function scanDir(dir, depth = 0) {
     if (depth > 10) return; // Prevent infinite recursion
@@ -268,6 +286,7 @@ function checkCommonIssues(bundlePath) {
         }
       }
     } catch (error) {
+      console.error(`Error checking common issues: ${error}`);
       // Ignore errors
     }
   }
@@ -276,7 +295,7 @@ function checkCommonIssues(bundlePath) {
 
   if (issues.length > 0) {
     console.log('⚠️  Potential issues found:');
-    issues.forEach(issue => console.log(`   - ${issue}`));
+    issues.forEach((issue) => console.log(`   - ${issue}`));
   } else {
     console.log('✅ No obvious issues found');
   }
@@ -316,15 +335,27 @@ function main() {
   console.log(`   Common Issues: ${results.commonIssues ? '✅' : '⚠️'}`);
 
   // For local testing, only fail on critical issues (symlinks, structure, entitlements)
-  const criticalChecks = [results.symlinks, results.structure, results.entitlements];
-  const allCriticalPassed = criticalChecks.every(r => r);
+  const criticalChecks = [
+    results.symlinks,
+    results.structure,
+    results.entitlements,
+  ];
+  const allCriticalPassed = criticalChecks.every((r) => r);
 
   if (allCriticalPassed) {
-    console.log('\n✅ Critical checks passed! The app should be ready for signing.');
-    console.log('   Note: Codesign warnings are expected for local testing without certificates.');
-    console.log('   The app will be properly signed in CI/CD with the provided certificates.');
+    console.log(
+      '\n✅ Critical checks passed! The app should be ready for signing.'
+    );
+    console.log(
+      '   Note: Codesign warnings are expected for local testing without certificates.'
+    );
+    console.log(
+      '   The app will be properly signed in CI/CD with the provided certificates.'
+    );
   } else {
-    console.log('\n❌ Critical checks failed. Please fix the issues above before signing.');
+    console.log(
+      '\n❌ Critical checks failed. Please fix the issues above before signing.'
+    );
     process.exit(1);
   }
 }

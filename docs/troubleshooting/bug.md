@@ -1,6 +1,6 @@
 ---
 title: Bug
-description: "Follow these simple steps to report bugs and help improve our product for everyone:"
+description: 'Follow these simple steps to report bugs and help improve our product for everyone:'
 ---
 
 <img 
@@ -24,15 +24,15 @@ description: "Follow these simple steps to report bugs and help improve our prod
 
 - A bug report web form will automatically open in your default browser
 - Please provide the following information:
-    - **Bug Description**: Write a clear description of the issue you encountered
-    - **Screenshot Upload**: Attach relevant screenshots that demonstrate the problem
-    - **Log File Upload**: Upload the log files that were downloaded in Step 2
+  - **Bug Description**: Write a clear description of the issue you encountered
+  - **Screenshot Upload**: Attach relevant screenshots that demonstrate the problem
+  - **Log File Upload**: Upload the log files that were downloaded in Step 2
 
 ### Step 4: Join Our Community for Real-time Support
 
 ### For English-speaking Users:
 
-- Join our **CAMEL-AI Discord**  **🤖｜eigent** channel : https://discord.com/invite/CNcNpquyDc for bug discussions and community support
+- Join our **CAMEL-AI Discord** **🤖｜eigent** channel : https://discord.com/invite/CNcNpquyDc for bug discussions and community support
 - Get direct assistance from our team and community members
 
 ### For Chinese-speaking Users:

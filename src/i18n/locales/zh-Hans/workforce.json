@@ -1,12 +1,12 @@
 {
-	"your-ai-workforce": "你的 AI Workforce",
-	"new-worker": "增加 Worker",
-	"edit": "编辑",
-	"configure-mcp-server": "配置 MCP 服务器",
-	"add-your-agent": "添加您的智能体",
-	"cancel": "取消",
-	"save-changes": "保存更改",
-	"description-optional": "描述（可选）",
-	"agent-tool": "Agent 工具",
-	"share": "分享"
+  "your-ai-workforce": "你的 AI Workforce",
+  "new-worker": "增加 Worker",
+  "edit": "编辑",
+  "configure-mcp-server": "配置 MCP 服务器",
+  "add-your-agent": "添加您的智能体",
+  "cancel": "取消",
+  "save-changes": "保存更改",
+  "description-optional": "描述（可选）",
+  "agent-tool": "Agent 工具",
+  "share": "分享"
 }

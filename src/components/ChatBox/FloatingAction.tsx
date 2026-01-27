@@ -12,58 +12,57 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from "@/components/ui/button";
-import { Pause, Play, SkipForward } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export interface FloatingActionProps {
-	/** Current task status */
-	status: "running" | "pause" | "pending" | "finished";
-	/** Callback when pause button is clicked */
-	// onPause?: () => void;  // Commented out - temporary not needed
-	/** Callback when resume button is clicked */
-	// onResume?: () => void;  // Commented out - temporary not needed
-	/** Callback when skip to next is clicked */
-	onSkip?: () => void;
-	/** Loading state for pause/resume actions */
-	loading?: boolean;
-	/** Additional CSS classes */
-	className?: string;
+  /** Current task status */
+  status: 'running' | 'pause' | 'pending' | 'finished';
+  /** Callback when pause button is clicked */
+  // onPause?: () => void;  // Commented out - temporary not needed
+  /** Callback when resume button is clicked */
+  // onResume?: () => void;  // Commented out - temporary not needed
+  /** Callback when skip to next is clicked */
+  onSkip?: () => void;
+  /** Loading state for pause/resume actions */
+  loading?: boolean;
+  /** Additional CSS classes */
+  className?: string;
 }
 
 export const FloatingAction = ({
-	status,
-	// onPause,  // Commented out - temporary not needed
-	// onResume,  // Commented out - temporary not needed
-	onSkip,
-	loading = false,
-	className,
+  status,
+  // onPause,  // Commented out - temporary not needed
+  // onResume,  // Commented out - temporary not needed
+  onSkip,
+  loading = false,
+  className,
 }: FloatingActionProps) => {
-	// Only show when task is running (removed pause state)
-	if (status !== "running") {
-		return null;
-	}
+  // Only show when task is running (removed pause state)
+  if (status !== 'running') {
+    return null;
+  }
 
-	return (
-		<div
-			className={cn(
-				"sticky top-2 bottom-2 mt-4 left-0 right-0 flex w-full justify-center items-center z-20 pointer-events-none",
-				className
-			)}
-		>
-			<div className="pointer-events-auto flex items-center gap-2 bg-bg-surface-primary/95 backdrop-blur-md rounded-full p-1 shadow-[0px_4px_16px_rgba(0,0,0,0.12)] border border-border-default">
-				{/* Always show Stop Task button when running (removed pause/resume logic) */}
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={onSkip}
-					disabled={loading}
-					className="gap-1.5 rounded-full"
-				>
-					<span className="text-sm font-semibold">Stop Task</span>
-				</Button>
+  return (
+    <div
+      className={cn(
+        'pointer-events-none sticky bottom-2 left-0 right-0 top-2 z-20 mt-4 flex w-full items-center justify-center',
+        className
+      )}
+    >
+      <div className="bg-bg-surface-primary/95 border-border-default pointer-events-auto flex items-center gap-2 rounded-full border p-1 shadow-[0px_4px_16px_rgba(0,0,0,0.12)] backdrop-blur-md">
+        {/* Always show Stop Task button when running (removed pause/resume logic) */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onSkip}
+          disabled={loading}
+          className="gap-1.5 rounded-full"
+        >
+          <span className="text-sm font-semibold">Stop Task</span>
+        </Button>
 
-				{/* Commented out pause/resume functionality
+        {/* Commented out pause/resume functionality
 				{status === "running" ? (
 					// State 1: Running - Show Pause button
 					<Button
@@ -100,7 +99,7 @@ export const FloatingAction = ({
 					</>
 				)}
 				*/}
-			</div>
-		</div>
-	);
+      </div>
+    </div>
+  );
 };

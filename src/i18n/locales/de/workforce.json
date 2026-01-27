@@ -1,12 +1,12 @@
 {
-	"your-ai-workforce": "Ihre KI-Arbeitskraft",
-	"new-worker": "Neuer Mitarbeiter",
-	"edit": "Bearbeiten",
-	"configure-mcp-server": "MCP-Server konfigurieren",
-	"add-your-agent": "Ihren Agenten hinzufügen",
-	"cancel": "Abbrechen",
-	"save-changes": "Änderungen speichern",
-	"description-optional": "Beschreibung (Optional)",
-	"agent-tool": "Agent-Tool",
-	"share": "Teilen"
+  "your-ai-workforce": "Ihre KI-Arbeitskraft",
+  "new-worker": "Neuer Mitarbeiter",
+  "edit": "Bearbeiten",
+  "configure-mcp-server": "MCP-Server konfigurieren",
+  "add-your-agent": "Ihren Agenten hinzufügen",
+  "cancel": "Abbrechen",
+  "save-changes": "Änderungen speichern",
+  "description-optional": "Beschreibung (Optional)",
+  "agent-tool": "Agent-Tool",
+  "share": "Teilen"
 }

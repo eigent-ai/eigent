@@ -34,13 +34,13 @@
 
 ### ⭐ 100% 开源 - 🥇 本地部署 - 🏆 MCP 集成
 
-- ✅ **零配置** - 无需技术设置  
-- ✅ **多智能体协作** - 处理复杂的多智能体工作流  
-- ✅ **企业级功能** - SSO/访问控制  
-- ✅ **本地部署**  
-- ✅ **开源**  
-- ✅ **支持自定义模型**  
-- ✅ **MCP 集成**  
+- ✅ **零配置** - 无需技术设置
+- ✅ **多智能体协作** - 处理复杂的多智能体工作流
+- ✅ **企业级功能** - SSO/访问控制
+- ✅ **本地部署**
+- ✅ **开源**
+- ✅ **支持自定义模型**
+- ✅ **MCP 集成**
 
 <br/>
 
@@ -88,9 +88,9 @@
 
 最快体验 Eigent 多智能体 AI 能力的方式是通过我们的云平台，适合希望无需复杂设置即可立即使用的团队和个人。我们将托管模型、API 和云存储，确保 Eigent 流畅运行。
 
-- **即时访问** - 几分钟内开始构建多智能体工作流。  
-- **托管基础设施** - 我们负责扩展、更新和维护。  
-- **优先支持** - 订阅后获得工程团队的优先协助。  
+- **即时访问** - 几分钟内开始构建多智能体工作流。
+- **托管基础设施** - 我们负责扩展、更新和维护。
+- **优先支持** - 订阅后获得工程团队的优先协助。
 
 <br/>
 
@@ -104,13 +104,13 @@
 
 适合偏好本地控制、数据隐私或定制的用户，此选项适用于需要以下功能的组织：
 
-- **数据隐私** - 敏感数据保留在您的基础设施内。  
-- **定制化** - 修改和扩展平台以满足需求。  
-- **成本控制** - 避免大规模部署的持续云费用。  
+- **数据隐私** - 敏感数据保留在您的基础设施内。
+- **定制化** - 修改和扩展平台以满足需求。
+- **成本控制** - 避免大规模部署的持续云费用。
 
 #### 1. 前提条件
 
-- Node.js (版本 18-22) 和 npm  
+- Node.js (版本 18-22) 和 npm
 
 #### 2. 快速开始
 
@@ -122,6 +122,7 @@ npm run dev
 ```
 
 #### 3. 本地开发(使用完全和云端服务分离的版本)
+
 [server/README_CN.md](./server/README_CN.md)
 
 #### 4. 更新依赖
@@ -141,52 +142,58 @@ uv sync
 
 适合需要最高安全性、定制化和控制的组织：
 
-- **商业许可证** - [查看许可证 →](LICENSE)  
-- **独家功能**（如 SSO 和定制开发）  
-- **可扩展的企业部署**  
-- **协商的 SLA** 和实施服务  
+- **商业许可证** - [查看许可证 →](LICENSE)
+- **独家功能**（如 SSO 和定制开发）
+- **可扩展的企业部署**
+- **协商的 SLA** 和实施服务
 
 📧 更多详情，请联系 [info@eigent.ai](mailto:info@eigent.ai)。
 
 ## **✨ 核心功能 - 开源 Cowork**
+
 通过 Eigent 开源 Cowork的强大功能释放卓越生产力的全部潜力——专为无缝集成、智能任务执行和无边界自动化而设计。
 
 ### 🏭 工作流
+
 部署一支专业 AI 智能体团队，协作解决复杂任务。Eigent 开源 Cowork动态分解任务并激活多个智能体 **并行工作**。
 
 Eigent 预定义了以下智能体工作者：
 
-- **开发智能体**：编写和执行代码，运行终端命令。  
-- **搜索智能体**：搜索网络并提取内容。  
-- **文档智能体**：创建和管理文档。  
-- **多模态智能体**：处理图像和音频。  
+- **开发智能体**：编写和执行代码，运行终端命令。
+- **搜索智能体**：搜索网络并提取内容。
+- **文档智能体**：创建和管理文档。
+- **多模态智能体**：处理图像和音频。
 
 ![Workforce](https://eigent-ai.github.io/.github/assets/gif/feature_dynamic_workforce.gif)
 
 <br/>
 
 ### 🧠 全面模型支持
-使用您偏好的模型本地部署 Eigent 开源 Cowork桌面应用。  
+
+使用您偏好的模型本地部署 Eigent 开源 Cowork桌面应用。
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
 
 <br/>
 
-### 🔌 MCP 工具集成  
+### 🔌 MCP 工具集成
+
 Eigent 内置大量 **模型上下文协议（MCP）** 工具（用于网页浏览、代码执行、Notion、Google 套件、Slack 等），并允许您 **安装自己的工具**。为智能体配备适合您场景的工具——甚至集成内部 API 或自定义功能——以增强其能力。
 
 ![MCP](https://eigent-ai.github.io/.github/assets/gif/feature_add_mcps.gif)
 
 <br/>
 
-### ✋ 人工介入  
-如果任务卡住或遇到不确定性，Eigent 会自动请求人工输入。  
+### ✋ 人工介入
+
+如果任务卡住或遇到不确定性，Eigent 会自动请求人工输入。
 
 ![Human-in-the-loop](https://eigent-ai.github.io/.github/assets/gif/feature_human_in_the_loop.gif)
 
 <br/>
 
-### 👐 100% 开源  
+### 👐 100% 开源
+
 Eigent 完全开源。您可以下载、检查和修改代码，确保透明度并促进多智能体创新的社区驱动生态系统。
 
 ![Opensource][image-opensource]
@@ -272,19 +279,21 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 Eigent 开源 Cowork桌面应用基于现代、可靠的技术构建，确保可扩展性、性能和可扩展性。
 
 ### 后端
-- **框架：** FastAPI  
-- **包管理器：** uv  
-- **异步服务器：** Uvicorn  
-- **认证：** OAuth 2.0, Passlib  
-- **多智能体框架：** CAMEL  
+
+- **框架：** FastAPI
+- **包管理器：** uv
+- **异步服务器：** Uvicorn
+- **认证：** OAuth 2.0, Passlib
+- **多智能体框架：** CAMEL
 
 ### 前端
-- **框架：** React  
-- **桌面应用框架：** Electron  
-- **语言：** TypeScript  
-- **UI：** Tailwind CSS, Radix UI, Lucide React, Framer Motion  
-- **状态管理：** Zustand  
-- **流程编辑器：** React Flow  
+
+- **框架：** React
+- **桌面应用框架：** Electron
+- **语言：** TypeScript
+- **UI：** Tailwind CSS, Radix UI, Lucide React, Framer Motion
+- **状态管理：** Zustand
+- **流程编辑器：** React Flow
 
 ## 🌟 保持领先 - 开源 Cowork
 
@@ -298,15 +307,15 @@ Eigent 开源 Cowork桌面应用基于现代、可靠的技术构建，确保可
 
 我们的开源 Cowork将继续在社区的参与下发展。以下是接下来的计划：
 
-| 主题                   | 问题   | Discord 频道 |
-| ------------------------ | -- |-- |
-| **上下文工程** | - 提示缓存<br> - 系统提示优化<br> - 工具包文档优化<br> - 上下文压缩 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
-| **多模态增强** | - 使用浏览器时更准确的图像理解<br> - 高级视频生成 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
-| **多智能体系统** | - 工作流支持固定流程<br> - 工作流支持多轮对话 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
-| **浏览器工具包** | - BrowseComp 集成<br> - 基准测试改进<br> - 禁止重复访问页面<br> - 自动缓存按钮点击 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
-| **文档工具包** | - 支持动态文件编辑 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
-| **终端工具包** | - 基准测试改进<br> - Terminal-Bench 集成 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
-| **环境与强化学习** | - 环境设计<br> - 数据生成<br> - 强化学习框架集成（VERL, TRL, OpenRLHF） | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| 主题               | 问题                                                                               | Discord 频道                                                |
+| ------------------ | ---------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **上下文工程**     | - 提示缓存<br> - 系统提示优化<br> - 工具包文档优化<br> - 上下文压缩                | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **多模态增强**     | - 使用浏览器时更准确的图像理解<br> - 高级视频生成                                  | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **多智能体系统**   | - 工作流支持固定流程<br> - 工作流支持多轮对话                                      | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **浏览器工具包**   | - BrowseComp 集成<br> - 基准测试改进<br> - 禁止重复访问页面<br> - 自动缓存按钮点击 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **文档工具包**     | - 支持动态文件编辑                                                                 | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **终端工具包**     | - 基准测试改进<br> - Terminal-Bench 集成                                           | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **环境与强化学习** | - 环境设计<br> - 数据生成<br> - 强化学习框架集成（VERL, TRL, OpenRLHF）            | [**加入 Discord →**](https://discord.com/invite/CNcNpquyDc) |
 
 ## [🤝 贡献][contribution-link]
 
@@ -331,13 +340,14 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 本仓库采用 [**Eigent 开源许可证**](LICENSE)，基于 Apache 2.0 并附加额外条款。
 
 ## 🌐 社区与联系
+
 更多信息请联系 info@eigent.ai
 
-- **GitHub Issues：** 报告错误、请求功能并跟踪开发进度。[提交问题][github-issue-link]  
+- **GitHub Issues：** 报告错误、请求功能并跟踪开发进度。[提交问题][github-issue-link]
 
-- **Discord：** 获取实时支持、与社区交流并保持更新。[加入我们](https://discord.com/invite/CNcNpquyDc)  
+- **Discord：** 获取实时支持、与社区交流并保持更新。[加入我们](https://discord.com/invite/CNcNpquyDc)
 
-- **X (Twitter)：** 关注更新、AI 见解和重要公告。[关注我们][social-x-link]  
+- **X (Twitter)：** 关注更新、AI 见解和重要公告。[关注我们][social-x-link]
 
 - **微信社区：** 扫描下方二维码添加我们的微信助手，加入我们的微信社区群。
 
@@ -345,50 +355,42 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
   <img src="./src/assets/wechat_qr.jpg" width="200" style="display: inline-block; margin: 10px;">
 </div>
 
-
-
 <!-- LINK GROUP -->
 <!-- Social -->
+
 [discord-url]: https://discord.com/invite/CNcNpquyDc
 [discord-image]: https://img.shields.io/discord/1082486657678311454?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb
-
-[built-with-camel]:https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=
-
+[built-with-camel]: https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=
 [eigent-github]: https://github.com/eigent-ai/eigent
 [github-star]: https://img.shields.io/github/stars/eigent-ai?color=F5F4F0&labelColor=gray&style=plastic&logo=github
 [camel-ai-org-github]: https://github.com/camel-ai
-
 [camel-github]: https://github.com/camel-ai/camel
 [eigent-github]: https://github.com/eigent-ai/eigent
 [contribution-link]: https:/github.com/eigent-ai/eigent/blob/master/CONTRIBUTING.md
-
 [social-x-link]: https://x.com/Eigent_AI
 [social-x-shield]: https://img.shields.io/badge/-%40Eigent_AI-white?labelColor=gray&logo=x&logoColor=white&style=plastic
-
 [reddit-url]: https://www.reddit.com/r/CamelAI/
 [reddit-image]: https://img.shields.io/reddit/subreddit-subscribers/CamelAI?style=plastic&logo=reddit&label=r%2FCAMEL&labelColor=white
-
 [wechat-url]: https://ghli.org/camel/wechat.png
 [wechat-image]: https://img.shields.io/badge/WeChat-CamelAIOrg-brightgreen?logo=wechat&logoColor=white
-
 [sponsor-link]: https://github.com/sponsors/camel-ai
 [sponsor-shield]: https://img.shields.io/badge/-Sponsor%20CAMEL--AI-1d1d1d?logo=github&logoColor=white&style=plastic
-
 [eigent-download]: https://www.eigent.ai/download
 [download-shield]: https://img.shields.io/badge/Download%20Eigent-363AF5?style=plastic
-
-[join-us]:https://eigent-ai.notion.site/eigent-ai-careers
-[join-us-image]:https://img.shields.io/badge/Join%20Us-yellow?style=plastic
+[join-us]: https://eigent-ai.notion.site/eigent-ai-careers
+[join-us-image]: https://img.shields.io/badge/Join%20Us-yellow?style=plastic
 
 <!-- camel & eigent -->
+
 [camel-site]: https://www.camel-ai.org
 [eigent-site]: https://www.eigent.ai
 [docs-site]: https://docs.eigent.ai
 [github-issue-link]: https://github.com/eigent-ai/eigent/issues
 
 <!-- marketing -->
-[image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png 
-[image-head]: https://eigent-ai.github.io/.github/assets/head.png 
+
+[image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png
+[image-head]: https://eigent-ai.github.io/.github/assets/head.png
 [image-public-beta]: https://eigent-ai.github.io/.github/assets/banner.png
 [image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
 [image-opensource]: https://eigent-ai.github.io/.github/assets/opensource.png
@@ -396,6 +398,7 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 [image-join-us]: https://camel-ai.github.io/camel_asset/graphics/join_us.png
 
 <!-- feature -->
+
 [image-workforce]: https://eigent-ai.github.io/.github/assets/feature_dynamic_workforce.gif
 [image-human-in-the-loop]: https://eigent-ai.github.io/.github/assets/feature_human_in_the_loop.gif
 [image-customise-workers]: https://eigent-ai.github.io/.github/assets/feature_customise_workers.gif

@@ -146,7 +146,7 @@ export function sanitizeHtml(html: string): string {
  * Full HTML sanitization pipeline:
  * 1. Check for dangerous Electron/Node patterns
  * 2. Apply DOMPurify sanitization
- * 
+ *
  * Returns empty string if dangerous content is detected.
  */
 export function sanitizeHtmlStrict(html: string): string {

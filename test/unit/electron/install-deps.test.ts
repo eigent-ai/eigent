@@ -12,311 +12,322 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setupMockEnvironment } from '../../mocks/environmentMocks'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setupMockEnvironment } from '../../mocks/environmentMocks';
 
 // Set up global mock environment before any imports
-const globalMockEnv = setupMockEnvironment()
+const globalMockEnv = setupMockEnvironment();
 
 // Mock all dependencies at the top level
 vi.mock('node:fs', () => ({
   ...globalMockEnv.fsMock,
-  default: globalMockEnv.fsMock
-}))
+  default: globalMockEnv.fsMock,
+}));
 vi.mock('node:path', () => ({
   ...globalMockEnv.pathMock,
-  default: globalMockEnv.pathMock
-}))
+  default: globalMockEnv.pathMock,
+}));
 vi.mock('child_process', () => ({
   ...globalMockEnv.processMock,
-  default: globalMockEnv.processMock
-}))
-vi.mock('electron-log', () => ({ default: globalMockEnv.logMock }))
+  default: globalMockEnv.processMock,
+}));
+vi.mock('electron-log', () => ({ default: globalMockEnv.logMock }));
 vi.mock('electron', () => ({
   app: globalMockEnv.appMock,
-  BrowserWindow: vi.fn()
-}))
-vi.mock('../../../electron/main/utils/process', () => globalMockEnv.processUtilsMock)
+  BrowserWindow: vi.fn(),
+}));
+vi.mock(
+  '../../../electron/main/utils/process',
+  () => globalMockEnv.processUtilsMock
+);
 vi.mock('../../../electron/main/init', () => ({
   getMainWindow: vi.fn().mockReturnValue({
     webContents: { send: vi.fn() },
-    isDestroyed: vi.fn().mockReturnValue(false)
-  })
-}))
+    isDestroyed: vi.fn().mockReturnValue(false),
+  }),
+}));
 vi.mock('../../../electron/main/utils/safeWebContentsSend', () => ({
-  safeMainWindowSend: vi.fn().mockReturnValue(true)
-}))
+  safeMainWindowSend: vi.fn().mockReturnValue(true),
+}));
 
 // Import the module under test after mocking
-let installDeps: any
+let installDeps: any;
 
 describe('Install Deps Module', () => {
-  let mockEnv: ReturnType<typeof setupMockEnvironment>
+  let mockEnv: ReturnType<typeof setupMockEnvironment>;
 
   beforeEach(async () => {
     // Reset the mock environment state for each test
-    mockEnv = globalMockEnv
-    mockEnv.reset()
+    mockEnv = globalMockEnv;
+    mockEnv.reset();
 
     // Set up the shared state
-    mockEnv.processMock.setupSpawnMock(mockEnv.mockState)
-    mockEnv.appMock.setup(mockEnv.mockState)
-    mockEnv.osMock.setup(mockEnv.mockState)
-    mockEnv.processUtilsMock.setup(mockEnv.mockState)
+    mockEnv.processMock.setupSpawnMock(mockEnv.mockState);
+    mockEnv.appMock.setup(mockEnv.mockState);
+    mockEnv.osMock.setup(mockEnv.mockState);
+    mockEnv.processUtilsMock.setup(mockEnv.mockState);
 
     // Import the module under test fresh for each test
-    installDeps = await import('../../../electron/main/install-deps')
-  })
+    installDeps = await import('../../../electron/main/install-deps');
+  });
 
   afterEach(() => {
-    vi.clearAllMocks()
-    mockEnv.reset()
-  })
+    vi.clearAllMocks();
+    mockEnv.reset();
+  });
 
   describe('checkAndInstallDepsOnUpdate', () => {
     it('should skip installation when version has not changed and tools are installed', async () => {
       // Set up scenario where version is the same and tools exist
-      mockEnv.mockState.filesystem.versionFileExists = true
-      mockEnv.mockState.filesystem.versionFileContent = '1.0.0'
-      mockEnv.mockState.app.currentVersion = '1.0.0'
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': true, 'bun': true }
+      mockEnv.mockState.filesystem.versionFileExists = true;
+      mockEnv.mockState.filesystem.versionFileContent = '1.0.0';
+      mockEnv.mockState.app.currentVersion = '1.0.0';
+      mockEnv.mockState.filesystem.binariesExist = { uv: true, bun: true };
 
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(false)
-      }
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: false
-      })
+        forceInstall: false,
+      });
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Version not changed')
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Version not changed');
       expect(mockEnv.fsMock.writeFileSync).not.toHaveBeenCalledWith(
         expect.stringContaining('version.txt'),
         expect.any(String)
-      )
-    })
+      );
+    });
 
     it('should install dependencies when version file does not exist', async () => {
       // Set up fresh installation scenario
-      mockEnv.scenarios.freshInstall()
+      mockEnv.scenarios.freshInstall();
 
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(false)
-      }
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: false
-      })
+        forceInstall: false,
+      });
       console.log(result);
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Dependencies installed successfully')
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Dependencies installed successfully');
       expect(mockWin.webContents.send).toHaveBeenCalledWith(
         'update-notification',
         expect.objectContaining({
           type: 'version-update',
-          reason: 'version file not exist'
+          reason: 'version file not exist',
         })
-      )
-    })
+      );
+    });
 
     it('should install dependencies when version has changed', async () => {
       // Set up version update scenario
-      mockEnv.scenarios.versionUpdate('0.9.0', '1.0.0')
+      mockEnv.scenarios.versionUpdate('0.9.0', '1.0.0');
 
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(false)
-      }
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: false
-      })
+        forceInstall: false,
+      });
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Dependencies installed successfully')
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Dependencies installed successfully');
       expect(mockWin.webContents.send).toHaveBeenCalledWith(
         'update-notification',
         expect.objectContaining({
           type: 'version-update',
           currentVersion: '1.0.0',
           previousVersion: '0.9.0',
-          reason: 'version not match'
+          reason: 'version not match',
         })
-      )
-    })
+      );
+    });
 
     it('should install when command tools are missing', async () => {
       // Same version but tools missing
-      mockEnv.mockState.filesystem.versionFileExists = true
-      mockEnv.mockState.filesystem.versionFileContent = '1.0.0'
-      mockEnv.mockState.app.currentVersion = '1.0.0'
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': false, 'bun': true }
+      mockEnv.mockState.filesystem.versionFileExists = true;
+      mockEnv.mockState.filesystem.versionFileContent = '1.0.0';
+      mockEnv.mockState.app.currentVersion = '1.0.0';
+      mockEnv.mockState.filesystem.binariesExist = { uv: false, bun: true };
 
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(false)
-      }
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: false
-      })
+        forceInstall: false,
+      });
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Dependencies installed successfully')
-    })
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Dependencies installed successfully');
+    });
 
     it('should force install when forceInstall is true', async () => {
       // Set up scenario where normally no installation would be needed
-      mockEnv.mockState.filesystem.versionFileExists = true
-      mockEnv.mockState.filesystem.versionFileContent = '1.0.0'
-      mockEnv.mockState.app.currentVersion = '1.0.0'
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': true, 'bun': true }
+      mockEnv.mockState.filesystem.versionFileExists = true;
+      mockEnv.mockState.filesystem.versionFileContent = '1.0.0';
+      mockEnv.mockState.app.currentVersion = '1.0.0';
+      mockEnv.mockState.filesystem.binariesExist = { uv: true, bun: true };
 
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(false)
-      }
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: true
-      })
+        forceInstall: true,
+      });
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Dependencies installed successfully')
-    })
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Dependencies installed successfully');
+    });
 
     it('should handle installation failure', async () => {
       // Set up failure scenario
-      mockEnv.scenarios.completeFailure()
+      mockEnv.scenarios.completeFailure();
 
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(false)
-      }
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: true
-      })
+        forceInstall: true,
+      });
 
-      expect(result.success).toBe(false)
-      expect(result.message).toContain('Install dependencies failed')
-    })
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Install dependencies failed');
+    });
 
     it('should handle window being destroyed', async () => {
       const mockWin = {
         webContents: { send: vi.fn() },
-        isDestroyed: vi.fn().mockReturnValue(true)
-      }
+        isDestroyed: vi.fn().mockReturnValue(true),
+      };
 
-      mockEnv.scenarios.versionUpdate('0.9.0', '1.0.0')
+      mockEnv.scenarios.versionUpdate('0.9.0', '1.0.0');
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: mockWin,
-        forceInstall: false
-      })
+        forceInstall: false,
+      });
 
       // Should still complete successfully
-      expect(result.success).toBe(true)
+      expect(result.success).toBe(true);
       // Should not try to send notifications to destroyed window
-      expect(mockWin.webContents.send).not.toHaveBeenCalled()
-    })
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    });
 
     it('should handle null window gracefully', async () => {
-      mockEnv.scenarios.versionUpdate('0.9.0', '1.0.0')
+      mockEnv.scenarios.versionUpdate('0.9.0', '1.0.0');
 
       const result = await installDeps.checkAndInstallDepsOnUpdate({
         win: null,
-        forceInstall: false
-      })
+        forceInstall: false,
+      });
 
-      expect(result.success).toBe(true)
+      expect(result.success).toBe(true);
       // Should not crash when window is null
-    })
-  })
+    });
+  });
 
   describe('installCommandTool', () => {
     it('should install uv and bun when not available', async () => {
       // Set up scenario where tools are not available initially
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': false, 'bun': false }
-      
+      mockEnv.mockState.filesystem.binariesExist = { uv: false, bun: false };
+
       // Simulate successful installation
-      let uvCallCount = 0
-      let bunCallCount = 0
-      mockEnv.processUtilsMock.isBinaryExists.mockImplementation(async (name: string) => {
-        if (name === 'uv') {
-          uvCallCount++
-          return uvCallCount > 1 // False first time, true after "installation"
+      let uvCallCount = 0;
+      let bunCallCount = 0;
+      mockEnv.processUtilsMock.isBinaryExists.mockImplementation(
+        async (name: string) => {
+          if (name === 'uv') {
+            uvCallCount++;
+            return uvCallCount > 1; // False first time, true after "installation"
+          }
+          if (name === 'bun') {
+            bunCallCount++;
+            return bunCallCount > 1; // False first time, true after "installation"
+          }
+          return false;
         }
-        if (name === 'bun') {
-          bunCallCount++
-          return bunCallCount > 1 // False first time, true after "installation"
-        }
-        return false
-      })
+      );
 
-      const result = await installDeps.installCommandTool()
+      const result = await installDeps.installCommandTool();
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Command tools installed successfully')
-      expect(mockEnv.processUtilsMock.runInstallScript).toHaveBeenCalledTimes(2) // uv and bun
-    })
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Command tools installed successfully');
+      expect(mockEnv.processUtilsMock.runInstallScript).toHaveBeenCalledTimes(
+        2
+      ); // uv and bun
+    });
 
     it('should skip installation when tools are already available', async () => {
       // Tools are available by default in mockState
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': true, 'bun': true }
-      
-      const result = await installDeps.installCommandTool()
+      mockEnv.mockState.filesystem.binariesExist = { uv: true, bun: true };
 
-      expect(result.success).toBe(true)
-      expect(result.message).toContain('Command tools installed successfully')
-      expect(mockEnv.processUtilsMock.runInstallScript).not.toHaveBeenCalled()
-    })
+      const result = await installDeps.installCommandTool();
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Command tools installed successfully');
+      expect(mockEnv.processUtilsMock.runInstallScript).not.toHaveBeenCalled();
+    });
 
     it('should handle uv installation failure', async () => {
       // Mock uv installation failure
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': false, 'bun': true }
-      
+      mockEnv.mockState.filesystem.binariesExist = { uv: false, bun: true };
+
       // uv remains unavailable even after installation attempt
-      mockEnv.processUtilsMock.isBinaryExists.mockImplementation(async (name: string) => {
-        if (name === 'uv') return false // Always fails
-        if (name === 'bun') return true
-        return false
-      })
+      mockEnv.processUtilsMock.isBinaryExists.mockImplementation(
+        async (name: string) => {
+          if (name === 'uv') return false; // Always fails
+          if (name === 'bun') return true;
+          return false;
+        }
+      );
 
-      const result = await installDeps.installCommandTool()
+      const result = await installDeps.installCommandTool();
 
-      expect(result.success).toBe(false)
-      expect(result.message).toContain('uv installation failed')
-    })
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('uv installation failed');
+    });
 
     it('should handle bun installation failure', async () => {
       // Mock bun installation failure
-      mockEnv.mockState.filesystem.binariesExist = { 'uv': true, 'bun': false }
-      
+      mockEnv.mockState.filesystem.binariesExist = { uv: true, bun: false };
+
       // bun remains unavailable even after installation attempt
-      mockEnv.processUtilsMock.isBinaryExists.mockImplementation(async (name: string) => {
-        if (name === 'uv') return true
-        if (name === 'bun') return false // Always fails
-        return false
-      })
+      mockEnv.processUtilsMock.isBinaryExists.mockImplementation(
+        async (name: string) => {
+          if (name === 'uv') return true;
+          if (name === 'bun') return false; // Always fails
+          return false;
+        }
+      );
 
-      const result = await installDeps.installCommandTool()
+      const result = await installDeps.installCommandTool();
 
-      expect(result.success).toBe(false)
-      expect(result.message).toContain('bun installation failed')
-    })
-  })
-})
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('bun installation failed');
+    });
+  });
+});
 
 //   describe('getInstallationStatus', () => {
 //     it('should return correct status when installation is in progress', async () => {
@@ -404,7 +415,7 @@ describe('Install Deps Module', () => {
 //     it('should handle command tool installation failure', async () => {
 //       // Set up scenario where command tool installation fails
 //       mockEnv.mockState.filesystem.binariesExist = { 'uv': false, 'bun': false }
-      
+
 //       // Mock tools to remain unavailable
 //       mockEnv.processUtilsMock.isBinaryExists.mockResolvedValue(false)
 
@@ -531,7 +542,7 @@ describe('Install Deps Module', () => {
 //       global.Intl.DateTimeFormat = mockDateTimeFormat
 
 //       try {
-//         // Set up scenario where default fails but mirror succeeds  
+//         // Set up scenario where default fails but mirror succeeds
 //         mockEnv.scenarios.networkIssues()
 
 //         const result = await installDeps.installDependencies('1.0.0')

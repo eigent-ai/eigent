@@ -105,7 +105,7 @@ our coding standards.
   - Readability: Is the code easy to read and understand? Is it well-commented where necessary?
   - Maintainability: Is the code structured in a way that makes future changes easy?
   - Style: Does the code follow the project’s style guidelines?
-  Currently we use Ruff for format check and take [Google Python Style Guide]("https://google.github.io/styleguide/pyguide.html") as reference.
+    Currently we use Ruff for format check and take [Google Python Style Guide]("https://google.github.io/styleguide/pyguide.html") as reference.
   - Documentation: Are public methods, classes, and any complex logic well-documented?
 - Design
   - Consistency: Does the code follow established design patterns and project architecture?
@@ -162,11 +162,11 @@ Example:
 
 ```markdown
 Args:
-    system_message (BaseMessage): The system message for initializing 
-        the agent's conversation context.
-    model (BaseModelBackend, optional): The model backend to use for 
-        response generation. Defaults to :obj:`OpenAIModel` with 
-        `GPT_4O_MINI`. (default: :obj:`OpenAIModel` with `GPT_4O_MINI`)
+system_message (BaseMessage): The system message for initializing
+the agent's conversation context.
+model (BaseModelBackend, optional): The model backend to use for
+response generation. Defaults to :obj:`OpenAIModel` with
+`GPT_4O_MINI`. (default: :obj:`OpenAIModel` with `GPT_4O_MINI`)
 ```
 
 ### Principles 🛡️
