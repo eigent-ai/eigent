@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 
@@ -56,6 +57,23 @@ export const SummaryMarkDown = ({
     return () => clearInterval(timer);
   }, [content, speed, onTyping, enableTypewriter]);
 
+  // If content is a pure HTML document, render in a styled pre block
+  if (isHtmlDocument(content)) {
+    // Trim leading whitespace from each line for consistent alignment
+    const formattedHtml = displayedContent
+      .split('\n')
+      .map((line) => line.trimStart())
+      .join('\n')
+      .trim();
+    return (
+      <div className="prose prose-sm max-w-none">
+        <pre className="mb-3 overflow-x-auto whitespace-pre-wrap rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-mono text-xs">
+          <code>{formattedHtml}</code>
+        </pre>
+      </div>
+    );
+  }
+
   return (
     <div className="prose prose-sm max-w-none">
       <ReactMarkdown
@@ -99,7 +117,7 @@ export const SummaryMarkDown = ({
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="mb-3 overflow-x-auto rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs">
+            <pre className="mb-3 overflow-x-auto whitespace-pre-wrap rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-mono text-xs">
               {children}
             </pre>
           ),

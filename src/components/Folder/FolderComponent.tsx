@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { injectFontStyles } from '@/lib/htmlFontStyles';
 import DOMPurify from 'dompurify';
 import { useMemo } from 'react';
 
@@ -47,7 +48,7 @@ export default function FolderComponent({ selectedFile }: Props) {
       }
     }
 
-    return DOMPurify.sanitize(raw, {
+    const sanitized = DOMPurify.sanitize(raw, {
       USE_PROFILES: { html: true },
       ALLOWED_TAGS: [
         'a',
@@ -125,6 +126,9 @@ export default function FolderComponent({ selectedFile }: Props) {
       SANITIZE_DOM: true,
       KEEP_CONTENT: false,
     });
+
+    // Inject font styles into sanitized HTML
+    return injectFontStyles(sanitized);
   }, [selectedFile?.content]);
 
   return (

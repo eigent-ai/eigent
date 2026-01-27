@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { memo, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -72,6 +73,26 @@ export const MarkDown = memo(
 
       return () => clearInterval(timer);
     }, [content, speed, enableTypewriter]);
+
+    // If content is a pure HTML document, render in a styled pre block
+    if (isHtmlDocument(content)) {
+      // Trim leading whitespace from each line for consistent alignment
+      const formattedHtml = displayedContent
+        .split('\n')
+        .map((line) => line.trimStart())
+        .join('\n')
+        .trim();
+      return (
+        <div className="markdown-container max-w-none overflow-hidden">
+          <pre
+            className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-2 font-mono text-xs"
+            style={{ wordBreak: 'break-all' }}
+          >
+            <code>{formattedHtml}</code>
+          </pre>
+        </div>
+      );
+    }
 
     return (
       <div className="markdown-container max-w-none overflow-hidden">

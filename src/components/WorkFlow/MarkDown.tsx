@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -61,6 +62,24 @@ export const MarkDown = ({
   const processContent = (text: string) => {
     return text.replace(/\\n/g, '  \n '); // add two spaces before \n, so ReactMarkdown will recognize it as a line break
   };
+
+  // If content is a pure HTML document, render in a styled pre block
+  if (isHtmlDocument(content)) {
+    // Trim leading whitespace from each line for consistent alignment
+    const formattedHtml = displayedContent
+      .split('\n')
+      .map((line) => line.trimStart())
+      .join('\n')
+      .trim();
+    return (
+      <div className="prose prose-sm markdown-container pointer-events-auto w-full select-text overflow-x-auto">
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-zinc-100 p-2 font-mono text-xs">
+          <code>{formattedHtml}</code>
+        </pre>
+      </div>
+    );
+  }
+
   return (
     <div className="prose prose-sm markdown-container pointer-events-auto w-full select-text overflow-x-auto">
       <ReactMarkdown

@@ -30,6 +30,7 @@ import FolderComponent from './FolderComponent';
 import { proxyFetchGet } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { injectFontStyles } from '@/lib/htmlFontStyles';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from 'react-i18next';
@@ -834,7 +835,7 @@ function HtmlRenderer({
 
       // Skip image processing if file is remote (we can't resolve relative paths for remote files)
       if (selectedFile.isRemote) {
-        setProcessedHtml(html);
+        setProcessedHtml(injectFontStyles(html));
         return;
       }
 
@@ -975,8 +976,8 @@ function HtmlRenderer({
         return;
       }
 
-      // Set the processed HTML directly - iframe sandbox provides security
-      setProcessedHtml(processedHtmlContent);
+      // Set the processed HTML with font styles - iframe sandbox provides security
+      setProcessedHtml(injectFontStyles(processedHtmlContent));
     };
 
     processHtml();

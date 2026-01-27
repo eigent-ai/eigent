@@ -24,10 +24,26 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
-import { Bot, Edit, Eye, EyeOff, Plus } from 'lucide-react';
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  Edit,
+  Eye,
+  EyeOff,
+  Plus,
+} from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ToolSelect from './ToolSelect';
@@ -83,6 +99,12 @@ export function AddWorker({
 
   // error status management
   const [nameError, setNameError] = useState<string>('');
+
+  // Model configuration state
+  const [showModelConfig, setShowModelConfig] = useState(false);
+  const [useCustomModel, setUseCustomModel] = useState(false);
+  const [customModelPlatform, setCustomModelPlatform] = useState('');
+  const [customModelType, setCustomModelType] = useState('');
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -239,6 +261,10 @@ export function AddWorker({
     setEnvValues({});
     setSecretVisible({});
     setNameError('');
+    setShowModelConfig(false);
+    setUseCustomModel(false);
+    setCustomModelPlatform('');
+    setCustomModelType('');
   };
 
   // tool function
@@ -344,12 +370,22 @@ export function AddWorker({
       };
       setWorkerList([...workerList, worker]);
     } else {
+      // Build custom model config if custom model is enabled
+      const customModelConfig =
+        useCustomModel && customModelPlatform
+          ? {
+              model_platform: customModelPlatform,
+              model_type: customModelType || undefined,
+            }
+          : undefined;
+
       fetchPost(`/task/${activeProjectId}/add-agent`, {
         name: workerName,
         description: workerDescription,
         tools: localTool,
         mcp_tools: mcpLocal,
         email: email,
+        custom_model_config: customModelConfig,
       });
       const worker: Agent = {
         tasks: [],
@@ -569,6 +605,82 @@ export function AddWorker({
                   initialSelectedTools={selectedTools}
                   ref={toolSelectRef}
                 />
+
+                {/* Model Configuration Section */}
+                <div className="mt-2 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-sm text-text-body hover:text-text-action"
+                    onClick={() => setShowModelConfig(!showModelConfig)}
+                  >
+                    {showModelConfig ? (
+                      <ChevronUp size={16} />
+                    ) : (
+                      <ChevronDown size={16} />
+                    )}
+                    {t('workforce.advanced-model-config')}
+                  </button>
+
+                  {showModelConfig && (
+                    <div className="flex flex-col gap-3 rounded-lg bg-gray-50 p-3">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={useCustomModel}
+                          onChange={(e) => setUseCustomModel(e.target.checked)}
+                          className="rounded border-gray-300"
+                        />
+                        {t('workforce.use-custom-model')}
+                      </label>
+
+                      {useCustomModel && (
+                        <>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-text-body">
+                              {t('workforce.model-platform')}
+                            </label>
+                            <Select
+                              value={customModelPlatform}
+                              onValueChange={setCustomModelPlatform}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue
+                                  placeholder={t('workforce.select-platform')}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {INIT_PROVODERS.map((provider) => (
+                                  <SelectItem
+                                    key={provider.id}
+                                    value={provider.id}
+                                  >
+                                    {provider.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-text-body">
+                              {t('workforce.model-type')}
+                            </label>
+                            <Input
+                              size="sm"
+                              placeholder={t(
+                                'workforce.model-type-placeholder'
+                              )}
+                              value={customModelType}
+                              onChange={(e) =>
+                                setCustomModelType(e.target.value)
+                              }
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </DialogContentSection>
               <DialogFooter
                 className="!rounded-b-xl bg-white-100% p-md"
