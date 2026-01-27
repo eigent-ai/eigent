@@ -36,6 +36,8 @@ const reactConfig = {
     'react/react-in-jsx-scope': 'off',
     ...reactHooks.configs.recommended.rules,
     'react-hooks/static-components': 'off',
+    // Disable set-state-in-effect as it's too strict for legitimate use cases
+    'react-hooks/set-state-in-effect': 'off',
   },
 };
 

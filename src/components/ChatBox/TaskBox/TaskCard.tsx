@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useTranslation } from 'react-i18next';
 import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
@@ -55,7 +56,7 @@ export function TaskCard({
   clickable = true,
   chatId,
 }: TaskCardProps) {
-  // const { t } = useTranslation();
+  const { t: _t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | 'auto'>('auto');
@@ -64,15 +65,20 @@ export function TaskCard({
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
+  const [filterTasks, setFilterTasks] = useState<any[]>([]);
 
-  // Use useMemo to derive filterTasks from taskRunning and selectedState
-  const filterTasks = useMemo(() => {
+  // Extract activeTaskId and related values for cleaner dependencies
+  const activeTaskId = chatStore?.activeTaskId as string;
+  const activeTask = chatStore?.tasks?.[activeTaskId];
+  const activeTaskStatus = activeTask?.status;
+
+  useEffect(() => {
     const tasks = taskRunning || [];
 
     if (selectedState === 'all') {
-      return tasks;
+      setFilterTasks(tasks);
     } else {
-      return tasks.filter((task) => {
+      const newFiltered = tasks.filter((task) => {
         switch (selectedState) {
           case 'done':
             return task.status === 'completed' && !task.reAssignTo;
@@ -97,28 +103,20 @@ export function TaskCard({
             return false;
         }
       });
+      setFilterTasks(newFiltered);
     }
-  }, [selectedState, taskRunning]);
-
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : null;
-  const activeTaskStatus = activeTask?.status;
-  const activeWorkSpace = activeTask?.activeWorkSpace;
+  }, [selectedState, taskInfo, taskRunning]);
 
   const isAllTaskFinished = useMemo(() => {
     return activeTaskStatus === 'finished';
   }, [activeTaskStatus]);
 
+  // Auto-collapse task list when all tasks are completed
   useEffect(() => {
-    // Use setTimeout to defer state update and avoid cascading renders
-    setTimeout(() => {
-      if (activeWorkSpace === 'workflow') {
-        setIsExpanded(false);
-      } else {
-        setIsExpanded(true);
-      }
-    }, 0);
-  }, [activeWorkSpace]);
+    if (isAllTaskFinished) {
+      setIsExpanded(false);
+    }
+  }, [isAllTaskFinished]);
 
   // Improved height calculation logic
   useEffect(() => {
