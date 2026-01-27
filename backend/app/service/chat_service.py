@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import asyncio
 import datetime
 import json
@@ -24,7 +38,9 @@ from app.service.task import (
 from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
+from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
 from camel.tasks import Task
 from app.utils.agent import (
@@ -46,10 +62,10 @@ from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
-from utils import traceroot_wrapper as traceroot
+import logging
 import os
 
-logger = traceroot.get_logger("chat_service")
+logger = logging.getLogger("chat_service")
 
 
 def format_task_context(task_data: dict, seen_files: set | None = None, skip_files: bool = False) -> str:
@@ -236,7 +252,6 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 
 @sync_step
-@traceroot.trace()
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     start_event_loop = True
 
@@ -1046,7 +1061,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             # Continue processing other items instead of breaking
 
 
-@traceroot.trace()
 async def install_mcp(
     mcp: ListenChatAgent,
     install_mcp: ActionInstallMcpData,
@@ -1077,7 +1091,8 @@ def to_sub_tasks(task: Task, summary_task_content: str):
 def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
     if depth > 5:
         return []
-    return (
+
+    result = (
         chain(sub_tasks)
         .filter(lambda x: x.content != "")
         .map(
@@ -1090,6 +1105,8 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
         )
         .value()
     )
+
+    return result
 
 
 def update_sub_tasks(sub_tasks: list[Task], update_tasks: dict[str, TaskContent], depth: int = 0):
@@ -1168,7 +1185,6 @@ Is this a complex task? (yes/no):"""
         return True
 
 
-@traceroot.trace()
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
     prompt = f"""The user's task is:
 ---
@@ -1271,7 +1287,6 @@ async def get_task_result_with_optional_summary(task: Task, options: Chat) -> st
     return result
 
 
-@traceroot.trace()
 async def construct_workforce(options: Chat) -> tuple[Workforce, ListenChatAgent]:
     """Construct a workforce with all required agents.
 
@@ -1388,6 +1403,12 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
     except (ValueError, AttributeError):
         model_platform_enum = None
 
+    # Create workforce metrics callback for workforce analytics
+    workforce_metrics = WorkforceMetricsCallback(
+        project_id=options.project_id,
+        task_id=options.task_id
+    )
+
     workforce = Workforce(
         options.project_id,
         "A workforce",
@@ -1399,6 +1420,8 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         use_structured_output_handler=False if model_platform_enum == ModelPlatformType.OPENAI else True,
     )
 
+    # Register workforce metrics callback
+    workforce._callbacks.append(workforce_metrics)
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
@@ -1458,7 +1481,6 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
-@traceroot.trace()
 async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     logger.info("Creating new agent", extra={"agent_name": data.name, "project_id": options.project_id, "task_id": options.task_id})
     logger.debug("New agent data", extra={"agent_data": data.model_dump_json()})
@@ -1467,6 +1489,16 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:
         tool_names.append(titleize(item))
+    # Always include terminal_toolkit with proper working directory
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        agent_name=data.name,
+        working_directory=working_directory,
+        safe_mode=True,
+        clone_current_env=True,
+    )
+    tools.extend(terminal_toolkit.get_tools())
+    tool_names.append(titleize("terminal_toolkit"))
     if data.mcp_tools is not None:
         tools = [*tools, *await get_mcp_tools(data.mcp_tools)]
         for item in data.mcp_tools["mcpServers"].keys():
@@ -1482,4 +1514,13 @@ The current date is {datetime.date.today()}. For any date-related tasks, you
 MUST use this as the current date.
 """
 
-    return agent_model(data.name, enhanced_description, options, tools, tool_names=tool_names)
+    # Pass per-agent custom model config if available
+    custom_model_config = getattr(data, 'custom_model_config', None)
+    return agent_model(
+        data.name,
+        enhanced_description,
+        options,
+        tools,
+        tool_names=tool_names,
+        custom_model_config=custom_model_config,
+    )

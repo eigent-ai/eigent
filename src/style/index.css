@@ -117,6 +117,8 @@ body {
   background-color: var(--bg-page) !important;
   backdrop-filter: blur(75px);
   z-index: 0;
+  position: relative;
+  isolation: isolate;
 }
 
 .blur {
