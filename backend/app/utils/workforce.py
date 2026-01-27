@@ -838,18 +838,32 @@ class Workforce(BaseWorkforce):
         # This handles the case where agents are still in-use and cannot be accessed from pool
         try:
             from app.utils.agent import _cdp_pool_manager
-            logger.info(f"[WF-CLEANUP] Force releasing all CDP resources for task {self.api_task_id}")
 
-            # Get all occupied ports before cleanup
+            task_ids = set()
+            if hasattr(self, '_children') and self._children:
+                for child in self._children:
+                    if hasattr(child, 'worker_agent') and hasattr(child.worker_agent, '_cdp_task_id'):
+                        task_ids.add(child.worker_agent._cdp_task_id)
+                    if hasattr(child, 'agent_pool') and child.agent_pool:
+                        for agent in list(child.agent_pool._available_agents):
+                            if hasattr(agent, '_cdp_task_id'):
+                                task_ids.add(agent._cdp_task_id)
+            if hasattr(self, 'coordinator_agent') and self.coordinator_agent and hasattr(self.coordinator_agent, '_cdp_task_id'):
+                task_ids.add(self.coordinator_agent._cdp_task_id)
+
+            if not task_ids:
+                logger.warning("[WF-CLEANUP] No task_id found for CDP release; skipping pool cleanup")
+                return
+
+            logger.info(f"[WF-CLEANUP] Force releasing CDP resources for task_ids: {sorted(task_ids)}")
             occupied_before = _cdp_pool_manager.get_occupied_ports().copy()
             logger.info(f"[WF-CLEANUP] CDP ports occupied before force release: {occupied_before}")
 
-            # Force release all ports (clear the entire pool)
-            # This is safe because the task is ending, no agents should be using them anymore
-            released_count = len(occupied_before)
-            _cdp_pool_manager._occupied_ports.clear()
+            released_ports = []
+            for task_id in task_ids:
+                released_ports.extend(_cdp_pool_manager.release_by_task(task_id))
 
-            logger.info(f"[WF-CLEANUP] ✅ Force released {released_count} CDP browser(s)")
+            logger.info(f"[WF-CLEANUP] ✅ Force released {len(released_ports)} CDP browser(s)")
             logger.info(f"[WF-CLEANUP] CDP ports after force release: {_cdp_pool_manager.get_occupied_ports()}")
         except Exception as e:
             logger.error(f"[WF-CLEANUP] Error during force CDP release: {e}", exc_info=True)

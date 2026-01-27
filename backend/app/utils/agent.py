@@ -156,9 +156,11 @@ class CdpBrowserPoolManager:
 
     def __init__(self):
         self._occupied_ports = {}  # port -> session_id mapping
+        self._session_to_port = {}  # session_id -> port mapping
+        self._session_to_task = {}  # session_id -> task_id mapping
         self._lock = threading.Lock()
 
-    def acquire_browser(self, cdp_browsers: list[dict], session_id: str) -> dict | None:
+    def acquire_browser(self, cdp_browsers: list[dict], session_id: str, task_id: str | None = None) -> dict | None:
         """
         Acquire an available browser from the pool.
 
@@ -175,6 +177,8 @@ class CdpBrowserPoolManager:
                 port = browser.get('port')
                 if port and port not in self._occupied_ports:
                     self._occupied_ports[port] = session_id
+                    self._session_to_port[session_id] = port
+                    self._session_to_task[session_id] = task_id
                     logger.info(
                         f"Acquired browser on port {port} for session {session_id}. "
                         f"Occupied: {list(self._occupied_ports.keys())}"
@@ -198,6 +202,8 @@ class CdpBrowserPoolManager:
         with self._lock:
             if port in self._occupied_ports and self._occupied_ports[port] == session_id:
                 del self._occupied_ports[port]
+                self._session_to_port.pop(session_id, None)
+                self._session_to_task.pop(session_id, None)
                 logger.info(
                     f"Released browser on port {port} from session {session_id}. "
                     f"Occupied: {list(self._occupied_ports.keys())}"
@@ -206,6 +212,25 @@ class CdpBrowserPoolManager:
                 logger.warning(
                     f"Attempted to release browser on port {port} but it was not occupied by {session_id}"
                 )
+
+    def release_by_task(self, task_id: str) -> list[int]:
+        """Release all browsers associated with a task_id. Returns released ports."""
+        released_ports = []
+        with self._lock:
+            sessions = [s for s, t in self._session_to_task.items() if t == task_id]
+            for session_id in sessions:
+                port = self._session_to_port.get(session_id)
+                if port is not None and self._occupied_ports.get(port) == session_id:
+                    del self._occupied_ports[port]
+                    released_ports.append(port)
+                self._session_to_port.pop(session_id, None)
+                self._session_to_task.pop(session_id, None)
+            if released_ports:
+                logger.info(
+                    f"Released {len(released_ports)} browser(s) for task {task_id}. "
+                    f"Occupied: {list(self._occupied_ports.keys())}"
+                )
+        return released_ports
 
     def get_occupied_ports(self) -> list[int]:
         """Get list of currently occupied ports."""
@@ -775,7 +800,11 @@ class ListenChatAgent(ChatAgent):
 
                 if cdp_browsers:
                     from app.component.environment import env
-                    selected_browser = _cdp_pool_manager.acquire_browser(cdp_browsers, new_cdp_session)
+                    selected_browser = _cdp_pool_manager.acquire_browser(
+                        cdp_browsers,
+                        new_cdp_session,
+                        getattr(self, '_cdp_task_id', None),
+                    )
 
                     if selected_browser:
                         new_cdp_port = selected_browser.get('port', env('browser_port', '9222'))
@@ -812,29 +841,34 @@ class ListenChatAgent(ChatAgent):
                         logger.warning(f"[CLONE {clone_id}] No _browser_toolkit found on agent, CDP URL not modified")
 
         # Clone tools and collect toolkits that need registration
-        logger.info(f"[CLONE {clone_id}] Calling _clone_tools()...")
-        cloned_tools, toolkits_to_register = self._clone_tools()
-        logger.info(
-            f"[CLONE {clone_id}] _clone_tools returned {len(cloned_tools)} tools, "
-            f"{len(toolkits_to_register)} toolkits to register"
-        )
-        for idx, tk in enumerate(toolkits_to_register):
+        try:
+            logger.info(f"[CLONE {clone_id}] Calling _clone_tools()...")
+            cloned_tools, toolkits_to_register = self._clone_tools()
             logger.info(
-                f"[CLONE {clone_id}] Toolkit {idx}: {tk.__class__.__name__}, "
-                f"session={getattr(tk, '_session_id', 'N/A')}"
+                f"[CLONE {clone_id}] _clone_tools returned {len(cloned_tools)} tools, "
+                f"{len(toolkits_to_register)} toolkits to register"
             )
-
-        # Restore original CDP URL in parent toolkit
-        if new_cdp_port is not None and hasattr(self, '_browser_toolkit'):
-            toolkit = self._browser_toolkit
-            if hasattr(toolkit, '_temp_original_cdp_url'):
-                toolkit.config_loader.get_browser_config().cdp_url = toolkit._temp_original_cdp_url
-                delattr(toolkit, '_temp_original_cdp_url')
-            if hasattr(toolkit, '_temp_original_ws_config_cdp'):
-                if toolkit._temp_original_ws_config_cdp and hasattr(toolkit, '_ws_config') and toolkit._ws_config:
-                    toolkit._ws_config['cdpUrl'] = toolkit._temp_original_ws_config_cdp
-                delattr(toolkit, '_temp_original_ws_config_cdp')
-            logger.info(f"[CLONE {clone_id}] Restored original CDP URL in parent toolkit")
+            for idx, tk in enumerate(toolkits_to_register):
+                logger.info(
+                    f"[CLONE {clone_id}] Toolkit {idx}: {tk.__class__.__name__}, "
+                    f"session={getattr(tk, '_session_id', 'N/A')}"
+                )
+        except Exception:
+            if new_cdp_port is not None and new_cdp_session is not None:
+                _cdp_pool_manager.release_browser(new_cdp_port, new_cdp_session)
+            raise
+        finally:
+            # Restore original CDP URL in parent toolkit
+            if new_cdp_port is not None and hasattr(self, '_browser_toolkit'):
+                toolkit = self._browser_toolkit
+                if hasattr(toolkit, '_temp_original_cdp_url'):
+                    toolkit.config_loader.get_browser_config().cdp_url = toolkit._temp_original_cdp_url
+                    delattr(toolkit, '_temp_original_cdp_url')
+                if hasattr(toolkit, '_temp_original_ws_config_cdp'):
+                    if toolkit._temp_original_ws_config_cdp and hasattr(toolkit, '_ws_config') and toolkit._ws_config:
+                        toolkit._ws_config['cdpUrl'] = toolkit._temp_original_ws_config_cdp
+                    delattr(toolkit, '_temp_original_ws_config_cdp')
+                logger.info(f"[CLONE {clone_id}] Restored original CDP URL in parent toolkit")
 
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
@@ -868,6 +902,8 @@ class ListenChatAgent(ChatAgent):
         new_agent._cdp_release_callback = self._cdp_release_callback
         if hasattr(self, '_cdp_options'):
             new_agent._cdp_options = self._cdp_options
+        if hasattr(self, '_cdp_task_id'):
+            new_agent._cdp_task_id = self._cdp_task_id
 
         # Find and store the cloned browser toolkit on the new agent
         if toolkits_to_register:
@@ -1270,7 +1306,11 @@ def browser_agent(options: Chat):
 
         if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
             # Try to acquire an available browser from the pool
-            selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, session_id)
+            selected_browser = _cdp_pool_manager.acquire_browser(
+                options.cdp_browsers,
+                session_id,
+                options.task_id,
+            )
 
             if selected_browser:
                 selected_port = selected_browser.get('port', env('browser_port', '9222'))
@@ -1380,7 +1420,11 @@ def browser_agent(options: Chat):
     selected_is_external = False
 
     if hasattr(options, 'cdp_browsers') and options.cdp_browsers and len(options.cdp_browsers) > 0:
-        selected_browser = _cdp_pool_manager.acquire_browser(options.cdp_browsers, toolkit_session_id)
+        selected_browser = _cdp_pool_manager.acquire_browser(
+            options.cdp_browsers,
+            toolkit_session_id,
+            options.task_id,
+        )
         if selected_browser:
             selected_port = selected_browser.get('port', env('browser_port', '9222'))
             selected_is_external = selected_browser.get('isExternal', False)
@@ -1624,6 +1668,7 @@ Your approach depends on available search tools:
     agent._cdp_release_callback = release_cdp_from_agent
     agent._cdp_port = selected_port
     agent._cdp_session_id = toolkit_session_id
+    agent._cdp_task_id = options.task_id
     # Store options for use during cloning
     agent._cdp_options = options
     # Store browser toolkit reference for CDP URL modification during cloning
