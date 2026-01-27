@@ -421,6 +421,18 @@
     /* gray-100 equivalent */
     --surface-success-subtle: #d1fae5;
     /* emerald-100 equivalent */
+    --surface-tertiary-subtle: #f9fafb;
+    /* gray-50 equivalent */
+
+    /* Text Variants */
+    --text-muted: var(--colors-primary-5);
+    --text-muted-strong: var(--colors-primary-7);
+    --text-link: var(--colors-blue-500);
+    --text-link-hover: var(--colors-blue-700);
+    --text-error: var(--colors-red-500);
+
+    --border-subtle: var(--colors-primary-2);
+    --border-subtle-strong: var(--colors-primary-3);
 
     /* Shadow Tokens */
 
@@ -825,17 +837,20 @@
     --bg-dark-tertiary: #2c3950;
     --bg-dark-default: #0d1424;
     --bg-page-default: #0d1424;
-    /* Task Component - Dark Mode Overrides */
     --task-fill-running: #1f2937;
-    /* Log Component - Dark Mode */
     --log-default: #1f2937;
-    /* Code Surface - Dark Mode */
     --code-surface: #27272a;
-    /* zinc-800 equivalent */
-    /* Surface Variants - Dark Mode */
     --surface-error-subtle: rgba(153, 27, 27, 0.3);
     --surface-hover-subtle: rgba(55, 65, 81, 0.5);
     --surface-success-subtle: rgba(6, 95, 70, 0.35);
+    --surface-tertiary-subtle: rgba(31, 41, 55, 0.5);
+    --text-muted: var(--colors-primary-4);
+    --text-muted-strong: var(--colors-primary-3);
+    --text-link: var(--colors-blue-400);
+    --text-link-hover: var(--colors-blue-300);
+    --text-error: var(--colors-red-400);
+    --border-subtle: var(--colors-primary-7);
+    --border-subtle-strong: var(--colors-primary-6);
   }
 
 }

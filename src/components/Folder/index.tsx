@@ -104,8 +104,8 @@ const FileTree: React.FC<FileTreeProps> = ({
                 }
               }}
               className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${selectedFile?.path === child.path
-                  ? 'bg-fill-fill-transparent-active'
-                  : ''
+                ? 'bg-fill-fill-transparent-active'
+                : ''
                 }`}
             >
               {child.isFolder && (
@@ -417,11 +417,11 @@ export default function Folder({ data }: { data?: Agent }) {
       {/* fileList */}
       <div
         className={`${isCollapsed ? 'w-16' : 'w-64'
-          } border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
+          } border-[0px] border-r border-r-border-subtle border-border-subtle-strong !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
       >
         {/* head */}
         <div
-          className={` py-2 border-b border-zinc-200 flex-shrink-0 ${isCollapsed ? 'px-2' : 'pl-4 pr-2'
+          className={` py-2 border-b border-border-subtle flex-shrink-0 ${isCollapsed ? 'px-2' : 'pl-4 pr-2'
             }`}
         >
           <div className="flex items-center justify-between">
@@ -458,13 +458,13 @@ export default function Folder({ data }: { data?: Agent }) {
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="px-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="px-2 border-b border-border-subtle flex-shrink-0">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-2 py-2 text-sm border border-border-subtle rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-text-link"
               />
             </div>
           </div>
@@ -499,8 +499,8 @@ export default function Folder({ data }: { data?: Agent }) {
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
                     className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${selectedFile?.name === file.name
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-zinc-600'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-zinc-600'
                       }`}
                     title={file.name}
                   >
@@ -521,7 +521,7 @@ export default function Folder({ data }: { data?: Agent }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="px-4 py-2 border-b border-border-subtle flex-shrink-0">
             <div className="flex h-[30px] items-center justify-between gap-2">
               <div
                 onClick={() => {

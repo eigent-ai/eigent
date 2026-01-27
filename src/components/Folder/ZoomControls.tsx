@@ -26,7 +26,7 @@ interface ZoomControlsProps {
 export const ZoomControls = ({ zoom, onZoomIn, onZoomOut, onZoomReset }: ZoomControlsProps) => {
   return (
     <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 group">
-      <div className="flex items-center gap-1 px-3 py-1.5 bg-surface-hover-subtle/90 backdrop-blur-xl rounded-full shadow-lg border border-gray-300/50 translate-y-[calc(-100%-8px)] group-hover:translate-y-[20px] transition-transform duration-300 ease-out">
+      <div className="flex items-center gap-1 px-3 py-1.5 bg-surface-hover-subtle/90 backdrop-blur-xl rounded-full shadow-lg border border-border-subtle-strong/50 translate-y-[calc(-100%-8px)] group-hover:translate-y-[20px] transition-transform duration-300 ease-out">
         <Button
           size="icon"
           variant="ghost"

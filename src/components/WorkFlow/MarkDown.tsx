@@ -127,7 +127,7 @@ export const MarkDown = ({
 					a: ({ children, href }) => (
 						<a
 							href={href}
-							className=" hover:text-blue-800 underline break-all"
+							className=" hover:text-text-link-hover underline break-all"
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -145,7 +145,7 @@ export const MarkDown = ({
 						</pre>
 					),
 					blockquote: ({ children }) => (
-						<blockquote className="border-l-4 border-zinc-300 pl-3 italic text-primary text-xs">
+						<blockquote className="border-l-4 border-border-subtle-strong pl-3 italic text-primary text-xs">
 							{children}
 						</blockquote>
 					),
@@ -172,10 +172,7 @@ export const MarkDown = ({
 						</div>
 					),
 					thead: ({ children }) => (
-						<thead
-							className="!table-header-group"
-							style={{ backgroundColor: "#f9fafb" }}
-						>
+						<thead className="!table-header-group bg-code-surface">
 							{children}
 						</thead>
 					),

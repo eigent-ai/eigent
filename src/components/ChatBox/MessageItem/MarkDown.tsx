@@ -146,7 +146,7 @@ export const MarkDown = memo(
 							</pre>
 						),
 						blockquote: ({ children }) => (
-							<blockquote className="border-l-4 border-zinc-300 pl-3 italic text-primary">
+							<blockquote className="border-l-4 border-border-subtle-strong pl-3 italic text-primary">
 								{children}
 							</blockquote>
 						),
@@ -166,7 +166,7 @@ export const MarkDown = memo(
 							return (
 								<a
 									href={cleanHref}
-									className="text-blue-600 hover:text-blue-800 underline break-words inline"
+									className="text-text-link hover:text-text-link-hover underline break-words inline"
 									style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
 									target="_blank"
 									rel="noopener noreferrer"
@@ -193,8 +193,7 @@ export const MarkDown = memo(
 						),
 						thead: ({ children }) => (
 							<thead
-								className="!table-header-group"
-								style={{ backgroundColor: "#f9fafb" }}
+								className="!table-header-group bg-code-surface"
 							>
 								{children}
 							</thead>

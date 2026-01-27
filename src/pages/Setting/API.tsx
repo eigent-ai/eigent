@@ -111,7 +111,7 @@ export default function SettingAPI() {
 									</div>
 									<div className="text-xs leading-17 text-text-secondary mt-1.5">{env}</div>
 									{errors[env] && (
-										<span className="text-xs text-red-500 mt-1">{errors[env]}</span>
+										<span className="text-xs text-text-error mt-1">{errors[env]}</span>
 									)}
 								</div>
 							))}
