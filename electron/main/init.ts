@@ -17,6 +17,7 @@ import { spawn, exec } from 'child_process'
 import log from 'electron-log'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import * as net from "net";
 import * as http from "http";
 import { ipcMain, BrowserWindow, app } from 'electron'
@@ -174,9 +175,42 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
     }
 
     const uvEnv = getUvEnv(currentVersion);
+    
+    // Load proxy configuration from global .env file
+    let proxyUrl: string | null = null;
+    try {
+        const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
+        if (fs.existsSync(globalEnvPath)) {
+            const content = fs.readFileSync(globalEnvPath, 'utf-8');
+            const lines = content.split(/\r?\n/);
+            for (const line of lines) {
+                const match = line.match(/^HTTP_PROXY=(.+)$/);
+                if (match) {
+                    proxyUrl = match[1].trim();
+                    break;
+                }
+            }
+        }
+    } catch (error) {
+        log.error('[BACKEND] Failed to load proxy config:', error);
+    }
+
+    // Build proxy env vars if configured
+    const proxyEnv = proxyUrl ? {
+        HTTP_PROXY: proxyUrl,
+        HTTPS_PROXY: proxyUrl,
+        http_proxy: proxyUrl,
+        https_proxy: proxyUrl,
+    } : {};
+
+    if (proxyUrl) {
+        log.info(`[BACKEND] Proxy configured for backend: ${proxyUrl}`);
+    }
+
     const env = {
         ...process.env,
         ...uvEnv,
+        ...proxyEnv,
         SERVER_URL: "https://dev.eigent.ai/api",
         PYTHONIOENCODING: 'utf-8',
         PYTHONUNBUFFERED: '1',

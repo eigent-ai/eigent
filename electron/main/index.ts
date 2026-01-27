@@ -69,6 +69,7 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
+let proxyUrl: string | null = null;
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -121,6 +122,35 @@ app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
 app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
+
+// ==================== Proxy configuration ====================
+// Read proxy from global .env file on startup
+const loadProxyConfig = () => {
+  try {
+    const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
+    if (fs.existsSync(globalEnvPath)) {
+      const content = fs.readFileSync(globalEnvPath, 'utf-8');
+      const lines = content.split(/\r?\n/);
+      for (const line of lines) {
+        const match = line.match(/^HTTP_PROXY=(.+)$/);
+        if (match) {
+          proxyUrl = match[1].trim();
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    log.error('[PROXY] Failed to load proxy config:', error);
+  }
+
+  if (proxyUrl) {
+    log.info(`[PROXY] Applying proxy configuration: ${proxyUrl}`);
+    app.commandLine.appendSwitch('proxy-server', proxyUrl);
+  } else {
+    log.info('[PROXY] No proxy configured');
+  }
+};
+loadProxyConfig();
 
 // ==================== Anti-fingerprint settings ====================
 // Disable automation controlled indicator to avoid detection
@@ -980,6 +1010,28 @@ function registerIpcHandlers() {
     }
 
     return { success: true };
+  });
+
+  // ==================== read global env handler ====================
+  ipcMain.handle('read-global-env', async (_event, key: string) => {
+    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
+    try {
+      if (!fs.existsSync(GLOBAL_ENV_PATH)) {
+        return { value: null };
+      }
+      const content = fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8');
+      const lines = content.split(/\r?\n/);
+      for (const line of lines) {
+        const match = line.match(new RegExp(`^${key}=(.+)$`));
+        if (match) {
+          return { value: match[1].trim() };
+        }
+      }
+      return { value: null };
+    } catch (error) {
+      log.error('read-global-env error:', error);
+      return { value: null };
+    }
   });
 
   // ==================== new window handler ====================
@@ -1919,6 +1971,15 @@ app.whenReady().then(async () => {
   // And for main_window partition
   session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
   log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
+
+  // ==================== Apply proxy to Electron sessions ====================
+  if (proxyUrl) {
+    const proxyConfig = { proxyRules: proxyUrl };
+    session.defaultSession.setProxy(proxyConfig);
+    session.fromPartition('persist:user_login').setProxy(proxyConfig);
+    session.fromPartition('persist:main_window').setProxy(proxyConfig);
+    log.info(`[PROXY] Applied proxy to all sessions: ${proxyUrl}`);
+  }
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {
