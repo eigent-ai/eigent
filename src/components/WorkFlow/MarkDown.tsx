@@ -73,7 +73,7 @@ export const MarkDown = ({
 			.trim();
 		return (
 			<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto markdown-container">
-				<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+				<pre className="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
 					<code>{formattedHtml}</code>
 				</pre>
 			</div>
@@ -135,12 +135,12 @@ export const MarkDown = ({
 						</a>
 					),
 					code: ({ children }) => (
-						<code className="bg-zinc-100 px-1 py-0.5 rounded text-xs font-mono">
+						<code className="bg-code-surface px-1 py-0.5 rounded text-xs font-mono">
 							{children}
 						</code>
 					),
 					pre: ({ children }) => (
-						<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+						<pre className="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
 							{children}
 						</pre>
 					),

@@ -334,7 +334,7 @@
     --menubutton-border-default: var(--border-transparent);
     --menubutton-border-hover: var(--border-disabled);
     --menubutton-disabled: 1.25rem;
-    
+
     /* Dropdown Component */
     --dropdown-bg: var(--fill-default);
     --dropdown-border: var(--border-secondary);
@@ -411,6 +411,17 @@
     /* Code Component */
     --code-bg: var(--bg-dark-default);
     --code-foreground: var(--text-on-action);
+    --code-surface: #f4f4f5;
+    /* zinc-100 equivalent */
+
+    /* Surface Variants */
+    --surface-error-subtle: #fee2e2;
+    /* red-100 equivalent */
+    --surface-hover-subtle: #f3f4f6;
+    /* gray-100 equivalent */
+    --surface-success-subtle: #d1fae5;
+    /* emerald-100 equivalent */
+
     /* Shadow Tokens */
 
     /* Perfect Shadow */
@@ -818,6 +829,13 @@
     --task-fill-running: #1f2937;
     /* Log Component - Dark Mode */
     --log-default: #1f2937;
+    /* Code Surface - Dark Mode */
+    --code-surface: #27272a;
+    /* zinc-800 equivalent */
+    /* Surface Variants - Dark Mode */
+    --surface-error-subtle: rgba(153, 27, 27, 0.3);
+    --surface-hover-subtle: rgba(55, 65, 81, 0.5);
+    --surface-success-subtle: rgba(6, 95, 70, 0.35);
   }
 
 }

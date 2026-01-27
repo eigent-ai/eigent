@@ -84,7 +84,7 @@ export const MarkDown = memo(
 				.trim();
 			return (
 				<div className="max-w-none markdown-container overflow-hidden">
-					<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style={{ wordBreak: 'break-all' }}>
+					<pre className="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style={{ wordBreak: 'break-all' }}>
 						<code>{formattedHtml}</code>
 					</pre>
 				</div>
@@ -130,8 +130,8 @@ export const MarkDown = memo(
 							<li className="my-sm text-body-sm text-text-body">{children}</li>
 						),
 						code: ({ children }) => (
-							<code 
-								className="bg-zinc-100 px-1 py-0.5 rounded text-body-sm text-text-body font-mono whitespace-pre-wrap break-all"
+							<code
+								className="bg-code-surface px-1 py-0.5 rounded text-body-sm text-text-body font-mono whitespace-pre-wrap break-all"
 								style={{ wordBreak: 'break-all' }}
 							>
 								{children}
@@ -139,7 +139,7 @@ export const MarkDown = memo(
 						),
 						pre: ({ children }) => (
 							<pre
-								className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all"
+								className="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all"
 								style={{ wordBreak: 'break-all' }}
 							>
 								{children}
@@ -157,18 +157,18 @@ export const MarkDown = memo(
 							<em className="italic text-primary">{children}</em>
 						),
 						a: ({ children, href }) => {
-							const cleanChildren = typeof children === 'string' 
-								? children.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '') 
+							const cleanChildren = typeof children === 'string'
+								? children.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '')
 								: children;
 							const cleanHref = typeof href === 'string'
 								? href.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '').replace(/(%[0-9A-Fa-f]{2})+$/g, '')
 								: href;
 							return (
-								<a 
-									href={cleanHref} 
+								<a
+									href={cleanHref}
 									className="text-blue-600 hover:text-blue-800 underline break-words inline"
 									style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
-									target="_blank" 
+									target="_blank"
 									rel="noopener noreferrer"
 								>
 									{cleanChildren}

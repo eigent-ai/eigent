@@ -445,6 +445,12 @@ module.exports = {
 				code: {
 					bg: "var(--code-bg)",
 					foreground: "var(--code-foreground)",
+					surface: "var(--code-surface)",
+				},
+				surface: {
+					"error-subtle": "var(--surface-error-subtle)",
+					"hover-subtle": "var(--surface-hover-subtle)",
+					"success-subtle": "var(--surface-success-subtle)",
 				},
 				"text-heading": "var(--text-heading)",
 				"text-body": "var(--text-body)",

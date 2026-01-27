@@ -377,10 +377,10 @@ export function Node({ id, data }: NodeProps) {
 			<div
 				ref={nodeRef}
 				className={`${data.isEditMode
-						? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[342px]"}`
-						: isExpanded
-							? "w-[684px]"
-							: "w-[342px]"
+					? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[342px]"}`
+					: isExpanded
+						? "w-[684px]"
+						: "w-[342px]"
 					} ${data.isEditMode ? "h-full" : "max-h-[calc(100vh-200px)]"
 					}  border-worker-border-default flex border border-solid rounded-xl overflow-hidden bg-worker-surface-primary ${chatStore.tasks[chatStore.activeTaskId as string].activeAgent === id
 						? `${agentMap[data.type]?.borderColor} z-50`
@@ -489,10 +489,10 @@ export function Node({ id, data }: NodeProps) {
 												<img
 													key={index}
 													className={`${data.img.length === 1
-															? "flex-1"
-															: data.img.length === 2
-																? "max-w-[calc(50%-8px)] h-full"
-																: "max-w-[calc(50%-8px)] h-[calc(50%-8px)]"
+														? "flex-1"
+														: data.img.length === 2
+															? "max-w-[calc(50%-8px)] h-full"
+															: "max-w-[calc(50%-8px)] h-[calc(50%-8px)]"
 														}  min-w-[calc(50%-8px)] rounded-sm object-cover`}
 													src={img.img}
 													alt={data.type}
@@ -528,8 +528,8 @@ export function Node({ id, data }: NodeProps) {
 														(task) =>
 															task.terminal && task.terminal.length > 0
 													).length === 1
-															? "min-w-full h-full"
-															: "min-w-[calc(50%-8px)] h-[calc(50%-8px)]"
+														? "min-w-full h-full"
+														: "min-w-[calc(50%-8px)] h-[calc(50%-8px)]"
 														}  flex-1 rounded-sm object-cover relative overflow-hidden`}
 												>
 													<div className="absolute left-0 top-0 scale-x-[0.4]  scale-y-[0.3] w-[800px] h-[500px] origin-top-left">
@@ -624,16 +624,16 @@ export function Node({ id, data }: NodeProps) {
 										}}
 										key={`taskList-${task.id}-${task.failure_count}`}
 										className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${task.reAssignTo
-												? "bg-task-fill-warning"
-												: task.status === "completed"
-													? "bg-task-fill-success"
-													: task.status === "failed"
-														? "bg-task-fill-error"
-														: task.status === "running"
-															? "bg-task-fill-running"
-															: task.status === "blocked"
-																? "bg-task-fill-warning"
-																: "bg-task-fill-running"
+											? "bg-task-fill-warning"
+											: task.status === "completed"
+												? "bg-task-fill-success"
+												: task.status === "failed"
+													? "bg-task-fill-error"
+													: task.status === "running"
+														? "bg-task-fill-running"
+														: task.status === "blocked"
+															? "bg-task-fill-warning"
+															: "bg-task-fill-running"
 											} border border-solid border-transparent cursor-pointer ${task.status === "completed"
 												? "hover:border-bg-fill-success-primary"
 												: task.status === "failed"
@@ -667,8 +667,8 @@ export function Node({ id, data }: NodeProps) {
 														<LoaderCircle
 															size={16}
 															className={`text-icon-information ${chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].status === "running" && "animate-spin"
+																chatStore.activeTaskId as string
+															].status === "running" && "animate-spin"
 																}`}
 														/>
 													)}
@@ -706,10 +706,10 @@ export function Node({ id, data }: NodeProps) {
 										<div className="flex-1 flex flex-col items-start justify-center">
 											<div
 												className={`w-full flex-grow-0 ${task.status === "failed"
-														? "text-text-cuation-default"
-														: task.status === "blocked"
-															? "text-text-body"
-															: "text-text-primary"
+													? "text-text-cuation-default"
+													: task.status === "blocked"
+														? "text-text-body"
+														: "text-text-primary"
 													} text-xs font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
 											>
 												<div className="flex items-center gap-sm">
@@ -724,10 +724,10 @@ export function Node({ id, data }: NodeProps) {
 														(task.failure_count ?? 0) > 0 && (
 															<div
 																className={`${task.status === "failed"
-																		? "bg-red-100 text-text-cuation"
-																		: task.status === "completed"
-																			? "bg-tag-fill-developer text-text-success-default"
-																			: "bg-tag-surface-hover text-text-label"
+																	? "bg-surface-error-subtle text-text-cuation"
+																	: task.status === "completed"
+																		? "bg-tag-fill-developer text-text-success-default"
+																		: "bg-tag-surface-hover text-text-label"
 																	}  text-xs font-bold leading-none rounded-lg px-1 py-0.5`}
 															>
 																Attempt {task.failure_count}
@@ -753,10 +753,10 @@ export function Node({ id, data }: NodeProps) {
 																)}
 																<div
 																	className={`${chatStore.tasks[
-																			chatStore.activeTaskId as string
-																		].activeWorkSpace
-																			? "!w-[100px]"
-																			: "!w-[500px]"
+																		chatStore.activeTaskId as string
+																	].activeWorkSpace
+																		? "!w-[100px]"
+																		: "!w-[500px]"
 																		} pt-1 flex-shrink-0 flex-grow-0 min-w-0 text-text-primary text-xs leading-17 overflow-hidden text-ellipsis whitespace-nowrap`}
 																>
 																	<ShinyText
@@ -834,8 +834,8 @@ export function Node({ id, data }: NodeProps) {
 																<LoaderCircle
 																	size={16}
 																	className={`${chatStore.tasks[
-																			chatStore.activeTaskId as string
-																		].status === "running" && "animate-spin"
+																		chatStore.activeTaskId as string
+																	].status === "running" && "animate-spin"
 																		}`}
 																/>
 															) : (
@@ -854,8 +854,8 @@ export function Node({ id, data }: NodeProps) {
 
 																	<div
 																		className={` text-text-primary text-xs ${data.isEditMode
-																				? "overflow-hidden max-h-[15px]"
-																				: "overflow-hidden text-ellipsis whitespace-nowrap"
+																			? "overflow-hidden max-h-[15px]"
+																			: "overflow-hidden text-ellipsis whitespace-nowrap"
 																			}`}
 																	>
 																		{toolkit.message}
