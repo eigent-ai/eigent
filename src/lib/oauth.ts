@@ -246,10 +246,29 @@ export class OAuth {
   async random(size: number) {
     const mask =
       'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~';
-    const randomUints = crypto.getRandomValues(new Uint8Array(size));
-    return Array.from(randomUints)
-      .map((i) => mask[i % mask.length])
-      .join('');
+    const maskLength = mask.length;
+    const result = [];
+
+    // Use rejection sampling to avoid modulo bias
+    // Generate extra random values to account for rejections
+    let randomValues = crypto.getRandomValues(new Uint8Array(size * 2));
+    let index = 0;
+
+    while (result.length < size) {
+      if (index >= randomValues.length) {
+        // Need more random values
+        randomValues = crypto.getRandomValues(new Uint8Array(size * 2));
+        index = 0;
+      }
+
+      const value = randomValues[index++];
+      // Only use values that don't cause modulo bias
+      if (value < 256 - (256 % maskLength)) {
+        result.push(mask[value % maskLength]);
+      }
+    }
+
+    return result.join('');
   }
 }
 

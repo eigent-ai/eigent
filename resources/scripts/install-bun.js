@@ -14,7 +14,6 @@
 
 /* global console, process */
 import AdmZip from 'adm-zip';
-import { execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -178,7 +177,7 @@ function detectPlatformAndArch() {
 function detectIsMusl() {
   try {
     // Simple check for Alpine Linux which uses MUSL
-    const output = execSync('cat /etc/os-release').toString();
+    const output = fs.readFileSync('/etc/os-release', 'utf8');
     return output.toLowerCase().includes('alpine');
   } catch (error) {
     console.error(`Error detecting MUSL: ${error}`);
