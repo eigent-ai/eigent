@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ZoomControls } from './ZoomControls';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
+import { injectFontStyles } from '@/lib/htmlFontStyles';
 
 // Type definitions
 interface FileTreeNode {
@@ -781,7 +782,7 @@ function HtmlRenderer({
 
       // Skip image processing if file is remote (we can't resolve relative paths for remote files)
       if (selectedFile.isRemote) {
-        setProcessedHtml(html);
+        setProcessedHtml(injectFontStyles(html));
         return;
       }
 
@@ -917,8 +918,8 @@ function HtmlRenderer({
         return;
       }
 
-      // Set the processed HTML directly - iframe sandbox provides security
-      setProcessedHtml(processedHtmlContent);
+      // Set the processed HTML with font styles - iframe sandbox provides security
+      setProcessedHtml(injectFontStyles(processedHtmlContent));
     };
 
     processHtml();
