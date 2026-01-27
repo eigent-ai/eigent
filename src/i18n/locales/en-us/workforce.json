@@ -1,12 +1,12 @@
 {
-	"your-ai-workforce": "Your AI Workforce",
-	"new-worker": "New Worker Agent",
-	"edit": "Edit",
-	"configure-mcp-server": "Configure MCP Server",
-	"add-your-agent": "Add Your Agent",
-	"cancel": "Cancel",
-	"save-changes": "Save changes",
-	"description-optional": "Description (Optional)",
-	"agent-tool": "Agent Tool",
-	"share": "Share"
+  "your-ai-workforce": "Your AI Workforce",
+  "new-worker": "New Worker Agent",
+  "edit": "Edit",
+  "configure-mcp-server": "Configure MCP Server",
+  "add-your-agent": "Add Your Agent",
+  "cancel": "Cancel",
+  "save-changes": "Save changes",
+  "description-optional": "Description (Optional)",
+  "agent-tool": "Agent Tool",
+  "share": "Share"
 }
