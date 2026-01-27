@@ -17,7 +17,7 @@ Centralized router registration for the Eigent API.
 All routers are explicitly registered here for better visibility and maintainability.
 """
 from fastapi import FastAPI
-from app.controller import chat_controller, model_controller, task_controller, tool_controller, health_controller, password_reset_controller
+from app.controller import chat_controller, model_controller, task_controller, tool_controller, health_controller
 import logging
 
 logger = logging.getLogger("router")
@@ -62,11 +62,7 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "tags": ["tool"], 
             "description": "Tool installation and management"
         },
-        {
-            "router": password_reset_controller.router,
-            "tags": ["auth"],
-            "description": "Password reset functionality"
-        },
+
     ]
     
     for config in routers_config:
