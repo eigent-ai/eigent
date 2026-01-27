@@ -107,7 +107,7 @@ export default function Home() {
 		unviewedTabs,
 		markTabAsUnviewed
 	} = usePageTabStore();
-	
+
 	const { wsConnectionStatus, triggerReconnect } = useTriggerStore();
 
 	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
@@ -277,7 +277,7 @@ export default function Home() {
 							);
 							const { processTaskId, url } =
 								taskAssigning[browserAgentIndex].activeWebviewIds![
-									webview.index
+								webview.index
 								];
 							chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
 								api_task_id: chatStore.activeTaskId,
@@ -512,54 +512,49 @@ export default function Home() {
 													size="xs"
 													icon={<ConnectionStatusIcon status={wsConnectionStatus} />}
 													showSubIcon={unviewedTabs.has('triggers')}
-													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
+													subIcon={<span className="w-2 h-2 bg-text-error rounded-full" />}
 													className="w-32"
+													rightElement={wsConnectionStatus !== 'connected' && (
+														<Popover>
+															<PopoverPrimitive.Trigger asChild>
+																<div className="flex items-center justify-center h-6 w-6 hover:bg-surface-tertiary rounded-md transition-colors cursor-pointer">
+																	<RefreshCw className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
+																</div>
+															</PopoverPrimitive.Trigger>
+															<PopoverContent className="w-64 p-4" side="bottom" align="end">
+																<div className="flex flex-col gap-3">
+																	<p className="text-body-sm text-text-body">Reconnect to trigger listener</p>
+																	<Button
+																		variant="primary"
+																		size="sm"
+																		className="w-full items-center justify-center"
+																		onClick={triggerReconnect}
+																	>
+																		<RefreshCw className={`h-4 w-4 mr-2 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
+																		Reconnect
+																	</Button>
+																</div>
+															</PopoverContent>
+														</Popover>
+													)}
 												>
 													{t('triggers.title')}
 												</MenuToggleItem>
 											</MenuToggleGroup>
 										</div>
 										<div className="flex items-center gap-2">
-											{/* Refresh connection button - show when on triggers tab and not connected */}
-											{activeWorkspaceTab === 'triggers' && wsConnectionStatus !== 'connected' && (
-												<Popover>
-													<PopoverPrimitive.Trigger asChild>
-														<Button
-															variant="ghost"
-															size="icon"
-															className="h-8 w-8"
-														>
-															<RefreshCw className={`h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
-														</Button>
-													</PopoverPrimitive.Trigger>
-													<PopoverContent className="w-64 p-4">
-														<div className="flex flex-col gap-3">
-															<p className="text-body-sm text-text-body">Reconnect to trigger listener</p>
-															<Button
-																variant="primary"
-																size="sm"
-																className="w-full items-center justify-center"
-																onClick={triggerReconnect}
-															>
-																<RefreshCw className={`h-4 w-4 mr-2 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
-																Reconnect
-															</Button>
-														</div>
-													</PopoverContent>
-												</Popover>
-											)}
 											{activeWorkspaceTab !== 'inbox' && (
 												<Button
-														variant="primary"
-														size="sm"
-														className="rounded-lg w-24 items-center justify-center"
-														onClick={() => {
-															if (activeWorkspaceTab === 'workforce') {
-																setAddWorkerDialogOpen(true);
-															} else if (activeWorkspaceTab === 'triggers') {
-																setTriggerDialogOpen(true);
-															}
-														}}
+													variant="primary"
+													size="sm"
+													className="rounded-lg w-24 items-center justify-center"
+													onClick={() => {
+														if (activeWorkspaceTab === 'workforce') {
+															setAddWorkerDialogOpen(true);
+														} else if (activeWorkspaceTab === 'triggers') {
+															setTriggerDialogOpen(true);
+														}
+													}}
 												>
 													<Plus />
 													{activeWorkspaceTab === 'workforce' && t('triggers.add')}
@@ -653,40 +648,35 @@ export default function Home() {
 													showSubIcon={unviewedTabs.has('triggers')}
 													subIcon={<span className="w-2 h-2 bg-red-500 rounded-full" />}
 													className="w-32"
+													rightElement={wsConnectionStatus !== 'connected' && (
+														<Popover>
+															<PopoverPrimitive.Trigger asChild>
+																<div className="flex items-center justify-center h-6 w-6 hover:bg-surface-tertiary rounded-md transition-colors cursor-pointer">
+																	<RefreshCw className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
+																</div>
+															</PopoverPrimitive.Trigger>
+															<PopoverContent className="w-64 p-4" side="bottom" align="end">
+																<div className="flex flex-col gap-3">
+																	<p className="text-sm text-text-body">Reconnect to trigger listener</p>
+																	<Button
+																		variant="primary"
+																		size="sm"
+																		className="w-full"
+																		onClick={triggerReconnect}
+																	>
+																		<RefreshCw className={`h-4 w-4 mr-2 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
+																		Reconnect
+																	</Button>
+																</div>
+															</PopoverContent>
+														</Popover>
+													)}
 												>
 													{t('triggers.triggers')}
 												</MenuToggleItem>
 											</MenuToggleGroup>
 										</div>
 										<div className="flex items-center gap-2">
-											{/* Refresh connection button - show when on triggers tab and not connected */}
-											{activeWorkspaceTab === 'triggers' && wsConnectionStatus !== 'connected' && (
-												<Popover>
-													<PopoverPrimitive.Trigger asChild>
-														<Button
-															variant="ghost"
-															size="icon"
-															className="h-8 w-8"
-														>
-															<RefreshCw className={`h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
-														</Button>
-													</PopoverPrimitive.Trigger>
-													<PopoverContent className="w-64 p-4">
-														<div className="flex flex-col gap-3">
-															<p className="text-sm text-text-body">Reconnect to trigger listener</p>
-															<Button
-																variant="primary"
-																size="sm"
-																className="w-full"
-																onClick={triggerReconnect}
-															>
-																<RefreshCw className={`h-4 w-4 mr-2 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
-																Reconnect
-															</Button>
-														</div>
-													</PopoverContent>
-												</Popover>
-											)}
 											{activeWorkspaceTab !== 'inbox' && (
 												<Button
 													variant="primary"

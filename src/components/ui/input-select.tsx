@@ -105,7 +105,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     ref
   ) => {
     const [isOpen, setIsOpen] = React.useState(false)
-    const [inputValue, setInputValue] = React.useState(value)
+    const [inputValue, setInputValue] = React.useState(() => {
+      const option = options.find((opt) => opt.value === value)
+      return option ? option.label : value
+    })
     const [hasError, setHasError] = React.useState(false)
     const containerRef = React.useRef<HTMLDivElement>(null)
     const inputRef = React.useRef<HTMLInputElement>(null)
@@ -124,9 +127,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
     // Sync input value with external value
     React.useEffect(() => {
-      setInputValue(value)
+      const option = options.find((opt) => opt.value === value)
+      setInputValue(option ? option.label : value)
       setHasError(false) // Clear error when external value changes
-    }, [value])
+    }, [value, options])
 
     // Commit value function - validates and saves input
     const commitValue = React.useCallback(() => {
@@ -171,7 +175,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       if (finalValue !== value) {
         onChange(finalValue)
       }
-      
+
       isCommittingRef.current = false
     }, [value, onInputCommit, validateInput, onChange])
 
@@ -215,7 +219,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       const target = e.currentTarget
       const { scrollTop, scrollHeight, clientHeight } = target
       const hasScrollableContent = scrollHeight > clientHeight
-      
+
       if (!hasScrollableContent) {
         // No scrollable content, prevent all scroll and stop propagation
         e.preventDefault()
@@ -230,7 +234,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
         e.preventDefault()
       }
-      
+
       // Always stop propagation to prevent parent dialog from scrolling
       e.stopPropagation()
     }, [])
@@ -294,7 +298,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     const stateCls = resolveStateClasses(effectiveState, disabled)
 
     // Determine which note to show
-    const displayNote = hasError && errorNote ? errorNote : note
+    const displayNote = effectiveState === "error" && errorNote ? errorNote : note
 
     // Find the currently selected option
     const selectedOption = options.find((opt) => opt.value === value)
@@ -318,16 +322,16 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
           ref={containerRef}
           onClick={handleContainerClick}
           className={cn(
-            "relative flex w-full items-center rounded-lg border border-solid outline-none transition-all px-3 gap-2 text-text-body cursor-text",
+            "relative flex w-full items-center rounded-lg border border-solid shadow-sm outline-none transition-all px-3 gap-2 text-text-body cursor-text",
             sizeClasses[size],
             stateCls.container,
             !disabled &&
-              state !== "error" &&
-              state !== "success" && [
-                "hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0",
-                isOpen &&
-                  "bg-input-bg-input ring-1 ring-input-border-focus ring-offset-0",
-              ]
+            state !== "error" &&
+            state !== "success" && [
+              "hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0",
+              isOpen &&
+              "bg-input-bg-input ring-1 ring-input-border-focus ring-offset-0",
+            ]
           )}
         >
           {leadingIcon && (
@@ -371,7 +375,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   className={cn(
                     "relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover transition-colors",
                     selectedOption?.value === option.value &&
-                      "bg-menutabs-fill-hover"
+                    "bg-menutabs-fill-hover"
                   )}
                 >
                   {option.label}

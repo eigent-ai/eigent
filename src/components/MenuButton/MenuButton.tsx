@@ -66,16 +66,17 @@ type MenuToggleItemProps = React.ComponentPropsWithoutRef<
 	showSubIcon?: boolean;
 	disableIconAnimation?: boolean;
 	iconAnimateOnHover?: boolean | string;
+	rightElement?: React.ReactNode;
 };
 
 export const MenuToggleItem = React.forwardRef<
 	React.ElementRef<typeof ToggleGroupPrimitive.Item>,
 	MenuToggleItemProps
->(({ className, children, variant, size, icon, subIcon, showSubIcon = false, disableIconAnimation = false, iconAnimateOnHover = true, ...props }, ref) => {
+>(({ className, children, variant, size, icon, subIcon, showSubIcon = false, disableIconAnimation = false, iconAnimateOnHover = true, rightElement, ...props }, ref) => {
 	const context = React.useContext(MenuToggleGroupContext);
 	const [isSelected, setIsSelected] = React.useState(false);
 	const itemRef = React.useRef<HTMLButtonElement | null>(null);
-	
+
 	const combinedRef = React.useCallback(
 		(node: HTMLButtonElement | null) => {
 			itemRef.current = node;
@@ -114,7 +115,7 @@ export const MenuToggleItem = React.forwardRef<
 
 	const currentVariant = context.variant || variant;
 	const isInfoVariant = currentVariant === "info";
-	
+
 	const iconNode = React.isValidElement(icon) && isInfoVariant
 		? React.cloneElement(icon as React.ReactElement<any>, {
 			strokeWidth: isSelected ? 2.5 : 2,
@@ -128,20 +129,23 @@ export const MenuToggleItem = React.forwardRef<
 				className={cn("group", menuButtonVariants({ variant: currentVariant, size: context.size || size }), className)}
 				{...props}
 			>
-				{showSubIcon && subIcon ? (
-					<>
-						<span className="inline-flex items-center gap-1">
-							{iconNode}
-							{children}
-						</span>
-						<span className="absolute right-1 top-1 inline-flex items-center justify-center [&_svg]:shrink-0">
-							{subIcon}
-						</span>
-					</>
-				) : (
+				<span className={cn("flex items-center w-full h-full", rightElement ? "justify-between" : "justify-center")}>
 					<span className="inline-flex items-center gap-1">
 						{iconNode}
 						{children}
+					</span>
+					{rightElement && (
+						<span
+							className="inline-flex items-center justify-center pointer-events-auto"
+							onClick={(e) => e.stopPropagation()}
+						>
+							{rightElement}
+						</span>
+					)}
+				</span>
+				{showSubIcon && subIcon && (
+					<span className="absolute right-1 top-1 inline-flex items-center justify-center [&_svg]:shrink-0">
+						{subIcon}
 					</span>
 				)}
 			</ToggleGroupPrimitive.Item>

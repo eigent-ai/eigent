@@ -181,52 +181,113 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
-	({
-		className,
-		showConfirmButton = false,
-		showCancelButton = false,
-		confirmButtonText = "Confirm",
-		cancelButtonText = "Cancel",
-		onConfirm,
-		onCancel,
-		confirmButtonVariant = "primary",
-		cancelButtonVariant = "outline",
-		confirmButtonDisabled = false,
-		cancelButtonDisabled = false,
-		children,
-		...props
-	}, ref) => (
-		<div
-			ref={ref}
-			className={cn(
-				"flex gap-2 items-center justify-end pb-4 pt-2 px-4 relative shrink-0 w-full",
-				className
-			)}
-			{...props}
-		>
-			{children}
-			{showCancelButton && (
-				<Button
-					variant={cancelButtonVariant}
-					size="sm"
-					onClick={onCancel}
-					disabled={cancelButtonDisabled}
-				>
-					{cancelButtonText}
-				</Button>
-			)}
-			{showConfirmButton && (
-				<Button
-					variant={confirmButtonVariant}
-					size="sm"
-					onClick={onConfirm}
-					disabled={confirmButtonDisabled}
-				>
-					{confirmButtonText}
-				</Button>
-			)}
-		</div>
-	)
+	(
+		{
+			className,
+			showConfirmButton = false,
+			showCancelButton = false,
+			confirmButtonText = "Confirm",
+			cancelButtonText = "Cancel",
+			onConfirm,
+			onCancel,
+			confirmButtonVariant = "primary",
+			cancelButtonVariant = "outline",
+			confirmButtonDisabled = false,
+			cancelButtonDisabled = false,
+			children,
+			...props
+		},
+		ref
+	) => {
+		const footerRef = React.useRef<HTMLDivElement>(null);
+		const [hasScrollbar, setHasScrollbar] = React.useState(false);
+
+		// Combine local ref with forwarded ref
+		React.useImperativeHandle(ref, () => footerRef.current as HTMLDivElement);
+
+		React.useEffect(() => {
+			const footer = footerRef.current;
+			if (!footer) return;
+
+			const parent = footer.parentElement;
+			if (!parent) return;
+
+			const checkScrollbar = () => {
+				const siblings = Array.from(parent.children);
+				const footerIndex = siblings.indexOf(footer);
+				if (footerIndex === -1) return;
+
+				// Find the most likely scrollable sibling (usually the one before footer)
+				const scrollable = siblings
+					.slice(0, footerIndex)
+					.reverse()
+					.find((el) => {
+						const style = window.getComputedStyle(el);
+						return (
+							style.overflowY === "auto" ||
+							style.overflowY === "scroll" ||
+							el.classList.contains("scrollbar-overlay") ||
+							el.classList.contains("scrollbar") ||
+							el.scrollHeight > el.clientHeight
+						);
+					});
+
+				if (scrollable) {
+					setHasScrollbar(scrollable.scrollHeight > scrollable.clientHeight);
+				} else {
+					setHasScrollbar(false);
+				}
+			};
+
+			checkScrollbar();
+
+			const observer = new ResizeObserver(() => {
+				checkScrollbar();
+			});
+
+			// Observe parent and its children for layout changes
+			observer.observe(parent);
+			Array.from(parent.children).forEach((child) => {
+				if (child !== footer) observer.observe(child);
+			});
+
+			return () => observer.disconnect();
+		}, []);
+
+		return (
+			<div
+				ref={footerRef}
+				className={cn(
+					"flex gap-2 items-center justify-end pb-4 pt-2 px-4 relative shrink-0 w-full",
+					hasScrollbar && "border-t-[0.5px] border-x-0 border-b-0 border-solid border-border-secondary",
+					className
+				)}
+				{...props}
+			>
+				{children}
+				{showCancelButton && (
+					<Button
+						variant={cancelButtonVariant}
+						size="sm"
+						onClick={onCancel}
+						disabled={cancelButtonDisabled}
+					>
+						{cancelButtonText}
+					</Button>
+				)}
+				{showConfirmButton && (
+					<Button
+						variant={confirmButtonVariant}
+						size="sm"
+						onClick={onConfirm}
+						disabled={confirmButtonDisabled}
+					>
+						{confirmButtonText}
+					</Button>
+				)}
+			</div>
+		);
+	}
 );
 DialogFooter.displayName = "DialogFooter";
 

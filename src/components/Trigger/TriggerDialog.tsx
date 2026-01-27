@@ -82,14 +82,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         name: selectedTrigger?.name || "",
         description: selectedTrigger?.description || "",
         trigger_type: selectedTrigger?.trigger_type || TriggerType.Schedule,
-        custom_cron_expression: selectedTrigger?.custom_cron_expression || "0 */1 * * *",
+        custom_cron_expression: selectedTrigger?.custom_cron_expression || "0 0 * * *",
         listener_type: selectedTrigger?.listener_type || ListenerType.Workforce,
         webhook_method: selectedTrigger?.webhook_method || RequestType.POST,
         agent_model: selectedTrigger?.agent_model || "",
         task_prompt: selectedTrigger?.task_prompt || initialTaskPrompt || "",
         max_executions_per_hour: selectedTrigger?.max_executions_per_hour,
         max_executions_per_day: selectedTrigger?.max_executions_per_day,
-        is_single_execution: selectedTrigger?.is_single_execution || false,
         webhook_url: selectedTrigger?.webhook_url,
     });
     const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>(getDefaultTriggerConfig());
@@ -97,6 +96,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [selectedApp, setSelectedApp] = useState<string>("");
     const [isConfigValid, setIsConfigValid] = useState<boolean>(true);
     const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
+    const [isScheduleValid, setIsScheduleValid] = useState<boolean>(true);
+    const [showScheduleErrors, setShowScheduleErrors] = useState<boolean>(false);
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
@@ -113,6 +114,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             // Clear validation errors when dialog opens
             setNameError("");
             setTaskPromptError("");
+            setShowScheduleErrors(false);
 
             // If editing an existing trigger, populate the form with its data
             if (selectedTrigger) {
@@ -120,14 +122,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     name: selectedTrigger.name || "",
                     description: selectedTrigger.description || "",
                     trigger_type: selectedTrigger.trigger_type || TriggerType.Schedule,
-                    custom_cron_expression: selectedTrigger.custom_cron_expression || "0 */1 * * *",
+                    custom_cron_expression: selectedTrigger.custom_cron_expression || "0 0 * * *",
                     listener_type: selectedTrigger.listener_type || ListenerType.Workforce,
                     webhook_method: selectedTrigger.webhook_method || RequestType.POST,
                     agent_model: selectedTrigger.agent_model || "",
                     task_prompt: selectedTrigger.task_prompt || "",
                     max_executions_per_hour: selectedTrigger.max_executions_per_hour,
                     max_executions_per_day: selectedTrigger.max_executions_per_day,
-                    is_single_execution: selectedTrigger.is_single_execution || false,
                     webhook_url: selectedTrigger.webhook_url,
                 });
                 // Load existing trigger config if available
@@ -148,14 +149,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     name: "",
                     description: "",
                     trigger_type: TriggerType.Schedule,
-                    custom_cron_expression: "0 */1 * * *",
+                    custom_cron_expression: "0 0 * * *",
                     listener_type: ListenerType.Workforce,
                     webhook_method: RequestType.POST,
                     agent_model: "",
                     task_prompt: initialTaskPrompt || "",
                     max_executions_per_hour: undefined,
                     max_executions_per_day: undefined,
-                    is_single_execution: false,
                 });
                 setTriggerConfig(getDefaultTriggerConfig());
                 setTriggerConfigSchema(null);
@@ -194,6 +194,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Clear task prompt error if validation passes
         setTaskPromptError("");
 
+        // Check schedule validation
+        if (formData.trigger_type === TriggerType.Schedule && !isScheduleValid) {
+            setShowScheduleErrors(true);
+            toast.error(t("triggers.schedule-required-fields"));
+            return;
+        }
+
         // Check dynamic config validation for triggers with config (Slack, Webhook, etc.)
         const hasDynamicConfig = triggerConfigSchema && Object.keys(triggerConfigSchema.properties || {}).length > 0;
         if (hasDynamicConfig && !isConfigValid) {
@@ -227,15 +234,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     task_prompt: formData.task_prompt,
                     max_executions_per_hour: formData.max_executions_per_hour,
                     max_executions_per_day: formData.max_executions_per_day,
-                    is_single_execution: formData.is_single_execution,
                 };
-                
+
                 // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
                 if (Object.keys(triggerConfig).length > 0) {
                     // Filter out fields marked with exclude: true in schema
                     updateData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
                 }
-                
+
                 response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
                 toast.success(t("triggers.updated-successfully"));
             } else {
@@ -251,23 +257,22 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     task_prompt: formData.task_prompt,
                     max_executions_per_hour: formData.max_executions_per_hour,
                     max_executions_per_day: formData.max_executions_per_day,
-                    is_single_execution: formData.is_single_execution,
                     project_id: projectStore.activeProjectId,
                 };
-                
+
                 // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
                 if (Object.keys(triggerConfig).length > 0) {
                     // Filter out fields marked with exclude: true in schema
                     createData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
                 }
-                
+
                 response = await proxyCreateTrigger(createData);
                 toast.success(t("triggers.created-successfully"));
             }
-            
+
             //Update/Create Trigger on response
             onTriggerCreated(response);
-            
+
             handleClose();
 
             // Display the webhook url in a success dialog (only for new webhooks)
@@ -329,58 +334,24 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     note={taskPromptError || undefined}
                 />
 
-                {/* Execution Settings - Accordion */}
-                <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="execution-settings" className="border-none">
-                        <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
-                            <span className="font-bold text-sm text-text-heading">{t("triggers.execution-settings")}</span>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                            <div className="flex flex-col gap-4 pt-2 bg-surface-disabled rounded-lg p-4">
-                                <div className="flex items-center gap-2 my-2">
-                                    <Label htmlFor="single_execution" className="text-body-md font-bold">{t("triggers.single-execution")}</Label>
-                                    <Switch id="single_execution"
-                                        size="sm"
-                                        checked={formData.is_single_execution} onCheckedChange={(checked) => setFormData({ ...formData, is_single_execution: checked })} />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        id="max_per_hour"
-                                        title={t("triggers.max-per-hour")}
-                                        placeholder={t("triggers.max-per-hour-placeholder")}
-                                        type="number" value={formData.max_executions_per_hour || ""}
-                                        onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
-                                        min={0}
-                                        disabled={formData.is_single_execution}
-                                    />
-                                    <Input
-                                        id="max_per_day"
-                                        title={t("triggers.max-per-day")}
-                                        placeholder={t("triggers.max-per-day-placeholder")}
-                                        type="number" value={formData.max_executions_per_day || ""}
-                                        onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
-                                        min={0}
-                                        disabled={formData.is_single_execution}
-                                    />
-                                </div>
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
-
                 {/* Trigger Type */}
                 <div className="space-y-3">
-                    <Label className="font-bold text-sm">{t("triggers.type")}</Label>
-                    <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })}>
-                        <TabsList className="w-full">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4 mr-2" />{t("triggers.schedule-trigger")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4 mr-2" />{t("triggers.webhook-trigger")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><CableIcon className="w-4 h-4 mr-2" />{t("triggers.app-trigger")}</TabsTrigger>
+                    <Label className="font-bold text-sm">{t("triggers.trigger-type")}</Label>
+                    <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })} className="w-full bg-surface-disabled rounded-2xl">
+                        <TabsList variant="outline" className="w-full px-4 border-solid border-border-secondary border-b-[0.5px] border-x-0 border-t-0 rounded-t-2xl">
+                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4" />{t("triggers.schedule-trigger")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4" />{t("triggers.webhook-trigger")}</TabsTrigger>
+                            <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><CableIcon className="w-4 h-4" />{t("triggers.app-trigger")}</TabsTrigger>
                         </TabsList>
-                        <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
-                            <SchedulePicker value={formData.custom_cron_expression || "0 */1 * * *"} onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })} />
+                        <TabsContent value={TriggerType.Schedule} className="py-4 px-6">
+                            <SchedulePicker
+                                value={formData.custom_cron_expression || "0 0 * * *"}
+                                onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })}
+                                onValidationChange={setIsScheduleValid}
+                                showErrors={showScheduleErrors}
+                            />
                         </TabsContent>
-                        <TabsContent value={TriggerType.Webhook} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
+                        <TabsContent value={TriggerType.Webhook} className="py-4 px-6">
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
@@ -394,7 +365,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 </div>
                                 {
                                     !selectedTrigger || !formData.webhook_url ? (
-                                        <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
+                                        <div className="text-sm text-text-label bg-surface-primary p-3 rounded-lg">
                                             {t("triggers.webhook-url-after-creation")}
                                         </div>) : (
                                         <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
@@ -423,7 +394,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                                 <span className="font-bold text-sm text-text-heading">{t("triggers.extra-settings")}</span>
                                             </AccordionTrigger>
                                             <AccordionContent>
-                                                <div className="flex flex-col gap-4 pt-2 bg-surface-disabled rounded-lg p-4">
+                                                <div className="flex flex-col gap-4 pt-2 bg-surface-tertiary rounded-xl p-4">
                                                     <DynamicTriggerConfig
                                                         triggerType={TriggerType.Webhook}
                                                         value={triggerConfig}
@@ -439,7 +410,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             </div>
                         </TabsContent>
                         {/* TODO: Select Slack Trigger only on App Select rather than section */}
-                        <TabsContent value={TriggerType.Slack} className="min-h-[280px] bg-surface-disabled rounded-2xl p-4">
+                        <TabsContent value={TriggerType.Slack} className="py-4 px-6">
                             {!selectedApp ? (
                                 <div className="space-y-4">
                                     <Label className="font-bold text-sm">{t("triggers.select-app")}</Label>
@@ -490,28 +461,28 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         }
                                     </div>
                                     {
-                                    !selectedTrigger || !formData.webhook_url ? (
-                                        <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
-                                            {t("triggers.webhook-url-after-creation")}
-                                        </div>) : (
-                                        <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
-                                            <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
-                                                {needsAuth && (
-                                                    <TooltipSimple content={t("triggers.verification-required")}>
-                                                        <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                                                    </TooltipSimple>
-                                                )}
-                                                {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
-                                            </div>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={handleCopyWebhookUrl}
-                                            >
-                                                <Copy />
-                                                {t("triggers.copy")}
-                                            </Button>
-                                        </div>)
+                                        !selectedTrigger || !formData.webhook_url ? (
+                                            <div className="text-sm text-text-label bg-surface-secondary p-3 rounded-lg">
+                                                {t("triggers.webhook-url-after-creation")}
+                                            </div>) : (
+                                            <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
+                                                <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
+                                                    {needsAuth && (
+                                                        <TooltipSimple content={t("triggers.verification-required")}>
+                                                            <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                                                        </TooltipSimple>
+                                                    )}
+                                                    {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleCopyWebhookUrl}
+                                                >
+                                                    <Copy />
+                                                    {t("triggers.copy")}
+                                                </Button>
+                                            </div>)
                                     }
                                     {selectedApp === "slack" && (
                                         <DynamicTriggerConfig
@@ -530,6 +501,37 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         </TabsContent>
                     </Tabs>
                 </div>
+
+                {/* Execution Settings - Accordion */}
+                <Accordion type="single" collapsible className="w-full">
+                    <AccordionItem value="execution-settings" className="border-none">
+                        <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
+                            <span className="font-bold text-sm text-text-heading">{t("triggers.execution-settings")}</span>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <div className="flex flex-col gap-4 pt-2 bg-surface-disabled rounded-lg p-4">
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id="max_per_hour"
+                                        title={t("triggers.max-per-hour")}
+                                        placeholder={t("triggers.max-per-hour-placeholder")}
+                                        type="number" value={formData.max_executions_per_hour || ""}
+                                        onChange={(e) => setFormData({ ...formData, max_executions_per_hour: e.target.value ? parseInt(e.target.value) : undefined })}
+                                        min={0}
+                                    />
+                                    <Input
+                                        id="max_per_day"
+                                        title={t("triggers.max-per-day")}
+                                        placeholder={t("triggers.max-per-day-placeholder")}
+                                        type="number" value={formData.max_executions_per_day || ""}
+                                        onChange={(e) => setFormData({ ...formData, max_executions_per_day: e.target.value ? parseInt(e.target.value) : undefined })}
+                                        min={0}
+                                    />
+                                </div>
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
             </div>
         );
     };

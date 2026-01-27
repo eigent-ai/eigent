@@ -1,105 +1,70 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { InputSelect, type InputSelectOption } from "@/components/ui/input-select";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { format, parse } from "date-fns";
 
-type FrequencyType = "hourly" | "daily" | "weekly" | "custom";
+type FrequencyType = "one-time" | "daily" | "weekly" | "monthly";
 
 type SchedulePickerProps = {
     value: string; // cron expression
     onChange: (cronExpression: string) => void;
+    onValidationChange?: (isValid: boolean) => void;
+    showErrors?: boolean;
 };
 
-type TimePickerInputProps = {
-    hour: string;
-    minute: string;
-    onTimeChange: (hour: string, minute: string) => void;
-    title?: string;
+// Generate hour options (0-23)
+const generateHourOptions = (): InputSelectOption[] => {
+    return Array.from({ length: 24 }, (_, i) => {
+        const value = i.toString().padStart(2, "0");
+        return {
+            value: value,
+            label: value,
+        };
+    });
 };
 
-const TimePickerInput: React.FC<TimePickerInputProps> = ({
-    hour,
-    minute,
-    onTimeChange,
-    title,
-}) => {
-    const { t } = useTranslation();
-    
-    // Generate hourly time options (00:00 to 23:00)
-    const hourlyOptions: InputSelectOption[] = Array.from({ length: 24 }, (_, i) => ({
-        value: `${i}:0`, // Store as "hour:minute" for easy parsing
-        label: `${i.toString().padStart(2, "0")}:00`,
-    }));
-
-    // Current display value
-    const displayValue = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
-
-    // Handle value change from input
-    const handleChange = (value: string) => {
-        // This is called when input value changes directly
-        // We don't update immediately - wait for commit
-    };
-
-    // Handle option selection from dropdown
-    const handleOptionSelect = (option: InputSelectOption) => {
-        const [h, m] = option.value.split(":");
-        onTimeChange(h, m);
-    };
-
-    // Validate and parse the input value
-    const handleInputCommit = (value: string): string | false => {
-        // Try to parse HH:MM format
-        const match = value.match(/^(\d{1,2}):?(\d{0,2})$/);
-        if (match) {
-            let h = parseInt(match[1], 10);
-            let m = match[2] ? parseInt(match[2], 10) : 0;
-            
-            // Check if values are within valid range
-            if (h > 23 || m > 59) {
-                return false; // Invalid - show error state
-            }
-            
-            onTimeChange(h.toString(), m.toString());
-            return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
-        }
-        // Invalid input format - return false to show error
-        return false;
-    };
-
-    return (
-        <InputSelect
-            value={displayValue}
-            onChange={handleChange}
-            options={hourlyOptions}
-            title={title}
-            placeholder="00:00"
-            leadingIcon={<Clock className="h-4 w-4" />}
-            maxDropdownHeight={200}
-            onOptionSelect={handleOptionSelect}
-            onInputCommit={handleInputCommit}
-            errorNote={t("triggers.invalid-time-format")}
-        />
-    );
+// Generate minute options (0-59)
+const generateMinuteOptions = (): InputSelectOption[] => {
+    return Array.from({ length: 60 }, (_, i) => {
+        const value = i.toString().padStart(2, "0");
+        return {
+            value: value,
+            label: value,
+        };
+    });
 };
 
 export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     value,
     onChange,
+    onValidationChange,
+    showErrors = false,
 }) => {
     const { t } = useTranslation();
-    const [frequency, setFrequency] = useState<FrequencyType>("hourly");
-    const [hour, setHour] = useState<string>("0");
-    const [minute, setMinute] = useState<string>("0");
-    const [weekday, setWeekday] = useState<string>("0"); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const [frequency, setFrequency] = useState<FrequencyType>("daily");
+    const [hour, setHour] = useState<string>("00");
+    const [minute, setMinute] = useState<string>("00");
+    const [weekdays, setWeekdays] = useState<string[]>(["1"]); // Array of weekday strings: ["0", "1", ...]
+    const [dayOfMonth, setDayOfMonth] = useState<string>("1"); // 1-31
+    const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(undefined);
+    const [expiredAt, setExpiredAt] = useState<Date | undefined>(undefined);
     const [cronError, setCronError] = useState<string | null>(null);
+
+    const hourOptions = useMemo(() => generateHourOptions(), []);
+    const minuteOptions = useMemo(() => generateMinuteOptions(), []);
+    const previousCronRef = useRef<string>("");
+
+    // Memoize disabled function for date pickers to prevent re-renders
+    const disabledPastDates = useCallback((date: Date) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return date < today;
+    }, []);
 
     // Parse cron field (minute, hour, day, month, weekday)
     const parseCronField = useCallback((field: string, min: number, max: number): number[] => {
@@ -114,21 +79,25 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             if (part.includes("/")) {
                 // Step values: */5, 0-59/15
                 const [range, step] = part.split("/");
-                const stepNum = parseInt(step);
-                
+                const stepNum = Math.max(1, parseInt(step) || 1);
+
                 if (range === "*") {
                     for (let i = min; i <= max; i += stepNum) {
                         values.push(i);
                     }
                 } else if (range.includes("-")) {
                     const [start, end] = range.split("-").map(Number);
-                    for (let i = start; i <= end; i += stepNum) {
-                        values.push(i);
+                    if (!isNaN(start) && !isNaN(end)) {
+                        for (let i = start; i <= end; i += stepNum) {
+                            values.push(i);
+                        }
                     }
                 } else {
                     const start = parseInt(range);
-                    for (let i = start; i <= max; i += stepNum) {
-                        values.push(i);
+                    if (!isNaN(start)) {
+                        for (let i = start; i <= max; i += stepNum) {
+                            values.push(i);
+                        }
                     }
                 }
             } else if (part.includes("-")) {
@@ -196,68 +165,133 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         }
     }, [t, parseCronField]);
 
-    // Parse initial cron expression
+    // Helper function to normalize cron field values for InputSelect compatibility
+    // Converts patterns like "*/1" to simple values like "0"
+    const normalizeCronField = useCallback((field: string, defaultValue: string = "0", pad: boolean = false): string => {
+        // If it's a simple number, return it (optionally padded)
+        if (/^\d+$/.test(field)) {
+            return pad ? field.padStart(2, "0") : field;
+        }
+        // For patterns like "*/1", "*", or any other complex pattern, return default
+        return pad ? defaultValue.padStart(2, "0") : defaultValue;
+    }, []);
+
+    // Parse initial cron expression (only when value prop changes externally)
     useEffect(() => {
-        if (value) {
-            // Simple parsing - can be enhanced
-            if (value === "0 */1 * * *") {
-                setFrequency("hourly");
-                setCronError(null);
-            } else if (value.match(/^\d+ \d+ \* \* \d+$/)) {
-                // Weekly: minute hour * * weekday
-                setFrequency("weekly");
-                const parts = value.split(" ");
-                setMinute(parts[0]);
-                setHour(parts[1]);
-                setWeekday(parts[4]);
-                setCronError(null);
-            } else if (value.match(/^\d+ \d+ \* \* \*$/)) {
-                // Daily: minute hour * * *
-                setFrequency("daily");
-                const parts = value.split(" ");
-                setMinute(parts[0]);
-                setHour(parts[1]);
-                setCronError(null);
-            } else {
-                // Custom cron - validate it
-                setFrequency("custom");
-                const error = validateCronExpression(value);
-                setCronError(error);
+        // Skip if this is the cron we just generated (prevent infinite loop)
+        if (value && value !== previousCronRef.current) {
+            const parts = value.split(" ");
+            if (parts.length === 5) {
+                const [min, hr, day, month, weekdayPart] = parts;
+
+                // Normalize minute and hour to simple values for InputSelect
+                const normalizedMin = normalizeCronField(min, "0", true);
+                const normalizedHr = normalizeCronField(hr, "0", true);
+
+                // One-time: specific date and time (e.g., "30 14 15 1 *" = Jan 15 at 2:30 PM)
+                if (month !== "*" && day !== "*" && weekdayPart === "*") {
+                    setFrequency("one-time");
+                    setMinute(normalizedMin);
+                    setHour(normalizedHr);
+                    // Create date from month and day (assuming current year)
+                    const currentYear = new Date().getFullYear();
+                    const date = new Date(currentYear, parseInt(month) - 1, parseInt(day));
+                    setOneTimeDate(date);
+                    setCronError(null);
+                }
+                // Weekly: minute hour * * weekday (can be comma-separated)
+                else if (day === "*" && month === "*" && weekdayPart !== "*") {
+                    setFrequency("weekly");
+                    setMinute(normalizedMin);
+                    setHour(normalizedHr);
+                    // Parse weekday - can be single value or comma-separated
+                    const weekdayValues = weekdayPart.split(",").map(w => w.trim());
+                    setWeekdays(weekdayValues.length > 0 ? weekdayValues : ["0"]);
+                    setCronError(null);
+                }
+                // Monthly: minute hour day * *
+                else if (day !== "*" && month === "*" && weekdayPart === "*") {
+                    setFrequency("monthly");
+                    setMinute(normalizedMin);
+                    setHour(normalizedHr);
+                    setDayOfMonth(normalizeCronField(day, "1"));
+                    setCronError(null);
+                }
+                // Daily: minute hour * * * (also handles */1 patterns as "every hour")
+                else if (day === "*" && month === "*" && weekdayPart === "*") {
+                    setFrequency("daily");
+                    setMinute(normalizedMin);
+                    setHour(normalizedHr);
+                    setCronError(null);
+                } else {
+                    // Default to daily if can't parse
+                    setFrequency("daily");
+                    setMinute("0");
+                    setHour("0");
+                    setCronError(null);
+                }
+                // Update the ref to track this value so we don't re-parse it
+                previousCronRef.current = value;
             }
         }
-    }, [value, validateCronExpression]);
+    }, [value, normalizeCronField]);
 
-    // Validate cron when switching to custom mode
+    // Generate cron expression based on frequency - only when local state changes
     useEffect(() => {
-        if (frequency === "custom" && value) {
-            const error = validateCronExpression(value);
-            setCronError(error);
-        } else if (frequency !== "custom") {
-            setCronError(null);
-        }
-    }, [frequency, value, validateCronExpression]);
-
-    // Generate cron expression based on frequency
-    useEffect(() => {
-        // Don't update if frequency is custom - let the user control the value directly
-        if (frequency === "custom") {
-            return;
-        }
-        
+        // Generate cron from current local state
         let cron = "";
         switch (frequency) {
-            case "hourly":
-                cron = "0 */1 * * *";
+            case "one-time":
+                if (oneTimeDate) {
+                    const month = oneTimeDate.getMonth() + 1; // getMonth() returns 0-11
+                    const day = oneTimeDate.getDate();
+                    cron = `${minute} ${hour} ${day} ${month} *`;
+                } else {
+                    // Don't generate cron if date is not set
+                    return;
+                }
                 break;
             case "daily":
                 cron = `${minute} ${hour} * * *`;
                 break;
             case "weekly":
-                cron = `${minute} ${hour} * * ${weekday}`;
+                // Join weekdays with comma if multiple selected
+                const weekdayStr = weekdays.length > 0 ? weekdays.join(",") : "0";
+                cron = `${minute} ${hour} * * ${weekdayStr}`;
+                break;
+            case "monthly":
+                cron = `${minute} ${hour} ${dayOfMonth} * *`;
                 break;
         }
-        onChange(cron);
-    }, [frequency, hour, minute, weekday]);
+
+        // Only call onChange if the cron has actually changed from what we last generated
+        // This prevents infinite loops: we only update if the cron differs from our last output
+        if (cron && cron !== previousCronRef.current) {
+            previousCronRef.current = cron;
+            onChange(cron);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate]); // onChange is intentionally excluded - it's an unstable reference
+
+    // Validation logic
+    useEffect(() => {
+        let isValid = true;
+        switch (frequency) {
+            case "one-time":
+                isValid = !!oneTimeDate && !!hour && !!minute;
+                break;
+            case "daily":
+                isValid = !!hour && !!minute;
+                break;
+            case "weekly":
+                isValid = !!hour && !!minute && weekdays.length > 0;
+                break;
+            case "monthly":
+                isValid = !!dayOfMonth && !!hour && !!minute;
+                break;
+        }
+        onValidationChange?.(isValid);
+    }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate, onValidationChange]);
 
     // Calculate next execution time from a cron expression
     const getNextExecutionTime = (cronExpression: string, fromDate: Date): Date | null => {
@@ -281,7 +315,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             let current = new Date(fromDate);
             current.setSeconds(0);
             current.setMilliseconds(0);
-            
+
             // Store the original fromDate for comparison (with seconds/milliseconds)
             const fromDateWithTime = new Date(fromDate);
 
@@ -391,20 +425,18 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             let nextTime: Date | null = null;
 
             switch (frequency) {
-                case "hourly":
-                    // Move to next hour
-                    const hourlyTime = new Date(now);
-                    hourlyTime.setMinutes(0);
-                    hourlyTime.setSeconds(0);
-                    hourlyTime.setMilliseconds(0);
-                    if (i === 0) {
-                        if (hourlyTime <= now) {
-                            hourlyTime.setHours(hourlyTime.getHours() + 1);
+                case "one-time":
+                    // One-time execution at specified date and time
+                    if (oneTimeDate && i === 0) {
+                        const oneTime = new Date(oneTimeDate);
+                        oneTime.setHours(parseInt(hour));
+                        oneTime.setMinutes(parseInt(minute));
+                        oneTime.setSeconds(0);
+                        oneTime.setMilliseconds(0);
+                        if (oneTime > now) {
+                            nextTime = oneTime;
                         }
-                    } else {
-                        hourlyTime.setHours(times[i - 1].getHours() + 1);
                     }
-                    nextTime = hourlyTime;
                     break;
                 case "daily":
                     // At specified hour:minute each day
@@ -421,32 +453,61 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                     nextTime = dailyTime;
                     break;
                 case "weekly":
-                    // On specified weekday at specified time
+                    // On specified weekdays at specified time
                     const weeklyTime = new Date(now);
                     weeklyTime.setHours(parseInt(hour));
                     weeklyTime.setMinutes(parseInt(minute));
                     weeklyTime.setSeconds(0);
                     weeklyTime.setMilliseconds(0);
-                    const targetWeekday = parseInt(weekday);
+                    const targetWeekdays = weekdays.map(w => parseInt(w));
                     if (i === 0) {
                         const currentWeekday = weeklyTime.getDay();
-                        let daysUntilTarget = (targetWeekday - currentWeekday + 7) % 7;
-                        if (daysUntilTarget === 0 && weeklyTime <= now) {
-                            daysUntilTarget = 7; // Move to next week
+                        // Find next matching weekday
+                        let daysUntilTarget = 7;
+                        for (const targetWeekday of targetWeekdays) {
+                            let days = (targetWeekday - currentWeekday + 7) % 7;
+                            if (days === 0 && weeklyTime <= now) {
+                                days = 7; // Move to next week
+                            }
+                            daysUntilTarget = Math.min(daysUntilTarget, days);
                         }
                         weeklyTime.setDate(weeklyTime.getDate() + daysUntilTarget);
                     } else {
-                        weeklyTime.setDate(times[i - 1].getDate() + 7);
+                        // Find next weekday from the selected weekdays
+                        const lastWeekday = times[i - 1].getDay();
+                        let daysUntilNext = 7;
+                        for (const targetWeekday of targetWeekdays) {
+                            let days = (targetWeekday - lastWeekday + 7) % 7;
+                            if (days === 0) days = 7;
+                            daysUntilNext = Math.min(daysUntilNext, days);
+                        }
+                        weeklyTime.setDate(times[i - 1].getDate() + daysUntilNext);
                     }
                     nextTime = weeklyTime;
                     break;
-                case "custom":
-                    // Parse custom cron expression
+                case "monthly":
+                    // On specified day of month at specified time
+                    const monthlyTime = new Date(now);
+                    monthlyTime.setHours(parseInt(hour));
+                    monthlyTime.setMinutes(parseInt(minute));
+                    monthlyTime.setSeconds(0);
+                    monthlyTime.setMilliseconds(0);
+                    const targetDay = parseInt(dayOfMonth);
                     if (i === 0) {
-                        nextTime = getNextExecutionTime(value || "0 */1 * * *", now);
-                    } else if (times[i - 1]) {
-                        nextTime = getNextExecutionTime(value || "0 */1 * * *", times[i - 1]);
+                        const currentDay = monthlyTime.getDate();
+                        if (currentDay < targetDay) {
+                            monthlyTime.setDate(targetDay);
+                        } else if (currentDay > targetDay || monthlyTime <= now) {
+                            // Move to next month
+                            monthlyTime.setMonth(monthlyTime.getMonth() + 1);
+                            monthlyTime.setDate(targetDay);
+                        }
+                    } else {
+                        // Move to next month
+                        monthlyTime.setMonth(times[i - 1].getMonth() + 1);
+                        monthlyTime.setDate(targetDay);
                     }
+                    nextTime = monthlyTime;
                     break;
             }
 
@@ -459,7 +520,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         }
 
         return times;
-    }, [frequency, hour, minute, weekday, value]);
+    }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate, value]);
 
     // Format date for display
     const formatScheduledTime = (date: Date): string => {
@@ -474,105 +535,282 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         });
     };
 
+    const dayOfMonthOptions: InputSelectOption[] = useMemo(() => {
+        const pr = new Intl.PluralRules("en-US", { type: "ordinal" });
+        const suffixes: Record<string, string> = {
+            one: "st",
+            two: "nd",
+            few: "rd",
+            other: "th",
+        };
+
+        return Array.from({ length: 31 }, (_, i) => {
+            const day = i + 1;
+            const rule = pr.select(day);
+            const suffix = suffixes[rule];
+            return {
+                value: day.toString(),
+                label: `${day}${suffix}`,
+            };
+        });
+    }, []);
+
     return (
-        <div className="w-full space-y-4">
-            <div className="space-y-2">
-                <Select
-                    value={frequency}
-                    onValueChange={(value: FrequencyType) => setFrequency(value)}
-                >
-                    <SelectTrigger title={t("triggers.schedule-frequency")}>
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="hourly">
-                            {t("triggers.frequency-hourly")}
-                        </SelectItem>
-                        <SelectItem value="daily">
-                            {t("triggers.frequency-daily")}
-                        </SelectItem>
-                        <SelectItem value="weekly">
-                            {t("triggers.frequency-weekly")}
-                        </SelectItem>
-                        <SelectItem value="custom">
-                            {t("triggers.frequency-custom")}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+        <div className="w-full h-full flex flex-col space-y-4">
+            <Tabs value={frequency} onValueChange={(value) => setFrequency(value as FrequencyType)} className="flex-1">
+                <TabsList className="w-full grid grid-cols-4">
+                    <TabsTrigger value="one-time" className="text-body-sm">
+                        {t("triggers.frequency-one-time")}
+                    </TabsTrigger>
+                    <TabsTrigger value="daily" className="text-body-sm">
+                        {t("triggers.frequency-daily")}
+                    </TabsTrigger>
+                    <TabsTrigger value="weekly" className="text-body-sm">
+                        {t("triggers.frequency-weekly")}
+                    </TabsTrigger>
+                    <TabsTrigger value="monthly" className="text-body-sm">
+                        {t("triggers.frequency-monthly")}
+                    </TabsTrigger>
+                </TabsList>
 
-            {(frequency === "daily" || frequency === "weekly") && (
-                <div className="flex items-end gap-3">
-                    <div className="flex-1">
-                        <TimePickerInput
-                            hour={hour}
-                            minute={minute}
-                            onTimeChange={(h, m) => {
-                                setHour(h);
-                                setMinute(m);
+                <TabsContent value="one-time" className="space-y-3 mt-4">
+                    <Input
+                        type="date"
+                        title={t("triggers.schedule-date")}
+                        value={oneTimeDate ? format(oneTimeDate, "yyyy-MM-dd") : ""}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setOneTimeDate(val ? parse(val, "yyyy-MM-dd", new Date()) : undefined);
+                        }}
+                        placeholder={t("triggers.select-date")}
+                        min={format(new Date(), "yyyy-MM-dd")}
+                        required
+                        state={showErrors && !oneTimeDate ? "error" : "default"}
+                        note={showErrors && !oneTimeDate ? t("triggers.date-required") : undefined}
+                    />
+                    <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                            <InputSelect
+                                value={hour}
+                                onChange={(value) => setHour(value)}
+                                options={hourOptions}
+                                title={t("triggers.schedule-hour")}
+                                placeholder="00"
+                                required
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !hour ? "error" : undefined}
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <InputSelect
+                                value={minute}
+                                onChange={(value) => setMinute(value)}
+                                options={minuteOptions}
+                                title={t("triggers.schedule-minute")}
+                                placeholder="00"
+                                required
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !minute ? "error" : undefined}
+                            />
+                        </div>
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="daily" className="space-y-3 mt-4">
+                    <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                            <InputSelect
+                                value={hour}
+                                onChange={(value) => setHour(value)}
+                                options={hourOptions}
+                                title={t("triggers.schedule-hour")}
+                                placeholder="00"
+                                required
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !hour ? "error" : undefined}
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <InputSelect
+                                value={minute}
+                                onChange={(value) => setMinute(value)}
+                                options={minuteOptions}
+                                title={t("triggers.schedule-minute")}
+                                placeholder="00"
+                                required
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !minute ? "error" : undefined}
+                            />
+                        </div>
+                    </div>
+                    <Input
+                        type="date"
+                        title={t("triggers.expiration-date")}
+                        value={expiredAt ? format(expiredAt, "yyyy-MM-dd") : ""}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setExpiredAt(val ? parse(val, "yyyy-MM-dd", new Date()) : undefined);
+                        }}
+                        placeholder={t("triggers.select-expiration")}
+                        min={format(new Date(), "yyyy-MM-dd")}
+                    />
+                </TabsContent>
+
+                <TabsContent value="weekly" className="space-y-3 mt-4">
+                    <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                            <InputSelect
+                                value={hour}
+                                onChange={(value) => setHour(value)}
+                                options={hourOptions}
+                                title={t("triggers.schedule-hour")}
+                                placeholder="00"
+                                required
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !hour ? "error" : undefined}
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <InputSelect
+                                value={minute}
+                                onChange={(value) => setMinute(value)}
+                                options={minuteOptions}
+                                title={t("triggers.schedule-minute")}
+                                placeholder="00"
+                                required
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !minute ? "error" : undefined}
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <div className="mb-1.5 text-body-sm font-bold text-text-heading">
+                            {t("triggers.schedule-weekdays")} *
+                        </div>
+                        <ToggleGroup
+                            type="multiple"
+                            value={weekdays}
+                            onValueChange={(values) => {
+                                // Ensure at least one weekday is always selected
+                                if (values.length > 0) {
+                                    setWeekdays(values);
+                                } else {
+                                    // If trying to deselect all, keep the current selection
+                                    // This prevents having no weekdays selected
+                                }
                             }}
-                            title={t("triggers.schedule-time")}
-                        />
-                    </div>
-                    <div className="flex-1">
-                        <Select
-                            value={weekday}
-                            onValueChange={setWeekday}
+                            className="flex flex-wrap gap-2"
                         >
-                            <SelectTrigger 
-                                title={t("triggers.schedule-weekday")}
-                                disabled={frequency === "daily"}
-                            >
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="0">{t("triggers.weekday-sunday")}</SelectItem>
-                                <SelectItem value="1">{t("triggers.weekday-monday")}</SelectItem>
-                                <SelectItem value="2">{t("triggers.weekday-tuesday")}</SelectItem>
-                                <SelectItem value="3">{t("triggers.weekday-wednesday")}</SelectItem>
-                                <SelectItem value="4">{t("triggers.weekday-thursday")}</SelectItem>
-                                <SelectItem value="5">{t("triggers.weekday-friday")}</SelectItem>
-                                <SelectItem value="6">{t("triggers.weekday-saturday")}</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            <ToggleGroupItem value="0" className="flex-1" aria-label={t("triggers.weekday-sunday")}>
+                                {t("triggers.weekday-sunday")}
+                            </ToggleGroupItem>
+                            <ToggleGroupItem value="1" className="flex-1" aria-label={t("triggers.weekday-monday")}>
+                                {t("triggers.weekday-monday")}
+                            </ToggleGroupItem>
+                            <ToggleGroupItem value="2" className="flex-1" aria-label={t("triggers.weekday-tuesday")}>
+                                {t("triggers.weekday-tuesday")}
+                            </ToggleGroupItem>
+                            <ToggleGroupItem value="3" className="flex-1" aria-label={t("triggers.weekday-wednesday")}>
+                                {t("triggers.weekday-wednesday")}
+                            </ToggleGroupItem>
+                            <ToggleGroupItem value="4" className="flex-1" aria-label={t("triggers.weekday-thursday")}>
+                                {t("triggers.weekday-thursday")}
+                            </ToggleGroupItem>
+                            <ToggleGroupItem value="5" className="flex-1" aria-label={t("triggers.weekday-friday")}>
+                                {t("triggers.weekday-friday")}
+                            </ToggleGroupItem>
+                            <ToggleGroupItem value="6" className="flex-1" aria-label={t("triggers.weekday-saturday")}>
+                                {t("triggers.weekday-saturday")}
+                            </ToggleGroupItem>
+                        </ToggleGroup>
+                        {showErrors && weekdays.length === 0 && (
+                            <div className="mt-1 text-xs text-text-cuation">{t("triggers.weekday-required")}</div>
+                        )}
                     </div>
-                </div>
-            )}
+                    <Input
+                        type="date"
+                        title={t("triggers.expiration-date")}
+                        value={expiredAt ? format(expiredAt, "yyyy-MM-dd") : ""}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setExpiredAt(val ? parse(val, "yyyy-MM-dd", new Date()) : undefined);
+                        }}
+                        placeholder={t("triggers.select-expiration")}
+                        min={format(new Date(), "yyyy-MM-dd")}
+                    />
+                </TabsContent>
 
-            {frequency === "custom" && (
-                <Input
-                    title={t("triggers.cron-expression")}
-                    type="text"
-                    value={value}
-                    onChange={(e) => {
-                        const newValue = e.target.value;
-                        const error = validateCronExpression(newValue);
-                        setCronError(error);
-                        // Auto-save even if there's an error, so user can see the error state
-                        onChange(newValue);
-                    }}
-                    placeholder="0 */1 * * *"
-                    note={cronError || t("triggers.cron-help")}
-                    state={cronError ? "error" : "default"}
-                />
-            )}
+                <TabsContent value="monthly" className="space-y-3 mt-4">
+                    <InputSelect
+                        value={dayOfMonth}
+                        onChange={(value) => setDayOfMonth(value)}
+                        options={dayOfMonthOptions}
+                        title={t("triggers.schedule-day-of-month")}
+                        placeholder={t("triggers.select-day")}
+                        note={t("triggers.schedule-day-of-month-note")}
+                        required
+                        state={showErrors && !dayOfMonth ? "error" : undefined}
+                    />
+                    <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                            <InputSelect
+                                value={hour}
+                                onChange={(value) => setHour(value)}
+                                options={hourOptions}
+                                title={t("triggers.schedule-hour")}
+                                required
+                                placeholder="00"
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !hour ? "error" : undefined}
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <InputSelect
+                                value={minute}
+                                onChange={(value) => setMinute(value)}
+                                options={minuteOptions}
+                                title={t("triggers.schedule-minute")}
+                                required
+                                placeholder="00"
+                                leadingIcon={<Clock className="h-4 w-4" />}
+                                state={showErrors && !minute ? "error" : undefined}
+                            />
+                        </div>
+                    </div>
+                    <Input
+                        type="date"
+                        title={t("triggers.expiration-date")}
+                        value={expiredAt ? format(expiredAt, "yyyy-MM-dd") : ""}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setExpiredAt(val ? parse(val, "yyyy-MM-dd", new Date()) : undefined);
+                        }}
+                        placeholder={t("triggers.select-expiration")}
+                        min={format(new Date(), "yyyy-MM-dd")}
+                    />
+                </TabsContent>
+            </Tabs>
 
             {/* Scheduled Times Preview */}
-            <div className="space-y-2">
-                <div className="flex items-center gap-2 text-text-heading text-label-sm">
-                    <span className="font-bold">{t("triggers.upcoming-executions")}</span>
-                </div>
-                <div className="bg-surface-primary rounded-lg p-4 space-y-2">
-                    {nextScheduledTimes.map((time, index) => (
-                        <div key={index} className="flex items-center gap-2 text-text-body text-label-sm">
-                            <span className="text-text-label font-mono text-xs w-5">
-                                {String(index + 1).padStart(2, '0')}
-                            </span>
-                            <span>{formatScheduledTime(time)}</span>
+            <Accordion type="single" collapsible className="w-full mt-auto">
+                <AccordionItem value="scheduled-times" className="border-none">
+                    <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
+                        <span className="font-bold text-sm text-text-heading">{t("triggers.preview-scheduled-times")}</span>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                        <div className="bg-surface-primary rounded-lg p-4 space-y-2">
+                            {nextScheduledTimes.map((time, index) => (
+                                <div key={index} className="flex items-center gap-2 text-text-body text-label-sm">
+                                    <span className="text-text-label font-mono text-xs w-5">
+                                        {String(index + 1).padStart(2, '0')}
+                                    </span>
+                                    <span>{formatScheduledTime(time)}</span>
+                                </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
-            </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
         </div>
     );
 };
