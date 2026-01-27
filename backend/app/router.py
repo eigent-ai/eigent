@@ -62,7 +62,6 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "tags": ["tool"], 
             "description": "Tool installation and management"
         },
-
     ]
     
     for config in routers_config:
