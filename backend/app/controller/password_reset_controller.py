@@ -7,14 +7,14 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-import logging
 from app.model.password_reset import (
     DirectResetPasswordRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
 )
+from utils import traceroot_wrapper as traceroot
 
-logger = logging.getLogger("password_reset_controller")
+logger = traceroot.get_logger("password_reset_controller")
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ async def forgot_password(data: ForgotPasswordRequest):
     In development, returns the token directly for testing.
     """
     email = data.email
-    logger.info("Password reset requested")
+    logger.info(f"Password reset requested for email: {email}")
     
     # Generate token
     token = generate_reset_token()
