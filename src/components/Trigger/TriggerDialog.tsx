@@ -43,7 +43,7 @@ import {
     RequestType,
     TriggerStatus,
 } from "@/types";
-import { SchedulePicker } from "./SchedulePicker";
+import { SchedulePicker, type ScheduleData } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
@@ -93,6 +93,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [isConfigValid, setIsConfigValid] = useState<boolean>(true);
     const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
     const [isScheduleValid, setIsScheduleValid] = useState<boolean>(false);
+    const [scheduleData, setScheduleData] = useState<string>("");
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
@@ -130,8 +131,19 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 // Load existing trigger config if available
                 if (selectedTrigger.config) {
                     setTriggerConfig(selectedTrigger.config as Record<string, any>);
+                    // Reconstruct schedule data from cron + config for the picker
+                    const { date, expirationDate } = selectedTrigger.config;
+                    setScheduleData(JSON.stringify({ 
+                        cron: selectedTrigger.custom_cron_expression,
+                        date,
+                        expirationDate
+                    }));
                 } else {
                     setTriggerConfig(getDefaultTriggerConfig());
+                    // If no config, just pass cron for parsing
+                    setScheduleData(JSON.stringify({ 
+                        cron: selectedTrigger.custom_cron_expression 
+                    }));
                 }
                 // Set selectedApp based on trigger type for app-based triggers
                 if (selectedTrigger.trigger_type === TriggerType.Slack) {
@@ -157,6 +169,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 setTriggerConfig(getDefaultTriggerConfig());
                 setTriggerConfigSchema(null);
                 setSelectedApp("");
+                setScheduleData("");
             }
         }
     }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
@@ -228,9 +241,20 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 };
                 
                 // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
-                if (Object.keys(triggerConfig).length > 0) {
-                    // Filter out fields marked with exclude: true in schema
-                    updateData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
+                const configToSave = filterExcludedFields(triggerConfig, triggerConfigSchema);
+                
+                // Include schedule data directly in config for schedule triggers
+                if (formData.trigger_type === TriggerType.Schedule && scheduleData) {
+                    try {
+                        const { cron, ...scheduleFields } = JSON.parse(scheduleData);
+                        Object.assign(configToSave, scheduleFields);
+                    } catch {
+                        // Ignore parse errors
+                    }
+                }
+                
+                if (Object.keys(configToSave).length > 0) {
+                    updateData.config = configToSave;
                 }
                 
                 response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
@@ -253,9 +277,20 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 };
                 
                 // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
-                if (Object.keys(triggerConfig).length > 0) {
-                    // Filter out fields marked with exclude: true in schema
-                    createData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
+                const configToSave = filterExcludedFields(triggerConfig, triggerConfigSchema);
+                
+                // Include schedule data directly in config for schedule triggers
+                if (formData.trigger_type === TriggerType.Schedule && scheduleData) {
+                    try {
+                        const { cron, ...scheduleFields } = JSON.parse(scheduleData);
+                        Object.assign(configToSave, scheduleFields);
+                    } catch {
+                        // Ignore parse errors
+                    }
+                }
+                
+                if (Object.keys(configToSave).length > 0) {
+                    createData.config = configToSave;
                 }
                 
                 response = await proxyCreateTrigger(createData);
@@ -376,8 +411,25 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule} className="min-h-[280px] bg-surface-disabled rounded-lg p-4">
                             <SchedulePicker
-                                value={formData.custom_cron_expression || "0 */1 * * *"}
-                                onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })}
+                                value={scheduleData}
+                                onChange={(data) => {
+                                    setScheduleData(data);
+                                    try {
+                                        const parsed = JSON.parse(data) as ScheduleData & { cron: string };
+                                        // Determine if it's a one-time schedule from cron pattern
+                                        // Once mode has specific day and month: "minute hour day month *"
+                                        const cronParts = parsed.cron.split(" ");
+                                        const isOnce = cronParts[2] !== "*" && cronParts[3] !== "*";
+                                        setFormData({ 
+                                            ...formData, 
+                                            custom_cron_expression: parsed.cron,
+                                            is_single_execution: isOnce
+                                        });
+                                    } catch {
+                                        // Fallback for legacy cron format
+                                        setFormData({ ...formData, custom_cron_expression: data });
+                                    }
+                                }}
                                 onValidationChange={(isValid) => setIsScheduleValid(isValid)}
                             />
                         </TabsContent>

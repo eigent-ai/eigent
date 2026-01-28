@@ -12,9 +12,14 @@ import { useTranslation } from "react-i18next";
 
 type FrequencyType = "once" | "daily" | "weekly" | "monthly";
 
+export type ScheduleData = {
+    date?: string; // ISO date string for one-time execution (YYYY-MM-DD) - needed because cron has no year
+    expirationDate?: string; // ISO date string for when recurring schedule expires
+};
+
 type SchedulePickerProps = {
-    value: string; // cron expression or schedule data
-    onChange: (cronExpression: string) => void;
+    value: string; // JSON stringified ScheduleData
+    onChange: (scheduleData: string) => void;
     onValidationChange?: (isValid: boolean) => void;
 };
 
@@ -57,21 +62,64 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         setTime(`${hour}:${minute}`);
     }, [hour, minute]);
 
-    // Parse initial cron expression
+    // Parse initial schedule data (cron + minimal config)
     useEffect(() => {
         if (value) {
-            // Try to parse existing cron expression
-            // This is a simplified parser - you may need to enhance it
-            if (value.match(/^\d+ \d+ \* \* \*$/)) {
-                setFrequency("daily");
-                const parts = value.split(" ");
-                const m = parts[0];
-                const h = parts[1];
-                setHour(h.padStart(2, "0"));
-                setMinute(m.padStart(2, "0"));
+            try {
+                const parsed = JSON.parse(value);
+                const cron = parsed.cron as string;
+                
+                if (cron) {
+                    const parts = cron.split(" ");
+                    const cronMinute = parts[0];
+                    const cronHour = parts[1];
+                    const cronDay = parts[2];
+                    const cronMonth = parts[3];
+                    const cronWeekday = parts[4];
+                    
+                    // Set time from cron
+                    setHour(cronHour.padStart(2, "0"));
+                    setMinute(cronMinute.padStart(2, "0"));
+                    
+                    // Determine frequency from cron pattern
+                    if (cronDay !== "*" && cronMonth !== "*") {
+                        // Specific day and month = once
+                        setFrequency("once");
+                        if (parsed.date) {
+                            setDate(parsed.date);
+                        }
+                    } else if (cronWeekday !== "*") {
+                        // Specific weekdays = weekly
+                        setFrequency("weekly");
+                        const weekdayValues = cronWeekday.split(",").map(Number);
+                        setSelectedWeekdays(weekdayValues);
+                    } else if (cronDay !== "*") {
+                        // Specific day of month = monthly
+                        setFrequency("monthly");
+                        setMonthDay(cronDay);
+                    } else {
+                        // Default = daily
+                        setFrequency("daily");
+                    }
+                    
+                    // Set expiration date if present
+                    if (parsed.expirationDate) {
+                        setExpirationDate(parsed.expirationDate);
+                    }
+                }
+            } catch {
+                // Fallback: Try to parse as legacy cron expression string
+                if (value.match(/^\d+ \d+ \* \* \*$/)) {
+                    setFrequency("daily");
+                    const parts = value.split(" ");
+                    const m = parts[0];
+                    const h = parts[1];
+                    setHour(h.padStart(2, "0"));
+                    setMinute(m.padStart(2, "0"));
+                }
             }
         }
-    }, [value]);
+    }, []);
 
     // Validation logic
     const validateInputs = (): boolean => {
@@ -184,7 +232,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         return isValid;
     };
 
-    // Generate cron expression based on frequency
+    // Generate schedule data based on frequency
     useEffect(() => {
         const isValid = validateInputs();
         onValidationChange?.(isValid);
@@ -194,40 +242,53 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         }
 
         let cron = "";
-        const [hour, minute] = time ? time.split(":") : ["0", "0"];
+        const [h, m] = time ? time.split(":") : ["0", "0"];
 
         switch (frequency) {
             case "once":
-                // For once, we'll use a special format with date
-                // Format: minute hour day month * (single execution)
+                // For once, we use a special cron that won't repeat (specific day/month)
+                // The backend should handle the year and one-time execution logic
                 if (date && time) {
                     const d = new Date(date);
                     const day = d.getDate();
                     const month = d.getMonth() + 1;
-                    cron = `${minute} ${hour} ${day} ${month} *`;
+                    cron = `${m} ${h} ${day} ${month} *`;
                 }
                 break;
             case "daily":
                 // Daily at specified time
-                cron = `${minute} ${hour} * * *`;
+                cron = `${m} ${h} * * *`;
                 break;
             case "weekly":
                 // Weekly on selected days at specified time
                 if (selectedWeekdays.length > 0) {
                     const sortedWeekdays = [...selectedWeekdays].sort((a, b) => a - b);
-                    cron = `${minute} ${hour} * * ${sortedWeekdays.join(",")}`;
+                    cron = `${m} ${h} * * ${sortedWeekdays.join(",")}`;
                 }
                 break;
             case "monthly":
                 // Monthly on specific day at specified time
                 if (monthDay && time) {
-                    cron = `${minute} ${hour} ${monthDay} * *`;
+                    cron = `${m} ${h} ${monthDay} * *`;
                 }
                 break;
         }
 
         if (cron) {
-            onChange(cron);
+            const scheduleData: ScheduleData = {};
+
+            // For once mode, we need the full date (cron has no year)
+            if (frequency === "once" && date) {
+                scheduleData.date = date;
+            }
+
+            // For recurring schedules, include expiration date if set
+            if (frequency !== "once" && expirationDate) {
+                scheduleData.expirationDate = expirationDate;
+            }
+
+            // Pass cron (for custom_cron_expression) and minimal scheduleData (for config)
+            onChange(JSON.stringify({ cron, ...scheduleData }));
         }
     }, [frequency, date, time, selectedWeekdays, monthDay, expirationDate]);
 
@@ -466,7 +527,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                                         px-2 py-2 rounded-md text-xs font-medium transition-colors
                                         ${
                                             selectedWeekdays.includes(day.value)
-                                                ? "bg-brand-primary text-white"
+                                                ? "bg-brand-primary text-white ring-2 ring-brand-primary ring-offset-1"
                                                 : "bg-surface-secondary text-text-body hover:bg-surface-primary"
                                         }
                                     `}
