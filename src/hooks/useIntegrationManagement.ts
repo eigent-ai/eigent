@@ -75,7 +75,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 	// Recalculate installed status when items or configs change
 	useEffect(() => {
 		const map: { [key: string]: boolean } = {};
-		
+
 		items.forEach((item) => {
 			if (item.key === "Google Calendar") {
 				// Only mark installed when refresh token is present (auth completed)
@@ -86,6 +86,15 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 						c.config_value && String(c.config_value).length > 0
 				);
 				map[item.key] = hasRefreshToken;
+			} else if (item.key === "LinkedIn") {
+				// LinkedIn: check if access token is present
+				const hasAccessToken = configs.some(
+					(c: any) =>
+						c.config_group?.toLowerCase() === "linkedin" &&
+						c.config_name === "LINKEDIN_ACCESS_TOKEN" &&
+						c.config_value && String(c.config_value).length > 0
+				);
+				map[item.key] = hasAccessToken;
 			} else {
 				// For other integrations, use config_group presence
 				const hasConfig = configs.some(
@@ -94,7 +103,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 				map[item.key] = hasConfig;
 			}
 		});
-		
+
 		setInstalled(map);
 	}, [items, configs]);
 
@@ -187,6 +196,43 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 							"Slack authorization successful, but access_token not found or env configuration not found"
 						);
 					}
+				} else if (provider === "linkedin") {
+					// LinkedIn OAuth: save token via backend endpoint and config
+					if (tokenResult.access_token) {
+						try {
+							// Save token to backend toolkit
+							await proxyFetchPost("/api/linkedin/save-token", {
+								access_token: tokenResult.access_token,
+								refresh_token: tokenResult.refresh_token,
+								expires_in: tokenResult.expires_in,
+							});
+
+							// Also save to config for UI status tracking
+							await saveEnvAndConfig(
+								"LinkedIn",
+								"LINKEDIN_ACCESS_TOKEN",
+								tokenResult.access_token
+							);
+							if (tokenResult.refresh_token) {
+								await saveEnvAndConfig(
+									"LinkedIn",
+									"LINKEDIN_REFRESH_TOKEN",
+									tokenResult.refresh_token
+								);
+							}
+
+							await fetchInstalled();
+							console.log(
+								"LinkedIn authorization successful and configuration saved!"
+							);
+						} catch (e) {
+							console.error("Failed to save LinkedIn token:", e);
+						}
+					} else {
+						console.log(
+							"LinkedIn authorization successful, but access_token not found"
+						);
+					}
 				}
 			} catch (e: any) {
 				console.log(`${data.provider} authorization failed: ${e.message || e}`);
@@ -254,7 +300,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 				}
 			}
 			
-			// Clean up authentication tokens for Google Calendar and Notion
+			// Clean up authentication tokens for Google Calendar, Notion, and LinkedIn
 			if (item.key === "Google Calendar") {
 				try {
 					await fetchDelete("/uninstall/tool/google_calendar");
@@ -268,6 +314,13 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 					console.log("Cleaned up Notion authentication tokens");
 				} catch (e) {
 					console.log("Failed to clean up Notion tokens:", e);
+				}
+			} else if (item.key === "LinkedIn") {
+				try {
+					await fetchDelete("/uninstall/tool/linkedin");
+					console.log("Cleaned up LinkedIn authentication tokens");
+				} catch (e) {
+					console.log("Failed to clean up LinkedIn tokens:", e);
 				}
 			}
 			
