@@ -70,10 +70,10 @@ Your integrated toolkits enable you to:
 9. File System Access:
    - You can use terminal tools to interact with the local file system in
    your working directory (`{working_directory}`), for example, to access
-   files needed for posting. **IMPORTANT:** You can use `shell_exec` to run
-   `ls {working_directory}` to check for files created by other agents, and
-   then use terminal commands like `cat`, `grep`, or `head` to read and
-   examine these files. You can use tools like `find` to locate files,
+   files needed for posting. **IMPORTANT:** Before the task gets started, you can
+   use `shell_exec` to run `ls {working_directory}` to check for important files
+   in the working directory, and then use terminal commands like `cat`, `grep`,
+   or `head` to read and examine these files. You can use tools like `find` to locate files,
    `grep` to search within them, and `curl` to interact with web APIs that
    are not covered by other tools.
 
@@ -148,9 +148,10 @@ Your capabilities include:
 
 - Terminal and File System:
     - You have access to terminal tools to manage media files. **IMPORTANT:**
-    You can use `shell_exec` to run `ls {working_directory}` to check for files
-    created by other agents, and then use terminal commands like `cat`, `grep`,
-    or `head` to read and examine these files.
+    Before the task gets started, you can use `shell_exec` to run
+    `ls {working_directory}` to check for important files in the working
+    directory, and then use terminal commands like `cat`, `grep`, or `head`
+    to read and examine these files.
     - You can leverage powerful CLI tools like `ffmpeg` for any necessary video
     and audio conversion or manipulation. You can also use tools like `find`
     to locate media files, `wget` or `curl` to download them, and `du` or
@@ -301,9 +302,10 @@ Your capabilities include:
 - Terminal and File System:
     - You have access to a full suite of terminal tools to interact with
     the file system within your working directory (`{working_directory}`).
-    - **IMPORTANT:** You can use `shell_exec` to run `ls {working_directory}`
-    to check for files created by other agents, and then use terminal commands
-    like `cat`, `grep`, or `head` to read and examine these files.
+    - **IMPORTANT:** Before the task gets started, you can use `shell_exec` to
+    run `ls {working_directory}` to check for important files in the working
+    directory, and then use terminal commands like `cat`, `grep`, or `head`
+    to read and examine these files.
     - You can execute shell commands (`shell_exec`), list files, and manage
     your workspace as needed to support your document creation tasks. To
     process and manipulate text and data for your documents, you can use
@@ -392,9 +394,10 @@ Your capabilities are extensive and powerful:
   can run any command-line tool, manage files, and interact with the OS. If
   a tool is missing, you MUST install it with the appropriate package manager
   (e.g., `pip3`, `uv`, or `apt-get`). Your capabilities include:
-    - **IMPORTANT:** You can use `shell_exec` to run `ls {working_directory}`
-      to check for files created by other agents, and then use terminal commands
-      like `cat`, `grep`, or `head` to read and examine these files.
+    - **IMPORTANT:** Before the task gets started, you can use `shell_exec` to
+      run `ls {working_directory}` to check for important files in the working
+      directory, and then use terminal commands like `cat`, `grep`, or `head`
+      to read and examine these files.
     - **Text & Data Processing**: `awk`, `sed`, `grep`, `jq`.
     - **File System & Execution**: `find`, `xargs`, `tar`, `zip`, `unzip`,
       `chmod`.
@@ -548,10 +551,10 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 Your capabilities include:
 - Search and get information from the web using the search tools.
 - Use the rich browser related toolset to investigate websites.
-- Use the terminal tools to perform local operations. **IMPORTANT:** You can
-    use `shell_exec` to run `ls {working_directory}` to check for files created
-    by other agents, and then use terminal commands like `cat`, `grep`, or `head`
-    to read and examine these files. You can leverage powerful CLI tools like
+- Use the terminal tools to perform local operations. **IMPORTANT:** Before the
+    task gets started, you can use `shell_exec` to run `ls {working_directory}`
+    to check for important files in the working directory, and then use terminal
+    commands like `cat`, `grep`, or `head` to read and examine these files. You can leverage powerful CLI tools like
     `grep` for searching within files, `curl` and `wget` for downloading content,
     and `jq` for parsing JSON data from APIs.
 - Use the note-taking tools to record your findings.
