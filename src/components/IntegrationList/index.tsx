@@ -124,6 +124,15 @@ export default function IntegrationList({
 				return;
 			}
 
+			// LinkedIn uses server-side OAuth flow
+			if (item.key === "LinkedIn") {
+				// Open LinkedIn OAuth login in a new window
+				const baseUrl = window.location.origin;
+				const oauthUrl = `${baseUrl}/api/oauth/linkedin/login`;
+				window.open(oauthUrl, "_blank", "width=600,height=700");
+				return;
+			}
+
 			if (installed[item.key]) return;
 			await item.onInstall();
 			// Only refresh in select mode
@@ -256,7 +265,7 @@ export default function IntegrationList({
 		"Slack",
 		"X(Twitter)",
 		"WhatsApp",
-		"LinkedIn",
+		// "LinkedIn", // LinkedIn OAuth is now supported
 		"Reddit",
 		"Github",
 	];
