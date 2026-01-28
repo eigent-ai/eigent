@@ -15,6 +15,8 @@
 import json
 import os
 import logging
+import time
+from typing import Optional
 
 from camel.toolkits import LinkedInToolkit as BaseLinkedInToolkit
 from camel.toolkits.function_tool import FunctionTool
@@ -24,6 +26,11 @@ from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 logger = logging.getLogger("linkedin_toolkit")
+
+# LinkedIn access tokens expire after 60 days (in seconds)
+LINKEDIN_TOKEN_LIFETIME_SECONDS = 60 * 24 * 60 * 60
+# Refresh token when less than 7 days remaining
+LINKEDIN_TOKEN_REFRESH_THRESHOLD_SECONDS = 7 * 24 * 60 * 60
 
 
 @auto_listen_toolkit(BaseLinkedInToolkit)
@@ -115,6 +122,17 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         """
         token_path = cls._build_canonical_token_path()
         try:
+            # Add timestamp for expiration tracking if not present
+            if "saved_at" not in token_data:
+                token_data["saved_at"] = int(time.time())
+
+            # Calculate expiration time if expires_in is provided
+            if "expires_in" in token_data and "expires_at" not in token_data:
+                token_data["expires_at"] = token_data["saved_at"] + token_data["expires_in"]
+            elif "expires_at" not in token_data:
+                # Default to 60 days if no expiration info provided
+                token_data["expires_at"] = token_data["saved_at"] + LINKEDIN_TOKEN_LIFETIME_SECONDS
+
             os.makedirs(os.path.dirname(token_path), exist_ok=True)
             with open(token_path, "w") as f:
                 json.dump(token_data, f, indent=2)
@@ -184,6 +202,59 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
 
         # Check environment variable
         return bool(env("LINKEDIN_ACCESS_TOKEN"))
+
+    @classmethod
+    def get_token_info(cls) -> Optional[dict]:
+        r"""Get stored token information including expiration.
+
+        Returns:
+            Token data dictionary or None if not available
+        """
+        token_path = cls._build_canonical_token_path()
+        if os.path.exists(token_path):
+            try:
+                with open(token_path, "r") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return None
+
+    @classmethod
+    def is_token_expiring_soon(cls) -> bool:
+        r"""Check if token is expiring within the refresh threshold.
+
+        Returns:
+            True if token is expiring soon or already expired, False otherwise
+        """
+        token_info = cls.get_token_info()
+        if not token_info:
+            return True
+
+        expires_at = token_info.get("expires_at")
+        if not expires_at:
+            return False  # No expiration info, assume valid
+
+        current_time = int(time.time())
+        time_remaining = expires_at - current_time
+
+        return time_remaining < LINKEDIN_TOKEN_REFRESH_THRESHOLD_SECONDS
+
+    @classmethod
+    def is_token_expired(cls) -> bool:
+        r"""Check if token has expired.
+
+        Returns:
+            True if token is expired, False otherwise
+        """
+        token_info = cls.get_token_info()
+        if not token_info:
+            return True
+
+        expires_at = token_info.get("expires_at")
+        if not expires_at:
+            return False  # No expiration info, assume valid
+
+        return int(time.time()) >= expires_at
 
     def get_profile_safe(self) -> dict:
         r"""Get LinkedIn profile with error handling.
