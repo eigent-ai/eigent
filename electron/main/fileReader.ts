@@ -537,8 +537,9 @@ export class FileReader {
 		'terminal_logs'
 	];
 
-	private getFilesRecursive(dirPath: string, basePath: string): FileInfo[] {
+	private getFilesRecursive(dirPath: string, basePath: string, baseReal?: string): FileInfo[] {
 		try {
+			const resolvedBase = baseReal ?? fs.realpathSync(basePath);
 			const files = fs.readdirSync(dirPath);
 			const result: FileInfo[] = [];
 
@@ -548,7 +549,13 @@ export class FileReader {
 				if (this.hiddenFolders.includes(file)) continue;
 
 				const filePath = path.join(dirPath, file);
-				const stats = fs.statSync(filePath);
+				const stats = fs.lstatSync(filePath);
+				if (stats.isSymbolicLink()) continue;
+				const realPath = fs.realpathSync(filePath);
+				const relativeToBase = path.relative(resolvedBase, realPath);
+				if (relativeToBase.startsWith('..') || path.isAbsolute(relativeToBase)) {
+					continue;
+				}
 				const isFolder = stats.isDirectory();
 				const relativePath = path.relative(basePath, dirPath);
 
@@ -563,7 +570,7 @@ export class FileReader {
 				result.push(fileInfo);
 
 				if (isFolder) {
-					const subFiles = this.getFilesRecursive(filePath, basePath);
+					const subFiles = this.getFilesRecursive(filePath, basePath, resolvedBase);
 					result.push(...subFiles);
 				}
 			}
@@ -906,4 +913,3 @@ export class FileReader {
 		}
 	}
 }
-
