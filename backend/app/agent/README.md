@@ -79,13 +79,13 @@ graph TB
 
 ### Factory Files
 
-| File | Agent Type | Async | Key Toolkits |
-|------|------------|-------|--------------|
-| `browser.py` | Senior Research Analyst | No | HybridBrowserToolkit, SearchToolkit, TerminalToolkit |
-| `developer.py` | Lead Software Engineer | Yes | TerminalToolkit, WebDeployToolkit, ScreenshotToolkit |
-| `document.py` | Documentation Specialist | Yes | FileToolkit, PPTXToolkit, ExcelToolkit, GoogleDriveToolkit |
-| `multi_modal.py` | Creative Content Specialist | No | VideoDownloadToolkit, ImageAnalysisToolkit, AudioAnalysisToolkit |
-| `mcp.py` | MCP Server Agent | Yes | McpSearchToolkit, dynamic MCP tools |
-| `question_confirm.py` | Question Confirmation | No | Minimal (wrapper only) |
-| `social_medium.py` | Social Media Manager | Yes | WhatsAppToolkit, TwitterToolkit, LinkedInToolkit, etc. |
-| `task_summary.py` | Task Summarizer | No | Minimal (wrapper only) |
+| File | Agent Type |
+|------|------------|
+| `browser.py` | Senior Research Analyst |
+| `developer.py` | Lead Software Engineer |
+| `document.py` | Documentation Specialist |
+| `multi_modal.py` | Creative Content Specialist |
+| `mcp.py` | MCP Server Agent |
+| `question_confirm.py` | Question Confirmation |
+| `social_medium.py` | Social Media Manager |
+| `task_summary.py` | Task Summarizer |
