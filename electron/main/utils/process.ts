@@ -168,6 +168,7 @@ function fixPyvenvCfgPlaceholder(pyvenvCfgPath: string): boolean {
       }
 
       // Replace placeholder with actual path
+      // On Windows, path.join returns paths with backslashes, which matches our placeholder format
       content = content.replace(/\{\{PREBUILT_PYTHON_DIR\}\}/g, prebuiltPythonDir);
       fs.writeFileSync(pyvenvCfgPath, content);
       log.info(`[VENV] Fixed pyvenv.cfg placeholder with: ${prebuiltPythonDir}`);

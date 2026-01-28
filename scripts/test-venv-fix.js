@@ -51,13 +51,13 @@ function testVenvFix() {
       console.log(`  ✅ PASS: Using placeholder correctly`);
       console.log(`     Home: ${homePath}`);
 
-      // Verify placeholder format
-      const expectedPattern = /^\{\{PREBUILT_PYTHON_DIR\}\}\/cpython-[\w\.\-]+\/(bin|Scripts)$/;
+      // Verify placeholder format (accept both / and \ for cross-platform)
+      const expectedPattern = /^\{\{PREBUILT_PYTHON_DIR\}\}[\/\\]cpython-[\w\.\-]+[\/\\](bin|Scripts)$/;
       if (expectedPattern.test(homePath)) {
         console.log(`  ✅ PASS: Placeholder format is correct`);
       } else {
         console.log(`  ⚠️  WARNING: Placeholder format might be incorrect`);
-        console.log(`     Expected: {{PREBUILT_PYTHON_DIR}}/cpython-X.Y.Z-platform/bin`);
+        console.log(`     Expected: {{PREBUILT_PYTHON_DIR}}/cpython-X.Y.Z-platform/bin (or \\ on Windows)`);
         console.log(`     Got: ${homePath}`);
       }
     } else {

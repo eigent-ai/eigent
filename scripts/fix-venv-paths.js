@@ -77,7 +77,9 @@ function fixPyvenvCfg(venvPath, venvName) {
 
     // Replace with placeholder that will be substituted at runtime
     // {{PREBUILT_PYTHON_DIR}} will be replaced with the actual path on user's machine
-    const newHome = `{{PREBUILT_PYTHON_DIR}}/${cpythonDir}/${binDir}`;
+    // Use appropriate path separator for the platform
+    const pathSep = isWindowsPath ? '\\' : '/';
+    const newHome = `{{PREBUILT_PYTHON_DIR}}${pathSep}${cpythonDir}${pathSep}${binDir}`;
     content = content.replace(/^home\s*=\s*.+$/m, `home = ${newHome}`);
 
     // Only write if content changed
