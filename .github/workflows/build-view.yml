@@ -17,6 +17,9 @@ jobs:
           - os: macos-latest
             arch: arm64
             artifact_name: macos-arm64
+          - os: macos-latest
+            arch: x64
+            artifact_name: macos-intel
           - os: windows-latest
             arch: x64
             artifact_name: windows-latest
@@ -186,13 +189,19 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
+          mkdir -p release/mac-arm64 release/mac-intel release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
           name: release-macos-arm64-arm64
           path: temp-mac-arm64
+
+      - name: Download mac-intel artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: release-macos-intel-x64
+          path: temp-mac-intel
 
       - name: Download win-x64 artifact
         uses: actions/download-artifact@v7
@@ -215,6 +224,13 @@ jobs:
             find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
           else
             find temp-mac-arm64 -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
+          fi
+
+          # mac-intel - only move dmg files
+          if [ -d "temp-mac-intel/release" ]; then
+            find temp-mac-intel/release -name "*.dmg" -exec mv {} release/mac-intel/ \; || true
+          else
+            find temp-mac-intel -name "*.dmg" -exec mv {} release/mac-intel/ \; || true
           fi
 
           # win-x64 - only move exe files
