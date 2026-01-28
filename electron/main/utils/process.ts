@@ -152,6 +152,46 @@ export function getCachePath(folder: string): string {
 }
 
 /**
+ * Fix pyvenv.cfg by replacing placeholder with actual Python path
+ * This makes prebuilt venvs portable across different machines
+ */
+function fixPyvenvCfgPlaceholder(pyvenvCfgPath: string): boolean {
+  try {
+    let content = fs.readFileSync(pyvenvCfgPath, 'utf-8');
+
+    // Check if the file contains placeholder that needs to be replaced
+    if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+      const prebuiltPythonDir = getPrebuiltPythonDir();
+      if (!prebuiltPythonDir) {
+        log.warn('[VENV] Cannot fix pyvenv.cfg: prebuilt Python directory not found');
+        return false;
+      }
+
+      // Replace placeholder with actual path
+      content = content.replace(/\{\{PREBUILT_PYTHON_DIR\}\}/g, prebuiltPythonDir);
+      fs.writeFileSync(pyvenvCfgPath, content);
+      log.info(`[VENV] Fixed pyvenv.cfg placeholder with: ${prebuiltPythonDir}`);
+      return true;
+    }
+
+    // No placeholder found, check if path is valid
+    const homeMatch = content.match(/^home\s*=\s*(.+)$/m);
+    if (homeMatch) {
+      const homePath = homeMatch[1].trim();
+      if (!fs.existsSync(homePath)) {
+        log.warn(`[VENV] pyvenv.cfg home path does not exist: ${homePath}`);
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    log.warn(`[VENV] Failed to fix pyvenv.cfg: ${error}`);
+    return false;
+  }
+}
+
+/**
  * Get path to prebuilt venv (if available in packaged app)
  */
 export function getPrebuiltVenvPath(): string | null {
@@ -161,8 +201,11 @@ export function getPrebuiltVenvPath(): string | null {
 
   const prebuiltVenvPath = path.join(process.resourcesPath, 'prebuilt', 'venv');
   if (fs.existsSync(prebuiltVenvPath)) {
-    const pyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
-    if (fs.existsSync(pyvenvCfg)) {
+    const pyvenvCfgPath = path.join(prebuiltVenvPath, 'pyvenv.cfg');
+    if (fs.existsSync(pyvenvCfgPath)) {
+      // Fix placeholder in pyvenv.cfg if needed
+      fixPyvenvCfgPlaceholder(pyvenvCfgPath);
+
       // Verify Python executable exists (Windows: Scripts/python.exe, Unix: bin/python)
       const isWindows = process.platform === 'win32';
       const pythonExePath = isWindows
@@ -243,9 +286,12 @@ export function getPrebuiltTerminalVenvPath(): string | null {
 
   const prebuiltTerminalVenvPath = path.join(process.resourcesPath, 'prebuilt', 'terminal_venv');
   if (fs.existsSync(prebuiltTerminalVenvPath)) {
-    const pyvenvCfg = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
+    const pyvenvCfgPath = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
     const installedMarker = path.join(prebuiltTerminalVenvPath, '.packages_installed');
-    if (fs.existsSync(pyvenvCfg) && fs.existsSync(installedMarker)) {
+    if (fs.existsSync(pyvenvCfgPath) && fs.existsSync(installedMarker)) {
+      // Fix placeholder in pyvenv.cfg if needed
+      fixPyvenvCfgPlaceholder(pyvenvCfgPath);
+
       const isWindows = process.platform === 'win32';
       const pythonExePath = isWindows
         ? path.join(prebuiltTerminalVenvPath, 'Scripts', 'python.exe')
