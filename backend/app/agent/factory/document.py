@@ -1,0 +1,110 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+import platform
+
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
+
+from app.agent.agent_model import agent_model
+from app.agent.listen_chat_agent import logger
+from app.agent.prompt import DOCUMENT_SYS_PROMPT
+from app.agent.utils import NOW_STR
+from app.model.chat import Chat
+from app.service.task import Agents
+from app.utils.file_utils import get_working_directory
+from app.utils.toolkit.file_write_toolkit import FileToolkit
+from app.utils.toolkit.pptx_toolkit import PPTXToolkit
+from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
+from app.utils.toolkit.excel_toolkit import ExcelToolkit
+from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
+from app.utils.toolkit.human_toolkit import HumanToolkit
+from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
+
+
+async def document_agent(options: Chat):
+    working_directory = get_working_directory(options)
+    logger.info(
+        f"Creating document agent for project: {options.project_id} "
+        f"in directory: {working_directory}"
+    )
+
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(options.project_id,
+                                     Agents.task_agent).send_message_to_user)
+    file_write_toolkit = FileToolkit(options.project_id,
+                                     working_directory=working_directory)
+    pptx_toolkit = PPTXToolkit(options.project_id,
+                               working_directory=working_directory)
+    pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
+    mark_it_down_toolkit = MarkItDownToolkit(options.project_id)
+    mark_it_down_toolkit = message_integration.register_toolkits(
+        mark_it_down_toolkit)
+    excel_toolkit = ExcelToolkit(options.project_id,
+                                 working_directory=working_directory)
+    excel_toolkit = message_integration.register_toolkits(excel_toolkit)
+    note_toolkit = NoteTakingToolkit(options.project_id,
+                                     Agents.document_agent,
+                                     working_directory=working_directory)
+    note_toolkit = message_integration.register_toolkits(note_toolkit)
+
+    terminal_toolkit = TerminalToolkit(
+        options.project_id,
+        Agents.document_agent,
+        working_directory=working_directory,
+        safe_mode=True,
+        clone_current_env=True,
+    )
+    terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+
+    google_drive_tools = await GoogleDriveMCPToolkit.get_can_use_tools(
+        options.project_id, options.get_bun_env())
+
+    tools = [
+        *file_write_toolkit.get_tools(),
+        *pptx_toolkit.get_tools(),
+        *HumanToolkit.get_can_use_tools(options.project_id,
+                                        Agents.document_agent),
+        *mark_it_down_toolkit.get_tools(),
+        *excel_toolkit.get_tools(),
+        *note_toolkit.get_tools(),
+        *terminal_toolkit.get_tools(),
+        *google_drive_tools,
+    ]
+    system_message = DOCUMENT_SYS_PROMPT.format(
+        platform_system=platform.system(),
+        platform_machine=platform.machine(),
+        working_directory=working_directory,
+        now_str=NOW_STR,
+    )
+
+    return agent_model(
+        Agents.document_agent,
+        BaseMessage.make_assistant_message(
+            role_name="Document Agent",
+            content=system_message,
+        ),
+        options,
+        tools,
+        tool_names=[
+            FileToolkit.toolkit_name(),
+            PPTXToolkit.toolkit_name(),
+            HumanToolkit.toolkit_name(),
+            MarkItDownToolkit.toolkit_name(),
+            ExcelToolkit.toolkit_name(),
+            NoteTakingToolkit.toolkit_name(),
+            TerminalToolkit.toolkit_name(),
+            GoogleDriveMCPToolkit.toolkit_name(),
+        ],
+    )

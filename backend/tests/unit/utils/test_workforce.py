@@ -22,7 +22,7 @@ from camel.tasks.task import TaskState
 from camel.agents import ChatAgent
 
 from app.utils.workforce import Workforce
-from app.utils.agent import ListenChatAgent
+from app.agent.listen_chat_agent import ListenChatAgent
 from app.service.task import ActionAssignTaskData, ActionTaskStateData, ActionEndData
 from app.exception.exception import UserException
 

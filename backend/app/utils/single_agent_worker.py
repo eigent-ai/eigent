@@ -18,7 +18,7 @@ from camel.societies.workforce.single_agent_worker import SingleAgentWorker as B
 from camel.tasks.task import Task, TaskState, is_task_result_insufficient
 import logging
 
-from app.utils.agent import ListenChatAgent
+from app.agent.listen_chat_agent import ListenChatAgent
 from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
 from colorama import Fore
 from camel.societies.workforce.utils import TaskResult
