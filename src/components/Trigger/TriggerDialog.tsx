@@ -140,6 +140,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 // Set selectedApp based on trigger type for app-based triggers
                 if (selectedTrigger.trigger_type === TriggerType.Slack) {
                     setSelectedApp("slack");
+                } else if (selectedTrigger.trigger_type === TriggerType.Webhook) {
+                    setSelectedApp("webhook");
                 } else {
                     setSelectedApp("");
                 }
@@ -337,11 +339,25 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 {/* Trigger Type */}
                 <div className="space-y-3">
                     <Label className="font-bold text-sm">{t("triggers.trigger-type")}</Label>
-                    <Tabs value={formData.trigger_type} onValueChange={(value) => setFormData({ ...formData, trigger_type: value as TriggerType })} className="w-full bg-surface-disabled rounded-2xl">
+                    <Tabs 
+                        value={formData.trigger_type === TriggerType.Schedule ? TriggerType.Schedule : "app"} 
+                        onValueChange={(value) => {
+                            if (value === TriggerType.Schedule) {
+                                setFormData({ ...formData, trigger_type: TriggerType.Schedule });
+                                setSelectedApp("");
+                            } else {
+                                // Switch to app tab - set a non-schedule type temporarily
+                                // The actual type will be set when user selects an app
+                                if (formData.trigger_type === TriggerType.Schedule) {
+                                    setFormData({ ...formData, trigger_type: TriggerType.Webhook });
+                                }
+                            }
+                        }} 
+                        className="w-full bg-surface-disabled rounded-2xl"
+                    >
                         <TabsList variant="outline" className="w-full px-4 border-solid border-border-secondary border-b-[0.5px] border-x-0 border-t-0 rounded-t-2xl">
                             <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4" />{t("triggers.schedule-trigger")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Webhook} className="flex-1" disabled={!!selectedTrigger}><WebhookIcon className="w-4 h-4" />{t("triggers.webhook-trigger")}</TabsTrigger>
-                            <TabsTrigger value={TriggerType.Slack} className="flex-1" disabled={!!selectedTrigger}><CableIcon className="w-4 h-4" />{t("triggers.app-trigger")}</TabsTrigger>
+                            <TabsTrigger value="app" className="flex-1" disabled={!!selectedTrigger}><CableIcon className="w-4 h-4" />{t("triggers.app-trigger")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value={TriggerType.Schedule} className="py-4 px-6">
                             <SchedulePicker
@@ -351,66 +367,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 showErrors={showScheduleErrors}
                             />
                         </TabsContent>
-                        <TabsContent value={TriggerType.Webhook} className="py-4 px-6">
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
-                                    <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
-                                        <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={RequestType.GET}>GET</SelectItem>
-                                            <SelectItem value={RequestType.POST}>POST</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {
-                                    !selectedTrigger || !formData.webhook_url ? (
-                                        <div className="text-sm text-text-label bg-surface-primary p-3 rounded-lg">
-                                            {t("triggers.webhook-url-after-creation")}
-                                        </div>) : (
-                                        <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
-                                            <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
-                                                {needsAuth && (
-                                                    <TooltipSimple content={t("triggers.verification-required")}>
-                                                        <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                                                    </TooltipSimple>
-                                                )}
-                                                {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
-                                            </div>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={handleCopyWebhookUrl}
-                                            >
-                                                <Copy />
-                                                {t("triggers.copy")}
-                                            </Button>
-                                        </div>)
-                                }
-                                <div className="space-y-2">
-                                    <Accordion type="single" collapsible className="w-full">
-                                        <AccordionItem value="extra-settings" className="border-none">
-                                            <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
-                                                <span className="font-bold text-sm text-text-heading">{t("triggers.extra-settings")}</span>
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                                <div className="flex flex-col gap-4 pt-2 bg-surface-tertiary rounded-xl p-4">
-                                                    <DynamicTriggerConfig
-                                                        triggerType={TriggerType.Webhook}
-                                                        value={triggerConfig}
-                                                        onChange={setTriggerConfig}
-                                                        disabled={isLoading}
-                                                        showSectionTitles={false}
-                                                    />
-                                                </div>
-                                            </AccordionContent>
-                                        </AccordionItem>
-                                    </Accordion>
-                                </div>
-                            </div>
-                        </TabsContent>
-                        {/* TODO: Select Slack Trigger only on App Select rather than section */}
-                        <TabsContent value={TriggerType.Slack} className="py-4 px-6">
+                        <TabsContent value="app" className="py-4 px-6">
                             {!selectedApp ? (
                                 <div className="space-y-4">
                                     <Label className="font-bold text-sm">{t("triggers.select-app")}</Label>
@@ -424,6 +381,16 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                         >
                                             <img src={slackIcon} alt="Slack" className="w-8 h-8" />
                                             <span className="font-semibold text-body-md text-text-heading">Slack</span>
+                                        </Card>
+                                        <Card
+                                            className="h-24 flex flex-col items-center justify-center gap-2 cursor-pointer border-border-tertiary bg-surface-primary hover:border-border-secondary transition-colors relative"
+                                            onClick={() => {
+                                                setSelectedApp("webhook");
+                                                setFormData({ ...formData, trigger_type: TriggerType.Webhook });
+                                            }}
+                                        >
+                                            <WebhookIcon className="w-5 h-5" />
+                                            <span className="font-semibold text-body-md text-text-heading">Webhook</span>
                                         </Card>
                                         <Card
                                             className="h-24 flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed border-border-tertiary bg-surface-primary hover:border-border-secondary transition-colors relative"
@@ -445,7 +412,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center gap-2">
-                                            <Slack className="w-5 h-5" />
+                                            {selectedApp === "slack" && <Slack className="w-5 h-5" />}
+                                            {selectedApp === "webhook" && <WebhookIcon className="w-5 h-5" />}
                                             <Label className="font-bold text-sm">{selectedApp.charAt(0).toUpperCase() + selectedApp.slice(1)} Configuration</Label>
                                         </div>
                                         {
@@ -495,6 +463,62 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                                 setConfigValidationErrors(errors);
                                             }}
                                         />
+                                    )}
+                                    {selectedApp === "webhook" && (
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label className="font-bold text-sm">{t("triggers.webhook-method")}</Label>
+                                                <Select value={formData.webhook_method || RequestType.POST} onValueChange={(value: RequestType) => setFormData({ ...formData, webhook_method: value })}>
+                                                    <SelectTrigger><SelectValue placeholder={t("triggers.select-method")} /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value={RequestType.GET}>GET</SelectItem>
+                                                        <SelectItem value={RequestType.POST}>POST</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            {
+                                                !selectedTrigger || !formData.webhook_url ? (
+                                                    <div className="text-sm text-text-label bg-surface-primary p-3 rounded-lg">
+                                                        {t("triggers.webhook-url-after-creation")}
+                                                    </div>) : (
+                                                    <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
+                                                        <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
+                                                            {needsAuth && (
+                                                                <TooltipSimple content={t("triggers.verification-required")}>
+                                                                    <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                                                                </TooltipSimple>
+                                                            )}
+                                                            {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
+                                                        </div>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={handleCopyWebhookUrl}
+                                                        >
+                                                            <Copy />
+                                                            {t("triggers.copy")}
+                                                        </Button>
+                                                    </div>)
+                                            }
+                                            <Accordion type="single" collapsible className="w-full">
+                                                <AccordionItem value="extra-settings" className="border-none">
+                                                    <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
+                                                        <span className="font-bold text-sm text-text-heading">{t("triggers.extra-settings")}</span>
+                                                    </AccordionTrigger>
+                                                    <AccordionContent>
+                                                        <div className="flex flex-col gap-4 pt-2 bg-surface-tertiary rounded-xl p-4">
+                                                            <DynamicTriggerConfig
+                                                                triggerType={TriggerType.Webhook}
+                                                                value={triggerConfig}
+                                                                onChange={setTriggerConfig}
+                                                                disabled={isLoading}
+                                                                showSectionTitles={false}
+                                                            />
+                                                        </div>
+                                                    </AccordionContent>
+                                                </AccordionItem>
+                                            </Accordion>
+                                        </div>
                                     )}
                                 </div>
                             )}
