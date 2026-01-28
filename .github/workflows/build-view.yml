@@ -17,7 +17,7 @@ jobs:
           - os: macos-latest
             arch: arm64
             artifact_name: macos-arm64
-          - os: macos-latest
+          - os: macos-15-intel
             arch: x64
             artifact_name: macos-intel
           - os: windows-latest
