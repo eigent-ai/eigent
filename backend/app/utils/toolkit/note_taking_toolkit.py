@@ -29,6 +29,7 @@ class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
         working_directory: str | None = None,
         timeout: float | None = None,
     ) -> None:
+        # TODO: Remove default value None since working_directory is required
         # Now the working_directory now is required to be specified
         # as the notes are stored in task specific directory
         if working_directory is None:
