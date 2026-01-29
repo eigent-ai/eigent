@@ -19,6 +19,10 @@ import platform
 from pathlib import Path
 from typing import Any
 
+from fastapi import Request
+from camel.toolkits import ToolkitMessageIntegration
+from inflection import titleize
+
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (Action, ActionDecomposeProgressData,
                               ActionDecomposeTextData, ActionImproveData,
