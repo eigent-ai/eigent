@@ -60,7 +60,6 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
-from utils import traceroot_wrapper as traceroot
 
 router = APIRouter()
 

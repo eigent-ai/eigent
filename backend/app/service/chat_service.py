@@ -14,28 +14,29 @@
 
 import asyncio
 import datetime
-import os
-import platform
+import json
 from pathlib import Path
-from typing import Any
+import platform
+from typing import Any, Literal
 
 from fastapi import Request
-from camel.toolkits import ToolkitMessageIntegration
 from inflection import titleize
+from pydash import chain
 
-from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
-from app.service.task import (Action, ActionDecomposeProgressData,
-                              ActionDecomposeTextData, ActionImproveData,
-                              ActionInstallMcpData, ActionNewAgent, Agents,
-                              TaskLock, delete_task_lock, set_current_task_id,
-                              validate_model_before_task)
-from app.utils.agent import (ListenChatAgent, agent_model, browser_agent,
-                             developer_agent, document_agent, get_mcp_tools,
-                             get_toolkits, mcp_agent, multi_modal_agent,
-                             question_confirm_agent, set_main_event_loop,
-                             task_summary_agent)
 from app.utils.file_utils import get_working_directory
-from app.utils.server.sync_step import sync_step
+from app.service.task import (
+    ActionImproveData,
+    ActionInstallMcpData,
+    ActionNewAgent,
+    ActionTimeoutData,
+    TaskLock,
+    delete_task_lock,
+    set_current_task_id,
+    ActionDecomposeProgressData,
+    ActionDecomposeTextData,
+    validate_model_before_task,
+)
+from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
