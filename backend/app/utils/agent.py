@@ -115,6 +115,7 @@ from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.toolkit.github_toolkit import GithubToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
+from app.utils.toolkit.rag_toolkit import RAGToolkit
 from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.utils.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
@@ -1780,6 +1781,18 @@ async def mcp_agent(options: Chat):
     )
 
 
+def get_task_collection_name(api_task_id: str) -> str:
+    """Generate a task-specific collection name for RAG isolation.
+
+    Args:
+        api_task_id: The task ID to create a collection name for.
+
+    Returns:
+        A collection name in the format 'task_{api_task_id}'.
+    """
+    return f"task_{api_task_id}"
+
+
 async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
     logger.info(f"Getting toolkits for agent: {agent_name}, task: {api_task_id}, tools: {tools}")
     toolkits = {
@@ -1797,6 +1810,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "mcp_search_toolkit": McpSearchToolkit,
         "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
+        "rag_toolkit": RAGToolkit,
         "reddit_toolkit": RedditToolkit,
         "search_toolkit": SearchToolkit,
         "slack_toolkit": SlackToolkit,
@@ -1811,7 +1825,17 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         if item in toolkits:
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
-            toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+
+            # Handle RAGToolkit with task-specific isolation
+            # Task isolation via collection_name; shared storage path for efficiency
+            if item == "rag_toolkit":
+                toolkit_tools = toolkit.get_can_use_tools(
+                    api_task_id=api_task_id,
+                    collection_name=get_task_collection_name(api_task_id),
+                )
+            else:
+                toolkit_tools = toolkit.get_can_use_tools(api_task_id)
+
             toolkit_tools = await toolkit_tools if asyncio.iscoroutine(toolkit_tools) else toolkit_tools
             res.extend(toolkit_tools)
         else:
