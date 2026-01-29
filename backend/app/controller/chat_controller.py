@@ -13,39 +13,14 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import logging
 import os
 import re
 import time
 from pathlib import Path
-from dotenv import load_dotenv
-from fastapi import APIRouter, Request, Response
-from fastapi.responses import StreamingResponse
-import logging
-from app.component import code
-from app.exception.exception import UserException
-from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat, AddTaskRequest, sse_json
-from app.service.chat_service import step_solve
-from app.service.task import (
-    Action,
-    ActionImproveData,
-    ActionInstallMcpData,
-    ActionStopData,
-    ActionSupplementData,
-    ActionAddTaskData,
-    ActionRemoveTaskData,
-    ActionSkipTaskData,
-    get_or_create_task_lock,
-    get_task_lock,
-    set_current_task_id,
-    delete_task_lock,
-    task_locks,
-)
-from app.component.environment import set_user_env_path, sanitize_env_path
-from app.utils.workforce import Workforce
-from camel.tasks.task import Task
 
 from app.component import code
-from app.component.environment import set_user_env_path
+from app.component.environment import sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
 from app.model.chat import (AddTaskRequest, Chat, HumanReply, McpServers,
                             Status, SupplementChat, sse_json)
@@ -59,7 +34,6 @@ from app.service.task import (Action, ActionAddTaskData, ActionImproveData,
 from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
-
 
 router = APIRouter()
 

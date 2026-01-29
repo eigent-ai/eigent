@@ -8,6 +8,9 @@ name: Test
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   pytest:
     name: Run Python Tests
