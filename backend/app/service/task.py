@@ -1,21 +1,31 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from typing_extensions import Any, Literal, TypedDict
+from typing import List, Dict, Optional
+from pydantic import BaseModel
+from app.exception.exception import ProgramException
+from app.model.chat import AgentModelConfig, McpServers, Status, SupplementChat, Chat, UpdateData
 import asyncio
 import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import Dict, List, Optional
+import weakref
+import logging
 
-from app.component.model_validation import create_agent
-from app.exception.exception import ProgramException
-from app.model.chat import Chat, McpServers, Status, SupplementChat, UpdateData
-from camel.tasks import Task
-from pydantic import BaseModel
-from typing_extensions import Any, Literal, TypedDict
-
-from utils import traceroot_wrapper as traceroot
-
-logger = traceroot.get_logger("task_service")
+logger = logging.getLogger("task_service")
 
 
 class Action(str, Enum):
@@ -206,6 +216,7 @@ class ActionNewAgent(BaseModel):
     description: str
     tools: list[str]
     mcp_tools: McpServers | None
+    custom_model_config: "AgentModelConfig | None" = None
 
 
 class ActionBudgetNotEnough(BaseModel):

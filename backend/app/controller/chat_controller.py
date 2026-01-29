@@ -1,8 +1,48 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import asyncio
 import os
 import re
 import time
 from pathlib import Path
+from dotenv import load_dotenv
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import StreamingResponse
+import logging
+from app.component import code
+from app.exception.exception import UserException
+from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat, AddTaskRequest, sse_json
+from app.service.chat_service import step_solve
+from app.service.task import (
+    Action,
+    ActionImproveData,
+    ActionInstallMcpData,
+    ActionStopData,
+    ActionSupplementData,
+    ActionAddTaskData,
+    ActionRemoveTaskData,
+    ActionSkipTaskData,
+    get_or_create_task_lock,
+    get_task_lock,
+    set_current_task_id,
+    delete_task_lock,
+    task_locks,
+)
+from app.component.environment import set_user_env_path, sanitize_env_path
+from app.utils.workforce import Workforce
+from camel.tasks.task import Task
 
 from app.component import code
 from app.component.environment import set_user_env_path
@@ -24,8 +64,8 @@ from utils import traceroot_wrapper as traceroot
 
 router = APIRouter()
 
-# Create traceroot logger for chat controller
-chat_logger = traceroot.get_logger("chat_controller")
+# Logger for chat controller
+chat_logger = logging.getLogger("chat_controller")
 
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
@@ -120,7 +160,6 @@ async def timeout_stream_wrapper(stream_generator,
 
 
 @router.post("/chat", name="start chat")
-@traceroot.trace()
 async def post(data: Chat, request: Request):
     chat_logger.info("Starting new chat session",
                      extra={
@@ -133,7 +172,10 @@ async def post(data: Chat, request: Request):
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
-    load_dotenv(dotenv_path=data.env_path)
+    # Load environment with validated path
+    safe_env_path = sanitize_env_path(data.env_path)
+    if safe_env_path:
+        load_dotenv(dotenv_path=safe_env_path)
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
@@ -184,7 +226,6 @@ async def post(data: Chat, request: Request):
 
 
 @router.post("/chat/{id}", name="improve chat")
-@traceroot.trace()
 def improve(id: str, data: SupplementChat):
     chat_logger.info("Chat improvement requested",
                      extra={
@@ -261,7 +302,6 @@ def improve(id: str, data: SupplementChat):
 
 
 @router.put("/chat/{id}", name="supplement task")
-@traceroot.trace()
 def supplement(id: str, data: SupplementChat):
     chat_logger.info("Chat supplement requested", extra={"task_id": id})
     task_lock = get_task_lock(id)
@@ -273,7 +313,6 @@ def supplement(id: str, data: SupplementChat):
 
 
 @router.delete("/chat/{id}", name="stop chat")
-@traceroot.trace()
 def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
@@ -302,7 +341,6 @@ def stop(id: str):
 
 
 @router.post("/chat/{id}/human-reply")
-@traceroot.trace()
 def human_reply(id: str, data: HumanReply):
     chat_logger.info("Human reply received",
                      extra={
@@ -316,7 +354,6 @@ def human_reply(id: str, data: HumanReply):
 
 
 @router.post("/chat/{id}/install-mcp")
-@traceroot.trace()
 def install_mcp(id: str, data: McpServers):
     chat_logger.info("Installing MCP servers",
                      extra={
@@ -332,7 +369,6 @@ def install_mcp(id: str, data: McpServers):
 
 
 @router.post("/chat/{id}/add-task", name="add task to workforce")
-@traceroot.trace()
 def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(
@@ -359,7 +395,6 @@ def add_task(id: str, data: AddTaskRequest):
 
 @router.delete("/chat/{project_id}/remove-task/{task_id}",
                name="remove task from workforce")
-@traceroot.trace()
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
     chat_logger.info(
@@ -384,7 +419,6 @@ def remove_task(project_id: str, task_id: str):
 
 
 @router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
-@traceroot.trace()
 def skip_task(project_id: str):
     """
     Skip/Stop current task execution while preserving context.

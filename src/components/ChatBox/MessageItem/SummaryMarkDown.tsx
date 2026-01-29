@@ -1,5 +1,20 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const SummaryMarkDown = ({
 	content,
@@ -41,6 +56,23 @@ export const SummaryMarkDown = ({
 
 		return () => clearInterval(timer);
 	}, [content, speed, onTyping]);
+
+	// If content is a pure HTML document, render in a styled pre block
+	if (isHtmlDocument(content)) {
+		// Trim leading whitespace from each line for consistent alignment
+		const formattedHtml = displayedContent
+			.split('\n')
+			.map(line => line.trimStart())
+			.join('\n')
+			.trim();
+		return (
+			<div className="prose prose-sm max-w-none">
+				<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap mb-3">
+					<code>{formattedHtml}</code>
+				</pre>
+			</div>
+		);
+	}
 
 	return (
 		<div className="prose prose-sm max-w-none">
@@ -85,7 +117,7 @@ export const SummaryMarkDown = ({
 						</code>
 					),
 					pre: ({ children }) => (
-						<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs overflow-x-auto mb-3">
+						<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap mb-3">
 							{children}
 						</pre>
 					),

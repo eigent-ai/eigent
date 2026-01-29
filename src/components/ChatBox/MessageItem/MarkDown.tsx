@@ -1,6 +1,21 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useEffect, memo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const MarkDown = memo(
 	({
@@ -59,6 +74,23 @@ export const MarkDown = memo(
 			return () => clearInterval(timer);
 		}, [content, speed, enableTypewriter]);
 
+		// If content is a pure HTML document, render in a styled pre block
+		if (isHtmlDocument(content)) {
+			// Trim leading whitespace from each line for consistent alignment
+			const formattedHtml = displayedContent
+				.split('\n')
+				.map(line => line.trimStart())
+				.join('\n')
+				.trim();
+			return (
+				<div className="max-w-none markdown-container overflow-hidden">
+					<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style={{ wordBreak: 'break-all' }}>
+						<code>{formattedHtml}</code>
+					</pre>
+				</div>
+			);
+		}
+
 		return (
 			<div className="max-w-none markdown-container overflow-hidden">
 				<ReactMarkdown
@@ -106,8 +138,8 @@ export const MarkDown = memo(
 							</code>
 						),
 						pre: ({ children }) => (
-							<pre 
-								className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto whitespace-pre-wrap break-all"
+							<pre
+								className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all"
 								style={{ wordBreak: 'break-all' }}
 							>
 								{children}

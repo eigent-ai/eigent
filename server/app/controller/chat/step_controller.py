@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import asyncio
 import json
 from typing import List, Optional
@@ -9,15 +23,14 @@ from app.component.database import session
 from app.component.auth import Auth, auth_must
 from fastapi_babel import _
 from app.model.chat.chat_step import ChatStep, ChatStepOut, ChatStepIn
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_chat_step")
+logger = logging.getLogger("server_chat_step")
 
 router = APIRouter(prefix="/chat", tags=["Chat Step Management"])
 
 
 @router.get("/steps", name="list chat steps", response_model=List[ChatStepOut])
-@traceroot.trace()
 async def list_chat_steps(
     task_id: str, step: Optional[str] = None, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -35,7 +48,6 @@ async def list_chat_steps(
 
 
 @router.get("/steps/playback/{task_id}", name="Playback Chat Step via SSE")
-@traceroot.trace()
 async def share_playback(
     task_id: str, delay_time: float = 0, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -83,7 +95,6 @@ async def share_playback(
 
 
 @router.get("/steps/{step_id}", name="get chat step", response_model=ChatStepOut)
-@traceroot.trace()
 async def get_chat_step(step_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get specific chat step."""
     user_id = auth.user.id
@@ -98,7 +109,6 @@ async def get_chat_step(step_id: int, session: Session = Depends(session), auth:
 
 
 @router.post("/steps", name="create chat step")
-@traceroot.trace()
 async def create_chat_step(step: ChatStepIn, session: Session = Depends(session)):
     """Create new chat step. TODO: Implement request source validation."""
     try:
@@ -120,7 +130,6 @@ async def create_chat_step(step: ChatStepIn, session: Session = Depends(session)
 
 
 @router.put("/steps/{step_id}", name="update chat step", response_model=ChatStepOut)
-@traceroot.trace()
 async def update_chat_step(
     step_id: int, chat_step_update: ChatStep, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -148,7 +157,6 @@ async def update_chat_step(
 
 
 @router.delete("/steps/{step_id}", name="delete chat step")
-@traceroot.trace()
 async def delete_chat_step(step_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete chat step."""
     user_id = auth.user.id
