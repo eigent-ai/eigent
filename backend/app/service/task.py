@@ -12,21 +12,22 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from enum import Enum
-from typing_extensions import Any, Literal, TypedDict
-from typing import List, Dict, Optional
-from pydantic import BaseModel
-from app.exception.exception import ProgramException
-from app.model.chat import AgentModelConfig, McpServers, Status, SupplementChat, Chat, UpdateData
-from app.component.model_validation import create_agent
 import asyncio
+import logging
 import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
-import weakref
-import logging
+from enum import Enum
+from typing import Dict, List, Optional
+
+from app.component.model_validation import create_agent
+from app.exception.exception import ProgramException
+from app.model.chat import (AgentModelConfig, Chat, McpServers, Status,
+                            SupplementChat, UpdateData)
 from camel.tasks import Task
+from pydantic import BaseModel
+from typing_extensions import Any, Literal, TypedDict
 
 logger = logging.getLogger("task_service")
 

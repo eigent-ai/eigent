@@ -14,57 +14,37 @@
 
 import asyncio
 import datetime
-import json
-from pathlib import Path
+import logging
+import os
 import platform
-from typing import Any, Literal
+from pathlib import Path
+from typing import Any
 
-from fastapi import Request
-from inflection import titleize
-from pydash import chain
-
+from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.service.task import (Action, ActionDecomposeProgressData,
+                              ActionDecomposeTextData, ActionImproveData,
+                              ActionInstallMcpData, ActionNewAgent, Agents,
+                              TaskLock, delete_task_lock, set_current_task_id,
+                              validate_model_before_task)
+from app.utils.agent import (ListenChatAgent, agent_model, browser_agent,
+                             developer_agent, document_agent, get_mcp_tools,
+                             get_toolkits, mcp_agent, multi_modal_agent,
+                             question_confirm_agent, set_main_event_loop,
+                             task_summary_agent)
 from app.utils.file_utils import get_working_directory
-from app.service.task import (
-    ActionImproveData,
-    ActionInstallMcpData,
-    ActionNewAgent,
-    ActionTimeoutData,
-    TaskLock,
-    delete_task_lock,
-    set_current_task_id,
-    ActionDecomposeProgressData,
-    ActionDecomposeTextData,
-    validate_model_before_task,
-)
-from camel.toolkits import AgentCommunicationToolkit, ToolkitMessageIntegration
+from app.utils.server.sync_step import sync_step
+from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
-from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
-from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
-from camel.tasks import Task
-from app.utils.agent import (
-    ListenChatAgent,
-    agent_model,
-    get_mcp_tools,
-    get_toolkits,
-    mcp_agent,
-    developer_agent,
-    document_agent,
-    multi_modal_agent,
-    browser_agent,
-    social_medium_agent,
-    task_summary_agent,
-    question_confirm_agent,
-    set_main_event_loop,
-)
-from app.service.task import Action, Agents
-from app.utils.server.sync_step import sync_step
-from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
-import logging
-import os
+from camel.tasks import Task
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
+from fastapi import Request
+from inflection import titleize
+from pydash import chain
 
 logger = logging.getLogger("chat_service")
 
@@ -308,9 +288,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Validate model configuration before starting task
     is_valid, error_msg = await validate_model_before_task(options)
     if not is_valid:
-        yield sse_json("error", {
-            "message": f"Model validation failed: {error_msg}"
-        })
+        yield sse_json("error",
+                       {"message": f"Model validation failed: {error_msg}"})
         task_lock.status = Status.done
         return
 
@@ -721,7 +700,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 sub_tasks.extend(new_tasks)
                 # Save updated sub_tasks back to task_lock so Action.start uses the correct list
                 setattr(task_lock, "decompose_sub_tasks", sub_tasks)
-                summary_task_content_local = getattr(task_lock, "summary_task_content", summary_task_content)
+                summary_task_content_local = getattr(task_lock,
+                                                     "summary_task_content",
+                                                     summary_task_content)
                 yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
 
@@ -1474,19 +1455,13 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
     if depth > 5:
         return []
 
-    result = (
-        chain(sub_tasks)
-        .filter(lambda x: x.content != "")
-        .map(
-            lambda x: {
-                "id": x.id,
-                "content": x.content,
-                "state": x.state,
-                "subtasks": tree_sub_tasks(x.subtasks, depth + 1),
-            }
-        )
-        .value()
-    )
+    result = (chain(sub_tasks).filter(lambda x: x.content != "").map(
+        lambda x: {
+            "id": x.id,
+            "content": x.content,
+            "state": x.state,
+            "subtasks": tree_sub_tasks(x.subtasks, depth + 1),
+        }).value())
 
     return result
 
@@ -1509,7 +1484,8 @@ def update_sub_tasks(sub_tasks: list[Task],
     return sub_tasks
 
 
-def add_sub_tasks(camel_task: Task, update_tasks: list[TaskContent]) -> list[Task]:
+def add_sub_tasks(camel_task: Task,
+                  update_tasks: list[TaskContent]) -> list[Task]:
     """Add new tasks (with empty id) to camel_task and return the list of added tasks."""
     added_tasks = []
     for item in update_tasks:
@@ -1815,10 +1791,8 @@ The current date is {datetime.date.today()}. For any date-related tasks, you MUS
         model_platform_enum = None
 
     # Create workforce metrics callback for workforce analytics
-    workforce_metrics = WorkforceMetricsCallback(
-        project_id=options.project_id,
-        task_id=options.task_id
-    )
+    workforce_metrics = WorkforceMetricsCallback(project_id=options.project_id,
+                                                 task_id=options.task_id)
 
     workforce = Workforce(
         options.project_id,
