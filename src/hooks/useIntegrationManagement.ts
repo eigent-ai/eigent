@@ -19,6 +19,7 @@ import {
 	proxyFetchPut,
 	proxyFetchDelete,
 	fetchDelete,
+	fetchPost,
 } from "@/api/http";
 import { capitalizeFirstLetter } from "@/lib";
 import { useAuthStore } from "@/store/authStore";
@@ -197,11 +198,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 						);
 					}
 				} else if (provider === "linkedin") {
-					// LinkedIn OAuth: save token via backend endpoint and config
+					// LinkedIn OAuth: save token via local backend endpoint and config
 					if (tokenResult.access_token) {
 						try {
-							// Save token to backend toolkit
-							await proxyFetchPost("/api/linkedin/save-token", {
+							// Save token to local backend toolkit (token file is stored locally)
+							await fetchPost("/linkedin/save-token", {
 								access_token: tokenResult.access_token,
 								refresh_token: tokenResult.refresh_token,
 								expires_in: tokenResult.expires_in,
