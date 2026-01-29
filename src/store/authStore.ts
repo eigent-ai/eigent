@@ -23,9 +23,9 @@ type CloudModelType = 'gemini-3-pro-preview' | 'gemini-3-flash-preview' | 'gpt-4
 // auth info interface
 interface AuthInfo {
 	token: string;
-	username: string;
+	username?: string | null;
 	email: string;
-	user_id: number;
+	user_id?: number | null;
 }
 
 // auth state interface
@@ -98,7 +98,7 @@ const authStore = create<AuthState>()(
 
 			// auth related methods
 			setAuth: ({ token, username, email, user_id }) =>
-				set({ token, username, email, user_id }),
+				set({ token, email, username: username ?? null, user_id: user_id ?? null }),
 
 			logout: () =>
 				set({
