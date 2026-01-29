@@ -37,6 +37,7 @@ yarn.lock
 .env
 .env.local
 .env.production
+.env.development
 
 .cursor
 
