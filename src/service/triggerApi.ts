@@ -75,7 +75,8 @@ export const proxyFetchProjectTriggers = async (
   try {
     const params: Record<string, any> = {
       page,
-      size
+      size,
+      project_id
     };
     
     if (triggerType !== undefined) {
@@ -90,7 +91,7 @@ export const proxyFetchProjectTriggers = async (
       throw new Error("Project ID is required to fetch project triggers.");
     }
     
-    const res = await proxyFetchGet(`/api/trigger/project/${project_id}`, params);
+    const res = await proxyFetchGet(`/api/trigger/`, params);
     return res;
   } catch (error) {
     console.error("Failed to fetch triggers:", error);
