@@ -17,7 +17,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import './markdown-styles.css';
+import '@/style/markdown-styles.css';
 
 // Helper functions for path resolution
 function joinPath(...paths: string[]): string {
