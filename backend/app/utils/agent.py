@@ -14,6 +14,7 @@
 
 import asyncio
 import contextvars
+import copy
 import json
 import os
 import platform
@@ -143,6 +144,7 @@ from app.service.task import (
     ActionCreateAgentData,
     ActionDeactivateAgentData,
     ActionDeactivateToolkitData,
+    ActionStreamingAgentOutputData,
     Agents,
     get_task_lock,
 )
@@ -275,7 +277,22 @@ class ListenChatAgent(ChatAgent):
                             last_response = chunk
                             # Accumulate content from each chunk (delta mode)
                             if chunk.msg and chunk.msg.content:
-                                accumulated_content += chunk.msg.content
+                                delta_content = chunk.msg.content
+                                accumulated_content += delta_content
+                                # Stream output chunk to frontend (non-blocking)
+                                _schedule_async_task(
+                                    task_lock.put_queue(
+                                        ActionStreamingAgentOutputData(
+                                            data={
+                                                "agent_name": self.agent_name,
+                                                "process_task_id": self.process_task_id,
+                                                "agent_id": self.agent_id,
+                                                "content": delta_content,
+                                                "is_final": False,
+                                            },
+                                        )
+                                    )
+                                )
                             yield chunk
                     finally:
                         total_tokens = 0
@@ -283,6 +300,20 @@ class ListenChatAgent(ChatAgent):
                             usage_info = last_response.info.get("usage") or last_response.info.get("token_usage") or {}
                             if usage_info:
                                 total_tokens = usage_info.get("total_tokens", 0)
+                        # Send final streaming output marker
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionStreamingAgentOutputData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "content": "",
+                                        "is_final": True,
+                                    },
+                                )
+                            )
+                        )
                         asyncio.create_task(
                             task_lock.put_queue(
                                 ActionDeactivateAgentData(
@@ -353,7 +384,72 @@ class ListenChatAgent(ChatAgent):
         try:
             res = await super().astep(input_message, response_format)
             if isinstance(res, AsyncStreamingChatAgentResponse):
-                res = await res._get_final_response()
+                # Wrap the async streaming response to send chunks to frontend
+                async def _async_stream_with_deactivate():
+                    accumulated_content = ""
+                    last_chunk = None
+                    chunk_count = 0
+                    try:
+                        async for chunk in res:
+                            chunk_count += 1
+                            last_chunk = chunk
+                            if chunk.msg and chunk.msg.content:
+                                delta_content = chunk.msg.content
+                                accumulated_content += delta_content
+                                # Stream output chunk to frontend (non-blocking)
+                                _schedule_async_task(
+                                    task_lock.put_queue(
+                                        ActionStreamingAgentOutputData(
+                                            data={
+                                                "agent_name": self.agent_name,
+                                                "process_task_id": self.process_task_id,
+                                                "agent_id": self.agent_id,
+                                                "content": delta_content,
+                                                "is_final": False,
+                                            },
+                                        )
+                                    )
+                                )
+                            yield chunk
+                    finally:
+                        total_tokens = 0
+                        if last_chunk:
+                            usage_info = (
+                                last_chunk.info.get("usage")
+                                or last_chunk.info.get("token_usage")
+                                or {}
+                            )
+                            if usage_info:
+                                total_tokens = usage_info.get("total_tokens", 0)
+                        # Send final streaming output marker
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionStreamingAgentOutputData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "content": "",
+                                        "is_final": True,
+                                    },
+                                )
+                            )
+                        )
+                        asyncio.create_task(
+                            task_lock.put_queue(
+                                ActionDeactivateAgentData(
+                                    data={
+                                        "agent_name": self.agent_name,
+                                        "process_task_id": self.process_task_id,
+                                        "agent_id": self.agent_id,
+                                        "message": accumulated_content,
+                                        "tokens": total_tokens,
+                                    },
+                                )
+                            )
+                        )
+
+                return AsyncStreamingChatAgentResponse(_async_stream_with_deactivate())
         except ModelProcessingError as e:
             res = None
             error_info = e
@@ -372,26 +468,28 @@ class ListenChatAgent(ChatAgent):
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
-        if res is not None:
+        # For non-streaming responses, handle deactivation here
+        if res is not None and not isinstance(res, AsyncStreamingChatAgentResponse):
             message = res.msg.content if res.msg else ""
-            total_tokens = res.info["usage"]["total_tokens"]
-            logger.info(f"Agent {self.agent_name} completed step, tokens used: {total_tokens}")
+            usage_info = res.info.get("usage") or res.info.get("token_usage") or {}
+            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
+            traceroot_logger.info(
+                f"Agent {self.agent_name} completed step, tokens used: {total_tokens}"
+            )
 
-        assert message is not None
-
-        asyncio.create_task(
-            task_lock.put_queue(
-                ActionDeactivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": message,
-                        "tokens": total_tokens,
-                    },
+            asyncio.create_task(
+                task_lock.put_queue(
+                    ActionDeactivateAgentData(
+                        data={
+                            "agent_name": self.agent_name,
+                            "process_task_id": self.process_task_id,
+                            "agent_id": self.agent_id,
+                            "message": message,
+                            "tokens": total_tokens,
+                        },
+                    )
                 )
             )
-        )
 
         if error_info is not None:
             raise error_info
@@ -426,7 +524,7 @@ class ListenChatAgent(ChatAgent):
 
             # Only send activate event if tool is NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionActivateToolkitData(
                             data={
@@ -435,6 +533,21 @@ class ListenChatAgent(ChatAgent):
                                 "toolkit_name": toolkit_name,
                                 "method_name": func_name,
                                 "message": json.dumps(args, ensure_ascii=False),
+                            },
+                        )
+                    )
+                )
+                # Stream tool activity to frontend as "thinking" text
+                tool_display = func_name.replace("_", " ").title()
+                _schedule_async_task(
+                    task_lock.put_queue(
+                        ActionStreamingAgentOutputData(
+                            data={
+                                "agent_name": self.agent_name,
+                                "process_task_id": self.process_task_id,
+                                "agent_id": self.agent_id,
+                                "content": f"[Tool] {tool_display}...\n",
+                                "is_final": False,
                             },
                         )
                     )
@@ -468,7 +581,7 @@ class ListenChatAgent(ChatAgent):
 
             # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionDeactivateToolkitData(
                             data={
@@ -548,6 +661,19 @@ class ListenChatAgent(ChatAgent):
                         "toolkit_name": toolkit_name,
                         "method_name": func_name,
                         "message": json.dumps(args, ensure_ascii=False),
+                    },
+                )
+            )
+            # Stream tool activity to frontend as "thinking" text
+            tool_display = func_name.replace("_", " ").title()
+            await task_lock.put_queue(
+                ActionStreamingAgentOutputData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
+                        "content": f"[Tool] {tool_display}...\n",
+                        "is_final": False,
                     },
                 )
             )
@@ -668,6 +794,11 @@ class ListenChatAgent(ChatAgent):
 
         new_agent.process_task_id = self.process_task_id
 
+        # Preserve model_config_dict from original agent for consistent behavior
+        # Deep copy ensures isolation - config changes won't affect other agents
+        if hasattr(self, "model_backend") and hasattr(self.model_backend, "model_config_dict"):
+            new_agent.model_backend.model_config_dict = copy.deepcopy(self.model_backend.model_config_dict)
+
         # Copy memory if requested
         if with_memory:
             # Get all records from the current memory
@@ -753,7 +884,14 @@ def agent_model(
         else:
             model_config[k] = v
 
-    if agent_name == Agents.task_agent:
+    # Enable streaming for task decomposition and worker agents
+    if agent_name in {
+        Agents.task_agent,
+        Agents.developer_agent,
+        Agents.browser_agent,
+        Agents.document_agent,
+        Agents.multi_modal_agent,
+    }:
         model_config["stream"] = True
     if agent_name == Agents.browser_agent:
         try:
