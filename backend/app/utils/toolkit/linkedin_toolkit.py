@@ -79,8 +79,13 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
                     token_data = json.load(f)
                     access_token = token_data.get("access_token")
                     if access_token:
-                        os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
-                        logger.info(f"Loaded LinkedIn credentials from token file: {self._token_path}")
+                        # Check if token is expired before loading
+                        expires_at = token_data.get("expires_at")
+                        if expires_at and int(time.time()) >= expires_at:
+                            logger.warning("LinkedIn token file contains expired token, skipping load")
+                        else:
+                            os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
+                            logger.info(f"Loaded LinkedIn credentials from token file: {self._token_path}")
             except Exception as e:
                 logger.warning(f"Could not load LinkedIn token file: {e}")
 
@@ -100,8 +105,14 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
             try:
                 with open(token_path, "r") as f:
                     token_data = json.load(f)
-                    if token_data.get("access_token"):
-                        os.environ["LINKEDIN_ACCESS_TOKEN"] = token_data["access_token"]
+                    access_token = token_data.get("access_token")
+                    if access_token:
+                        # Check if token is expired before loading
+                        expires_at = token_data.get("expires_at")
+                        if expires_at and int(time.time()) >= expires_at:
+                            logger.warning("LinkedIn token file contains expired token, skipping load")
+                        else:
+                            os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
             except Exception:
                 pass
 
@@ -224,11 +235,12 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         r"""Check if token is expiring within the refresh threshold.
 
         Returns:
-            True if token is expiring soon or already expired, False otherwise
+            True if token is expiring soon or already expired, False otherwise.
+            Returns False if no token file exists (e.g. env var auth only).
         """
         token_info = cls.get_token_info()
         if not token_info:
-            return True
+            return False  # No token file; cannot determine expiry, assume valid
 
         expires_at = token_info.get("expires_at")
         if not expires_at:
@@ -244,11 +256,12 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         r"""Check if token has expired.
 
         Returns:
-            True if token is expired, False otherwise
+            True if token is expired, False otherwise.
+            Returns False if no token file exists (e.g. env var auth only).
         """
         token_info = cls.get_token_info()
         if not token_info:
-            return True
+            return False  # No token file; cannot determine expiry, assume valid
 
         expires_at = token_info.get("expires_at")
         if not expires_at:
