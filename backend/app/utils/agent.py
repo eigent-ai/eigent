@@ -18,7 +18,6 @@ import json
 import os
 import platform
 from threading import Event, Lock
-import traceback
 from typing import Any, Callable, Dict, List, Tuple
 import uuid
 import logging
