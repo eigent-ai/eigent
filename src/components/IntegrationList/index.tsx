@@ -168,7 +168,7 @@ export default function IntegrationList({
 				} else {
 					await fetchPost("/install/tool/google_calendar");
 				}
-			} catch (_) {}
+			} catch (_) { }
 
 			// Select mode: poll OAuth status
 			if (isSelectMode) {
@@ -273,7 +273,7 @@ export default function IntegrationList({
 		: "flex flex-col w-full items-start justify-start gap-4";
 
 	const itemClassName = isSelectMode
-		? "cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between"
+		? "cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between"
 		: "w-full px-6 py-4 bg-surface-secondary rounded-2xl";
 
 	const titleClassName = isSelectMode
@@ -299,22 +299,22 @@ export default function IntegrationList({
 							onClick={
 								isSelectMode
 									? () => {
-											if (!isComingSoon) {
-												if (item.env_vars.length === 0 || isInstalled) {
-													// Ensure toolkit field is passed and normalized for known cases
-													const normalizedToolkit =
-														item.name === "Notion"
-															? "notion_mcp_toolkit"
-															: item.toolkit;
-													addOption?.(
-														{ ...item, toolkit: normalizedToolkit },
-														true
-													);
-												} else {
-													handleInstall(item);
-												}
+										if (!isComingSoon) {
+											if (item.env_vars.length === 0 || isInstalled) {
+												// Ensure toolkit field is passed and normalized for known cases
+												const normalizedToolkit =
+													item.name === "Notion"
+														? "notion_mcp_toolkit"
+														: item.toolkit;
+												addOption?.(
+													{ ...item, toolkit: normalizedToolkit },
+													true
+												);
+											} else {
+												handleInstall(item);
 											}
-									  }
+										}
+									}
 									: undefined
 							}
 						>
@@ -390,8 +390,8 @@ export default function IntegrationList({
 													isComingSoon
 														? "ghost"
 														: isInstalled
-														? "outline"
-														: "primary"
+															? "outline"
+															: "primary"
 												}
 												size="sm"
 												onClick={(e) => {
@@ -405,8 +405,8 @@ export default function IntegrationList({
 												{isComingSoon
 													? t(`${translationNamespace}.coming-soon`)
 													: isInstalled
-													? t(`${translationNamespace}.uninstall`)
-													: t(`${translationNamespace}.install`)}
+														? t(`${translationNamespace}.uninstall`)
+														: t(`${translationNamespace}.install`)}
 											</Button>
 										)}
 									</div>
@@ -427,8 +427,8 @@ export default function IntegrationList({
 									{isComingSoon
 										? t(`${translationNamespace}.coming-soon`)
 										: isInstalled
-										? t(`${translationNamespace}.uninstall`)
-										: t(`${translationNamespace}.install`)}
+											? t(`${translationNamespace}.uninstall`)
+											: t(`${translationNamespace}.install`)}
 								</Button>
 							)}
 						</div>

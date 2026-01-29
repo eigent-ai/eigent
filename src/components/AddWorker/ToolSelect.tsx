@@ -119,65 +119,65 @@ const ToolSelect = forwardRef<
 									throw error;
 								}
 							};
-                        } else if (key.toLowerCase() === 'google calendar') {
-                            onInstall = async () => {
-                                try {
-                                    const response = await fetchPost("/install/tool/google_calendar");
-                                    if (response.success) {
-                                        if (response.warning) {
-                                            console.warn("Google Calendar connection warning:", response.warning);
-                                        }
-                                        try {
-                                            const existingConfigs = await proxyFetchGet("/api/configs");
-                                            const existing = Array.isArray(existingConfigs)
-                                                ? existingConfigs.find((c: any) =>
-                                                    c.config_group?.toLowerCase() === "google calendar" &&
-                                                    c.config_name === "GOOGLE_REFRESH_TOKEN"
-                                                )
-                                                : null;
+						} else if (key.toLowerCase() === 'google calendar') {
+							onInstall = async () => {
+								try {
+									const response = await fetchPost("/install/tool/google_calendar");
+									if (response.success) {
+										if (response.warning) {
+											console.warn("Google Calendar connection warning:", response.warning);
+										}
+										try {
+											const existingConfigs = await proxyFetchGet("/api/configs");
+											const existing = Array.isArray(existingConfigs)
+												? existingConfigs.find((c: any) =>
+													c.config_group?.toLowerCase() === "google calendar" &&
+													c.config_name === "GOOGLE_REFRESH_TOKEN"
+												)
+												: null;
 
-                                            const configPayload = {
-                                                config_group: "Google Calendar",
-                                                config_name: "GOOGLE_REFRESH_TOKEN",
-                                                config_value: "exists",
-                                            };
+											const configPayload = {
+												config_group: "Google Calendar",
+												config_name: "GOOGLE_REFRESH_TOKEN",
+												config_value: "exists",
+											};
 
-                                            if (existing) {
-                                                await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-                                            } else {
-                                                await proxyFetchPost("/api/configs", configPayload);
-                                            }
-                                        } catch (configError) {
-                                            console.warn("Failed to persist Google Calendar config", configError);
-                                        }
-                                        console.log("Google Calendar installed successfully");
-                                        const calendarItem = {
-                                            id: 0, // Use 0 for integration items
-                                            key: key,
-                                            name: key,
-                                            description: "Google Calendar integration for managing events and schedules",
-                                            toolkit: "google_calendar_toolkit", // Add the toolkit name
-                                            isLocal: true
-                                        };
-                                        addOption(calendarItem, true);
-                                    } else if (response.status === "authorizing") {
-                                        console.log("Google Calendar authorization in progress. Please complete in browser.");
-                                        if (response.message) {
-                                            console.log(response.message);
-                                        }
-                                    } else {
-                                        console.error("Failed to install Google Calendar:", response.error || "Unknown error");
-                                        throw new Error(response.error || "Failed to install Google Calendar");
-                                    }
-                                    return response;
-                                } catch (error: any) {
-                                    if (!error.message?.includes("authorization")) {
-                                        console.error("Failed to install Google Calendar:", error.message);
-                                        throw error;
-                                    }
-                                    return null; // Return null on authorization flow errors
-                                }
-                            };
+											if (existing) {
+												await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+											} else {
+												await proxyFetchPost("/api/configs", configPayload);
+											}
+										} catch (configError) {
+											console.warn("Failed to persist Google Calendar config", configError);
+										}
+										console.log("Google Calendar installed successfully");
+										const calendarItem = {
+											id: 0, // Use 0 for integration items
+											key: key,
+											name: key,
+											description: "Google Calendar integration for managing events and schedules",
+											toolkit: "google_calendar_toolkit", // Add the toolkit name
+											isLocal: true
+										};
+										addOption(calendarItem, true);
+									} else if (response.status === "authorizing") {
+										console.log("Google Calendar authorization in progress. Please complete in browser.");
+										if (response.message) {
+											console.log(response.message);
+										}
+									} else {
+										console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+										throw new Error(response.error || "Failed to install Google Calendar");
+									}
+									return response;
+								} catch (error: any) {
+									if (!error.message?.includes("authorization")) {
+										console.error("Failed to install Google Calendar:", error.message);
+										throw error;
+									}
+									return null; // Return null on authorization flow errors
+								}
+							};
 						} else {
 							onInstall = () =>
 								(window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
@@ -191,13 +191,13 @@ const ToolSelect = forwardRef<
 							desc:
 								value.env_vars && value.env_vars.length > 0
 									? `${t("layout.environmental-variables-required")} ${value.env_vars.join(
-											", "
-									  )}`
+										", "
+									)}`
 									: key.toLowerCase() === 'notion'
-									? t("layout.notion-workspace-integration")
-									: key.toLowerCase() === 'google calendar'
-									? t("layout.google-calendar-integration")
-									: "",
+										? t("layout.notion-workspace-integration")
+										: key.toLowerCase() === 'google calendar'
+											? t("layout.google-calendar-integration")
+											: "",
 							onInstall,
 						};
 					});
@@ -274,7 +274,7 @@ const ToolSelect = forwardRef<
 	};
 
 	// only surface installed MCPs from the market list
-    useEffect(() => {
+	useEffect(() => {
 		// Add defensive check and fix logic: should filter when installedIds has items
 		if (Array.isArray(allMcpList) && installedIds.length > 0) {
 			const filtered = allMcpList.filter((item) => installedIds.includes(item.id));
@@ -294,19 +294,19 @@ const ToolSelect = forwardRef<
 		// First fetch current configs to check for existing ones
 		const configsRes = await proxyFetchGet("/api/configs");
 		const configs = Array.isArray(configsRes) ? configsRes : [];
-		
+
 		const configPayload = {
 			config_group: capitalizeFirstLetter(provider),
 			config_name: envVarKey,
 			config_value: value,
 		};
-		
+
 		// Check if config already exists
 		const existingConfig = configs.find(
-			(c: any) => c.config_name === envVarKey && 
-			c.config_group?.toLowerCase() === provider.toLowerCase()
+			(c: any) => c.config_name === envVarKey &&
+				c.config_group?.toLowerCase() === provider.toLowerCase()
 		);
-		
+
 		if (existingConfig) {
 			// Update existing config
 			await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
@@ -314,7 +314,7 @@ const ToolSelect = forwardRef<
 			// Create new config
 			await proxyFetchPost("/api/configs", configPayload);
 		}
-		
+
 		if (window.electronAPI?.envWrite) {
 			await window.electronAPI.envWrite(email, { key: envVarKey, value });
 		}
@@ -332,7 +332,7 @@ const ToolSelect = forwardRef<
 				env[key] = envValue[key]?.value;
 			});
 			activeMcp.install_command.env = env;
-			
+
 			// Save all env vars and wait for completion
 			console.log("[installMcp] Saving env vars for", activeMcp.key);
 			try {
@@ -351,7 +351,7 @@ const ToolSelect = forwardRef<
 				console.error("[installMcp] Failed to save env vars:", error);
 				// Continue anyway to trigger installation
 			}
-			
+
 			if (activeMcp.key !== "Google Calendar") {
 				const integrationItem = integrations.find(
 					(item) => item.key === activeMcp.key
@@ -377,121 +377,121 @@ const ToolSelect = forwardRef<
 			if (activeMcp.key === "Google Calendar") {
 				console.log("[ToolSelect installMcp] Starting Google Calendar installation");
 				try {
-				const response = await fetchPost("/install/tool/google_calendar");
-				
-				if (response.success) {
-					console.log("[ToolSelect installMcp] Immediate success");
-					// Mark as successfully installed by writing refresh token marker
-					const existingConfigs = await proxyFetchGet("/api/configs");
-					const existing = Array.isArray(existingConfigs)
-						? existingConfigs.find((c: any) =>
-							c.config_group?.toLowerCase() === "google calendar" &&
-							c.config_name === "GOOGLE_REFRESH_TOKEN"
-						)
-						: null;
-					
-					const configPayload = {
-						config_group: "Google Calendar",
-						config_name: "GOOGLE_REFRESH_TOKEN",
-						config_value: "exists",
-					};
-					
-					if (existing) {
-						await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-					} else {
-						await proxyFetchPost("/api/configs", configPayload);
-					}
-					
-					// Refresh integrations to update install status
-					fetchIntegrationsData();
-					
-					const selectedItem = {
-						id: activeMcp.id,
-						key: activeMcp.key,
-						name: activeMcp.name,
-						description: "Google Calendar integration for managing events and schedules",
-						toolkit: "google_calendar_toolkit",
-						isLocal: true
-					};
-					addOption(selectedItem, true);
-				} else if (response.status === "authorizing") {
-					// Authorization in progress - browser should have opened
-					console.log("[ToolSelect installMcp] Authorization required, starting polling loop");
-					
-					// WAIT for OAuth status completion instead of using setInterval
-					const start = Date.now();
-					const timeoutMs = 5 * 60 * 1000; // 5 minutes
-					
-					while (Date.now() - start < timeoutMs) {
-						try {
-							const statusResponse = await fetchGet("/oauth/status/google_calendar");
-							console.log("[ToolSelect installMcp] OAuth status:", statusResponse.status);
-							
-							if (statusResponse.status === "success") {
-								console.log("[ToolSelect installMcp] Authorization completed successfully!");
-								
-								// Try installing again now that authorization is complete
-								const retryResponse = await fetchPost("/install/tool/google_calendar");
-								if (retryResponse.success) {
-									// Mark as successfully installed
-									const existingConfigs = await proxyFetchGet("/api/configs");
-									const existing = Array.isArray(existingConfigs)
-										? existingConfigs.find((c: any) =>
-											c.config_group?.toLowerCase() === "google calendar" &&
-											c.config_name === "GOOGLE_REFRESH_TOKEN"
-										)
-										: null;
-									
-									const configPayload = {
-										config_group: "Google Calendar",
-										config_name: "GOOGLE_REFRESH_TOKEN",
-										config_value: "exists",
-									};
-									
-									if (existing) {
-										await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-									} else {
-										await proxyFetchPost("/api/configs", configPayload);
-									}
-									
-									fetchIntegrationsData();
-									
-									const selectedItem = {
-										id: activeMcp.id,
-										key: activeMcp.key,
-										name: activeMcp.name,
-										description: "Google Calendar integration for managing events and schedules",
-										toolkit: "google_calendar_toolkit",
-										isLocal: true
-									};
-									addOption(selectedItem, true);
-								}
-								console.log("[ToolSelect installMcp] Installation complete, returning");
-								return;
-							} else if (statusResponse.status === "failed") {
-								console.error("[ToolSelect installMcp] Authorization failed:", statusResponse.error);
-								return;
-							} else if (statusResponse.status === "cancelled") {
-								console.log("[ToolSelect installMcp] Authorization cancelled");
-								return;
-							}
-						} catch (error) {
-							console.error("[ToolSelect installMcp] Error polling OAuth status:", error);
+					const response = await fetchPost("/install/tool/google_calendar");
+
+					if (response.success) {
+						console.log("[ToolSelect installMcp] Immediate success");
+						// Mark as successfully installed by writing refresh token marker
+						const existingConfigs = await proxyFetchGet("/api/configs");
+						const existing = Array.isArray(existingConfigs)
+							? existingConfigs.find((c: any) =>
+								c.config_group?.toLowerCase() === "google calendar" &&
+								c.config_name === "GOOGLE_REFRESH_TOKEN"
+							)
+							: null;
+
+						const configPayload = {
+							config_group: "Google Calendar",
+							config_name: "GOOGLE_REFRESH_TOKEN",
+							config_value: "exists",
+						};
+
+						if (existing) {
+							await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+						} else {
+							await proxyFetchPost("/api/configs", configPayload);
 						}
-						
-						// Wait before next poll
-						await new Promise((r) => setTimeout(r, 1500));
+
+						// Refresh integrations to update install status
+						fetchIntegrationsData();
+
+						const selectedItem = {
+							id: activeMcp.id,
+							key: activeMcp.key,
+							name: activeMcp.name,
+							description: "Google Calendar integration for managing events and schedules",
+							toolkit: "google_calendar_toolkit",
+							isLocal: true
+						};
+						addOption(selectedItem, true);
+					} else if (response.status === "authorizing") {
+						// Authorization in progress - browser should have opened
+						console.log("[ToolSelect installMcp] Authorization required, starting polling loop");
+
+						// WAIT for OAuth status completion instead of using setInterval
+						const start = Date.now();
+						const timeoutMs = 5 * 60 * 1000; // 5 minutes
+
+						while (Date.now() - start < timeoutMs) {
+							try {
+								const statusResponse = await fetchGet("/oauth/status/google_calendar");
+								console.log("[ToolSelect installMcp] OAuth status:", statusResponse.status);
+
+								if (statusResponse.status === "success") {
+									console.log("[ToolSelect installMcp] Authorization completed successfully!");
+
+									// Try installing again now that authorization is complete
+									const retryResponse = await fetchPost("/install/tool/google_calendar");
+									if (retryResponse.success) {
+										// Mark as successfully installed
+										const existingConfigs = await proxyFetchGet("/api/configs");
+										const existing = Array.isArray(existingConfigs)
+											? existingConfigs.find((c: any) =>
+												c.config_group?.toLowerCase() === "google calendar" &&
+												c.config_name === "GOOGLE_REFRESH_TOKEN"
+											)
+											: null;
+
+										const configPayload = {
+											config_group: "Google Calendar",
+											config_name: "GOOGLE_REFRESH_TOKEN",
+											config_value: "exists",
+										};
+
+										if (existing) {
+											await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+										} else {
+											await proxyFetchPost("/api/configs", configPayload);
+										}
+
+										fetchIntegrationsData();
+
+										const selectedItem = {
+											id: activeMcp.id,
+											key: activeMcp.key,
+											name: activeMcp.name,
+											description: "Google Calendar integration for managing events and schedules",
+											toolkit: "google_calendar_toolkit",
+											isLocal: true
+										};
+										addOption(selectedItem, true);
+									}
+									console.log("[ToolSelect installMcp] Installation complete, returning");
+									return;
+								} else if (statusResponse.status === "failed") {
+									console.error("[ToolSelect installMcp] Authorization failed:", statusResponse.error);
+									return;
+								} else if (statusResponse.status === "cancelled") {
+									console.log("[ToolSelect installMcp] Authorization cancelled");
+									return;
+								}
+							} catch (error) {
+								console.error("[ToolSelect installMcp] Error polling OAuth status:", error);
+							}
+
+							// Wait before next poll
+							await new Promise((r) => setTimeout(r, 1500));
+						}
+
+						console.log("[ToolSelect installMcp] Polling timeout");
+						return;
+					} else {
+						console.error("Failed to install Google Calendar:", response.error || "Unknown error");
 					}
-					
-					console.log("[ToolSelect installMcp] Polling timeout");
-					return;
-				} else {
-					console.error("Failed to install Google Calendar:", response.error || "Unknown error");
+				} catch (error: any) {
+					console.error("Failed to install Google Calendar:", error.message);
 				}
-			} catch (error: any) {
-				console.error("Failed to install Google Calendar:", error.message);
 			}
-		}
 			return;
 		}
 		setInstalling((prev) => ({ ...prev, [id]: true }));
@@ -558,7 +558,7 @@ const ToolSelect = forwardRef<
 			const newSelected = [...currentSelected, { ...item, isLocal }];
 			onSelectedToolsChange?.(newSelected);
 		}
-		
+
 	};
 
 	const removeOption = (item: McpItem) => {
@@ -673,7 +673,7 @@ const ToolSelect = forwardRef<
 					checkEnv(item.id);
 				}
 			}}
-			className="cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between"
+			className="cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between"
 		>
 			<div className="flex items-center gap-1">
 				{getCategoryIcon(item.category?.name)}
@@ -682,9 +682,9 @@ const ToolSelect = forwardRef<
 				</div>
 				<TooltipSimple content={item.description}>
 					<CircleAlert
-							className="w-4 h-4 text-icon-primary cursor-pointer"
-							onClick={(e) => e.stopPropagation()}
-						/>
+						className="w-4 h-4 text-icon-primary cursor-pointer"
+						onClick={(e) => e.stopPropagation()}
+					/>
 				</TooltipSimple>
 			</div>
 			<div className="flex items-center gap-1">
@@ -732,7 +732,7 @@ const ToolSelect = forwardRef<
 				addOption(item);
 				setKeyword("");
 			}}
-			className="cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between"
+			className="cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between"
 		>
 			<div className="flex items-center gap-1">
 				{/* {getCategoryIcon(item.category?.name)} */}
@@ -788,13 +788,13 @@ const ToolSelect = forwardRef<
 			{isOpen && (
 				<div className="absolute top-full left-0 right-0 z-50 mt-1 bg-dropdown-bg rounded-lg border border-solid border-input-border-default overflow-y-auto">
 					<div className="max-h-[192px] overflow-y-auto">
-					<IntegrationList
-						variant="select"
-						onShowEnvConfig={onShowEnvConfig}
-						addOption={addOption}
-						items={integrations}
-						translationNamespace="layout"
-					/>
+						<IntegrationList
+							variant="select"
+							onShowEnvConfig={onShowEnvConfig}
+							addOption={addOption}
+							items={integrations}
+							translationNamespace="layout"
+						/>
 						{mcpList
 							.filter(
 								(opt) =>

@@ -36,7 +36,7 @@ export default function TerminalComponent({
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 
 	// DOM references
 	const terminalContainerRef = useRef<HTMLDivElement>(null); // terminal container reference
@@ -352,7 +352,7 @@ export default function TerminalComponent({
 	return (
 		<div
 			ref={terminalContainerRef}
-			className="w-full h-full flex flex-col rounded-2xl border border-zinc-300 border-solid relative overflow-hidden"
+			className="w-full h-full flex flex-col rounded-2xl border border-border-subtle-strong border-solid relative overflow-hidden"
 			style={{ fontFamily: '"Courier New", Courier, monospace' }}
 		>
 			{/* background blur effect */}
