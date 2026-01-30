@@ -37,7 +37,7 @@ import pytest
 
 from camel.messages import BaseMessage
 
-from app.utils.agent import browser_agent
+from app.agent.factory import browser_agent
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
