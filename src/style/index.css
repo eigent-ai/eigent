@@ -422,3 +422,32 @@ code {
   padding-left: 1rem;
   font-size: 12px; /* text-sm */
 }
+
+/* Hover-style scrollbar - appears only on hover with 20% opacity */
+.hover-style-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.hover-style-scrollbar:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.4) transparent;
+}
+
+.hover-style-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.hover-style-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hover-style-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--text-label, rgba(0, 0, 0, 0.4));
+  opacity: 0;
+  border-radius: 9999px;
+  transition: opacity 0.2s ease;
+}
+
+.hover-style-scrollbar:hover::-webkit-scrollbar-thumb {
+  opacity: 0.2;
+}

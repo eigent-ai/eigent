@@ -4,9 +4,11 @@
 	"privacy": "Datenschutz",
 	"models": "Modelle",
 	"mcp": "MCP & Tools",
-
+	"eigent-cloud": "Eigent Cloud",
+	"default": "Standard",
+	"profile": "Profil",
 	"account": "Konto",
-	"you-are-currently-signed-in-with": "Sie sind derzeit angemeldet mit {{email}}",
+	"you-are-currently-signed-in-with": "Sie sind derzeit angemeldet mit <email>{{email}}</email>",
 	"manage": "Verwalten",
 	"log-out": "Abmelden",
 	"language": "Sprache",
@@ -159,5 +161,6 @@
   "recommended": "Empfohlen",
   "reset": "Zurücksetzen",
   "reset-success": "Zurücksetzen erfolgreich!",
-  "reset-failed": "Zurücksetzen fehlgeschlagen!"
+  "reset-failed": "Zurücksetzen fehlgeschlagen!",
+  "select-default-model": "Standardmodell auswählen"
 }

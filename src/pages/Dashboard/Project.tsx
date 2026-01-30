@@ -291,7 +291,7 @@ export default function Project() {
 			</div>
 
       <div className="flex w-full">
-      <div className="flex flex-col px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-start">
+      <div className="flex flex-col px-6 py-8 max-w-[940px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-start">
         <GroupedHistoryView
           onTaskSelect={handleSetActive}
           onTaskDelete={handleDelete}
