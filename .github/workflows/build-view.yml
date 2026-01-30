@@ -230,3 +230,111 @@ jobs:
           else
             find temp-linux-x64 -name "*.AppImage" -exec mv {} release/linux-x64/ \; || true
           fi
+
+      # Extract version for test builds
+      - name: Extract version
+        id: version
+        run: |
+          # Create a version using timestamp for test builds
+          VERSION="test-$(date +%Y%m%d-%H%M%S)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version for test build: $VERSION"
+
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Upload to S3 - test directory
+      - name: Upload to S3 (test build)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+
+          echo "Uploading test build $VERSION to S3 bucket: $BUCKET"
+
+          # Upload macOS ARM64 files
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "Uploading macOS ARM64 files..."
+            aws s3 sync release/mac-arm64/ "s3://$BUCKET/test-builds/$VERSION/mac-arm64/" \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload macOS Intel files (if exists)
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "Uploading macOS Intel files..."
+            aws s3 sync release/mac-intel/ "s3://$BUCKET/test-builds/$VERSION/mac-intel/" \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload Windows files
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Uploading Windows files..."
+            aws s3 sync release/win-x64/ "s3://$BUCKET/test-builds/$VERSION/win-x64/" \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload Linux files
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Uploading Linux files..."
+            aws s3 sync release/linux-x64/ "s3://$BUCKET/test-builds/$VERSION/linux-x64/" \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300"
+          fi
+
+          echo "Test build $VERSION uploaded successfully"
+
+      # Generate download URLs
+      - name: Generate download URLs
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+          REGION="${{ secrets.AWS_REGION }}"
+
+          # Determine S3 endpoint based on region
+          if [[ "$REGION" == cn-* ]]; then
+            ENDPOINT="s3.$REGION.amazonaws.com.cn"
+          else
+            ENDPOINT="s3.$REGION.amazonaws.com"
+          fi
+
+          echo "================================"
+          echo "Test Build Download URLs"
+          echo "Build ID: $VERSION"
+          echo "================================"
+          echo ""
+
+          # Check which platforms exist and show URLs
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "macOS (ARM64):  https://$BUCKET.$ENDPOINT/test-builds/$VERSION/mac-arm64/"
+          fi
+
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "macOS (Intel):  https://$BUCKET.$ENDPOINT/test-builds/$VERSION/mac-intel/"
+          fi
+
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Windows (x64):  https://$BUCKET.$ENDPOINT/test-builds/$VERSION/win-x64/"
+          fi
+
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Linux (x64):    https://$BUCKET.$ENDPOINT/test-builds/$VERSION/linux-x64/"
+          fi
+
+          echo ""
+          echo "⚠️  Note: Test builds are stored in 'test-builds/' directory"
+          echo "⚠️  Remember to delete old test builds to save storage costs"
+          echo ""
+          echo "To delete this test build:"
+          echo "aws s3 rm s3://$BUCKET/test-builds/$VERSION/ --recursive --region $REGION"
+          echo "================================"
