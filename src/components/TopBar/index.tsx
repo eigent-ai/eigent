@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
+import { useInstallationUI } from "@/store/installationStore";
  
 function HeaderWin() {
 	const { t } = useTranslation();
@@ -55,6 +56,8 @@ function HeaderWin() {
 	const { toggle } = useSidebarStore();
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
+	const { isInstalling, installationState } = useInstallationUI();
+	const isInstallationActive = isInstalling || installationState === "waiting-backend";
 	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
