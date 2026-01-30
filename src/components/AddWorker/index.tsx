@@ -100,7 +100,7 @@ export function AddWorker({
 	const [workerName, setWorkerName] = useState("");
 	const [workerDescription, setWorkerDescription] = useState("");
 	const [selectedTools, setSelectedTools] = useState<McpItem[]>([]);
-	
+
 	// error status management
 	const [nameError, setNameError] = useState<string>("");
 
@@ -276,7 +276,7 @@ export function AddWorker({
 	const handleAddWorker = async () => {
 		// clear previous errors
 		setNameError("");
-		
+
 		if (!workerName) {
 			setNameError(t("workforce.worker-name-cannot-be-empty"));
 			return;
@@ -301,7 +301,7 @@ export function AddWorker({
 		});
 		console.log("mcpLocal.mcpServers", mcpLocal.mcpServers);
 		if (mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object') {
-			for(const key of Object.keys(mcpLocal.mcpServers)) {
+			for (const key of Object.keys(mcpLocal.mcpServers)) {
 				if (!mcpList.includes(key)) {
 					delete mcpLocal.mcpServers[key];
 				}
@@ -501,7 +501,7 @@ export function AddWorker({
 									))}
 								</div>
 							</DialogContentSection>
-							<DialogFooter 
+							<DialogFooter
 								className="bg-white-100% !rounded-b-xl p-md"
 								showCancelButton={true}
 								showConfirmButton={true}
@@ -530,7 +530,7 @@ export function AddWorker({
 								<div className="flex flex-col gap-4">
 									<div className="flex items-center gap-sm">
 										<div className="flex w-16 h-16 items-center justify-center">
-										<Bot size={32} className="text-icon-primary" />
+											<Bot size={32} className="text-icon-primary" />
 										</div>
 										<Input
 											size="sm"
@@ -550,12 +550,12 @@ export function AddWorker({
 								</div>
 
 								<Textarea
-									  variant="enhanced"
-										size="sm"
-										title={t("workforce.description-optional")}
-										placeholder={t("layout.im-an-agent-specially-designed-for")}
-										value={workerDescription}
-										onChange={(e) => setWorkerDescription(e.target.value)}
+									variant="enhanced"
+									size="sm"
+									title={t("workforce.description-optional")}
+									placeholder={t("layout.im-an-agent-specially-designed-for")}
+									value={workerDescription}
+									onChange={(e) => setWorkerDescription(e.target.value)}
 								/>
 
 								<ToolSelect
@@ -575,19 +575,19 @@ export function AddWorker({
 										{showModelConfig ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
 										{t("workforce.advanced-model-config")}
 									</button>
-									
+
 									{showModelConfig && (
-										<div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
+										<div className="flex flex-col gap-3 p-3 bg-surface-tertiary-subtle rounded-lg">
 											<label className="flex items-center gap-2 text-sm">
 												<input
 													type="checkbox"
 													checked={useCustomModel}
 													onChange={(e) => setUseCustomModel(e.target.checked)}
-													className="rounded border-gray-300"
+													className="rounded border-border-subtle-strong"
 												/>
 												{t("workforce.use-custom-model")}
 											</label>
-											
+
 											{useCustomModel && (
 												<>
 													<div className="flex flex-col gap-1">
@@ -605,7 +605,7 @@ export function AddWorker({
 															</SelectContent>
 														</Select>
 													</div>
-													
+
 													<div className="flex flex-col gap-1">
 														<label className="text-xs text-text-body">{t("workforce.model-type")}</label>
 														<Input
@@ -621,7 +621,7 @@ export function AddWorker({
 									)}
 								</div>
 							</DialogContentSection>
-							<DialogFooter 
+							<DialogFooter
 								className="bg-white-100% !rounded-b-xl p-md"
 								showCancelButton={true}
 								showConfirmButton={true}

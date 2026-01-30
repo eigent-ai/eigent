@@ -42,7 +42,7 @@ export default function EndNoticeDialog({ open, onOpenChange, trigger, onConfirm
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			{trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-			<DialogContent className="sm:max-w-[600px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm">
+			<DialogContent className="sm:max-w-[600px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-border-subtle-strong shadow-sm">
 				<DialogHeader className="!bg-popup-surface !rounded-t-xl p-md justify-start">
 					<DialogTitle className="m-0">{t("layout.end-project")}</DialogTitle>
 				</DialogHeader>

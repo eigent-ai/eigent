@@ -103,11 +103,10 @@ const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
-                selectedFile?.path === child.path
-                  ? 'bg-fill-fill-transparent-active'
-                  : ''
-              }`}
+              className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${selectedFile?.path === child.path
+                ? 'bg-fill-fill-transparent-active'
+                : ''
+                }`}
             >
               {child.isFolder && (
                 <span className="w-4 h-4 flex items-center justify-center">
@@ -129,9 +128,8 @@ const FileTree: React.FC<FileTreeProps> = ({
               )}
 
               <span
-                className={`truncate text-[13px] leading-5 ${
-                  child.isFolder ? 'font-semibold' : 'font-medium'
-                }`}
+                className={`truncate text-[13px] leading-5 ${child.isFolder ? 'font-semibold' : 'font-medium'
+                  }`}
               >
                 {child.name}
               </span>
@@ -418,15 +416,13 @@ export default function Folder({ data }: { data?: Agent }) {
     <div className="h-full w-full flex overflow-hidden">
       {/* fileList */}
       <div
-        className={`${
-          isCollapsed ? 'w-16' : 'w-64'
-        } border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
+        className={`${isCollapsed ? 'w-16' : 'w-64'
+          } border-[0px] border-r border-r-border-subtle border-border-subtle-strong !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
       >
         {/* head */}
         <div
-          className={` py-2 border-b border-zinc-200 flex-shrink-0 ${
-            isCollapsed ? 'px-2' : 'pl-4 pr-2'
-          }`}
+          className={` py-2 border-b border-border-subtle flex-shrink-0 ${isCollapsed ? 'px-2' : 'pl-4 pr-2'
+            }`}
         >
           <div className="flex items-center justify-between">
             {!isCollapsed && (
@@ -448,15 +444,13 @@ export default function Folder({ data }: { data?: Agent }) {
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`${
-                isCollapsed ? 'w-full' : ''
-              } flex items-center justify-center`}
+              className={`${isCollapsed ? 'w-full' : ''
+                } flex items-center justify-center`}
               title={isCollapsed ? t('chat.open') : t('chat.close')}
             >
               <ChevronsLeft
-                className={`w-6 h-6 text-zinc-500 ${
-                  isCollapsed ? 'rotate-180' : ''
-                } transition-transform ease-in-out`}
+                className={`w-6 h-6 text-zinc-500 ${isCollapsed ? 'rotate-180' : ''
+                  } transition-transform ease-in-out`}
               />
             </Button>
           </div>
@@ -464,13 +458,13 @@ export default function Folder({ data }: { data?: Agent }) {
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="px-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="px-2 border-b border-border-subtle flex-shrink-0">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-2 py-2 text-sm border border-border-subtle rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-text-link"
               />
             </div>
           </div>
@@ -504,11 +498,10 @@ export default function Folder({ data }: { data?: Agent }) {
                   <button
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
-                    className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
-                      selectedFile?.name === file.name
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-zinc-600'
-                    }`}
+                    className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${selectedFile?.name === file.name
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-zinc-600'
+                      }`}
                     title={file.name}
                   >
                     {file.icon ? (
@@ -528,7 +521,7 @@ export default function Folder({ data }: { data?: Agent }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="px-4 py-2 border-b border-border-subtle flex-shrink-0">
             <div className="flex h-[30px] items-center justify-between gap-2">
               <div
                 onClick={() => {
@@ -582,8 +575,8 @@ export default function Folder({ data }: { data?: Agent }) {
                     title={selectedFile.name}
                   />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                    selectedFile.type
-                  ) ? (
+                  selectedFile.type
+                ) ? (
                   <FolderComponent selectedFile={selectedFile} />
                 ) : selectedFile.type === 'html' ? (
                   isShowSourceCode ? (
@@ -604,14 +597,14 @@ export default function Folder({ data }: { data?: Agent }) {
                     </div>
                   </div>
                 ) : [
-                    'png',
-                    'jpg',
-                    'jpeg',
-                    'gif',
-                    'bmp',
-                    'webp',
-                    'svg',
-                  ].includes(selectedFile.type.toLowerCase()) ? (
+                  'png',
+                  'jpg',
+                  'jpeg',
+                  'gif',
+                  'bmp',
+                  'webp',
+                  'svg',
+                ].includes(selectedFile.type.toLowerCase()) ? (
                   <div className="flex items-center justify-center h-full">
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
@@ -863,7 +856,7 @@ function HtmlRenderer({
           );
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
-            
+
             // Try to replace the external link tag with inline style
             const linkRegex = new RegExp(
               `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
@@ -953,7 +946,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="flex-1 min-h-0 bg-zinc-100 overflow-hidden"
+        className="flex-1 min-h-0 bg-code-surface overflow-hidden"
         onWheel={handleWheel}
       >
         <div
