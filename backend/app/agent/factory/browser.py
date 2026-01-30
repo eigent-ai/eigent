@@ -25,6 +25,7 @@ from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
@@ -34,9 +35,8 @@ from camel.toolkits import ToolkitMessageIntegration
 
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
-    logger.info(
-        f"Creating browser agent for project: {options.project_id} in directory: {working_directory}"
-    )
+    logger.info(f"Creating browser agent for project: {options.project_id} "
+                f"in directory: {working_directory}")
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, Agents.browser_agent).send_message_to_user)

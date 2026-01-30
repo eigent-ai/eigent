@@ -26,7 +26,8 @@ from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
 
 async def mcp_agent(options: Chat):
     logger.info(
-        f"Creating MCP agent for project: {options.project_id} with {len(options.installed_mcp['mcpServers'])} MCP servers"
+        f"Creating MCP agent for project: {options.project_id} "
+        f"with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
     tools = [
         # *HumanToolkit.get_can_use_tools(options.project_id, Agents.mcp_agent),

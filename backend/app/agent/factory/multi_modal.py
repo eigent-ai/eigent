@@ -13,11 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import platform
 
-from camel.messages import BaseMessage
-from camel.models import OpenAIAudioModels
-from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
-
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
@@ -25,21 +20,26 @@ from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
-from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
-from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
+from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
+from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
+from camel.messages import BaseMessage
+from camel.models import OpenAIAudioModels
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
 
 
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
-        f"Creating multi-modal agent for project: {options.project_id} in directory: {working_directory}"
-    )
+        f"Creating multi-modal agent for project: {options.project_id} "
+        f"in directory: {working_directory}")
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
@@ -76,7 +76,8 @@ def multi_modal_agent(options: Chat):
         *note_toolkit.get_tools(),
     ]
     if options.is_cloud():
-        open_ai_image_toolkit = OpenAIImageToolkit(  # todo check llm has this model
+        # TODO: check llm has this model
+        open_ai_image_toolkit = OpenAIImageToolkit(
             options.project_id,
             model="dall-e-3",
             response_format="b64_json",
@@ -110,11 +111,6 @@ def multi_modal_agent(options: Chat):
         audio_analysis_toolkit = message_integration.register_toolkits(
             audio_analysis_toolkit)
         tools.extend(audio_analysis_toolkit.get_tools())
-
-    # if env("EXA_API_KEY") or options.is_cloud():
-    #     search_toolkit = SearchToolkit(options.project_id, Agents.multi_modal_agent).search_exa
-    #     search_toolkit = message_integration.register_functions([search_toolkit])
-    #     tools.extend(search_toolkit)
 
     system_message = MULTI_MODAL_SYS_PROMPT.format(
         platform_system=platform.system(),

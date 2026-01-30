@@ -13,9 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import platform
 
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
-
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DOCUMENT_SYS_PROMPT
@@ -23,22 +20,23 @@ from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.file_write_toolkit import FileToolkit
-from app.utils.toolkit.pptx_toolkit import PPTXToolkit
-from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
 from app.utils.toolkit.excel_toolkit import ExcelToolkit
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.human_toolkit import HumanToolkit
+from app.utils.toolkit.file_write_toolkit import FileToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
+from app.utils.toolkit.human_toolkit import HumanToolkit
+from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.utils.toolkit.pptx_toolkit import PPTXToolkit
+from app.utils.toolkit.terminal_toolkit import TerminalToolkit
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
 
 
 async def document_agent(options: Chat):
     working_directory = get_working_directory(options)
-    logger.info(
-        f"Creating document agent for project: {options.project_id} "
-        f"in directory: {working_directory}"
-    )
+    logger.info(f"Creating document agent for project: {options.project_id} "
+                f"in directory: {working_directory}")
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(options.project_id,
