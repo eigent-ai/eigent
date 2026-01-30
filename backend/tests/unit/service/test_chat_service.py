@@ -830,8 +830,7 @@ class TestChatServiceIntegration:
         
         mock_workforce = MagicMock()
         
-        with patch("app.service.chat_service.construct_workforce", return_value=(mock_workforce, MagicMock())), \
-             patch("app.utils.agent.get_task_lock", return_value=mock_task_lock):
+        with patch("app.service.chat_service.construct_workforce", return_value=(mock_workforce, MagicMock())):
             # Should exit immediately if request is disconnected
             responses = []
             async for response in step_solve(options, mock_request, mock_task_lock):
@@ -850,11 +849,10 @@ class TestChatServiceIntegration:
         # Mock get_queue to raise an exception
         mock_task_lock.get_queue = AsyncMock(side_effect=Exception("Queue error"))
         
-        with patch("app.utils.agent.get_task_lock", return_value=mock_task_lock):
-            responses = []
-            async for response in step_solve(options, mock_request, mock_task_lock):
-                responses.append(response)
-                break  # Exit after first iteration
+        responses = []
+        async for response in step_solve(options, mock_request, mock_task_lock):
+            responses.append(response)
+            break  # Exit after first iteration
             
             # Should handle the error and exit gracefully
             assert len(responses) == 0
