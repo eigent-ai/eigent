@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 const LOCAL_PROVIDER_NAMES = ["ollama", "vllm", "sglang", "lmstudio"];
+const DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434/v1";
 
 export default function SettingModels() {
 	const { modelType, cloud_model_type, setModelType, setCloudModelType } =
@@ -112,6 +113,29 @@ export default function SettingModels() {
 	const [localProviderId, setLocalProviderId] = useState<number | undefined>(
 		undefined
 	); // Local model provider_id
+	const [localEndpointManuallyEdited, setLocalEndpointManuallyEdited] = useState(false);
+	const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+	const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+
+	const fetchOllamaModels = async (endpoint?: string) => {
+		const url = endpoint || DEFAULT_OLLAMA_ENDPOINT;
+		setOllamaModelsLoading(true);
+		try {
+			const baseUrl = url.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+
+			const response = await fetch(`${baseUrl}/api/tags`);
+			if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
+			const data = await response.json();
+			const modelNames = data.models?.map((m: any) => m.name) || [];
+			setOllamaModels(modelNames);
+		} catch (error: any) {
+			console.error("Failed to fetch Ollama models:", error);
+			setOllamaModels([]);
+		} finally {
+			setOllamaModelsLoading(false);
+		}
+	};
 
 	// Load provider list and populate form
 	useEffect(() => {
@@ -156,17 +180,27 @@ export default function SettingModels() {
 					(p: any) => LOCAL_PROVIDER_NAMES.includes(p.provider_name)
 				);
 				console.log(123123, local);
+				setLocalError(null);
+				setLocalInputError(false);
+
 				if (local) {
-					setLocalEndpoint(local.endpoint_url || "");
-					setLocalPlatform(
-						local.encrypted_config?.model_platform ||
-						local.provider_name ||
-						"ollama"
-					);
+					const savedPlatform = local.encrypted_config?.model_platform || local.provider_name || "ollama";
+					const effectiveEndpoint = local.endpoint_url || (savedPlatform === "ollama" ? DEFAULT_OLLAMA_ENDPOINT : "");
+					setLocalEndpoint(effectiveEndpoint);
+					setLocalPlatform(savedPlatform);
 					setLocalType(local.encrypted_config?.model_type || "llama3.2");
 					setLocalEnabled(local.is_valid ?? true);
 					setLocalPrefer(local.prefer ?? false);
 					setLocalProviderId(local.id);
+					if (local.endpoint_url) {
+						setLocalEndpointManuallyEdited(true);
+					}
+					if (savedPlatform === "ollama") {
+						fetchOllamaModels(effectiveEndpoint);
+					}
+				} else {
+					setLocalEndpoint(DEFAULT_OLLAMA_ENDPOINT);
+					fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
 				}
 				if (modelType === "cloud") {
 					setCloudPrefer(true);
@@ -549,12 +583,18 @@ export default function SettingModels() {
 			if (localProviderId !== undefined) {
 				await proxyFetchDelete(`/api/provider/${localProviderId}`);
 			}
-			setLocalEndpoint("");
+			setLocalEndpointManuallyEdited(false);
 			setLocalType("");
 			setLocalPrefer(false);
 			setLocalProviderId(undefined);
 			setLocalEnabled(true);
 			setActiveModelIdx(null);
+			if (localPlatform === "ollama") {
+				setLocalEndpoint(DEFAULT_OLLAMA_ENDPOINT);
+				fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
+			} else {
+				setLocalEndpoint("");
+			}
 			toast.success(t("setting.reset-success"));
 		} catch (e) {
 			toast.error(t("setting.reset-failed"));
@@ -1060,6 +1100,10 @@ export default function SettingModels() {
 						onValueChange={(v) => {
 							console.log(v);
 							setLocalPlatform(v);
+							if (v === "ollama" && !localEndpointManuallyEdited) {
+								setLocalEndpoint(DEFAULT_OLLAMA_ENDPOINT);
+								fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
+							}
 						}}
 						disabled={!localEnabled}
 					>
@@ -1081,6 +1125,7 @@ export default function SettingModels() {
 						value={localEndpoint}
 						onChange={(e) => {
 							setLocalEndpoint(e.target.value);
+							setLocalEndpointManuallyEdited(true);
 							setLocalInputError(false);
 							setLocalError(null);
 						}}
@@ -1088,15 +1133,51 @@ export default function SettingModels() {
 						placeholder="http://localhost:11434/v1"
 						note={localError ?? undefined}
 					/>
-					<Input
-						size="default"
-						title={t("setting.model-type")}
-						state={localInputError ? "error" : "default"}
-						placeholder={t("setting.enter-your-local-model-type")}
-						value={localType}
-						onChange={(e) => setLocalType(e.target.value)}
-						disabled={!localEnabled}
-					/>
+					{localPlatform === "ollama" ? (
+						<div className="flex items-end gap-2 w-full">
+							<div className="flex-1">
+								<Select
+									value={localType}
+									onValueChange={(v) => setLocalType(v)}
+									disabled={!localEnabled || ollamaModelsLoading}
+								>
+									<SelectTrigger size="default" title="Model" state={localInputError ? "error" : undefined}>
+										<SelectValue placeholder="Select model" />
+									</SelectTrigger>
+									<SelectContent className="bg-white-100%">
+										{(localType && !ollamaModels.includes(localType) ? [localType, ...ollamaModels] : [localType, ...ollamaModels.filter(m => m !== localType)]).filter(Boolean).map((model) => (
+											<SelectItem key={model} value={model}>
+												{model}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => fetchOllamaModels(localEndpoint || DEFAULT_OLLAMA_ENDPOINT)}
+								disabled={!localEnabled || ollamaModelsLoading}
+								className="flex-shrink-0 mb-1"
+							>
+								{ollamaModelsLoading ? (
+									<Loader2 className="w-4 h-4 animate-spin" />
+								) : (
+									<RotateCcw className="w-4 h-4" />
+								)}
+							</Button>
+						</div>
+					) : (
+						<Input
+							size="default"
+							title={t("setting.model-type")}
+							state={localInputError ? "error" : "default"}
+							placeholder={t("setting.enter-your-local-model-type")}
+							value={localType}
+							onChange={(e) => setLocalType(e.target.value)}
+							disabled={!localEnabled}
+						/>
+					)}
 				</div>
 				<div className="flex justify-end mt-2 px-6 py-4 gap-2 border-b-0 border-x-0 border-solid border-border-secondary">
 					<Button variant="ghost" size="sm" className="!text-text-label" onClick={handleLocalReset}>{t("setting.reset")}</Button>
