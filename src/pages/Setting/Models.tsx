@@ -1114,37 +1114,31 @@ export default function SettingModels() {
 				<div className="w-full bg-surface-secondary rounded-2xl flex flex-col">
 					<div className="flex flex-col justify-between items-start mx-6 pt-2 pb-4 mb-4 border-t-0 border-b-[0.5px] border-x-0 border-solid border-border-secondary">
 						<div className="self-stretch inline-flex justify-between items-center gap-2">
-							<div className="flex items-center gap-2">
-								<div className="text-body-base text-text-heading font-bold my-2">
-									{item.name}
-								</div>
-								{form[idx].prefer ? (
-									<Button
-										variant="success"
-										size="xs"
-										className="focus-none rounded-full shadow-none"
-										disabled={!canSwitch || loading === idx}
-										onClick={() => handleSwitch(idx, false)}
-									>
-										Default
-									</Button>
-								) : (
-									<Button
-										variant="ghost"
-										size="xs"
-										disabled={!canSwitch || loading === idx}
-										onClick={() => handleSwitch(idx, true)}
-										className={canSwitch ? "!text-text-label rounded-full shadow-none bg-button-transparent-fill-hover" : ""}
-									>
-										{!canSwitch ? "Not Configured" : "Set as Default"}
-									</Button>
-								)}
+							<div className="text-body-base text-text-heading font-bold my-2">
+								{item.name}
 							</div>
-							{form[idx].provider_id ? (
-								<div className="w-2 h-2 rounded-full bg-text-success" />
+							<div className="flex items-center gap-2">
+							{form[idx].prefer ? (
+								<span className="inline-flex items-center px-2 py-1 rounded-full text-label-xs font-bold text-text-success">
+									Default
+								</span>
 							) : (
-								<div className="w-2 h-2 rounded-full bg-text-label opacity-10" />
+								<Button
+									variant="ghost"
+									size="xs"
+									disabled={!canSwitch || loading === idx}
+									onClick={() => handleSwitch(idx, true)}
+									className={canSwitch ? "!text-text-label rounded-full shadow-none bg-button-transparent-fill-hover hover:bg-button-transparent-fill-active inline-flex items-center" : "inline-flex items-center gap-1.5"}
+								>
+									{!canSwitch ? "Not Configured" : "Set as Default"}
+								</Button>
 							)}
+							{form[idx].provider_id ? (
+										<div className="w-2 h-2 rounded-full bg-text-success shrink-0" />
+									) : (
+										<div className="w-2 h-2 rounded-full bg-text-label opacity-10 shrink-0" />
+							)}
+							</div>
 						</div>
 						<div className="text-body-sm text-text-label">
 							{item.description}
@@ -1418,20 +1412,20 @@ export default function SettingModels() {
 		<div className="flex-1 w-full h-auto m-auto flex flex-col">
 			{/* Header Section */}
 			<div className="sticky top-0 z-10 bg-surface-primary flex pl-6 pt-8 pb-6 w-full items-center justify-between">
-				<div className="flex flex-row items-center justify-between w-full gap-4">
+				<div className="flex flex-row items-end justify-between w-full gap-4">
 					<div className="flex flex-col">
 						<div className="text-heading-sm font-bold text-text-heading">{t("setting.models")}</div>
 					</div>
 					{/* Default Model Cascading Dropdown */}
 					<div className="flex flex-row items-center w-fit gap-4">
-						<div className="text-body-sm text-text-body">Default</div>
+						<div className="text-body-sm text-text-heading font-semibold">Default</div>
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
-								<button className="flex items-center gap-2 px-3 py-1 rounded-lg border border-solid border-input-border-default bg-input-bg-input hover:bg-input-bg-hover hover:border-input-border-hover transition-colors w-fit justify-between">
-									<span className="text-body-sm text-text-body whitespace-nowrap">
+								<button className="flex items-center gap-2 px-3 py-1 font-semibold rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success text-text-success hover:opacity-70 active:opacity-90 transition-colors w-fit justify-between">
+									<span className="text-body-sm whitespace-nowrap">
 										{getDefaultModelDisplayText()}
 									</span>
-									<ChevronDown className="w-4 h-4 text-icon-primary flex-shrink-0" />
+									<ChevronDown className="w-4 h-4 text-text-success flex-shrink-0" />
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-[180px]">
