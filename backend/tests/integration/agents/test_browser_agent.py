@@ -32,17 +32,14 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Dict, Any, List
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 import pytest
 
-from camel.agents import ChatAgent
 from camel.messages import BaseMessage
-from camel.models import BaseModelBackend
-from camel.responses import ChatAgentResponse
 
-from app.utils.agent import browser_agent, ListenChatAgent
-from app.model.chat import Chat, Agents
+from app.utils.agent import browser_agent
+from app.model.chat import Chat
+from app.service.task import Agents
 from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -1245,4 +1242,9 @@ class TestBrowserAgentRealWorldScenarios:
             
             agent = browser_agent(options)
             assert agent is not None
+
+
+
+
+
 
