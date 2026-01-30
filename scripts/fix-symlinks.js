@@ -170,11 +170,108 @@ function fixVenvSymlinks(venvPath, venvName) {
 }
 
 /**
+ * Fix shebang lines in all executable scripts in venv/bin directory
+ */
+function fixScriptShebangs(venvPath, venvName) {
+  const binDir = path.join(venvPath, 'bin');
+
+  if (!fs.existsSync(binDir)) {
+    console.log(`⚠️  ${venvName} bin directory not found: ${binDir}`);
+    return { fixed: 0, skipped: 0 };
+  }
+
+  console.log(`\n📝 Fixing shebangs in ${venvName}/bin scripts`);
+
+  let fixedCount = 0;
+  let skippedCount = 0;
+
+  try {
+    const entries = fs.readdirSync(binDir);
+
+    for (const entry of entries) {
+      const filePath = path.join(binDir, entry);
+
+      // Skip directories and symlinks
+      try {
+        const stat = fs.lstatSync(filePath);
+        if (stat.isDirectory() || stat.isSymbolicLink()) {
+          continue;
+        }
+      } catch (err) {
+        continue;
+      }
+
+      try {
+        // Read first line to check for shebang
+        const fd = fs.openSync(filePath, 'r');
+        const buffer = Buffer.alloc(512);
+        const bytesRead = fs.readSync(fd, buffer, 0, 512, 0);
+        fs.closeSync(fd);
+
+        if (bytesRead === 0) continue;
+
+        const content = buffer.toString('utf-8', 0, bytesRead);
+        const firstLineEnd = content.indexOf('\n');
+        if (firstLineEnd === -1) continue;
+
+        const firstLine = content.substring(0, firstLineEnd);
+
+        // Check if it's a Python shebang with absolute path
+        if (!firstLine.startsWith('#!') || !firstLine.includes('python')) {
+          continue;
+        }
+
+        // Check if it contains an absolute path to the venv
+        if (!path.isAbsolute(firstLine.substring(2).trim()) && !firstLine.includes('/resources/prebuilt/venv/')) {
+          skippedCount++;
+          continue;
+        }
+
+        // Read full file content
+        const fullContent = fs.readFileSync(filePath, 'utf-8');
+
+        // Replace absolute shebang with placeholder
+        // This will be replaced at runtime with actual venv path
+        // Similar to how pyvenv.cfg is handled
+        const newContent = fullContent.replace(
+          /^#!.*python.*$/m,
+          '#!{{PREBUILT_VENV_PYTHON}}'
+        );
+
+        if (newContent !== fullContent) {
+          fs.writeFileSync(filePath, newContent, 'utf-8');
+          // Preserve executable permissions
+          fs.chmodSync(filePath, 0o755);
+          fixedCount++;
+
+          if (fixedCount <= 5) { // Only show first 5 for brevity
+            console.log(`   ✅ Fixed: ${entry}`);
+          }
+        }
+      } catch (err) {
+        // Silently skip files that can't be processed
+        continue;
+      }
+    }
+
+    if (fixedCount > 5) {
+      console.log(`   ✅ ... and ${fixedCount - 5} more files`);
+    }
+    console.log(`   📊 Total: ${fixedCount} fixed, ${skippedCount} already correct`);
+
+  } catch (error) {
+    console.error(`❌ Error processing ${venvName}: ${error.message}`);
+  }
+
+  return { fixed: fixedCount, skipped: skippedCount };
+}
+
+/**
  * Main function
  */
 function main() {
-  console.log('🔧 Fixing Python symlinks in venv directories...');
-  console.log('================================================\n');
+  console.log('🔧 Fixing Python symlinks and shebangs in venv directories...');
+  console.log('==========================================================\n');
 
   const venvDirs = [
     {
@@ -187,28 +284,34 @@ function main() {
     }
   ];
 
-  let successCount = 0;
+  let symlinkSuccessCount = 0;
   let totalCount = 0;
+  let totalShebangsFixed = 0;
 
   for (const { path: venvPath, name } of venvDirs) {
     if (fs.existsSync(venvPath)) {
       totalCount++;
+
+      // Fix symlinks
       if (fixVenvSymlinks(venvPath, name)) {
-        successCount++;
+        symlinkSuccessCount++;
       }
+
+      // Fix shebangs in all scripts
+      const { fixed } = fixScriptShebangs(venvPath, name);
+      totalShebangsFixed += fixed;
     } else {
       console.log(`⚠️  ${name} directory not found: ${venvPath}`);
     }
   }
 
-  console.log('\n================================================');
-  if (successCount > 0) {
-    console.log(`✅ Fixed symlinks in ${successCount}/${totalCount} venv(s)`);
-    console.log('✅ Python executables are now portable!');
-  } else if (totalCount === 0) {
+  console.log('\n==========================================================');
+  if (totalCount === 0) {
     console.log('⚠️  No venv directories found - this is OK for development builds');
   } else {
-    console.log('ℹ️  All symlinks already correct, no changes needed');
+    console.log(`✅ Fixed symlinks in ${symlinkSuccessCount}/${totalCount} venv(s)`);
+    console.log(`✅ Fixed shebangs in ${totalShebangsFixed} script(s)`);
+    console.log('✅ Venvs are now fully portable!');
   }
 }
 
