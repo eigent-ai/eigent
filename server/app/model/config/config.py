@@ -79,7 +79,12 @@ class ConfigInfo:
             "toolkit": "whatsapp_toolkit",
         },
         ConfigGroup.LINKEDIN.value: {
-            "env_vars": ["LINKEDIN_ACCESS_TOKEN"],
+            "env_vars": [
+                "LINKEDIN_CLIENT_ID",
+                "LINKEDIN_CLIENT_SECRET",
+                "LINKEDIN_ACCESS_TOKEN",
+                "LINKEDIN_REFRESH_TOKEN",
+            ],
             "toolkit": "linkedin_toolkit",
         },
         ConfigGroup.REDDIT.value: {
