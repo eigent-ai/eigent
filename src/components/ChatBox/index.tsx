@@ -666,14 +666,17 @@ export default function ChatBox(): JSX.Element {
       );
     }
 
-    // Create new task and clean up locally
+    // Stop and remove old task before creating the new one
+    // (removeTask reads taskId from the store, so it must run before create() overwrites it)
+    chatStore.stopTask();
+
+    // Create new task
     let id = chatStore.create();
     chatStore.setHasMessages(true);
     // Copy the file attachments to the new task
     if (attachments.length > 0) {
       chatStore.setAttaches(attachments);
     }
-    chatStore.removeTask();
     setMessage(question);
   };
 

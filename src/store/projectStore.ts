@@ -477,7 +477,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 					if (chatStore) {
 						// Call replay on the chat store with the question and delay
 						try {
-							await chatStore.getState().replay(question, 0.2);
+							await chatStore.getState().replay(taskId, question, 0.2);
 							console.log(`[ProjectStore] Started replay for task ${taskId}`);
 						} catch (error) {
 							console.error(`[ProjectStore] Failed to replay task ${taskId}:`, error);
