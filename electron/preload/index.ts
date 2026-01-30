@@ -119,6 +119,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getEmailFolderPath: (email: string) => ipcRenderer.invoke('get-email-folder-path', email),
   restartApp: () => ipcRenderer.invoke('restart-app'),
+  readGlobalEnv: (key: string) => ipcRenderer.invoke('read-global-env', key),
 });
 
 
