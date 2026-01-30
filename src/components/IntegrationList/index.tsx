@@ -38,6 +38,7 @@ import {
 	useIntegrationManagement,
 	type IntegrationItem,
 } from "@/hooks/useIntegrationManagement";
+import { getProxyBaseURL } from "@/lib";
 
 type IntegrationListVariant = "select" | "manage";
 
@@ -121,6 +122,15 @@ export default function IntegrationList({
 					setActiveMcp(mcp);
 					setShowEnvConfig(true);
 				}
+				return;
+			}
+
+			// LinkedIn uses server-side OAuth flow
+			if (item.key === "LinkedIn") {
+				// Open LinkedIn OAuth login via the remote server (same pattern as other OAuth providers)
+				const baseUrl = getProxyBaseURL();
+				const oauthUrl = `${baseUrl}/api/oauth/linkedin/login`;
+				window.open(oauthUrl, "_blank", "width=600,height=700");
 				return;
 			}
 
@@ -256,7 +266,7 @@ export default function IntegrationList({
 		"Slack",
 		"X(Twitter)",
 		"WhatsApp",
-		"LinkedIn",
+		// "LinkedIn", // LinkedIn OAuth is now supported
 		"Reddit",
 		"Github",
 	];
