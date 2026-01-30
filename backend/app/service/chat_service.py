@@ -43,20 +43,18 @@ from app.utils.workforce import Workforce
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.model.chat import Chat, NewAgent, Status, sse_json, TaskContent
 from camel.tasks import Task
-from app.utils.agent import (
-    ListenChatAgent,
-    agent_model,
-    get_mcp_tools,
-    get_toolkits,
-    mcp_agent,
+from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.agent_model import agent_model, set_main_event_loop
+from app.agent.tools import get_mcp_tools, get_toolkits
+from app.agent.factory import (
+    browser_agent,
     developer_agent,
     document_agent,
+    mcp_agent,
     multi_modal_agent,
-    browser_agent,
+    question_confirm_agent,
     social_medium_agent,
     task_summary_agent,
-    question_confirm_agent,
-    set_main_event_loop,
 )
 from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
@@ -1514,4 +1512,13 @@ The current date is {datetime.date.today()}. For any date-related tasks, you
 MUST use this as the current date.
 """
 
-    return agent_model(data.name, enhanced_description, options, tools, tool_names=tool_names)
+    # Pass per-agent custom model config if available
+    custom_model_config = getattr(data, 'custom_model_config', None)
+    return agent_model(
+        data.name,
+        enhanced_description,
+        options,
+        tools,
+        tool_names=tool_names,
+        custom_model_config=custom_model_config,
+    )
