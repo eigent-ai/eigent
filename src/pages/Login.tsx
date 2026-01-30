@@ -18,14 +18,14 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useStackApp } from '@stackframe/react';
 import loginGif from '@/assets/login.gif';
 import { Button } from '@/components/ui/button';
-
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import eye from '@/assets/eye.svg';
 import eyeOff from '@/assets/eye-off.svg';
-import { proxyFetchPost } from '@/api/http';
+import { proxyFetchPost, proxyFetchPut } from '@/api/http';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
 import WindowControls from '@/components/WindowControls';
@@ -51,6 +51,7 @@ export default function Login() {
   const [generalError, setGeneralError] = useState('');
   const titlebarRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -129,9 +130,34 @@ export default function Login() {
     }
   };
 
+  const acceptPrivacy = async () => {
+    const API_FIELDS = [
+      'take_screenshot',
+      'access_local_software',
+      'access_your_address',
+      'password_storage',
+    ];
+    const requestData = {
+      [API_FIELDS[0]]: true,
+      [API_FIELDS[1]]: true,
+      [API_FIELDS[2]]: true,
+      [API_FIELDS[3]]: true,
+    };
+    try {
+      await proxyFetchPut('/api/user/privacy', requestData);
+    } catch (e) {
+      console.error('Failed to set privacy settings', e);
+    }
+  };
+
   //
   const handleLogin = async () => {
     if (!validateForm()) {
+      return;
+    }
+
+    if (!agreeToTerms) {
+      setGeneralError('Please agree to the Terms of Use and Privacy Policy.');
       return;
     }
 
@@ -154,6 +180,7 @@ export default function Login() {
       // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
       setLocalProxyValue(localProxyValue);
+      await acceptPrivacy();
       navigate('/');
     } catch (error: any) {
       console.error('Login failed:', error);
@@ -182,6 +209,7 @@ export default function Login() {
       // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
       setLocalProxyValue(localProxyValue);
+      await acceptPrivacy();
       navigate('/');
     } catch (error: any) {
       console.error('Login failed:', error);
@@ -194,6 +222,10 @@ export default function Login() {
   };
 
   const handleReloadBtn = async (type: string) => {
+    if (!agreeToTerms) {
+      setGeneralError('Please agree to the Terms of Use and Privacy Policy.');
+      return;
+    }
     if (!app) {
       console.error('Stack app not initialized');
       return;
@@ -447,6 +479,38 @@ export default function Login() {
                 />
               </div>
             </div>
+            <div className="flex items-center space-x-2 w-full px-1 justify-center mb-4">
+              <Checkbox
+                id="terms"
+                className="my-0.5 cursor-pointer"
+                checked={agreeToTerms}
+                onCheckedChange={(checked) => {
+                  setAgreeToTerms(!!checked);
+                  setGeneralError('');
+                }}
+              />
+              <label
+                htmlFor="terms"
+                className="text-label-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                I agree to{' '}
+                <a
+                  href="https://www.eigent.ai/terms-of-use"
+                  target="_blank"
+                  className="text-text-information underline"
+                >
+                  {t('layout.terms-of-use')}
+                </a>{' '}
+                {t('layout.and')}{' '}
+                <a
+                  href="https://www.eigent.ai/privacy-policy"
+                  target="_blank"
+                  className="text-text-information underline"
+                >
+                  {t('layout.privacy-policy')}
+                </a>
+              </label>
+            </div>
             <Button
               onClick={handleLogin}
               size="md"
@@ -460,19 +524,6 @@ export default function Login() {
               </span>
             </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() =>
-              window.open(
-                'https://www.eigent.ai/privacy-policy',
-                '_blank',
-                'noopener,noreferrer'
-              )
-            }
-          >
-            {t('layout.privacy-policy')}
-          </Button>
         </div>
       </div>
     </div>

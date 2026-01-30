@@ -25,9 +25,10 @@ import github2 from "@/assets/github2.svg";
 import google from "@/assets/google.svg";
 import eye from "@/assets/eye.svg";
 import eyeOff from "@/assets/eye-off.svg";
-import { proxyFetchPost } from "@/api/http";
+import { proxyFetchPost, proxyFetchPut } from "@/api/http";
 import { hasStackKeys } from "@/lib";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -50,6 +51,7 @@ export default function SignUp() {
 	});
 	const [isLoading, setIsLoading] = useState(false);
 	const [generalError, setGeneralError] = useState("");
+	const [agreeToTerms, setAgreeToTerms] = useState(false);
 
 	const validateEmail = (email: string) => {
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -97,8 +99,33 @@ export default function SignUp() {
 		}
 	};
 
+	const acceptPrivacy = async () => {
+		const API_FIELDS = [
+			"take_screenshot",
+			"access_local_software",
+			"access_your_address",
+			"password_storage",
+		];
+		const requestData = {
+			[API_FIELDS[0]]: true,
+			[API_FIELDS[1]]: true,
+			[API_FIELDS[2]]: true,
+			[API_FIELDS[3]]: true,
+		};
+		try {
+			await proxyFetchPut("/api/user/privacy", requestData);
+		} catch (e) {
+			console.error("Failed to set privacy settings", e);
+		}
+	};
+
 	const handleRegister = async () => {
 		if (!validateForm()) {
+			return;
+		}
+
+		if (!agreeToTerms) {
+			setGeneralError("Please agree to the Terms of Use and Privacy Policy.");
 			return;
 		}
 
@@ -154,6 +181,7 @@ export default function SignUp() {
 			}
 			console.log("data", data);
 			setAuth({ email: formData.email, ...data });
+			await acceptPrivacy();
 			navigate("/");
 		} catch (error: any) {
 			console.error("Login failed:", error);
@@ -164,6 +192,10 @@ export default function SignUp() {
 	};
 
 	const handleReloadBtn = async (type: string) => {
+		if (!agreeToTerms) {
+			setGeneralError("Please agree to the Terms of Use and Privacy Policy.");
+			return;
+		}
 		localStorage.setItem("invite_code", formData.invite_code);
 		console.log("handleReloadBtn1", type);
 		const cookies = document.cookie.split("; ");
@@ -263,7 +295,7 @@ export default function SignUp() {
 								</Button>
 						</div>
 						{HAS_STACK_KEYS && (
-							<div className="w-full pt-6">
+              <div className="w-full pt-6">
 								<Button
 									variant="primary"
 									size="lg"
@@ -343,6 +375,38 @@ export default function SignUp() {
 									/>
 							</div>
 						</div>
+          <div className="flex items-center space-x-2 w-full px-1 justify-center mb-4">
+            <Checkbox
+              id="terms"
+              className="my-0.5 cursor-pointer"
+              checked={agreeToTerms}
+              onCheckedChange={(checked) => {
+                setAgreeToTerms(!!checked);
+                setGeneralError("");
+              }}
+            />
+            <label
+              htmlFor="terms"
+              className="text-label-xs text-text-label leading-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+            >
+              I agree to{' '}
+              <a
+                href="https://www.eigent.ai/terms-of-use"
+                target="_blank"
+                className="text-text-information underline"
+              >
+                {t('layout.terms-of-use')}
+              </a>{' '}
+              {t('layout.and')}{' '}
+              <a
+                href="https://www.eigent.ai/privacy-policy"
+                target="_blank"
+                className="text-text-information underline"
+              >
+                {t('layout.privacy-policy')}
+              </a>
+            </label>
+          </div>
 						<Button
 							onClick={handleRegister}
 							size="md"
@@ -356,13 +420,6 @@ export default function SignUp() {
 							</span>
 						</Button>
 				</div>
-				<Button 
-				  variant="ghost"
-					size="xs"
-					onClick={() => window.open("https://www.eigent.ai/privacy-policy", "_blank", "noopener,noreferrer")}
-				>
-					{t("layout.privacy-policy")}
-				</Button>
 			</div>
 		</div>
 	);
