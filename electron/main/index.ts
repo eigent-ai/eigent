@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import {
   app,
   BrowserWindow,
@@ -36,7 +50,6 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
 import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
-import { setVibrancy, setRoundedCorners, setTransparentTitlebar } from './native/macos-window'
 
 const userData = app.getPath('userData');
 
@@ -1275,8 +1288,11 @@ async function createWindow() {
     minWidth: 1050,
     minHeight: 650,
     frame: false,
+    show: false, // Don't show until content is ready to avoid white screen
     transparent: true,
-    backgroundColor: '#00000000',
+    vibrancy: 'sidebar',
+    visualEffectState: 'active',
+    backgroundColor: '#f5f5f580',
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
@@ -1294,27 +1310,40 @@ async function createWindow() {
     },
   });
 
-  // Apply native macOS effects
-  if (process.platform === 'darwin') {
-    win.once('ready-to-show', () => {
-      if (win && !win.isDestroyed()) {
-        try {
-          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
-          setVibrancy(win, 'HUDWindow');
-
-          // Apply rounded corners
-          setRoundedCorners(win, 20);
-
-          // Make titlebar transparent
-          setTransparentTitlebar(win);
-
-          log.info('[MacOS] Applied native visual effects');
-        } catch (error) {
-          log.error('[MacOS] Failed to apply native visual effects:', error);
+  // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('render-process-gone', (event, details) => {
+    log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    if (win && !win.isDestroyed()) {
+      // Reload the window after a brief delay
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Attempting to reload after crash...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
         }
-      }
-    });
-  }
+      }, 1000);
+    }
+  });
+
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    log.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`);
+    // Retry loading after a delay
+    if (errorCode !== -3) { // -3 is USER_CANCELLED, don't retry
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Retrying load after failure...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 2000);
+    }
+  });
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1563,15 +1592,27 @@ async function createWindow() {
     win.loadFile(indexHtml);
   }
 
-  // Wait for window to be ready
+  // Wait for window to be ready with timeout
   await new Promise<void>((resolve) => {
+    const loadTimeout = setTimeout(() => {
+      log.warn('Window content load timeout (10s), showing window anyway...');
+      resolve();
+    }, 10000);
+
     win!.webContents.once('did-finish-load', () => {
+      clearTimeout(loadTimeout);
       log.info(
         'Window content loaded, starting dependency check immediately...'
       );
       resolve();
     });
   });
+
+  // Show window now that content is loaded (or timeout reached)
+  if (win && !win.isDestroyed()) {
+    win.show();
+    log.info('Window shown after content loaded');
+  }
 
   // Mark window as ready and process any queued protocol URLs
   isWindowReady = true;

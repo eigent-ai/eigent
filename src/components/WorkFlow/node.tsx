@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { Handle, Position, useReactFlow, NodeResizer } from "@xyflow/react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -104,7 +118,7 @@ export function Node({ id, data }: NodeProps) {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();
@@ -115,21 +129,47 @@ export function Node({ id, data }: NodeProps) {
 		setIsExpanded(data.isExpanded);
 	}, [data.isExpanded]);
 
+	// Auto-expand when a task is running with toolkits
 	useEffect(() => {
-		const runningTask = data.agent?.tasks?.find(
+		const tasks = data.agent?.tasks || [];
+
+		// Find running task with active toolkits
+		const runningTaskWithToolkits = tasks.find(
 			(task) =>
-				task.status === "running" && task.toolkits && task.toolkits.length > 0
+				task.status === "running" &&
+				task.toolkits &&
+				task.toolkits.length > 0
 		);
 
-		if (runningTask && runningTask.id !== lastAutoExpandedTaskIdRef.current) {
+		// Reset tracking when no tasks are running
+		const hasRunningTasks = tasks.some((task) => task.status === "running");
+		if (!hasRunningTasks && lastAutoExpandedTaskIdRef.current) {
+			lastAutoExpandedTaskIdRef.current = null;
+		}
+
+		// Auto-expand for new running task
+		if (runningTaskWithToolkits && runningTaskWithToolkits.id !== lastAutoExpandedTaskIdRef.current) {
+			// Always select the new task
+			setSelectedTask(runningTaskWithToolkits);
+
+			// Expand if not already expanded
 			if (!isExpanded) {
 				setIsExpanded(true);
 				data.onExpandChange(id, true);
-				setSelectedTask(runningTask);
 			}
-			lastAutoExpandedTaskIdRef.current = runningTask.id;
+
+			lastAutoExpandedTaskIdRef.current = runningTaskWithToolkits.id;
 		}
-	}, [data.agent?.tasks, id, data.onExpandChange, isExpanded]);
+	}, [
+		data.agent?.tasks,
+		// Add specific dependencies that actually change
+		data.agent?.tasks?.length,
+		data.agent?.tasks?.find((t) => t.status === "running")?.id,
+		data.agent?.tasks?.find((t) => t.status === "running")?.toolkits?.length,
+		id,
+		data.onExpandChange,
+		isExpanded,
+	]);
 
 	// manually control node size
 	useEffect(() => {
