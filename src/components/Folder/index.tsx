@@ -261,7 +261,10 @@ export default function Folder({ data }: { data?: Agent }) {
 
     for (const file of sortedFiles) {
       // Normalize paths to use forward slashes for cross-platform compatibility
-      const normalizedRelativePath = (file.relativePath || '').replace(/\\/g, '/');
+      const normalizedRelativePath = (file.relativePath || '').replace(
+        /\\/g,
+        '/',
+      );
       const fullRelativePath = normalizedRelativePath
         ? `${normalizedRelativePath}/${file.name}`
         : file.name;
@@ -297,7 +300,7 @@ export default function Folder({ data }: { data?: Agent }) {
   });
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   const toggleFolder = (folderPath: string) => {
@@ -337,7 +340,7 @@ export default function Folder({ data }: { data?: Agent }) {
       res = await window.ipcRenderer.invoke(
         'get-project-file-list',
         authStore.email,
-        projectStore.activeProjectId as string
+        projectStore.activeProjectId as string,
       );
       let tree: any = null;
       if (
@@ -374,7 +377,7 @@ export default function Folder({ data }: { data?: Agent }) {
         if (chatStoreSelectedFile) {
           console.log(res, chatStoreSelectedFile);
           const file = res.find(
-            (item: any) => item.name === chatStoreSelectedFile.name
+            (item: any) => item.name === chatStoreSelectedFile.name,
           );
           console.log('file', file);
           if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
@@ -397,7 +400,7 @@ export default function Folder({ data }: { data?: Agent }) {
       chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
       const file = fileGroups[0].files.find(
-        (item: any) => item.path === chatStoreSelectedFile.path
+        (item: any) => item.path === chatStoreSelectedFile.path,
       );
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
         selectedFileChange(file as FileInfo, isShowSourceCode);
@@ -517,7 +520,7 @@ export default function Folder({ data }: { data?: Agent }) {
                       <FileText className="w-4 h-4" />
                     )}
                   </button>
-                ))
+                )),
               )}
             </div>
           )}
@@ -539,7 +542,7 @@ export default function Folder({ data }: { data?: Agent }) {
                   }
                   window.ipcRenderer.invoke(
                     'reveal-in-folder',
-                    selectedFile.path
+                    selectedFile.path,
                   );
                 }}
                 className="flex-1 min-w-0 overflow-hidden cursor-pointer flex items-center gap-2"
@@ -564,8 +567,12 @@ export default function Folder({ data }: { data?: Agent }) {
         )}
 
         {/* content */}
-        <div className={`flex-1 min-h-0 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'overflow-y-auto scrollbar'}`}>
-          <div className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}>
+        <div
+          className={`flex-1 min-h-0 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'overflow-y-auto scrollbar'}`}
+        >
+          <div
+            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}
+          >
             {selectedFile ? (
               !loading ? (
                 selectedFile.type === 'md' && !isShowSourceCode ? (
@@ -573,6 +580,11 @@ export default function Folder({ data }: { data?: Agent }) {
                     <MarkDown
                       content={selectedFile.content || ''}
                       enableTypewriter={false}
+                      contentBasePath={
+                        selectedFile.isRemote
+                          ? null
+                          : getDirPath(selectedFile.path)
+                      }
                     />
                   </div>
                 ) : selectedFile.type === 'pdf' ? (
@@ -582,7 +594,7 @@ export default function Folder({ data }: { data?: Agent }) {
                     title={selectedFile.name}
                   />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                    selectedFile.type
+                    selectedFile.type,
                   ) ? (
                   <FolderComponent selectedFile={selectedFile} />
                 ) : selectedFile.type === 'html' ? (
@@ -691,7 +703,10 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   const normalizedRelative = relativePath.replace(/\\/g, '/');
 
   // If it's not a relative path, return as-is
-  if (!normalizedRelative.startsWith('./') && !normalizedRelative.startsWith('../')) {
+  if (
+    !normalizedRelative.startsWith('./') &&
+    !normalizedRelative.startsWith('../')
+  ) {
     // It's a simple relative path like "script.js" or "js/script.js"
     return joinPath(normalizedBase, normalizedRelative);
   }
@@ -740,13 +755,18 @@ function HtmlRenderer({
 
       // Parse HTML to find referenced JS and CSS files via relative paths
       const scriptSrcRegex = /<script[^>]*src\s*=\s*["']([^"']+)["'][^>]*>/gi;
-      const linkHrefRegex = /<link[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*>/gi;
+      const linkHrefRegex =
+        /<link[^>]*href\s*=\s*["']([^"']+\.css)["'][^>]*>/gi;
 
       const referencedPaths: Set<string> = new Set();
 
       // Helper to extract and resolve paths
       const addReferencedPath = (url: string) => {
-        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+        if (
+          !url.startsWith('http://') &&
+          !url.startsWith('https://') &&
+          !url.startsWith('//')
+        ) {
           const resolvedPath = resolveRelativePath(htmlDir, url);
           referencedPaths.add(resolvedPath.toLowerCase());
         }
@@ -766,13 +786,21 @@ function HtmlRenderer({
 
       // Find matching files (exact path match only)
       const relatedFiles = projectFiles.filter((file) => {
-        if (file.isFolder || !['js', 'css'].includes(file.type?.toLowerCase() || '')) return false;
+        if (
+          file.isFolder ||
+          !['js', 'css'].includes(file.type?.toLowerCase() || '')
+        )
+          return false;
         const normalizedFilePath = file.path.replace(/\\/g, '/').toLowerCase();
         return referencedPaths.has(normalizedFilePath);
       });
 
-      const jsFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'js');
-      const cssFiles = relatedFiles.filter((f) => f.type?.toLowerCase() === 'css');
+      const jsFiles = relatedFiles.filter(
+        (f) => f.type?.toLowerCase() === 'js',
+      );
+      const cssFiles = relatedFiles.filter(
+        (f) => f.type?.toLowerCase() === 'css',
+      );
 
       // Check for dangerous Electron/Node.js patterns as defense-in-depth
       if (containsDangerousContent(html)) {
@@ -819,14 +847,13 @@ function HtmlRenderer({
 
           try {
             // Read image as data URL
-            const dataUrl = await window.electronAPI.readFileAsDataUrl(
-              imagePath
-            );
+            const dataUrl =
+              await window.electronAPI.readFileAsDataUrl(imagePath);
 
             // Replace src with data URL
             const newAttributes = attributes.replace(
               /src\s*=\s*["'][^"']+["']/i,
-              `src="${dataUrl}"`
+              `src="${dataUrl}"`,
             );
             // Preserve the original tag format (self-closing or not)
             const isSelfClosing = imgTag.trim().endsWith('/>');
@@ -840,7 +867,7 @@ function HtmlRenderer({
             // Keep original tag if image loading fails
             return { original: imgTag, processed: imgTag };
           }
-        })
+        }),
       );
 
       // Replace all img tags in HTML
@@ -848,7 +875,7 @@ function HtmlRenderer({
       processedImages.forEach(({ original, processed }) => {
         processedHtmlContent = processedHtmlContent.replace(
           original,
-          processed
+          processed,
         );
       });
 
@@ -859,17 +886,20 @@ function HtmlRenderer({
             'open-file',
             'css',
             cssFile.path,
-            false
+            false,
           );
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
-            
+
             // Try to replace the external link tag with inline style
             const linkRegex = new RegExp(
               `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
-              'gi'
+              'gi',
             );
-            const replacedCss = processedHtmlContent.replace(linkRegex, styleTag);
+            const replacedCss = processedHtmlContent.replace(
+              linkRegex,
+              styleTag,
+            );
             if (replacedCss !== processedHtmlContent) {
               processedHtmlContent = replacedCss;
             } else {
@@ -877,7 +907,7 @@ function HtmlRenderer({
               if (processedHtmlContent.includes('<head>')) {
                 processedHtmlContent = processedHtmlContent.replace(
                   '<head>',
-                  `<head>${styleTag}`
+                  `<head>${styleTag}`,
                 );
               } else {
                 processedHtmlContent = styleTag + processedHtmlContent;
@@ -896,16 +926,19 @@ function HtmlRenderer({
             'open-file',
             'js',
             jsFile.path,
-            false
+            false,
           );
           if (jsContent) {
             // Replace external script tag with inline script
             const scriptRegex = new RegExp(
               `<script[^>]*src=["'](?:[^"']*[/\\\\])?${jsFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`,
-              'gi'
+              'gi',
             );
             const inlineScriptTag = `<script data-source="${jsFile.name}">${jsContent}</script>`;
-            processedHtmlContent = processedHtmlContent.replace(scriptRegex, inlineScriptTag);
+            processedHtmlContent = processedHtmlContent.replace(
+              scriptRegex,
+              inlineScriptTag,
+            );
           }
         } catch (error) {
           console.error(`Failed to load JS file: ${jsFile.path}`, error);
