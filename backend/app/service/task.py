@@ -1,8 +1,22 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from typing_extensions import Any, Literal, TypedDict
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 from app.exception.exception import ProgramException
-from app.model.chat import McpServers, Status, SupplementChat, Chat, UpdateData
+from app.model.chat import AgentModelConfig, McpServers, Status, SupplementChat, Chat, UpdateData
 import asyncio
 from enum import Enum
 from camel.tasks import Task
@@ -10,9 +24,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 import weakref
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("task_service")
+logger = logging.getLogger("task_service")
 
 
 class Action(str, Enum):
@@ -194,6 +208,7 @@ class ActionNewAgent(BaseModel):
     description: str
     tools: list[str]
     mcp_tools: McpServers | None
+    custom_model_config: "AgentModelConfig | None" = None
 
 
 class ActionBudgetNotEnough(BaseModel):
@@ -277,6 +292,8 @@ class TaskLock:
     last_accessed: datetime
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
+    registered_toolkits: list[Any]
+    """Track toolkits for cleanup (e.g., TerminalToolkit venvs)"""
 
     # Context management fields
     conversation_history: List[Dict[str, Any]]
@@ -297,6 +314,7 @@ class TaskLock:
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.background_tasks = set()
+        self.registered_toolkits = []
 
         # Initialize context management fields
         self.conversation_history = []
@@ -346,7 +364,41 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+        
+        # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
+        for toolkit in self.registered_toolkits:
+            try:
+                if hasattr(toolkit, 'cleanup'):
+                    toolkit.cleanup()
+                    logger.info("Toolkit cleanup completed", extra={"task_id": self.id, "toolkit": type(toolkit).__name__})
+            except Exception as e:
+                logger.warning(f"Failed to cleanup toolkit: {e}", extra={"task_id": self.id, "toolkit": type(toolkit).__name__})
+        self.registered_toolkits.clear()
+        
         logger.info("Task lock cleanup completed", extra={"task_id": self.id})
+
+    def register_toolkit(self, toolkit: Any) -> None:
+        """Register a toolkit for cleanup when task ends.
+
+        This is used to track toolkits that create resources (like venvs) that
+        should be cleaned up when the task is complete.
+
+        Note: Duplicate registrations of the same toolkit instance are ignored.
+        """
+        # Prevent duplicate registration of the same toolkit instance
+        if any(t is toolkit for t in self.registered_toolkits):
+            logger.debug("Toolkit already registered, skipping", extra={
+                "task_id": self.id,
+                "toolkit": type(toolkit).__name__
+            })
+            return
+
+        self.registered_toolkits.append(toolkit)
+        logger.debug("Toolkit registered for cleanup", extra={
+            "task_id": self.id,
+            "toolkit": type(toolkit).__name__,
+            "total_registered": len(self.registered_toolkits)
+        })
 
     def add_conversation(self, role: str, content: str | dict):
         """Add a conversation entry to history"""
@@ -466,7 +518,7 @@ async def _periodic_cleanup():
             await asyncio.sleep(300)  # Run every 5 minutes
 
             current_time = datetime.now()
-            stale_timeout = timedelta(hours=2)  # Consider tasks stale after 2 hours
+            stale_timeout = timedelta(hours=4)  # Consider tasks stale after 4 hours
 
             stale_ids = []
             for task_id, task_lock in task_locks.items():

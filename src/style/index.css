@@ -50,6 +50,8 @@ body {
   backdrop-filter: blur(75px);
   z-index: 0;
   color: var(--text-body);
+  position: relative;
+  isolation: isolate;
 }
 
 .blur {
@@ -434,6 +436,5 @@ code {
 
 .markdown-container ol {
   padding-left: 1rem;
-  font-size: 12px;
-  /* text-sm */
+  font-size: 12px; /* text-sm */
 }

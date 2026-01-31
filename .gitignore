@@ -46,7 +46,6 @@ public/
 
 # Testing
 coverage/
-.traceroot-config.yaml
 
 # Python
 __pycache__/
@@ -59,3 +58,6 @@ __pycache__/
 resources/prebuilt/bin/
 resources/prebuilt/venv/
 resources/prebuilt/cache/
+
+*storybook.log
+storybook-static

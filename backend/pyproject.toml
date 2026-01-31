@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "pip>=23.0",
-    "camel-ai[eigent]==0.2.83a9",
+    "camel-ai[eigent]==0.2.85a0",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",
@@ -17,11 +17,12 @@ dependencies = [
     "inflection>=0.5.1",
     "aiofiles>=24.1.0",
     "openai>=1.99.3,<2",
-    "traceroot>=0.0.7",
     "nodejs-wheel>=22.18.0",
     "numpy>=1.23.0,<2.0.0",
     "debugpy>=1.8.17",
-    "camel-ai>=0.2.82",
+    "opentelemetry-api>=1.34.1",
+    "opentelemetry-sdk>=1.34.1",
+    "opentelemetry-exporter-otlp-proto-http>=1.34.1",
 ]
 
 

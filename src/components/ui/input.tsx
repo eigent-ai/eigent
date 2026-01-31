@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -31,47 +45,47 @@ function resolveStateClasses(state: InputState | undefined) {
   if (state === "disabled") {
     return {
       container: "opacity-50 cursor-not-allowed",
-      field:
-        "border-transparent bg-input-bg-default text-input-text-default",
+      field: "border-input-border-default bg-input-bg-default",
+      input: "text-text-heading",
       placeholder: "placeholder-input-label-default",
     }
   }
   if (state === "hover") {
     return {
       container: "",
-      field:
-        "border-transparent bg-input-bg-default text-input-text-default",
+      field: "border-input-border-hover bg-input-bg-default",
+      input: "text-text-heading",
       placeholder: "placeholder-input-label-default",
     }
   }
   if (state === "input") {
     return {
       container: "",
-      field:
-        "border-transparent bg-input-bg-input text-input-text-focus",
+      field: "border-input-border-focus bg-input-bg-input",
+      input: "text-text-heading",
       placeholder: "placeholder-input-label-default",
     }
   }
   if (state === "error") {
     return {
       container: "",
-      field:
-        "border-input-border-cuation bg-input-bg-default text-text-body",
+      field: "border-input-border-cuation bg-input-bg-default",
+      input: "text-text-heading",
       placeholder: "placeholder-input-label-default",
     }
   }
   if (state === "success") {
     return {
       container: "",
-      field:
-        "border-input-border-success bg-input-bg-confirm text-text-body",
+      field: "border-input-border-success bg-input-bg-confirm",
+      input: "text-text-heading",
       placeholder: "placeholder-input-label-default",
     }
   }
   return {
     container: "",
-    field:
-      "border-transparent bg-input-bg-default text-input-text-default",
+    field: "border-input-border-default bg-input-bg-default",
+    input: "text-text-heading",
     placeholder: "placeholder-input-label-default/10",
   }
 }
@@ -119,8 +133,8 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
         <div
           className={cn(
-            "relative flex items-center rounded-lg border border-solid shadow-sm transition-all",
-            // Only apply hover/focus visuals when not in error or success state
+            "relative flex items-center rounded-lg border border-solid shadow-sm transition-colors",
+            // Only apply hover/focus visuals when not in error state
             state !== "error" &&
               state !== "success" &&
               "hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0 focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 focus-within:bg-input-bg-input",
@@ -140,7 +154,8 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             disabled={disabled}
             placeholder={placeholder}
             className={cn(
-              "peer w-full text-body-sm bg-transparent outline-none placeholder:text-text-label/20 placeholder:transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium",
+              "peer w-full bg-transparent outline-none placeholder:transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium",
+              stateCls.input,
               stateCls.placeholder,
               hasLeft ? "pl-9" : "pl-3",
               hasRight ? "pr-9" : "pr-3",

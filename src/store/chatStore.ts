@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { fetchPost, fetchPut, getBaseURL, proxyFetchPost, proxyFetchPut, proxyFetchGet, uploadFile, fetchDelete, waitForBackendReady } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { createStore } from 'zustand';
@@ -160,6 +174,8 @@ const resolveProcessTaskIdForToolkitEvent = (
 // Throttle streaming decompose text updates to prevent excessive re-renders
 const streamingDecomposeTextBuffer: Record<string, string> = {};
 const streamingDecomposeTextTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+// TTFT (Time to First Token) tracking for task decomposition
+const ttftTracking: Record<string, { confirmedAt: number; firstTokenLogged: boolean }> = {};
 
 // Helper function to update trigger execution status
 const updateTriggerExecutionStatus = async (
@@ -247,11 +263,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		computedProgressValue(taskId: string) {
 			const { tasks, setProgressValue, activeTaskId } = get()
 			const taskRunning = [...tasks[taskId].taskRunning]
-			const finshedTask = taskRunning?.filter(
+			const finishedTask = taskRunning?.filter(
 				(task) => task.status === "completed" || task.status === "failed"
 			).length;
 			const taskProgress = (
-				((finshedTask || 0) / (taskRunning?.length || 0)) *
+				((finishedTask || 0) / (taskRunning?.length || 0)) *
 				100
 			).toFixed(2);
 			setProgressValue(
@@ -366,7 +382,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 			// ✅ Wait for backend to be ready before starting task (except for replay/share)
 			if (!type || type === 'normal') {
 				console.log('[startTask] Checking if backend is ready...');
-				const isBackendReady = await waitForBackendReady(15000, 500); // Wait up to 15 seconds
+				const isBackendReady = await waitForBackendReady(60000, 500); // Wait up to 60 seconds
 
 				if (!isBackendReady) {
 					console.error('[startTask] Backend is not ready, cannot start task');
@@ -791,6 +807,11 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 						//Enable it for the rest of current SSE session
 						skipFirstConfirm = false;
+
+						// Record confirmed time for TTFT tracking
+						const ttftTaskId = getCurrentTaskId();
+						ttftTracking[ttftTaskId] = { confirmedAt: performance.now(), firstTokenLogged: false };
+						console.log(`[TTFT] Task ${ttftTaskId} confirmed at ${new Date().toISOString()}, starting TTFT measurement`);
 						return
 					}
 
@@ -830,6 +851,13 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 						const text = content;
 						const currentId = getCurrentTaskId();
 
+						// Log TTFT (Time to First Token) on first decompose_text event
+						if (ttftTracking[currentId] && !ttftTracking[currentId].firstTokenLogged) {
+							ttftTracking[currentId].firstTokenLogged = true;
+							const ttft = performance.now() - ttftTracking[currentId].confirmedAt;
+							console.log(`%c[TTFT] 🚀 Time to First Token: ${ttft.toFixed(2)}ms - First streaming token received for task ${currentId}`, 'color: #4CAF50; font-weight: bold');
+						}
+
 						// Get current buffer or task state
 						const currentContent = streamingDecomposeTextBuffer[currentId] ||
 							getCurrentChatStore().tasks[currentId]?.streamingDecomposeText || "";
@@ -863,6 +891,15 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "to_sub_tasks") {
 						// Clear streaming decompose text when task splitting is done
 						clearStreamingDecomposeText(currentTaskId);
+						// Clean up TTFT tracking
+						delete ttftTracking[currentTaskId];
+
+						// Check if task is already confirmed - don't overwrite user edits
+						const existingToSubTasksMessage = tasks[currentTaskId].messages.findLast((m: Message) => m.step === 'to_sub_tasks');
+						if (existingToSubTasksMessage?.isConfirm) {
+							return;
+						}
+
 						// Check if this is a multi-turn scenario after task completion
 						const isMultiTurnAfterCompletion = tasks[currentTaskId].status === 'finished';
 
@@ -1090,7 +1127,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					if (agentMessages.step === "new_task_state") {
 						const { task_id, content, state, result, failure_count } = agentMessages.data;
 						//new chatStore logic is handled along side "confirmed" event
-						console.log(`Recieved new task: ${task_id} with content: ${content}`);
+						console.log(`Received new task: ${task_id} with content: ${content}`);
 						return;
 					}
 
@@ -2192,20 +2229,14 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 			// record task start time
 			setTaskTime(taskId, Date.now());
+			// Filter out empty tasks from the user-edited taskInfo
 			const taskInfo = tasks[taskId].taskInfo.filter((task) => task.content !== '')
 			setTaskInfo(taskId, taskInfo)
-			// Also update taskRunning with the filtered tasks to keep counts consistent
-			const taskRunning = tasks[taskId].taskRunning.filter((task) => task.content !== '')
-			setTaskRunning(taskId, taskRunning)
-			if (!type) {
-				await fetchPut(`/task/${project_id}`, {
-					task: taskInfo,
-				});
-				await fetchPost(`/task/${project_id}/start`, {});
+			// Sync taskRunning with the filtered taskInfo (user edits should be reflected 
+			setTaskRunning(taskId, taskInfo.map(task => ({ ...task })))
 
-				setActiveWorkSpace(taskId, 'workflow')
-				setStatus(taskId, 'running')
-			}
+			// IMPORTANT: Set isConfirm BEFORE sending API requests to prevent race condition
+			// where backend sends to_sub_tasks SSE event before we mark task as confirmed
 			let messages = [...tasks[taskId].messages]
 			const cardTaskIndex = messages.findLastIndex((message) => message.step === 'to_sub_tasks')
 			if (cardTaskIndex !== -1) {
@@ -2215,6 +2246,16 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 					taskType: 2,
 				}
 				setMessages(taskId, messages)
+			}
+
+			if (!type) {
+				await fetchPut(`/task/${project_id}`, {
+					task: taskInfo,
+				});
+				await fetchPost(`/task/${project_id}/start`, {});
+
+				setActiveWorkSpace(taskId, 'workflow')
+				setStatus(taskId, 'running')
 			}
 
 			// Reset editing state after manual confirmation so next round can auto-start
@@ -2369,10 +2410,10 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 		updateTaskInfo(index: number, content: string) {
 			const { tasks, activeTaskId, setTaskInfo } = get()
 			if (!activeTaskId) return
-			let targetTaskInfo = [...tasks[activeTaskId].taskInfo]
-			if (targetTaskInfo) {
-				targetTaskInfo[index].content = content
-			}
+			// Deep copy the array with updated item to ensure React detects the change
+			const targetTaskInfo = tasks[activeTaskId].taskInfo.map((item, i) =>
+				i === index ? { ...item, content } : item
+			)
 			setTaskInfo(activeTaskId, targetTaskInfo)
 		},
 		deleteTaskInfo(index: number) {

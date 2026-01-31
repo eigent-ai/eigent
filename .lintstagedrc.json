@@ -1,0 +1,8 @@
+{
+  "*.{ts,tsx,d.ts}": [
+    "node licenses/update_license.js"
+  ],
+  "*.py": [
+    "node licenses/update_license.js"
+  ]
+}

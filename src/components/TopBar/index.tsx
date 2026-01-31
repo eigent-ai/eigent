@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
 	Settings,
@@ -5,10 +19,7 @@ import {
 	Square,
 	X,
 	FileDown,
-	Menu,
 	Plus,
-	Import,
-	XCircle,
 	Power,
 	ChevronDown,
 	ChevronLeft,
@@ -19,20 +30,12 @@ import {
 	PanelLeft,
 	PanelRight,
 } from "lucide-react";
-import "./index.css";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSidebarStore } from "@/store/sidebarStore";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import giftIcon from "@/assets/gift.svg";
-import giftwhiteIcon from "@/assets/gift-white.svg";
 import { getAuthStore } from "@/store/authStore";
 import { useTranslation } from "react-i18next";
 import { proxyFetchGet, fetchPut, fetchDelete, proxyFetchDelete } from "@/api/http";
@@ -60,38 +63,10 @@ function HeaderWin() {
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
+	const [endProjectLoading, setEndProjectLoading] = useState(false);
 	useEffect(() => {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
-
-		if (platform === "darwin") {
-			titlebarRef.current?.classList.add("mac");
-			if (controlsRef.current) {
-				controlsRef.current.style.display = "none";
-			}
-		}
-	}, []);
-
-	useEffect(() => {
-		// use window.electronAPI instead of window.require
-		const handleFullScreen = async () => {
-			try {
-				// get fullscreen status through window.electronAPI
-				const isFull = await window.electronAPI.isFullScreen();
-				setIsFullscreen(isFull);
-			} catch (error) {
-				console.error("Failed to get fullscreen status:", error);
-			}
-		};
-		// add event listener
-		window.addEventListener("resize", handleFullScreen);
-
-		// initialize state
-		handleFullScreen();
-
-		return () => {
-			window.removeEventListener("resize", handleFullScreen);
-		};
 	}, []);
 
 	const exportLog = async () => {
@@ -162,6 +137,7 @@ function HeaderWin() {
 
 		const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
 
+		setEndProjectLoading(true);
 		try {
 			const task = chatStore.tasks[taskId];
 
@@ -209,6 +185,7 @@ function HeaderWin() {
 				closeButton: true,
 			});
 		} finally {
+			setEndProjectLoading(false);
 			setEndDialogOpen(false);
 		}
 	};
@@ -219,7 +196,9 @@ function HeaderWin() {
 
 	return (
 		<div
-			className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50 "
+			className={`absolute top-0 left-0 right-0 flex !h-9 items-center justify-between py-1 z-50 drag ${
+				platform === "darwin" ? "pl-20" : "pl-2"
+			}`}
 			id="titlebar"
 			ref={titlebarRef}
 		>
@@ -247,20 +226,62 @@ function HeaderWin() {
 						</div>
 					)}
 					{location.pathname !== "/history" && (
-						<div className="flex items-center">
-							<TooltipSimple content={t("layout.home")} side="bottom" align="center">
-								<Button
-									variant="ghost"
-									size="sm"
-									className="no-drag font-bold text-base"
-									onClick={() => navigate("/history")}
-								>
-									<ArrowLeft className="w-4 h-4 text-text-label" />
-								</Button>
-							</TooltipSimple>
+						<div className="flex items-center mr-1">
+						<TooltipSimple content={t("layout.home")} side="bottom" align="center">
+							<Button
+								 variant="ghost"
+								 size="icon"
+								 className="no-drag"
+								 onClick={() => navigate("/history")}
+									>
+									<House className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
+						<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
+							<Button
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+								onClick={createNewProject}
+							>
+								<Plus className="w-4 h-4" />
+							</Button>
+						</TooltipSimple>
 						</div>
 					)}
+					{location.pathname !== "/history" && (
+						<>
+							{activeTaskTitle === t("layout.new-project") ? (
+								<TooltipSimple content={t("layout.new-project")} side="bottom" align="center">
+									<Button 
+										id="active-task-title-btn"
+										variant="ghost" 
+										className="font-bold text-base no-drag" 
+										onClick={toggle}
+										size="sm"
+									>
+									<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{t("layout.new-project")}</span>
+										<ChevronDown />
+									</Button>
+								</TooltipSimple>
+							) : (
+								<TooltipSimple content={activeTaskTitle} side="bottom" align="center">
+									<Button
+										id="active-task-title-btn"
+										variant="ghost"
+										size="sm"
+										className="font-bold text-base no-drag"
+										onClick={toggle}
+									>
+										<span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">{activeTaskTitle}</span>
+										<ChevronDown />
+									</Button>
+								</TooltipSimple>
+							)}
+						</>
+					)}
 				</div>
+				{/* right */}
 				{location.pathname !== "/history" && (
 					<div className="flex items-left no-drag">
 						{activeTaskTitle === t("layout.new-project") ? (
@@ -315,83 +336,85 @@ function HeaderWin() {
 								</Button>
 							</TooltipSimple>
 						)}
-					<TooltipSimple content={chatPanelPosition === 'left' ? 'Move panel right' : 'Move panel left'} side="bottom" align="center">
-						<Button
-							variant="ghost"
-							size="icon"
-							className="no-drag"
-							onClick={() => setChatPanelPosition(chatPanelPosition === 'left' ? 'right' : 'left')}
-						>
-							{chatPanelPosition === 'left' ? <PanelLeft className="w-4 h-4 text-text-label" /> : <PanelRight className="w-4 h-4 text-text-label" />}
-						</Button>
-					</TooltipSimple>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
+						{chatStore.activeTaskId &&
+							chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
+							<TooltipSimple content={t("layout.share")} side="bottom" align="end">
+								<Button
+									onClick={() => handleShare(chatStore.activeTaskId as string)}
+									variant="ghost"
+									size="xs"
+									className="no-drag !text-button-fill-information-foreground bg-button-fill-information"
+								>
+									{t("layout.share")}
+								</Button>
+							</TooltipSimple>
+						)}
+						{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
+							<TooltipSimple content={t("layout.report-bug")} side="bottom" align="end">
+								<Button
+									onClick={exportLog}
+									variant="ghost"
+									size="icon"
+									className="no-drag rounded-full"
+								>
+									<FileDown className="w-4 h-4" />
+								</Button>
+							</TooltipSimple>
+						)}
+						<TooltipSimple content={t("layout.refer-friends")} side="bottom" align="end">
 							<Button
+								onClick={getReferFriendsLink}
 								variant="ghost"
 								size="icon"
 								className="no-drag"
 							>
-								<MoreHorizontal className="w-4 h-4 text-text-label" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-36">
-							{chatStore.activeTaskId &&
-								chatStore.tasks[chatStore.activeTaskId as string]?.status === 'finished' && (
-									<DropdownMenuItem onClick={() => handleShare(chatStore.activeTaskId as string)} className="cursor-pointer">
-										<Share className="w-4 h-4" />
-										{t("layout.share")}
-									</DropdownMenuItem>
-								)}
-							{chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId as string] && (
-								<DropdownMenuItem onClick={exportLog} className="cursor-pointer">
-									<FileDown className="w-4 h-4" />
-									{t("layout.report-bug")}
-								</DropdownMenuItem>
-							)}
-							<DropdownMenuItem onClick={getReferFriendsLink} className="cursor-pointer">
 								<img
 									src={giftIcon}
 									alt="gift-icon"
 									className="w-4 h-4"
 								/>
-								{t("layout.refer-friends")}
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => navigate("/history?tab=settings")} className="cursor-pointer">
+							</Button>
+						</TooltipSimple>
+						<TooltipSimple content={t("layout.settings")} side="bottom" align="end">
+							<Button
+								onClick={() => navigate("/history?tab=settings")}
+								variant="ghost"
+								size="icon"
+								className="no-drag"
+							>
 								<Settings className="w-4 h-4" />
-								{t("layout.settings")}
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-			)}
-			{location.pathname === "/history" && (
-				<div
-					className={`${platform === "darwin" && "pr-2"
+							</Button>
+						</TooltipSimple>
+					</div>
+				)}
+				{location.pathname === "/history" && (
+					<div
+						className={`${
+							platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
 				>
 				</div>
 			)}
 			{platform !== "darwin" && (
 				<div
-					className="window-controls h-full flex items-center"
+					className="h-full flex items-center no-drag"
 					id="window-controls"
 					ref={controlsRef}
 				>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.minimizeWindow()}
 					>
 						<Minus className="w-4 h-4" />
 					</div>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.toggleMaximizeWindow()}
 					>
 						<Square className="w-4 h-4" />
 					</div>
 					<div
-						className="control-btn h-full flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
 						onClick={() => window.electronAPI.closeWindow()}
 					>
 						<X className="w-4 h-4" />
@@ -402,6 +425,7 @@ function HeaderWin() {
 				open={endDialogOpen}
 				onOpenChange={setEndDialogOpen}
 				onConfirm={handleEndProject}
+				loading={endProjectLoading}
 			/>
 		</div>
 	);

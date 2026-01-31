@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
 	PanOnScrollMode,
@@ -237,13 +251,22 @@ export default function Workflow({
 		// console.log("workerList	", workerList);
 		setNodes((prev: CustomNode[]) => {
 			if (!taskAssigning) return prev;
+			// Agents not yet in taskAssigning (from baseWorker or workerList)
 			const base = [...baseWorker, ...workerList].filter(
 				(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
 			);
 			let targetData = [...prev];
-			taskAssigning = [...base, ...taskAssigning];
-			// taskAssigning = taskAssigning.filter((agent) => agent.tasks.length > 0);
-			targetData = taskAssigning.map((agent, index) => {
+			// Merge all agents
+			const allAgents = [...taskAssigning, ...base];
+			// Sort: agents with tasks come first, then agents without tasks
+			const sortedAgents = allAgents.sort((a, b) => {
+				const aHasTasks = a.tasks && a.tasks.length > 0;
+				const bHasTasks = b.tasks && b.tasks.length > 0;
+				if (aHasTasks && !bHasTasks) return -1;
+				if (!aHasTasks && bHasTasks) return 1;
+				return 0;
+			});
+			targetData = sortedAgents.map((agent, index) => {
 				const node = targetData.find((node) => node.id === agent.agent_id);
 				if (node) {
 					return {

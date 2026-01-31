@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.15.2",
     "openai>=1.99.3,<2",
-    "camel-ai==0.2.83a9",
+    "camel-ai==0.2.85a0",
     "pydantic[email]>=2.11.1",
     "click>=8.1.8",
     "fastapi>=0.115.12",
@@ -34,7 +34,6 @@ dependencies = [
     "cryptography>=45.0.4",
     "sqids>=0.5.2",
     "exa-py>=1.14.16",
-    "traceroot>=0.0.7",
 ]
 
 [tool.ruff]

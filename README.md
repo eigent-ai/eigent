@@ -28,7 +28,7 @@
 </div>
 <br/>
 
-**Eigent** is the open source cowork desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. 
+**Eigent** is the open source Cowork desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks. As a leading open-source Cowork product, Eigent brings together the best of open-source collaboration and AI-powered automation.
 
 Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection.
 
@@ -51,23 +51,23 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 #### TOC
 
-- [🚀 Getting Started](#-getting-started)
+- [🚀 Getting Started with Open Source Cowork](#-getting-started-with-open-source-Cowork)
   - [🏠 Local Deployment (Recommended)](#-local-deployment-recommended)
   - [⚡ Quick Start (Cloud-Connected)](#-quick-start-cloud-connected)
   - [🏢 Enterprise](#-enterprise)
   - [☁️ Cloud Version](#️-cloud-version)
-- [✨ Key features](#-key-features)
+- [✨ Key features - Open Source Cowork](#-key-features---open-source-Cowork)
   - [🏭 Workforce](#-workforce)
   - [🧠 Comprehensive Model Support](#-comprehensive-model-support)
   - [🔌 MCP Tools Integration (MCP)](#-mcp-tools-integration-mcp)
   - [✋ Human-in-the-Loop](#-human-in-the-loop)
   - [👐 100% Open Source](#-100-open-source)
-- [🧩 Use Cases](#-use-cases)
+- [🧩 Use Cases - Open Source Cowork](#-use-cases---open-source-Cowork)
 - [🛠️ Tech Stack](#-tech-stack)
   - [Backend](#backend)
   - [Frontend](#frontend)
-- [🌟 Staying ahead](#staying-ahead)
-- [🗺️ Roadmap](#-roadmap)
+- [🌟 Staying ahead - Open Source Cowork](#-staying-ahead---open-source-Cowork)
+- [🗺️ Roadmap - Open Source Cowork](#️-roadmap---open-source-Cowork)
 - [📖 Contributing](#-contributing)
   - [Main Contributors](#main-contributors)
   - [Distinguished amabssador](#distinguished-amabssador)
@@ -81,7 +81,7 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 </details>
 
-## **🚀 Getting Started**
+## **🚀 Getting Started with Open Source Cowork**
 
 > **🔓 Build in Public** — Eigent is **100% open source** from day one. Every feature, every commit, every decision is transparent. We believe the best AI tools should be built openly with the community, not behind closed doors.
 
@@ -116,6 +116,19 @@ npm run dev
 
 > Note: This mode connects to Eigent cloud services and requires account registration. For a fully standalone experience, use [Local Deployment](#-local-deployment-recommended) instead.
 
+#### Updating Dependencies
+
+After pulling new code (`git pull`), update both frontend and backend dependencies:
+
+```bash
+# 1. Update frontend dependencies (in project root)
+npm install
+
+# 2. Update backend/Python dependencies (in backend directory)
+cd backend
+uv sync
+```
+
 ### 🏢 Enterprise
 
 For organizations requiring maximum security, customization, and control:
@@ -142,11 +155,11 @@ For teams who prefer managed infrastructure, we also offer a cloud platform. The
 <a href="https://www.eigent.ai/download">Get started at Eigent.ai →</a>
 </div>
 
-## **✨ Key features**
-Unlock the full potential of exceptional productivity with Eigent’s powerful features—built for seamless integration, smarter task execution, and boundless automation.
+## **✨ Key features - Open Source Cowork**
+Unlock the full potential of exceptional productivity with Eigent's open-source Cowork powerful features — built for seamless integration, smarter task execution, and boundless automation.
 
 ### 🏭 Workforce 
-Employs a team of specialized AI agents that collaborate to solve complex tasks. Eigent dynamically breaks down tasks and activates multiple agents to work **in parallel.**
+Employs a team of specialized AI agents that collaborate to solve complex tasks. Eigent's open-source Cowork dynamically breaks down tasks and activates multiple agents to work **in parallel.** 
 
 Eigent pre-defined the following agent workers:
 
@@ -160,7 +173,7 @@ Eigent pre-defined the following agent workers:
 <br/>
 
 ### 🧠 Comprehensive Model Support
-Deploy Eigent locally with your preferred models. 
+Deploy the Eigent open-source Cowork desktop locally with your preferred models.
 
 ![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
 
@@ -187,7 +200,9 @@ Eigent is completely open-sourced. You can download, inspect, and modify the cod
 
 <br/>
 
-## 🧩 Use Cases
+## 🧩 Use Cases - Open Source Cowork
+
+Discover how developers worldwide leverage Eigent's open-source Cowork capabilities to automate complex workflows and boost productivity across diverse industries.
 
 ### 1. Palm Springs Tennis Trip Itinerary with Slack Summary [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
 
@@ -266,6 +281,8 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 
 ## 🛠️ Tech Stack
 
+Eigent open-source Cowork desktop is built on modern, reliable technologies that ensure scalability, performance, and extensibility.
+
 ### Backend
 - **Framework:** FastAPI
 - **Package Manager:** uv
@@ -282,7 +299,7 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 - **State Management:** Zustand
 - **Flow Editor:** React Flow
 
-## 🌟 Staying ahead
+## 🌟 Staying ahead - Open Source Cowork
 
 > \[!IMPORTANT]
 >
@@ -290,17 +307,19 @@ Please add this signature image to the Signature Areas in the PDF. You could ins
 
 ![][image-star-us]
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap - Open Source Cowork
+
+Our open-source Cowork continues to evolve with input from the community. Here's what's coming next:
 
 | Topics                   | Issues   | Discord Channel |
 | ------------------------ | -- |-- |
-| **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.gg/D2e3rBWD) |
-| **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.gg/kyapNCeJ) |
-| **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.gg/bFRmPuDB) |
-| **Browser Toolkit** | - BrowseComp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.gg/NF73ze5v) |
-| **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.gg/4yAWJxYr) |
-| **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.gg/FjQfnsrV) |
-| **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.gg/MaVZXEn8) |
+| **Context Engineering** | - Prompt caching<br> - System prompt optimize<br> - Toolkit docstring optimize<br> - Context compression | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Multi-modal Enhancement** | - More accurate image understanding when using browser<br> - Advanced video generation | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Multi-agent system** | - Workforce support fixed workflow<br> - Workforce support multi-round conversion | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Browser Toolkit** | - BrowseComp integration<br> - Benchmark improvement<br> - Forbid repeated page visiting<br> - Automatic cache button clicking | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Document Toolkit** | - Support dynamic file editing | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Terminal Toolkit** | - Benchmark improvement<br> - Terminal-Bench integration | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
+| **Environment & RL** | - Environment design<br> - Data-generation<br> - RL framework integration (VERL, TRL, OpenRLHF) | [**Join Discord →**](https://discord.com/invite/CNcNpquyDc) |
 
 
 ## [🤝 Contributing][contribution-link]
