@@ -29,6 +29,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
+import { TaskStatus } from "@/types/constants";
 
 export default function Home() {
   //Get Chatstore for the active project's task
