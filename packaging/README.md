@@ -58,6 +58,7 @@ sudo dnf install ~/rpmbuild/RPMS/x86_64/eigent-*.rpm
 |------|-------------|
 | `man/eigent.1` | Man page |
 | `autostart/` | Login autostart entry |
+| `gpg/` | GPG signing key and scripts |
 | `update-all.sh` | Update all package versions |
 | `tests/` | Packaging validation tests |
 
@@ -67,13 +68,21 @@ Update all packaging files to a new version:
 
 ```bash
 # Without hash verification (manual update)
-./packaging/update-all.sh 0.0.81
+./packaging/update-all.sh 0.0.83
 
 # With hash verification (downloads AppImage)
-./packaging/update-all.sh 0.0.81 --verify
+./packaging/update-all.sh 0.0.83 --verify
 ```
 
 This updates: AUR, Flatpak, Deb, Nix, RPM
+
+## Automated Updates
+
+When a new GitHub release is published, the `packaging-update.yml` workflow automatically:
+1. Downloads the new AppImage
+2. Calculates SHA256 hash
+3. Updates all packaging files
+4. Creates a PR with the changes
 
 ## Testing
 
@@ -84,6 +93,21 @@ This updates: AUR, Flatpak, Deb, Nix, RPM
 # Verbose output
 ./packaging/tests/test-packaging.sh --verbose
 ```
+
+## GPG Signing
+
+Releases can be signed with the maintainer's GPG key:
+
+```bash
+# Sign a release
+./packaging/gpg/sign-release.sh Eigent-0.0.83.AppImage
+
+# Verify signature
+gpg --keyserver keyserver.ubuntu.com --recv-keys 8E662D4AC7C4EF50
+gpg --verify Eigent-0.0.83.AppImage.asc
+```
+
+Key ID: `8E662D4AC7C4EF50`
 
 ## Directory Structure
 
@@ -106,6 +130,9 @@ packaging/
 │   └── eigent.1
 ├── autostart/              # Desktop autostart
 │   └── eigent-autostart.desktop
+├── gpg/                    # GPG signing
+│   ├── eigent-public.asc
+│   └── sign-release.sh
 ├── tests/                  # Validation tests
 │   └── test-packaging.sh
 └── update-all.sh           # Version updater
