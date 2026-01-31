@@ -27,6 +27,8 @@ modules:
         url: https://github.com/eigent-ai/eigent/releases/download/v0.0.80/Eigent-0.0.80.AppImage
         sha256: PLACEHOLDER
         dest-filename: Eigent.AppImage
+      - type: file
+        path: ai.eigent.Eigent.metainfo.xml
     build-commands:
       - chmod +x Eigent.AppImage
       - ./Eigent.AppImage --appimage-extract
@@ -49,3 +51,4 @@ modules:
         exec zypak-wrapper /app/lib/eigent/eigent "$@"
         EOF
       - chmod +x /app/bin/eigent
+      - install -Dm644 ai.eigent.Eigent.metainfo.xml /app/share/metainfo/ai.eigent.Eigent.metainfo.xml
