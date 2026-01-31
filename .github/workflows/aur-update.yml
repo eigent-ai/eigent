@@ -1,0 +1,114 @@
+name: Update AUR Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update (without v prefix)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-aur:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for release assets
+        if: github.event_name == 'release'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Eigent-${VERSION}.AppImage"
+          echo "Waiting for $URL..."
+          for i in {1..30}; do
+            if curl -fsSL --head "$URL" >/dev/null 2>&1; then
+              echo "Asset available!"
+              exit 0
+            fi
+            echo "Attempt $i/30 - waiting 30s..."
+            sleep 30
+          done
+          echo "Timeout waiting for release asset"
+          exit 1
+
+      - name: Install makepkg dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools fakeroot
+
+      - name: Update AUR package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cd packaging/aur
+
+          # Update pkgver
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          # Calculate SHA256
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Eigent-${VERSION}.AppImage"
+          TMPFILE=$(mktemp)
+          curl -fSL -o "$TMPFILE" "$URL"
+          HASH=$(sha256sum "$TMPFILE" | cut -d' ' -f1)
+          rm "$TMPFILE"
+          sed -i "s/^sha256sums=.*/sha256sums=('$HASH')/" PKGBUILD
+
+          echo "Updated to version $VERSION with hash $HASH"
+
+      - name: Generate .SRCINFO
+        run: |
+          cd packaging/aur
+          # Manual .SRCINFO generation (makepkg not available on ubuntu)
+          source PKGBUILD
+          cat > .SRCINFO << EOF
+          pkgbase = ${pkgname}
+          	pkgdesc = ${pkgdesc}
+          	pkgver = ${pkgver}
+          	pkgrel = ${pkgrel}
+          	url = ${url}
+          	arch = ${arch[0]}
+          	license = ${license[0]}
+          	depends = ${depends[0]}
+          	optdepends = ${optdepends[0]}
+          	optdepends = ${optdepends[1]}
+          	provides = ${provides[0]}
+          	conflicts = ${conflicts[0]}
+          	conflicts = ${conflicts[1]}
+          	options = ${options[0]}
+          	source = ${source[0]}
+          	sha256sums = ${sha256sums[0]}
+
+          pkgname = ${pkgname}
+          EOF
+          # Remove leading tabs/spaces from heredoc
+          sed -i 's/^[[:space:]]*//' .SRCINFO
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(aur): update to v${{ steps.version.outputs.version }}"
+          branch: aur-update-${{ steps.version.outputs.version }}
+          title: "chore(aur): update to v${{ steps.version.outputs.version }}"
+          body: |
+            Automated AUR package update for v${{ steps.version.outputs.version }}
+
+            - Updated `pkgver` in PKGBUILD
+            - Calculated SHA256 checksum
+            - Regenerated `.SRCINFO`
+          labels: aur,automated

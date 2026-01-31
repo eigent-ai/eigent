@@ -2,6 +2,20 @@
 
 Arch Linux package for [Eigent](https://github.com/eigent-ai/eigent) via AUR.
 
+## Quick Install (AppImage)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eigent-ai/eigent/main/packaging/aur/install-appimage.sh | bash -s 0.0.80
+```
+
+This installs the AppImage to `~/.local/bin` and creates a desktop entry.
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eigent-ai/eigent/main/packaging/aur/uninstall-appimage.sh | bash
+```
+
 ## Scripts
 
 ### update-version.sh
@@ -21,11 +35,23 @@ Updates the package to a new version:
 
 ### install-appimage.sh
 
-Standalone AppImage installer (used by PKGBUILD, can also be run directly):
+Standalone AppImage installer with desktop integration:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eigent-ai/eigent/main/packaging/aur/install-appimage.sh | bash
+./install-appimage.sh 0.0.80
 ```
+
+### uninstall-appimage.sh
+
+Removes AppImage, symlink, desktop entry, and icon:
+
+```bash
+./uninstall-appimage.sh
+```
+
+## Automation
+
+The `aur-update.yml` workflow automatically creates a PR to update the AUR package when a new release is published.
 
 ## Manual Build
 
