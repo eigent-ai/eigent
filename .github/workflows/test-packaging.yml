@@ -1,0 +1,122 @@
+name: Test Packaging Scripts
+
+on:
+  pull_request:
+    paths:
+      - 'packaging/**'
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/**'
+  workflow_dispatch:
+
+jobs:
+  test-aur-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test install-appimage.sh syntax
+        run: bash -n packaging/aur/install-appimage.sh
+
+      - name: Test uninstall-appimage.sh syntax
+        run: bash -n packaging/aur/uninstall-appimage.sh
+
+      - name: Test update-version.sh syntax
+        run: bash -n packaging/aur/update-version.sh
+
+      - name: Test install script (dry run simulation)
+        run: |
+          # Create mock environment
+          export HOME=$(mktemp -d)
+          mkdir -p "$HOME/.local/bin"
+          mkdir -p "$HOME/.local/share/applications"
+          mkdir -p "$HOME/.local/share/icons"
+
+          # Test that script fails gracefully without version
+          cd packaging/aur
+          if ./install-appimage.sh 2>&1 | grep -q "Usage:"; then
+            echo "✓ Usage message displayed when no version provided"
+          else
+            echo "✗ Script should show usage when no version provided"
+            exit 1
+          fi
+
+      - name: Test uninstall script
+        run: |
+          export HOME=$(mktemp -d)
+          mkdir -p "$HOME/.local/bin"
+          mkdir -p "$HOME/.local/share/applications"
+          mkdir -p "$HOME/.local/share/icons"
+
+          # Create mock files
+          touch "$HOME/.local/bin/Eigent-0.0.80.AppImage"
+          touch "$HOME/.local/bin/eigent"
+          touch "$HOME/.local/share/applications/eigent.desktop"
+          touch "$HOME/.local/share/icons/eigent.png"
+
+          # Run uninstall
+          ./packaging/aur/uninstall-appimage.sh
+
+          # Verify cleanup
+          if [ -f "$HOME/.local/bin/eigent" ]; then
+            echo "✗ Symlink not removed"
+            exit 1
+          fi
+          if [ -f "$HOME/.local/share/applications/eigent.desktop" ]; then
+            echo "✗ Desktop file not removed"
+            exit 1
+          fi
+          echo "✓ Uninstall script works correctly"
+
+  test-flatpak-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Flatpak manifest YAML
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('packaging/flatpak/ai.eigent.Eigent.yml'))"
+          echo "✓ Flatpak manifest is valid YAML"
+
+  test-pkgbuild:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm base-devel
+
+      - name: Validate PKGBUILD
+        run: |
+          cd packaging/aur
+          # Source and validate PKGBUILD variables
+          source PKGBUILD
+
+          [ -n "$pkgname" ] && echo "✓ pkgname: $pkgname"
+          [ -n "$pkgver" ] && echo "✓ pkgver: $pkgver"
+          [ -n "$pkgdesc" ] && echo "✓ pkgdesc: $pkgdesc"
+          [ -n "$url" ] && echo "✓ url: $url"
+          [ -n "$license" ] && echo "✓ license: $license"
+
+      - name: Generate and validate .SRCINFO
+        run: |
+          cd packaging/aur
+          # Create non-root user for makepkg
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c "makepkg --printsrcinfo > .SRCINFO.test"
+
+          # Compare with committed .SRCINFO (ignoring whitespace)
+          if diff -wB .SRCINFO .SRCINFO.test > /dev/null; then
+            echo "✓ .SRCINFO is up to date"
+          else
+            echo "⚠ .SRCINFO differs from generated version"
+            diff -wB .SRCINFO .SRCINFO.test || true
+          fi

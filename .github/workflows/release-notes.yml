@@ -1,0 +1,89 @@
+name: Release Notes
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.0.81)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  generate-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get release info
+        id: release
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          # Get previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${TAG}$" | tail -1)
+          if [ "$PREV_TAG" = "$TAG" ] || [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          PREV_TAG="${{ steps.release.outputs.prev_tag }}"
+
+          echo "## What's Changed" > changelog.md
+          echo "" >> changelog.md
+
+          # Group commits by type
+          declare -A categories
+          categories["feat"]="### Features"
+          categories["fix"]="### Bug Fixes"
+          categories["perf"]="### Performance"
+          categories["refactor"]="### Refactoring"
+          categories["docs"]="### Documentation"
+          categories["chore"]="### Maintenance"
+          categories["other"]="### Other Changes"
+
+          for type in feat fix perf refactor docs chore; do
+            commits=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" --grep="^${type}" 2>/dev/null || true)
+            if [ -n "$commits" ]; then
+              echo "" >> changelog.md
+              echo "${categories[$type]}" >> changelog.md
+              echo "$commits" >> changelog.md
+            fi
+          done
+
+          # Other commits (no conventional prefix)
+          other_commits=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" --invert-grep --grep="^feat" --grep="^fix" --grep="^perf" --grep="^refactor" --grep="^docs" --grep="^chore" 2>/dev/null || true)
+          if [ -n "$other_commits" ]; then
+            echo "" >> changelog.md
+            echo "${categories[other]}" >> changelog.md
+            echo "$other_commits" >> changelog.md
+          fi
+
+          echo "" >> changelog.md
+          echo "---" >> changelog.md
+          echo "" >> changelog.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}" >> changelog.md
+
+          cat changelog.md
+
+      - name: Update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          body_path: changelog.md
+          append_body: false
