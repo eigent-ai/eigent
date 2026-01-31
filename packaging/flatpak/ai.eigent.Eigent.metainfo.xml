@@ -50,12 +50,14 @@
     <keyword>web</keyword>
     <keyword>scraping</keyword>
   </keywords>
+  <!-- TODO: Add screenshots when available
   <screenshots>
     <screenshot type="default">
       <caption>Main interface</caption>
-      <image>https://raw.githubusercontent.com/eigent-ai/eigent/main/docs/screenshots/main.png</image>
+      <image>https://eigent.ai/screenshots/main.png</image>
     </screenshot>
   </screenshots>
+  -->
   <content_rating type="oars-1.1" />
   <releases>
     <release version="0.0.80" date="2025-01-31">

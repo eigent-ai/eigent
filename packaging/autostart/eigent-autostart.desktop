@@ -2,7 +2,7 @@
 Type=Application
 Name=Eigent
 Comment=Start Eigent on login
-Exec=eigent --hidden
+Exec=eigent
 Icon=eigent
 Terminal=false
 Categories=Utility;

@@ -27,6 +27,5 @@ rm ~/.config/autostart/eigent-autostart.desktop
 
 Edit the desktop file to customize:
 
-- Remove `--hidden` from `Exec=` to show window on startup
 - Change `X-GNOME-Autostart-Delay=5` to adjust delay (seconds)
 - Set `X-GNOME-Autostart-enabled=false` to disable without removing

@@ -1,63 +1,28 @@
-.TH EIGENT 1 "January 2025" "eigent 0.0.80" "User Commands"
+.TH EIGENT 1 "January 2026" "eigent" "User Commands"
 .SH NAME
 eigent \- AI-powered desktop agent for browser automation
 .SH SYNOPSIS
 .B eigent
-[\fIOPTIONS\fR]
 .SH DESCRIPTION
 .B Eigent
 is an AI-powered desktop agent that automates browser tasks.
 It can navigate websites, fill forms, extract data, and perform
 complex multi-step workflows autonomously using natural language instructions.
-.SH OPTIONS
+.PP
+Eigent is a graphical application and does not have command-line options.
+.SH FILES
 .TP
-.B \-\-help
-Show help message and exit.
-.TP
-.B \-\-version
-Show version information and exit.
-.TP
-.B \-\-no\-sandbox
-Disable Chromium sandbox (use with caution).
-.TP
-.B \-\-disable\-gpu
-Disable GPU hardware acceleration.
-.TP
-.B \-\-enable\-logging
-Enable verbose logging to stdout.
+.I ~/.config/eigent/
+Application configuration directory.
 .SH ENVIRONMENT
 .TP
 .B ELECTRON_OZONE_PLATFORM_HINT
 Set to "auto" for automatic Wayland/X11 detection.
-.TP
-.B EIGENT_DEBUG
-Set to "1" to enable debug mode.
-.SH FILES
-.TP
-.I ~/.eigent/
-User configuration and data directory.
-.TP
-.I ~/.eigent/.env
-Environment variables and API keys.
-.TP
-.I ~/.config/eigent/
-Application settings (XDG compliant).
-.SH EXAMPLES
-.TP
-Start Eigent:
-.B eigent
-.TP
-Start with logging enabled:
-.B eigent --enable-logging
-.TP
-Start without GPU acceleration:
-.B eigent --disable-gpu
 .SH BUGS
 Report bugs at: https://github.com/eigent-ai/eigent/issues
 .SH AUTHOR
 Eigent AI <support@eigent.ai>
 .SH SEE ALSO
-.BR chromium (1),
-.BR electron (1)
+.BR chromium (1)
 .SH COPYRIGHT
-Copyright \(co 2025 Eigent AI. License: Apache-2.0.
+Copyright \(co 2026 Eigent AI. License: Apache-2.0.
