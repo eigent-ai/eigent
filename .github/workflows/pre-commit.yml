@@ -1,0 +1,45 @@
+name: Pre-commit
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run pre-commit
+        run: |
+          SKIP=no-commit-to-branch uv run pre-commit run --files \
+            app/agent/README.md \
+            app/agent/__init__.py \
+            app/agent/factory/__init__.py \
+            app/agent/factory/social_media.py \
+            app/service/chat_service.py \
+            app/service/task.py \
+            app/utils/toolkit/google_calendar_toolkit.py \
+            app/utils/toolkit/google_gmail_mcp_toolkit.py \
+            app/utils/toolkit/linkedin_toolkit.py \
+            app/utils/toolkit/reddit_toolkit.py \
+            app/utils/toolkit/slack_toolkit.py \
+            app/utils/toolkit/twitter_toolkit.py \
+            app/utils/toolkit/whatsapp_toolkit.py \
+            tests/app/agent/factory/test_social_media.py

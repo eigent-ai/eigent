@@ -1,6 +1,10 @@
 {
   "*.{ts,tsx,d.ts}": [
-    "node licenses/update_license.js"
+    "node licenses/update_license.js",
+    "prettier --write"
+  ],
+  "*.{js,jsx}": [
+    "prettier --write"
   ],
   "*.py": [
     "node licenses/update_license.js"

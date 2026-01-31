@@ -13,20 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useEffect, useState, useRef } from "react";
-import {
-	ArrowDown,
-	ArrowUp,
-	Bird,
-	Bot,
-	ChevronLeft,
-	CodeXml,
-	FileText,
-	GalleryThumbnails,
-	Globe,
-	Hand,
-	Image,
-	Settings2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Bird, Bot, ChevronLeft, CodeXml, FileText, GalleryThumbnails, Globe, Hand, Image, Settings2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { fetchPut } from "@/api/http";
 import { TaskState } from "../TaskState";
@@ -38,7 +25,7 @@ export default function Home() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const [isSingleMode, setIsSingleMode] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +66,7 @@ export default function Home() {
 			borderColor: "border-bg-fill-multimodal-active",
 			bgColorLight: "bg-fuchsia-200",
 		},
-		social_medium_agent: {
+		social_media_agent: {
 			name: "Social Media Agent",
 			icon: <Bird size={16} className="text-text-primary" />,
 			textColor: "text-purple-700",
@@ -91,14 +78,9 @@ export default function Home() {
 	};
 	const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
 	useEffect(() => {
-		const taskAssigning =
-			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
+		const taskAssigning = chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
 		if (taskAssigning) {
-			const activeAgent = taskAssigning.find(
-				(item) =>
-					item.agent_id ===
-					chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace
-			);
+			const activeAgent = taskAssigning.find((item) => item.agent_id === chatStore.tasks[chatStore.activeTaskId as string]?.activeWorkSpace);
 			setActiveAgent(() => {
 				if (activeAgent) {
 					return activeAgent;
@@ -106,10 +88,7 @@ export default function Home() {
 				return null;
 			});
 		}
-	}, [
-		chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
-		chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace,
-	]);
+	}, [chatStore.tasks[chatStore.activeTaskId as string].taskAssigning, chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace]);
 
 	const [isTakeControl, setIsTakeControl] = useState(false);
 	const handleTakeControl = (id: string) => {
@@ -196,9 +175,7 @@ export default function Home() {
 			<div id="webview-container" className="w-full h-full"></div>
 		</div>
 	) : (
-		<div
-			className={`w-full flex-1 h-[calc(100vh-104px)] flex items-center justify-center transition-all duration-300 ease-in-out`}
-		>
+		<div className={`w-full flex-1 h-[calc(100vh-104px)] flex items-center justify-center transition-all duration-300 ease-in-out`}>
 			<div className="w-full h-full flex flex-col rounded-2xl relative bg-menutabs-bg-default overflow-hidden">
 				<div className="pt-3 pb-2 px-2 rounded-t-2xl flex items-center justify-between flex-shrink-0">
 					<div className="flex items-center justify-start gap-sm">
@@ -206,51 +183,23 @@ export default function Home() {
 							size="icon"
 							variant="ghost"
 							onClick={() => {
-								chatStore.setActiveWorkSpace(
-									chatStore.activeTaskId as string,
-									"workflow"
-								);
+								chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, "workflow");
 							}}
 						>
 							<ChevronLeft size={16} />
 						</Button>
-						<div
-							className={`text-base leading-snug font-bold ${
-								agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
-							}`}
-						>
+						<div className={`text-base leading-snug font-bold ${agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor}`}>
 							{agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
 						</div>
 						<TaskState
 							all={activeAgent?.tasks?.length || 0}
-							reAssignTo={
-								activeAgent?.tasks?.filter((task) => task.reAssignTo).length ||
-								0
-							}
-							done={
-								activeAgent?.tasks?.filter(
-									(task) => task.status === "completed"
-								).length || 0
-							}
+							reAssignTo={activeAgent?.tasks?.filter((task) => task.reAssignTo).length || 0}
+							done={activeAgent?.tasks?.filter((task) => task.status === "completed").length || 0}
 							progress={
-								activeAgent?.tasks?.filter(
-									(task) =>
-										task.status !== "failed" &&
-										task.status !== "completed" &&
-										task.status !== "skipped" &&
-										task.status !== "waiting"
-								).length || 0
+								activeAgent?.tasks?.filter((task) => task.status !== "failed" && task.status !== "completed" && task.status !== "skipped" && task.status !== "waiting").length || 0
 							}
-							failed={
-								activeAgent?.tasks?.filter((task) => task.status === "failed")
-									.length || 0
-							}
-							skipped={
-								activeAgent?.tasks?.filter(
-									(task) =>
-										task.status === "skipped" || task.status === "waiting"
-								).length || 0
-							}
+							failed={activeAgent?.tasks?.filter((task) => task.status === "failed").length || 0}
+							skipped={activeAgent?.tasks?.filter((task) => task.status === "skipped" || task.status === "waiting").length || 0}
 						/>
 						{/* <div className="text-[10px] leading-17 font-medium text-text-tertiary">
 							{
@@ -269,41 +218,19 @@ export default function Home() {
 				{activeAgent?.activeWebviewIds?.length === 1 ? (
 					<div className="flex-1 min-h-0">
 						{activeAgent?.activeWebviewIds[0]?.img && (
-							<div
-								onClick={() =>
-									handleTakeControl(
-										activeAgent?.activeWebviewIds?.[0]?.id || ""
-									)
-								}
-								className="cursor-pointer relative h-full w-full group pt-sm rounded-b-2xl"
-							>
-								<img
-									src={activeAgent?.activeWebviewIds[0]?.img}
-									alt=""
-									className="w-full h-full object-contain rounded-b-2xl"
-								/>
+							<div onClick={() => handleTakeControl(activeAgent?.activeWebviewIds?.[0]?.id || "")} className="cursor-pointer relative h-full w-full group pt-sm rounded-b-2xl">
+								<img src={activeAgent?.activeWebviewIds[0]?.img} alt="" className="w-full h-full object-contain rounded-b-2xl" />
 								<div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
-									<Button
-										size="sm"
-										variant="primary"
-										className="cursor-pointer rounded-full"
-									>
+									<Button size="sm" variant="primary" className="cursor-pointer rounded-full">
 										<Hand size={24} />
-										<span className="text-base leading-9 font-medium">
-											Take Control
-										</span>
+										<span className="text-base leading-9 font-medium">Take Control</span>
 									</Button>
 								</div>
 							</div>
 						)}
 					</div>
 				) : (
-					<div
-						ref={scrollContainerRef}
-						className={`${
-							isSingleMode ? "px-0" : "px-2 pb-2"
-						}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}
-					>
+					<div ref={scrollContainerRef} className={`${isSingleMode ? "px-0" : "px-2 pb-2"}  flex-1 min-h-0 overflow-y-auto scrollbar flex gap-4 justify-start flex-wrap relative`}>
 						{activeAgent?.activeWebviewIds
 							?.filter((item) => item?.img)
 							.map((item, index) => {
@@ -311,36 +238,16 @@ export default function Home() {
 									<div
 										key={index}
 										onClick={() => handleTakeControl(item.id)}
-										className={`cursor-pointer relative card-box rounded-lg  group ${
-											isSingleMode
-												? "h-[calc(100%)] w-[calc(100%)]"
-												: "h-[calc(50%-8px)] w-[calc(50%-8px)]"
-										}`}
+										className={`cursor-pointer relative card-box rounded-lg  group ${isSingleMode ? "h-[calc(100%)] w-[calc(100%)]" : "h-[calc(50%-8px)] w-[calc(50%-8px)]"}`}
 									>
-										{item.img && (
-											<img
-												src={item.img}
-												alt=""
-												className="w-full h-full object-contain rounded-2xl"
-											/>
-										)}
+										{item.img && <img src={item.img} alt="" className="w-full h-full object-contain rounded-2xl" />}
 										<div
-											onClick={() =>
-												handleTakeControl(
-													activeAgent?.activeWebviewIds?.[0]?.id || ""
-												)
-											}
+											onClick={() => handleTakeControl(activeAgent?.activeWebviewIds?.[0]?.id || "")}
 											className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none"
 										>
-											<Button
-												size="sm"
-												variant="primary"
-												className="cursor-pointer rounded-full"
-											>
+											<Button size="sm" variant="primary" className="cursor-pointer rounded-full">
 												<Hand size={24} />
-												<span className="text-base leading-9 font-medium">
-													Take Control
-												</span>
+												<span className="text-base leading-9 font-medium">Take Control</span>
 											</Button>
 										</div>
 									</div>
@@ -363,10 +270,7 @@ export default function Home() {
 									const rowCount = isSingleMode ? 1 : 2;
 									const scrollAmount = (cardHeight + gap) * rowCount;
 									container.scrollTo({
-										top: Math.min(
-											container.scrollHeight - container.clientHeight,
-											container.scrollTop + scrollAmount
-										),
+										top: Math.min(container.scrollHeight - container.clientHeight, container.scrollTop + scrollAmount),
 										behavior: "smooth",
 									});
 								}
