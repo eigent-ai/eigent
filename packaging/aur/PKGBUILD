@@ -7,10 +7,6 @@ arch=('x86_64')
 url="https://github.com/eigent-ai/eigent"
 license=('Apache-2.0')
 depends=('hicolor-icon-theme')
-optdepends=(
-    'tesseract: OCR support'
-    'ffmpeg: video processing'
-)
 provides=('eigent')
 conflicts=('eigent' 'eigent-git')
 options=('!strip')

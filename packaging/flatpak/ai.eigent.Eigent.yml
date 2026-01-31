@@ -45,10 +45,6 @@ modules:
           fi
         done
       - |
-        cat > /app/bin/eigent << 'EOF'
-        #!/bin/bash
-        export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID}"
-        exec zypak-wrapper /app/lib/eigent/eigent "$@"
-        EOF
-      - chmod +x /app/bin/eigent
+        printf '%s\n' '#!/bin/bash' 'export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID}"' 'exec zypak-wrapper /app/lib/eigent/eigent "$@"' > /app/bin/eigent
+        chmod +x /app/bin/eigent
       - install -Dm644 ai.eigent.Eigent.metainfo.xml /app/share/metainfo/ai.eigent.Eigent.metainfo.xml

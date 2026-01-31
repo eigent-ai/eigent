@@ -54,9 +54,6 @@ for size in 16 32 48 64 128 256 512; do
     fi
 done
 
-# Man page
-install -Dm644 %{_sourcedir}/../man/eigent.1 %{buildroot}%{_mandir}/man1/%{name}.1 || true
-
 # Fix permissions
 find %{buildroot}/opt/%{name} -type d -exec chmod 755 {} \;
 find %{buildroot}/opt/%{name} -type f -exec chmod 644 {} \;
@@ -76,7 +73,6 @@ chmod +x %{buildroot}/opt/%{name}/%{name}
 %{_bindir}/%{name}
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
-%{_mandir}/man1/%{name}.1* || true
 
 %changelog
 * %(date "+%a %b %d %Y") Eigent AI <support@eigent.ai> - %{version}-1
