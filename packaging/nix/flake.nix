@@ -20,7 +20,7 @@
 
             src = pkgs.fetchurl {
               url = "https://github.com/eigent-ai/eigent/releases/download/v${version}/Eigent-${version}.AppImage";
-              sha256 = "sha256-3iymiEjzwGCjnoKWweVbBeGEDFplyMgEwPuOU0yz9Pw="; # Update with actual hash
+              sha256 = "sha256-3iymiEjzwGCjnoKWweVbBeGEDFplyMgEwPuOU0yz9Pw=";
             };
 
             extraInstallCommands =
@@ -30,7 +30,7 @@
                   inherit version;
                   src = pkgs.fetchurl {
                     url = "https://github.com/eigent-ai/eigent/releases/download/v${version}/Eigent-${version}.AppImage";
-                    sha256 = "sha256-3iymiEjzwGCjnoKWweVbBeGEDFplyMgEwPuOU0yz9Pw="; # Update with actual hash
+                    sha256 = "sha256-3iymiEjzwGCjnoKWweVbBeGEDFplyMgEwPuOU0yz9Pw=";
                   };
                 };
               in
