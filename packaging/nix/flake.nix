@@ -54,7 +54,7 @@
             meta = with pkgs.lib; {
               description = "AI-powered desktop agent for browser automation";
               homepage = "https://eigent.ai";
-              license = licenses.mit;
+              license = licenses.asl20;
               maintainers = [ ];
               platforms = [ "x86_64-linux" ];
               mainProgram = "eigent";

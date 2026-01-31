@@ -3,7 +3,7 @@ Version:        0.0.80
 Release:        1%{?dist}
 Summary:        AI-powered desktop agent for browser automation
 
-License:        MIT
+License:        Apache-2.0
 URL:            https://eigent.ai
 Source0:        https://github.com/eigent-ai/eigent/releases/download/v%{version}/Eigent-%{version}.AppImage
 

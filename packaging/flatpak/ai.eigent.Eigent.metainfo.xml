@@ -3,8 +3,8 @@
   <id>ai.eigent.Eigent</id>
   <name>Eigent</name>
   <summary>AI-powered desktop agent for browser automation</summary>
-  <metadata_license>MIT</metadata_license>
-  <project_license>MIT</project_license>
+  <metadata_license>Apache-2.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
   <developer id="ai.eigent">
     <name>Eigent AI</name>
   </developer>

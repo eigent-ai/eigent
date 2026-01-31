@@ -58,7 +58,6 @@ sudo dnf install ~/rpmbuild/RPMS/x86_64/eigent-*.rpm
 |------|-------------|
 | `man/eigent.1` | Man page |
 | `autostart/` | Login autostart entry |
-| `completions/` | Shell completions (bash, zsh, fish) |
 | `update-all.sh` | Update all package versions |
 | `tests/` | Packaging validation tests |
 
@@ -107,10 +106,6 @@ packaging/
 │   └── eigent.1
 ├── autostart/              # Desktop autostart
 │   └── eigent-autostart.desktop
-├── completions/            # Shell completions
-│   ├── eigent.bash
-│   ├── eigent.zsh
-│   └── eigent.fish
 ├── tests/                  # Validation tests
 │   └── test-packaging.sh
 └── update-all.sh           # Version updater

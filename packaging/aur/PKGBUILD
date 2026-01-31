@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc="AI-powered desktop agent for browser automation"
 arch=('x86_64')
 url="https://github.com/eigent-ai/eigent"
-license=('MIT')
+license=('Apache-2.0')
 depends=('hicolor-icon-theme')
 optdepends=(
     'tesseract: OCR support'
