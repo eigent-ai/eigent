@@ -24,11 +24,6 @@ import {
 	ChevronDown,
 	ChevronLeft,
 	House,
-	Share,
-	ArrowLeft,
-	MoreHorizontal,
-	PanelLeft,
-	PanelRight,
 } from "lucide-react";
 import folderIcon from "@/assets/Folder.svg";
 import { Button } from "@/components/ui/button";
@@ -281,34 +276,6 @@ function HeaderWin() {
 						</>
 					)}
 				</div>
-				{/* right */}
-				{location.pathname !== "/history" && (
-					<div className="flex items-left no-drag">
-						{activeTaskTitle === t("layout.new-project") ? (
-							<Button
-								id="active-task-title-btn"
-								variant="ghost"
-								className="font-semibold text-body-sm !text-text-label no-drag truncate"
-								onClick={toggle}
-								size="sm"
-							>
-								{t("layout.new-project")}
-								<ChevronDown className="text-text-label" />
-							</Button>
-						) : (
-							<Button
-								id="active-task-title-btn"
-								variant="ghost"
-								size="sm"
-								className="font-semibold text-base no-drag truncate"
-								onClick={toggle}
-							>
-								{activeTaskTitle}
-								<ChevronDown />
-							</Button>
-						)}
-					</div>
-				)}
 
 			</div>
 			{/* right */}
