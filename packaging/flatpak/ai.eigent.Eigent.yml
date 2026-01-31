@@ -24,8 +24,8 @@ modules:
     buildsystem: simple
     sources:
       - type: file
-        url: https://github.com/eigent-ai/eigent/releases/download/v0.0.80/Eigent-0.0.80.AppImage
-        sha256: PLACEHOLDER
+        url: https://github.com/eigent-ai/eigent/releases/download/v0.0.82/Eigent-0.0.82.AppImage
+        sha256: de2ca68848f3c060a39e8296c1e55b05e1840c5a65c8c804c0fb8e534cb3f4fc
         dest-filename: Eigent.AppImage
       - type: file
         path: ai.eigent.Eigent.metainfo.xml

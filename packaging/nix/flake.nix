@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "0.0.80";
+        version = "0.0.82";
       in
       {
         packages = {
@@ -20,7 +20,7 @@
 
             src = pkgs.fetchurl {
               url = "https://github.com/eigent-ai/eigent/releases/download/v${version}/Eigent-${version}.AppImage";
-              sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # Update with actual hash
+              sha256 = "sha256-3iymiEjzwGCjnoKWweVbBeGEDFplyMgEwPuOU0yz9Pw="; # Update with actual hash
             };
 
             extraInstallCommands =
@@ -30,7 +30,7 @@
                   inherit version;
                   src = pkgs.fetchurl {
                     url = "https://github.com/eigent-ai/eigent/releases/download/v${version}/Eigent-${version}.AppImage";
-                    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # Update with actual hash
+                    sha256 = "sha256-3iymiEjzwGCjnoKWweVbBeGEDFplyMgEwPuOU0yz9Pw="; # Update with actual hash
                   };
                 };
               in

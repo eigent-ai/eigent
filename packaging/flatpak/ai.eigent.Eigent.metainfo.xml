@@ -60,7 +60,7 @@
   -->
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="0.0.80" date="2025-01-31">
+    <release version="0.0.82" date="2026-01-31">
       <description>
         <p>Latest release with improvements and bug fixes.</p>
       </description>

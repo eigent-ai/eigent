@@ -1,5 +1,5 @@
 Name:           eigent
-Version:        0.0.80
+Version:        0.0.82
 Release:        1%{?dist}
 Summary:        AI-powered desktop agent for browser automation
 

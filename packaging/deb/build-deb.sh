@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="${1:-0.0.80}"
+VERSION="${1:-0.0.82}"
 ARCH="amd64"
 PKG_NAME="eigent"
 PKG_DIR="${SCRIPT_DIR}/build/${PKG_NAME}_${VERSION}_${ARCH}"

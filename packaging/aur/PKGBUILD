@@ -1,6 +1,6 @@
 # Maintainer: Eigent AI <https://github.com/eigent-ai>
 pkgname=eigent-bin
-pkgver=0.0.80
+pkgver=0.0.82
 pkgrel=1
 pkgdesc="AI-powered desktop agent for browser automation"
 arch=('x86_64')
@@ -15,7 +15,7 @@ provides=('eigent')
 conflicts=('eigent' 'eigent-git')
 options=('!strip')
 source=("${pkgname}-${pkgver}.AppImage::https://github.com/eigent-ai/eigent/releases/download/v${pkgver}/Eigent-${pkgver}.AppImage")
-sha256sums=('SKIP')
+sha256sums=('de2ca68848f3c060a39e8296c1e55b05e1840c5a65c8c804c0fb8e534cb3f4fc')
 
 prepare() {
     chmod +x "${pkgname}-${pkgver}.AppImage"
