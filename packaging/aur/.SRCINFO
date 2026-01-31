@@ -1,0 +1,16 @@
+pkgbase = eigent-bin
+	pkgdesc = AI-powered desktop agent for browser automation
+	pkgver = 0.0.82
+	pkgrel = 1
+	url = https://github.com/eigent-ai/eigent
+	arch = x86_64
+	license = Apache-2.0
+	depends = hicolor-icon-theme
+	provides = eigent
+	conflicts = eigent
+	conflicts = eigent-git
+	options = !strip
+	source = eigent-bin-0.0.82.AppImage::https://github.com/eigent-ai/eigent/releases/download/v0.0.82/Eigent-0.0.82.AppImage
+	sha256sums = de2ca68848f3c060a39e8296c1e55b05e1840c5a65c8c804c0fb8e534cb3f4fc
+
+pkgname = eigent-bin
