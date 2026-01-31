@@ -14,10 +14,11 @@
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
 
 export interface FloatingActionProps {
   /** Current task status */
-  status: 'running' | 'pause' | 'pending' | 'finished';
+  status: ChatTaskStatusType;
   /** Callback when pause button is clicked */
   // onPause?: () => void;  // Commented out - temporary not needed
   /** Callback when resume button is clicked */
@@ -39,7 +40,7 @@ export const FloatingAction = ({
   className,
 }: FloatingActionProps) => {
   // Only show when task is running (removed pause state)
-  if (status !== 'running') {
+  if (status !== ChatTaskStatus.RUNNING) {
     return null;
   }
 
