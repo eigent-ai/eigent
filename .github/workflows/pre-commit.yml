@@ -6,6 +6,9 @@ name: Pre-commit
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
