@@ -167,8 +167,13 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Disable system theme
-nativeTheme.themeSource = 'light';
+// Respect system theme on Windows, keep light theme on macOS for consistency
+const isWindows = process.platform === 'win32';
+if (isWindows) {
+  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
+} else {
+  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
+}
 
 // Set log level
 log.transports.console.level = 'info';
@@ -1263,6 +1268,7 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 // ==================== window create ====================
 async function createWindow() {
   const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
@@ -1281,22 +1287,35 @@ async function createWindow() {
     )}`
   );
 
+  // Platform-specific window configuration
+  // Windows: Use native frame for better native feel, solid background
+  // macOS: Use frameless with transparency and vibrancy effects
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
     height: 800,
     minWidth: 1050,
     minHeight: 650,
-    frame: false,
+    // Use native frame on Windows for better native integration
+    frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
-    transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    // Only use transparency on macOS (works better there)
+    transparent: isMac ? true : false,
+    // macOS-only visual effects
+    vibrancy: isMac ? 'sidebar' : undefined,
+    visualEffectState: isMac ? 'active' : undefined,
+    // Solid background on Windows, semi-transparent on macOS
+    backgroundColor: isWindows ? '#ffffff' : '#f5f5f580',
+    // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    roundedCorners: true,
+    // Rounded corners only on macOS
+    roundedCorners: isMac ? true : false,
+    // Windows-specific options
+    ...(isWindows && {
+      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
@@ -1919,6 +1938,20 @@ app.whenReady().then(async () => {
   // And for main_window partition
   session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
   log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
+
+  // ==================== Windows theme change listener ====================
+  // Listen for system theme changes on Windows and notify renderer
+  if (isWindows) {
+    nativeTheme.on('updated', () => {
+      const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+      log.info(`[THEME] System theme changed to: ${theme}`);
+      // Notify renderer process about theme change
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('system-theme-changed', { theme });
+      }
+    });
+    log.info('[THEME] Windows theme change listener registered');
+  }
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {
