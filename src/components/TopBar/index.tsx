@@ -368,7 +368,8 @@ function HeaderWin() {
 					</div>
 				)}
 			</div>
-			{platform !== "darwin" && (
+			{/* Custom window controls only for Linux (Windows and macOS use native controls) */}
+			{platform !== "darwin" && platform !== "win32" && (
 				<div
 					className="h-full flex items-center no-drag"
 					id="window-controls"
