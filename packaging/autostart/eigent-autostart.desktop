@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Eigent
+Comment=Start Eigent on login
+Exec=eigent --hidden
+Icon=eigent
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+X-KDE-autostart-after=panel
+StartupNotify=false

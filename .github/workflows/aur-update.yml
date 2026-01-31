@@ -1,4 +1,4 @@
-name: Update AUR Package
+name: Update Packaging
 
 on:
   release:
@@ -14,7 +14,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  update-aur:
+  update-packaging:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,29 +46,10 @@ jobs:
           echo "Timeout waiting for release asset"
           exit 1
 
-      - name: Install makepkg dependencies
+      - name: Update all packaging
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools fakeroot
-
-      - name: Update AUR package
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          cd packaging/aur
-
-          # Update pkgver
-          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-
-          # Calculate SHA256
-          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Eigent-${VERSION}.AppImage"
-          TMPFILE=$(mktemp)
-          curl -fSL -o "$TMPFILE" "$URL"
-          HASH=$(sha256sum "$TMPFILE" | cut -d' ' -f1)
-          rm "$TMPFILE"
-          sed -i "s/^sha256sums=.*/sha256sums=('$HASH')/" PKGBUILD
-
-          echo "Updated to version $VERSION with hash $HASH"
+          chmod +x packaging/update-all.sh
+          ./packaging/update-all.sh "${{ steps.version.outputs.version }}" --verify
 
       - name: Generate .SRCINFO
         run: |
@@ -95,20 +76,22 @@ jobs:
 
           pkgname = ${pkgname}
           EOF
-          # Remove leading tabs/spaces from heredoc
           sed -i 's/^[[:space:]]*//' .SRCINFO
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(aur): update to v${{ steps.version.outputs.version }}"
-          branch: aur-update-${{ steps.version.outputs.version }}
-          title: "chore(aur): update to v${{ steps.version.outputs.version }}"
+          commit-message: "chore(packaging): update to v${{ steps.version.outputs.version }}"
+          branch: packaging-update-${{ steps.version.outputs.version }}
+          title: "chore(packaging): update to v${{ steps.version.outputs.version }}"
           body: |
-            Automated AUR package update for v${{ steps.version.outputs.version }}
+            Automated packaging update for v${{ steps.version.outputs.version }}
 
-            - Updated `pkgver` in PKGBUILD
-            - Calculated SHA256 checksum
-            - Regenerated `.SRCINFO`
-          labels: aur,automated
+            Updated:
+            - `packaging/aur/PKGBUILD` + `.SRCINFO`
+            - `packaging/flatpak/ai.eigent.Eigent.yml` + `metainfo.xml`
+            - `packaging/deb/build-deb.sh`
+            - `packaging/nix/flake.nix`
+            - `packaging/rpm/eigent.spec`
+          labels: packaging,automated
