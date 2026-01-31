@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { ChatTaskStatus } from "@/types/constants";
 import ChatBox from "@/components/ChatBox";
 import Workflow from "@/components/WorkFlow";
 import Folder from "@/components/Folder";
@@ -88,7 +89,7 @@ export default function Home() {
 		// capture webview
 		const captureWebview = async () => {
 			const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
-			if (!activeTask || activeTask.status === "finished") {
+			if (!activeTask || activeTask.status === ChatTaskStatus.FINISHED) {
 				return;
 			}
 			webviews.map((webview) => {

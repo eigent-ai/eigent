@@ -45,6 +45,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ChatTaskStatus } from '@/types/constants';
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -144,7 +145,7 @@ function HeaderWin() {
       const task = chatStore.tasks[taskId];
 
       // Stop the task if it's running
-      if (task && task.status === 'running') {
+      if (task && task.status === ChatTaskStatus.RUNNING) {
         await fetchPut(`/task/${taskId}/take-control`, {
           action: 'stop',
         });
@@ -158,7 +159,7 @@ function HeaderWin() {
       }
 
       // Delete from history using historyId
-      if (historyId && task.status !== 'finished') {
+      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
         try {
           await proxyFetchDelete(`/api/chat/history/${historyId}`);
           // Remove from local store
@@ -333,7 +334,7 @@ function HeaderWin() {
                 chatStore.tasks[chatStore.activeTaskId as string]
                   ?.hasMessages ||
                 chatStore.tasks[chatStore.activeTaskId as string]?.status !==
-                  'pending') && (
+                  ChatTaskStatus.PENDING) && (
                 <TooltipSimple
                   content={t('layout.end-project')}
                   side="bottom"
@@ -352,7 +353,7 @@ function HeaderWin() {
               )}
             {chatStore.activeTaskId &&
               chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                'finished' && (
+                ChatTaskStatus.FINISHED && (
                 <TooltipSimple
                   content={t('layout.share')}
                   side="bottom"
