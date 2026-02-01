@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { getBackendPath, getBinaryPath, getCachePath, getVenvPath, getUvEnv, isBinaryExists, runInstallScript, killProcessByName, getPrebuiltPythonDir, getPrebuiltVenvPath } from "./utils/process";
 import { spawn, exec } from 'child_process'
 import log from 'electron-log'
@@ -173,11 +187,6 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
         if (!data) return;
         const msg = data.toString().trimEnd();
 
-        // REMOVED: detectInstallationLogs(msg)
-        // Reason: Removed keyword-based detection to avoid false positives when backend
-        // outputs logs containing keywords like "Installing", "Updating", "Syncing" etc.
-        // Installation is now only handled through the explicit installation flow.
-
         if (msg.toLowerCase().includes("error") || msg.toLowerCase().includes("traceback")) {
             log.error(`BACKEND: ${msg}`);
         } else if (msg.toLowerCase().includes("warn")) {
@@ -297,7 +306,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
                 cwd: backendPath,
                 env: env,
                 detached: process.platform !== 'win32',
-                stdio: ['ignore', 'pipe', 'pipe']
+                stdio: ['ignore', 'ignore', 'pipe']  // stdin=ignore, stdout=ignore, stderr=pipe (Python logs to stderr)
             }
         );
 
@@ -415,13 +424,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
             }, intervalMs);
         };
 
-        node_process.stdout.on('data', (data) => {
-            log.debug(`Backend stdout received ${data.length} bytes`);
-            displayFilteredLogs(data);
-        });
-
         node_process.stderr.on('data', (data) => {
-            log.debug(`Backend stderr received ${data.length} bytes`);
             displayFilteredLogs(data);
 
             if (data.toString().includes("Address already in use") ||

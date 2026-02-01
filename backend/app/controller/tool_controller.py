@@ -1,16 +1,47 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from typing import Optional
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
+from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
-from utils import traceroot_wrapper as traceroot
+import logging
+
+
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
 from app.utils.cookie_manager import CookieManager
+
+
 import os
+import time
 import uuid
 
-logger = traceroot.get_logger("tool_controller")
+
+class LinkedInTokenRequest(BaseModel):
+    r"""Request model for saving LinkedIn OAuth token."""
+    access_token: str
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+    scope: Optional[str] = None
+
+
+logger = logging.getLogger("tool_controller")
 router = APIRouter()
 
 
@@ -104,10 +135,81 @@ async def install_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to install {tool}: {str(e)}"
             )
+    elif tool == "linkedin":
+        try:
+            # Check if LinkedIn is already authenticated
+            if LinkedInToolkit.is_authenticated():
+                # Check if token is expired
+                if LinkedInToolkit.is_token_expired():
+                    logger.info("LinkedIn token has expired")
+                    return {
+                        "success": False,
+                        "status": "token_expired",
+                        "message": "LinkedIn token has expired. Please re-authenticate via OAuth.",
+                        "toolkit_name": "LinkedInToolkit",
+                        "requires_auth": True,
+                        "oauth_url": "/api/oauth/linkedin/login"
+                    }
+
+                try:
+                    toolkit = LinkedInToolkit("install_auth")
+                    tools = [tool_func.func.__name__ for tool_func in toolkit.get_tools()]
+
+                    # Try to get profile to verify token is valid
+                    profile = toolkit.get_profile_safe()
+
+                    # Check if token is expiring soon
+                    token_warning = None
+                    if LinkedInToolkit.is_token_expiring_soon():
+                        token_info = LinkedInToolkit.get_token_info()
+                        if token_info and token_info.get("expires_at"):
+                            days_remaining = (token_info["expires_at"] - int(time.time())) // (24 * 60 * 60)
+                            token_warning = f"Token expires in {days_remaining} days. Consider re-authenticating soon."
+
+                    logger.info(f"Successfully initialized LinkedIn toolkit with {len(tools)} tools")
+                    result = {
+                        "success": True,
+                        "tools": tools,
+                        "message": f"Successfully installed {tool} toolkit",
+                        "count": len(tools),
+                        "toolkit_name": "LinkedInToolkit",
+                        "profile": profile if "error" not in profile else None
+                    }
+                    if token_warning:
+                        result["warning"] = token_warning
+                    return result
+                except Exception as e:
+                    logger.warning(f"LinkedIn token may be invalid: {e}")
+                    # Token exists but may be expired/invalid
+                    return {
+                        "success": False,
+                        "status": "token_invalid",
+                        "message": "LinkedIn token may be expired or invalid. Please re-authenticate via OAuth.",
+                        "toolkit_name": "LinkedInToolkit",
+                        "requires_auth": True,
+                        "oauth_url": "/api/oauth/linkedin/login"
+                    }
+            else:
+                # No credentials - need OAuth authorization
+                logger.info("No LinkedIn credentials found, OAuth required")
+                return {
+                    "success": False,
+                    "status": "not_configured",
+                    "message": "LinkedIn OAuth required. Redirect user to OAuth login.",
+                    "toolkit_name": "LinkedInToolkit",
+                    "requires_auth": True,
+                    "oauth_url": "/api/oauth/linkedin/login"
+                }
+        except Exception as e:
+            logger.error(f"Failed to install {tool} toolkit: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to install {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'linkedin']"
         )
 
 
@@ -134,6 +236,14 @@ async def list_available_tools():
                 "description": "Google Calendar integration for managing events and schedules",
                 "toolkit_class": "GoogleCalendarToolkit",
                 "requires_auth": True
+            },
+            {
+                "name": "linkedin",
+                "display_name": "LinkedIn",
+                "description": "LinkedIn integration for creating posts, managing profile, and social media automation",
+                "toolkit_class": "LinkedInToolkit",
+                "requires_auth": True,
+                "oauth_url": "/api/oauth/linkedin/login"
             }
         ]
     }
@@ -295,10 +405,140 @@ async def uninstall_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to uninstall {tool}: {str(e)}"
             )
+    elif tool == "linkedin":
+        try:
+            # Clear LinkedIn token
+            success = LinkedInToolkit.clear_token()
+
+            if success:
+                return {
+                    "success": True,
+                    "message": f"Successfully uninstalled {tool} and cleaned up authentication tokens"
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": f"Uninstalled {tool} (no tokens found to clean up)"
+                }
+        except Exception as e:
+            logger.error(f"Failed to uninstall {tool}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to uninstall {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'linkedin']"
+        )
+
+
+@router.post("/linkedin/save-token", name="save linkedin token")
+async def save_linkedin_token(token_request: LinkedInTokenRequest):
+    r"""Save LinkedIn OAuth token after successful authorization.
+
+    Args:
+        token_request: Token data containing access_token and optionally refresh_token
+
+    Returns:
+        Save result with tool information
+    """
+    try:
+        token_data = token_request.model_dump(exclude_none=True)
+
+        # Save the token
+        success = LinkedInToolkit.save_token(token_data)
+
+        if success:
+            # Verify the token works by initializing toolkit
+            try:
+                toolkit = LinkedInToolkit("install_auth")
+                tools = [tool_func.func.__name__ for tool_func in toolkit.get_tools()]
+                profile = toolkit.get_profile_safe()
+
+                return {
+                    "success": True,
+                    "message": "LinkedIn token saved successfully",
+                    "tools": tools,
+                    "count": len(tools),
+                    "profile": profile if "error" not in profile else None
+                }
+            except Exception as e:
+                logger.warning(f"Token saved but verification failed: {e}")
+                return {
+                    "success": True,
+                    "message": "LinkedIn token saved (verification pending)",
+                    "warning": str(e)
+                }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to save LinkedIn token"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save LinkedIn token: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save token: {str(e)}"
+        )
+
+
+@router.get("/linkedin/status", name="get linkedin status")
+async def get_linkedin_status():
+    r"""Get current LinkedIn authentication status and token info.
+
+    Returns:
+        Status information including authentication state and token expiry
+    """
+    try:
+        is_authenticated = LinkedInToolkit.is_authenticated()
+
+        if not is_authenticated:
+            return {
+                "authenticated": False,
+                "status": "not_configured",
+                "message": "LinkedIn not configured. OAuth required.",
+                "oauth_url": "/api/oauth/linkedin/login"
+            }
+
+        token_info = LinkedInToolkit.get_token_info()
+        is_expired = LinkedInToolkit.is_token_expired()
+        is_expiring_soon = LinkedInToolkit.is_token_expiring_soon()
+
+        result = {
+            "authenticated": True,
+            "status": "expired" if is_expired else ("expiring_soon" if is_expiring_soon else "valid"),
+        }
+
+        if token_info:
+            if token_info.get("expires_at"):
+                current_time = int(time.time())
+                expires_at = token_info["expires_at"]
+                seconds_remaining = max(0, expires_at - current_time)
+                days_remaining = seconds_remaining // (24 * 60 * 60)
+                result["expires_at"] = expires_at
+                result["days_remaining"] = days_remaining
+
+            if token_info.get("saved_at"):
+                result["saved_at"] = token_info["saved_at"]
+
+        if is_expired:
+            result["message"] = "Token has expired. Please re-authenticate."
+            result["oauth_url"] = "/api/oauth/linkedin/login"
+        elif is_expiring_soon:
+            result["message"] = f"Token expires in {result.get('days_remaining', 'unknown')} days. Consider re-authenticating."
+            result["oauth_url"] = "/api/oauth/linkedin/login"
+        else:
+            result["message"] = "LinkedIn is connected and token is valid."
+
+        return result
+    except Exception as e:
+        logger.error(f"Failed to get LinkedIn status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get status: {str(e)}"
         )
 
 

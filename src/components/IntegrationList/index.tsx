@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
@@ -24,6 +38,7 @@ import {
 	useIntegrationManagement,
 	type IntegrationItem,
 } from "@/hooks/useIntegrationManagement";
+import { getProxyBaseURL } from "@/lib";
 
 type IntegrationListVariant = "select" | "manage";
 
@@ -107,6 +122,15 @@ export default function IntegrationList({
 					setActiveMcp(mcp);
 					setShowEnvConfig(true);
 				}
+				return;
+			}
+
+			// LinkedIn uses server-side OAuth flow
+			if (item.key === "LinkedIn") {
+				// Open LinkedIn OAuth login via the remote server (same pattern as other OAuth providers)
+				const baseUrl = getProxyBaseURL();
+				const oauthUrl = `${baseUrl}/api/oauth/linkedin/login`;
+				window.open(oauthUrl, "_blank", "width=600,height=700");
 				return;
 			}
 
@@ -242,7 +266,7 @@ export default function IntegrationList({
 		"Slack",
 		"X(Twitter)",
 		"WhatsApp",
-		"LinkedIn",
+		// "LinkedIn", // LinkedIn OAuth is now supported
 		"Reddit",
 		"Github",
 	];

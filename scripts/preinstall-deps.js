@@ -1,4 +1,18 @@
 #!/usr/bin/env node
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 /**
  * Pre-install dependencies script
  * This script installs all necessary dependencies before packaging the app
@@ -20,7 +34,19 @@ const projectRoot = path.resolve(__dirname, '..');
 const PREBUILT_DIR = path.join(projectRoot, 'resources', 'prebuilt');
 const BIN_DIR = path.join(PREBUILT_DIR, 'bin');
 const VENV_DIR = path.join(PREBUILT_DIR, 'venv');
+const TERMINAL_VENV_DIR = path.join(PREBUILT_DIR, 'terminal_venv');
 const BACKEND_DIR = path.join(projectRoot, 'backend');
+
+// Terminal base packages - keep in sync with electron/main/utils/process.ts
+const TERMINAL_BASE_PACKAGES = [
+  'pandas',
+  'numpy',
+  'matplotlib',
+  'requests',
+  'openpyxl',
+  'beautifulsoup4',
+  'pillow',
+];
 
 console.log('🚀 Starting pre-installation of dependencies...');
 console.log(`📦 Binaries will be installed to: ${BIN_DIR}`);
@@ -726,6 +752,57 @@ async function installPythonDeps(uvPath) {
 }
 
 /**
+ * Install terminal base venv with common packages for terminal tasks
+ */
+async function installTerminalBaseVenv(uvPath) {
+  console.log('\n🖥️  Installing terminal base venv...');
+
+  const pythonCacheDir = path.join(projectRoot, 'resources', 'prebuilt', 'cache', 'uv_python');
+  const isWindows = process.platform === 'win32';
+  const pythonPath = isWindows
+    ? path.join(TERMINAL_VENV_DIR, 'Scripts', 'python.exe')
+    : path.join(TERMINAL_VENV_DIR, 'bin', 'python');
+  const installedMarker = path.join(TERMINAL_VENV_DIR, '.packages_installed');
+
+  // Check if already fully installed
+  if (fs.existsSync(pythonPath) && fs.existsSync(installedMarker)) {
+    console.log('✅ Terminal base venv already exists with packages');
+    return;
+  }
+
+  // Check if venv exists but packages not installed (partial install)
+  const needsPackageInstall = fs.existsSync(pythonPath) && !fs.existsSync(installedMarker);
+
+  const env = {
+    ...process.env,
+    UV_PYTHON_INSTALL_DIR: pythonCacheDir,
+  };
+
+  // Create the venv if needed
+  if (!needsPackageInstall) {
+    fs.mkdirSync(TERMINAL_VENV_DIR, { recursive: true });
+    console.log('📦 Creating terminal venv...');
+    execSync(
+      `"${uvPath}" venv --python 3.10 "${TERMINAL_VENV_DIR}"`,
+      { env: env, stdio: 'inherit' }
+    );
+  } else {
+    console.log('📦 Terminal venv exists, installing missing packages...');
+  }
+
+  // Install base packages
+  console.log(`📦 Installing packages: ${TERMINAL_BASE_PACKAGES.join(', ')}...`);
+  execSync(
+    `"${uvPath}" pip install --python "${pythonPath}" ${TERMINAL_BASE_PACKAGES.join(' ')}`,
+    { env: env, stdio: 'inherit' }
+  );
+
+  // Create marker file
+  fs.writeFileSync(installedMarker, new Date().toISOString());
+  console.log('✅ Terminal base venv installed');
+}
+
+/**
  * Install browser toolkit deps
  */
 async function installBrowserToolkitDeps(uvPath, venvPath) {
@@ -806,11 +883,13 @@ async function main() {
     const uvPath = await installUv();
     await installBun();
     await installPythonDeps(uvPath);
+    await installTerminalBaseVenv(uvPath);
     await installBrowserToolkitDeps(uvPath, VENV_DIR);
 
     console.log('\n✅ All dependencies installed!');
     console.log(`📦 Binaries: ${BIN_DIR}`);
     console.log(`🐍 Python venv: ${VENV_DIR}`);
+    console.log(`🖥️  Terminal venv: ${TERMINAL_VENV_DIR}`);
   } catch (error) {
     console.error('\n❌ Failed:', error);
     process.exit(1);

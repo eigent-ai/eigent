@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi_babel import _
 from sqlmodel import Session
@@ -15,16 +29,15 @@ from app.model.user.user import (
     RegisterIn,
 )
 from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_login_controller")
+logger = logging.getLogger("server_login_controller")
 
 
 router = APIRouter(tags=["Login/Registration"])
 
 
 @router.post("/login", name="login by email or password")
-@traceroot.trace()
 async def by_password(
     data: LoginByPasswordIn, session: Session = Depends(session)
 ) -> LoginResponse:
@@ -49,7 +62,6 @@ async def by_password(
 
 
 @router.post("/dev_login", name="OAuth2 password flow login (for Swagger UI)")
-@traceroot.trace()
 async def dev_login(
     username: str = Form(...),  # OAuth2 uses 'username' but we accept email
     password: str = Form(...),
@@ -82,7 +94,6 @@ async def dev_login(
 
 
 @router.post("/login-by_stack", name="login by stack")
-@traceroot.trace()
 async def by_stack_auth(
     token: str,
     type: str = "signup",
@@ -155,7 +166,6 @@ async def by_stack_auth(
 
 
 @router.post("/register", name="register by email/password")
-@traceroot.trace()
 async def register(data: RegisterIn, session: Session = Depends(session)):
     email = data.email
 
