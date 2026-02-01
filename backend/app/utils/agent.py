@@ -109,6 +109,7 @@ from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.toolkit.reddit_toolkit import RedditToolkit
 from app.utils.toolkit.slack_toolkit import SlackToolkit
 from app.utils.toolkit.lark_toolkit import LarkToolkit
+from app.utils.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
 from camel.types import ModelPlatformType, ModelType
 from camel.toolkits import MCPToolkit, ToolkitMessageIntegration
 import datetime
@@ -873,6 +874,10 @@ async def developer_agent(options: Chat):
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+    knowledge_base_toolkit = KnowledgeBaseToolkit(
+        api_task_id=options.project_id,
+        agent_name=Agents.developer_agent,
+    )
 
     tools = [
         *HumanToolkit.get_can_use_tools(options.project_id, Agents.developer_agent),
@@ -880,6 +885,7 @@ async def developer_agent(options: Chat):
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
+        *knowledge_base_toolkit.get_tools(),
     ]
     system_message = f"""
 <role>
@@ -909,6 +915,9 @@ The current date is {NOW_STR}(Accurate to the hour). For any date-related tasks,
 
 <mandatory_instructions>
 - You MUST use the `read_note` tool to read the ALL notes from other agents.
+- Use the `remember_this` tool to save important facts, decisions, or preferences
+  to the project's long-term knowledge base when the user or task establishes
+  something that should be remembered for future conversations.
 
 You SHOULD keep the user informed by providing message_title and message_description
     parameters when calling tools. These optional parameters are available on all tools
@@ -1884,6 +1893,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "google_drive_mcp_toolkit": GoogleDriveMCPToolkit,
         "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
+        "knowledge_base_toolkit": KnowledgeBaseToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "lark_toolkit": LarkToolkit,
         "mcp_search_toolkit": McpSearchToolkit,

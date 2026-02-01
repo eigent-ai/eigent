@@ -44,6 +44,7 @@ from app.utils.agent import (
 )
 from app.service.task import Action, Agents
 from app.utils.server.sync_step import sync_step
+from app.utils.knowledge_base import get_context_for_prompt as get_knowledge_context
 from camel.types import ModelPlatformType
 from camel.models import ModelProcessingError
 from utils import traceroot_wrapper as traceroot
@@ -176,21 +177,39 @@ def check_conversation_history_length(task_lock: TaskLock, max_length: int = 200
     return is_exceeded, total_length
 
 
-def build_conversation_context(task_lock: TaskLock, header: str = "=== CONVERSATION HISTORY ===") -> str:
+def build_conversation_context(
+    task_lock: TaskLock,
+    header: str = "=== CONVERSATION HISTORY ===",
+    query: str | None = None,
+) -> str:
     """Build conversation context from task_lock history with files listed only once at the end.
+    Prepends knowledge base (long-term memory) entries when available.
 
     Args:
         task_lock: TaskLock containing conversation history
         header: Header text for the context section
+        query: Optional user query to filter relevant knowledge base entries
 
     Returns:
-        Formatted context string with task history and files listed once at the end
+        Formatted context string with knowledge base (if any), task history, and files
     """
     context = ""
+    try:
+        kb_context = get_knowledge_context(
+            project_id=task_lock.id,
+            query=query,
+            max_chars=4000,
+            limit_entries=20,
+        )
+        if kb_context:
+            context = kb_context
+    except Exception as e:
+        logger.warning("Failed to load knowledge base context", extra={"error": str(e)})
+
     working_directories = set()  # Collect all unique working directories
 
     if task_lock.conversation_history:
-        context = f"{header}\n"
+        context += f"{header}\n"
 
         for entry in task_lock.conversation_history:
             if entry['role'] == 'task_result':
@@ -345,7 +364,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 if not is_complex_task:
                     logger.info(f"[NEW-QUESTION] ✅ Simple question, providing direct answer without workforce")
-                    simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {question}\n\nProvide a direct, helpful answer to this simple question."
+                    simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===', query=question)}User Query: {question}\n\nProvide a direct, helpful answer to this simple question."
 
                     try:
                         simple_resp = question_agent.step(simple_answer_prompt)
@@ -721,7 +740,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         if not is_multi_turn_complex:
                             logger.info(f"[LIFECYCLE] Multi-turn: task is simple, providing direct answer without workforce")
-                            simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===')}User Query: {new_task_content}\n\nProvide a direct, helpful answer to this simple question."
+                            simple_answer_prompt = f"{build_conversation_context(task_lock, header='=== Previous Conversation ===', query=new_task_content)}User Query: {new_task_content}\n\nProvide a direct, helpful answer to this simple question."
 
                             try:
                                 simple_resp = question_agent.step(simple_answer_prompt)
@@ -1127,7 +1146,9 @@ async def question_confirm(agent: ListenChatAgent, prompt: str, task_lock: TaskL
 
     context_prompt = ""
     if task_lock:
-        context_prompt = build_conversation_context(task_lock, header="=== Previous Conversation ===")
+        context_prompt = build_conversation_context(
+            task_lock, header="=== Previous Conversation ===", query=prompt
+        )
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
