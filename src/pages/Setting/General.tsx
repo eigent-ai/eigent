@@ -153,7 +153,10 @@ export default function SettingGeneral() {
 
   // Save proxy configuration
   const handleSaveProxy = async () => {
-    if (!authStore.email) return;
+    if (!authStore.email) {
+      toast.error(t('setting.proxy-save-failed'));
+      return;
+    }
 
     setIsProxySaving(true);
     try {

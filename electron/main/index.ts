@@ -51,6 +51,7 @@ import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
   getEnvPath,
+  readGlobalEnvKey,
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
@@ -133,32 +134,13 @@ app.commandLine.appendSwitch('renderer-process-limit', '8');
 
 // ==================== Proxy configuration ====================
 // Read proxy from global .env file on startup
-const loadProxyConfig = () => {
-  try {
-    const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
-    if (fs.existsSync(globalEnvPath)) {
-      const content = fs.readFileSync(globalEnvPath, 'utf-8');
-      const lines = content.split(/\r?\n/);
-      for (const line of lines) {
-        const match = line.match(/^HTTP_PROXY=(.+)$/);
-        if (match) {
-          proxyUrl = match[1].trim();
-          break;
-        }
-      }
-    }
-  } catch (error) {
-    log.error('[PROXY] Failed to load proxy config:', error);
-  }
-
-  if (proxyUrl) {
-    log.info(`[PROXY] Applying proxy configuration: ${proxyUrl}`);
-    app.commandLine.appendSwitch('proxy-server', proxyUrl);
-  } else {
-    log.info('[PROXY] No proxy configured');
-  }
-};
-loadProxyConfig();
+proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+if (proxyUrl) {
+  log.info(`[PROXY] Applying proxy configuration: ${proxyUrl}`);
+  app.commandLine.appendSwitch('proxy-server', proxyUrl);
+} else {
+  log.info('[PROXY] No proxy configured');
+}
 
 // ==================== Anti-fingerprint settings ====================
 // Disable automation controlled indicator to avoid detection
@@ -1024,24 +1006,7 @@ function registerIpcHandlers() {
 
   // ==================== read global env handler ====================
   ipcMain.handle('read-global-env', async (_event, key: string) => {
-    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
-    try {
-      if (!fs.existsSync(GLOBAL_ENV_PATH)) {
-        return { value: null };
-      }
-      const content = fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8');
-      const lines = content.split(/\r?\n/);
-      for (const line of lines) {
-        const match = line.match(new RegExp(`^${key}=(.+)$`));
-        if (match) {
-          return { value: match[1].trim() };
-        }
-      }
-      return { value: null };
-    } catch (error) {
-      log.error('read-global-env error:', error);
-      return { value: null };
-    }
+    return { value: readGlobalEnvKey(key) };
   });
 
   // ==================== new window handler ====================
@@ -2007,9 +1972,9 @@ app.whenReady().then(async () => {
   // ==================== Apply proxy to Electron sessions ====================
   if (proxyUrl) {
     const proxyConfig = { proxyRules: proxyUrl };
-    session.defaultSession.setProxy(proxyConfig);
-    session.fromPartition('persist:user_login').setProxy(proxyConfig);
-    session.fromPartition('persist:main_window').setProxy(proxyConfig);
+    await session.defaultSession.setProxy(proxyConfig);
+    await session.fromPartition('persist:user_login').setProxy(proxyConfig);
+    await session.fromPartition('persist:main_window').setProxy(proxyConfig);
     log.info(`[PROXY] Applied proxy to all sessions: ${proxyUrl}`);
   }
 

@@ -88,6 +88,26 @@ export function removeEnvKey(lines: string[], key: string) {
   return [...lines.slice(0, start + 1), ...newBlock, ...lines.slice(end)];
 }
 
+/**
+ * Read the value of a key from the global ~/.eigent/.env file.
+ */
+export function readGlobalEnvKey(key: string): string | null {
+  try {
+    const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
+    if (!fs.existsSync(globalEnvPath)) return null;
+    const content = fs.readFileSync(globalEnvPath, 'utf-8');
+    const prefix = key + '=';
+    for (const line of content.split(/\r?\n/)) {
+      if (line.startsWith(prefix)) {
+        return line.slice(prefix.length).trim();
+      }
+    }
+  } catch {
+    // ignore read errors
+  }
+  return null;
+}
+
 export function getEmailFolderPath(email: string) {
   const tempEmail = email
     .split('@')[0]

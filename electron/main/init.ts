@@ -18,10 +18,10 @@ import log from 'electron-log';
 import fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
-import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
+import { readGlobalEnvKey } from './utils/envUtil';
 import {
   getBackendPath,
   getBinaryPath,
@@ -186,23 +186,7 @@ export async function startBackend(
   const uvEnv = getUvEnv(currentVersion);
 
   // Load proxy configuration from global .env file
-  let proxyUrl: string | null = null;
-  try {
-    const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
-    if (fs.existsSync(globalEnvPath)) {
-      const content = fs.readFileSync(globalEnvPath, 'utf-8');
-      const lines = content.split(/\r?\n/);
-      for (const line of lines) {
-        const match = line.match(/^HTTP_PROXY=(.+)$/);
-        if (match) {
-          proxyUrl = match[1].trim();
-          break;
-        }
-      }
-    }
-  } catch (error) {
-    log.error('[BACKEND] Failed to load proxy config:', error);
-  }
+  const proxyUrl = readGlobalEnvKey('HTTP_PROXY');
 
   // Build proxy env vars if configured
   const proxyEnv = proxyUrl
