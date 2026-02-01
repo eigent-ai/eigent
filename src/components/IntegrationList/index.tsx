@@ -290,7 +290,7 @@ export default function IntegrationList({
     : 'flex flex-col w-full items-start justify-start gap-4';
 
   const itemClassName = isSelectMode
-    ? 'cursor-pointer hover:bg-gray-100 px-3 py-2 flex justify-between'
+    ? 'cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between'
     : 'w-full px-6 py-4 bg-surface-secondary rounded-2xl';
 
   const titleClassName = isSelectMode
