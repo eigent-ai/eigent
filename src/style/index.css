@@ -73,17 +73,23 @@ body {
 
   button .lucide,
   a .lucide,
-  .lucide[data-state="active"] {
+  .lucide[data-state='active'] {
     color: var(--icon-primary);
   }
 
-  :is(.bg-white, .bg-white-100, .bg-white-50, [class*="bg-white-100%"], [class*="bg-white-50"]) {
+  :is(
+    .bg-white,
+    .bg-white-100,
+    .bg-white-50,
+    [class*='bg-white-100%'],
+    [class*='bg-white-50']
+  ) {
     color: var(--text-primary);
     background-color: var(--surface-card) !important;
     box-shadow: none;
   }
 
-  [class*="bg-white-50"] {
+  [class*='bg-white-50'] {
     background-color: var(--surface-tertiary) !important;
   }
 
@@ -92,11 +98,11 @@ body {
     transition: filter 150ms ease;
   }
 
-  [data-theme="dark"] .theme-image-invert-dark {
+  [data-theme='dark'] .theme-image-invert-dark {
     filter: brightness(0) invert(1);
   }
 
-  [data-theme="transparent"] .theme-image-invert-dark {
+  [data-theme='transparent'] .theme-image-invert-dark {
     filter: brightness(0) invert(1);
   }
 }
@@ -487,4 +493,36 @@ code {
 .markdown-container ol {
   padding-left: 1rem;
   font-size: 12px; /* text-sm */
+}
+
+/* Dark mode overrides for FolderComponent (CSV/table content) */
+[data-theme='dark'] .folder-component-content {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .folder-component-content * {
+  color: inherit;
+}
+
+[data-theme='dark'] .folder-component-content table {
+  border-collapse: collapse;
+}
+
+[data-theme='dark'] .folder-component-content table th,
+[data-theme='dark'] .folder-component-content table td {
+  border-color: #30363d !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .folder-component-content table th {
+  background-color: #161b22 !important;
+}
+
+[data-theme='dark'] .folder-component-content table tr {
+  background-color: transparent !important;
+  border-top-color: #30363d !important;
+}
+
+[data-theme='dark'] .folder-component-content table tr:nth-child(2n) {
+  background-color: rgba(110, 118, 129, 0.1) !important;
 }
