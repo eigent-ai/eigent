@@ -193,5 +193,6 @@
   "proxy-placeholder": "http://127.0.0.1:7890",
   "proxy-saved-restart-required": "代理配置已保存。请重启应用以应用更改。",
   "proxy-save-failed": "保存代理配置失败。",
+  "proxy-invalid-url": "无效的代理 URL。必须以 http://、https://、socks4:// 或 socks5:// 开头。",
   "proxy-restart-hint": "需要重启应用以应用代理更改。"
 }

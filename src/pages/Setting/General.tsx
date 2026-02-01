@@ -158,12 +158,30 @@ export default function SettingGeneral() {
       return;
     }
 
+    const trimmed = proxyUrl.trim();
+
+    // Validate proxy URL format when non-empty
+    if (trimmed) {
+      try {
+        const parsed = new URL(trimmed);
+        if (
+          !['http:', 'https:', 'socks5:', 'socks4:'].includes(parsed.protocol)
+        ) {
+          toast.error(t('setting.proxy-invalid-url'));
+          return;
+        }
+      } catch {
+        toast.error(t('setting.proxy-invalid-url'));
+        return;
+      }
+    }
+
     setIsProxySaving(true);
     try {
-      if (proxyUrl.trim()) {
+      if (trimmed) {
         await window.electronAPI?.envWrite(authStore.email, {
           key: 'HTTP_PROXY',
-          value: proxyUrl.trim(),
+          value: trimmed,
         });
       } else {
         await window.electronAPI?.envRemove(authStore.email, 'HTTP_PROXY');

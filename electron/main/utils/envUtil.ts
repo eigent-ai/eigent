@@ -99,13 +99,39 @@ export function readGlobalEnvKey(key: string): string | null {
     const prefix = key + '=';
     for (const line of content.split(/\r?\n/)) {
       if (line.startsWith(prefix)) {
-        return line.slice(prefix.length).trim();
+        let value = line.slice(prefix.length).trim();
+        // Strip surrounding quotes (single or double)
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
+        return value;
       }
     }
   } catch {
     // ignore read errors
   }
   return null;
+}
+
+/**
+ * Mask credentials in a proxy URL for safe logging.
+ * e.g. "http://user:pass@host:port" → "http://***:***@host:port"
+ */
+export function maskProxyUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.username || parsed.password) {
+      parsed.username = '***';
+      parsed.password = '***';
+      return parsed.toString();
+    }
+  } catch {
+    // not a valid URL, return as-is
+  }
+  return url;
 }
 
 export function getEmailFolderPath(email: string) {

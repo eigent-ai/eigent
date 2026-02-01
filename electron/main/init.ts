@@ -21,7 +21,7 @@ import * as net from 'net';
 import path from 'path';
 import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
-import { readGlobalEnvKey } from './utils/envUtil';
+import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
   getBackendPath,
   getBinaryPath,
@@ -199,7 +199,9 @@ export async function startBackend(
     : {};
 
   if (proxyUrl) {
-    log.info(`[BACKEND] Proxy configured for backend: ${proxyUrl}`);
+    log.info(
+      `[BACKEND] Proxy configured for backend: ${maskProxyUrl(proxyUrl)}`
+    );
   }
 
   const env = {

@@ -51,6 +51,7 @@ import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
   getEnvPath,
+  maskProxyUrl,
   readGlobalEnvKey,
   removeEnvKey,
   updateEnvBlock,
@@ -136,7 +137,7 @@ app.commandLine.appendSwitch('renderer-process-limit', '8');
 // Read proxy from global .env file on startup
 proxyUrl = readGlobalEnvKey('HTTP_PROXY');
 if (proxyUrl) {
-  log.info(`[PROXY] Applying proxy configuration: ${proxyUrl}`);
+  log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
   app.commandLine.appendSwitch('proxy-server', proxyUrl);
 } else {
   log.info('[PROXY] No proxy configured');
@@ -1005,7 +1006,12 @@ function registerIpcHandlers() {
   });
 
   // ==================== read global env handler ====================
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
   ipcMain.handle('read-global-env', async (_event, key: string) => {
+    if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
+      log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
+      return { value: null };
+    }
     return { value: readGlobalEnvKey(key) };
   });
 
@@ -1975,7 +1981,9 @@ app.whenReady().then(async () => {
     await session.defaultSession.setProxy(proxyConfig);
     await session.fromPartition('persist:user_login').setProxy(proxyConfig);
     await session.fromPartition('persist:main_window').setProxy(proxyConfig);
-    log.info(`[PROXY] Applied proxy to all sessions: ${proxyUrl}`);
+    log.info(
+      `[PROXY] Applied proxy to all sessions: ${maskProxyUrl(proxyUrl)}`
+    );
   }
 
   // ==================== download handle ====================
