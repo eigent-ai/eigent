@@ -53,6 +53,7 @@ class CookieManager:
             return None
 
         temp_db_path = self.cookies_db_path + ".tmp"
+        conn = None
         try:
             shutil.copy2(self.cookies_db_path, temp_db_path)
             conn = sqlite3.connect(temp_db_path)
@@ -60,6 +61,11 @@ class CookieManager:
             return conn
         except Exception as e:
             logger.error(f"Error connecting to cookies database: {e}")
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             try:
                 if os.path.exists(temp_db_path):
                     os.remove(temp_db_path)
