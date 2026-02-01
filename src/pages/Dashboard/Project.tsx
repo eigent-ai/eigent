@@ -83,7 +83,7 @@ export default function Project() {
       borderColor: 'border-bg-fill-multimodal-active',
       bgColorLight: 'bg-fuchsia-200',
     },
-    social_medium_agent: {
+    social_media_agent: {
       name: t('dashboard.social-media-agent'),
 
       textColor: 'text-purple-700',
@@ -115,9 +115,9 @@ export default function Project() {
         className={`!h-[10px] !w-[10px] ${agentMap.multi_modal_agent.textColor}`}
       />
     ),
-    social_medium_agent: (
+    social_media_agent: (
       <Bird
-        className={`!h-[10px] !w-[10px] ${agentMap.social_medium_agent.textColor}`}
+        className={`!h-[10px] !w-[10px] ${agentMap.social_media_agent.textColor}`}
       />
     ),
   };

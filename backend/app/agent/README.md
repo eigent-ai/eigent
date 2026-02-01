@@ -20,7 +20,7 @@ graph TB
         MODAL["multi_modal.py"]
         MCP["mcp.py"]
         QC["question_confirm.py"]
-        SOCIAL["social_medium.py"]
+        SOCIAL["social_media.py"]
         SUMMARY["task_summary.py"]
     end
 
@@ -87,5 +87,5 @@ graph TB
 | `multi_modal.py`      | Creative Content Specialist |
 | `mcp.py`              | MCP Server Agent            |
 | `question_confirm.py` | Question Confirmation       |
-| `social_medium.py`    | Social Media Manager        |
+| `social_media.py`     | Social Media Manager        |
 | `task_summary.py`     | Task Summarizer             |

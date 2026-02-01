@@ -94,7 +94,7 @@ export default function TerminalAgentWrokSpace() {
       borderColor: 'border-bg-fill-multimodal-active',
       bgColorLight: 'bg-fuchsia-200',
     },
-    social_medium_agent: {
+    social_media_agent: {
       name: 'Social Media Agent',
       icon: <Bird size={16} className="text-text-primary" />,
       textColor: 'text-purple-700',

@@ -64,9 +64,9 @@ export function WorkSpaceMenu() {
       },
       // {
       // 	tasks: [],
-      // 	agent_id: "social_medium_agent",
-      // 	name: "Social Medium Agent",
-      // 	type: "social_medium_agent",
+      // 	agent_id: "social_media_agent",
+      // 	name: "Social Media Agent",
+      // 	type: "social_media_agent",
       // 	log: [],
       // 	activeWebviewIds: [],
       // },
@@ -272,7 +272,7 @@ export function WorkSpaceMenu() {
       borderColor: 'border-bg-fill-multimodal-active',
       bgColorLight: 'bg-fuchsia-200',
     },
-    social_medium_agent: {
+    social_media_agent: {
       name: t('layout.social-media-agent'),
       icon: <Bird size={16} className="text-text-primary" />,
       textColor: 'text-purple-700',
@@ -303,9 +303,9 @@ export function WorkSpaceMenu() {
         className={`!h-[10px] !w-[10px] ${agentMap.multi_modal_agent.textColor}`}
       />
     ),
-    social_medium_agent: (
+    social_media_agent: (
       <Bird
-        className={`!h-[10px] !w-[10px] ${agentMap.social_medium_agent.textColor}`}
+        className={`!h-[10px] !w-[10px] ${agentMap.social_media_agent.textColor}`}
       />
     ),
   };

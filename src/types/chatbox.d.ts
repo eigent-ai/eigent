@@ -148,14 +148,14 @@ declare global {
     | 'browser_agent'
     | 'document_agent'
     | 'multi_modal_agent'
-    | 'social_medium_agent';
+    | 'social_media_agent';
 
   interface AgentNameMap {
     developer_agent: 'Developer Agent';
     browser_agent: 'Browser Agent';
     document_agent: 'Document Agent';
     multi_modal_agent: 'Multi Modal Agent';
-    social_medium_agent: 'Social Media Agent';
+    social_media_agent: 'Social Media Agent';
   }
   type WorkspaceType =
     | 'workflow'
@@ -163,7 +163,7 @@ declare global {
     | 'browser_agent'
     | 'document_agent'
     | 'multi_modal_agent'
-    | 'social_medium_agent'
+    | 'social_media_agent'
     | null;
 }
 

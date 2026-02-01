@@ -21,7 +21,7 @@ declare global {
     | 'browser_agent'
     | 'document_agent'
     | 'multi_modal_agent'
-    | 'social_medium_agent'
+    | 'social_media_agent'
     | null;
 }
 

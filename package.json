@@ -145,7 +145,7 @@
     "lint-staged": "^15.2.11",
     "postcss": "^8.4.49",
     "postcss-import": "^16.1.0",
-    "prettier": "^3.7.4",
+    "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "react": "^18.3.1",
