@@ -17,12 +17,7 @@ import { motion } from 'framer-motion';
 import { RefreshCw, Plus, Pencil, PencilLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
-import { TriggerInput } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { useTriggerStore } from '@/store/triggerStore';
-import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-
 interface TaskCompletionCardProps {
     taskPrompt?: string;
     onRerun?: () => void;
@@ -34,30 +29,9 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
 }) => {
     const { t } = useTranslation();
     const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
-    // Use trigger store
-    const { addTrigger } = useTriggerStore();
-    const { addLog } = useActivityLogStore();
-    const { projectStore } = useChatStoreAdapter();
-
 
     const handleAddTrigger = () => {
         setIsTriggerDialogOpen(true);
-    };
-
-    const handleTriggerCreated = (triggerData: TriggerInput) => {
-        // Add new trigger via store
-        const newTrigger = addTrigger(triggerData);
-
-        // Add activity log
-        addLog({
-            type: ActivityType.TriggerCreated,
-            message: `Trigger "${triggerData.name}" created`,
-            projectId: projectStore.activeProjectId || undefined,
-            triggerId: newTrigger.id,
-            triggerName: triggerData.name,
-        });
-
-        setIsTriggerDialogOpen(false);
     };
 
     return (
@@ -91,8 +65,6 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
             {/* Trigger Dialog */}
             <TriggerDialog
                 selectedTrigger={null}
-                onTriggerCreating={() => {}}
-                onTriggerCreated={handleTriggerCreated}
                 isOpen={isTriggerDialogOpen}
                 onOpenChange={setIsTriggerDialogOpen}
                 initialTaskPrompt={taskPrompt}

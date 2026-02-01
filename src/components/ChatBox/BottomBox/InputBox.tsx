@@ -511,8 +511,6 @@ export const Inputbox = ({
 					{/* TriggerDialog for adding trigger and task */}
 					<TriggerDialog
 						selectedTrigger={null}
-						onTriggerCreating={onTriggerCreating || (() => { })}
-						onTriggerCreated={onTriggerCreated || (() => { })}
 						isOpen={triggerDialogOpen}
 						onOpenChange={setTriggerDialogOpen}
 						initialTaskPrompt={value}

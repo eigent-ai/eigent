@@ -68,11 +68,13 @@ import telegramIcon from "@/assets/icon/telegram.svg";
 import { proxyCreateTrigger, proxyUpdateTrigger } from "@/service/triggerApi";
 import { useTriggerConfigQuery, useTriggerCacheInvalidation } from "@/hooks/queries/useTriggerQueries";
 import DynamicTriggerConfig, { getDefaultTriggerConfig, filterExcludedFields, type ValidationError, type TriggerConfigSchema } from "./DynamicTriggerConfig";
+import { useTriggerStore } from "@/store/triggerStore";
+import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
 
 type TriggerDialogProps = {
     selectedTrigger: Trigger | null;
-    onTriggerCreating: (triggerData: TriggerInput) => void;
-    onTriggerCreated: (triggerData: Trigger) => void;
+    onTriggerCreating?: (triggerData: TriggerInput) => void;
+    onTriggerCreated?: (triggerData: Trigger) => void;
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     initialTaskPrompt?: string;
@@ -87,6 +89,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     initialTaskPrompt = "",
 }) => {
     const { t } = useTranslation();
+    const { addTrigger, updateTrigger } = useTriggerStore();
+    const { addLog } = useActivityLogStore();
     const [isLoading, setIsLoading] = useState(false);
     const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
     const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>("");
@@ -240,11 +244,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         setIsLoading(true);
-        onTriggerCreating(formData);
+        onTriggerCreating?.(formData);
 
         try {
             //Make sure we have an active project
-            //TODO: Also make sure project is created in database
             if (!projectStore.activeProjectId) {
                 toast.error(t("triggers.project-id-required"));
                 return;
@@ -273,6 +276,19 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 }
 
                 response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
+                
+                // Update trigger in store
+                updateTrigger(selectedTrigger.id, response);
+                
+                // Add activity log
+                addLog({
+                    type: ActivityType.TriggerUpdated,
+                    message: `Trigger "${response.name}" updated`,
+                    projectId: projectStore.activeProjectId || undefined,
+                    triggerId: response.id,
+                    triggerName: response.name,
+                });
+                
                 toast.success(t("triggers.updated-successfully"));
             } else {
                 // Creating new trigger
@@ -297,11 +313,24 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 }
 
                 response = await proxyCreateTrigger(createData);
+                
+                // Add trigger to store
+                addTrigger(response);
+                
+                // Add activity log
+                addLog({
+                    type: ActivityType.TriggerCreated,
+                    message: `Trigger "${response.name}" created`,
+                    projectId: projectStore.activeProjectId || undefined,
+                    triggerId: response.id,
+                    triggerName: response.name,
+                });
+                
                 toast.success(t("triggers.created-successfully"));
             }
 
-            //Update/Create Trigger on response
-            onTriggerCreated(response);
+            // Call optional callback if provided
+            onTriggerCreated?.(response);
 
             handleClose();
 
@@ -701,8 +730,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 // Trigger button component
 type TriggerDialogButtonProps = {
     selectedTrigger?: Trigger | null;
-    onTriggerCreating: (triggerData: TriggerInput) => void;
-    onTriggerCreated: (triggerData: TriggerInput) => void;
+    onTriggerCreating?: (triggerData: TriggerInput) => void;
+    onTriggerCreated?: (triggerData: TriggerInput) => void;
     buttonVariant?: "primary" | "secondary" | "outline" | "ghost";
     buttonSize?: "xxs" | "xs" | "sm" | "md" | "lg" | "icon";
     buttonText?: string;

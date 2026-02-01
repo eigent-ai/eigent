@@ -43,7 +43,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AddWorker } from "@/components/AddWorker";
 import { TriggerDialog } from "@/components/Trigger/TriggerDialog";
-import { TriggerInput } from "@/types";
 import { useAuthStore } from "@/store/authStore";
 import { useTriggerStore, WebSocketConnectionStatus } from "@/store/triggerStore";
 import {
@@ -171,19 +170,7 @@ export default function Home() {
 		e.target.value = '';
 	};
 
-	const handleTriggerCreating = (data: TriggerInput) => {
-		console.log('Creating trigger:', data);
-	};
 
-	const handleTriggerCreated = (data: TriggerInput) => {
-		console.log('Trigger created:', data);
-		setTriggerDialogOpen(false);
-		// Mark the triggers tab as having new content
-		setHasTriggers(true);
-		if (activeWorkspaceTab !== 'triggers') {
-			markTabAsUnviewed('triggers');
-		}
-	};
 
 	if (!chatStore) {
 		return <div>{t('triggers.loading')}</div>;
@@ -595,8 +582,6 @@ export default function Home() {
 										{/* TriggerDialog */}
 										<TriggerDialog
 											selectedTrigger={null}
-											onTriggerCreating={handleTriggerCreating}
-											onTriggerCreated={handleTriggerCreated}
 											isOpen={triggerDialogOpen}
 											onOpenChange={setTriggerDialogOpen}
 										/>
@@ -729,8 +714,6 @@ export default function Home() {
 										{/* TriggerDialog */}
 										<TriggerDialog
 											selectedTrigger={null}
-											onTriggerCreating={handleTriggerCreating}
-											onTriggerCreated={handleTriggerCreated}
 											isOpen={triggerDialogOpen}
 											onOpenChange={setTriggerDialogOpen}
 										/>

@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Bell, ArrowUpDown, ArrowLeft, Plus } from "lucide-react";
@@ -202,47 +216,6 @@ export default function Overview() {
         }
     };
 
-    const handleTriggerCreated = (triggerData: Trigger) => {
-        if (editingTrigger) {
-            // Update existing trigger
-            updateTrigger(editingTrigger.id, {
-                name: triggerData.name,
-                description: triggerData.description,
-                trigger_type: triggerData.trigger_type,
-                custom_cron_expression: triggerData.custom_cron_expression,
-                webhook_url: triggerData.webhook_url,
-                listener_type: triggerData.listener_type,
-                task_prompt: triggerData.task_prompt,
-                agent_model: triggerData.agent_model,
-                max_executions_per_hour: triggerData.max_executions_per_hour,
-                max_executions_per_day: triggerData.max_executions_per_day,
-                is_single_execution: triggerData.is_single_execution,
-            });
-
-            // Add activity log
-            addLog({
-                type: ActivityType.TriggerUpdated,
-                message: `Trigger "${triggerData.name}" updated`,
-                projectId: projectStore.activeProjectId || undefined,
-                triggerId: editingTrigger.id,
-                triggerName: triggerData.name,
-            });
-        } else {
-            // Add new trigger via store
-            const newTrigger = addTrigger(triggerData);
-
-            // Add activity log
-            addLog({
-                type: ActivityType.TriggerCreated,
-                message: `Trigger "${triggerData.name}" created`,
-                projectId: projectStore.activeProjectId || undefined,
-                triggerId: newTrigger.id,
-                triggerName: triggerData.name,
-            });
-        }
-        setEditingTrigger(null);
-    };
-
     const handleDialogClose = (open: boolean) => {
         setEditDialogOpen(open);
         if (!open) {
@@ -394,8 +367,6 @@ export default function Overview() {
                 selectedTrigger={editingTrigger}
                 isOpen={editDialogOpen}
                 onOpenChange={handleDialogClose}
-                onTriggerCreating={() => { }}
-                onTriggerCreated={handleTriggerCreated}
             />
 
             {/* Delete Confirmation Dialog */}
