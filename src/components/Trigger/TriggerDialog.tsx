@@ -332,7 +332,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             setNameError("");
                         }
                     }}
-                    maxLength={200}
+                    maxLength={100}
                     title={t("triggers.name")}
                     placeholder={t("triggers.name-placeholder")}
                 />
@@ -491,30 +491,6 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                            {
-                                                !selectedTrigger || !formData.webhook_url ? (
-                                                    <div className="text-sm text-text-label bg-surface-primary p-3 rounded-lg">
-                                                        {t("triggers.webhook-url-after-creation")}
-                                                    </div>) : (
-                                                    <div className={`flex flex-row items-center justify-start gap-4 p-4 bg-surface-primary rounded-xl ${needsAuth ? 'border border-yellow-500' : ''}`}>
-                                                        <div className="w-full font-mono text-sm text-text-body break-all flex items-center gap-2">
-                                                            {needsAuth && (
-                                                                <TooltipSimple content={t("triggers.verification-required")}>
-                                                                    <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                                                                </TooltipSimple>
-                                                            )}
-                                                            {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
-                                                        </div>
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={handleCopyWebhookUrl}
-                                                        >
-                                                            <Copy />
-                                                            {t("triggers.copy")}
-                                                        </Button>
-                                                    </div>)
-                                            }
                                             <Accordion type="single" collapsible className="w-full">
                                                 <AccordionItem value="extra-settings" className="border-none">
                                                     <AccordionTrigger className="py-2 hover:no-underline bg-transparent">
@@ -683,7 +659,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     </div>
 
                     {/* Info Tip Section */}
-                    <div className="flex flex-col p-4">
+                    {/* <div className="flex flex-col p-4">
                         <div className="flex flex-row items-start justify-start bg-surface-information rounded-xl p-4">
                             <Globe className="w-5 h-5 text-text-information" />
                             <div className="flex flex-col items-start justify-start gap-2 pl-4">
@@ -695,7 +671,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </div> */}
 
                     {/* Footer */}
                     <DialogFooter>
