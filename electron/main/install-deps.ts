@@ -18,7 +18,6 @@ import log from 'electron-log';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getMainWindow } from './init';
 import {
   cleanupOldVenvs,
   getBackendPath,
@@ -342,7 +341,6 @@ export async function installCommandTool(): Promise<PromiseReturnType> {
 }
 
 let uv_path: string;
-const _mainWindow = getMainWindow();
 const backendPath = getBackendPath();
 
 // Ensure backend directory exists

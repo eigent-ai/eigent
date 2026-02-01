@@ -161,8 +161,8 @@ export async function startBackend(
     port = await findAvailablePort(5001);
     fs.writeFileSync(portFile, port.toString());
     log.info(`Found available port: ${port}`);
-  } catch (_error) {
-    log.error('Failed to find available port, attempting cleanup...');
+  } catch (error) {
+    log.error('Failed to find available port, attempting cleanup...', error);
 
     // Last resort: try to kill all processes in the range
     for (let p = 5001; p <= 5050; p++) {
