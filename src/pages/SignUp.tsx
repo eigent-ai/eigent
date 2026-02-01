@@ -27,7 +27,10 @@ import eye from '@/assets/eye.svg';
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import { hasStackKeys } from '@/lib';
-import { loginByStackToken } from '@/service/stackAuthApi';
+import {
+  getLoginErrorMessage as getLoginErrorMessageBase,
+  loginByStackToken,
+} from '@/service/stackAuthApi';
 import { useTranslation } from 'react-i18next';
 
 const HAS_STACK_KEYS = hasStackKeys();
@@ -88,41 +91,12 @@ export default function SignUp() {
   };
 
   const getLoginErrorMessage = useCallback(
-    (data: any) => {
-      if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
-        return '';
-      }
-
-      if (data.code === 0) {
-        return '';
-      }
-
-      if (data.code === 10) {
-        return (
-          data.text ||
-          t('layout.login-failed-please-check-your-email-and-password')
-        );
-      }
-
-      if (
-        data.code === 1 &&
-        Array.isArray(data.error) &&
-        data.error.length > 0
-      ) {
-        const firstError = data.error[0];
-        if (typeof firstError === 'string') {
-          return firstError;
-        }
-        if (typeof firstError?.msg === 'string') {
-          return firstError.msg;
-        }
-        if (typeof firstError?.message === 'string') {
-          return firstError.message;
-        }
-      }
-
-      return data.text || t('layout.login-failed-please-try-again');
-    },
+    (data: any) =>
+      getLoginErrorMessageBase(
+        data,
+        t('layout.login-failed-please-check-your-email-and-password'),
+        t('layout.login-failed-please-try-again')
+      ),
     [t]
   );
 
@@ -369,35 +343,39 @@ export default function SignUp() {
               {t('layout.login')}
             </Button>
           </div>
-          <div className="w-full pt-6">
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={() => handleReloadBtn('google')}
-              className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-              disabled={isLoading || !HAS_STACK_KEYS}
-            >
-              <img src={google} className="h-5 w-5" />
-              <span className="ml-2">
-                {t('layout.continue-with-google-sign-up')}
-              </span>
-            </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={() => handleReloadBtn('github')}
-              className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-              disabled={isLoading || !HAS_STACK_KEYS}
-            >
-              <img src={github2} className="h-5 w-5" />
-              <span className="ml-2">
-                {t('layout.continue-with-github-sign-up')}
-              </span>
-            </Button>
-          </div>
-          <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
-            {t('layout.or')}
-          </div>
+          {HAS_STACK_KEYS && (
+            <div className="w-full pt-6">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => handleReloadBtn('google')}
+                className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                disabled={isLoading}
+              >
+                <img src={google} className="h-5 w-5" />
+                <span className="ml-2">
+                  {t('layout.continue-with-google-sign-up')}
+                </span>
+              </Button>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => handleReloadBtn('github')}
+                className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                disabled={isLoading}
+              >
+                <img src={github2} className="h-5 w-5" />
+                <span className="ml-2">
+                  {t('layout.continue-with-github-sign-up')}
+                </span>
+              </Button>
+            </div>
+          )}
+          {HAS_STACK_KEYS && (
+            <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
+              {t('layout.or')}
+            </div>
+          )}
           <div className="flex w-full flex-col gap-4">
             {generalError && (
               <p className="mb-4 mt-1 text-label-md text-text-cuation">
