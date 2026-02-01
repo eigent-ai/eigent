@@ -36,38 +36,50 @@ import {
 
 const execAsync = promisify(exec);
 
-const DEFAULT_SERVER_URL = "https://dev.eigent.ai/api";
+const DEFAULT_SERVER_URL = 'https://dev.eigent.ai/api';
 
 function readEnvValue(filePath: string, key: string): string | undefined {
-    try {
-        if (!fs.existsSync(filePath)) return undefined;
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const lines = content.split(/\r?\n/);
-        const line = lines.find((l) => {
-            const trimmed = l.trim();
-            return trimmed && !trimmed.startsWith('#') && trimmed.startsWith(`${key}=`);
-        });
-        if (!line) return undefined;
-        let value = line.trim().slice(key.length + 1).trim();
-        // Strip surrounding quotes (single or double)
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.slice(1, -1);
-        }
-        return value;
-    } catch (error) {
-        log.warn(`Failed to read ${key} from ${filePath}:`, error);
-        return undefined;
+  try {
+    if (!fs.existsSync(filePath)) return undefined;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split(/\r?\n/);
+    const line = lines.find((l) => {
+      let trimmed = l.trim();
+      if (!trimmed || trimmed.startsWith('#')) return false;
+      // Handle lines with 'export' prefix (e.g. export SERVER_URL=value)
+      if (trimmed.startsWith('export ')) {
+        trimmed = trimmed.slice(7).trim();
+      }
+      return trimmed.startsWith(`${key}=`);
+    });
+    if (!line) return undefined;
+    let raw = line.trim();
+    // Strip 'export ' prefix before extracting value
+    if (raw.startsWith('export ')) {
+      raw = raw.slice(7).trim();
     }
+    let value = raw.slice(key.length + 1).trim();
+    // Strip surrounding quotes (single or double)
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    return value;
+  } catch (error) {
+    log.warn(`Failed to read ${key} from ${filePath}:`, error);
+    return undefined;
+  }
 }
 
 function buildLocalServerUrl(proxyUrl: string | undefined): string | undefined {
-    if (!proxyUrl) return undefined;
-    const trimmed = proxyUrl.trim().replace(/\/+$/, '');
-    if (!trimmed) return undefined;
-    // Avoid double /api suffix
-    if (trimmed.endsWith('/api')) return trimmed;
-    return `${trimmed}/api`;
+  if (!proxyUrl) return undefined;
+  const trimmed = proxyUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) return undefined;
+  // Avoid double /api suffix
+  if (trimmed.endsWith('/api')) return trimmed;
+  return `${trimmed}/api`;
 }
 
 // helper function to get main window
@@ -227,7 +239,11 @@ export async function startBackend(
 
   if (envProxyEnabled) {
     resolvedServerUrl = buildLocalServerUrl(envProxyUrl);
-    resolvedSource = 'process.env VITE_*';
+    if (resolvedServerUrl) {
+      resolvedSource = 'process.env VITE_*';
+    } else {
+      log.warn('VITE_USE_LOCAL_PROXY is true but VITE_PROXY_URL is empty or invalid, ignoring');
+    }
   }
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -237,7 +253,11 @@ export async function startBackend(
     const devProxyUrl = readEnvValue(devEnvPath, 'VITE_PROXY_URL');
     if (devProxyEnabled) {
       resolvedServerUrl = buildLocalServerUrl(devProxyUrl);
-      resolvedSource = `dev env file (${devEnvPath})`;
+      if (resolvedServerUrl) {
+        resolvedSource = `dev env file (${devEnvPath})`;
+      } else {
+        log.warn(`VITE_USE_LOCAL_PROXY is true in ${devEnvPath} but VITE_PROXY_URL is empty or invalid, ignoring`);
+      }
     }
   }
 
