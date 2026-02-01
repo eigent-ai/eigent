@@ -176,15 +176,25 @@ export default function SettingGeneral() {
       }
     }
 
+    if (!window.electronAPI?.envWrite || !window.electronAPI?.envRemove) {
+      toast.error(t('setting.proxy-save-failed'));
+      return;
+    }
+
     setIsProxySaving(true);
     try {
       if (trimmed) {
-        await window.electronAPI?.envWrite(authStore.email, {
+        const result = await window.electronAPI.envWrite(authStore.email, {
           key: 'HTTP_PROXY',
           value: trimmed,
         });
+        if (!result?.success) throw new Error('envWrite returned no success');
       } else {
-        await window.electronAPI?.envRemove(authStore.email, 'HTTP_PROXY');
+        const result = await window.electronAPI.envRemove(
+          authStore.email,
+          'HTTP_PROXY'
+        );
+        if (!result?.success) throw new Error('envRemove returned no success');
       }
       setProxyNeedsRestart(true);
       toast.success(t('setting.proxy-saved-restart-required'));
