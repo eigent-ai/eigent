@@ -29,6 +29,7 @@ type BaseInputProps = Omit<React.ComponentProps<"input">, "size"> & {
   tooltip?: string
   note?: string
   required?: boolean
+  optional?: boolean
   leadingIcon?: React.ReactNode
   backIcon?: React.ReactNode
   onBackIconClick?: () => void
@@ -101,6 +102,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       tooltip,
       note,
       required = false,
+      optional = false,
       leadingIcon,
       backIcon,
       onBackIconClick,
@@ -123,6 +125,11 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
             <span>{title}</span>
             {required && <span className="text-text-body">*</span>}
+            {optional && (
+              <span className="text-xs font-normal text-text-label bg-surface-disabled px-1.5 py-0.5 rounded">
+                (optional)
+              </span>
+            )}
             {tooltip && (
               <TooltipSimple content={tooltip}>
                 <CircleAlert size={16} className="text-icon-primary" />
