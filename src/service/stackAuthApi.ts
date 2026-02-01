@@ -52,10 +52,6 @@ export async function loginByStackToken(params: {
   });
 }
 
-/**
- * Attempts a passwordless SSO login first, and auto-creates the user if not found.
- * This matches the UX request: “check existing profile; if missing, create like signup”.
- */
 export function getLoginErrorMessage(
   data: any,
   fallbackCheckEmail: string,
@@ -89,6 +85,10 @@ export function getLoginErrorMessage(
   return data.text || fallbackGeneric;
 }
 
+/**
+ * Attempts a passwordless SSO login first, and auto-creates the user if not found.
+ * This matches the UX request: "check existing profile; if missing, create like signup".
+ */
 export async function loginByStackWithAutoCreate(
   token: string
 ): Promise<StackLoginResponse> {

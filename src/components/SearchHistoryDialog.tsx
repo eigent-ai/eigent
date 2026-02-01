@@ -101,6 +101,19 @@ export function SearchHistoryDialog() {
       setHistoryTasks((list) =>
         list.filter((item) => String(item.id) !== String(historyId))
       );
+
+      // If no remaining tasks share the same project, clean up project store
+      if (history?.project_id) {
+        const hasRemaining = historyTasks.some(
+          (item) =>
+            String(item.id) !== String(historyId) &&
+            item.project_id === history.project_id
+        );
+        if (!hasRemaining) {
+          projectStore.removeProject(history.project_id);
+        }
+      }
+
       callback?.();
     } catch (error) {
       console.error('Failed to delete history task:', error);

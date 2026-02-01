@@ -24,6 +24,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 
+const removeProjectMock = vi.fn();
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
     chatStore: { activeTaskId: undefined },
@@ -31,6 +32,7 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
       getProjectById: vi.fn(() => null),
       setHistoryId: vi.fn(),
       setActiveProject: vi.fn(),
+      removeProject: removeProjectMock,
     },
   }),
 }));
@@ -112,6 +114,7 @@ describe('SearchHistoryDialog', () => {
     (window as any).ipcRenderer = {
       invoke: vi.fn().mockResolvedValue(undefined),
     };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
   it('deletes a history item from list view', async () => {
@@ -140,6 +143,9 @@ describe('SearchHistoryDialog', () => {
       'task-1',
       'project-1'
     );
+
+    // Project store should be cleaned up since this was the last task in the project
+    expect(removeProjectMock).toHaveBeenCalledWith('project-1');
 
     await waitFor(() => {
       expect(screen.queryByText('My history item')).not.toBeInTheDocument();
