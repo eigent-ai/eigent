@@ -20,6 +20,15 @@ try {
     process.exit(1);
 }
 
+// Theme configuration
+const THEME = {
+    title: { fontSize: 24, bold: true, color: "363636" },
+    subtitle: { fontSize: 18, color: "737373" },
+    heading: { fontSize: 20, bold: true, color: "000000" },
+    body: { fontSize: 14, color: "000000" },
+    table: { headerFill: "F7F7F7", headerBold: true }
+};
+
 // Create Presentation
 const pres = new PptxGenJS();
 
@@ -30,24 +39,27 @@ if (Array.isArray(slidesData)) {
 
         // simple layout heuristics based on keys
         if (slideData.title) {
-            slide.addText(slideData.title, { x: 1, y: 1, w: "80%", h: 1, fontSize: 24, bold: true, color: "363636" });
+            slide.addText(slideData.title, { x: 1, y: 1, w: "80%", h: 1, ...THEME.title });
         }
 
         if (slideData.subtitle) {
-            slide.addText(slideData.subtitle, { x: 1, y: 2.5, w: "80%", h: 1, fontSize: 18, color: "737373" });
+            slide.addText(slideData.subtitle, { x: 1, y: 2.5, w: "80%", h: 1, ...THEME.subtitle });
         }
 
         if (slideData.heading) {
-            slide.addText(slideData.heading, { x: 0.5, y: 0.5, w: "90%", h: 0.5, fontSize: 20, bold: true, color: "000000" });
+            slide.addText(slideData.heading, { x: 0.5, y: 0.5, w: "90%", h: 0.5, ...THEME.heading });
         }
 
         if (slideData.bullet_points && Array.isArray(slideData.bullet_points)) {
-            const bullets = slideData.bullet_points.map(bp => ({ text: bp, options: { fontSize: 14, bullet: true, color: "000000", breakLine: true } }));
+            const bullets = slideData.bullet_points.map(bp => ({
+                text: bp,
+                options: { ...THEME.body, bullet: true, breakLine: true }
+            }));
             slide.addText(bullets, { x: 1, y: 1.5, w: "80%", h: 4 });
         }
 
         if (slideData.text) {
-            slide.addText(slideData.text, { x: 1, y: 1.5, w: "80%", h: 4, fontSize: 14, color: "000000" });
+            slide.addText(slideData.text, { x: 1, y: 1.5, w: "80%", h: 4, ...THEME.body });
         }
 
         // Table support
@@ -55,7 +67,10 @@ if (Array.isArray(slidesData)) {
             const tableData = [];
             // headers
             if (slideData.table.headers) {
-                tableData.push(slideData.table.headers.map(h => ({ text: h, options: { bold: true, fill: "F7F7F7" } })));
+                tableData.push(slideData.table.headers.map(h => ({
+                    text: h,
+                    options: { bold: THEME.table.headerBold, fill: THEME.table.headerFill }
+                })));
             }
             // rows
             if (slideData.table.rows) {

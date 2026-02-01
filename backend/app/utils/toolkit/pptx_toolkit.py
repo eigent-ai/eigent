@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import json
+from pathlib import Path
 from camel.toolkits import PPTXToolkit as BasePPTXToolkit
 
 from app.component.environment import env
@@ -27,6 +28,14 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
             working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
         super().__init__(working_directory, timeout)
 
+    def _get_project_root(self) -> Path:
+        """
+        Resolves the project root directory.
+        Assumes the structure: eigent/backend/app/utils/toolkit/pptx_toolkit.py
+        """
+        # Go up 5 levels from the file to reach the project root 'eigent'
+        return Path(__file__).resolve().parents[4]
+
     @listen_toolkit(
         BasePPTXToolkit.create_presentation,
         lambda _,
@@ -41,17 +50,10 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
         file_path = self._resolve_filepath(filename)
         
         # Determine project root fallback if env var is missing
-        # This file is in backend/app/utils/toolkit/
-        # We need to go up 4 levels to get to backend/, then one more for repo root if scripts is in root
-        # Actually structure is:
-        # eigent/
-        #   backend/
-        #   scripts/
-        # So we need to reach 'eigent/'
-        default_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../"))
-        project_root = env("project_root", default_root)
+        default_root = self._get_project_root()
+        project_root = Path(env("project_root", str(default_root)))
         
-        script_path = os.path.join(project_root, "scripts", "generate_pptx.js")
+        script_path = project_root / "scripts" / "generate_pptx.js"
         
         try:
              # Ensure content is a valid JSON string using helper
@@ -62,7 +64,7 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
 
              # Run node script
              result = subprocess.run(
-                 ["node", script_path, str(file_path), content_str],
+                 ["node", str(script_path), str(file_path), content_str],
                  capture_output=True,
                  text=True,
                  check=True
