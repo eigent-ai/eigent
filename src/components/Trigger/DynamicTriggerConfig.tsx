@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -350,28 +364,22 @@ const MultiSelectField: React.FC<FieldProps> = ({
                 {isRequired && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger asChild>
-                    <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={open}
-                        className="w-full justify-between font-normal"
-                        disabled={disabled || requiresCredentials}
-                    >
-                        {requiresCredentials ? (
-                            <span className="text-text-label">
-                                {t("triggers.dynamic.save-credentials-first")}
-                            </span>
-                        ) : isLoading ? (
-                            <span className="flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                {t("triggers.dynamic.loading")}
-                            </span>
-                        ) : (
-                            getDisplayLabel()
-                        )}
-                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
+                <PopoverTrigger
+                    disabled={disabled || requiresCredentials}
+                    className="w-full justify-between font-normal"
+                >
+                    {requiresCredentials ? (
+                        <span className="text-text-label">
+                            {t("triggers.dynamic.save-credentials-first")}
+                        </span>
+                    ) : isLoading ? (
+                        <span className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            {t("triggers.dynamic.loading")}
+                        </span>
+                    ) : (
+                        <span>{getDisplayLabel()}</span>
+                    )}
                 </PopoverTrigger>
                 <PopoverContent className="w-full p-0" align="start">
                     <Command>
@@ -711,22 +719,17 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
     // Initialize defaults when schema is loaded
     useEffect(() => {
         if (schema) {
-            initializeDefaults(schema);
+            const defaults: Record<string, any> = {};
+            Object.entries(schema.properties).forEach(([key, prop]) => {
+                if (prop.default !== undefined && value[key] === undefined) {
+                    defaults[key] = prop.default;
+                }
+            });
+            if (Object.keys(defaults).length > 0) {
+                onChange({ ...value, ...defaults });
+            }
         }
     }, [schema]);
-
-    // Initialize defaults from schema
-    const initializeDefaults = (schema: TriggerConfigSchema) => {
-        const defaults: Record<string, any> = {};
-        Object.entries(schema.properties).forEach(([key, prop]) => {
-            if (prop.default !== undefined && value[key] === undefined) {
-                defaults[key] = prop.default;
-            }
-        });
-        if (Object.keys(defaults).length > 0) {
-            onChange({ ...value, ...defaults });
-        }
-    };
 
     // Fetch saved configs for credential fields
     useEffect(() => {

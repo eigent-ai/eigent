@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
     Dialog,
     DialogContent,
@@ -112,14 +112,24 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
     const [isScheduleValid, setIsScheduleValid] = useState<boolean>(true);
     const [showScheduleErrors, setShowScheduleErrors] = useState<boolean>(false);
+    const [activeTab, setActiveTab] = useState<"schedule" | "app">("schedule");
+
+    // Stable callback for validation changes to prevent infinite loops
+    const handleValidationChange = useCallback((isValid: boolean, errors: ValidationError[]) => {
+        setIsConfigValid(isValid);
+        setConfigValidationErrors(errors);
+    }, []);
 
     //Get projectStore for the active project's task
     const { projectStore } = useChatStoreAdapter();
 
-    // Fetch trigger config using query hook
+    // Fetch trigger config using query hook - only fetch when we have a valid app selected
+    const shouldFetchConfig = isOpen && (
+        activeTab === "schedule" || selectedApp !== ""
+    );
     const { data: configData } = useTriggerConfigQuery(
         selectedTrigger?.trigger_type || formData.trigger_type,
-        isOpen // Only fetch when dialog is open
+        shouldFetchConfig
     );
 
     // Reset form when dialog opens
@@ -154,10 +164,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 // Set selectedApp based on trigger type for app-based triggers
                 if (selectedTrigger.trigger_type === TriggerType.Slack) {
                     setSelectedApp("slack");
+                    setActiveTab("app");
                 } else if (selectedTrigger.trigger_type === TriggerType.Webhook) {
                     setSelectedApp("webhook");
+                    setActiveTab("app");
                 } else {
                     setSelectedApp("");
+                    setActiveTab("schedule");
                 }
             } else {
                 // Reset form for new trigger, use initialTaskPrompt if provided
@@ -176,6 +189,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 setTriggerConfig(getDefaultTriggerConfig());
                 setTriggerConfigSchema(null);
                 setSelectedApp("");
+                setActiveTab("schedule");
             }
         }
     }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
@@ -355,26 +369,24 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 <div className="space-y-3">
                     <Label className="font-bold text-sm">{t("triggers.trigger-type")}</Label>
                     <Tabs 
-                        value={formData.trigger_type === TriggerType.Schedule ? TriggerType.Schedule : "app"} 
+                        value={activeTab} 
                         onValueChange={(value) => {
-                            if (value === TriggerType.Schedule) {
+                            const newTab = value as "schedule" | "app";
+                            setActiveTab(newTab);
+                            if (newTab === "schedule") {
                                 setFormData({ ...formData, trigger_type: TriggerType.Schedule });
                                 setSelectedApp("");
-                            } else {
-                                // Switch to app tab - set a non-schedule type temporarily
-                                // The actual type will be set when user selects an app
-                                if (formData.trigger_type === TriggerType.Schedule) {
-                                    setFormData({ ...formData, trigger_type: TriggerType.Webhook });
-                                }
                             }
+                            // Don't change trigger_type when switching to app tab
+                            // The actual type will be set when user selects an app
                         }} 
                         className="w-full bg-surface-disabled rounded-2xl"
                     >
                         <TabsList variant="outline" className="w-full px-4 border-solid border-border-secondary border-b-[0.5px] border-x-0 border-t-0 rounded-t-2xl">
-                            <TabsTrigger value={TriggerType.Schedule} className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4" />{t("triggers.schedule-trigger")}</TabsTrigger>
+                            <TabsTrigger value="schedule" className="flex-1" disabled={!!selectedTrigger}><AlarmClockIcon className="w-4 h-4" />{t("triggers.schedule-trigger")}</TabsTrigger>
                             <TabsTrigger value="app" className="flex-1" disabled={!!selectedTrigger}><CableIcon className="w-4 h-4" />{t("triggers.app-trigger")}</TabsTrigger>
                         </TabsList>
-                        <TabsContent value={TriggerType.Schedule} className="py-4 px-6">
+                        <TabsContent value="schedule" className="py-4 px-6">
                             <SchedulePicker
                                 value={formData.custom_cron_expression || "0 0 * * *"}
                                 onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })}
@@ -473,10 +485,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             value={triggerConfig}
                                             onChange={setTriggerConfig}
                                             disabled={isLoading}
-                                            onValidationChange={(isValid, errors) => {
-                                                setIsConfigValid(isValid);
-                                                setConfigValidationErrors(errors);
-                                            }}
+                                            onValidationChange={handleValidationChange}
                                         />
                                     )}
                                     {selectedApp === "webhook" && (
