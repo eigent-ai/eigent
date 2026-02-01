@@ -14,45 +14,69 @@
 
 import { ChatStore } from '@/store/chatStore';
 import { ProjectStore, useProjectStore } from '@/store/projectStore';
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer } from 'react';
 
-const useChatStoreAdapter = ():{
-  projectStore: ProjectStore, 
-  chatStore: ChatStore
+type ChatStateAction =
+  | { type: 'SET_STORE'; payload: ChatStore | null }
+  | { type: 'UPDATE_STATE'; payload: ChatStore };
+
+const chatStateReducer = (
+  state: ChatStore | null,
+  action: ChatStateAction
+): ChatStore | null => {
+  switch (action.type) {
+    case 'SET_STORE':
+      return action.payload;
+    case 'UPDATE_STATE':
+      // Only update if the state actually changed
+      if (state === action.payload) return state;
+      return action.payload;
+    default:
+      return state;
+  }
+};
+
+const useChatStoreAdapter = (): {
+  projectStore: ProjectStore;
+  chatStore: ChatStore;
 } => {
   const projectStore = useProjectStore();
-    
+
   // Get the active chat store from project store
   // This creates a hook-like interface for the vanilla store
   const activeChatStore = projectStore.getActiveChatStore();
-  
+
   // Create a state subscription to make the component reactive
-  const [chatState, setChatState] = useState(() => 
+  const [chatState, dispatch] = useReducer(
+    chatStateReducer,
     activeChatStore ? activeChatStore.getState() : null
   );
-  
+
   useEffect(() => {
     if (!activeChatStore) {
-      setChatState(null);
+      dispatch({ type: 'SET_STORE', payload: null });
       return;
     }
 
     // Subscribe to store changes
     const unsubscribe = activeChatStore.subscribe((state: ChatStore) => {
-      setChatState(state);
+      dispatch({ type: 'UPDATE_STATE', payload: state });
     });
+
     // Set initial state
-    setChatState(activeChatStore.getState());
+    const initialState = activeChatStore.getState();
+    dispatch({ type: 'UPDATE_STATE', payload: initialState });
+
     return unsubscribe;
   }, [activeChatStore]);
-  
+
   // Create a chatStore-like object that mimics the original interface
   const chatStore = useMemo(() => {
     if (!activeChatStore || !chatState) return null;
-    
+
     // Get the store methods (actions) from the vanilla store
     const storeMethods = activeChatStore.getState();
-    
+
     return {
       ...chatState,
       // Bind store methods to maintain proper context
@@ -62,14 +86,14 @@ const useChatStoreAdapter = ():{
           (acc as any)[key] = value.bind(storeMethods);
         }
         return acc;
-      }, {} as any)
+      }, {} as any),
     };
   }, [activeChatStore, chatState]);
 
   return {
     projectStore,
-    chatStore
-  }
-}
+    chatStore,
+  };
+};
 
-export default useChatStoreAdapter
+export default useChatStoreAdapter;

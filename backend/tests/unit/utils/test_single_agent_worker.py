@@ -21,7 +21,7 @@ from camel.tasks import Task
 from camel.tasks.task import TaskState
 
 from app.utils.single_agent_worker import SingleAgentWorker
-from app.utils.agent import ListenChatAgent
+from app.agent.listen_chat_agent import ListenChatAgent
 
 
 @pytest.mark.unit
