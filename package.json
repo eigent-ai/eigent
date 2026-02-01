@@ -129,7 +129,7 @@
     "electron-devtools-installer": "^4.0.0",
     "husky": "^9.1.7",
     "i18next": "^25.4.2",
-    "jsdom": "^26.1.0",
+    "jsdom": "^27.4.0",
     "lint-staged": "^16.2.7",
     "postcss": "^8.4.49",
     "postcss-import": "^16.1.0",
