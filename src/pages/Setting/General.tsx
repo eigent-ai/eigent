@@ -15,13 +15,15 @@
 import light from '@/assets/light.png';
 import transparent from '@/assets/transparent.png';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
-import { createRef, RefObject, useMemo, useState } from 'react';
+import { createRef, RefObject, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import {
   Select,
@@ -80,6 +82,11 @@ export default function SettingGeneral() {
     }
   }, []);
 
+  // Proxy configuration state
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [isProxySaving, setIsProxySaving] = useState(false);
+  const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
+
   const languageList = [
     {
       key: LocaleEnum.English,
@@ -126,6 +133,78 @@ export default function SettingGeneral() {
       label: 'Italiano',
     },
   ];
+
+  useEffect(() => {
+    // Load proxy configuration from global env
+    const loadProxyConfig = async () => {
+      if (window.electronAPI?.readGlobalEnv) {
+        try {
+          const result = await window.electronAPI.readGlobalEnv('HTTP_PROXY');
+          if (result?.value) {
+            setProxyUrl(result.value);
+          }
+        } catch (error) {
+          console.log('No proxy configured');
+        }
+      }
+    };
+    loadProxyConfig();
+  }, []);
+
+  // Save proxy configuration
+  const handleSaveProxy = async () => {
+    if (!authStore.email) {
+      toast.error(t('setting.proxy-save-failed'));
+      return;
+    }
+
+    const trimmed = proxyUrl.trim();
+
+    // Validate proxy URL format when non-empty
+    if (trimmed) {
+      try {
+        const parsed = new URL(trimmed);
+        if (
+          !['http:', 'https:', 'socks5:', 'socks4:'].includes(parsed.protocol)
+        ) {
+          toast.error(t('setting.proxy-invalid-url'));
+          return;
+        }
+      } catch {
+        toast.error(t('setting.proxy-invalid-url'));
+        return;
+      }
+    }
+
+    if (!window.electronAPI?.envWrite || !window.electronAPI?.envRemove) {
+      toast.error(t('setting.proxy-save-failed'));
+      return;
+    }
+
+    setIsProxySaving(true);
+    try {
+      if (trimmed) {
+        const result = await window.electronAPI.envWrite(authStore.email, {
+          key: 'HTTP_PROXY',
+          value: trimmed,
+        });
+        if (!result?.success) throw new Error('envWrite returned no success');
+      } else {
+        const result = await window.electronAPI.envRemove(
+          authStore.email,
+          'HTTP_PROXY'
+        );
+        if (!result?.success) throw new Error('envRemove returned no success');
+      }
+      setProxyNeedsRestart(true);
+      toast.success(t('setting.proxy-saved-restart-required'));
+    } catch (error) {
+      console.error('Failed to save proxy:', error);
+      toast.error(t('setting.proxy-save-failed'));
+    } finally {
+      setIsProxySaving(false);
+    }
+  };
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -222,6 +301,49 @@ export default function SettingGeneral() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+      <div className="rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="text-text-primary text-base font-bold leading-12">
+          {t('setting.network-proxy')}
+        </div>
+        <div className="text-text-secondary mb-4 text-sm leading-13">
+          {t('setting.network-proxy-description')}
+        </div>
+        <div className="flex flex-col gap-md">
+          <div className="flex items-center gap-md">
+            <Input
+              placeholder={t('setting.proxy-placeholder')}
+              value={proxyUrl}
+              onChange={(e) => {
+                setProxyUrl(e.target.value);
+                setProxyNeedsRestart(false);
+              }}
+              className="flex-1"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSaveProxy}
+              disabled={isProxySaving}
+            >
+              {isProxySaving ? t('setting.saving') : t('setting.save')}
+            </Button>
+          </div>
+          {proxyNeedsRestart && (
+            <div className="flex items-center gap-sm">
+              <span className="text-sm text-text-warning">
+                {t('setting.proxy-restart-hint')}
+              </span>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => window.electronAPI?.restartApp()}
+              >
+                {t('setting.restart-to-apply')}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -128,6 +128,7 @@ interface ElectronAPI {
     tempEmail: string;
   }>;
   restartApp: () => Promise<void>;
+  readGlobalEnv: (key: string) => Promise<{ value: string | null }>;
 }
 
 declare global {

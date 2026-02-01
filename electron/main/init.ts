@@ -22,6 +22,7 @@ import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
+import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
   getBackendPath,
   getBinaryPath,
@@ -232,6 +233,25 @@ export async function startBackend(
   const uvEnv = getUvEnv(currentVersion);
   const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
 
+  // Load proxy configuration from global .env file
+  const proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+
+  // Build proxy env vars if configured
+  const proxyEnv = proxyUrl
+    ? {
+        HTTP_PROXY: proxyUrl,
+        HTTPS_PROXY: proxyUrl,
+        http_proxy: proxyUrl,
+        https_proxy: proxyUrl,
+      }
+    : {};
+
+  if (proxyUrl) {
+    log.info(
+      `[BACKEND] Proxy configured for backend: ${maskProxyUrl(proxyUrl)}`
+    );
+  }
+
   const envProxyEnabled = process.env.VITE_USE_LOCAL_PROXY === 'true';
   const envProxyUrl = process.env.VITE_PROXY_URL;
   let resolvedServerUrl: string | undefined;
@@ -242,21 +262,26 @@ export async function startBackend(
     if (resolvedServerUrl) {
       resolvedSource = 'process.env VITE_*';
     } else {
-      log.warn('VITE_USE_LOCAL_PROXY is true but VITE_PROXY_URL is empty or invalid, ignoring');
+      log.warn(
+        'VITE_USE_LOCAL_PROXY is true but VITE_PROXY_URL is empty or invalid, ignoring'
+      );
     }
   }
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
   if (!resolvedServerUrl && devServerUrl) {
     const devEnvPath = path.join(app.getAppPath(), '.env.development');
-    const devProxyEnabled = readEnvValue(devEnvPath, 'VITE_USE_LOCAL_PROXY') === 'true';
+    const devProxyEnabled =
+      readEnvValue(devEnvPath, 'VITE_USE_LOCAL_PROXY') === 'true';
     const devProxyUrl = readEnvValue(devEnvPath, 'VITE_PROXY_URL');
     if (devProxyEnabled) {
       resolvedServerUrl = buildLocalServerUrl(devProxyUrl);
       if (resolvedServerUrl) {
         resolvedSource = `dev env file (${devEnvPath})`;
       } else {
-        log.warn(`VITE_USE_LOCAL_PROXY is true in ${devEnvPath} but VITE_PROXY_URL is empty or invalid, ignoring`);
+        log.warn(
+          `VITE_USE_LOCAL_PROXY is true in ${devEnvPath} but VITE_PROXY_URL is empty or invalid, ignoring`
+        );
       }
     }
   }
@@ -275,11 +300,14 @@ export async function startBackend(
   }
 
   const serverUrl = resolvedServerUrl || DEFAULT_SERVER_URL;
-  log.info(`Backend SERVER_URL resolved to: ${serverUrl} (source: ${resolvedSource})`);
+  log.info(
+    `Backend SERVER_URL resolved to: ${serverUrl} (source: ${resolvedSource})`
+  );
 
   const env = {
     ...process.env,
     ...uvEnv,
+    ...proxyEnv,
     SERVER_URL: serverUrl,
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
