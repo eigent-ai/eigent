@@ -27,6 +27,7 @@ import eye from '@/assets/eye.svg';
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import { hasStackKeys } from '@/lib';
+import { loginByStackToken } from '@/service/stackAuthApi';
 import { useTranslation } from 'react-i18next';
 
 const HAS_STACK_KEYS = hasStackKeys();
@@ -150,13 +151,16 @@ export default function SignUp() {
   const handleLoginByStack = useCallback(
     async (token: string) => {
       try {
-        const data = await proxyFetchPost(
-          '/api/login-by_stack?token=' + token,
-          {
-            token: token,
-            invite_code: localStorage.getItem('invite_code') || '',
-          }
-        );
+        if (!token) {
+          setGeneralError(t('layout.login-failed-please-try-again'));
+          return;
+        }
+        const inviteCode = localStorage.getItem('invite_code') || '';
+        const data = await loginByStackToken({
+          token,
+          type: 'signup',
+          inviteCode: inviteCode || undefined,
+        });
 
         if (data.code === 10) {
           setGeneralError(
@@ -165,7 +169,21 @@ export default function SignUp() {
           return;
         }
         console.log('data', data);
-        setAuth({ email: formData.email, ...data });
+
+        const authToken = (data as any)?.token as string | undefined;
+        const email =
+          ((data as any)?.email as string | undefined) ?? formData.email;
+        if (!authToken) {
+          setGeneralError(t('layout.login-failed-please-try-again'));
+          return;
+        }
+
+        setAuth({
+          token: authToken,
+          email,
+          username: (data as any)?.username ?? null,
+          user_id: (data as any)?.user_id ?? null,
+        });
         navigate('/');
       } catch (error: any) {
         console.error('Login failed:', error);
@@ -246,12 +264,17 @@ export default function SignUp() {
       lock = true;
       setIsLoading(true);
       const accessToken = await handleGetToken(code);
+      if (!accessToken) {
+        setGeneralError(t('layout.login-failed-please-try-again'));
+        setIsLoading(false);
+        return;
+      }
       await handleLoginByStack(accessToken);
       setTimeout(() => {
         lock = false;
       }, 1500);
     },
-    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
+    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading, t]
   );
 
   useEffect(() => {
