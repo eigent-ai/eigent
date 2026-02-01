@@ -19,7 +19,7 @@ release
 backend/context_files/
 
 # Editor directories and files
-.vscode/.debug.env
+.vscode/
 .idea
 .DS_Store
 *.suo
