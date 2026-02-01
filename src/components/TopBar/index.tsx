@@ -38,7 +38,8 @@ import { toast } from "sonner";
 import EndNoticeDialog from "@/components/Dialog/EndNotice";
 import { share } from "@/lib/share";
 import { TooltipSimple } from "@/components/ui/tooltip";
- 
+import { usePageTabStore } from "@/store/pageTabStore";
+
 function HeaderWin() {
 	const { t } = useTranslation();
 	const titlebarRef = useRef<HTMLDivElement>(null);
@@ -51,8 +52,10 @@ function HeaderWin() {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { toggle } = useSidebarStore();
+	const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
+	const [isFullscreen, setIsFullscreen] = useState(false);
 	const { token } = getAuthStore();
 	const [endDialogOpen, setEndDialogOpen] = useState(false);
 	const [endProjectLoading, setEndProjectLoading] = useState(false);
@@ -195,25 +198,16 @@ function HeaderWin() {
 			ref={titlebarRef}
 		>
 			{/* left */}
-			{platform !== "darwin" && (
-				<div className="w-[70px] flex items-center justify-center no-drag">
-					<span className="text-label-md text-text-heading font-bold">Eigent</span>
-				</div>
-			)}
+			<div
+				className={`${platform === "darwin" && isFullscreen ? "w-0" : "w-[70px]"
+					} flex items-center justify-center no-drag`}
+			>
+				{platform !== "darwin" && <span className="text-label-md text-text-heading font-bold">Eigent</span>}
+			</div>
 
 			{/* center */}
-			<div className="w-full h-full flex items-center justify-between drag">
+			<div className="title h-full flex-1 flex items-center justify-start drag">
 				<div className="flex h-full items-center z-50 relative">
-					<div className="flex-1 pt-1 pr-1 flex justify-start items-end">
-					<Button
-						onClick={() => navigate("/history")}
-						variant="ghost"
-						size="icon"
-						className="no-drag p-0 h-6 w-6"
-					>
-						<img className="w-6 h-6" src={folderIcon} alt="folder-icon" />
-					</Button>
-					</div>
 					{location.pathname === "/history" && (
 						<div className="flex items-center mr-1">
 							<Button
@@ -222,7 +216,7 @@ function HeaderWin() {
 								className="no-drag"
 								onClick={() => navigate("/")}
 							>
-								<ChevronLeft className="w-4 h-4" />
+								<ChevronLeft className="w-4 h-4 text-text-label" />
 							</Button>
 						</div>
 					)}
@@ -282,26 +276,27 @@ function HeaderWin() {
 						</>
 					)}
 				</div>
-				{/* right */}
-				{location.pathname !== "/history" && (
-					<div
-						className={`${
-							platform === "darwin" && "pr-2"
+
+			</div>
+			{/* right */}
+			{location.pathname !== "/history" && (
+				<div
+					className={`${platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
-					>
-						{chatStore.activeTaskId &&
-							chatStore.tasks[chatStore.activeTaskId as string] &&
-							(
-								(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
-								chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
-							) && (
+				>
+					{chatStore.activeTaskId &&
+						chatStore.tasks[chatStore.activeTaskId as string] &&
+						(
+							(chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length || 0) > 0 ||
+							chatStore.tasks[chatStore.activeTaskId as string]?.hasMessages ||
+							chatStore.tasks[chatStore.activeTaskId as string]?.status !== 'pending'
+						) && (
 							<TooltipSimple content={t("layout.end-project")} side="bottom" align="end">
 								<Button
 									onClick={() => setEndDialogOpen(true)}
-									variant="outline"
+									variant="ghost"
 									size="xs"
-									className="no-drag !text-text-cuation justify-center"
+									className="no-drag !text-text-cuation bg-surface-cuation justify-center rounded-full"
 								>
 									<Power />
 									{t("layout.end-project")}
@@ -364,10 +359,9 @@ function HeaderWin() {
 						className={`${
 							platform === "darwin" && "pr-2"
 						} flex h-full items-center z-50 relative no-drag gap-1`}
-					>
-					</div>
-				)}
-			</div>
+				>
+				</div>
+			)}
 			{platform !== "darwin" && (
 				<div
 					className="h-full flex items-center no-drag"

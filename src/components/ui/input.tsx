@@ -136,7 +136,8 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             "relative flex items-center rounded-lg border border-solid shadow-sm transition-colors",
             // Only apply hover/focus visuals when not in error state
             state !== "error" &&
-              "hover:bg-input-bg-hover hover:border-input-border-hover focus-within:border-input-border-focus focus-within:bg-input-bg-input",
+              state !== "success" &&
+              "hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0 focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 focus-within:bg-input-bg-input",
             stateCls.field,
             sizeClasses[size]
           )}

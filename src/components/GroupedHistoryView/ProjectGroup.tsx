@@ -77,10 +77,10 @@ export default function ProjectGroup({
     if ((e.target as HTMLElement).closest('button, [role="menuitem"]')) {
       return;
     }
-    
+
     // Check if project exists in store
     const existingProject = projectStore.getProjectById(project.project_id);
-    
+
     if (existingProject) {
       // Project exists, just activate it and navigate
       projectStore.setActiveProject(project.project_id);
@@ -93,7 +93,7 @@ export default function ProjectGroup({
         const question = firstTask.question || project.last_prompt || "";
         const historyId = firstTask.id?.toString() || "";
         const taskIdsList = [project.project_id];
-        
+
         replayProject(projectStore, navigate, project.project_id, question, historyId, taskIdsList);
       } else {
         console.warn("No tasks found in project, cannot replay");
@@ -118,11 +118,11 @@ export default function ProjectGroup({
     const date = new Date(dateString);
     const now = new Date();
     const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (diffInDays === 0) return t("layout.today");
     if (diffInDays === 1) return t("layout.yesterday");
     if (diffInDays < 7) return `${diffInDays} ${t("layout.days-ago")}`;
-    
+
     return date.toLocaleDateString();
   };
 
@@ -142,14 +142,14 @@ export default function ProjectGroup({
     );
   }, [chatStore?.tasks, project.tasks]);
   const hasIssue = hasHumanInLoop;
-  
+
   // Calculate agent count (placeholder - count unique agents from tasks if available)
-  const agentCount = project.tasks?.length > 0 
-    ? new Set(project.tasks.map(t => t.model_type || 'default')).size 
+  const agentCount = project.tasks?.length > 0
+    ? new Set(project.tasks.map(t => t.model_type || 'default')).size
     : 0;
-  
+
   // Trigger count is 0 for now (disabled)
-  const triggerCount = 0;
+  // const triggerCount = 0;
 
   // Handle project edit - open dialog
   const handleProjectEdit = (e?: React.MouseEvent) => {
@@ -189,7 +189,7 @@ export default function ProjectGroup({
                 ) : (
                   <Sparkle className="w-6 h-6 text-icon-secondary flex-shrink-0" />
                 )}
-                
+
                 {/* Status badges */}
                 <div className="flex items-center gap-2">
                   {/* TODO: Add ongoing badge after finish state management is implemented */}
@@ -205,7 +205,7 @@ export default function ProjectGroup({
                       </Tag>
                     </motion.div>
                   )} */}
-                  
+
                   {/* {!isOngoing && hasIssue && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
@@ -217,7 +217,7 @@ export default function ProjectGroup({
                       </Tag>
                     </motion.div>
                   )} */}
-                  </div>
+                </div>
               </div>
               <TooltipSimple
                 content={<p className="max-w-xs break-words">{project.project_name}</p>}
@@ -232,9 +232,9 @@ export default function ProjectGroup({
             {/* Menu button */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className="rounded-md flex-shrink-0 relative z-10"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -297,18 +297,28 @@ export default function ProjectGroup({
                   </span>
                 </div>
               </TooltipSimple>
-              
+
               <div className="flex flex-row items-center justify-end gap-4">
 
-              {/* Task count */}
-              <TooltipSimple content="Tasks">
-                <div className="flex items-center gap-1">
-                  <Pin className="w-4 h-4 text-icon-secondary" />
-                  <span className="text-body-sm text-text-body font-semibold">
-                    {project.task_count}
-                  </span>
-                </div>
-              </TooltipSimple>
+                {/* Task count */}
+                <TooltipSimple content="Tasks">
+                  <div className="flex items-center gap-1">
+                    <Pin className="w-4 h-4 text-icon-primary" />
+                    <span className="text-body-sm text-text-body font-semibold">
+                      {project.task_count}
+                    </span>
+                  </div>
+                </TooltipSimple>
+
+                {/* Trigger count */}
+                <TooltipSimple content="Triggers">
+                  <div className="flex items-center gap-1">
+                    <Zap className="w-4 h-4 text-icon-warning" />
+                    <span className="text-body-sm text-text-warning font-semibold">
+                      {project.total_triggers || 0}
+                    </span>
+                  </div>
+                </TooltipSimple>
               </div>
             </div>
           </motion.div>
@@ -319,7 +329,7 @@ export default function ProjectGroup({
 
   // List view - Original horizontal layout
   return (
-    <div 
+    <div
       onClick={handleProjectClick}
       className="border border-solid border-border-disabled rounded-xl bg-project-surface-default hover:bg-project-surface-hover overflow-hidden backdrop-blur-sm hover:perfect-shadow cursor-pointer"
     >
@@ -355,6 +365,13 @@ export default function ProjectGroup({
               <span>{project.task_count}</span>
             </Tag>
           </TooltipSimple>
+
+          <TooltipSimple content="Triggers">
+            <Tag variant="warning" size="sm" className="min-w-10">
+              <Zap />
+              <span>{project.total_triggers || 0}</span>
+            </Tag>
+          </TooltipSimple>
         </div>
 
         {/* End: Status and menu */}
@@ -366,7 +383,7 @@ export default function ProjectGroup({
               {t("layout.ongoing")}
             </Tag>
           )} */}
-          
+
           {/* {!isOngoing && hasIssue && (
             <Tag variant="warning" size="sm">
               {t("layout.issue") || "Issue"}

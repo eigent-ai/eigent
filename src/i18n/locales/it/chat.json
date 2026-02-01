@@ -47,6 +47,14 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Il tuo spazio di archiviazione cloud ha raggiunto il limite del tuo piano attuale.",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Stiamo riscontrando un traffico elevato. Riprova tra qualche istante.",
 	"new-project": "Nuovo Progetto",
-	"no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua"
+	"no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua",
+	"splitting-tasks": "Divisione dei compiti",
+	"start-task": "Avvia compito",
+	"message-cannot-be-empty": "Il messaggio non può essere vuoto",
+	"remove-file": "Rimuovi file",
+	"drop-files-to-attach": "Trascina i file per allegarli",
+	"expand-input": "Espandi input (⌘P)",
+	"queued-tasks": "Compiti in coda",
+	"remove-queued-message": "Rimuovi messaggio dalla coda",
+	"no-agents-added": "Nessun agente aggiunto"
 }
-	 

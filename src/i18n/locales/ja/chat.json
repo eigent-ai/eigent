@@ -47,6 +47,14 @@
 	"your-cloud-storage-has-reached-the-limit-of-your-current-plan": "クラウドストレージが現在のプランの制限に達しました。",
 	"we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "トラフィックが多いため、しばらくしてからもう一度お試しください。",
 	"new-project": "新規プロジェクト",
-	"no-reply-received-task-continue": "応答がないため、タスクを続行します"
+	"no-reply-received-task-continue": "応答がないため、タスクを続行します",
+	"splitting-tasks": "タスクを分割中",
+	"start-task": "タスクを開始",
+	"message-cannot-be-empty": "メッセージを空にすることはできません",
+	"remove-file": "ファイルを削除",
+	"drop-files-to-attach": "ファイルをドロップして添付",
+	"expand-input": "入力を展開 (⌘P)",
+	"queued-tasks": "キュー内のタスク",
+	"remove-queued-message": "キューからメッセージを削除",
+	"no-agents-added": "エージェントが追加されていません"
 }
-	 

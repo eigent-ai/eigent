@@ -17,6 +17,7 @@ import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
+import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
 import { TaskCard } from './TaskBox/TaskCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
@@ -309,6 +310,19 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       </motion.div>
                     ))}
                   </div>
+                )}
+                {/* Task Completion Action Card */}
+                {task?.status === 'finished' && (
+                  <TaskCompletionCard
+                    taskPrompt={queryGroup.userMessage?.content}
+                    onRerun={() => {
+                      // Focus the input for task refinement
+                      const inputElement = document.querySelector('[data-chat-input]') as HTMLInputElement;
+                      if (inputElement) {
+                        inputElement.focus();
+                      }
+                    }}
+                  />
                 )}
               </motion.div>
             );

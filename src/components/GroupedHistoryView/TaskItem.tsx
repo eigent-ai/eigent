@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/popover";
 import { useTranslation } from "react-i18next";
 import folderIcon from "@/assets/Folder-1.svg";
+import { formatDateTime } from "@/lib/utils";
 
 interface TaskItemProps {
   task: HistoryTask;
@@ -86,8 +87,7 @@ export default function TaskItem({
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatDateTime(dateString, "MMM dd, yyyy HH:mm");
   };
 
   return (
