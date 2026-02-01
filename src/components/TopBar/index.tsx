@@ -18,14 +18,16 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
-import folderIcon from '@/assets/Folder.svg';
+import folderIconWhite from '@/assets/logo/icon_white.svg';
+import folderIconBlack from '@/assets/logo/icon_black.svg';
 import giftIcon from '@/assets/gift.svg';
+import giftWhiteIcon from '@/assets/gift-white.svg';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
-import { getAuthStore } from '@/store/authStore';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import {
   ChevronDown,
@@ -54,13 +56,14 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { toggle } = useSidebarStore();
-  const _authStore = getAuthStore();
+  const appearance = useAuthStore((state) => state.appearance);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
+  const logoSrc = appearance === 'light' ? folderIconBlack : folderIconWhite;
 
   const exportLog = async () => {
     try {
@@ -194,6 +197,10 @@ function HeaderWin() {
     share(taskId);
   };
 
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <div
       className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
@@ -221,7 +228,7 @@ function HeaderWin() {
               size="icon"
               className="no-drag h-6 w-6 p-0"
             >
-              <img className="h-6 w-6" src={folderIcon} alt="folder-icon" />
+              <img className="h-6 w-6" src={logoSrc} alt="folder-icon" />
             </Button>
           </div>
           {location.pathname === '/history' && (
@@ -391,7 +398,11 @@ function HeaderWin() {
                 size="icon"
                 className="no-drag"
               >
-                <img src={giftIcon} alt="gift-icon" className="h-4 w-4" />
+                <img
+                  src={appearance === 'light' ? giftIcon : giftWhiteIcon}
+                  alt="gift-icon"
+                  className="h-4 w-4"
+                />
               </Button>
             </TooltipSimple>
             <TooltipSimple
@@ -426,19 +437,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-[#f0f0f0]"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-[#f0f0f0]"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-[#f0f0f0]"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
             onClick={() => window.electronAPI.closeWindow()}
           >
             <X className="h-4 w-4" />

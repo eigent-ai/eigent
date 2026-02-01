@@ -33,6 +33,74 @@ body {
   background-color: transparent !important;
 }
 
+@layer base {
+  body {
+    color: var(--text-body);
+  }
+
+  p,
+  span,
+  li,
+  label {
+    color: inherit;
+  }
+
+  button {
+    color: inherit;
+    background-color: transparent;
+  }
+
+  input,
+  textarea,
+  select {
+    color: var(--text-primary);
+    background-color: var(--surface-primary);
+    border: 1px solid var(--border-secondary);
+    outline: none;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
+  }
+
+  .lucide {
+    color: var(--icon-secondary);
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  button .lucide,
+  a .lucide,
+  .lucide[data-state="active"] {
+    color: var(--icon-primary);
+  }
+
+  :is(.bg-white, .bg-white-100, .bg-white-50, [class*="bg-white-100%"], [class*="bg-white-50"]) {
+    color: var(--text-primary);
+    background-color: var(--surface-card) !important;
+    box-shadow: none;
+  }
+
+  [class*="bg-white-50"] {
+    background-color: var(--surface-tertiary) !important;
+  }
+
+  .theme-image-invert-dark {
+    filter: none;
+    transition: filter 150ms ease;
+  }
+
+  [data-theme="dark"] .theme-image-invert-dark {
+    filter: brightness(0) invert(1);
+  }
+
+  [data-theme="transparent"] .theme-image-invert-dark {
+    filter: brightness(0) invert(1);
+  }
+}
+
 #root,
 .App {
   width: 100%;
