@@ -32,9 +32,9 @@ type CloudModelType =
 // auth info interface
 interface AuthInfo {
   token: string;
-  username?: string | null;
+  username: string;
   email: string;
-  user_id?: number | null;
+  user_id: number;
 }
 
 // auth state interface
@@ -107,12 +107,7 @@ const authStore = create<AuthState>()(
 
       // auth related methods
       setAuth: ({ token, username, email, user_id }) =>
-        set({
-          token,
-          email,
-          username: username ?? null,
-          user_id: user_id ?? null,
-        }),
+        set({ token, username, email, user_id }),
 
       logout: () =>
         set({
