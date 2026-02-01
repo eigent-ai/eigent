@@ -158,7 +158,7 @@
     "vite": "^5.4.11",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^2.1.5"
+    "vitest": "^4.0.18"
   },
   "pnpm": {
     "neverBuiltDependencies": []
