@@ -105,8 +105,10 @@ class ActionDecomposeTextData(BaseModel):
 
 
 class ActionStreamingAgentOutputData(BaseModel):
-    action: Literal[Action.streaming_agent_output] = Action.streaming_agent_output
-    data: dict[Literal["agent_name", "process_task_id", "agent_id", "content", "is_final"], str | bool]
+    action: Literal[Action.streaming_agent_output
+                    ] = Action.streaming_agent_output
+    data: dict[Literal["agent_name", "process_task_id", "agent_id", "content",
+                       "is_final"], str | bool]
 
 
 class ActionNewTaskStateData(BaseModel):
