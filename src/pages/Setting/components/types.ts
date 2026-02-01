@@ -32,4 +32,4 @@ export interface MCPConfigForm {
   command: string;
   argsArr: string[];
   env: Record<string, string>;
-} 
+}

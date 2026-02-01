@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { create } from 'zustand'
+import { create } from 'zustand';
 
 interface SidebarState {
-  isOpen: boolean
-  open: () => void
-  close: () => void
-  toggle: () => void
+  isOpen: boolean;
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
 }
 
 export const useSidebarStore = create<SidebarState>((set) => ({
@@ -26,4 +26,4 @@ export const useSidebarStore = create<SidebarState>((set) => ({
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
   toggle: () => set((state) => ({ isOpen: !state.isOpen })),
-})) 
+}));
