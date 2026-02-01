@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import dark from '@/assets/dark.png';
 import light from '@/assets/light.png';
 import transparent from '@/assets/transparent.png';
 import { Button } from '@/components/ui/button';
@@ -56,36 +57,58 @@ export default function SettingGeneral() {
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
 
-  const themeList = useMemo(() => {
-    const platform = window.electronAPI.getPlatform();
-    if (platform === 'darwin') {
-      return [
-        {
-          img: light,
-          label: 'setting.light',
-          value: 'light',
-        },
-        {
-          img: transparent,
-          label: 'setting.transparent',
-          value: 'transparent',
-        },
-      ];
-    } else {
-      return [
-        {
-          img: light,
-          label: 'setting.light',
-          value: 'light',
-        },
-      ];
-    }
-  }, []);
+  const [themeList, setThemeList] = useState<any>([
+    {
+      img: dark,
+      label: 'setting.dark',
+      value: 'dark',
+    },
+    {
+      img: light,
+      label: 'setting.light',
+      value: 'light',
+    },
+    {
+      img: transparent,
+      label: 'setting.transparent',
+      value: 'transparent',
+    },
+  ]);
 
   // Proxy configuration state
   const [proxyUrl, setProxyUrl] = useState('');
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
+
+  useEffect(() => {
+    const platform = window.electronAPI.getPlatform();
+    console.log(platform);
+    const baseThemes = [
+      {
+        img: dark,
+        label: 'setting.dark',
+        value: 'dark',
+      },
+      {
+        img: light,
+        label: 'setting.light',
+        value: 'light',
+      },
+    ];
+
+    if (platform === 'darwin') {
+      setThemeList([
+        ...baseThemes,
+        {
+          img: transparent,
+          label: 'setting.transparent',
+          value: 'transparent',
+        },
+      ]);
+    } else {
+      setThemeList(baseThemes);
+    }
+  }, []);
 
   const languageList = [
     {

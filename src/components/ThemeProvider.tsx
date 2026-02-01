@@ -12,46 +12,50 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useAuthStore } from '@/store/authStore';
 import { useEffect } from 'react';
+import { useAuthStore } from '@/store/authStore';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { appearance } = useAuthStore();
 
-  useEffect(() => {
-    // set data-theme attribute based on appearance
-    const root = document.documentElement;
+	useEffect(() => {
+		// set data-theme attribute based on appearance
+		const root = document.documentElement;
 
-    // remove all possible data-theme attributes
-    root.removeAttribute('data-theme');
+		// remove all possible data-theme attributes
+		root.removeAttribute('data-theme');
 
-    // set the corresponding data-theme based on appearance
-    if (appearance === 'transparent') {
-      root.setAttribute('data-theme', 'transparent');
-    } else if (appearance === 'light') {
-      root.setAttribute('data-theme', 'light');
-    } else if (appearance === 'dark') {
-      root.setAttribute('data-theme', 'dark');
-    } else {
-      root.setAttribute('data-theme', 'light');
-    }
-  }, [appearance]);
+		switch (appearance) {
+			case 'transparent':
+				root.setAttribute('data-theme', 'transparent');
+				break;
+			case 'light':
+				root.setAttribute('data-theme', 'light');
+				break;
+			case 'dark':
+				root.setAttribute('data-theme', 'dark');
+				break;
+			default:
+				root.setAttribute('data-theme', 'light');
+		}
+	}, [appearance]);
 
-  // initialize theme
-  useEffect(() => {
-    const root = document.documentElement;
-    const currentTheme = root.getAttribute('data-theme');
+	// initialize theme
+	useEffect(() => {
+		const root = document.documentElement;
+		const currentTheme = root.getAttribute('data-theme');
 
-    if (!currentTheme) {
-      if (appearance === 'transparent') {
-        root.setAttribute('data-theme', 'transparent');
-      } else if (appearance === 'dark') {
-        root.setAttribute('data-theme', 'dark');
-      } else {
-        root.setAttribute('data-theme', 'light');
-      }
-    }
-  }, [appearance]); // only execute once when the component is mounted
+		if (!currentTheme) {
+			if (appearance === 'transparent') {
+				root.setAttribute('data-theme', 'transparent');
+			} else if (appearance === 'dark') {
+				root.setAttribute('data-theme', 'dark');
+			} else {
+				root.setAttribute('data-theme', 'light');
+			}
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []); // only execute once when the component is mounted
 
   return <>{children}</>;
-}
+} 

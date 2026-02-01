@@ -129,9 +129,8 @@ const FileTree: React.FC<FileTreeProps> = ({
               )}
 
               <span
-                className={`truncate text-[13px] leading-5 ${
-                  child.isFolder ? 'font-semibold' : 'font-medium'
-                }`}
+                className={`truncate text-[13px] leading-5 ${child.isFolder ? 'font-semibold' : 'font-medium'
+                  }`}
               >
                 {child.name}
               </span>
@@ -422,11 +421,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       <div
         className={`${
           isCollapsed ? 'w-16' : 'w-64'
-        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-zinc-300 border-r-zinc-200 transition-all duration-300 ease-in-out`}
+        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-r-border-subtle border-border-subtle-strong transition-all duration-300 ease-in-out`}
       >
         {/* head */}
         <div
-          className={`flex-shrink-0 border-b border-zinc-200 py-2 ${
+          className={`flex-shrink-0 border-b border-border-subtle py-2 ${
             isCollapsed ? 'px-2' : 'pl-4 pr-2'
           }`}
         >
@@ -450,9 +449,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`${
-                isCollapsed ? 'w-full' : ''
-              } flex items-center justify-center`}
+              className={`${isCollapsed ? 'w-full' : ''
+                } flex items-center justify-center`}
               title={isCollapsed ? t('chat.open') : t('chat.close')}
             >
               <ChevronsLeft
@@ -466,13 +464,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="flex-shrink-0 border-b border-zinc-200 px-2">
+          <div className="flex-shrink-0 border-b border-border-subtle px-2">
             <div className="relative">
               <Search className="text-primary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full rounded-md border border-solid border-zinc-200 py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-solid border-border-subtle py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-text-link"
               />
             </div>
           </div>
@@ -530,7 +528,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="flex-shrink-0 border-b border-zinc-200 px-4 py-2">
+          <div className="flex-shrink-0 border-b border-border-subtle px-4 py-2">
             <div className="flex h-[30px] items-center justify-between gap-2">
               <div
                 onClick={() => {
@@ -593,8 +591,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     title={selectedFile.name}
                   />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                    selectedFile.type
-                  ) ? (
+                  selectedFile.type
+                ) ? (
                   <FolderComponent selectedFile={selectedFile} />
                 ) : selectedFile.type === 'html' ? (
                   isShowSourceCode ? (
@@ -985,7 +983,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 flex-1 overflow-hidden bg-zinc-100"
+        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
         onWheel={handleWheel}
       >
         <div
