@@ -215,13 +215,13 @@ export default function Login() {
           return;
         }
 
-        setModelType('cloud');
         setAuth({
           token: authToken,
           email,
           username: (data as any)?.username ?? null,
           user_id: (data as any)?.user_id ?? null,
         });
+        setModelType('cloud');
         // Record VITE_USE_LOCAL_PROXY value at login
         const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
         setLocalProxyValue(localProxyValue);
@@ -326,6 +326,7 @@ export default function Login() {
       if (!accessToken) {
         setGeneralError(t('layout.login-failed-please-try-again'));
         setIsLoading(false);
+        lock = false;
         return;
       }
       await handleLoginByStack(accessToken);
@@ -333,7 +334,7 @@ export default function Login() {
         lock = false;
       }, 1500);
     },
-    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
+    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading, t]
   );
 
   useEffect(() => {

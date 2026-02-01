@@ -36,7 +36,7 @@ export default function SignUp() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
-  const { setAuth, initState: _initState } = useAuthStore();
+  const { setAuth, setModelType, initState: _initState } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [hidePassword, setHidePassword] = useState(true);
@@ -184,6 +184,7 @@ export default function SignUp() {
           username: (data as any)?.username ?? null,
           user_id: (data as any)?.user_id ?? null,
         });
+        setModelType('cloud');
         navigate('/');
       } catch (error: any) {
         console.error('Login failed:', error);
@@ -194,7 +195,15 @@ export default function SignUp() {
         setIsLoading(false);
       }
     },
-    [formData.email, navigate, setAuth, setGeneralError, setIsLoading, t]
+    [
+      formData.email,
+      navigate,
+      setAuth,
+      setModelType,
+      setGeneralError,
+      setIsLoading,
+      t,
+    ]
   );
 
   const handleReloadBtn = async (type: string) => {
@@ -274,6 +283,7 @@ export default function SignUp() {
       if (!accessToken) {
         setGeneralError(t('layout.login-failed-please-try-again'));
         setIsLoading(false);
+        lock = false;
         return;
       }
       await handleLoginByStack(accessToken);
@@ -311,39 +321,35 @@ export default function SignUp() {
               {t('layout.login')}
             </Button>
           </div>
-          {HAS_STACK_KEYS && (
-            <div className="w-full pt-6">
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => handleReloadBtn('google')}
-                className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-                disabled={isLoading}
-              >
-                <img src={google} className="h-5 w-5" />
-                <span className="ml-2">
-                  {t('layout.continue-with-google-sign-up')}
-                </span>
-              </Button>
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => handleReloadBtn('github')}
-                className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-                disabled={isLoading}
-              >
-                <img src={github2} className="h-5 w-5" />
-                <span className="ml-2">
-                  {t('layout.continue-with-github-sign-up')}
-                </span>
-              </Button>
-            </div>
-          )}
-          {HAS_STACK_KEYS && (
-            <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
-              {t('layout.or')}
-            </div>
-          )}
+          <div className="w-full pt-6">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => handleReloadBtn('google')}
+              className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+              disabled={isLoading || !HAS_STACK_KEYS}
+            >
+              <img src={google} className="h-5 w-5" />
+              <span className="ml-2">
+                {t('layout.continue-with-google-sign-up')}
+              </span>
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => handleReloadBtn('github')}
+              className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+              disabled={isLoading || !HAS_STACK_KEYS}
+            >
+              <img src={github2} className="h-5 w-5" />
+              <span className="ml-2">
+                {t('layout.continue-with-github-sign-up')}
+              </span>
+            </Button>
+          </div>
+          <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
+            {t('layout.or')}
+          </div>
           <div className="flex w-full flex-col gap-4">
             {generalError && (
               <p className="mb-4 mt-1 text-label-md text-text-cuation">
