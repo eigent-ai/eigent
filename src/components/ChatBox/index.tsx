@@ -12,41 +12,36 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  fetchPost,
-  proxyFetchPut,
-  fetchPut,
   fetchDelete,
+  fetchPost,
+  fetchPut,
   proxyFetchDelete,
+  proxyFetchGet,
+  proxyFetchPut,
 } from '@/api/http';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { generateUniqueId, replayActiveTask } from '@/lib';
+import { useAuthStore } from '@/store/authStore';
+import { Square, SquareCheckBig, TriangleAlert } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
-import { TriangleAlert, Square, SquareCheckBig } from 'lucide-react';
-import { generateUniqueId } from '@/lib';
-import { proxyFetchGet } from '@/api/http';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { replayActiveTask } from '@/lib';
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [privacy, setPrivacy] = useState<any>(false);
   const [isPrivacyLoaded, setIsPrivacyLoaded] = useState<boolean>(false);
-  const [hasSearchKey, setHasSearchKey] = useState<any>(false);
+  const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
   const [hasModel, setHasModel] = useState<any>(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,6 +157,248 @@ export default function ChatBox(): JSX.Element {
   // }, [privacyDialogOpen]);
   const [searchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
+
+  const [loading, setLoading] = useState(false);
+  const [isReplayLoading, setIsReplayLoading] = useState(false);
+  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+  const handleSendRef = useRef<
+    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+  >(null);
+
+  // Task time tracking
+  const [taskTime, setTaskTime] = useState(
+    chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
+      '00:00'
+  );
+
+  const [_hasSubTask, setHasSubTask] = useState(false);
+
+  const activeTaskId = chatStore?.activeTaskId;
+  const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
+  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
+
+  useEffect(() => {
+    if (!chatStore?.activeTaskId) return;
+    const interval = setInterval(() => {
+      if (chatStore.activeTaskId) {
+        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [chatStore?.activeTaskId, chatStore]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    const _hasSubTask = chatStore.tasks[
+      chatStore.activeTaskId as string
+    ]?.messages?.find((message) => message.step === 'to_sub_tasks')
+      ? true
+      : false;
+    setHasSubTask(_hasSubTask);
+  }, [chatStore, activeTaskId, activeTaskMessages]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    const _activeAsk = activeAsk;
+    let timer: NodeJS.Timeout;
+    if (_activeAsk && _activeAsk !== '') {
+      const _taskId = chatStore.activeTaskId as string;
+      timer = setTimeout(() => {
+        if (handleSendRef.current) {
+          handleSendRef.current('skip', _taskId);
+        }
+      }, 30000); // 30 seconds
+      return () => clearTimeout(timer); // clear previous timer
+    }
+    // if activeAsk is empty, also clear timer
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeAsk, message, chatStore, activeTaskId]);
+
+  const getAllChatStoresMemoized = useMemo(() => {
+    if (!projectStore.activeProjectId) return [];
+    return projectStore.getAllChatStores(projectStore.activeProjectId);
+  }, [projectStore]);
+
+  // Check if any chat store in the project has messages
+  const hasAnyMessages = useMemo(() => {
+    if (!chatStore) return false;
+    // First check current active chat store
+    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
+      const activeTask = chatStore.tasks[chatStore.activeTaskId];
+      if (
+        (activeTask.messages && activeTask.messages.length > 0) ||
+        activeTask.hasMessages
+      ) {
+        return true;
+      }
+    }
+
+    // Then check all other chat stores in the project
+    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
+      const state = store.getState();
+      return (
+        state.activeTaskId &&
+        state.tasks[state.activeTaskId] &&
+        (state.tasks[state.activeTaskId].messages.length > 0 ||
+          state.tasks[state.activeTaskId].hasMessages)
+      );
+    });
+  }, [chatStore, getAllChatStoresMemoized]);
+
+  const isTaskBusy = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return false;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    return (
+      // running or paused
+      task.status === 'running' ||
+      task.status === 'pause' ||
+      // splitting phase
+      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+      // skeleton/computing phase
+      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
+        !task.hasWaitComfirm &&
+        task.messages.length > 0) ||
+      task.isTakeControl
+    );
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+
+  const isInputDisabled = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return true;
+
+    const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // If ask human is active, allow input
+    if (task.activeAsk) return false;
+
+    if (isTaskBusy) return true;
+
+    // Standard checks - check model first, then privacy
+    if (!hasModel) return true;
+    if (!privacy) return true;
+    if (useCloudModelInDev) return true;
+    if (task.isContextExceeded) return true;
+
+    return false;
+  }, [
+    chatStore?.activeTaskId,
+    chatStore?.tasks,
+    privacy,
+    hasModel,
+    useCloudModelInDev,
+    isTaskBusy,
+  ]);
+
+  const handleSendShare = useCallback(
+    async (token: string) => {
+      if (!chatStore) return;
+      if (!token) return;
+      if (!projectStore.activeProjectId) {
+        console.warn("Can't send share due to no active projectId");
+        return;
+      }
+
+      // Check model configuration before starting task
+      if (!hasModel) {
+        toast.error('Please select a model first.');
+        navigate('/setting/models');
+        return;
+      }
+      if (!privacy) {
+        toast.error('Please accept the privacy policy first.');
+        return;
+      }
+
+      let _token: string = token.split('__')[0];
+      let taskId: string = token.split('__')[1];
+      chatStore.create(taskId, 'share');
+      chatStore.setHasMessages(taskId, true);
+      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
+      if (res?.question) {
+        chatStore.addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: res.question.split('|')[0],
+        });
+        try {
+          await chatStore.startTask(taskId, 'share', _token, 0.1);
+          chatStore.setActiveTaskId(taskId);
+          chatStore.handleConfirmTask(
+            projectStore.activeProjectId,
+            taskId,
+            'share'
+          );
+        } catch (err: any) {
+          console.error('Failed to start shared task:', err);
+          toast.error(
+            err?.message ||
+              'Failed to start task. Please check your model configuration.'
+          );
+        }
+      }
+    },
+    [chatStore, projectStore.activeProjectId, hasModel, privacy, navigate]
+  );
+
+  useEffect(() => {
+    // Wait for both config and privacy to be loaded before handling share token
+    if (share_token && isConfigLoaded && isPrivacyLoaded) {
+      handleSendShare(share_token);
+    }
+  }, [share_token, isConfigLoaded, isPrivacyLoaded, handleSendShare]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    console.log('ChatStore Data: ', chatStore);
+  }, [chatStore]);
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollContainerRef.current) {
+      setTimeout(() => {
+        scrollContainerRef.current!.scrollTo({
+          top: scrollContainerRef.current!.scrollHeight + 20,
+          behavior: 'smooth',
+        });
+      }, 200);
+    }
+  }, []);
+
+  // Handle scrollbar visibility on scroll
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      // Add scrolling class
+      scrollContainer.classList.add('scrolling');
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Remove scrolling class after 1 second of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        scrollContainer.classList.remove('scrolling');
+      }, 1000);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll);
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   const handleSend = async (messageStr?: string, taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
@@ -402,113 +639,15 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  useEffect(() => {
-    // Wait for both config and privacy to be loaded before handling share token
-    if (share_token && isConfigLoaded && isPrivacyLoaded) {
-      handleSendShare(share_token);
-    }
-  }, [share_token, isConfigLoaded, isPrivacyLoaded]);
+  // Update ref so useEffect before early return can access handleSend
+  handleSendRef.current = handleSend;
 
-  useEffect(() => {
-    console.log('ChatStore Data: ', chatStore);
-  }, []);
-
-  const handleSendShare = async (token: string) => {
-    if (!token) return;
-    if (!projectStore.activeProjectId) {
-      console.warn("Can't send share due to no active projectId");
-      return;
-    }
-
-    // Check model configuration before starting task
-    if (!hasModel) {
-      toast.error('Please select a model first.');
-      navigate('/setting/models');
-      return;
-    }
-    if (!privacy) {
-      toast.error('Please accept the privacy policy first.');
-      return;
-    }
-
-    let _token: string = token.split('__')[0];
-    let taskId: string = token.split('__')[1];
-    chatStore.create(taskId, 'share');
-    chatStore.setHasMessages(taskId, true);
-    const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
-    if (res?.question) {
-      chatStore.addMessages(taskId, {
-        id: generateUniqueId(),
-        role: 'user',
-        content: res.question.split('|')[0],
-      });
-      try {
-        await chatStore.startTask(taskId, 'share', _token, 0.1);
-        chatStore.setActiveTaskId(taskId);
-        chatStore.handleConfirmTask(
-          projectStore.activeProjectId,
-          taskId,
-          'share'
-        );
-      } catch (err: any) {
-        console.error('Failed to start shared task:', err);
-        toast.error(
-          err?.message ||
-            'Failed to start task. Please check your model configuration.'
-        );
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const _handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && e.ctrlKey && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
-
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        scrollContainerRef.current!.scrollTo({
-          top: scrollContainerRef.current!.scrollHeight + 20,
-          behavior: 'smooth',
-        });
-      }, 200);
-    }
-  }, [scrollContainerRef.current?.scrollHeight]);
-
-  // Handle scrollbar visibility on scroll
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      // Add scrolling class
-      scrollContainer.classList.add('scrolling');
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Remove scrolling class after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        scrollContainer.classList.remove('scrolling');
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const [loading, setLoading] = useState(false);
   const handleConfirmTask = async (taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (!_taskId || !projectStore.activeProjectId) {
@@ -543,7 +682,6 @@ export default function ChatBox(): JSX.Element {
   };
 
   // Replay handler
-  const [isReplayLoading, setIsReplayLoading] = useState(false);
   const handleReplay = async () => {
     setIsReplayLoading(true);
     await replayActiveTask(chatStore, projectStore, navigate);
@@ -551,7 +689,6 @@ export default function ChatBox(): JSX.Element {
   };
 
   // Pause/Resume handler
-  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
   const handlePauseResume = () => {
     const taskId = chatStore.activeTaskId as string;
     const task = chatStore.tasks[taskId];
@@ -708,18 +845,7 @@ export default function ChatBox(): JSX.Element {
     setMessage(question);
   };
 
-  // Task time tracking
-  const [taskTime, setTaskTime] = useState(
-    chatStore.getFormattedTaskTime(chatStore.activeTaskId as string)
-  );
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore.activeTaskId]);
+  // Task time tracking useEffect is defined before early return
 
   // Determine BottomBox state
   const getBottomBoxState = () => {
@@ -775,36 +901,7 @@ export default function ChatBox(): JSX.Element {
     return 'input';
   };
 
-  const [hasSubTask, setHasSubTask] = useState(false);
-
-  useEffect(() => {
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === 'to_sub_tasks')
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages]);
-
-  useEffect(() => {
-    const activeAsk =
-      chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
-    let timer: NodeJS.Timeout;
-    if (activeAsk && activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        handleSend('skip', _taskId);
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [
-    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk,
-    message, // depend on message
-  ]);
+  // hasSubTask useState and useEffect are defined before early return
 
   const handleRemoveTaskQueue = async (task_id: string) => {
     const project_id = projectStore.activeProjectId;
@@ -860,87 +957,14 @@ export default function ChatBox(): JSX.Element {
       console.error(`Can't remove ${task_id} due to ${error}`);
     }
   };
-  const getAllChatStoresMemoized = useMemo(() => {
-    const project_id = projectStore.activeProjectId;
-    if (!project_id) return [];
 
-    return projectStore.getAllChatStores(project_id);
-  }, [projectStore, projectStore.activeProjectId, chatStore]);
-
-  // Check if any chat store in the project has messages
-  const hasAnyMessages = useMemo(() => {
-    // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
-    }
-
-    // Then check all other chat stores in the project
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
-      const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
-      );
-    });
-  }, [chatStore, getAllChatStoresMemoized]);
-
-  const isTaskBusy = useMemo(() => {
-    if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return false;
-    const task = chatStore.tasks[chatStore.activeTaskId];
-    return (
-      // running or paused
-      task.status === 'running' ||
-      task.status === 'pause' ||
-      // splitting phase
-      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
-      // skeleton/computing phase
-      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      task.isTakeControl
-    );
-  }, [chatStore.activeTaskId, chatStore.tasks]);
-
-  const isInputDisabled = useMemo(() => {
-    if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return true;
-
-    const task = chatStore.tasks[chatStore.activeTaskId];
-
-    // If ask human is active, allow input
-    if (task.activeAsk) return false;
-
-    if (isTaskBusy) return true;
-
-    // Standard checks - check model first, then privacy
-    if (!hasModel) return true;
-    if (!privacy) return true;
-    if (useCloudModelInDev) return true;
-    if (task.isContextExceeded) return true;
-
-    return false;
-  }, [
-    chatStore.activeTaskId,
-    chatStore.tasks,
-    privacy,
-    hasModel,
-    useCloudModelInDev,
-    isTaskBusy,
-  ]);
+  // getAllChatStoresMemoized, hasAnyMessages, isTaskBusy, and isInputDisabled
+  // are defined before early return
 
   return (
-    <div className="w-full h-full flex-none items-center justify-center">
+    <div className="h-full w-full flex-none items-center justify-center">
       {hasAnyMessages ? (
-        <div className="w-full h-full flex-1 flex flex-col">
+        <div className="flex h-full w-full flex-1 flex-col">
           {/* New Project Chat Container */}
           <ProjectChatContainer
             // onPauseResume={handlePauseResume}  // Commented out - temporary not needed
@@ -1021,14 +1045,14 @@ export default function ChatBox(): JSX.Element {
         </div>
       ) : (
         // Init ChatBox
-        <div className="w-full h-[calc(100vh-54px)] flex items-center py-2 relative overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none"></div>
-          <div className=" w-full flex flex-col relative z-10">
-            <div className="flex flex-col items-center gap-1 h-[210px] justify-end">
-              <div className="text-body-lg text-text-heading text-center font-bold">
+        <div className="relative flex h-[calc(100vh-54px)] w-full items-center overflow-hidden py-2">
+          <div className="pointer-events-none absolute inset-0"></div>
+          <div className="relative z-10 flex w-full flex-col">
+            <div className="flex h-[210px] flex-col items-center justify-end gap-1">
+              <div className="text-center text-body-lg font-bold text-text-heading">
                 {t('layout.welcome-to-eigent')}
               </div>
-              <div className="text-body-lg leading-7 text-text-label text-center mb-5">
+              <div className="mb-5 text-center text-body-lg leading-7 text-text-label">
                 {t('layout.how-can-i-help-you')}
               </div>
             </div>
@@ -1062,17 +1086,17 @@ export default function ChatBox(): JSX.Element {
                 }}
               />
             )}
-            <div className="h-[210px] flex justify-center items-start gap-2 mt-3 pr-2">
+            <div className="mt-3 flex h-[210px] items-start justify-center gap-2 pr-2">
               {!hasModel ? (
                 <div className="flex items-center gap-2">
                   <div
                     onClick={() => {
                       navigate('/setting/models');
                     }}
-                    className="cursor-pointer flex items-center gap-2 px-sm py-xs rounded-md bg-surface-warning"
+                    className="flex cursor-pointer items-center gap-2 rounded-md bg-surface-warning px-sm py-xs"
                   >
                     <TriangleAlert size={20} className="text-icon-warning" />
-                    <span className="flex-1 text-text-warning text-xs font-medium leading-[20px]">
+                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-warning">
                       {t('layout.please-select-model')}
                     </span>
                   </div>
@@ -1107,34 +1131,35 @@ export default function ChatBox(): JSX.Element {
                         setPrivacy(true);
                       }
                     }}
-                    className="group cursor-pointer max-w-64 flex items-center justify-center gap-2 px-md py-xs rounded-xl bg-surface-information hover:bg-surface-tertiary transition-all duration-200"
+                    className="group flex max-w-64 cursor-pointer items-center justify-center gap-2 rounded-xl bg-surface-information px-md py-xs transition-all duration-200 hover:bg-surface-tertiary"
                   >
                     <div className="shrink-0">
                       {privacy ? (
                         <SquareCheckBig
                           size={20}
-                          className="text-icon-success shrink-0"
+                          className="shrink-0 text-icon-success"
                         />
                       ) : (
-                        <div className="relative flex items-center justify-center shrink-0">
+                        <div className="relative flex shrink-0 items-center justify-center">
                           <Square
                             size={20}
-                            className="text-icon-information group-hover:opacity-0 transition-opacity"
+                            className="text-icon-information transition-opacity group-hover:opacity-0"
                           />
                           <SquareCheckBig
                             size={20}
-                            className="text-icon-information absolute inset-0 opacity-0 group-hover:opacity-50 transition-opacity"
+                            className="absolute inset-0 text-icon-information opacity-0 transition-opacity group-hover:opacity-50"
                           />
                         </div>
                       )}
                     </div>
-                    <span className="flex-1 text-text-information text-label-xs font-medium leading-normal cursor-pointer">
+                    <span className="flex-1 cursor-pointer text-label-xs font-medium leading-normal text-text-information">
                       {t('layout.by-messaging-eigent')}{' '}
                       <a
                         href="https://www.eigent.ai/terms-of-use"
                         target="_blank"
                         className="text-text-information underline"
                         onClick={(e) => e.stopPropagation()}
+                        rel="noreferrer"
                       >
                         {t('layout.terms-of-use')}
                       </a>{' '}
@@ -1144,6 +1169,7 @@ export default function ChatBox(): JSX.Element {
                         target="_blank"
                         className="text-text-information underline"
                         onClick={(e) => e.stopPropagation()}
+                        rel="noreferrer"
                       >
                         {t('layout.privacy-policy')}
                       </a>
@@ -1170,7 +1196,7 @@ export default function ChatBox(): JSX.Element {
                   ].map(({ label, message }) => (
                     <div
                       key={label}
-                      className="cursor-pointer px-sm py-xs rounded-md bg-input-bg-default opacity-70 hover:opacity-100 text-xs font-medium leading-none text-button-tertiery-text-default transition-all duration-300"
+                      className="cursor-pointer rounded-md bg-input-bg-default px-sm py-xs text-xs font-medium leading-none text-button-tertiery-text-default opacity-70 transition-all duration-300 hover:opacity-100"
                       onClick={() => {
                         setMessage(message);
                       }}

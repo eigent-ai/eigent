@@ -12,27 +12,26 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { Input } from '@/components/ui/input';
+import { Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface SearchInputProps {
-    value: string;
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export default function SearchInput({ value, onChange }: SearchInputProps) {
-	const { t } = useTranslation();
-	return (
-		<div className="relative w-full">
-			<Input
-				size="sm"
-				value={value}
-				onChange={onChange}
-				placeholder={t("setting.search-mcp")}
-				leadingIcon={<Search className="w-5 h-5 text-icon-secondary" />}
-			/>
-			
-		</div>
-	);
+  const { t } = useTranslation();
+  return (
+    <div className="relative w-full">
+      <Input
+        size="sm"
+        value={value}
+        onChange={onChange}
+        placeholder={t('setting.search-mcp')}
+        leadingIcon={<Search className="h-5 w-5 text-icon-secondary" />}
+      />
+    </div>
+  );
 }
