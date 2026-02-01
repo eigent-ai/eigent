@@ -131,7 +131,7 @@
     "@vitejs/plugin-react": "^4.3.3",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
+    "electron": "^40.1.0",
     "electron-builder": "^24.13.3",
     "electron-devtools-installer": "^4.0.0",
     "eslint": "^9.39.2",
