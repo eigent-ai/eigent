@@ -549,29 +549,34 @@ export class FileReader {
 				if (this.hiddenFolders.includes(file)) continue;
 
 				const filePath = path.join(dirPath, file);
-				const stats = fs.lstatSync(filePath);
-				if (stats.isSymbolicLink()) continue;
-				const realPath = fs.realpathSync(filePath);
-				const relativeToBase = path.relative(resolvedBase, realPath);
-				if (relativeToBase.startsWith('..') || path.isAbsolute(relativeToBase)) {
+				try {
+					const stats = fs.lstatSync(filePath);
+					if (stats.isSymbolicLink()) continue;
+					const realPath = fs.realpathSync(filePath);
+					const relativeToBase = path.relative(resolvedBase, realPath);
+					if (relativeToBase.startsWith('..') || path.isAbsolute(relativeToBase)) {
+						continue;
+					}
+					const isFolder = stats.isDirectory();
+					const relativePath = path.relative(basePath, dirPath);
+
+					const fileInfo: FileInfo = {
+						path: filePath,
+						name: file,
+						type: isFolder ? 'folder' : (file.split('.').pop()?.toLowerCase() || ''),
+						isFolder: isFolder,
+						relativePath: relativePath === '' ? '' : relativePath
+					};
+
+					result.push(fileInfo);
+
+					if (isFolder) {
+						const subFiles = this.getFilesRecursive(filePath, basePath, resolvedBase);
+						result.push(...subFiles);
+					}
+				} catch (fileErr) {
+					console.warn("Skipping inaccessible file:", filePath, fileErr);
 					continue;
-				}
-				const isFolder = stats.isDirectory();
-				const relativePath = path.relative(basePath, dirPath);
-
-				const fileInfo: FileInfo = {
-					path: filePath,
-					name: file,
-					type: isFolder ? 'folder' : (file.split('.').pop()?.toLowerCase() || ''),
-					isFolder: isFolder,
-					relativePath: relativePath === '' ? '' : relativePath
-				};
-
-				result.push(fileInfo);
-
-				if (isFolder) {
-					const subFiles = this.getFilesRecursive(filePath, basePath, resolvedBase);
-					result.push(...subFiles);
 				}
 			}
 
