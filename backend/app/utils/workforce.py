@@ -21,7 +21,7 @@ from app.exception.exception import UserException
 from app.service.task import (Action, ActionAssignTaskData, ActionEndData,
                               ActionTaskStateData, ActionTimeoutData,
                               get_camel_task, get_task_lock)
-from app.utils.agent import ListenChatAgent
+from app.agent.listen_chat_agent import ListenChatAgent
 from app.utils.single_agent_worker import SingleAgentWorker
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from camel.agents import ChatAgent

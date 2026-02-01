@@ -187,5 +187,13 @@
 	"failed-to-delete-cookies": "删除 Cookie 失败，请重试。",
 	"confirm-delete-all-cookies": "确定要删除所有 Cookie 吗？此操作无法撤销。",
 	"all-cookies-deleted": "所有 Cookie 已成功删除。",
-	"cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。"
+	"cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。",
+
+	"network-proxy": "网络代理",
+	"network-proxy-description": "配置网络请求的代理服务器。如果您需要通过代理访问外部 API，这将非常有用。",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "代理配置已保存。请重启应用以应用更改。",
+	"proxy-save-failed": "保存代理配置失败。",
+	"proxy-invalid-url": "无效的代理 URL。必须以 http://、https://、socks4:// 或 socks5:// 开头。",
+	"proxy-restart-hint": "需要重启应用以应用代理更改。"
 }

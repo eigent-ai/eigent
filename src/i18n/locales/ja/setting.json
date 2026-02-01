@@ -160,6 +160,14 @@
   "recommended": "おすすめ",
   "reset": "リセット",
   "reset-success": "リセットに成功しました！",
-  "reset-failed": "リセットに失敗しました！"
+  "reset-failed": "リセットに失敗しました！",
+
+	"network-proxy": "ネットワークプロキシ",
+	"network-proxy-description": "ネットワークリクエスト用のプロキシサーバーを設定します。プロキシ経由で外部APIにアクセスする必要がある場合に便利です。",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "プロキシ設定が保存されました。変更を適用するにはアプリを再起動してください。",
+	"proxy-save-failed": "プロキシ設定の保存に失敗しました。",
+	"proxy-invalid-url": "無効なプロキシURLです。http://、https://、socks4://、またはsocks5://で始まる必要があります。",
+	"proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。"
 }
 

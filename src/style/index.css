@@ -1,4 +1,4 @@
-@import "./token.css";
+@import './token.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -31,7 +31,6 @@ body {
   width: 100%;
   height: 100%;
   background-color: transparent !important;
-
 }
 
 @layer base {
@@ -107,7 +106,6 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-
 }
 
 #root {
@@ -132,7 +130,7 @@ body {
   -webkit-backdrop-filter: blur(75px);
 }
 
-.blur>* {
+.blur > * {
   position: relative;
   z-index: 3;
 }
@@ -148,7 +146,13 @@ body {
 
 /* Perfect Shadow */
 .perfect-shadow {
-  box-shadow: 0 8px 20px -2px rgba(29, 33, 41, 0.10), 0 32px 48px -12px rgba(29, 33, 41, 0.12), 0 96px 120px -12px rgba(65, 74, 92, 0.06), 0 108px 72px -16px rgba(65, 74, 92, 0.08), 0 32px 64px -8px rgba(113, 153, 189, 0.12), 0 8px 10px 0 rgba(113, 153, 189, 0.12);
+  box-shadow:
+    0 8px 20px -2px rgba(29, 33, 41, 0.1),
+    0 32px 48px -12px rgba(29, 33, 41, 0.12),
+    0 96px 120px -12px rgba(65, 74, 92, 0.06),
+    0 108px 72px -16px rgba(65, 74, 92, 0.08),
+    0 32px 64px -8px rgba(113, 153, 189, 0.12),
+    0 8px 10px 0 rgba(113, 153, 189, 0.12);
 }
 
 .blur-effect {
@@ -163,7 +167,7 @@ body {
 .custom-resizable-handle {
   width: 1px;
   height: 100%;
-  background: rgba(200,200,200,0.3);
+  background: rgba(200, 200, 200, 0.3);
   transition: all 0.2s ease;
   position: relative;
 }
@@ -190,8 +194,6 @@ body {
   width: 100vw;
   height: 100vh;
 }
-
-
 
 h1 {
   font-size: 3.2em;
@@ -234,7 +236,6 @@ code {
 .drag {
   -webkit-app-region: drag;
 }
-
 
 @layer base {
   :root {
@@ -310,7 +311,6 @@ code {
   }
 }
 
-
 /* scroll Style */
 
 .scrollbar {
@@ -381,7 +381,6 @@ code {
   background: transparent;
 }
 
-
 .terminal-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
@@ -435,7 +434,6 @@ code {
   scrollbar-width: none;
   /* Firefox */
 }
-
 
 .xterm .xterm-viewport::-webkit-scrollbar {
   width: 8px;

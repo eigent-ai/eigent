@@ -14,13 +14,12 @@
 
 'use client';
 
-import * as React from 'react';
 import { motion, Variants } from 'motion/react';
 
 import {
   getVariants,
-  useAnimateIconContext,
   IconWrapper,
+  useAnimateIconContext,
   type IconProps,
 } from '@/components/animate-ui/icons/icon';
 
@@ -126,6 +125,6 @@ export {
   animations,
   Pin,
   Pin as PinIcon,
-  type PinProps,
   type PinProps as PinIconProps,
+  type PinProps,
 };

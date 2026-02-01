@@ -26,4 +26,4 @@ icon: plug
 
 ![check_mcp](/docs/images/tools_check.png)
 
-- After configuring your mcp server, you can add it to a Custom  Agent.
+- After configuring your mcp server, you can add it to a Custom Agent.

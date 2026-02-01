@@ -1,6 +1,6 @@
 ---
-title: "Bring Your Own Key (BYOK)"
-description: "Configure your own API keys to use various LLM providers with Eigent."
+title: 'Bring Your Own Key (BYOK)'
+description: 'Configure your own API keys to use various LLM providers with Eigent.'
 ---
 
 ## What is BYOK?
@@ -25,12 +25,13 @@ description: "Configure your own API keys to use various LLM providers with Eige
 2. Find the **OpenAI** card in the Custom Model section
 
    <img
-     src="/images/Screenshot2026-01-20at18.13.45.png"
-     alt="Screenshot 2026 01 20 At 18 13 45"
-     title="Screenshot 2026 01 20 At 18 13 45"
-     className="mr-auto"
-     style={{ width:"74%" }}
+   src="/images/Screenshot2026-01-20at18.13.45.png"
+   alt="Screenshot 2026 01 20 At 18 13 45"
+   title="Screenshot 2026 01 20 At 18 13 45"
+   className="mr-auto"
+   style={{ width:"74%" }}
    />
+
 3. Fill in the following fields:
 
 | Field          | Value                     | Example                     |

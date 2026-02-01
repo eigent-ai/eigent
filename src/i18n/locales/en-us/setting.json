@@ -187,7 +187,15 @@
 	"failed-to-delete-cookies": "Failed to delete cookies. Please try again.",
 	"confirm-delete-all-cookies": "Are you sure you want to delete all cookies? This action cannot be undone.",
 	"all-cookies-deleted": "All cookies have been deleted successfully.",
-	"cookie-delete-warning": "Note: Deleting cookies will log you out of the associated websites. You may need to restart the browser to see changes take effect."
-	}
+	"cookie-delete-warning": "Note: Deleting cookies will log you out of the associated websites. You may need to restart the browser to see changes take effect.",
+
+	"network-proxy": "Network Proxy",
+	"network-proxy-description": "Configure a proxy server for network requests. This is useful if you need to access external APIs through a proxy.",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "Proxy configuration saved. Restart the app to apply changes.",
+	"proxy-save-failed": "Failed to save proxy configuration.",
+	"proxy-invalid-url": "Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.",
+	"proxy-restart-hint": "Restart required to apply proxy changes."
+}
 
 
