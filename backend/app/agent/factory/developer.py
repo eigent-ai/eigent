@@ -22,6 +22,7 @@ from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.human_toolkit import HumanToolkit
+from app.utils.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
@@ -60,6 +61,10 @@ async def developer_agent(options: Chat):
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
+    knowledge_base_toolkit = KnowledgeBaseToolkit(
+        api_task_id=options.project_id,
+        agent_name=Agents.developer_agent,
+    )
 
     tools = [
         *HumanToolkit.get_can_use_tools(options.project_id,
@@ -68,6 +73,7 @@ async def developer_agent(options: Chat):
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
+        *knowledge_base_toolkit.get_tools(),
     ]
     system_message = DEVELOPER_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -89,5 +95,6 @@ async def developer_agent(options: Chat):
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             WebDeployToolkit.toolkit_name(),
+            KnowledgeBaseToolkit.toolkit_name(),
         ],
     )

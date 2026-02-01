@@ -27,6 +27,7 @@ from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
+from app.utils.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
 from app.utils.toolkit.lark_toolkit import LarkToolkit
 from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
@@ -59,6 +60,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "google_drive_mcp_toolkit": GoogleDriveMCPToolkit,
         "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
         "image_analysis_toolkit": ImageAnalysisToolkit,
+        "knowledge_base_toolkit": KnowledgeBaseToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "lark_toolkit": LarkToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
