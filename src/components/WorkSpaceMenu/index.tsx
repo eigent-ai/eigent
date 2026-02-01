@@ -14,16 +14,7 @@
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkerList } from "@/store/authStore";
-import {
-	Bot,
-	FileText,
-	Globe,
-	Image,
-	Inbox,
-	CodeXml,
-	Bird,
-	LayoutGrid,
-} from "lucide-react";
+import { Bot, FileText, Globe, Image, Inbox, CodeXml, Bird, LayoutGrid } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { AddWorker } from "@/components/AddWorker";
@@ -65,9 +56,9 @@ export function WorkSpaceMenu() {
 		},
 		// {
 		// 	tasks: [],
-		// 	agent_id: "social_medium_agent",
-		// 	name: "Social Medium Agent",
-		// 	type: "social_medium_agent",
+		// 	agent_id: "social_media_agent",
+		// 	name: "Social Media Agent",
+		// 	type: "social_media_agent",
 		// 	log: [],
 		// 	activeWebviewIds: [],
 		// },
@@ -82,40 +73,24 @@ export function WorkSpaceMenu() {
 	];
 	const [agentList, setAgentList] = useState<Agent[]>([]);
 	useEffect(() => {
-		const taskAssigning =
-			chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
-		const base = [...baseWorker, ...workerList].filter(
-			(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
-		);
+		const taskAssigning = chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
+		const base = [...baseWorker, ...workerList].filter((worker) => !taskAssigning.find((agent) => agent.type === worker.type));
 		setAgentList([...base, ...taskAssigning]);
-	}, [
-		chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning,
-		workerList,
-	]);
+	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning, workerList]);
 
 	useEffect(() => {
 		const cleanup = window.electronAPI.onWebviewNavigated((id: string, url: string) => {
-			let webViewUrls = [
-				...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls,
-			];
-			let taskAssigning = [
-				...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
-			];
-			const hasId = taskAssigning.find((item) =>
-				item.activeWebviewIds?.find((webview) => webview.id === id)
-			);
+			let webViewUrls = [...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls];
+			let taskAssigning = [...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning];
+			const hasId = taskAssigning.find((item) => item.activeWebviewIds?.find((webview) => webview.id === id));
 			if (!hasId) {
-				const hasUrl = webViewUrls.find(
-					(item) => new URL(item.url).hostname === new URL(url).hostname
-				);
+				const hasUrl = webViewUrls.find((item) => new URL(item.url).hostname === new URL(url).hostname);
 
 				if (hasUrl) {
-					const activeAgentIndex = taskAssigning.findIndex((item) =>
-						item.tasks.find((task) => task.id === hasUrl?.processTaskId)
-					);
+					const activeAgentIndex = taskAssigning.findIndex((item) => item.tasks.find((task) => task.id === hasUrl?.processTaskId));
 
 					if (activeAgentIndex === -1) {
-						const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+						const browserAgentIndex = taskAssigning.findIndex((item) => item.type === "browser_agent");
 						if (browserAgentIndex !== -1) {
 							taskAssigning[browserAgentIndex].activeWebviewIds?.push({
 								id,
@@ -123,10 +98,7 @@ export function WorkSpaceMenu() {
 								img: "",
 								processTaskId: hasUrl?.processTaskId || "",
 							});
-							chatStore.setTaskAssigning(
-								chatStore.activeTaskId as string,
-								taskAssigning
-							);
+							chatStore.setTaskAssigning(chatStore.activeTaskId as string, taskAssigning);
 						}
 					} else {
 						taskAssigning[activeAgentIndex].activeWebviewIds?.push({
@@ -135,21 +107,16 @@ export function WorkSpaceMenu() {
 							img: "",
 							processTaskId: hasUrl?.processTaskId || "",
 						});
-						chatStore.setTaskAssigning(
-							chatStore.activeTaskId as string,
-							taskAssigning
-						);
+						chatStore.setTaskAssigning(chatStore.activeTaskId as string, taskAssigning);
 					}
 					const urlIndex = webViewUrls.findIndex((item) => item.url === url);
 					if (urlIndex !== -1) {
 						webViewUrls.splice(urlIndex, 1);
 					}
-					chatStore.setWebViewUrls(chatStore.activeTaskId as string, [
-						...webViewUrls,
-					]);
+					chatStore.setWebViewUrls(chatStore.activeTaskId as string, [...webViewUrls]);
 				} else {
 					// If no URL match found, also try to add to browser_agent
-					const browserAgentIndex = taskAssigning.findIndex((item) => item.type === 'browser_agent');
+					const browserAgentIndex = taskAssigning.findIndex((item) => item.type === "browser_agent");
 					if (browserAgentIndex !== -1 && webViewUrls.length > 0) {
 						taskAssigning[browserAgentIndex].activeWebviewIds?.push({
 							id,
@@ -157,10 +124,7 @@ export function WorkSpaceMenu() {
 							img: "",
 							processTaskId: webViewUrls[0]?.processTaskId || "",
 						});
-						chatStore.setTaskAssigning(
-							chatStore.activeTaskId as string,
-							taskAssigning
-						);
+						chatStore.setTaskAssigning(chatStore.activeTaskId as string, taskAssigning);
 					}
 				}
 			}
@@ -185,27 +149,13 @@ export function WorkSpaceMenu() {
 					window.ipcRenderer
 						.invoke("capture-webview", webview.id)
 						.then((base64: string) => {
-							let taskAssigning = [
-								...chatStore.tasks[chatStore.activeTaskId as string]
-									.taskAssigning,
-							];
-							const browserAgentIndex = taskAssigning.findIndex(
-								(agent) => agent.agent_id === webview.agent_id
-							);
+							let taskAssigning = [...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning];
+							const browserAgentIndex = taskAssigning.findIndex((agent) => agent.agent_id === webview.agent_id);
 
-							if (
-								browserAgentIndex !== -1 &&
-								base64 &&
-								base64 !== "data:image/jpeg;base64,"
-							) {
-								taskAssigning[browserAgentIndex].activeWebviewIds![
-									webview.index
-								].img = base64;
+							if (browserAgentIndex !== -1 && base64 && base64 !== "data:image/jpeg;base64,") {
+								taskAssigning[browserAgentIndex].activeWebviewIds![webview.index].img = base64;
 
-								chatStore.setTaskAssigning(
-									chatStore.activeTaskId as string,
-									taskAssigning
-								);
+								chatStore.setTaskAssigning(chatStore.activeTaskId as string, taskAssigning);
 							}
 						})
 						.catch((error) => {
@@ -220,11 +170,7 @@ export function WorkSpaceMenu() {
 
 		// Cleanup function to remove listener when component unmounts or dependencies change
 		return cleanup;
-	}, [
-		chatStore.activeTaskId,
-		chatStore.tasks[chatStore.activeTaskId as string]?.webViewUrls,
-		chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning,
-	]);
+	}, [chatStore.activeTaskId, chatStore.tasks[chatStore.activeTaskId as string]?.webViewUrls, chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
 
 	const agentMap = {
 		developer_agent: {
@@ -263,7 +209,7 @@ export function WorkSpaceMenu() {
 			borderColor: "border-bg-fill-multimodal-active",
 			bgColorLight: "bg-fuchsia-200",
 		},
-		social_medium_agent: {
+		social_media_agent: {
 			name: t("layout.social-media-agent"),
 			icon: <Bird size={16} className="text-text-primary" />,
 			textColor: "text-purple-700",
@@ -274,31 +220,11 @@ export function WorkSpaceMenu() {
 		},
 	};
 	const agentIconMap = {
-		developer_agent: (
-			<CodeXml
-				className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`}
-			/>
-		),
-		browser_agent: (
-			<Globe
-				className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`}
-			/>
-		),
-		document_agent: (
-			<FileText
-				className={`!h-[10px] !w-[10px] ${agentMap.document_agent.textColor}`}
-			/>
-		),
-		multi_modal_agent: (
-			<Image
-				className={`!h-[10px] !w-[10px] ${agentMap.multi_modal_agent.textColor}`}
-			/>
-		),
-		social_medium_agent: (
-			<Bird
-				className={`!h-[10px] !w-[10px] ${agentMap.social_medium_agent.textColor}`}
-			/>
-		),
+		developer_agent: <CodeXml className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`} />,
+		browser_agent: <Globe className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`} />,
+		document_agent: <FileText className={`!h-[10px] !w-[10px] ${agentMap.document_agent.textColor}`} />,
+		multi_modal_agent: <Image className={`!h-[10px] !w-[10px] ${agentMap.multi_modal_agent.textColor}`} />,
+		social_media_agent: <Bird className={`!h-[10px] !w-[10px] ${agentMap.social_media_agent.textColor}`} />,
 	};
 
 	const onValueChange = (val: string) => {
@@ -323,30 +249,17 @@ export function WorkSpaceMenu() {
 						<ToggleGroup
 							type="single"
 							size="sm"
-							value={
-								chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace as string
-							}
+							value={chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace as string}
 							onValueChange={onValueChange}
 							className="flex items-center gap-2"
 						>
 							<ToggleGroupItem value="workflow" className="!w-10 !h-10 p-2">
 								<LayoutGrid className="!h-6 !w-6" />
 							</ToggleGroupItem>
-							<ToggleGroupItem
-								value="documentWorkSpace"
-								className="!w-10 !h-10 p-2 relative"
-							>
-								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
-									0 && (
-									<Badge
-										className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%"
-										variant="destructive"
-									>
-										{
-											chatStore.tasks[chatStore.activeTaskId as string]
-												.nuwFileNum
-										}
+							<ToggleGroupItem value="documentWorkSpace" className="!w-10 !h-10 p-2 relative">
+								{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum > 0 && (
+									<Badge className="absolute top-0.5 right-0.5 h-4 min-w-4 rounded-full px-1 font-mono tabular-nums bg-icon-cuation text-white-100%" variant="destructive">
+										{chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum}
 									</Badge>
 								)}
 								<Inbox className="!h-6 !w-6" />
@@ -366,10 +279,7 @@ export function WorkSpaceMenu() {
 						>
 							<ToggleGroup
 								type="single"
-								value={
-									chatStore.tasks[chatStore.activeTaskId as string]
-										.activeWorkSpace as string
-								}
+								value={chatStore.tasks[chatStore.activeTaskId as string].activeWorkSpace as string}
 								onValueChange={onValueChange}
 								className="flex items-center gap-2 max-w-[500px] overflow-x-auto scrollbar-horizontal"
 							>
@@ -387,28 +297,13 @@ export function WorkSpaceMenu() {
 											layout
 										>
 											<ToggleGroupItem
-												disabled={
-													![
-														"developer_agent",
-														"browser_agent",
-														"document_agent",
-													].includes(agent.type as AgentNameType) ||
-													agent.tasks.length === 0
-												}
+												disabled={!["developer_agent", "browser_agent", "document_agent"].includes(agent.type as AgentNameType) || agent.tasks.length === 0}
 												value={agent.agent_id}
 												aria-label="Toggle bold"
-												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${
-													agent.tasks.length === 0 && "opacity-30"
-												}`}
+												className={`relative !w-10 !h-10 !p-2 hover:bg-white-100% ${agent.tasks.length === 0 && "opacity-30"}`}
 											>
 												<Bot className={`!h-6 !w-6 `} />
-												<div className="absolute top-0 right-1">
-													{
-														agentIconMap[
-															agent.type as keyof typeof agentIconMap
-														]
-													}
-												</div>
+												<div className="absolute top-0 right-1">{agentIconMap[agent.type as keyof typeof agentIconMap]}</div>
 											</ToggleGroupItem>
 										</motion.div>
 									))}

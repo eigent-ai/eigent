@@ -13,14 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import {
-	PanOnScrollMode,
-	ReactFlow,
-	useNodesState,
-	useReactFlow,
-	Node as FlowNode,
-	NodeTypes,
-} from "@xyflow/react";
+import { PanOnScrollMode, ReactFlow, useNodesState, useReactFlow, Node as FlowNode, NodeTypes } from "@xyflow/react";
 import { Button } from "@/components/ui/button";
 import { Node as CustomNodeComponent } from "./node";
 
@@ -47,12 +40,8 @@ const nodeTypes: NodeTypes = {
 
 const VIEWPORT_ANIMATION_DURATION = 500;
 
-export default function Workflow({
-	taskAssigning,
-}: {
-	taskAssigning: Agent[];
-}) {
-	const {t} = useTranslation();
+export default function Workflow({ taskAssigning }: { taskAssigning: Agent[] }) {
+	const { t } = useTranslation();
 	//Get Chatstore for the active project's task
 	const { chatStore } = useChatStoreAdapter();
 	if (!chatStore) {
@@ -69,12 +58,7 @@ export default function Workflow({
 		{
 			tasks: [],
 			agent_id: "developer_agent",
-			tools: [
-				"Human Toolkit",
-				"Terminal Toolkit",
-				"Note Taking Toolkit",
-				"Web Deploy Toolkit",
-			],
+			tools: ["Human Toolkit", "Terminal Toolkit", "Note Taking Toolkit", "Web Deploy Toolkit"],
 			name: "Developer Agent",
 			type: "developer_agent",
 			log: [],
@@ -85,13 +69,7 @@ export default function Workflow({
 			agent_id: "browser_agent",
 			name: "Browser Agent",
 			type: "browser_agent",
-			tools: [
-				"Search Toolkit",
-				"Browser Toolkit",
-				"Human Toolkit",
-				"Note Taking Toolkit",
-				"Terminal Toolkit",
-			],
+			tools: ["Search Toolkit", "Browser Toolkit", "Human Toolkit", "Note Taking Toolkit", "Terminal Toolkit"],
 			log: [],
 			activeWebviewIds: [],
 		},
@@ -115,9 +93,9 @@ export default function Workflow({
 		},
 		// {
 		// 	tasks: [],
-		// 	agent_id: "social_medium_agent",
-		// 	name: "Social Medium Agent",
-		// 	type: "social_medium_agent",
+		// 	agent_id: "social_media_agent",
+		// 	name: "Social Media Agent",
+		// 	type: "social_media_agent",
 		// 	log: [],
 		// 	activeWebviewIds: [],
 		// },
@@ -125,16 +103,7 @@ export default function Workflow({
 			tasks: [],
 			agent_id: "document_agent",
 			name: "Document Agent",
-			tools: [
-				"File Write Toolkit",
-				"Pptx Toolkit",
-				"Human Toolkit",
-				"Mark It Down Toolkit",
-				"Excel Toolkit",
-				"Note Taking Toolkit",
-				"Terminal Toolkit",
-				"Google Drive Mcp Toolkit",
-			],
+			tools: ["File Write Toolkit", "Pptx Toolkit", "Human Toolkit", "Mark It Down Toolkit", "Excel Toolkit", "Note Taking Toolkit", "Terminal Toolkit", "Google Drive Mcp Toolkit"],
 			type: "document_agent",
 			log: [],
 			activeWebviewIds: [],
@@ -199,8 +168,7 @@ export default function Workflow({
 							...node,
 							data: {
 								...node.data,
-								isExpanded:
-									node.id === nodeId ? isExpanded : node.data.isExpanded,
+								isExpanded: node.id === nodeId ? isExpanded : node.data.isExpanded,
 								isEditMode: isEditMode,
 							},
 						};
@@ -221,8 +189,7 @@ export default function Workflow({
 							...node,
 							data: {
 								...node.data,
-								isExpanded:
-									node.id === nodeId ? isExpanded : node.data.isExpanded,
+								isExpanded: node.id === nodeId ? isExpanded : node.data.isExpanded,
 								isEditMode: isEditMode,
 							},
 						};
@@ -240,7 +207,7 @@ export default function Workflow({
 				});
 			}
 		},
-		[setNodes, isEditMode]
+		[setNodes, isEditMode],
 	);
 
 	useEffect(() => {
@@ -248,9 +215,7 @@ export default function Workflow({
 		setNodes((prev: CustomNode[]) => {
 			if (!taskAssigning) return prev;
 			// Agents not yet in taskAssigning (from baseWorker or workerList)
-			const base = [...baseWorker, ...workerList].filter(
-				(worker) => !taskAssigning.find((agent) => agent.type === worker.type)
-			);
+			const base = [...baseWorker, ...workerList].filter((worker) => !taskAssigning.find((agent) => agent.type === worker.type));
 			let targetData = [...prev];
 			// Merge all agents
 			const allAgents = [...taskAssigning, ...base];
@@ -275,9 +240,7 @@ export default function Workflow({
 							isEditMode: isEditMode,
 							workerInfo: agent?.workerInfo,
 						},
-						position: isEditMode
-							? node.position
-							: { x: index * (342 + 20) + 8, y: 16 },
+						position: isEditMode ? node.position : { x: index * (342 + 20) + 8, y: 16 },
 					};
 				} else {
 					return {
@@ -320,10 +283,7 @@ export default function Workflow({
 		return Math.min(0, containerWidth - contentWidth);
 	}, [containerWidth, totalNodesWidth]);
 
-	const clampViewportX = useCallback(
-		(x: number) => Math.min(0, Math.max(minViewportX, x)),
-		[minViewportX]
-	);
+	const clampViewportX = useCallback((x: number) => Math.min(0, Math.max(minViewportX, x)), [minViewportX]);
 
 	useEffect(() => {
 		const updateWidth = () => {
@@ -349,7 +309,7 @@ export default function Workflow({
 			{ x: newX, y: viewport.y, zoom: viewport.zoom },
 			{
 				duration: VIEWPORT_ANIMATION_DURATION,
-			}
+			},
 		);
 		setTimeout(() => {
 			setIsAnimating(false);
@@ -361,8 +321,7 @@ export default function Workflow({
 	};
 
 	useEffect(() => {
-		const container: HTMLElement | null =
-			document.querySelector(".react-flow__pane");
+		const container: HTMLElement | null = document.querySelector(".react-flow__pane");
 		if (!container) return;
 
 		const onWheel = (e: WheelEvent) => {
@@ -385,9 +344,7 @@ export default function Workflow({
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-center">
 			<div className="flex items-center justify-between w-full ">
-				<div className="text-text-body font-bold text-lg leading-relaxed">
-					{t("workforce.your-ai-workforce")}
-				</div>
+				<div className="text-text-body font-bold text-lg leading-relaxed">{t("workforce.your-ai-workforce")}</div>
 				<div className="flex items-center justify-center gap-sm">
 					{/* <Button
 						variant="outline"
@@ -433,11 +390,7 @@ export default function Workflow({
 						>
 							<ChevronLeft className="w-4 h-4 text-icon-primary" />
 						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() => moveViewport(-200)}
-						>
+						<Button variant="ghost" size="icon" onClick={() => moveViewport(-200)}>
 							<ChevronRight className="w-4 h-4 text-icon-primary" />
 						</Button>
 					</div>

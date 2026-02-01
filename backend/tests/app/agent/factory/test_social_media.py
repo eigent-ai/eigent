@@ -13,18 +13,18 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
-from app.agent.factory import social_medium_agent
+from app.agent.factory import social_media_agent
 from app.model.chat import Chat
-
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio
-async def test_social_medium_agent_creation(sample_chat_data):
-    """Test social_medium_agent creates agent with social media tools."""
+async def test_social_media_agent_creation(sample_chat_data):
+    """Test social_media_agent creates agent with social media tools."""
     options = Chat(**sample_chat_data)
 
     # Setup task lock in the registry before calling agent function
@@ -32,18 +32,21 @@ async def test_social_medium_agent_creation(sample_chat_data):
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    with patch('app.agent.factory.social_medium.agent_model') as mock_agent_model, \
-         patch('asyncio.create_task'), \
-         patch('app.agent.factory.social_medium.WhatsAppToolkit') as mock_whatsapp_toolkit, \
-         patch('app.agent.factory.social_medium.TwitterToolkit') as mock_twitter_toolkit, \
-         patch('app.agent.factory.social_medium.LinkedInToolkit') as mock_linkedin_toolkit, \
-         patch('app.agent.factory.social_medium.RedditToolkit') as mock_reddit_toolkit, \
-         patch('app.agent.factory.social_medium.NotionMCPToolkit') as mock_notion_mcp_toolkit, \
-         patch('app.agent.factory.social_medium.GoogleGmailMCPToolkit') as mock_gmail_toolkit, \
-         patch('app.agent.factory.social_medium.GoogleCalendarToolkit') as mock_calendar_toolkit, \
-         patch('app.agent.factory.social_medium.HumanToolkit') as mock_human_toolkit, \
-         patch('app.agent.factory.social_medium.TerminalToolkit') as mock_terminal_toolkit, \
-         patch('app.agent.factory.social_medium.NoteTakingToolkit') as mock_note_toolkit:
+    mod = 'app.agent.factory.social_media'
+    with (
+        patch(f'{mod}.agent_model') as mock_agent_model,
+        patch('asyncio.create_task'),
+        patch(f'{mod}.WhatsAppToolkit') as mock_whatsapp_toolkit,
+        patch(f'{mod}.TwitterToolkit') as mock_twitter_toolkit,
+        patch(f'{mod}.LinkedInToolkit') as mock_linkedin_toolkit,
+        patch(f'{mod}.RedditToolkit') as mock_reddit_toolkit,
+        patch(f'{mod}.NotionMCPToolkit') as mock_notion_mcp_toolkit,
+        patch(f'{mod}.GoogleGmailMCPToolkit') as mock_gmail_toolkit,
+        patch(f'{mod}.GoogleCalendarToolkit') as mock_calendar_toolkit,
+        patch(f'{mod}.HumanToolkit') as mock_human_toolkit,
+        patch(f'{mod}.TerminalToolkit') as mock_terminal_toolkit,
+        patch(f'{mod}.NoteTakingToolkit') as mock_note_toolkit,
+    ):
 
         # Mock all toolkit instances
         mock_whatsapp_toolkit.get_can_use_tools.return_value = []
@@ -60,7 +63,7 @@ async def test_social_medium_agent_creation(sample_chat_data):
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent
 
-        result = await social_medium_agent(options)
+        result = await social_media_agent(options)
 
         assert result is mock_agent
         mock_agent_model.assert_called_once()

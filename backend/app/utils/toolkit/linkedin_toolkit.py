@@ -13,13 +13,14 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import json
-import os
 import logging
+import os
 import time
 from typing import Optional
 
 from camel.toolkits import LinkedInToolkit as BaseLinkedInToolkit
 from camel.toolkits.function_tool import FunctionTool
+
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
@@ -44,7 +45,7 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
     - Environment variable fallback
     """
 
-    agent_name: str = Agents.social_medium_agent
+    agent_name: str = Agents.social_media_agent
 
     def __init__(self, api_task_id: str, timeout: float | None = None):
         self.api_task_id = api_task_id
@@ -68,24 +69,33 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         from dotenv import load_dotenv
 
         # Force reload environment variables from default .env file
-        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        default_env_path = os.path.join(
+            os.path.expanduser("~"), ".eigent", ".env"
+        )
         if os.path.exists(default_env_path):
             load_dotenv(dotenv_path=default_env_path, override=True)
 
         # Try to load from token file first
         if os.path.exists(self._token_path):
             try:
-                with open(self._token_path, "r") as f:
+                with open(self._token_path) as f:
                     token_data = json.load(f)
                     access_token = token_data.get("access_token")
                     if access_token:
                         # Check if token is expired before loading
                         expires_at = token_data.get("expires_at")
                         if expires_at and int(time.time()) >= expires_at:
-                            logger.warning("LinkedIn token file contains expired token, skipping load")
+                            logger.warning(
+                                "LinkedIn token file contains "
+                                "expired token, skipping load"
+                            )
                         else:
                             os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
-                            logger.info(f"Loaded LinkedIn credentials from token file: {self._token_path}")
+                            logger.info(
+                                "Loaded LinkedIn credentials "
+                                "from token file: "
+                                f"{self._token_path}"
+                            )
             except Exception as e:
                 logger.warning(f"Could not load LinkedIn token file: {e}")
 
@@ -95,7 +105,9 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         from dotenv import load_dotenv
 
         # Force reload environment variables
-        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        default_env_path = os.path.join(
+            os.path.expanduser("~"), ".eigent", ".env"
+        )
         if os.path.exists(default_env_path):
             load_dotenv(dotenv_path=default_env_path, override=True)
 
@@ -103,14 +115,17 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         token_path = cls._build_canonical_token_path()
         if os.path.exists(token_path):
             try:
-                with open(token_path, "r") as f:
+                with open(token_path) as f:
                     token_data = json.load(f)
                     access_token = token_data.get("access_token")
                     if access_token:
                         # Check if token is expired before loading
                         expires_at = token_data.get("expires_at")
                         if expires_at and int(time.time()) >= expires_at:
-                            logger.warning("LinkedIn token file contains expired token, skipping load")
+                            logger.warning(
+                                "LinkedIn token file contains "
+                                "expired token, skipping load"
+                            )
                         else:
                             os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
             except Exception:
@@ -126,7 +141,8 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         r"""Save OAuth token to file.
 
         Args:
-            token_data: Dictionary containing access_token and optionally refresh_token
+            token_data: Dictionary containing access_token
+                and optionally refresh_token
 
         Returns:
             True if saved successfully, False otherwise
@@ -139,10 +155,12 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
 
             # Calculate expiration time if expires_in is provided
             if "expires_in" in token_data and "expires_at" not in token_data:
-                token_data["expires_at"] = token_data["saved_at"] + token_data["expires_in"]
+                token_data["expires_at"] = token_data["saved_at"] + token_data[
+                    "expires_in"]
             elif "expires_at" not in token_data:
                 # Default to 60 days if no expiration info provided
-                token_data["expires_at"] = token_data["saved_at"] + LINKEDIN_TOKEN_LIFETIME_SECONDS
+                token_data["expires_at"] = token_data[
+                    "saved_at"] + LINKEDIN_TOKEN_LIFETIME_SECONDS
 
             os.makedirs(os.path.dirname(token_path), exist_ok=True)
             with open(token_path, "w") as f:
@@ -151,7 +169,8 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
 
             # Also update environment variable
             if token_data.get("access_token"):
-                os.environ["LINKEDIN_ACCESS_TOKEN"] = token_data["access_token"]
+                os.environ["LINKEDIN_ACCESS_TOKEN"] = token_data["access_token"
+                                                                 ]
 
             return True
         except Exception as e:
@@ -175,7 +194,9 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
             token_dir = os.path.dirname(token_path)
             if os.path.exists(token_dir) and not os.listdir(token_dir):
                 os.rmdir(token_dir)
-                logger.info(f"Removed empty LinkedIn token directory: {token_dir}")
+                logger.info(
+                    f"Removed empty LinkedIn token directory: {token_dir}"
+                )
 
             # Clear environment variable
             if "LINKEDIN_ACCESS_TOKEN" in os.environ:
@@ -196,7 +217,9 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         from dotenv import load_dotenv
 
         # Force reload environment variables
-        default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
+        default_env_path = os.path.join(
+            os.path.expanduser("~"), ".eigent", ".env"
+        )
         if os.path.exists(default_env_path):
             load_dotenv(dotenv_path=default_env_path, override=True)
 
@@ -204,7 +227,7 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         token_path = cls._build_canonical_token_path()
         if os.path.exists(token_path):
             try:
-                with open(token_path, "r") as f:
+                with open(token_path) as f:
                     token_data = json.load(f)
                     if token_data.get("access_token"):
                         return True
@@ -224,7 +247,7 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         token_path = cls._build_canonical_token_path()
         if os.path.exists(token_path):
             try:
-                with open(token_path, "r") as f:
+                with open(token_path) as f:
                     return json.load(f)
             except Exception:
                 pass
@@ -240,7 +263,8 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         """
         token_info = cls.get_token_info()
         if not token_info:
-            return False  # No token file; cannot determine expiry, assume valid
+            # No token file; cannot determine expiry
+            return False
 
         expires_at = token_info.get("expires_at")
         if not expires_at:
@@ -261,7 +285,8 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         """
         token_info = cls.get_token_info()
         if not token_info:
-            return False  # No token file; cannot determine expiry, assume valid
+            # No token file; cannot determine expiry
+            return False
 
         expires_at = token_info.get("expires_at")
         if not expires_at:

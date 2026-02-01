@@ -12,9 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.agent_model import agent_model, set_main_event_loop
-from app.agent.tools import get_mcp_tools, get_toolkits
 from app.agent.factory import (
     browser_agent,
     developer_agent,
@@ -22,9 +20,11 @@ from app.agent.factory import (
     mcp_agent,
     multi_modal_agent,
     question_confirm_agent,
-    social_medium_agent,
+    social_media_agent,
     task_summary_agent,
 )
+from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.tools import get_mcp_tools, get_toolkits
 
 __all__ = [
     "ListenChatAgent",
@@ -38,6 +38,6 @@ __all__ = [
     "mcp_agent",
     "multi_modal_agent",
     "question_confirm_agent",
-    "social_medium_agent",
+    "social_media_agent",
     "task_summary_agent",
 ]
