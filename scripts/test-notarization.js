@@ -13,6 +13,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+/* global console, process */
+
 /**
  * Test script for macOS notarization issues
  * This script checks for common issues that cause notarization to fail:
@@ -22,9 +24,9 @@
  * 4. Other problematic files
  */
 
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,7 +41,9 @@ const APP_BUNDLE_PATTERN = /Eigent\.app$/;
  */
 function findAppBundle() {
   if (!fs.existsSync(RELEASE_DIR)) {
-    console.log('❌ Release directory does not exist. Please build the app first.');
+    console.log(
+      '❌ Release directory does not exist. Please build the app first.'
+    );
     console.log('   Run: npm run build:mac');
     return null;
   }
@@ -94,6 +98,7 @@ function checkNpmCache(bundlePath) {
         }
       }
     } catch (error) {
+      console.error(`Error checking npm cache: ${error}`);
       // Ignore errors
     }
   }
@@ -107,7 +112,7 @@ function checkNpmCache(bundlePath) {
 
   if (issues.length > 0) {
     console.log(`❌ Found ${issues.length} .npm-cache directory(ies):`);
-    issues.forEach(issue => console.log(`   - ${issue}`));
+    issues.forEach((issue) => console.log(`   - ${issue}`));
     return false;
   } else {
     console.log('✅ No .npm-cache directories found');
@@ -131,20 +136,29 @@ function checkFlacMac(bundlePath) {
       const entries = fs.readdirSync(venvLibPath, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory() && entry.name.startsWith('python')) {
-          const flacMacPath = path.join(venvLibPath, entry.name, 'site-packages', 'speech_recognition', 'flac-mac');
+          const flacMacPath = path.join(
+            venvLibPath,
+            entry.name,
+            'site-packages',
+            'speech_recognition',
+            'flac-mac'
+          );
           if (fs.existsSync(flacMacPath)) {
             issues.push(flacMacPath);
           }
         }
       }
     } catch (error) {
+      console.error(`Error checking flac-mac binary: ${error}`);
       // Ignore errors
     }
   }
 
   if (issues.length > 0) {
-    console.log(`❌ Found ${issues.length} flac-mac binary(ies) (outdated SDK):`);
-    issues.forEach(issue => console.log(`   - ${issue}`));
+    console.log(
+      `❌ Found ${issues.length} flac-mac binary(ies) (outdated SDK):`
+    );
+    issues.forEach((issue) => console.log(`   - ${issue}`));
     return false;
   } else {
     console.log('✅ No flac-mac binaries found');
@@ -173,28 +187,36 @@ function checkUnsignedBinaries(bundlePath) {
         if (entry.isFile() && entry.name.endsWith('.node')) {
           // Check if file is signed
           try {
-            const output = execSync(`codesign -dv "${fullPath}" 2>&1 || true`, { encoding: 'utf-8' });
+            const output = execSync(`codesign -dv "${fullPath}" 2>&1 || true`, {
+              encoding: 'utf-8',
+            });
             if (output.includes('code object is not signed')) {
               issues.push({
                 path: fullPath,
-                reason: 'Not signed'
+                reason: 'Not signed',
               });
             }
           } catch (error) {
+            console.error(`Error checking unsigned native binaries: ${error}`);
             // If codesign fails, assume it's not signed
             issues.push({
               path: fullPath,
-              reason: 'Could not verify signature'
+              reason: 'Could not verify signature',
             });
           }
         } else if (entry.isDirectory()) {
           // Skip certain directories
-          if (entry.name !== 'node_modules' && entry.name !== '__pycache__' && !entry.name.startsWith('.')) {
+          if (
+            entry.name !== 'node_modules' &&
+            entry.name !== '__pycache__' &&
+            !entry.name.startsWith('.')
+          ) {
             scanForNodeFiles(fullPath);
           }
         }
       }
     } catch (error) {
+      console.error(`Error checking unsigned native binaries: ${error}`);
       // Ignore errors
     }
   }
@@ -208,7 +230,7 @@ function checkUnsignedBinaries(bundlePath) {
 
   if (issues.length > 0) {
     console.log(`❌ Found ${issues.length} unsigned .node file(s):`);
-    issues.forEach(issue => {
+    issues.forEach((issue) => {
       console.log(`   - ${issue.path}`);
       console.log(`     Reason: ${issue.reason}`);
     });
@@ -239,6 +261,7 @@ function checkBundleSize(bundlePath) {
           }
         }
       } catch (error) {
+        console.error(`Error checking bundle size: ${error}`);
         // Ignore errors
       }
       return size;
@@ -249,9 +272,13 @@ function checkBundleSize(bundlePath) {
     console.log(`   App bundle size: ${sizeInMB} MB`);
 
     if (size > 500 * 1024 * 1024) {
-      console.log(`   ⚠️  Large bundle size (>500MB) may cause slow notarization (30-60 minutes)`);
+      console.log(
+        `   ⚠️  Large bundle size (>500MB) may cause slow notarization (30-60 minutes)`
+      );
     } else if (size > 200 * 1024 * 1024) {
-      console.log(`   ⚠️  Medium bundle size (200-500MB) may take 15-30 minutes to notarize`);
+      console.log(
+        `   ⚠️  Medium bundle size (200-500MB) may take 15-30 minutes to notarize`
+      );
     } else {
       console.log(`   ✅ Bundle size is reasonable for notarization`);
     }
@@ -289,20 +316,28 @@ function main() {
   console.log('\n📊 Summary:');
   console.log(`   .npm-cache directories: ${results.npmCache ? '✅' : '❌'}`);
   console.log(`   flac-mac binaries: ${results.flacMac ? '✅' : '❌'}`);
-  console.log(`   Unsigned .node files: ${results.unsignedBinaries ? '✅' : '❌'}`);
+  console.log(
+    `   Unsigned .node files: ${results.unsignedBinaries ? '✅' : '❌'}`
+  );
   console.log(`   Bundle size: ${results.bundleSize ? '✅' : '⚠️'}`);
 
-  const allPassed = Object.values(results).every(r => r);
+  const allPassed = Object.values(results).every((r) => r);
 
   if (allPassed) {
-    console.log('\n✅ All checks passed! The app should be ready for notarization.');
+    console.log(
+      '\n✅ All checks passed! The app should be ready for notarization.'
+    );
     console.log('\n💡 Note: This script only checks for common issues.');
     console.log('   Actual notarization may still fail for other reasons.');
     console.log('   To test actual notarization, you need:');
     console.log('   - Valid Apple Developer ID certificate');
-    console.log('   - APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID environment variables');
+    console.log(
+      '   - APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID environment variables'
+    );
   } else {
-    console.log('\n❌ Some checks failed. Please fix the issues above before notarization.');
+    console.log(
+      '\n❌ Some checks failed. Please fix the issues above before notarization.'
+    );
     process.exit(1);
   }
 }
