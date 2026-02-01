@@ -198,6 +198,13 @@ export default function SignUp() {
   );
 
   const handleReloadBtn = async (type: string) => {
+    if (!app) {
+      setGeneralError(
+        'Social sign-in is not configured for this build. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
+      );
+      console.error('Stack app not initialized');
+      return;
+    }
     localStorage.setItem('invite_code', formData.invite_code);
     console.log('handleReloadBtn1', type);
     const cookies = document.cookie.split('; ');

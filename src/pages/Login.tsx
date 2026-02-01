@@ -206,7 +206,6 @@ export default function Login() {
           return;
         }
         console.log('data', data);
-        setModelType('cloud');
 
         const authToken = (data as any)?.token as string | undefined;
         const email =
@@ -216,6 +215,7 @@ export default function Login() {
           return;
         }
 
+        setModelType('cloud');
         setAuth({
           token: authToken,
           email,
@@ -328,7 +328,7 @@ export default function Login() {
         setIsLoading(false);
         return;
       }
-      handleLoginByStack(accessToken);
+      await handleLoginByStack(accessToken);
       setTimeout(() => {
         lock = false;
       }, 1500);
