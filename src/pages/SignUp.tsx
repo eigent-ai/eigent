@@ -27,6 +27,10 @@ import eye from '@/assets/eye.svg';
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import { hasStackKeys } from '@/lib';
+import {
+  getLoginErrorMessage as getLoginErrorMessageBase,
+  loginByStackToken,
+} from '@/service/stackAuthApi';
 import { useTranslation } from 'react-i18next';
 
 const HAS_STACK_KEYS = hasStackKeys();
@@ -35,7 +39,12 @@ export default function SignUp() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
-  const { setAuth, initState: _initState } = useAuthStore();
+  const {
+    setAuth,
+    setModelType,
+    setLocalProxyValue,
+    initState: _initState,
+  } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [hidePassword, setHidePassword] = useState(true);
@@ -80,6 +89,16 @@ export default function SignUp() {
     setErrors(newErrors);
     return !newErrors.email && !newErrors.password;
   };
+
+  const getLoginErrorMessage = useCallback(
+    (data: any) =>
+      getLoginErrorMessageBase(
+        data,
+        t('layout.login-failed-please-check-your-email-and-password'),
+        t('layout.login-failed-please-try-again')
+      ),
+    [t]
+  );
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -150,22 +169,42 @@ export default function SignUp() {
   const handleLoginByStack = useCallback(
     async (token: string) => {
       try {
-        const data = await proxyFetchPost(
-          '/api/login-by_stack?token=' + token,
-          {
-            token: token,
-            invite_code: localStorage.getItem('invite_code') || '',
-          }
-        );
+        if (!token) {
+          setGeneralError(t('layout.login-failed-please-try-again'));
+          return;
+        }
+        const inviteCode = localStorage.getItem('invite_code') || '';
+        const data = await loginByStackToken({
+          token,
+          type: 'signup',
+          inviteCode: inviteCode || undefined,
+        });
 
-        if (data.code === 10) {
-          setGeneralError(
-            data.text || t('layout.login-failed-please-try-again')
-          );
+        const errorMessage = getLoginErrorMessage(data);
+        if (errorMessage) {
+          setGeneralError(errorMessage);
           return;
         }
         console.log('data', data);
-        setAuth({ email: formData.email, ...data });
+
+        const authToken = (data as any)?.token as string | undefined;
+        const email =
+          ((data as any)?.email as string | undefined) ?? formData.email;
+        if (!authToken || !email) {
+          setGeneralError(t('layout.login-failed-please-try-again'));
+          return;
+        }
+
+        setAuth({
+          token: authToken,
+          email,
+          username: (data as any)?.username ?? null,
+          user_id: (data as any)?.user_id ?? null,
+        });
+        setModelType('cloud');
+        // Record VITE_USE_LOCAL_PROXY value at login
+        const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+        setLocalProxyValue(localProxyValue);
         navigate('/');
       } catch (error: any) {
         console.error('Login failed:', error);
@@ -176,10 +215,27 @@ export default function SignUp() {
         setIsLoading(false);
       }
     },
-    [formData.email, navigate, setAuth, setGeneralError, setIsLoading, t]
+    [
+      formData.email,
+      navigate,
+      setAuth,
+      setModelType,
+      setLocalProxyValue,
+      setGeneralError,
+      setIsLoading,
+      getLoginErrorMessage,
+      t,
+    ]
   );
 
   const handleReloadBtn = async (type: string) => {
+    if (!app) {
+      setGeneralError(t('layout.login-failed-please-try-again'));
+      console.error(
+        'Stack app not initialized. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
+      );
+      return;
+    }
     localStorage.setItem('invite_code', formData.invite_code);
     console.log('handleReloadBtn1', type);
     const cookies = document.cookie.split('; ');
@@ -246,12 +302,18 @@ export default function SignUp() {
       lock = true;
       setIsLoading(true);
       const accessToken = await handleGetToken(code);
+      if (!accessToken) {
+        setGeneralError(t('layout.login-failed-please-try-again'));
+        setIsLoading(false);
+        lock = false;
+        return;
+      }
       await handleLoginByStack(accessToken);
       setTimeout(() => {
         lock = false;
       }, 1500);
     },
-    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
+    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading, t]
   );
 
   useEffect(() => {

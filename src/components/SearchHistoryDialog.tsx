@@ -14,9 +14,10 @@
 
 'use client';
 
-import { ScanFace, Search } from 'lucide-react';
+import { ScanFace, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { proxyFetchDelete } from '@/api/http';
 import GroupedHistoryView from '@/components/GroupedHistoryView';
 import {
   CommandDialog,
@@ -30,6 +31,7 @@ import {
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { replayProject } from '@/lib';
 import { fetchHistoryTasks } from '@/service/historyApi';
+import { getAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { useTranslation } from 'react-i18next';
@@ -74,9 +76,48 @@ export function SearchHistoryDialog() {
     await replayProject(projectStore, navigate, projectId, question, historyId);
   };
 
-  const handleDelete = (taskId: string) => {
-    // TODO: Implement delete functionality similar to HistorySidebar
-    console.log('Delete task:', taskId);
+  const handleDelete = async (historyId: string, callback?: () => void) => {
+    try {
+      await proxyFetchDelete(`/api/chat/history/${historyId}`);
+
+      // Also delete local files for this task if available (via Electron IPC)
+      const history = historyTasks.find(
+        (item) => String(item.id) === String(historyId)
+      );
+      const { email } = getAuthStore();
+      if (history?.task_id && (window as any).ipcRenderer) {
+        try {
+          await (window as any).ipcRenderer.invoke(
+            'delete-task-files',
+            email,
+            history.task_id,
+            history.project_id ?? undefined
+          );
+        } catch (error) {
+          console.warn('Local file cleanup failed:', error);
+        }
+      }
+
+      setHistoryTasks((list) =>
+        list.filter((item) => String(item.id) !== String(historyId))
+      );
+
+      // If no remaining tasks share the same project, clean up project store
+      if (history?.project_id) {
+        const hasRemaining = historyTasks.some(
+          (item) =>
+            String(item.id) !== String(historyId) &&
+            item.project_id === history.project_id
+        );
+        if (!hasRemaining) {
+          projectStore.removeProject(history.project_id);
+        }
+      }
+
+      callback?.();
+    } catch (error) {
+      console.error('Failed to delete history task:', error);
+    }
   };
 
   const handleShare = (taskId: string) => {
@@ -137,6 +178,22 @@ export function SearchHistoryDialog() {
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap">
                     {task.question}
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-foreground ml-auto"
+                    aria-label="Delete history"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (window.confirm(t('setting.confirm-delete'))) {
+                        void handleDelete(String(task.id));
+                      }
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </Button>
                 </CommandItem>
               ))}
             </CommandGroup>

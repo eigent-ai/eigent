@@ -28,6 +28,10 @@ import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import WindowControls from '@/components/WindowControls';
 import { hasStackKeys } from '@/lib';
+import {
+  getLoginErrorMessage as getLoginErrorMessageBase,
+  loginByStackWithAutoCreate,
+} from '@/service/stackAuthApi';
 import { useTranslation } from 'react-i18next';
 
 const HAS_STACK_KEYS = hasStackKeys();
@@ -82,41 +86,12 @@ export default function Login() {
   };
 
   const getLoginErrorMessage = useCallback(
-    (data: any) => {
-      if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
-        return '';
-      }
-
-      if (data.code === 0) {
-        return '';
-      }
-
-      if (data.code === 10) {
-        return (
-          data.text ||
-          t('layout.login-failed-please-check-your-email-and-password')
-        );
-      }
-
-      if (
-        data.code === 1 &&
-        Array.isArray(data.error) &&
-        data.error.length > 0
-      ) {
-        const firstError = data.error[0];
-        if (typeof firstError === 'string') {
-          return firstError;
-        }
-        if (typeof firstError?.msg === 'string') {
-          return firstError.msg;
-        }
-        if (typeof firstError?.message === 'string') {
-          return firstError.message;
-        }
-      }
-
-      return data.text || t('layout.login-failed-please-try-again');
-    },
+    (data: any) =>
+      getLoginErrorMessageBase(
+        data,
+        t('layout.login-failed-please-check-your-email-and-password'),
+        t('layout.login-failed-please-try-again')
+      ),
     [t]
   );
 
@@ -158,7 +133,20 @@ export default function Login() {
         return;
       }
 
-      setAuth({ email: formData.email, ...data });
+      const token = (data as any)?.token as string | undefined;
+      const email =
+        ((data as any)?.email as string | undefined) ?? formData.email;
+      if (!token) {
+        setGeneralError(t('layout.login-failed-please-try-again'));
+        return;
+      }
+
+      setAuth({
+        token,
+        email,
+        username: (data as any)?.username ?? null,
+        user_id: (data as any)?.user_id ?? null,
+      });
       setModelType('cloud');
       // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
@@ -177,12 +165,14 @@ export default function Login() {
   const handleLoginByStack = useCallback(
     async (token: string) => {
       try {
-        const data = await proxyFetchPost(
-          '/api/login-by_stack?token=' + token,
-          {
-            token: token,
-          }
-        );
+        // 1) Try normal login (existing profile)
+        // 2) If not found, auto-create profile via signup and continue
+        const data = await loginByStackWithAutoCreate(token);
+
+        if (!data) {
+          setGeneralError(t('layout.login-failed-please-try-again'));
+          return;
+        }
 
         const errorMessage = getLoginErrorMessage(data);
         if (errorMessage) {
@@ -190,8 +180,22 @@ export default function Login() {
           return;
         }
         console.log('data', data);
+
+        const authToken = (data as any)?.token as string | undefined;
+        const email =
+          ((data as any)?.email as string | undefined) ?? formData.email;
+        if (!authToken || !email) {
+          setGeneralError(t('layout.login-failed-please-try-again'));
+          return;
+        }
+
+        setAuth({
+          token: authToken,
+          email,
+          username: (data as any)?.username ?? null,
+          user_id: (data as any)?.user_id ?? null,
+        });
         setModelType('cloud');
-        setAuth({ email: formData.email, ...data });
         // Record VITE_USE_LOCAL_PROXY value at login
         const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
         setLocalProxyValue(localProxyValue);
@@ -220,7 +224,10 @@ export default function Login() {
 
   const handleReloadBtn = async (type: string) => {
     if (!app) {
-      console.error('Stack app not initialized');
+      setGeneralError(t('layout.login-failed-please-try-again'));
+      console.error(
+        'Stack app not initialized. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
+      );
       return;
     }
     console.log('handleReloadBtn1', type);
@@ -287,13 +294,19 @@ export default function Login() {
 
       lock = true;
       setIsLoading(true);
-      let accessToken = await handleGetToken(code);
-      handleLoginByStack(accessToken);
+      const accessToken = await handleGetToken(code);
+      if (!accessToken) {
+        setGeneralError(t('layout.login-failed-please-try-again'));
+        setIsLoading(false);
+        lock = false;
+        return;
+      }
+      await handleLoginByStack(accessToken);
       setTimeout(() => {
         lock = false;
       }, 1500);
     },
-    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
+    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading, t]
   );
 
   useEffect(() => {
