@@ -26,9 +26,11 @@ function isUserNotFoundResponse(
   res: StackLoginResponse | null | undefined
 ): boolean {
   if (!res || typeof res !== 'object') return false;
-  if (res.code !== 1) return false;
-  const text = String(res.text ?? '').toLowerCase();
-  return text.includes('user not found');
+  // Backend returns code 1 for user errors (not found, blocked, etc.).
+  // The text field is i18n-translated, so we cannot match on English strings.
+  // Falling back to signup for any code-1 error is safe: if the user exists
+  // but is blocked, the signup call returns the same "blocked" error.
+  return res.code === 1;
 }
 
 export async function loginByStackToken(params: {

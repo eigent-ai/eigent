@@ -48,6 +48,41 @@ describe('stackAuthApi', () => {
     expect(secondUrl).toContain('type=signup');
   });
 
+  it('falls back to signup when login returns i18n-translated user not found', async () => {
+    const { proxyFetchPost } = await import('@/api/http');
+
+    // Simulate non-English locale: backend returns translated text
+    vi.mocked(proxyFetchPost)
+      .mockResolvedValueOnce({ code: 1, text: '用户未找到' })
+      .mockResolvedValueOnce({ code: 0, token: 't', email: 'e@example.com' });
+
+    const res = await loginByStackWithAutoCreate('stack-token');
+
+    expect(res.code).toBe(0);
+    expect(vi.mocked(proxyFetchPost)).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to signup for blocked user and returns blocked error', async () => {
+    const { proxyFetchPost } = await import('@/api/http');
+
+    // Login returns code 1 (blocked), signup also returns code 1 (blocked)
+    vi.mocked(proxyFetchPost)
+      .mockResolvedValueOnce({
+        code: 1,
+        text: 'Your account has been blocked.',
+      })
+      .mockResolvedValueOnce({
+        code: 1,
+        text: 'Your account has been blocked.',
+      });
+
+    const res = await loginByStackWithAutoCreate('stack-token');
+
+    expect(res.code).toBe(1);
+    expect(res.text).toBe('Your account has been blocked.');
+    expect(vi.mocked(proxyFetchPost)).toHaveBeenCalledTimes(2);
+  });
+
   it('does not fall back to signup for account/password error', async () => {
     const { proxyFetchPost } = await import('@/api/http');
 
