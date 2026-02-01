@@ -12,232 +12,247 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useState, useEffect, memo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { isHtmlDocument } from "@/lib/htmlFontStyles";
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { isHtmlDocument } from '@/lib/htmlFontStyles';
+import '@/style/markdown-styles.css';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import { memo, useEffect, useRef, useState } from 'react';
+
+// Helper functions for path resolution
+function joinPath(...paths: string[]): string {
+  return paths
+    .filter(Boolean)
+    .map((p) => p.replace(/\\/g, '/'))
+    .join('/')
+    .replace(/\/+/g, '/');
+}
+
+function resolveRelativePath(basePath: string, relativePath: string): string {
+  const normalizedBase = basePath.replace(/\\/g, '/');
+  const normalizedRelative = relativePath.replace(/\\/g, '/');
+  if (
+    !normalizedRelative.startsWith('./') &&
+    !normalizedRelative.startsWith('../')
+  ) {
+    return joinPath(normalizedBase, normalizedRelative);
+  }
+  const baseParts = normalizedBase.split('/').filter(Boolean);
+  const relativeParts = normalizedRelative.split('/').filter(Boolean);
+  for (const part of relativeParts) {
+    if (part === '.') continue;
+    if (part === '..') baseParts.pop();
+    else baseParts.push(part);
+  }
+  return baseParts.join('/');
+}
+
+// Configure marked
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
 
 export const MarkDown = memo(
-	({
-		content,
-		speed = 10,
-		onTyping,
-		enableTypewriter = true, // Whether to enable typewriter effect
-		pTextSize = "text-body-sm",
-		olPadding = "pl-3",
-	}: {
-		content: string;
-		speed?: number;
-		onTyping?: () => void;
-		enableTypewriter?: boolean;
-		pTextSize?: string;
-		olPadding?: string;
-	}) => {
-		const [displayedContent, setDisplayedContent] = useState("");
-		const lastContentRef = useRef<string | null>(null);
-		const typingCallbackRef = useRef(onTyping);
+  ({
+    content,
+    speed = 10,
+    onTyping,
+    enableTypewriter = true,
+    contentBasePath,
+  }: {
+    content: string;
+    speed?: number;
+    onTyping?: () => void;
+    enableTypewriter?: boolean;
+    pTextSize?: string;
+    olPadding?: string;
+    /** Base directory for resolving relative image paths (e.g. markdown file's directory). */
+    contentBasePath?: string | null;
+  }) => {
+    const [displayedContent, setDisplayedContent] = useState('');
+    const [html, setHtml] = useState('');
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const lastContentRef = useRef<string | null>(null);
+    const typingCallbackRef = useRef(onTyping);
 
-		useEffect(() => {
-			typingCallbackRef.current = onTyping;
-		}, [onTyping]);
+    useEffect(() => {
+      typingCallbackRef.current = onTyping;
+    }, [onTyping]);
 
-		useEffect(() => {
-			if (lastContentRef.current === content) {
-				return;
-			}
-			lastContentRef.current = content;
+    // Typewriter effect
+    useEffect(() => {
+      if (lastContentRef.current === content) {
+        return;
+      }
+      lastContentRef.current = content;
 
-			if (!enableTypewriter) {
-				setDisplayedContent(content);
-				if (typingCallbackRef.current) {
-					typingCallbackRef.current();
-				}
-				return;
-			}
+      if (!enableTypewriter) {
+        setDisplayedContent(content);
+        if (typingCallbackRef.current) {
+          typingCallbackRef.current();
+        }
+        return;
+      }
 
-			setDisplayedContent("");
-			let index = 0;
+      setDisplayedContent('');
+      let index = 0;
 
-			const timer = setInterval(() => {
-				if (index < content.length) {
-					setDisplayedContent(content.slice(0, index + 1));
-					index++;
-				} else {
-					clearInterval(timer);
-					// when typewriter effect is completed, call callback
-					if (typingCallbackRef.current) {
-						typingCallbackRef.current();
-					}
-				}
-			}, speed);
+      const timer = setInterval(() => {
+        if (index < content.length) {
+          setDisplayedContent(content.slice(0, index + 1));
+          index++;
+        } else {
+          clearInterval(timer);
+          if (typingCallbackRef.current) {
+            typingCallbackRef.current();
+          }
+        }
+      }, speed);
 
-			return () => clearInterval(timer);
-		}, [content, speed, enableTypewriter]);
+      return () => clearInterval(timer);
+    }, [content, speed, enableTypewriter]);
 
-		// If content is a pure HTML document, render in a styled pre block
-		if (isHtmlDocument(content)) {
-			// Trim leading whitespace from each line for consistent alignment
-			const formattedHtml = displayedContent
-				.split('\n')
-				.map(line => line.trimStart())
-				.join('\n')
-				.trim();
-			return (
-				<div className="max-w-none markdown-container overflow-hidden">
-					<pre className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style={{ wordBreak: 'break-all' }}>
-						<code>{formattedHtml}</code>
-					</pre>
-				</div>
-			);
-		}
+    // Convert markdown to HTML and process images
+    useEffect(() => {
+      const processMarkdown = async () => {
+        if (!displayedContent) {
+          setHtml('');
+          return;
+        }
 
-		return (
-			<div className="max-w-none markdown-container overflow-hidden">
-				<ReactMarkdown
-					remarkPlugins={[remarkGfm]}
-					components={{
-						h1: ({ children }) => (
-							<h1 className="text-lg font-bold text-primary mb-2 break-words text-wrap">
-								{children}
-							</h1>
-						),
-						h2: ({ children }) => (
-							<h2 className="text-base font-semibold text-primary mb-2 break-words text-wrap">
-								{children}
-							</h2>
-						),
-						h3: ({ children }) => (
-							<h3 className="text-sm font-medium text-primary mb-1 break-words text-wrap">
-								{children}
-							</h3>
-						),
-						p: ({ children }) => (
-							<p
-								className={`${pTextSize} font-medium text-text-body leading-10 font-inter whitespace-pre-wrap break-all`}
-								style={{ margin: 0, wordBreak: 'break-all' }}
-							>
-								{children}
-							</p>
-						),
-						ul: ({ children }) => (
-							<ul
-								className={`list-disc list-outside text-body-sm text-text-body ml-3 mb-2 ${olPadding}`}
-							>
-								{children}
-							</ul>
-						),
-						li: ({ children }) => (
-							<li className="my-sm text-body-sm text-text-body">{children}</li>
-						),
-						code: ({ children }) => (
-							<code 
-								className="bg-zinc-100 px-1 py-0.5 rounded text-body-sm text-text-body font-mono whitespace-pre-wrap break-all"
-								style={{ wordBreak: 'break-all' }}
-							>
-								{children}
-							</code>
-						),
-						pre: ({ children }) => (
-							<pre
-								className="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all"
-								style={{ wordBreak: 'break-all' }}
-							>
-								{children}
-							</pre>
-						),
-						blockquote: ({ children }) => (
-							<blockquote className="border-l-4 border-zinc-300 pl-3 italic text-primary">
-								{children}
-							</blockquote>
-						),
-						strong: ({ children }) => (
-							<strong className="font-semibold text-primary">{children}</strong>
-						),
-						em: ({ children }) => (
-							<em className="italic text-primary">{children}</em>
-						),
-						a: ({ children, href }) => {
-							const cleanChildren = typeof children === 'string' 
-								? children.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '') 
-								: children;
-							const cleanHref = typeof href === 'string'
-								? href.replace(/^[.,"'{}()\[\]]+|[.,"'{}()\[\]]+$/g, '').replace(/(%[0-9A-Fa-f]{2})+$/g, '')
-								: href;
-							return (
-								<a 
-									href={cleanHref} 
-									className="text-blue-600 hover:text-blue-800 underline break-words inline"
-									style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
-									target="_blank" 
-									rel="noopener noreferrer"
-								>
-									{cleanChildren}
-								</a>
-							);
-						},
-						table: ({ children }) => (
-							<div className="overflow-x-auto w-full max-w-full">
-								<table
-									className="w-full mb-4 !table min-w-0"
-									style={{
-										borderCollapse: "collapse",
-										border: "1px solid #d1d5db",
-										borderSpacing: 0,
-										tableLayout: "auto",
-										wordBreak: "break-word",
-									}}
-								>
-									{children}
-								</table>
-							</div>
-						),
-						thead: ({ children }) => (
-							<thead
-								className="!table-header-group"
-								style={{ backgroundColor: "#f9fafb" }}
-							>
-								{children}
-							</thead>
-						),
-						tbody: ({ children }) => (
-							<tbody className="!table-row-group">{children}</tbody>
-						),
-						tr: ({ children }) => <tr className="!table-row">{children}</tr>,
-						th: ({ children }) => (
-							<th
-								className="text-left font-semibold text-primary text-[13px] !table-cell max-w-0"
-								style={{
-									border: "1px solid #d1d5db",
-									padding: "8px 12px",
-									borderCollapse: "collapse",
-									wordBreak: "break-word",
-									overflowWrap: "break-word",
-									maxWidth: "200px",
-								}}
-							>
-								{children}
-							</th>
-						),
-						td: ({ children }) => (
-							<td
-								className="text-primary text-[13px] !table-cell max-w-0"
-								style={{
-									border: "1px solid #d1d5db",
-									padding: "8px 12px",
-									borderCollapse: "collapse",
-									wordBreak: "break-word",
-									overflowWrap: "break-word",
-									maxWidth: "200px",
-								}}
-							>
-								{children}
-							</td>
-						),
-					}}
-				>
-					{displayedContent}
-				</ReactMarkdown>
-			</div>
-		);
-	}
+        // If content is pure HTML, handle it separately
+        if (isHtmlDocument(displayedContent)) {
+          const formattedHtml = displayedContent
+            .split('\n')
+            .map((line) => line.trimStart())
+            .join('\n')
+            .trim();
+          setHtml(
+            `<pre class="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
+          );
+          return;
+        }
+
+        // Parse markdown to HTML
+        let rawHtml = await marked.parse(displayedContent);
+
+        // Process images: replace relative paths with data URLs
+        if (contentBasePath) {
+          const imgRegex = /<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi;
+          const matches = Array.from(rawHtml.matchAll(imgRegex));
+
+          for (const match of matches) {
+            const fullTag = match[0];
+            const beforeSrc = match[1];
+            const src = match[2];
+            const afterSrc = match[3];
+
+            // Check if it's a relative path
+            const isRelative =
+              src &&
+              !src.startsWith('http://') &&
+              !src.startsWith('https://') &&
+              !src.startsWith('data:');
+
+            if (isRelative && contentBasePath) {
+              try {
+                const resolvedPath = resolveRelativePath(contentBasePath, src);
+
+                if (
+                  typeof window !== 'undefined' &&
+                  window.electronAPI?.readFileAsDataUrl
+                ) {
+                  const dataUrl =
+                    await window.electronAPI.readFileAsDataUrl(resolvedPath);
+
+                  // Add cursor-pointer class and data attributes for click handling
+                  const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;">`;
+                  rawHtml = rawHtml.replace(fullTag, newTag);
+                } else {
+                  // Fallback: show alt text or placeholder
+                  const altMatch = fullTag.match(/alt=["']([^"']*)["']/);
+                  const alt = altMatch ? altMatch[1] : 'image';
+                  const placeholder = `<span class="inline-block text-sm text-zinc-500">[${alt}]</span>`;
+                  rawHtml = rawHtml.replace(fullTag, placeholder);
+                }
+              } catch (error) {
+                console.error(`Failed to load image: ${src}`, error);
+                // Keep original tag if loading fails
+              }
+            } else {
+              // For absolute URLs, add click handler
+              const newTag = fullTag.replace(
+                '<img',
+                '<img class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;"'
+              );
+              rawHtml = rawHtml.replace(fullTag, newTag);
+            }
+          }
+        }
+
+        // Sanitize HTML
+        const sanitized = DOMPurify.sanitize(rawHtml);
+        setHtml(sanitized);
+      };
+
+      processMarkdown();
+    }, [displayedContent, contentBasePath]);
+
+    // Add click handlers for images
+    useEffect(() => {
+      if (!contentRef.current) return;
+
+      const handleImageClick = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.tagName === 'IMG' &&
+          target.getAttribute('data-clickable') === 'true'
+        ) {
+          const src = (target as HTMLImageElement).src;
+          setPreviewImage(src);
+        }
+      };
+
+      const div = contentRef.current;
+      div.addEventListener('click', handleImageClick);
+
+      return () => {
+        div.removeEventListener('click', handleImageClick);
+      };
+    }, [html]);
+
+    return (
+      <>
+        <div
+          ref={contentRef}
+          className="markdown-body max-w-none overflow-hidden"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+
+        {/* Image preview dialog */}
+        <Dialog
+          open={!!previewImage}
+          onOpenChange={() => setPreviewImage(null)}
+        >
+          <DialogContent
+            size="lg"
+            className="flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center p-2"
+            showCloseButton
+          >
+            {previewImage && (
+              <img
+                src={previewImage}
+                alt="Preview"
+                className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
 );
+
+MarkDown.displayName = 'MarkDown';

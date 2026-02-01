@@ -15,11 +15,10 @@ The Model Context Protocol (MCP) is the framework that allows Eigent to connect 
 - Step 1: Click the **Settings** gear icon → Select the **MCP and Tools** tab.
 - Step 2: Click the **+ Add MCP Server** button to open the configuration dialog.
 - Step 3: Provide the Server Configuration
-    - **Paste the JSON configuration** for the server. This JSON file acts as a manifest, telling Eigent what the tool is, what functions it has, and how to call them. You can typically find this configuration file in the documentation of the third-party tool you wish to integrate.
-    - **Add required credentials**. Many tools require authentication. For example, to connect to GitHub, you will need to generate a Personal Access Token from your GitHub account settings and paste it into the appropriate field.
+  - **Paste the JSON configuration** for the server. This JSON file acts as a manifest, telling Eigent what the tool is, what functions it has, and how to call them. You can typically find this configuration file in the documentation of the third-party tool you wish to integrate.
+  - **Add required credentials**. Many tools require authentication. For example, to connect to GitHub, you will need to generate a Personal Access Token from your GitHub account settings and paste it into the appropriate field.
 
 <aside>
-
 
 📌 **Note on Security**
 
@@ -36,9 +35,9 @@ Once you've configured a new MCP server, you need to create a worker that knows 
 - Step 1: On the **Canvas**, click the **+ Add Worker** button located in the bottom toolbar.
 - Step 2: Enter a clear Worker **Name** (e.g., "GitHub Specialist") and provide an optional **Description** of its duties (e.g., "Manages pull requests and repository issues").
 - Step 3: Equip your Worker with the new tool (most important!)
-    - Click on the **Agent Tool** dropdown menu.
-    - Select the custom MCP server you just configured (e.g., Github MCP). You can also add any other tools you want this worker to have.
-    - Click **Save**.
+  - Click on the **Agent Tool** dropdown menu.
+  - Select the custom MCP server you just configured (e.g., Github MCP). You can also add any other tools you want this worker to have.
+  - Click **Save**.
 
 ![add worker.gif](/docs/images/add_worker.gif)
 

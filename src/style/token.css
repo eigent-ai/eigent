@@ -334,7 +334,7 @@
     --menubutton-border-default: var(--border-transparent);
     --menubutton-border-hover: var(--border-disabled);
     --menubutton-disabled: 1.25rem;
-    
+
     /* Dropdown Component */
     --dropdown-bg: var(--fill-default);
     --dropdown-border: var(--border-secondary);
@@ -411,23 +411,17 @@
 
     /* Perfect Shadow */
     --shadow-perfect:
-      0 8px 20px -2px #1d21291a,
-      0 32px 48px -12px #1d21291f,
-      0 96px 120px -12px #414a5c0f,
-      0 108px 72px -16px #414a5c14,
-      0 32px 64px -8px #7199bd1f,
-      0 8px 10px 0 #7199bd1f;
+      0 8px 20px -2px #1d21291a, 0 32px 48px -12px #1d21291f,
+      0 96px 120px -12px #414a5c0f, 0 108px 72px -16px #414a5c14,
+      0 32px 64px -8px #7199bd1f, 0 8px 10px 0 #7199bd1f;
 
     /* Button Shadow */
     --shadow-button:
-      inset 0 1px 0 0 #ffffff54,
-      0 3px 4px -1px #00000040,
-      0 0 0 1px #d4d4d440;
-
+      inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
   }
 
   .root,
-  [data-theme="transparent"] {
+  [data-theme='transparent'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
     --text-label: var(--colors-primary-7);
@@ -545,7 +539,7 @@
   }
 
   .root,
-  [data-theme="light"] {
+  [data-theme='light'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
     --text-label: var(--colors-primary-7);
@@ -661,5 +655,4 @@
     --bg-dark-default: var(--colors-off-black-100);
     --bg-page-default: var(--colors-off-white-100);
   }
-
 }
