@@ -83,6 +83,7 @@ export default [
     ...js.configs.recommended,
     ...reactConfig,
     rules: {
+      ...js.configs.recommended.rules,
       ...reactConfig.rules,
       'no-unused-vars': 'off',
       'no-undef': 'off',

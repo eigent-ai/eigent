@@ -86,14 +86,8 @@ export default function Home() {
   };
   // Extract complex expressions to avoid lint error in dependency array
   const activeTaskId = chatStore?.activeTaskId as string;
-  const taskAssigning = useMemo(
-    () => chatStore?.tasks[activeTaskId]?.taskAssigning,
-    [chatStore, activeTaskId]
-  );
-  const activeWorkSpace = useMemo(
-    () => chatStore?.tasks[activeTaskId]?.activeWorkSpace,
-    [chatStore, activeTaskId]
-  );
+  const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
+  const activeWorkSpace = chatStore?.tasks[activeTaskId]?.activeWorkSpace;
 
   // Derive activeAgent from taskAssigning and activeWorkSpace (no setState in effect)
   const activeAgent = useMemo(() => {
