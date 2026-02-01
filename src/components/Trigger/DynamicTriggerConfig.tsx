@@ -155,6 +155,7 @@ const TextInputField: React.FC<FieldProps> = ({
     const [showSecret, setShowSecret] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [touched, setTouched] = useState(false);
+    const [savedValue, setSavedValue] = useState<string | null>(null);
 
     const isSecret = schema["ui:widget:type"] === "secret";
     const hasApiEndpoint = !!schema["api:POST"];
@@ -162,12 +163,19 @@ const TextInputField: React.FC<FieldProps> = ({
     const isSaved = !!savedConfig;
 
     useEffect(() => {
-        if (isSaved) {
+        if (isSaved && savedConfig) {
+            // Store the actual saved value for the eye toggle
+            setSavedValue(savedConfig.config_value);
+            // Show masked value in the input
             setLocalValue("••••••••••••••••");
         } else if (value) {
             setLocalValue(value);
+            setSavedValue(null);
+        } else {
+            setLocalValue("");
+            setSavedValue(null);
         }
-    }, [value, isSaved]);
+    }, [value, isSaved, savedConfig]);
 
     const handleSave = async () => {
         if (!localValue || localValue === "••••••••••••••••") {
@@ -185,6 +193,7 @@ const TextInputField: React.FC<FieldProps> = ({
         setIsSaving(true);
         try {
             await onSaveConfig(fieldKey, localValue);
+            setSavedValue(localValue);
             setLocalValue("••••••••••••••••");
             setShowSecret(false);
         } finally {
@@ -200,6 +209,17 @@ const TextInputField: React.FC<FieldProps> = ({
         }
         // Trigger validation on change
         onValidate(fieldKey, newValue);
+    };
+
+    const handleToggleSecret = () => {
+        setShowSecret(!showSecret);
+        if (!showSecret && savedValue) {
+            // When showing, display the actual saved value
+            setLocalValue(savedValue);
+        } else if (showSecret && isSaved) {
+            // When hiding and saved, show mask
+            setLocalValue("••••••••••••••••");
+        }
     };
 
     const label = schema["ui:label"] ? t(schema["ui:label"]) : (schema.title || fieldKey);
@@ -229,7 +249,7 @@ const TextInputField: React.FC<FieldProps> = ({
                     {isSecret && (
                         <button
                             type="button"
-                            onClick={() => setShowSecret(!showSecret)}
+                            onClick={handleToggleSecret}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-icon-primary hover:text-icon-hover"
                         >
                             {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
