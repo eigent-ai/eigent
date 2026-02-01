@@ -14,13 +14,12 @@
 
 'use client';
 
-import * as React from 'react';
 import { motion, type Variants } from 'motion/react';
 
 import {
   getVariants,
-  useAnimateIconContext,
   IconWrapper,
+  useAnimateIconContext,
   type IconProps,
 } from '@/components/animate-ui/icons/icon';
 
@@ -115,6 +114,6 @@ export {
   animations,
   Orbit,
   Orbit as OrbitIcon,
-  type OrbitProps,
   type OrbitProps as OrbitIconProps,
+  type OrbitProps,
 };

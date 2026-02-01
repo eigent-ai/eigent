@@ -3,17 +3,17 @@ name: Build
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
     paths-ignore:
-      - "**.md"
-      - "**.spec.js"
-      - ".idea"
-      - ".vscode"
-      - ".dockerignore"
-      - "Dockerfile"
-      - ".gitignore"
-      - ".github/**"
-      - "!.github/workflows/build.yml"
+      - '**.md'
+      - '**.spec.js'
+      - '.idea'
+      - '.vscode'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - '.gitignore'
+      - '.github/**'
+      - '!.github/workflows/build.yml'
 
 permissions:
   contents: write
@@ -253,11 +253,205 @@ jobs:
       # Create GitHub Release
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             release/mac-arm64/*
             release/win-x64/*
             release/linux-x64/*
+
+      # Extract version from tag (e.g., v0.0.82 -> 0.0.82)
+      - name: Extract version
+        if: startsWith(github.ref, 'refs/tags/')
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      # Configure AWS credentials (skipped when AWS secrets not configured)
+      - name: Configure AWS credentials
+        id: aws-check
+        if: env.AWS_ACCESS_KEY_ID != ''
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Upload to S3 - versioned directory (immutable; all files get long cache)
+      - name: Upload to S3 (versioned)
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+
+          echo "Uploading version $VERSION to S3 bucket: $BUCKET"
+
+          declare -a targets=(
+            "release/mac-arm64 mac-arm64"
+            "release/mac-intel mac-intel"
+            "release/win-x64 win-x64"
+            "release/linux-x64 linux-x64"
+          )
+          for t in "${targets[@]}"; do
+            src_dir="${t%% *}"
+            path_suffix="${t##* }"
+            if [ -d "$src_dir" ] && [ "$(ls -A "$src_dir")" ]; then
+              echo "Uploading $path_suffix files..."
+              aws s3 sync "$src_dir/" "s3://$BUCKET/releases/v$VERSION/$path_suffix/" \
+                --content-type "binary/octet-stream" \
+                --metadata-directive REPLACE \
+                --cache-control "public, max-age=31536000, immutable"
+            fi
+          done
+
+          echo "Version $VERSION uploaded successfully"
+
+      # Upload to S3 - latest directory
+      - name: Upload to S3 (latest)
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+
+          echo "Uploading latest release to S3 bucket: $BUCKET"
+
+          # Upload macOS ARM64 files to latest
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "Uploading latest macOS ARM64 files..."
+            aws s3 sync release/mac-arm64/ "s3://$BUCKET/releases/latest/mac-arm64/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/mac-arm64/ "s3://$BUCKET/releases/latest/mac-arm64/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload macOS Intel files to latest (if exists)
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "Uploading latest macOS Intel files..."
+            aws s3 sync release/mac-intel/ "s3://$BUCKET/releases/latest/mac-intel/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/mac-intel/ "s3://$BUCKET/releases/latest/mac-intel/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload Windows files to latest
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Uploading latest Windows files..."
+            aws s3 sync release/win-x64/ "s3://$BUCKET/releases/latest/win-x64/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/win-x64/ "s3://$BUCKET/releases/latest/win-x64/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload Linux files to latest
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Uploading latest Linux files..."
+            aws s3 sync release/linux-x64/ "s3://$BUCKET/releases/latest/linux-x64/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/linux-x64/ "s3://$BUCKET/releases/latest/linux-x64/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          echo "Latest release uploaded successfully"
+
+      # Generate download URLs
+      - name: Generate download URLs
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+          REGION="${{ secrets.AWS_REGION }}"
+
+          # Determine S3 endpoint based on region
+          if [[ "$REGION" == cn-* ]]; then
+            ENDPOINT="s3.$REGION.amazonaws.com.cn"
+          else
+            ENDPOINT="s3.$REGION.amazonaws.com"
+          fi
+
+          echo "================================"
+          echo "Download URLs for version v$VERSION"
+          echo "================================"
+          echo ""
+          echo "Versioned URLs:"
+
+          # Check which platforms exist and show URLs
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "macOS (ARM64):  https://$BUCKET.$ENDPOINT/releases/v$VERSION/mac-arm64/"
+          fi
+
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "macOS (Intel):  https://$BUCKET.$ENDPOINT/releases/v$VERSION/mac-intel/"
+          fi
+
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Windows (x64):  https://$BUCKET.$ENDPOINT/releases/v$VERSION/win-x64/"
+          fi
+
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Linux (x64):    https://$BUCKET.$ENDPOINT/releases/v$VERSION/linux-x64/"
+          fi
+
+          echo ""
+          echo "Latest URLs:"
+
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "macOS (ARM64):  https://$BUCKET.$ENDPOINT/releases/latest/mac-arm64/"
+          fi
+
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "macOS (Intel):  https://$BUCKET.$ENDPOINT/releases/latest/mac-intel/"
+          fi
+
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Windows (x64):  https://$BUCKET.$ENDPOINT/releases/latest/win-x64/"
+          fi
+
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Linux (x64):    https://$BUCKET.$ENDPOINT/releases/latest/linux-x64/"
+          fi
+
+          echo "================================"
