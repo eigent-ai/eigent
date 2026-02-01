@@ -568,8 +568,13 @@ export class FileReader {
     'terminal_logs',
   ];
 
-  private getFilesRecursive(dirPath: string, basePath: string): FileInfo[] {
+  private getFilesRecursive(
+    dirPath: string,
+    basePath: string,
+    baseReal?: string
+  ): FileInfo[] {
     try {
+      const resolvedBase = baseReal ?? fs.realpathSync(basePath);
       const files = fs.readdirSync(dirPath);
       const result: FileInfo[] = [];
 
@@ -579,25 +584,43 @@ export class FileReader {
         if (this.hiddenFolders.includes(file)) continue;
 
         const filePath = path.join(dirPath, file);
-        const stats = fs.statSync(filePath);
-        const isFolder = stats.isDirectory();
-        const relativePath = path.relative(basePath, dirPath);
+        try {
+          const stats = fs.lstatSync(filePath);
+          if (stats.isSymbolicLink()) continue;
+          const realPath = fs.realpathSync(filePath);
+          const relativeToBase = path.relative(resolvedBase, realPath);
+          if (
+            relativeToBase.startsWith('..') ||
+            path.isAbsolute(relativeToBase)
+          ) {
+            continue;
+          }
+          const isFolder = stats.isDirectory();
+          const relativePath = path.relative(basePath, dirPath);
 
-        const fileInfo: FileInfo = {
-          path: filePath,
-          name: file,
-          type: isFolder
-            ? 'folder'
-            : file.split('.').pop()?.toLowerCase() || '',
-          isFolder: isFolder,
-          relativePath: relativePath === '' ? '' : relativePath,
-        };
+          const fileInfo: FileInfo = {
+            path: filePath,
+            name: file,
+            type: isFolder
+              ? 'folder'
+              : file.split('.').pop()?.toLowerCase() || '',
+            isFolder: isFolder,
+            relativePath: relativePath === '' ? '' : relativePath,
+          };
 
-        result.push(fileInfo);
+          result.push(fileInfo);
 
-        if (isFolder) {
-          const subFiles = this.getFilesRecursive(filePath, basePath);
-          result.push(...subFiles);
+          if (isFolder) {
+            const subFiles = this.getFilesRecursive(
+              filePath,
+              basePath,
+              resolvedBase
+            );
+            result.push(...subFiles);
+          }
+        } catch (fileErr) {
+          console.warn('Skipping inaccessible file:', filePath, fileErr);
+          continue;
         }
       }
 
