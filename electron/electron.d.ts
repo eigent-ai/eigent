@@ -12,4 +12,4 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-type Size = { x: number, y: number, width: number, height: number }
+type Size = { x: number; y: number; width: number; height: number };

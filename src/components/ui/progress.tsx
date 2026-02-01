@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import * as React from "react"
-import * as ProgressPrimitive from "@radix-ui/react-progress"
+import * as ProgressPrimitive from '@radix-ui/react-progress';
+import * as React from 'react';
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils';
 
 const Progress = React.forwardRef<
   React.ElementRef<typeof ProgressPrimitive.Root>,
@@ -24,17 +24,17 @@ const Progress = React.forwardRef<
   <ProgressPrimitive.Root
     ref={ref}
     className={cn(
-      "relative h-2 w-full overflow-hidden rounded-full bg-specialty-progress-surface",
+      'bg-specialty-progress-surface relative h-2 w-full overflow-hidden rounded-full',
       className
     )}
     {...props}
   >
     <ProgressPrimitive.Indicator
-      className={`h-full w-full flex-1 transition-all ${value === 100 ? "bg-progress-fill-complete" : "bg-progress-fill-default"}`}
+      className={`h-full w-full flex-1 transition-all ${value === 100 ? 'bg-progress-fill-complete' : 'bg-progress-fill-default'}`}
       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
     />
   </ProgressPrimitive.Root>
-))
-Progress.displayName = ProgressPrimitive.Root.displayName
+));
+Progress.displayName = ProgressPrimitive.Root.displayName;
 
-export { Progress }
+export { Progress };

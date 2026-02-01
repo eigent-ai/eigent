@@ -11,6 +11,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+from camel.messages import BaseMessage
+
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import SOCIAL_MEDIA_SYS_PROMPT
@@ -22,6 +24,7 @@ from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
+
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
@@ -29,12 +32,9 @@ from app.utils.toolkit.reddit_toolkit import RedditToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.toolkit.twitter_toolkit import TwitterToolkit
 from app.utils.toolkit.whatsapp_toolkit import WhatsAppToolkit
-from camel.messages import BaseMessage
 
 
-async def social_medium_agent(options: Chat):
-    # TODO: Rename to social_media_agent
-    # (function, file, Agents constant, and all references)
+async def social_media_agent(options: Chat):
     """
     Agent to handling tasks related to social media including:
     WhatsApp, Twitter, LinkedIn, Reddit, Notion, Slack, Discord
@@ -42,8 +42,9 @@ async def social_medium_agent(options: Chat):
     """
     working_directory = get_working_directory(options)
     logger.info(
-        f"Creating social medium agent for project: {options.project_id} "
-        f"in directory: {working_directory}")
+        f"Creating social media agent for project: {options.project_id} "
+        f"in directory: {working_directory}"
+    )
     tools = [
         *WhatsAppToolkit.get_can_use_tools(options.project_id),
         *TwitterToolkit.get_can_use_tools(options.project_id),
@@ -51,31 +52,32 @@ async def social_medium_agent(options: Chat):
         *RedditToolkit.get_can_use_tools(options.project_id),
         *await NotionMCPToolkit.get_can_use_tools(options.project_id),
         # *SlackToolkit.get_can_use_tools(options.project_id),
-        *await GoogleGmailMCPToolkit.get_can_use_tools(options.project_id,
-                                                       options.get_bun_env()),
+        *await GoogleGmailMCPToolkit.
+        get_can_use_tools(options.project_id, options.get_bun_env()),
         *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.social_medium_agent),
+        *HumanToolkit.
+        get_can_use_tools(options.project_id, Agents.social_media_agent),
         *TerminalToolkit(
             options.project_id,
-            agent_name=Agents.social_medium_agent,
+            agent_name=Agents.social_media_agent,
             working_directory=working_directory,
             clone_current_env=True,
         ).get_tools(),
         *NoteTakingToolkit(
             options.project_id,
-            Agents.social_medium_agent,
+            Agents.social_media_agent,
             working_directory=working_directory,
         ).get_tools(),
         # *DiscordToolkit(options.project_id).get_tools(),
         # *GoogleSuiteToolkit(options.project_id).get_tools(),
     ]
     return agent_model(
-        Agents.social_medium_agent,
+        Agents.social_media_agent,
         BaseMessage.make_assistant_message(
-            role_name="Social Medium Agent",
+            role_name="Social Media Agent",
             content=SOCIAL_MEDIA_SYS_PROMPT.format(
-                working_directory=working_directory, now_str=NOW_STR),
+                working_directory=working_directory, now_str=NOW_STR
+            ),
         ),
         options,
         tools,
