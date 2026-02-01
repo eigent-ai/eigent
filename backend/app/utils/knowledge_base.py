@@ -26,8 +26,6 @@ import threading
 import logging
 from typing import Optional
 
-from app.component.environment import env
-
 logger = logging.getLogger("knowledge_base")
 
 _DEFAULT_BASE_PATH = os.path.join(os.path.expanduser("~"), ".eigent")
@@ -38,7 +36,7 @@ _LOCK = threading.Lock()
 
 def _get_db_path() -> str:
     """Return path to the knowledge base SQLite file."""
-    base = env("file_save_path", _DEFAULT_BASE_PATH)
+    base = os.environ.get("file_save_path", _DEFAULT_BASE_PATH)
     base = os.path.expanduser(base)
     kb_dir = os.path.join(base, _KB_SUBDIR)
     os.makedirs(kb_dir, exist_ok=True)
