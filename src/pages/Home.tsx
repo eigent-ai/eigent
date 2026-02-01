@@ -17,30 +17,23 @@ import Workflow from "@/components/WorkFlow";
 import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
 import BrowserAgentWorkSpace from "@/components/BrowserAgentWorkSpace";
 import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
-import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
-import { proxyFetchPost } from "@/api/http";
 import {
 	ResizableHandle,
 	ResizablePanel,
 	ResizablePanelGroup,
 } from "@/components/ui/resizable"
-import SideBar from "@/components/SideBar";
 
 export default function Home() {
-	const { toggle } = useSidebarStore();
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
-	if (!chatStore) {
-		return <div>Loading...</div>;
-	}
 
-	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
+	const [_activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
 	// Add webview-show listener in useEffect with cleanup
 	useEffect(() => {
@@ -56,13 +49,18 @@ export default function Home() {
 		};
 	}, []); // Empty dependency array means this only runs once
 
+	// Extract complex dependency to a variable
+	const taskAssigning =
+		chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning;
+
 	useEffect(() => {
-		let taskAssigning = [
-			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
-				[]),
+		if (!chatStore) return;
+
+		let taskAssigningArray = [
+			...(taskAssigning || []),
 		];
 		let webviews: { id: string; agent_id: string; index: number }[] = [];
-		taskAssigning.map((item) => {
+		taskAssigningArray.map((item) => {
 			if (item.type === "browser_agent") {
 				item.activeWebviewIds?.map((webview, index) => {
 					webviews.push({ ...webview, agent_id: item.agent_id, index });
@@ -70,12 +68,12 @@ export default function Home() {
 			}
 		});
 
-		if (taskAssigning.length === 0) {
+		if (taskAssigningArray.length === 0) {
 			return;
 		}
 
 		if (webviews.length === 0) {
-			const browserAgent = taskAssigning.find(agent => agent.type === 'browser_agent');
+			const browserAgent = taskAssigningArray.find(agent => agent.type === 'browser_agent');
 			if (browserAgent && browserAgent.activeWebviewIds && browserAgent.activeWebviewIds.length > 0) {
 				browserAgent.activeWebviewIds.forEach((webview, index) => {
 					webviews.push({ ...webview, agent_id: browserAgent.agent_id, index });
@@ -164,11 +162,27 @@ export default function Home() {
 				clearInterval(intervalTimer);
 			}
 		};
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+	}, [chatStore, taskAssigning]);
+
+	const getSize = useCallback(() => {
+		const webviewContainer = document.getElementById("webview-container");
+		if (webviewContainer) {
+			const rect = webviewContainer.getBoundingClientRect();
+			window.electronAPI.setSize({
+				x: rect.left,
+				y: rect.top,
+				width: rect.width,
+				height: rect.height,
+			});
+			console.log("setSize", rect);
+		}
+	}, []);
 
 	useEffect(() => {
+		if (!chatStore) return;
+
 		if (!chatStore.activeTaskId) {
-			projectStore.createProject("new project");
+			projectStore?.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");
@@ -182,21 +196,11 @@ export default function Home() {
 				resizeObserver.disconnect();
 			};
 		}
-	}, []);
+	}, [chatStore, projectStore, getSize]);
 
-	const getSize = () => {
-		const webviewContainer = document.getElementById("webview-container");
-		if (webviewContainer) {
-			const rect = webviewContainer.getBoundingClientRect();
-			window.electronAPI.setSize({
-				x: rect.left,
-				y: rect.top,
-				width: rect.width,
-				height: rect.height,
-			});
-			console.log("setSize", rect);
-		}
-	};
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
 
 	return (
 		<div className="h-full min-h-0 flex flex-row overflow-hidden pt-10 px-2 pb-2">

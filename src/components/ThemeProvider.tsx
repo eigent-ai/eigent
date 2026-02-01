@@ -46,7 +46,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		const currentTheme = root.getAttribute('data-theme');
 
 		if (!currentTheme) {
-			root.setAttribute('data-theme', appearance === 'transparent' ? 'transparent' : appearance === 'light' ? 'light' : 'dark');
+			if (appearance === 'transparent') {
+				root.setAttribute('data-theme', 'transparent');
+			} else if (appearance === 'dark') {
+				root.setAttribute('data-theme', 'dark');
+			} else {
+				root.setAttribute('data-theme', 'light');
+			}
 		}
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []); // only execute once when the component is mounted
