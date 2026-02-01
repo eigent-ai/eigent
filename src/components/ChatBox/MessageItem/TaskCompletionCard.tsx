@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Plus, Pencil, PencilLine } from 'lucide-react';
@@ -5,6 +19,9 @@ import { Button } from '@/components/ui/button';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { TriggerInput } from '@/types';
 import { useTranslation } from 'react-i18next';
+import { useTriggerStore } from '@/store/triggerStore';
+import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 
 interface TaskCompletionCardProps {
     taskPrompt?: string;
@@ -17,19 +34,29 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
 }) => {
     const { t } = useTranslation();
     const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
+    // Use trigger store
+    const { addTrigger } = useTriggerStore();
+    const { addLog } = useActivityLogStore();
+    const { projectStore } = useChatStoreAdapter();
+
 
     const handleAddTrigger = () => {
         setIsTriggerDialogOpen(true);
     };
 
-    const handleTriggerCreating = (triggerData: TriggerInput) => {
-        // Handle trigger creation placeholder
-        console.log('Creating trigger:', triggerData);
-    };
-
     const handleTriggerCreated = (triggerData: TriggerInput) => {
-        // Handle trigger created
-        console.log('Trigger created:', triggerData);
+        // Add new trigger via store
+        const newTrigger = addTrigger(triggerData);
+
+        // Add activity log
+        addLog({
+            type: ActivityType.TriggerCreated,
+            message: `Trigger "${triggerData.name}" created`,
+            projectId: projectStore.activeProjectId || undefined,
+            triggerId: newTrigger.id,
+            triggerName: triggerData.name,
+        });
+
         setIsTriggerDialogOpen(false);
     };
 
@@ -64,7 +91,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
             {/* Trigger Dialog */}
             <TriggerDialog
                 selectedTrigger={null}
-                onTriggerCreating={handleTriggerCreating}
+                onTriggerCreating={() => {}}
                 onTriggerCreated={handleTriggerCreated}
                 isOpen={isTriggerDialogOpen}
                 onOpenChange={setIsTriggerDialogOpen}
