@@ -67,21 +67,17 @@ def _format_result(
 ) -> str:
     """Format the result or error as a string."""
     if error is not None:
-        return str(error)
+        return _truncate(str(error))
 
     if return_msg_formatter is not None:
-        return return_msg_formatter(res)
+        return _truncate(return_msg_formatter(res))
 
     if isinstance(res, str):
-        return res
+        return _truncate(res)
 
     try:
-        # Notice:
-        # JSON-serializable data is kept intact for DB storage and replay
-        return json.dumps(res, ensure_ascii=False)
+        return _truncate(json.dumps(res, ensure_ascii=False))
     except TypeError:
-        # Notice:
-        # Non-JSON data (random objects) is truncated as it's less useful now
         return _truncate(str(res))
 
 

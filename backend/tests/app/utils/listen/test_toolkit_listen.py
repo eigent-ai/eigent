@@ -142,6 +142,40 @@ def test_format_result_with_non_serializable():
     assert "object" in result
 
 
+@pytest.mark.unit
+def test_format_result_truncates_long_error():
+    """Long error messages should be truncated."""
+    error = ValueError("e" * 600)
+    result = _format_result(None, error, None)
+    assert "truncated" in result
+
+
+@pytest.mark.unit
+def test_format_result_truncates_long_string():
+    """Long string results should be truncated."""
+    result = _format_result("x" * 600, None, None)
+    assert "truncated" in result
+
+
+@pytest.mark.unit
+def test_format_result_truncates_long_json():
+    """Large JSON-serializable results should be truncated."""
+    big_dict = {"k": "v" * 600}
+    result = _format_result(big_dict, None, None)
+    assert "truncated" in result
+
+
+@pytest.mark.unit
+def test_format_result_truncates_long_formatter_output():
+    """Long custom formatter output should be truncated."""
+
+    def formatter(res):
+        return "x" * 600
+
+    result = _format_result("value", None, formatter)
+    assert "truncated" in result
+
+
 # =============================================================================
 # listen_toolkit decorator tests
 # =============================================================================
