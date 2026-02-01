@@ -78,10 +78,7 @@
           {
             "group": "Troubleshooting",
             "icon": "question-circle",
-            "pages": [
-              "/troubleshooting/support",
-              "/troubleshooting/bug"
-            ]
+            "pages": ["/troubleshooting/support", "/troubleshooting/bug"]
           }
         ]
       }
