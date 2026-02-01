@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           clean: true
 
@@ -230,3 +230,99 @@ jobs:
           else
             find temp-linux-x64 -name "*.AppImage" -exec mv {} release/linux-x64/ \; || true
           fi
+
+      # Extract version for test builds
+      - name: Extract version
+        id: version
+        run: |
+          # Create a version using timestamp for test builds
+          VERSION="test-$(date +%Y%m%d-%H%M%S)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version for test build: $VERSION"
+
+      # Configure AWS credentials (skipped when AWS secrets are not configured)
+      - name: Configure AWS credentials
+        id: aws-check
+        if: env.AWS_ACCESS_KEY_ID != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Upload to S3 - test directory
+      - name: Upload to S3 (test build)
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+
+          echo "Uploading test build $VERSION to S3 bucket: $BUCKET"
+
+          declare -a targets=(
+            "release/mac-arm64 mac-arm64"
+            "release/mac-intel mac-intel"
+            "release/win-x64 win-x64"
+            "release/linux-x64 linux-x64"
+          )
+          for t in "${targets[@]}"; do
+            src_dir="${t%% *}"
+            path_suffix="${t##* }"
+            if [ -d "$src_dir" ] && [ "$(ls -A "$src_dir")" ]; then
+              echo "Uploading $path_suffix files..."
+              aws s3 sync "$src_dir/" "s3://$BUCKET/test-builds/$VERSION/$path_suffix/" \
+                --content-type "binary/octet-stream" \
+                --metadata-directive REPLACE \
+                --cache-control "public, max-age=300"
+            fi
+          done
+
+          echo "Test build $VERSION uploaded successfully"
+
+      # Generate download URLs
+      - name: Generate download URLs
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+          REGION="${{ secrets.AWS_REGION }}"
+
+          # Determine S3 endpoint based on region
+          if [[ "$REGION" == cn-* ]]; then
+            ENDPOINT="s3.$REGION.amazonaws.com.cn"
+          else
+            ENDPOINT="s3.$REGION.amazonaws.com"
+          fi
+
+          echo "================================"
+          echo "Test Build Download URLs"
+          echo "Build ID: $VERSION"
+          echo "================================"
+          echo ""
+
+          # Check which platforms exist and show URLs
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "macOS (ARM64):  https://$BUCKET.$ENDPOINT/test-builds/$VERSION/mac-arm64/"
+          fi
+
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "macOS (Intel):  https://$BUCKET.$ENDPOINT/test-builds/$VERSION/mac-intel/"
+          fi
+
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Windows (x64):  https://$BUCKET.$ENDPOINT/test-builds/$VERSION/win-x64/"
+          fi
+
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Linux (x64):    https://$BUCKET.$ENDPOINT/test-builds/$VERSION/linux-x64/"
+          fi
+
+          echo ""
+          echo "⚠️  Note: Test builds are stored in 'test-builds/' directory"
+          echo "⚠️  Remember to delete old test builds to save storage costs"
+          echo ""
+          echo "To delete this test build:"
+          echo "aws s3 rm s3://$BUCKET/test-builds/$VERSION/ --recursive --region $REGION"
+          echo "================================"

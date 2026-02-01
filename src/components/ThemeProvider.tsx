@@ -12,37 +12,35 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { useEffect } from 'react';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { appearance } = useAuthStore();
 
-	useEffect(() => {
-		// set data-theme attribute based on appearance
-		const root = document.documentElement;
+  useEffect(() => {
+    // set data-theme attribute based on appearance
+    const root = document.documentElement;
 
-		// remove all possible data-theme attributes
-		root.removeAttribute('data-theme');
+    // remove all possible data-theme attributes
+    root.removeAttribute('data-theme');
 
-		// set the corresponding data-theme based on appearance
-		if (appearance === "transparent") {
-			root.setAttribute("data-theme", "transparent");
-		} else if (appearance === "light") {
+    // set the corresponding data-theme based on appearance
+    if (appearance === 'transparent') {
+      root.setAttribute('data-theme', 'transparent');
+    } else if (appearance === 'light') {
       root.setAttribute('data-theme', 'light');
     } else if (appearance === 'dark') {
       root.setAttribute('data-theme', 'dark');
-    }
-    else {
+    } else {
       root.setAttribute('data-theme', 'light');
     }
-
   }, [appearance]);
 
-	// initialize theme
-	useEffect(() => {
-		const root = document.documentElement;
-		const currentTheme = root.getAttribute("data-theme");
+  // initialize theme
+  useEffect(() => {
+    const root = document.documentElement;
+    const currentTheme = root.getAttribute('data-theme');
 
     if (!currentTheme) {
       if (appearance === 'transparent') {
@@ -52,8 +50,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } else {
         root.setAttribute('data-theme', 'light');
       }
-		}
-	}, []); // only execute once when the component is mounted
+    }
+  }, [appearance]); // only execute once when the component is mounted
 
   return <>{children}</>;
-} 
+}
