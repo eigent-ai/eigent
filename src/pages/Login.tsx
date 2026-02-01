@@ -250,12 +250,10 @@ export default function Login() {
 
   const handleReloadBtn = async (type: string) => {
     if (!app) {
-      // Keep the buttons visible so users discover the option, but make it
-      // clear when Stack OAuth isn't configured for local builds.
-      setGeneralError(
-        'Social sign-in is not configured for this build. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
+      setGeneralError(t('layout.login-failed-please-try-again'));
+      console.error(
+        'Stack app not initialized. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
       );
-      console.error('Stack app not initialized');
       return;
     }
     console.log('handleReloadBtn1', type);

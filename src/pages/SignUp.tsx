@@ -87,6 +87,45 @@ export default function SignUp() {
     return !newErrors.email && !newErrors.password;
   };
 
+  const getLoginErrorMessage = useCallback(
+    (data: any) => {
+      if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
+        return '';
+      }
+
+      if (data.code === 0) {
+        return '';
+      }
+
+      if (data.code === 10) {
+        return (
+          data.text ||
+          t('layout.login-failed-please-check-your-email-and-password')
+        );
+      }
+
+      if (
+        data.code === 1 &&
+        Array.isArray(data.error) &&
+        data.error.length > 0
+      ) {
+        const firstError = data.error[0];
+        if (typeof firstError === 'string') {
+          return firstError;
+        }
+        if (typeof firstError?.msg === 'string') {
+          return firstError.msg;
+        }
+        if (typeof firstError?.message === 'string') {
+          return firstError.message;
+        }
+      }
+
+      return data.text || t('layout.login-failed-please-try-again');
+    },
+    [t]
+  );
+
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -167,10 +206,9 @@ export default function SignUp() {
           inviteCode: inviteCode || undefined,
         });
 
-        if (data.code === 10) {
-          setGeneralError(
-            data.text || t('layout.login-failed-please-try-again')
-          );
+        const errorMessage = getLoginErrorMessage(data);
+        if (errorMessage) {
+          setGeneralError(errorMessage);
           return;
         }
         console.log('data', data);
@@ -211,16 +249,17 @@ export default function SignUp() {
       setLocalProxyValue,
       setGeneralError,
       setIsLoading,
+      getLoginErrorMessage,
       t,
     ]
   );
 
   const handleReloadBtn = async (type: string) => {
     if (!app) {
-      setGeneralError(
-        'Social sign-in is not configured for this build. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
+      setGeneralError(t('layout.login-failed-please-try-again'));
+      console.error(
+        'Stack app not initialized. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
       );
-      console.error('Stack app not initialized');
       return;
     }
     localStorage.setItem('invite_code', formData.invite_code);
