@@ -18,24 +18,23 @@ import './index.css';
 
 export default function WindowControls() {
   const controlsRef = useRef<HTMLDivElement>(null);
-  // Use lazy initialization to avoid calling setState in effect
-  const [platform] = useState<string>(() => {
-    try {
-      return window.electronAPI?.getPlatform() || '';
-    } catch {
-      return '';
-    }
-  });
+  const [platform, setPlatform] = useState<string>('');
 
   useEffect(() => {
-    if (platform === 'darwin') {
+    const p = window.electronAPI.getPlatform();
+    setPlatform(p);
+
+    // Hide custom controls on macOS (uses native traffic lights)
+    // and on Windows (now uses native frame with native controls)
+    if (p === 'darwin' || p === 'win32') {
       if (controlsRef.current) {
         controlsRef.current.style.display = 'none';
       }
     }
-  }, [platform]);
+  }, []);
 
-  if (platform === 'darwin') {
+  // Don't render custom controls on macOS or Windows (both use native controls)
+  if (platform === 'darwin' || platform === 'win32') {
     return null;
   }
 

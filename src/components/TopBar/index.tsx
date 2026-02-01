@@ -54,26 +54,13 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { toggle } = useSidebarStore();
-  const { token: _token } = getAuthStore();
+  const _authStore = getAuthStore();
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
-
-  const activeTaskId = chatStore?.activeTaskId;
-  const summaryTask = chatStore?.tasks[activeTaskId as string]?.summaryTask;
-  const activeTaskTitle = useMemo(() => {
-    if (!chatStore || !activeTaskId || !summaryTask) {
-      return t('layout.new-project');
-    }
-    return summaryTask.split('|')[0];
-  }, [chatStore, activeTaskId, summaryTask, t]);
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
 
   const exportLog = async () => {
     try {
@@ -99,6 +86,27 @@ function HeaderWin() {
     projectStore.createProject('new project');
     navigate('/');
   };
+
+  const activeTaskTitle = useMemo(() => {
+    if (
+      chatStore?.activeTaskId &&
+      chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask
+    ) {
+      return chatStore.tasks[
+        chatStore.activeTaskId as string
+      ].summaryTask.split('|')[0];
+    }
+    return t('layout.new-project');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    chatStore?.activeTaskId,
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask,
+    t,
+  ]);
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   const getReferFriendsLink = async () => {
     try {
@@ -410,7 +418,8 @@ function HeaderWin() {
           ></div>
         )}
       </div>
-      {platform !== 'darwin' && (
+      {/* Custom window controls only for Linux (Windows and macOS use native controls) */}
+      {platform !== 'darwin' && platform !== 'win32' && (
         <div
           className="no-drag flex h-full items-center"
           id="window-controls"

@@ -24,7 +24,7 @@ import {
   Folder as FolderIcon,
   Search,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
 
 import { proxyFetchGet } from '@/api/http';
@@ -158,14 +158,14 @@ const FileTree: React.FC<FileTreeProps> = ({
 function downloadByBrowser(url: string) {
   window.ipcRenderer
     .invoke('download-file', url)
-    .then((result: any) => {
+    .then((result) => {
       if (result.success) {
         console.log('download-file success:', result.path);
       } else {
         console.error('download-file error:', result.error);
       }
     })
-    .catch((error: any) => {
+    .catch((error) => {
       console.error('download-file error:', error);
     });
 }
@@ -173,71 +173,87 @@ function downloadByBrowser(url: string) {
 export default function Folder({ data: _data }: { data?: Agent }) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
-
   const authStore = useAuthStore();
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [fileTree, setFileTree] = useState<FileTreeNode>({
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  });
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set()
+  );
+  const [fileGroups, setFileGroups] = useState<
+    {
+      folder: string;
+      files: FileInfo[];
+    }[]
+  >([
+    {
+      folder: 'Reports',
+      files: [],
+    },
+  ]);
+  const hasFetchedRemote = useRef(false);
 
-  const selectedFileChange = useCallback(
-    (file: FileInfo, isShowSourceCode?: boolean) => {
-      if (file.type === 'zip') {
-        // if file is remote, don't call reveal-in-folder
-        if (file.isRemote) {
-          downloadByBrowser(file.path);
-          return;
-        }
-        window.ipcRenderer.invoke('reveal-in-folder', file.path);
+  const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
+    if (file.type === 'zip') {
+      // if file is remote, don't call reveal-in-folder
+      if (file.isRemote) {
+        downloadByBrowser(file.path);
         return;
       }
-      // Don't open folders in preview - they are handled by expand/collapse
-      if (file.isFolder) {
-        return;
-      }
-      setSelectedFile(file);
-      setLoading(true);
-      console.log('file', JSON.parse(JSON.stringify(file)));
+      window.ipcRenderer.invoke('reveal-in-folder', file.path);
+      return;
+    }
+    // Don't open folders in preview - they are handled by expand/collapse
+    if (file.isFolder) {
+      return;
+    }
+    setSelectedFile(file);
+    setLoading(true);
+    console.log('file', JSON.parse(JSON.stringify(file)));
 
-      // For PDF files, use data URL instead of custom protocol
-      if (file.type === 'pdf') {
-        window.ipcRenderer
-          .invoke('read-file-dataurl', file.path)
-          .then((dataUrl: string) => {
-            setSelectedFile({ ...file, content: dataUrl });
-            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
-            setLoading(false);
-          })
-          .catch((error: any) => {
-            console.error('read-file-dataurl error:', error);
-            setLoading(false);
-          });
-        return;
-      }
-
-      // all other files call open-file interface, the backend handles download and parsing
+    // For PDF files, use data URL instead of custom protocol
+    if (file.type === 'pdf') {
       window.ipcRenderer
-        .invoke('open-file', file.type, file.path, isShowSourceCode)
-        .then((res: any) => {
-          setSelectedFile({ ...file, content: res });
+        .invoke('read-file-dataurl', file.path)
+        .then((dataUrl: string) => {
+          setSelectedFile({ ...file, content: dataUrl });
           chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
           setLoading(false);
         })
-        .catch((error: any) => {
-          console.error('open-file error:', error);
+        .catch((error) => {
+          console.error('read-file-dataurl error:', error);
           setLoading(false);
         });
-    },
-    [chatStore]
-  );
+      return;
+    }
 
-  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
+    // all other files call open-file interface, the backend handles download and parsing
+    window.ipcRenderer
+      .invoke('open-file', file.type, file.path, isShowSourceCode)
+      .then((res) => {
+        setSelectedFile({ ...file, content: res });
+        chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error('open-file error:', error);
+        setLoading(false);
+      });
+  };
+
   const isShowSourceCodeChange = () => {
     // all files can reload content
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
   };
-
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const buildFileTree = (files: FileInfo[]): FileTreeNode => {
     const root: FileTreeNode = {
@@ -292,17 +308,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     return root;
   };
 
-  const [fileTree, setFileTree] = useState<FileTreeNode>({
-    name: 'root',
-    path: '',
-    children: [],
-    isFolder: true,
-  });
-
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set()
-  );
-
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev);
@@ -315,29 +320,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  const [fileGroups, setFileGroups] = useState<
-    {
-      folder: string;
-      files: FileInfo[];
-    }[]
-  >([
-    {
-      folder: 'Reports',
-      files: [],
-    },
-  ]);
-
-  const hasFetchedRemote = useRef(false);
-
   // Reset hasFetchedRemote when activeTaskId changes
   useEffect(() => {
     hasFetchedRemote.current = false;
-  }, [chatStore.activeTaskId]);
-
-  const taskAssigning =
-    chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning;
+  }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
+    if (!chatStore) return;
     const setFileList = async () => {
       let res = null;
       res = await window.ipcRenderer.invoke(
@@ -384,10 +373,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           );
           console.log('file', file);
           if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-            // Use setTimeout to defer state update and avoid cascading renders
-            setTimeout(() => {
-              selectedFileChange(file as FileInfo, isShowSourceCode);
-            }, 0);
+            selectedFileChange(file as FileInfo, isShowSourceCode);
           }
         }
         return [
@@ -399,22 +385,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       });
     };
     setFileList();
-  }, [
-    taskAssigning,
-    authStore.email,
-    chatStore.activeTaskId,
-    chatStore.tasks,
-    isShowSourceCode,
-    projectStore.activeProjectId,
-    selectedFile?.path,
-    selectedFileChange,
-  ]);
-
-  const selectedFilePath =
-    chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path;
-  const currentSelectedFilePath = selectedFile?.path;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning]);
 
   useEffect(() => {
+    if (!chatStore) return;
     const chatStoreSelectedFile =
       chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
@@ -422,30 +397,24 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         (item: any) => item.path === chatStoreSelectedFile.path
       );
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-        // Use setTimeout to defer state update and avoid cascading renders
-        setTimeout(() => {
-          selectedFileChange(file as FileInfo, isShowSourceCode);
-        }, 0);
+        selectedFileChange(file as FileInfo, isShowSourceCode);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    selectedFilePath,
-    currentSelectedFilePath,
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path,
     fileGroups,
     isShowSourceCode,
-    chatStore.activeTaskId,
-    chatStore.tasks,
-    selectedFileChange,
-    selectedFile,
+    chatStore?.activeTaskId,
   ]);
-
-  const handleBack = () => {
-    chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, 'workflow');
-  };
 
   if (!chatStore) {
     return <div>Loading...</div>;
   }
+
+  const handleBack = () => {
+    chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, 'workflow');
+  };
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -610,6 +579,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     <MarkDown
                       content={selectedFile.content || ''}
                       enableTypewriter={false}
+                      contentBasePath={
+                        selectedFile.isRemote
+                          ? null
+                          : getDirPath(selectedFile.path)
+                      }
                     />
                   </div>
                 ) : selectedFile.type === 'pdf' ? (
