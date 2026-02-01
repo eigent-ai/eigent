@@ -18,16 +18,16 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
-import folderIconWhite from '@/assets/logo/icon_white.svg';
-import folderIconBlack from '@/assets/logo/icon_black.svg';
-import giftIcon from '@/assets/gift.svg';
 import giftWhiteIcon from '@/assets/gift-white.svg';
+import giftIcon from '@/assets/gift.svg';
+import folderIconBlack from '@/assets/logo/icon_black.svg';
+import folderIconWhite from '@/assets/logo/icon_white.svg';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
-import { getAuthStore, useAuthStore } from '@/store/authStore';
+import { useAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import {
   ChevronDown,
@@ -63,7 +63,7 @@ function HeaderWin() {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
-  const logoSrc = appearance === 'light' ? folderIconBlack : folderIconWhite;
+  const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
 
   const exportLog = async () => {
     try {
@@ -399,7 +399,7 @@ function HeaderWin() {
                 className="no-drag"
               >
                 <img
-                  src={appearance === 'light' ? giftIcon : giftWhiteIcon}
+                  src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
                   alt="gift-icon"
                   className="h-4 w-4"
                 />

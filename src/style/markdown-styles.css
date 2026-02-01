@@ -154,55 +154,53 @@
   border: 0;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .markdown-body {
-    color: #e6edf3;
-  }
+/* Dark mode support - matches app's data-theme attribute */
+[data-theme='dark'] .markdown-body {
+  color: #e6edf3;
+}
 
-  .markdown-body h1,
-  .markdown-body h2 {
-    border-bottom-color: #30363d;
-  }
+[data-theme='dark'] .markdown-body h1,
+[data-theme='dark'] .markdown-body h2 {
+  border-bottom-color: #30363d;
+}
 
-  .markdown-body pre {
-    background-color: #161b22;
-  }
+[data-theme='dark'] .markdown-body pre {
+  background-color: #161b22;
+}
 
-  .markdown-body code {
-    background-color: rgba(110, 118, 129, 0.4);
-  }
+[data-theme='dark'] .markdown-body code {
+  background-color: rgba(110, 118, 129, 0.4);
+}
 
-  .markdown-body table th {
-    background-color: #161b22;
-  }
+[data-theme='dark'] .markdown-body table th {
+  background-color: #161b22;
+}
 
-  .markdown-body table th,
-  .markdown-body table td {
-    border-color: #30363d;
-  }
+[data-theme='dark'] .markdown-body table th,
+[data-theme='dark'] .markdown-body table td {
+  border-color: #30363d;
+}
 
-  .markdown-body table tr {
-    background-color: transparent;
-    border-top-color: #30363d;
-  }
+[data-theme='dark'] .markdown-body table tr {
+  background-color: transparent;
+  border-top-color: #30363d;
+}
 
-  .markdown-body table tr:nth-child(2n) {
-    background-color: rgba(110, 118, 129, 0.1);
-  }
+[data-theme='dark'] .markdown-body table tr:nth-child(2n) {
+  background-color: rgba(110, 118, 129, 0.1);
+}
 
-  .markdown-body blockquote {
-    color: #8b949e;
-    border-left-color: #30363d;
-  }
+[data-theme='dark'] .markdown-body blockquote {
+  color: #8b949e;
+  border-left-color: #30363d;
+}
 
-  .markdown-body a {
-    color: #58a6ff;
-  }
+[data-theme='dark'] .markdown-body a {
+  color: #58a6ff;
+}
 
-  .markdown-body hr {
-    background-color: #30363d;
-  }
+[data-theme='dark'] .markdown-body hr {
+  background-color: #30363d;
 }
 
 /* Task list styling */
