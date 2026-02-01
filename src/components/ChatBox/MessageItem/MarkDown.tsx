@@ -12,12 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useState, useEffect, memo, useRef } from 'react';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import '@/style/markdown-styles.css';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import { memo, useEffect, useRef, useState } from 'react';
 
 // Helper functions for path resolution
 function joinPath(...paths: string[]): string {
@@ -130,7 +130,7 @@ export const MarkDown = memo(
             .join('\n')
             .trim();
           setHtml(
-            `<pre class="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`,
+            `<pre class="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
           );
           return;
         }
@@ -185,7 +185,7 @@ export const MarkDown = memo(
               // For absolute URLs, add click handler
               const newTag = fullTag.replace(
                 '<img',
-                '<img class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;"',
+                '<img class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;"'
               );
               rawHtml = rawHtml.replace(fullTag, newTag);
             }
@@ -232,22 +232,27 @@ export const MarkDown = memo(
         />
 
         {/* Image preview dialog */}
-        <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+        <Dialog
+          open={!!previewImage}
+          onOpenChange={() => setPreviewImage(null)}
+        >
           <DialogContent
             size="lg"
-            className="p-2 max-w-[95vw] max-h-[95vh] w-auto h-auto flex items-center justify-center"
+            className="flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center p-2"
             showCloseButton
           >
             {previewImage && (
               <img
                 src={previewImage}
                 alt="Preview"
-                className="max-w-full max-h-[90vh] w-auto h-auto object-contain rounded"
+                className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
               />
             )}
           </DialogContent>
         </Dialog>
       </>
     );
-  },
+  }
 );
+
+MarkDown.displayName = 'MarkDown';

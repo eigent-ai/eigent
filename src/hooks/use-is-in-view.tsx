@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import * as React from 'react';
 import { useInView, type UseInViewOptions } from 'motion/react';
+import * as React from 'react';
 
 interface UseIsInViewOptions {
   inView?: boolean;
@@ -23,7 +23,7 @@ interface UseIsInViewOptions {
 
 function useIsInView<T extends HTMLElement = HTMLElement>(
   ref: React.Ref<T>,
-  options: UseIsInViewOptions = {},
+  options: UseIsInViewOptions = {}
 ): { ref: React.MutableRefObject<T | null>; isInView: boolean } {
   const { inView, inViewOnce = false, inViewMargin = '0px' } = options;
   const localRef = React.useRef<T>(null);

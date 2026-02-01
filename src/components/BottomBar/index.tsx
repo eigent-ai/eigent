@@ -12,14 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { WorkSpaceMenu } from "@/components/WorkSpaceMenu";
+import { WorkSpaceMenu } from '@/components/WorkSpaceMenu';
 
 function BottomBar() {
-	return (
-		<div className="flex h-12 items-center justify-center pb-2 z-50 relative">
-			<WorkSpaceMenu />
-		</div>
-	);
+  return (
+    <div className="relative z-50 flex h-12 items-center justify-center pb-2">
+      <WorkSpaceMenu />
+    </div>
+  );
 }
 
 export default BottomBar;
