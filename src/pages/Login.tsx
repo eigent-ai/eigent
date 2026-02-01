@@ -28,7 +28,6 @@ import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import WindowControls from '@/components/WindowControls';
 import { hasStackKeys } from '@/lib';
-import { loginByStackWithAutoCreate } from '@/service/stackAuthApi';
 import { useTranslation } from 'react-i18next';
 
 const HAS_STACK_KEYS = hasStackKeys();
@@ -159,20 +158,7 @@ export default function Login() {
         return;
       }
 
-      const token = (data as any)?.token as string | undefined;
-      const email =
-        ((data as any)?.email as string | undefined) ?? formData.email;
-      if (!token) {
-        setGeneralError(t('layout.login-failed-please-try-again'));
-        return;
-      }
-
-      setAuth({
-        token,
-        email,
-        username: (data as any)?.username ?? null,
-        user_id: (data as any)?.user_id ?? null,
-      });
+      setAuth({ email: formData.email, ...data });
       setModelType('cloud');
       // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
@@ -191,14 +177,12 @@ export default function Login() {
   const handleLoginByStack = useCallback(
     async (token: string) => {
       try {
-        // 1) Try normal login (existing profile)
-        // 2) If not found, auto-create profile via signup and continue
-        const data = await loginByStackWithAutoCreate(token);
-
-        if (!data) {
-          setGeneralError(t('layout.login-failed-please-try-again'));
-          return;
-        }
+        const data = await proxyFetchPost(
+          '/api/login-by_stack?token=' + token,
+          {
+            token: token,
+          }
+        );
 
         const errorMessage = getLoginErrorMessage(data);
         if (errorMessage) {
@@ -207,21 +191,7 @@ export default function Login() {
         }
         console.log('data', data);
         setModelType('cloud');
-
-        const authToken = (data as any)?.token as string | undefined;
-        const email =
-          ((data as any)?.email as string | undefined) ?? formData.email;
-        if (!authToken) {
-          setGeneralError(t('layout.login-failed-please-try-again'));
-          return;
-        }
-
-        setAuth({
-          token: authToken,
-          email,
-          username: (data as any)?.username ?? null,
-          user_id: (data as any)?.user_id ?? null,
-        });
+        setAuth({ email: formData.email, ...data });
         // Record VITE_USE_LOCAL_PROXY value at login
         const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
         setLocalProxyValue(localProxyValue);
@@ -250,11 +220,6 @@ export default function Login() {
 
   const handleReloadBtn = async (type: string) => {
     if (!app) {
-      // Keep the buttons visible so users discover the option, but make it
-      // clear when Stack OAuth isn't configured for local builds.
-      setGeneralError(
-        'Social sign-in is not configured for this build. Set VITE_STACK_PROJECT_ID, VITE_STACK_PUBLISHABLE_CLIENT_KEY, and VITE_STACK_SECRET_SERVER_KEY.'
-      );
       console.error('Stack app not initialized');
       return;
     }
@@ -322,12 +287,7 @@ export default function Login() {
 
       lock = true;
       setIsLoading(true);
-      const accessToken = await handleGetToken(code);
-      if (!accessToken) {
-        setGeneralError(t('layout.login-failed-please-try-again'));
-        setIsLoading(false);
-        return;
-      }
+      let accessToken = await handleGetToken(code);
       handleLoginByStack(accessToken);
       setTimeout(() => {
         lock = false;
@@ -442,35 +402,39 @@ export default function Login() {
                 {t('layout.sign-up')}
               </Button>
             </div>
-            <div className="w-full pt-6">
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => handleReloadBtn('google')}
-                className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-                disabled={isLoading || !HAS_STACK_KEYS}
-              >
-                <img src={google} className="h-5 w-5" />
-                <span className="ml-2">
-                  {t('layout.continue-with-google-login')}
-                </span>
-              </Button>
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => handleReloadBtn('github')}
-                className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-                disabled={isLoading || !HAS_STACK_KEYS}
-              >
-                <img src={github2} className="h-5 w-5" />
-                <span className="ml-2">
-                  {t('layout.continue-with-github-login')}
-                </span>
-              </Button>
-            </div>
-            <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
-              {t('layout.or')}
-            </div>
+            {HAS_STACK_KEYS && (
+              <div className="w-full pt-6">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => handleReloadBtn('google')}
+                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                  disabled={isLoading}
+                >
+                  <img src={google} className="h-5 w-5" />
+                  <span className="ml-2">
+                    {t('layout.continue-with-google-login')}
+                  </span>
+                </Button>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => handleReloadBtn('github')}
+                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                  disabled={isLoading}
+                >
+                  <img src={github2} className="h-5 w-5" />
+                  <span className="ml-2">
+                    {t('layout.continue-with-github-login')}
+                  </span>
+                </Button>
+              </div>
+            )}
+            {HAS_STACK_KEYS && (
+              <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
+                {t('layout.or')}
+              </div>
+            )}
             <div className="flex w-full flex-col gap-4">
               {generalError && (
                 <p className="mb-4 mt-1 text-label-md text-text-cuation">

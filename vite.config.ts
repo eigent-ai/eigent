@@ -45,7 +45,9 @@ export default defineConfig(({ command, mode }) => {
           entry: 'electron/main/index.ts',
           onstart(args) {
             if (process.env.VSCODE_DEBUG) {
-              console.log('[startup] Electron App');
+              console.log(
+                /* For `.vscode/.debug.script.mjs` */ '[startup] Electron App'
+              );
             } else {
               args.startup();
             }
