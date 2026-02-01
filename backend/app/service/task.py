@@ -45,7 +45,8 @@ class Action(str, Enum):
     # backend -> user (streaming decomposition)
     decompose_progress = "decompose_progress"
     decompose_text = "decompose_text"  # backend -> user (raw streaming text)
-    streaming_agent_output = "streaming_agent_output"  # backend -> user (streaming agent output during task execution)
+    # backend -> user (streaming agent output during task execution)
+    streaming_agent_output = "streaming_agent_output"
     start = "start"  # user -> backend
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
