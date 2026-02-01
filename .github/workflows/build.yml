@@ -294,7 +294,7 @@ jobs:
             aws s3 sync release/mac-arm64/ "s3://$BUCKET/releases/v$VERSION/mac-arm64/" \
               --content-type "binary/octet-stream" \
               --metadata-directive REPLACE \
-              --cache-control "public, max-age=31536000" \
+              --cache-control "public, max-age=31536000, immutable" \
               --exclude "*.yml" \
               --exclude "*.blockmap"
 
@@ -311,7 +311,7 @@ jobs:
             aws s3 sync release/mac-intel/ "s3://$BUCKET/releases/v$VERSION/mac-intel/" \
               --content-type "binary/octet-stream" \
               --metadata-directive REPLACE \
-              --cache-control "public, max-age=31536000" \
+              --cache-control "public, max-age=31536000, immutable" \
               --exclude "*.yml" \
               --exclude "*.blockmap"
 
@@ -328,7 +328,7 @@ jobs:
             aws s3 sync release/win-x64/ "s3://$BUCKET/releases/v$VERSION/win-x64/" \
               --content-type "binary/octet-stream" \
               --metadata-directive REPLACE \
-              --cache-control "public, max-age=31536000" \
+              --cache-control "public, max-age=31536000, immutable" \
               --exclude "*.yml" \
               --exclude "*.blockmap"
 
@@ -345,7 +345,7 @@ jobs:
             aws s3 sync release/linux-x64/ "s3://$BUCKET/releases/v$VERSION/linux-x64/" \
               --content-type "binary/octet-stream" \
               --metadata-directive REPLACE \
-              --cache-control "public, max-age=31536000" \
+              --cache-control "public, max-age=31536000, immutable" \
               --exclude "*.yml"
 
             aws s3 sync release/linux-x64/ "s3://$BUCKET/releases/v$VERSION/linux-x64/" \
