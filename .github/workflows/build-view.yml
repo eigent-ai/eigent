@@ -240,8 +240,12 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version for test build: $VERSION"
 
-      # Configure AWS credentials
+      # Configure AWS credentials (skipped when AWS secrets are not configured)
       - name: Configure AWS credentials
+        id: aws-check
+        if: env.AWS_ACCESS_KEY_ID != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -250,52 +254,36 @@ jobs:
 
       # Upload to S3 - test directory
       - name: Upload to S3 (test build)
+        if: steps.aws-check.outcome == 'success'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BUCKET="${{ secrets.AWS_S3_BUCKET }}"
 
           echo "Uploading test build $VERSION to S3 bucket: $BUCKET"
 
-          # Upload macOS ARM64 files
-          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
-            echo "Uploading macOS ARM64 files..."
-            aws s3 sync release/mac-arm64/ "s3://$BUCKET/test-builds/$VERSION/mac-arm64/" \
-              --content-type "binary/octet-stream" \
-              --metadata-directive REPLACE \
-              --cache-control "public, max-age=300"
-          fi
-
-          # Upload macOS Intel files (if exists)
-          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
-            echo "Uploading macOS Intel files..."
-            aws s3 sync release/mac-intel/ "s3://$BUCKET/test-builds/$VERSION/mac-intel/" \
-              --content-type "binary/octet-stream" \
-              --metadata-directive REPLACE \
-              --cache-control "public, max-age=300"
-          fi
-
-          # Upload Windows files
-          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
-            echo "Uploading Windows files..."
-            aws s3 sync release/win-x64/ "s3://$BUCKET/test-builds/$VERSION/win-x64/" \
-              --content-type "binary/octet-stream" \
-              --metadata-directive REPLACE \
-              --cache-control "public, max-age=300"
-          fi
-
-          # Upload Linux files
-          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
-            echo "Uploading Linux files..."
-            aws s3 sync release/linux-x64/ "s3://$BUCKET/test-builds/$VERSION/linux-x64/" \
-              --content-type "binary/octet-stream" \
-              --metadata-directive REPLACE \
-              --cache-control "public, max-age=300"
-          fi
+          declare -a targets=(
+            "release/mac-arm64 mac-arm64"
+            "release/mac-intel mac-intel"
+            "release/win-x64 win-x64"
+            "release/linux-x64 linux-x64"
+          )
+          for t in "${targets[@]}"; do
+            src_dir="${t%% *}"
+            path_suffix="${t##* }"
+            if [ -d "$src_dir" ] && [ "$(ls -A "$src_dir")" ]; then
+              echo "Uploading $path_suffix files..."
+              aws s3 sync "$src_dir/" "s3://$BUCKET/test-builds/$VERSION/$path_suffix/" \
+                --content-type "binary/octet-stream" \
+                --metadata-directive REPLACE \
+                --cache-control "public, max-age=300"
+            fi
+          done
 
           echo "Test build $VERSION uploaded successfully"
 
       # Generate download URLs
       - name: Generate download URLs
+        if: steps.aws-check.outcome == 'success'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BUCKET="${{ secrets.AWS_S3_BUCKET }}"
