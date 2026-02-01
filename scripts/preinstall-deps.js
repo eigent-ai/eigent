@@ -63,10 +63,10 @@ function isValidZip(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     return buffer.length > 4 &&
-           buffer[0] === 0x50 &&
-           buffer[1] === 0x4B &&
-           buffer[2] === 0x03 &&
-           buffer[3] === 0x04;
+      buffer[0] === 0x50 &&
+      buffer[1] === 0x4B &&
+      buffer[2] === 0x03 &&
+      buffer[3] === 0x04;
   } catch {
     return false;
   }
@@ -79,8 +79,8 @@ function isValidTarGz(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     return buffer.length > 2 &&
-           buffer[0] === 0x1F &&
-           buffer[1] === 0x8B;
+      buffer[0] === 0x1F &&
+      buffer[1] === 0x8B;
   } catch {
     return false;
   }
@@ -114,7 +114,7 @@ async function downloadFileWithValidation(urlsToTry, dest, validateFn, fileType 
             }, (response) => {
               // Handle redirects (301, 302, 307, 308)
               if (response.statusCode === 301 || response.statusCode === 302 ||
-                  response.statusCode === 307 || response.statusCode === 308) {
+                response.statusCode === 307 || response.statusCode === 308) {
                 redirectCount++;
                 if (redirectCount > maxRedirects) {
                   reject(new Error(`Too many redirects (${redirectCount})`));
@@ -366,21 +366,21 @@ async function installUv() {
       // Find installed uv
       const possiblePaths = process.platform === 'win32'
         ? [
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
-            path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
-            'C:\\Python311\\Scripts\\uv.exe',
-            'C:\\Python312\\Scripts\\uv.exe',
-            'C:\\Python313\\Scripts\\uv.exe',
-          ]
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts', 'uv.exe'),
+          path.join(os.homedir(), '.local', 'bin', 'uv.exe'),
+          'C:\\Python311\\Scripts\\uv.exe',
+          'C:\\Python312\\Scripts\\uv.exe',
+          'C:\\Python313\\Scripts\\uv.exe',
+        ]
         : [
-            path.join(os.homedir(), '.local', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
-            path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
-            '/usr/local/bin/uv',
-          ];
+          path.join(os.homedir(), '.local', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.11', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.12', 'bin', 'uv'),
+          path.join(os.homedir(), 'Library', 'Python', '3.13', 'bin', 'uv'),
+          '/usr/local/bin/uv',
+        ];
 
       let foundUvPath = null;
       try {
@@ -457,7 +457,7 @@ async function installUv() {
 
   // Handle nested directory from tarball if needed
   if (!isWindows) {
-    const nestedDir = fs.readdirSync(BIN_DIR).find(f => 
+    const nestedDir = fs.readdirSync(BIN_DIR).find(f =>
       fs.statSync(path.join(BIN_DIR, f)).isDirectory() && f.startsWith('uv-')
     );
     if (nestedDir) {
@@ -673,8 +673,22 @@ async function installPythonDeps(uvPath) {
   };
 
   const pyvenvCfg = path.join(venvPath, 'pyvenv.cfg');
+
+  // Check if venv contains placeholder
+  // If so, remove it to force recreation
   if (fs.existsSync(pyvenvCfg)) {
-    console.log('✅ Python venv exists, syncing...');
+    try {
+      const content = fs.readFileSync(pyvenvCfg, 'utf-8');
+      if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+        console.log('⚠️  Venv contains placeholder from previous build, removing...');
+        fs.rmSync(venvPath, { recursive: true, force: true });
+        console.log('📦 Creating fresh Python venv...');
+      } else {
+        console.log('✅ Python venv exists, syncing...');
+      }
+    } catch (error) {
+      console.log('⚠️  Failed to check venv, will try to sync anyway...');
+    }
   } else {
     console.log('📦 Creating Python venv...');
   }
@@ -763,6 +777,21 @@ async function installTerminalBaseVenv(uvPath) {
     ? path.join(TERMINAL_VENV_DIR, 'Scripts', 'python.exe')
     : path.join(TERMINAL_VENV_DIR, 'bin', 'python');
   const installedMarker = path.join(TERMINAL_VENV_DIR, '.packages_installed');
+  const pyvenvCfg = path.join(TERMINAL_VENV_DIR, 'pyvenv.cfg');
+
+  // Check if venv contains placeholder (from previous build)
+  // If so, remove it to force recreation
+  if (fs.existsSync(pyvenvCfg)) {
+    try {
+      const content = fs.readFileSync(pyvenvCfg, 'utf-8');
+      if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+        console.log('⚠️  Terminal venv contains placeholder from previous build, removing...');
+        fs.rmSync(TERMINAL_VENV_DIR, { recursive: true, force: true });
+      }
+    } catch (error) {
+      console.log('⚠️  Failed to check terminal venv, will continue...');
+    }
+  }
 
   // Check if already fully installed
   if (fs.existsSync(pythonPath) && fs.existsSync(installedMarker)) {
