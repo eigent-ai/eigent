@@ -136,7 +136,7 @@ export default function Workflow({
       // {
       // 	tasks: [],
       // 	agent_id: "social_media_agent",
-      // 	name: "Social Medium Agent",
+      // 	name: "Social Media Agent",
       // 	type: "social_media_agent",
       // 	log: [],
       // 	activeWebviewIds: [],
