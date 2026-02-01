@@ -33,8 +33,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 				root.setAttribute('data-theme', 'light');
 				break;
 			case 'dark':
-			default:
 				root.setAttribute('data-theme', 'dark');
+				break;
+			default:
+				root.setAttribute('data-theme', 'light');
 		}
 	}, [appearance]);
 

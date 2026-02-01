@@ -65,7 +65,7 @@ export default function SideBar({ className }: SideBarProps) {
       id: "refer",
       icon: (
         <img
-          src={appearance === "dark" ? giftWhiteIcon : giftIcon}
+          src={appearance === "light" ? giftIcon : giftWhiteIcon}
           alt="gift-icon"
           className="w-[20px] h-[20px]"
         />

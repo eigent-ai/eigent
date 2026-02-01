@@ -63,7 +63,7 @@ function HeaderWin() {
 		const p = window.electronAPI.getPlatform();
 		setPlatform(p);
 	}, []);
-	const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
+	const logoSrc = appearance === 'light' ? folderIconBlack : folderIconWhite;
 
 	const exportLog = async () => {
 		try {
@@ -343,7 +343,7 @@ function HeaderWin() {
 								className="no-drag"
 							>
 								<img
-									src={appearance === "dark" ? giftWhiteIcon : giftIcon}
+									src={appearance === "light" ? giftIcon : giftWhiteIcon}
 									alt="gift-icon"
 									className="w-4 h-4"
 								/>
@@ -376,19 +376,19 @@ function HeaderWin() {
 					ref={controlsRef}
 				>
 					<div
-						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-surface-hover-subtle flex-1"
 						onClick={() => window.electronAPI.minimizeWindow()}
 					>
 						<Minus className="w-4 h-4" />
 					</div>
 					<div
-						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-surface-hover-subtle flex-1"
 						onClick={() => window.electronAPI.toggleMaximizeWindow()}
 					>
 						<Square className="w-4 h-4" />
 					</div>
 					<div
-						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-[#f0f0f0] flex-1"
+						className="w-[35px] cursor-pointer text-center leading-5 h-full flex items-center justify-center hover:bg-surface-hover-subtle flex-1"
 						onClick={() => window.electronAPI.closeWindow()}
 					>
 						<X className="w-4 h-4" />
