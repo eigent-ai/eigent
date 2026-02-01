@@ -23,16 +23,17 @@ description: "This guide walks you through setting up your Kimi (Moonshot AI) AP
 
 - In the Settings menu, find and select the **Models** section.
 - Scroll down to the **Custom Model** area.
-- Look for the **Kimi Config** card.
+- Look for the **Moonshot** card.
 
 ![Kimi 2 Pn](/docs/images/kimi_1.png)
 
 #### 3. Enter API Details
 
-Click on the Kimi Config card and fill in the following fields:
+Click on the Moonshot card and fill in the following fields:
 
 - **API Key:** Paste the key you generated from the Kimi console.
-- **API Host:** Enter the appropriate API endpoint host.
+- **API Host:** Enter the appropriate API endpoint host (for example,
+  `https://api.moonshot.ai/v1`).
 - **Model Type:** Enter the specific model version you wish to use.
   - _Example:_ `kimi-k2.5`
 - **Save:** Click the **Save** button to apply your changes.
@@ -41,7 +42,7 @@ Click on the Kimi Config card and fill in the following fields:
 
 #### 4. Set as Default & Verify
 
-- Once saved, the **"Set as Default"** button on the Kimi Config card will be
+- Once saved, the **"Set as Default"** button on the Moonshot card will be
   selected/active.
 - **You are ready to go.** Your Eigent agents can now utilize the Kimi model.
 
