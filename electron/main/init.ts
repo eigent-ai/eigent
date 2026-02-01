@@ -33,9 +33,18 @@ function readEnvValue(filePath: string, key: string): string | undefined {
         if (!fs.existsSync(filePath)) return undefined;
         const content = fs.readFileSync(filePath, 'utf-8');
         const lines = content.split(/\r?\n/);
-        const line = lines.find((l) => l.trim() && !l.trim().startsWith('#') && l.startsWith(`${key}=`));
+        const line = lines.find((l) => {
+            const trimmed = l.trim();
+            return trimmed && !trimmed.startsWith('#') && trimmed.startsWith(`${key}=`);
+        });
         if (!line) return undefined;
-        return line.slice(key.length + 1).trim();
+        let value = line.trim().slice(key.length + 1).trim();
+        // Strip surrounding quotes (single or double)
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        }
+        return value;
     } catch (error) {
         log.warn(`Failed to read ${key} from ${filePath}:`, error);
         return undefined;
@@ -46,6 +55,8 @@ function buildLocalServerUrl(proxyUrl: string | undefined): string | undefined {
     if (!proxyUrl) return undefined;
     const trimmed = proxyUrl.trim().replace(/\/+$/, '');
     if (!trimmed) return undefined;
+    // Avoid double /api suffix
+    if (trimmed.endsWith('/api')) return trimmed;
     return `${trimmed}/api`;
 }
 
@@ -212,7 +223,7 @@ export async function startBackend(setPort?: (port: number) => void): Promise<an
 
     const devServerUrl = process.env.VITE_DEV_SERVER_URL;
     if (!resolvedServerUrl && devServerUrl) {
-        const devEnvPath = path.join(process.cwd(), '.env.development');
+        const devEnvPath = path.join(app.getAppPath(), '.env.development');
         const devProxyEnabled = readEnvValue(devEnvPath, 'VITE_USE_LOCAL_PROXY') === 'true';
         const devProxyUrl = readEnvValue(devEnvPath, 'VITE_PROXY_URL');
         if (devProxyEnabled) {
