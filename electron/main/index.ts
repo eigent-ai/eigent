@@ -1268,7 +1268,6 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 // ==================== window create ====================
 async function createWindow() {
   const isMac = process.platform === 'darwin';
-  const isWindows = process.platform === 'win32';
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
@@ -1299,19 +1298,21 @@ async function createWindow() {
     // Use native frame on Windows for better native integration
     frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
-    // Only use transparency on macOS (works better there)
-    transparent: isMac ? true : false,
+    // Only use transparency on macOS and Linux (not supported well on Windows)
+    transparent: !isWindows,
     // macOS-only visual effects
     vibrancy: isMac ? 'sidebar' : undefined,
     visualEffectState: isMac ? 'active' : undefined,
-    // Solid background on Windows, semi-transparent on macOS
-    backgroundColor: isWindows ? '#ffffff' : '#f5f5f580',
+    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    backgroundColor: isWindows
+      ? (nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff')
+      : '#f5f5f580',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    // Rounded corners only on macOS
-    roundedCorners: isMac ? true : false,
+    // Rounded corners on macOS and Linux (as original)
+    roundedCorners: !isWindows,
     // Windows-specific options
     ...(isWindows && {
       autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
@@ -1938,20 +1939,6 @@ app.whenReady().then(async () => {
   // And for main_window partition
   session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
   log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
-
-  // ==================== Windows theme change listener ====================
-  // Listen for system theme changes on Windows and notify renderer
-  if (isWindows) {
-    nativeTheme.on('updated', () => {
-      const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-      log.info(`[THEME] System theme changed to: ${theme}`);
-      // Notify renderer process about theme change
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('system-theme-changed', { theme });
-      }
-    });
-    log.info('[THEME] Windows theme change listener registered');
-  }
 
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, webContents) => {
