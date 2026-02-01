@@ -174,7 +174,9 @@ export function SearchHistoryDialog() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      void handleDelete(String(task.id));
+                      if (window.confirm(t('setting.confirm-delete'))) {
+                        void handleDelete(String(task.id));
+                      }
                     }}
                   >
                     <Trash2 size={16} />

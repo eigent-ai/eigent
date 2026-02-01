@@ -36,7 +36,12 @@ export default function SignUp() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
-  const { setAuth, setModelType, initState: _initState } = useAuthStore();
+  const {
+    setAuth,
+    setModelType,
+    setLocalProxyValue,
+    initState: _initState,
+  } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [hidePassword, setHidePassword] = useState(true);
@@ -173,7 +178,7 @@ export default function SignUp() {
         const authToken = (data as any)?.token as string | undefined;
         const email =
           ((data as any)?.email as string | undefined) ?? formData.email;
-        if (!authToken) {
+        if (!authToken || !email) {
           setGeneralError(t('layout.login-failed-please-try-again'));
           return;
         }
@@ -185,6 +190,9 @@ export default function SignUp() {
           user_id: (data as any)?.user_id ?? null,
         });
         setModelType('cloud');
+        // Record VITE_USE_LOCAL_PROXY value at login
+        const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+        setLocalProxyValue(localProxyValue);
         navigate('/');
       } catch (error: any) {
         console.error('Login failed:', error);
@@ -200,6 +208,7 @@ export default function SignUp() {
       navigate,
       setAuth,
       setModelType,
+      setLocalProxyValue,
       setGeneralError,
       setIsLoading,
       t,

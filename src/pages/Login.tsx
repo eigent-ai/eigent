@@ -210,7 +210,7 @@ export default function Login() {
         const authToken = (data as any)?.token as string | undefined;
         const email =
           ((data as any)?.email as string | undefined) ?? formData.email;
-        if (!authToken) {
+        if (!authToken || !email) {
           setGeneralError(t('layout.login-failed-please-try-again'));
           return;
         }
