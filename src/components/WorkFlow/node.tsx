@@ -49,6 +49,7 @@ import {
 } from "../ui/popover";
 import { AddWorker } from "@/components/AddWorker";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { TaskStatus, ChatTaskStatus, AgentStatusValue } from "@/types/constants";
 
 interface NodeProps {
 	id: string;
@@ -84,27 +85,27 @@ export function Node({ id, data }: NodeProps) {
 			const newFiltered = tasks.filter((task) => {
 				switch (selectedState) {
 					case "done":
-						return task.status === "completed" && !task.reAssignTo;
+						return task.status === TaskStatus.COMPLETED && !task.reAssignTo;
 					case "reassigned":
 						return !!task.reAssignTo;
 					case "ongoing":
 						return (
-							task.status !== "failed" &&
-							task.status !== "completed" &&
-							task.status !== "skipped" &&
-							task.status !== "waiting" &&
-							task.status !== "" &&
+							task.status !== TaskStatus.FAILED &&
+							task.status !== TaskStatus.COMPLETED &&
+							task.status !== TaskStatus.SKIPPED &&
+							task.status !== TaskStatus.WAITING &&
+							task.status !== TaskStatus.EMPTY &&
 							!task.reAssignTo
 						);
 					case "pending":
 						return (
-							(task.status === "skipped" ||
-								task.status === "waiting" ||
-								task.status === "") &&
+							(task.status === TaskStatus.SKIPPED ||
+								task.status === TaskStatus.WAITING ||
+								task.status === TaskStatus.EMPTY) &&
 							!task.reAssignTo
 						);
 					case "failed":
-						return task.status === "failed";
+						return task.status === TaskStatus.FAILED;
 					default:
 						return false;
 				}
@@ -136,13 +137,13 @@ export function Node({ id, data }: NodeProps) {
 		// Find running task with active toolkits
 		const runningTaskWithToolkits = tasks.find(
 			(task) =>
-				task.status === "running" &&
+				task.status === TaskStatus.RUNNING &&
 				task.toolkits &&
 				task.toolkits.length > 0
 		);
 
 		// Reset tracking when no tasks are running
-		const hasRunningTasks = tasks.some((task) => task.status === "running");
+		const hasRunningTasks = tasks.some((task) => task.status === TaskStatus.RUNNING);
 		if (!hasRunningTasks && lastAutoExpandedTaskIdRef.current) {
 			lastAutoExpandedTaskIdRef.current = null;
 		}
@@ -164,8 +165,8 @@ export function Node({ id, data }: NodeProps) {
 		data.agent?.tasks,
 		// Add specific dependencies that actually change
 		data.agent?.tasks?.length,
-		data.agent?.tasks?.find((t) => t.status === "running")?.id,
-		data.agent?.tasks?.find((t) => t.status === "running")?.toolkits?.length,
+		data.agent?.tasks?.find((t) => t.status === TaskStatus.RUNNING)?.id,
+		data.agent?.tasks?.find((t) => t.status === TaskStatus.RUNNING)?.toolkits?.length,
 		id,
 		data.onExpandChange,
 		isExpanded,
@@ -198,7 +199,7 @@ export function Node({ id, data }: NodeProps) {
 	const handleShowLog = () => {
 		if (!isExpanded) {
 			setSelectedTask(
-				data.agent?.tasks.find((task) => task.status === "running") ||
+				data.agent?.tasks.find((task) => task.status === TaskStatus.RUNNING) ||
 				data.agent?.tasks[0]
 			);
 		}
@@ -318,7 +319,7 @@ export function Node({ id, data }: NodeProps) {
 			borderColor: "border-bg-fill-multimodal-active",
 			bgColorLight: "bg-fuchsia-200",
 		},
-		social_medium_agent: {
+		social_media_agent: {
 			name: "Social Media Agent",
 			icon: <Bird size={16} className="text-text-primary" />,
 			textColor: "text-purple-700",
@@ -549,7 +550,7 @@ export function Node({ id, data }: NodeProps) {
 									all={data.agent.tasks?.length || 0}
 									done={
 										data.agent?.tasks?.filter(
-											(task) => task.status === "completed" && !task.reAssignTo
+											(task) => task.status === TaskStatus.COMPLETED && !task.reAssignTo
 										).length || 0
 									}
 									reAssignTo={
@@ -559,26 +560,26 @@ export function Node({ id, data }: NodeProps) {
 									progress={
 										data.agent?.tasks?.filter(
 											(task) =>
-												task.status !== "failed" &&
-												task.status !== "completed" &&
-												task.status !== "skipped" &&
-												task.status !== "waiting" &&
-												task.status !== "" &&
+												task.status !== TaskStatus.FAILED &&
+												task.status !== TaskStatus.COMPLETED &&
+												task.status !== TaskStatus.SKIPPED &&
+												task.status !== TaskStatus.WAITING &&
+												task.status !== TaskStatus.EMPTY &&
 												!task.reAssignTo
 										).length || 0
 									}
 									skipped={
 										data.agent?.tasks?.filter(
 											(task) =>
-												(task.status === "skipped" ||
-													task.status === "waiting" ||
-													task.status === "") &&
+												(task.status === TaskStatus.SKIPPED ||
+													task.status === TaskStatus.WAITING ||
+													task.status === TaskStatus.EMPTY) &&
 												!task.reAssignTo
 										).length || 0
 									}
 									failed={
 										data.agent?.tasks?.filter(
-											(task) => task.status === "failed"
+											(task) => task.status === TaskStatus.FAILED
 										).length || 0
 									}
 									selectedState={selectedState}
@@ -625,32 +626,32 @@ export function Node({ id, data }: NodeProps) {
 										key={`taskList-${task.id}-${task.failure_count}`}
 										className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${task.reAssignTo
 											? "bg-task-fill-warning"
-											: task.status === "completed"
+											: task.status === TaskStatus.COMPLETED
 												? "bg-task-fill-success"
-												: task.status === "failed"
+												: task.status === TaskStatus.FAILED
 													? "bg-task-fill-error"
-													: task.status === "running"
+													: task.status === TaskStatus.RUNNING
 														? "bg-task-fill-running"
-														: task.status === "blocked"
+														: task.status === TaskStatus.BLOCKED
 															? "bg-task-fill-warning"
 															: "bg-task-fill-running"
-											} border border-solid border-transparent cursor-pointer ${task.status === "completed"
+											} border border-solid border-transparent cursor-pointer ${task.status === TaskStatus.COMPLETED
 												? "hover:border-bg-fill-success-primary"
-												: task.status === "failed"
+												: task.status === TaskStatus.FAILED
 													? "hover:border-task-border-focus-error"
-													: task.status === "running"
+													: task.status === TaskStatus.RUNNING
 														? "hover:border-border-primary"
-														: task.status === "blocked"
+														: task.status === TaskStatus.BLOCKED
 															? "hover:border-task-border-focus-warning"
 															: "border-transparent"
 											} ${selectedTask?.id === task.id
-												? task.status === "completed"
+												? task.status === TaskStatus.COMPLETED
 													? "!border-bg-fill-success-primary"
-													: task.status === "failed"
+													: task.status === TaskStatus.FAILED
 														? "!border-text-cuation-primary"
-														: task.status === "running"
+														: task.status === TaskStatus.RUNNING
 															? "!border-border-primary"
-															: task.status === "blocked"
+															: task.status === TaskStatus.BLOCKED
 																? "!border-text-warning-primary"
 																: "border-transparent"
 												: "border-transparent"
@@ -663,41 +664,41 @@ export function Node({ id, data }: NodeProps) {
 											) : (
 												// normal task
 												<>
-													{task.status === "running" && (
+													{task.status === TaskStatus.RUNNING && (
 														<LoaderCircle
 															size={16}
 															className={`text-icon-information ${chatStore.tasks[
 																chatStore.activeTaskId as string
-															].status === "running" && "animate-spin"
+															].status === ChatTaskStatus.RUNNING && "animate-spin"
 																}`}
 														/>
 													)}
-													{task.status === "skipped" && (
+													{task.status === TaskStatus.SKIPPED && (
 														<LoaderCircle
 															size={16}
 															className={`text-icon-secondary `}
 														/>
 													)}
-													{task.status === "completed" && (
+													{task.status === TaskStatus.COMPLETED && (
 														<CircleCheckBig
 															size={16}
 															className="text-icon-success"
 														/>
 													)}
-													{task.status === "failed" && (
+													{task.status === TaskStatus.FAILED && (
 														<CircleSlash
 															size={16}
 															className="text-icon-cuation"
 														/>
 													)}
-													{task.status === "blocked" && (
+													{task.status === TaskStatus.BLOCKED && (
 														<TriangleAlert
 															size={16}
 															className="text-icon-warning"
 														/>
 													)}
-													{(task.status === "" ||
-														task.status === "waiting") && (
+													{(task.status === TaskStatus.EMPTY ||
+														task.status === TaskStatus.WAITING) && (
 															<Circle size={16} className="text-slate-400" />
 														)}
 												</>
@@ -705,9 +706,9 @@ export function Node({ id, data }: NodeProps) {
 										</div>
 										<div className="flex-1 flex flex-col items-start justify-center">
 											<div
-												className={`w-full flex-grow-0 ${task.status === "failed"
+												className={`w-full flex-grow-0 ${task.status === TaskStatus.FAILED
 													? "text-text-cuation-default"
-													: task.status === "blocked"
+													: task.status === TaskStatus.BLOCKED
 														? "text-text-body"
 														: "text-text-primary"
 													} text-xs font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
@@ -723,9 +724,9 @@ export function Node({ id, data }: NodeProps) {
 													) : (
 														(task.failure_count ?? 0) > 0 && (
 															<div
-																className={`${task.status === "failed"
+																className={`${task.status === TaskStatus.FAILED
 																	? "bg-surface-error-subtle text-text-cuation"
-																	: task.status === "completed"
+																	: task.status === TaskStatus.COMPLETED
 																		? "bg-tag-fill-developer text-text-success-default"
 																		: "bg-tag-surface-hover text-text-label"
 																	}  text-xs font-bold leading-none rounded-lg px-1 py-0.5`}
@@ -737,7 +738,7 @@ export function Node({ id, data }: NodeProps) {
 												</div>
 												<div>{task.content}</div>
 											</div>
-											{task?.status === "running" && (
+											{task?.status === TaskStatus.RUNNING && (
 												<div className="flex items-center gap-2 mt-xs animate-in fade-in-0 slide-in-from-bottom-2 duration-400">
 													{/* active toolkit */}
 													{task.toolkits &&
@@ -746,7 +747,7 @@ export function Node({ id, data }: NodeProps) {
 															.filter(
 																(tool: any) => tool.toolkitName !== "notice"
 															)
-															.at(-1)?.toolkitStatus === "running" && (
+															.at(-1)?.toolkitStatus === AgentStatusValue.RUNNING && (
 															<div className="flex-1 min-w-0 flex justify-start items-center gap-sm animate-in fade-in-0 slide-in-from-right-2 duration-300">
 																{agentMap[data.type]?.icon ?? (
 																	<Bot className="w-3 h-3" />
@@ -830,12 +831,12 @@ export function Node({ id, data }: NodeProps) {
 													>
 														{/* {toolkit.toolkitStatus} */}
 														<div>
-															{toolkit.toolkitStatus === "running" ? (
+															{toolkit.toolkitStatus === AgentStatusValue.RUNNING ? (
 																<LoaderCircle
 																	size={16}
 																	className={`${chatStore.tasks[
 																		chatStore.activeTaskId as string
-																	].status === "running" && "animate-spin"
+																	].status === ChatTaskStatus.RUNNING && "animate-spin"
 																		}`}
 																/>
 															) : (

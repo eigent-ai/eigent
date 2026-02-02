@@ -45,6 +45,7 @@ import {
 import { Tag } from '../ui/tag';
 import { TooltipSimple } from '../ui/tooltip';
 import SearchInput from './SearchInput';
+import { ChatTaskStatus } from "@/types/constants";
 
 export default function HistorySidebar() {
   const { t } = useTranslation();
@@ -90,7 +91,7 @@ export default function HistorySidebar() {
         Object.keys(csState.tasks || {}).forEach((taskId) => {
           const task = csState.tasks[taskId];
           // Only include ongoing tasks
-          if (task.status !== 'finished' && !task.type) {
+          if (task.status !== ChatTaskStatus.FINISHED && !task.type) {
             hasOngoingTasks = true;
             taskCount++;
             if (task.tokens) {

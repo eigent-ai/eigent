@@ -15,6 +15,7 @@
 import { generateUniqueId } from '@/lib';
 import { create } from 'zustand';
 import { createChatStoreInstance, VanillaChatStore } from './chatStore';
+import { ChatTaskStatus } from '@/types/constants';
 
 export enum ProjectType {
   NORMAL = 'normal',
@@ -173,7 +174,7 @@ const isEmptyProject = (project: Project): boolean => {
       task.summaryTask === '' &&
       task.progressValue === 0 &&
       task.isPending === false &&
-      task.status === 'pending' &&
+      task.status === ChatTaskStatus.PENDING &&
       task.taskTime === 0 &&
       task.tokens === 0 &&
       task.elapsed === 0 &&
