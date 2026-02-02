@@ -97,6 +97,16 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
             String(c.config_value).length > 0
         );
         map[item.key] = hasAccessToken;
+      } else if (item.key === 'Codex') {
+        // Codex: check if OPENAI_API_KEY config is present
+        const hasApiKey = configs.some(
+          (c: any) =>
+            c.config_group?.toLowerCase() === 'codex' &&
+            c.config_name === 'OPENAI_API_KEY' &&
+            c.config_value &&
+            String(c.config_value).length > 0
+        );
+        map[item.key] = hasApiKey;
       } else {
         // For other integrations, use config_group presence
         const hasConfig = configs.some(
@@ -338,6 +348,13 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           console.log('Cleaned up LinkedIn authentication tokens');
         } catch (e) {
           console.log('Failed to clean up LinkedIn tokens:', e);
+        }
+      } else if (item.key === 'Codex') {
+        try {
+          await fetchDelete('/uninstall/tool/codex');
+          console.log('Cleaned up Codex authentication tokens');
+        } catch (e) {
+          console.log('Failed to clean up Codex tokens:', e);
         }
       }
 
