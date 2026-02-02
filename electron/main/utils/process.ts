@@ -13,11 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { spawn } from 'child_process';
+import { app } from 'electron';
 import log from 'electron-log';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { app } from 'electron';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -324,13 +324,15 @@ function findPythonForTerminalVenv(): string | null {
     path.join(prebuiltPythonDir, 'install', 'bin', 'python'),
     path.join(prebuiltPythonDir, 'install', 'python.exe'),
     path.join(prebuiltPythonDir, 'bin', 'python'),
-    path.join(prebuiltPythonDir, 'python.exe'),
+    path.join(prebuiltPythonDir, 'python.exe')
   );
 
   // Then, search in subdirectories (UV stores Python in versioned directories)
   try {
     if (fs.existsSync(prebuiltPythonDir)) {
-      const entries = fs.readdirSync(prebuiltPythonDir, { withFileTypes: true });
+      const entries = fs.readdirSync(prebuiltPythonDir, {
+        withFileTypes: true,
+      });
       for (const entry of entries) {
         if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
           const subDir = path.join(prebuiltPythonDir, entry.name);
@@ -338,7 +340,7 @@ function findPythonForTerminalVenv(): string | null {
             path.join(subDir, 'install', 'bin', 'python'),
             path.join(subDir, 'install', 'python.exe'),
             path.join(subDir, 'bin', 'python'),
-            path.join(subDir, 'python.exe'),
+            path.join(subDir, 'python.exe')
           );
         }
       }
@@ -364,7 +366,11 @@ export function getPrebuiltTerminalVenvPath(): string | null {
     return null;
   }
 
-  const prebuiltTerminalVenvPath = path.join(process.resourcesPath, 'prebuilt', 'terminal_venv');
+  const prebuiltTerminalVenvPath = path.join(
+    process.resourcesPath,
+    'prebuilt',
+    'terminal_venv'
+  );
   if (fs.existsSync(prebuiltTerminalVenvPath)) {
     const pyvenvCfgPath = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
     const installedMarker = path.join(prebuiltTerminalVenvPath, '.packages_installed');
@@ -412,7 +418,9 @@ export function getPrebuiltTerminalVenvPath(): string | null {
             const relativePath = path.relative(binDir, prebuiltPython);
             fs.symlinkSync(relativePath, pythonExePath);
 
-            log.info(`Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`);
+            log.info(
+              `Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`
+            );
             return prebuiltTerminalVenvPath;
           } catch (error) {
             log.warn(`Failed to fix terminal venv Python symlink: ${error}`);
@@ -558,7 +566,11 @@ export function getPrebuiltPythonDir(): string | null {
     return null;
   }
 
-  const prebuiltPythonDir = path.join(process.resourcesPath, 'prebuilt', 'uv_python');
+  const prebuiltPythonDir = path.join(
+    process.resourcesPath,
+    'prebuilt',
+    'uv_python'
+  );
   if (fs.existsSync(prebuiltPythonDir)) {
     log.info(`Using prebuilt Python: ${prebuiltPythonDir}`);
     return prebuiltPythonDir;

@@ -13,6 +13,7 @@
 	"select-language": "選擇語言",
 	"system-default": "系統預設",
 	"appearance": "外觀",
+	"dark": "深色",
 	"light": "淺色",
 	"transparent": "透明",
 
@@ -159,5 +160,13 @@
   "recommended": "推薦",
   "reset": "重設",
   "reset-success": "重設成功！",
-  "reset-failed": "重設失敗！"
+  "reset-failed": "重設失敗！",
+
+	"network-proxy": "網路代理",
+	"network-proxy-description": "設定網路請求的代理伺服器。如果您需要透過代理存取外部 API，這將非常有用。",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "代理設定已儲存。請重新啟動應用程式以套用變更。",
+	"proxy-save-failed": "儲存代理設定失敗。",
+	"proxy-invalid-url": "無效的代理 URL。必須以 http://、https://、socks4:// 或 socks5:// 開頭。",
+	"proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。"
 }

@@ -1,6 +1,6 @@
 ---
-title: "Gemini"
-description: "This guide walks you through setting up your Google Gemini API key within Eigent to enable the Gemini model for your AI workforce."
+title: 'Gemini'
+description: 'This guide walks you through setting up your Google Gemini API key within Eigent to enable the Gemini model for your AI workforce.'
 ---
 
 ### Prerequisites

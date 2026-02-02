@@ -129,58 +129,58 @@ export default function SettingPrivacy() {
 	return (
 		<div className="flex flex-col gap-4 pb-40 ">
 			<div className="px-6 py-4 bg-surface-secondary rounded-2xl flex flex-col gap-2">
-			<div className="text-body-lg font-bold text-text-heading">{t("setting.data-privacy")}</div>
-			<span className="text-body-sm font-normal text-text-body">
-				{t("setting.data-privacy-description")}
-				{" "}
-				<a
-					className="text-blue-500 no-underline"
-					href="https://www.eigent.ai/privacy-policy"
-					target="_blank"
+				<div className="text-body-lg font-bold text-text-heading">{t("setting.data-privacy")}</div>
+				<span className="text-body-sm font-normal text-text-body">
+					{t("setting.data-privacy-description")}
+					{" "}
+					<a
+						className="text-text-link no-underline"
+						href="https://www.eigent.ai/privacy-policy"
+						target="_blank"
+					>
+						{t("setting.privacy-policy")}
+					</a>
+					.
+				</span>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="-ml-2"
+					onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
+					aria-expanded={isHowWeHandleOpen}
+					aria-controls="how-we-handle-your-data"
 				>
-					{t("setting.privacy-policy")}
-				</a>
-				.
-			</span>
-			<Button
-			  variant="ghost"
-				size="sm"
-				className="-ml-2"
-				onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
-				aria-expanded={isHowWeHandleOpen}
-				aria-controls="how-we-handle-your-data"
-			>
-				<span>{t("setting.how-we-handle-your-data")}</span>
-				<ChevronDown
-					className={`w-4 h-4 transition-transform ${isHowWeHandleOpen ? "rotate-0" : "-rotate-90"}`}
-				/>
-			</Button>
-			{isHowWeHandleOpen && (
-				<ol id="how-we-handle-your-data" className="pl-5 text-body-sm text-text-body font-normal mt-2">
-					<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
-					<ul className="pl-4 mb-2">
+					<span>{t("setting.how-we-handle-your-data")}</span>
+					<ChevronDown
+						className={`w-4 h-4 transition-transform ${isHowWeHandleOpen ? "rotate-0" : "-rotate-90"}`}
+					/>
+				</Button>
+				{isHowWeHandleOpen && (
+					<ol id="how-we-handle-your-data" className="pl-5 text-body-sm text-text-body font-normal mt-2">
+						<li>{t("setting.we-only-use-the-essential-data-needed-to-run-your-tasks")}:</li>
+						<ul className="pl-4 mb-2">
+							<li>
+								{t("setting.how-we-handle-your-data-line-1-line-1")}
+							</li>
+							<li>
+								{t("setting.how-we-handle-your-data-line-1-line-2")}
+							</li>
+							<li>
+								{t("setting.how-we-handle-your-data-line-1-line-3")}
+							</li>
+						</ul>
 						<li>
-							{t("setting.how-we-handle-your-data-line-1-line-1")}
+							{t("setting.how-we-handle-your-data-line-2")}
 						</li>
 						<li>
-							{t("setting.how-we-handle-your-data-line-1-line-2")}
+							{t("setting.how-we-handle-your-data-line-3")}
 						</li>
 						<li>
-							{t("setting.how-we-handle-your-data-line-1-line-3")}
+							{t("setting.how-we-handle-your-data-line-4")}
 						</li>
-					</ul>
-					<li>
-						{t("setting.how-we-handle-your-data-line-2")}
-					</li>
-					<li>
-						{t("setting.how-we-handle-your-data-line-3")}
-					</li>
-					<li>
-						{t("setting.how-we-handle-your-data-line-4")}
-					</li>
-					<li>{t("setting.how-we-handle-your-data-line-5")}</li>
-				</ol>
-			)}
+						<li>{t("setting.how-we-handle-your-data-line-5")}</li>
+					</ol>
+				)}
 			</div>
 
 			{/* Privacy controls */}

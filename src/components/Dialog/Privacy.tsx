@@ -133,7 +133,7 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			{trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-			<DialogContent className="sm:max-w-[600px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-zinc-300 shadow-sm">
+			<DialogContent className="sm:max-w-[600px] p-0 !bg-popup-surface gap-0 !rounded-xl border border-border-subtle-strong shadow-sm">
 				<DialogHeader className="!bg-popup-surface !rounded-t-xl p-md">
 					<DialogTitle className="m-0">
 						<div className="flex items-center gap-2">
@@ -143,9 +143,9 @@ export function PrivacyDialog({ open, onOpenChange, trigger }: PrivacyDialogProp
 							<TooltipProvider>
 								<Tooltip>
 									<TooltipTrigger asChild>
-										<AlertCircle 
-											size={16} 
-											className="text-icon-primary cursor-pointer" 
+										<AlertCircle
+											size={16}
+											className="text-icon-primary cursor-pointer"
 										/>
 									</TooltipTrigger>
 									<TooltipContent className="max-w-[340px]">

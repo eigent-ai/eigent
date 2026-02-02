@@ -16,6 +16,8 @@ import React, { useState } from "react";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
 import { FileDown, Inbox, LayoutGrid, MessageCircleQuestion, Network, Settings2Icon } from "lucide-react";
 import giftIcon from "@/assets/gift.svg";
+import giftWhiteIcon from "@/assets/gift-white.svg";
+import { useAuthStore } from "@/store/authStore";
 
 // Icons - you can replace these with actual icon components
 const HomeIcon = () => (
@@ -38,10 +40,6 @@ const BugIcon = () => (
   <FileDown/>
 );
 
-const ReferIcon = () => (
-  <img src={giftIcon} alt="gift-icon" className="w-[20px] h-[20px]" />
-);
-
 const SupportIcon = () => (
   <MessageCircleQuestion/>
 );
@@ -52,6 +50,7 @@ interface SideBarProps {
 
 export default function SideBar({ className }: SideBarProps) {
   const [activeItem, setActiveItem] = useState("home");
+  const { appearance } = useAuthStore();
 
   const menuItems = [
     { id: "home", icon: <HomeIcon />, label: "Home" },
@@ -62,7 +61,17 @@ export default function SideBar({ className }: SideBarProps) {
 
   const bottomItems = [
     { id: "bug", icon: <BugIcon />, label: "Bug" },
-    { id: "refer", icon: <ReferIcon />, label: "Refer" },
+    {
+      id: "refer",
+      icon: (
+        <img
+          src={appearance === "light" ? giftIcon : giftWhiteIcon}
+          alt="gift-icon"
+          className="w-[20px] h-[20px]"
+        />
+      ),
+      label: "Refer",
+    },
     { id: "support", icon: <SupportIcon />, label: "Support" },
   ];
 

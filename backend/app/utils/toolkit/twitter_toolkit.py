@@ -13,7 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from typing import List
-from camel.toolkits import FunctionTool, TwitterToolkit as BaseTwitterToolkit
+
+from camel.toolkits import FunctionTool
+from camel.toolkits import TwitterToolkit as BaseTwitterToolkit
 from camel.toolkits.twitter_toolkit import (
     create_tweet,
     delete_tweet,
@@ -29,7 +31,7 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 @auto_listen_toolkit(BaseTwitterToolkit)
 class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
-    agent_name: str = Agents.social_medium_agent
+    agent_name: str = Agents.social_media_agent
 
     def __init__(self, api_task_id: str, timeout: float | None = None):
         super().__init__(timeout)
@@ -37,7 +39,8 @@ class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
 
     @listen_toolkit(
         create_tweet,
-        lambda _, text, **kwargs: f"create tweet with text: {text} and options: {kwargs}",
+        lambda _, text, **kwargs:
+        f"create tweet with text: {text} and options: {kwargs}",
     )
     def create_tweet(
         self,
@@ -46,7 +49,9 @@ class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
         poll_duration_minutes: int | None = None,
         quote_tweet_id: int | str | None = None,
     ) -> str:
-        return create_tweet(text, poll_options, poll_duration_minutes, quote_tweet_id)
+        return create_tweet(
+            text, poll_options, poll_duration_minutes, quote_tweet_id
+        )
 
     @listen_toolkit(
         delete_tweet,
@@ -80,8 +85,7 @@ class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
     @classmethod
     def get_can_use_tools(cls, api_task_id: str) -> List[FunctionTool]:
         if (
-            env("TWITTER_CONSUMER_KEY")
-            and env("TWITTER_CONSUMER_SECRET")
+            env("TWITTER_CONSUMER_KEY") and env("TWITTER_CONSUMER_SECRET")
             and env("TWITTER_ACCESS_TOKEN")
             and env("TWITTER_ACCESS_TOKEN_SECRET")
         ):

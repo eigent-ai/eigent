@@ -13,6 +13,7 @@
 	"select-language": "Select language",
 	"system-default": "System Default",
 	"appearance": "Appearance",
+	"dark": "Dark",
 	"light": "Light",
 	"transparent": "Transparent",
 
@@ -135,6 +136,14 @@
   "recommended": "Recommandé",
   "reset": "Réinitialiser",
   "reset-success": "Réinitialisation réussie !",
-  "reset-failed": "Échec de la réinitialisation !"
+  "reset-failed": "Échec de la réinitialisation !",
+
+	"network-proxy": "Proxy réseau",
+	"network-proxy-description": "Configurez un serveur proxy pour les requêtes réseau. Utile si vous devez accéder à des API externes via un proxy.",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "Configuration du proxy enregistrée. Redémarrez l'application pour appliquer les modifications.",
+	"proxy-save-failed": "Échec de l'enregistrement de la configuration du proxy.",
+	"proxy-invalid-url": "URL de proxy invalide. Doit commencer par http://, https://, socks4:// ou socks5://.",
+	"proxy-restart-hint": "Redémarrage nécessaire pour appliquer les modifications du proxy."
 }
 
