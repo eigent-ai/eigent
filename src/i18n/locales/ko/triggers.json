@@ -222,7 +222,9 @@
       "invalid-url": "Invalid URL format",
       "min-length": "Must be at least {{min}} characters",
       "max-length": "Must be no more than {{max}} characters",
-      "pattern-mismatch": "Value does not match required pattern"
+      "pattern-mismatch": "Value does not match required pattern",
+      "min-value": "Must be at least {{min}}",
+      "max-value": "Must be no more than {{max}}"
     },
     "validation-failed": "Please fix validation errors: {{errors}}"
   },

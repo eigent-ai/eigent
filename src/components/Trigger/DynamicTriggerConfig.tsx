@@ -62,8 +62,9 @@ type SchemaProperty = {
     items?: {
         type?: string;
         "$ref"?: string;
+        enum?: string[];
     };
-    anyOf?: Array<{ type: string }>;
+    anyOf?: Array<{ type: string; minimum?: number; maximum?: number }>;
     // UI hints from schema
     "ui:widget"?: string;
     "ui:widget:type"?: string;
@@ -587,6 +588,87 @@ const MultiTextInputField: React.FC<FieldProps> = ({
     );
 };
 
+// Number Input Field (for numeric values with min/max constraints)
+const NumberInputField: React.FC<FieldProps> = ({
+    fieldKey,
+    schema,
+    value,
+    onChange,
+    disabled,
+    isRequired,
+    validationError,
+    onValidate,
+}) => {
+    const { t } = useTranslation();
+    const [touched, setTouched] = useState(false);
+
+    const label = schema["ui:label"] ? t(schema["ui:label"]) : schema.title || fieldKey;
+    const notice = schema["ui:notice"] ? t(schema["ui:notice"]) : schema.description;
+    const placeholder = schema["ui:placeholder"] ? t(schema["ui:placeholder"]) : undefined;
+    const showError = touched && validationError;
+
+    // Get min/max constraints from anyOf structure
+    let min: number | undefined;
+    let max: number | undefined;
+    
+    if (schema.anyOf) {
+        const numberConstraint = schema.anyOf.find(item => item.type === "integer" || item.type === "number");
+        if (numberConstraint) {
+            min = numberConstraint.minimum;
+            max = numberConstraint.maximum;
+        }
+    }
+
+    const handleChange = (newValue: string) => {
+        if (newValue === "") {
+            onChange(null);
+            onValidate(fieldKey, null);
+            return;
+        }
+
+        const numValue = parseInt(newValue, 10);
+        if (!isNaN(numValue)) {
+            // Clamp to min/max if provided
+            let clampedValue = numValue;
+            if (min !== undefined && numValue < min) {
+                clampedValue = min;
+            }
+            if (max !== undefined && numValue > max) {
+                clampedValue = max;
+            }
+            onChange(clampedValue);
+            onValidate(fieldKey, clampedValue);
+        }
+    };
+
+    return (
+        <div className="space-y-2">
+            <Label className="text-sm">
+                {label}
+                {isRequired && <span className="text-red-500 ml-1">*</span>}
+            </Label>
+            <Input
+                type="number"
+                value={value ?? ""}
+                onChange={(e) => handleChange(e.target.value)}
+                onBlur={() => setTouched(true)}
+                placeholder={placeholder}
+                disabled={disabled}
+                min={min}
+                max={max}
+                className={showError ? "border-red-500" : ""}
+            />
+            {showError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                    <CircleAlert className="w-3 h-3" />
+                    {validationError}
+                </p>
+            )}
+            {notice && <p className="text-xs text-text-label">{notice}</p>}
+        </div>
+    );
+};
+
 // ============ Main Component ============
 
 export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
@@ -683,6 +765,28 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
                 }
             } catch (e) {
                 // Invalid pattern in schema, skip validation
+            }
+        }
+
+        // Minimum/Maximum value validation (for number inputs)
+        // Get constraints from anyOf structure
+        let min: number | undefined;
+        let max: number | undefined;
+        
+        if (prop.anyOf) {
+            const numberConstraint = prop.anyOf.find(item => item.type === "integer" || item.type === "number");
+            if (numberConstraint) {
+                min = numberConstraint.minimum;
+                max = numberConstraint.maximum;
+            }
+        }
+        
+        if (typeof fieldValue === "number") {
+            if (min !== undefined && fieldValue < min) {
+                return t("triggers.dynamic.validation.min-value", { min });
+            }
+            if (max !== undefined && fieldValue > max) {
+                return t("triggers.dynamic.validation.max-value", { max });
             }
         }
 
@@ -898,6 +1002,8 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
                 return <MultiSelectField key={fieldKey} {...fieldProps} />;
             case "multi-text-input":
                 return <MultiTextInputField key={fieldKey} {...fieldProps} />;
+            case "number-input":
+                return <NumberInputField key={fieldKey} {...fieldProps} />;
             case "text-input":
             default:
                 return <TextInputField key={fieldKey} {...fieldProps} />;
