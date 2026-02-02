@@ -42,6 +42,7 @@ class ConfigGroup(str, Enum):
     PPTX = "PPTX"
     RAG = "RAG"
     TERMINAL = "Terminal"
+    CODEX = "Codex"
 
     @classmethod
     def get_all_values(cls) -> list[str]:
