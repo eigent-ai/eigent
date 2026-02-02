@@ -405,6 +405,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             if (newTab === "schedule") {
                                 setFormData({ ...formData, trigger_type: TriggerType.Schedule });
                                 setSelectedApp("");
+                                // Reset config when switching to schedule tab
+                                setTriggerConfig(getDefaultTriggerConfig());
+                                setTriggerConfigSchema(null);
                             }
                             // Don't change trigger_type when switching to app tab
                             // The actual type will be set when user selects an app
@@ -433,6 +436,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             onClick={() => {
                                                 setSelectedApp("slack");
                                                 setFormData({ ...formData, trigger_type: TriggerType.Slack });
+                                                // Reset config when switching to Slack
+                                                setTriggerConfig(getDefaultTriggerConfig());
+                                                setTriggerConfigSchema(null);
                                             }}
                                         >
                                             <img src={slackIcon} alt="Slack" className="w-8 h-8" />
@@ -443,6 +449,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                             onClick={() => {
                                                 setSelectedApp("webhook");
                                                 setFormData({ ...formData, trigger_type: TriggerType.Webhook });
+                                                // Reset config when switching to Webhook
+                                                setTriggerConfig(getDefaultTriggerConfig());
+                                                setTriggerConfigSchema(null);
                                             }}
                                         >
                                             <WebhookIcon className="w-5 h-5" />
@@ -477,7 +486,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => setSelectedApp("")}
+                                                    onClick={() => {
+                                                        setSelectedApp("");
+                                                        // Reset config when going back to app selection
+                                                        setTriggerConfig(getDefaultTriggerConfig());
+                                                        setTriggerConfigSchema(null);
+                                                    }}
                                                 >
                                                     {t("triggers.change-app")}
                                                 </Button>

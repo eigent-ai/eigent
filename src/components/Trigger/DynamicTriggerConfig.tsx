@@ -84,6 +84,8 @@ type SchemaProperty = {
     config_group?: string;
     // Exclude from API payload
     exclude?: boolean;
+    // Hide from UI
+    hidden?: boolean;
 };
 
 type ValidationError = {
@@ -911,6 +913,10 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
         const behavior: [string, SchemaProperty][] = [];
 
         Object.entries(schema.properties).forEach(([key, prop]) => {
+            // Skip hidden fields from UI rendering
+            if (prop.hidden === true) {
+                return;
+            }
             if (prop.config_group && prop["api:POST"]) {
                 credentials.push([key, prop]);
             } else if (prop["ui:widget"] === "switch") {
