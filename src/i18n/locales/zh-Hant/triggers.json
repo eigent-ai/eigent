@@ -287,13 +287,18 @@
   "verification-required": "Pending Verification. A valid event message is required for Trigger Activation or disable trigger Authentication.",
   "base": {
     "authentication_required": {
-      "label": "Require Authentication",
-      "notice": "Whether authentication is required for this trigger"
+      "label": "需要身份驗證",
+      "notice": "是否需要此觸發器的身份驗證"
     },
     "message_filter": {
-      "label": "Message Filter (Regex)",
-      "placeholder": "Enter regex pattern to filter messages...",
-      "notice": "Use regex patterns to filter which messages trigger the workflow"
+      "label": "訊息過濾器 (正則表達式)",
+      "placeholder": "輸入正則表達式模式來過濾訊息...",
+      "notice": "使用正則表達式模式來過濾哪些訊息觸發工作流程"
+    },
+    "max_failure_count": {
+      "label": "最大失敗次數",
+      "placeholder": "輸入允許的最大連續失敗次數...",
+      "notice": "連續失敗多少次後自動停用觸發器"
     }
   },
   "webhook": {

@@ -294,6 +294,11 @@
       "label": "Message Filter (Regex)",
       "placeholder": "Enter regex pattern to filter messages...",
       "notice": "Use regex patterns to filter which messages trigger the workflow"
+    },
+    "max_failure_count": {
+      "label": "Max Failure Count",
+      "placeholder": "Enter maximum consecutive failures allowed...",
+      "notice": "Number of consecutive failures before the trigger is automatically disabled"
     }
   },
   "webhook": {

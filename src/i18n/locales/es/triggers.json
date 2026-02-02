@@ -287,13 +287,18 @@
   "verification-required": "Pending Verification. A valid event message is required for Trigger Activation or disable trigger Authentication.",
   "base": {
     "authentication_required": {
-      "label": "Require Authentication",
-      "notice": "Whether authentication is required for this trigger"
+      "label": "Requiere Autenticación",
+      "notice": "Si se requiere autenticación para este trigger"
     },
     "message_filter": {
-      "label": "Message Filter (Regex)",
-      "placeholder": "Enter regex pattern to filter messages...",
-      "notice": "Use regex patterns to filter which messages trigger the workflow"
+      "label": "Filtro de Mensajes (Regex)",
+      "placeholder": "Ingrese patrón regex para filtrar mensajes...",
+      "notice": "Use patrones regex para filtrar qué mensajes activan el flujo de trabajo"
+    },
+    "max_failure_count": {
+      "label": "Número Máximo de Fallos",
+      "placeholder": "Ingrese el número máximo de fallos consecutivos permitidos...",
+      "notice": "Número de fallos consecutivos antes de que el trigger se desactive automáticamente"
     }
   },
   "webhook": {

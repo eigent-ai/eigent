@@ -117,6 +117,8 @@ export type Trigger = {
   last_executed_at?: string
   last_execution_status?: string
   next_run_at?: string
+  consecutive_failures?: number
+  auto_disabled_at?: string
   created_at?: string
   updated_at?: string
   execution_count?: number
