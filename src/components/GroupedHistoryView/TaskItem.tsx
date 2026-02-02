@@ -22,6 +22,7 @@ import {
 import { Tag } from '@/components/ui/tag';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { HistoryTask } from '@/types/history';
+import { ChatTaskStatus } from '@/types/constants';
 import {
   CheckCircle,
   CirclePause,
@@ -63,7 +64,7 @@ export default function TaskItem({
   const { t } = useTranslation();
 
   // Check if task is paused (for ongoing tasks)
-  const isPaused = (task as any)._taskData?.status === 'pause';
+  const isPaused = (task as any)._taskData?.status === ChatTaskStatus.PAUSE;
 
   const getStatusTag = (status: number) => {
     // ChatStatus enum: ongoing = 1, done = 2
