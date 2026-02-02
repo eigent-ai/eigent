@@ -221,6 +221,120 @@ const ToolSelect = forwardRef<
                     return null; // Return null on authorization flow errors
                   }
                 };
+              } else if (key.toLowerCase() === 'codex') {
+                onInstall = async () => {
+                  try {
+                    const response = await fetchPost('/install/tool/codex');
+                    if (response.success) {
+                      try {
+                        const existingConfigs =
+                          await proxyFetchGet('/api/configs');
+                        const existing = Array.isArray(existingConfigs)
+                          ? existingConfigs.find(
+                              (c: any) =>
+                                c.config_group?.toLowerCase() === 'codex' &&
+                                c.config_name === 'OPENAI_API_KEY'
+                            )
+                          : null;
+                        const configPayload = {
+                          config_group: 'Codex',
+                          config_name: 'OPENAI_API_KEY',
+                          config_value: 'exists',
+                        };
+                        if (existing) {
+                          await proxyFetchPut(
+                            `/api/configs/${existing.id}`,
+                            configPayload
+                          );
+                        } else {
+                          await proxyFetchPost('/api/configs', configPayload);
+                        }
+                      } catch (configError) {
+                        console.warn(
+                          'Failed to persist Codex config',
+                          configError
+                        );
+                      }
+                      const codexItem = {
+                        id: 0,
+                        key: key,
+                        name: key,
+                        description: 'OpenAI Codex integration via OAuth',
+                        toolkit: 'codex_oauth',
+                        isLocal: true,
+                      };
+                      addOption(codexItem, true);
+                    } else if (response.status === 'authorizing') {
+                      const start = Date.now();
+                      const timeoutMs = 5 * 60 * 1000;
+                      while (Date.now() - start < timeoutMs) {
+                        try {
+                          const statusResponse = await fetchGet(
+                            '/oauth/status/codex'
+                          );
+                          if (statusResponse.status === 'success') {
+                            const retryResponse = await fetchPost(
+                              '/install/tool/codex'
+                            );
+                            if (retryResponse.success) {
+                              const existingConfigs =
+                                await proxyFetchGet('/api/configs');
+                              const existing = Array.isArray(existingConfigs)
+                                ? existingConfigs.find(
+                                    (c: any) =>
+                                      c.config_group?.toLowerCase() ===
+                                        'codex' &&
+                                      c.config_name === 'OPENAI_API_KEY'
+                                  )
+                                : null;
+                              const configPayload = {
+                                config_group: 'Codex',
+                                config_name: 'OPENAI_API_KEY',
+                                config_value: 'exists',
+                              };
+                              if (existing) {
+                                await proxyFetchPut(
+                                  `/api/configs/${existing.id}`,
+                                  configPayload
+                                );
+                              } else {
+                                await proxyFetchPost(
+                                  '/api/configs',
+                                  configPayload
+                                );
+                              }
+                              fetchIntegrationsData();
+                              const codexItem = {
+                                id: 0,
+                                key: key,
+                                name: key,
+                                description: 'OpenAI Codex integration via OAuth',
+                                toolkit: 'codex_oauth',
+                                isLocal: true,
+                              };
+                              addOption(codexItem, true);
+                            }
+                            return;
+                          } else if (
+                            statusResponse.status === 'failed' ||
+                            statusResponse.status === 'cancelled'
+                          ) {
+                            return;
+                          }
+                        } catch (error) {
+                          console.error(
+                            'Error polling Codex OAuth status:',
+                            error
+                          );
+                        }
+                        await new Promise((r) => setTimeout(r, 1500));
+                      }
+                    }
+                  } catch (error: any) {
+                    console.error('Failed to install Codex:', error.message);
+                    throw error;
+                  }
+                };
               } else {
                 onInstall = () =>
                   window.open(
@@ -244,7 +358,9 @@ const ToolSelect = forwardRef<
                       ? t('layout.notion-workspace-integration')
                       : key.toLowerCase() === 'google calendar'
                         ? t('layout.google-calendar-integration')
-                        : '',
+                        : key.toLowerCase() === 'codex'
+                          ? 'OpenAI Codex integration via OAuth'
+                          : '',
                 onInstall,
               };
             });
