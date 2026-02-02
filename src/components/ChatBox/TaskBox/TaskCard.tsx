@@ -89,13 +89,16 @@ export function TaskCard({
 				switch (selectedState) {
 					case "done":
 						return task.status === TaskStatus.COMPLETED && !task.reAssignTo;
+					case "reassigned":
+						return !!task.reAssignTo;
 					case "ongoing":
 						return (
 							task.status !== TaskStatus.FAILED &&
 							task.status !== TaskStatus.COMPLETED &&
 							task.status !== TaskStatus.SKIPPED &&
 							task.status !== TaskStatus.WAITING &&
-							task.status !== TaskStatus.EMPTY
+							task.status !== TaskStatus.EMPTY &&
+							!task.reAssignTo
 						);
 					case "pending":
 						return (
@@ -244,8 +247,12 @@ export function TaskCard({
 									<TaskState
 										all={taskRunning?.length || 0}
 										done={
-											taskRunning?.filter((task) => task.status === TaskStatus.COMPLETED)
-												.length || 0
+											taskRunning?.filter(
+												(task) => task.status === TaskStatus.COMPLETED && !task.reAssignTo
+											).length || 0
+										}
+										reAssignTo={
+											taskRunning?.filter((task) => task.reAssignTo)?.length || 0
 										}
 										progress={
 											taskRunning?.filter(
@@ -254,15 +261,17 @@ export function TaskCard({
 													task.status !== TaskStatus.FAILED &&
 													task.status !== TaskStatus.SKIPPED &&
 													task.status !== TaskStatus.WAITING &&
-													task.status !== TaskStatus.EMPTY
+													task.status !== TaskStatus.EMPTY &&
+													!task.reAssignTo
 											).length || 0
 										}
 										skipped={
 											taskRunning?.filter(
 												(task) =>
-													task.status === TaskStatus.SKIPPED ||
-													task.status === TaskStatus.WAITING ||
-													task.status === TaskStatus.EMPTY
+													(task.status === TaskStatus.SKIPPED ||
+														task.status === TaskStatus.WAITING ||
+														task.status === TaskStatus.EMPTY) &&
+													!task.reAssignTo
 											).length || 0
 										}
 										failed={
