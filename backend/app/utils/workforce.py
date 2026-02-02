@@ -829,6 +829,7 @@ class Workforce(BaseWorkforce):
                 task_id=task.id,
                 error_message=error_msg,
                 worker_id=worker_id,
+                metadata={"failure_count": task.failure_count},
             )
             metrics_callbacks[0].log_task_failed(event)
 
