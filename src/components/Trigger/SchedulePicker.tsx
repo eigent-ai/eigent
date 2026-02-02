@@ -26,8 +26,8 @@ import { localTimeToUTC, utcTimeToLocal } from "@/lib/utils";
 type FrequencyType = "one-time" | "daily" | "weekly" | "monthly";
 
 export type ScheduleConfig = {
-    date?: string; // ISO 8601 UTC datetime for one-time schedules
-    expirationDate?: string; // ISO 8601 UTC datetime for recurring expiration
+    date?: string; // YYYY-MM-DD format for one-time schedules
+    expirationDate?: string; // YYYY-MM-DD format for recurring expiration
     max_failure_count?: number;
 };
 
@@ -207,20 +207,15 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     // Initialize from initialConfig when editing existing triggers
     useEffect(() => {
         if (initialConfig?.expirationDate) {
-            const date = initialConfig.expirationDate.includes('T') 
-                ? new Date(initialConfig.expirationDate)
-                : parse(initialConfig.expirationDate, "yyyy-MM-dd", new Date());
+            // Backend sends YYYY-MM-DD format
+            const date = parse(initialConfig.expirationDate, "yyyy-MM-dd", new Date());
             setExpiredAt(date);
         }
         if (initialConfig?.date) {
-            const date = initialConfig.date.includes('T')
-                ? new Date(initialConfig.date)
-                : parse(initialConfig.date, "yyyy-MM-dd", new Date());
+            // Backend sends YYYY-MM-DD format
+            const date = parse(initialConfig.date, "yyyy-MM-dd", new Date());
             setOneTimeDate(date);
-            if (initialConfig.date.includes('T')) {
-                setHour(date.getHours().toString().padStart(2, "0"));
-                setMinute(date.getMinutes().toString().padStart(2, "0"));
-            }
+            // For one-time schedules, the time comes from the cron expression, not the date field
         }
         if (initialConfig?.max_failure_count !== undefined) {
             setMaxFailureCount(initialConfig.max_failure_count);
@@ -376,18 +371,18 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         onValidationChange?.(isValid);
     }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate, onValidationChange]);
 
-    // Emit config with UTC conversion
+    // Emit config with YYYY-MM-DD format to match backend
     useEffect(() => {
         const config: ScheduleConfig = {};
         
         if (frequency === "one-time" && oneTimeDate) {
-            const localDate = new Date(oneTimeDate);
-            localDate.setHours(parseInt(hour), parseInt(minute), 0, 0);
-            config.date = localDate.toISOString();
-        } else if (expiredAt) {
-            const utcExpiration = new Date(expiredAt);
-            utcExpiration.setHours(23, 59, 59, 999);
-            config.expirationDate = utcExpiration.toISOString();
+            // Send YYYY-MM-DD format to backend
+            config.date = format(oneTimeDate, "yyyy-MM-dd");
+        }
+        
+        if (expiredAt) {
+            // Send YYYY-MM-DD format to backend
+            config.expirationDate = format(expiredAt, "yyyy-MM-dd");
         }
         
         if (maxFailureCount !== undefined) {
