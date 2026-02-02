@@ -18,6 +18,7 @@ import log from 'electron-log';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { maskProxyUrl, readGlobalEnvKey } from './envUtil';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -33,6 +34,30 @@ export function getBackendPath() {
   }
 }
 
+/**
+ * Get proxy environment variables from global ~/.eigent/.env config.
+ * Returns an object with HTTP_PROXY, HTTPS_PROXY, and lowercase variants
+ * if a proxy is configured, or an empty object if not.
+ */
+function getProxyEnvVars(): Record<string, string> {
+  const proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+  if (!proxyUrl) {
+    return {};
+  }
+
+  log.info(
+    `[INSTALL SCRIPT] Proxy configured: ${maskProxyUrl(proxyUrl)}`
+  );
+
+  // Set all common proxy env var names for maximum compatibility
+  return {
+    HTTP_PROXY: proxyUrl,
+    HTTPS_PROXY: proxyUrl,
+    http_proxy: proxyUrl,
+    https_proxy: proxyUrl,
+  };
+}
+
 export function runInstallScript(scriptPath: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
     const installScriptPath = path.join(
@@ -42,8 +67,15 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
     );
     log.info(`Running script at: ${installScriptPath}`);
 
+    // Get proxy configuration from global .env file
+    const proxyEnv = getProxyEnvVars();
+
     const nodeProcess = spawn(process.execPath, [installScriptPath], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      env: {
+        ...process.env,
+        ...proxyEnv,
+        ELECTRON_RUN_AS_NODE: '1',
+      },
     });
 
     let stderrOutput = '';
