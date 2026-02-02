@@ -23,8 +23,10 @@ import camel
 from camel.societies.workforce.events import (LogEvent, TaskAssignedEvent,
                                               TaskCompletedEvent,
                                               TaskCreatedEvent,
+                                              TaskDecomposedEvent,
                                               TaskFailedEvent,
                                               TaskStartedEvent,
+                                              TaskUpdatedEvent,
                                               WorkerCreatedEvent)
 from camel.societies.workforce.workforce_metrics import WorkforceMetrics
 from opentelemetry import trace
@@ -58,11 +60,16 @@ ATTR_TASK_DESCRIPTION = "eigent.task.description"
 ATTR_TASK_PARENT_ID = "eigent.task.parent_id"
 ATTR_TASK_TYPE = "eigent.task.type"
 ATTR_TASK_STATUS = "eigent.task.status"
+ATTR_TASK_UPDATE_TYPE = "eigent.task.update_type"
+ATTR_TASK_UPDATE_OLD_VALUE = "eigent.task.update.old_value"
+ATTR_TASK_UPDATE_NEW_VALUE = "eigent.task.update.new_value"
+ATTR_TASK_UPDATE_METADATA = "eigent.task.update.metadata"
 ATTR_TASK_QUEUE_TIME_SECONDS = "eigent.task.queue_time_seconds"
 ATTR_TASK_PROCESSING_TIME_SECONDS = "eigent.task.processing_time_seconds"
 ATTR_TASK_QUALITY_SCORE = "eigent.task.quality_score"
 ATTR_TASK_TIMESTAMP = "eigent.task.timestamp"
 ATTR_TASK_DEPENDENCIES = "eigent.task.dependencies"
+ATTR_TASK_SUBTASK_IDS = "eigent.task.subtask_ids"
 
 # Attribute keys for eigent.worker namespace
 ATTR_WORKER_ID = "eigent.worker.id"
@@ -86,7 +93,9 @@ TRACER_NAME_WORKFORCE = "eigent.workforce"
 SPAN_WORKFORCE_EXECUTION = "workforce.execution"
 SPAN_WORKER_CREATED = "worker.created"
 SPAN_TASK_CREATED = "task.created"
+SPAN_TASK_DECOMPOSED = "task.decomposed"
 SPAN_TASK_ASSIGNED = "task.assigned"
+SPAN_TASK_UPDATED = "task.updated"
 SPAN_TASK_EXECUTION = "task.execution"
 SPAN_LOG_MESSAGE = "log.message"
 SPAN_ALL_TASKS_COMPLETED = "workforce.all_tasks_completed"
@@ -318,6 +327,27 @@ class WorkforceMetricsCallback(WorkforceMetrics):
 
             span.set_status(Status(StatusCode.OK))
 
+    def log_task_decomposed(self, event: TaskDecomposedEvent) -> None:
+        """Log task decomposition as a span.
+
+        Args:
+            event: Task decomposed event from CAMEL
+        """
+        if not self.enabled:
+            return
+
+        ctx = trace.set_span_in_context(self.root_span)
+        with self.tracer.start_as_current_span(SPAN_TASK_DECOMPOSED,
+                                               context=ctx) as span:
+            span.set_attribute(ATTR_TASK_PARENT_ID, event.parent_task_id)
+            span.set_attribute(ATTR_PROJECT_ID, self.project_id)
+
+            if event.subtask_ids:
+                span.set_attribute(ATTR_TASK_SUBTASK_IDS,
+                                   json.dumps(event.subtask_ids))
+
+            span.set_status(Status(StatusCode.OK))
+
     def log_task_assigned(self, event: TaskAssignedEvent) -> None:
         """Log task assignment as a span.
 
@@ -342,6 +372,41 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             if event.dependencies:
                 deps_json = json.dumps(event.dependencies)
                 span.set_attribute(ATTR_TASK_DEPENDENCIES, deps_json)
+
+            span.set_status(Status(StatusCode.OK))
+
+    def log_task_updated(self, event: TaskUpdatedEvent) -> None:
+        """Log task update events (replan/reassign/manual) as a span.
+
+        Args:
+            event: Task updated event from CAMEL
+        """
+        if not self.enabled:
+            return
+
+        ctx = trace.set_span_in_context(self.root_span)
+        with self.tracer.start_as_current_span(SPAN_TASK_UPDATED,
+                                               context=ctx) as span:
+            span.set_attribute(ATTR_TASK_ID, event.task_id)
+            span.set_attribute(ATTR_PROJECT_ID, self.project_id)
+            span.set_attribute(ATTR_TASK_UPDATE_TYPE, event.update_type)
+
+            if event.worker_id:
+                span.set_attribute(ATTR_WORKER_ID, event.worker_id)
+            if event.parent_task_id:
+                span.set_attribute(ATTR_TASK_PARENT_ID, event.parent_task_id)
+            if event.old_value is not None:
+                span.set_attribute(ATTR_TASK_UPDATE_OLD_VALUE,
+                                   event.old_value)
+            if event.new_value is not None:
+                span.set_attribute(ATTR_TASK_UPDATE_NEW_VALUE,
+                                   event.new_value)
+            if event.metadata:
+                span.set_attribute(ATTR_TASK_UPDATE_METADATA,
+                                   json.dumps(event.metadata))
+            if hasattr(event, 'timestamp') and event.timestamp:
+                span.set_attribute(ATTR_TASK_TIMESTAMP,
+                                   event.timestamp.isoformat())
 
             span.set_status(Status(StatusCode.OK))
 
