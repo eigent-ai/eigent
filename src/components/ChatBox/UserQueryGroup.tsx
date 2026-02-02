@@ -186,7 +186,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
   // Check if we're in skeleton phase
   const anyToSubTasksMessage = task?.messages.find(
-    (m: any) => m.step === 'to_sub_tasks'
+    (m: any) => m.step === AgentStep.TO_SUB_TASKS
   );
   const isSkeletonPhase =
     task &&
@@ -283,7 +283,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
         if (message.content.length > 0) {
-          if (message.step === 'end') {
+          if (message.step === AgentStep.END) {
             return (
               <motion.div
                 key={`end-${message.id}`}
@@ -376,7 +376,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               </motion.div>
             );
           }
-        } else if (message.step === 'end' && message.content === '') {
+        } else if (message.step === AgentStep.END && message.content === '') {
           return (
             <motion.div
               key={`end-empty-${message.id}`}
@@ -424,7 +424,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
         // Notice Card
         if (
-          message.step === 'notice_card' &&
+          message.step === AgentStep.NOTICE_CARD &&
           !task?.isTakeControl &&
           task?.cotList &&
           task.cotList.length > 0

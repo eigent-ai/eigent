@@ -1348,7 +1348,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             const message = filterMessage(agentMessages);
             if (agentMessages.step === AgentStep.ACTIVATE_AGENT) {
-              taskAssigning[agentIndex].status = TaskStatus.RUNNING;
+              taskAssigning[agentIndex].status = AgentStatusValue.RUNNING;
               if (message) {
                 taskAssigning[agentIndex].log.push({
                   ...agentMessages,
@@ -1359,7 +1359,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 (task) => task.id === process_task_id
               );
               if (taskIndex !== -1 && taskRunning![taskIndex].status) {
-                taskRunning![taskIndex].agent!.status = TaskStatus.RUNNING;
+                taskRunning![taskIndex].agent!.status = AgentStatusValue.RUNNING;
                 taskRunning![taskIndex]!.status = TaskStatus.RUNNING;
 
                 const task = taskAssigning[agentIndex].tasks.find(
@@ -1476,14 +1476,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Clear logs from the assignee agent that are related to this task
             // This prevents logs from previous attempts appearing in the reassigned task
             // This needs to happen whether it's a reassignment to a different agent or a retry with the same agent
-            if (taskState !== 'waiting' && failure_count && failure_count > 0) {
+            if (taskState !== TaskStatus.WAITING && failure_count && failure_count > 0) {
               taskAssigning[assigneeAgentIndex].log = taskAssigning[
                 assigneeAgentIndex
               ].log.filter((log) => log.data.process_task_id !== task_id);
             }
 
             // Handle task assignment to taskAssigning based on state
-            if (taskState === 'waiting') {
+            if (taskState === TaskStatus.WAITING) {
               if (
                 !taskAssigning[assigneeAgentIndex].tasks.find(
                   (item) => item.id === task_id
@@ -1710,7 +1710,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       toolkit.toolkitName === agentMessages.data.toolkit_name &&
                       toolkit.toolkitMethods ===
                         agentMessages.data.method_name &&
-                      toolkit.toolkitStatus === TaskStatus.RUNNING
+                      toolkit.toolkitStatus === AgentStatusValue.RUNNING
                     );
                   });
 

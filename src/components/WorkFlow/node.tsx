@@ -49,7 +49,7 @@ import {
 } from "../ui/popover";
 import { AddWorker } from "@/components/AddWorker";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { TaskStatus, ChatTaskStatus } from "@/types/constants";
+import { TaskStatus, ChatTaskStatus, AgentStatusValue } from "@/types/constants";
 
 interface NodeProps {
 	id: string;
@@ -747,7 +747,7 @@ export function Node({ id, data }: NodeProps) {
 															.filter(
 																(tool: any) => tool.toolkitName !== "notice"
 															)
-															.at(-1)?.toolkitStatus === TaskStatus.RUNNING && (
+															.at(-1)?.toolkitStatus === AgentStatusValue.RUNNING && (
 															<div className="flex-1 min-w-0 flex justify-start items-center gap-sm animate-in fade-in-0 slide-in-from-right-2 duration-300">
 																{agentMap[data.type]?.icon ?? (
 																	<Bot className="w-3 h-3" />
@@ -831,7 +831,7 @@ export function Node({ id, data }: NodeProps) {
 													>
 														{/* {toolkit.toolkitStatus} */}
 														<div>
-															{toolkit.toolkitStatus === TaskStatus.RUNNING ? (
+															{toolkit.toolkitStatus === AgentStatusValue.RUNNING ? (
 																<LoaderCircle
 																	size={16}
 																	className={`${chatStore.tasks[
