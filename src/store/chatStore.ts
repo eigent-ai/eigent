@@ -23,10 +23,17 @@ import {
   uploadFile,
   waitForBackendReady,
 } from '@/api/http';
-import { AgentStep, AgentMessageStatus, AgentStatusValue, TaskStatus, ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
+import {
+  AgentMessageStatus,
+  AgentStatusValue,
+  AgentStep,
+  ChatTaskStatus,
+  TaskStatus,
+  type ChatTaskStatusType,
+} from '@/types/constants';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -78,10 +85,7 @@ export interface ChatStore {
   create: (id?: string, type?: any) => string;
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
-  setStatus: (
-    taskId: string,
-    status: ChatTaskStatusType
-  ) => void;
+  setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   setActiveTaskId: (taskId: string) => void;
   replay: (taskId: string, question: string, time: number) => Promise<void>;
   startTask: (
@@ -276,7 +280,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const { tasks, setProgressValue, activeTaskId } = get();
       const taskRunning = [...tasks[taskId].taskRunning];
       const finishedTask = taskRunning?.filter(
-        (task) => task.status === TaskStatus.COMPLETED || task.status === TaskStatus.FAILED
+        (task) =>
+          task.status === TaskStatus.COMPLETED ||
+          task.status === TaskStatus.FAILED
       ).length;
       const taskProgress = (
         ((finishedTask || 0) / (taskRunning?.length || 0)) *
@@ -757,7 +763,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             agentMessages.step === AgentStep.NEW_TASK_STATE ||
             agentMessages.step === AgentStep.END;
 
-          const isMultiTurnSimpleAnswer = agentMessages.step === AgentStep.WAIT_CONFIRM;
+          const isMultiTurnSimpleAnswer =
+            agentMessages.step === AgentStep.WAIT_CONFIRM;
 
           if (!currentTask) {
             console.log(
@@ -891,7 +898,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             } else {
               //NOTE: Triggered only with first "confirmed" in the project
               //Handle Original cases - with old chatStore
-              previousChatStore.setStatus(currentTaskId, ChatTaskStatus.PENDING);
+              previousChatStore.setStatus(
+                currentTaskId,
+                ChatTaskStatus.PENDING
+              );
               previousChatStore.setHasWaitComfirm(currentTaskId, false);
             }
 
@@ -1002,7 +1012,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Check if task is already confirmed - don't overwrite user edits
             const existingToSubTasksMessage = tasks[
               currentTaskId
-            ].messages.findLast((m: Message) => m.step === AgentStep.TO_SUB_TASKS);
+            ].messages.findLast(
+              (m: Message) => m.step === AgentStep.TO_SUB_TASKS
+            );
             if (existingToSubTasksMessage?.isConfirm) {
               return;
             }
@@ -1359,7 +1371,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 (task) => task.id === process_task_id
               );
               if (taskIndex !== -1 && taskRunning![taskIndex].status) {
-                taskRunning![taskIndex].agent!.status = AgentStatusValue.RUNNING;
+                taskRunning![taskIndex].agent!.status =
+                  AgentStatusValue.RUNNING;
                 taskRunning![taskIndex]!.status = TaskStatus.RUNNING;
 
                 const task = taskAssigning[agentIndex].tasks.find(
@@ -1380,7 +1393,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     log.data.toolkit_name === agentMessages.data.toolkit_name
                 );
                 if (index != -1) {
-                  taskAssigning[agentIndex].log[index].status = AgentMessageStatus.COMPLETED;
+                  taskAssigning[agentIndex].log[index].status =
+                    AgentMessageStatus.COMPLETED;
                   setTaskAssigning(currentTaskId, [...taskAssigning]);
                 }
               }
@@ -1476,7 +1490,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Clear logs from the assignee agent that are related to this task
             // This prevents logs from previous attempts appearing in the reassigned task
             // This needs to happen whether it's a reassignment to a different agent or a retry with the same agent
-            if (taskState !== TaskStatus.WAITING && failure_count && failure_count > 0) {
+            if (
+              taskState !== TaskStatus.WAITING &&
+              failure_count &&
+              failure_count > 0
+            ) {
               taskAssigning[assigneeAgentIndex].log = taskAssigning[
                 assigneeAgentIndex
               ].log.filter((log) => log.data.process_task_id !== task_id);
@@ -1523,7 +1541,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   taskTemp.report = '';
                 }
                 taskAssigning[assigneeAgentIndex].tasks.push(
-                  taskTemp ?? { id: task_id, content, status: TaskStatus.RUNNING }
+                  taskTemp ?? {
+                    id: task_id,
+                    content,
+                    status: TaskStatus.RUNNING,
+                  }
                 );
               }
             }
@@ -1532,13 +1554,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (taskRunningIndex === -1) {
               // Task not in taskRunning, add it
               if (task) {
-                task.status = taskState === 'waiting' ? TaskStatus.WAITING : TaskStatus.RUNNING;
+                task.status =
+                  taskState === TaskStatus.WAITING
+                    ? TaskStatus.WAITING
+                    : TaskStatus.RUNNING;
               }
               taskRunning!.push(
                 task ?? {
                   id: task_id,
                   content,
-                  status: taskState === 'waiting' ? TaskStatus.WAITING : TaskStatus.RUNNING,
+                  status:
+                    taskState === TaskStatus.WAITING
+                      ? TaskStatus.WAITING
+                      : TaskStatus.RUNNING,
                   agent: JSON.parse(JSON.stringify(taskAgent)),
                 }
               );
@@ -1546,7 +1574,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // Task already in taskRunning, update it
               taskRunning![taskRunningIndex] = {
                 ...taskRunning![taskRunningIndex],
-                status: taskState === 'waiting' ? TaskStatus.WAITING : TaskStatus.RUNNING,
+                status:
+                  taskState === TaskStatus.WAITING
+                    ? TaskStatus.WAITING
+                    : TaskStatus.RUNNING,
                 agent: JSON.parse(JSON.stringify(taskAgent)),
               };
             }
@@ -1717,7 +1748,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   if (task.toolkits && index !== -1 && index !== undefined) {
                     task.toolkits[index].message =
                       `${normalizeToolkitMessage(task.toolkits[index].message)}\n${normalizeToolkitMessage(message.data.message)}`.trim();
-                    task.toolkits[index].toolkitStatus = AgentStatusValue.COMPLETED;
+                    task.toolkits[index].toolkitStatus =
+                      AgentStatusValue.COMPLETED;
                   }
                   // task.toolkits?.unshift({
                   // 	toolkitName: agentMessages.data.toolkit_name as string,
@@ -1853,7 +1885,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
               // Update taskRunning - mark non-completed tasks as failed
               taskRunning = taskRunning.map((task) => {
-                if (task.status !== TaskStatus.COMPLETED && task.status !== TaskStatus.FAILED) {
+                if (
+                  task.status !== TaskStatus.COMPLETED &&
+                  task.status !== TaskStatus.FAILED
+                ) {
                   task.status = TaskStatus.FAILED;
                 }
                 return task;
@@ -1862,7 +1897,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // Update taskAssigning - mark non-completed tasks as failed
               taskAssigning = taskAssigning.map((agent) => {
                 agent.tasks = agent.tasks.map((task) => {
-                  if (task.status !== TaskStatus.COMPLETED && task.status !== TaskStatus.FAILED) {
+                  if (
+                    task.status !== TaskStatus.COMPLETED &&
+                    task.status !== TaskStatus.FAILED
+                  ) {
                     task.status = TaskStatus.FAILED;
                   }
                   return task;
@@ -2569,10 +2607,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setStatus(
-      taskId: string,
-      status: ChatTaskStatusType
-    ) {
+    setStatus(taskId: string, status: ChatTaskStatusType) {
       set((state) => ({
         ...state,
         tasks: {
