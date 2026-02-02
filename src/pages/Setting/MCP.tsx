@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useEffect, useCallback } from "react";
 import {
 	proxyFetchGet,
@@ -96,7 +110,7 @@ export default function SettingMCP() {
 								window.location.href =
 									"https://developers.google.com/custom-search/v1/overview";
 							}}
-							className="underline text-blue-500"
+							className="underline text-text-link"
 						>
 							{t("setting.google-custom-search-api")}
 						</a>
@@ -196,11 +210,11 @@ export default function SettingMCP() {
 										const existingConfigs = await proxyFetchGet("/api/configs");
 										const existing = Array.isArray(existingConfigs)
 											? existingConfigs.find(
-													(c: any) =>
-														c.config_group?.toLowerCase() ===
-															"google calendar" &&
-														c.config_name === "GOOGLE_REFRESH_TOKEN"
-											  )
+												(c: any) =>
+													c.config_group?.toLowerCase() ===
+													"google calendar" &&
+													c.config_name === "GOOGLE_REFRESH_TOKEN"
+											)
 											: null;
 
 										const configPayload = {
@@ -249,11 +263,11 @@ export default function SettingMCP() {
 													const configs = await proxyFetchGet("/api/configs");
 													const existing = Array.isArray(configs)
 														? configs.find(
-																(c: any) =>
-																	c.config_group?.toLowerCase() ===
-																		"google calendar" &&
-																	c.config_name === "GOOGLE_REFRESH_TOKEN"
-														  )
+															(c: any) =>
+																c.config_group?.toLowerCase() ===
+																"google calendar" &&
+																c.config_name === "GOOGLE_REFRESH_TOKEN"
+														)
 														: null;
 
 													const payload = {
@@ -300,14 +314,14 @@ export default function SettingMCP() {
 								} else {
 									toast.error(
 										response.error ||
-											response.message ||
-											t("setting.failed-to-install-google-calendar")
+										response.message ||
+										t("setting.failed-to-install-google-calendar")
 									);
 								}
 							} catch (error: any) {
 								toast.error(
 									error.message ||
-										t("setting.failed-to-install-google-calendar")
+									t("setting.failed-to-install-google-calendar")
 								);
 							}
 						};
@@ -326,13 +340,13 @@ export default function SettingMCP() {
 						desc:
 							value.env_vars && value.env_vars.length > 0
 								? `${t(
-										"setting.environmental-variables-required"
-								  )}: ${value.env_vars.join(", ")}`
+									"setting.environmental-variables-required"
+								)}: ${value.env_vars.join(", ")}`
 								: key.toLowerCase() === "notion"
-								? t("setting.notion-workspace-integration")
-								: key.toLowerCase() === "google calendar"
-								? t("setting.google-calendar-integration")
-								: "",
+									? t("setting.notion-workspace-integration")
+									: key.toLowerCase() === "google calendar"
+										? t("setting.google-calendar-integration")
+										: "",
 						onInstall,
 					};
 				});
@@ -590,7 +604,7 @@ export default function SettingMCP() {
 	return (
 		<div className="flex-1 h-auto m-auto">
 			{/* Header Section */}
-			<div className="flex w-full border-solid border-t-0 border-x-0 border-border-disabled">
+			<div className="flex w-full">
 				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
 					<div className="flex w-full items-center justify-between">
 						{showMarket ? (
@@ -670,7 +684,7 @@ export default function SettingMCP() {
 													config_name: "DEFAULT_SEARCH_ENGINE",
 													config_value: value,
 												});
-											} catch (e) {}
+											} catch (e) { }
 										}}
 										onConfigClick={(item) => {
 											if (item.key === "Search") {
@@ -741,7 +755,7 @@ export default function SettingMCP() {
 												</div>
 											)}
 											{error && (
-												<div className="text-center py-8 text-red-500">
+												<div className="text-center py-8 text-text-error">
 													{error}
 												</div>
 											)}

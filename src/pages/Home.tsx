@@ -1,32 +1,39 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import ChatBox from "@/components/ChatBox";
 import Workflow from "@/components/WorkFlow";
 import Folder from "@/components/Folder";
 import Terminal from "@/components/Terminal";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import BottomBar from "@/components/BottomBar";
 import BrowserAgentWorkSpace from "@/components/BrowserAgentWorkSpace";
 import TerminalAgentWrokSpace from "@/components/TerminalAgentWrokSpace";
-import { useSidebarStore } from "@/store/sidebarStore";
 import UpdateElectron from "@/components/update";
-import { proxyFetchPost } from "@/api/http";
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
+	ResizableHandle,
+	ResizablePanel,
+	ResizablePanelGroup,
 } from "@/components/ui/resizable"
-import SideBar from "@/components/SideBar";
 
 export default function Home() {
-	const { toggle } = useSidebarStore();
 	//Get Chatstore for the active project's task
 	const { chatStore, projectStore } = useChatStoreAdapter();
-	if (!chatStore) {
-		return <div>Loading...</div>;
-	}
-	
-	const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
+
+	const [_activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
 
 	// Add webview-show listener in useEffect with cleanup
 	useEffect(() => {
@@ -42,13 +49,18 @@ export default function Home() {
 		};
 	}, []); // Empty dependency array means this only runs once
 
+	// Extract complex dependency to a variable
+	const taskAssigning =
+		chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning;
+
 	useEffect(() => {
-		let taskAssigning = [
-			...(chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning ||
-				[]),
+		if (!chatStore) return;
+
+		let taskAssigningArray = [
+			...(taskAssigning || []),
 		];
 		let webviews: { id: string; agent_id: string; index: number }[] = [];
-		taskAssigning.map((item) => {
+		taskAssigningArray.map((item) => {
 			if (item.type === "browser_agent") {
 				item.activeWebviewIds?.map((webview, index) => {
 					webviews.push({ ...webview, agent_id: item.agent_id, index });
@@ -56,19 +68,19 @@ export default function Home() {
 			}
 		});
 
-		if (taskAssigning.length === 0) {
+		if (taskAssigningArray.length === 0) {
 			return;
 		}
-		
+
 		if (webviews.length === 0) {
-			const browserAgent = taskAssigning.find(agent => agent.type === 'browser_agent');
+			const browserAgent = taskAssigningArray.find(agent => agent.type === 'browser_agent');
 			if (browserAgent && browserAgent.activeWebviewIds && browserAgent.activeWebviewIds.length > 0) {
 				browserAgent.activeWebviewIds.forEach((webview, index) => {
 					webviews.push({ ...webview, agent_id: browserAgent.agent_id, index });
 				});
 			}
 		}
-		
+
 		if (webviews.length === 0) {
 			return;
 		}
@@ -105,7 +117,7 @@ export default function Home() {
 							);
 							const { processTaskId, url } =
 								taskAssigning[browserAgentIndex].activeWebviewIds![
-									webview.index
+								webview.index
 								];
 							chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
 								api_task_id: chatStore.activeTaskId,
@@ -113,7 +125,7 @@ export default function Home() {
 								browser_url: url,
 								image_base64: base64,
 							});
-						
+
 						}
 						// let list: any = [];
 						// taskAssigning.forEach((item: any) => {
@@ -150,11 +162,27 @@ export default function Home() {
 				clearInterval(intervalTimer);
 			}
 		};
-	}, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+	}, [chatStore, taskAssigning]);
+
+	const getSize = useCallback(() => {
+		const webviewContainer = document.getElementById("webview-container");
+		if (webviewContainer) {
+			const rect = webviewContainer.getBoundingClientRect();
+			window.electronAPI.setSize({
+				x: rect.left,
+				y: rect.top,
+				width: rect.width,
+				height: rect.height,
+			});
+			console.log("setSize", rect);
+		}
+	}, []);
 
 	useEffect(() => {
+		if (!chatStore) return;
+
 		if (!chatStore.activeTaskId) {
-			projectStore.createProject("new project");
+			projectStore?.createProject("new project");
 		}
 
 		const webviewContainer = document.getElementById("webview-container");
@@ -168,126 +196,116 @@ export default function Home() {
 				resizeObserver.disconnect();
 			};
 		}
-	}, []);
+	}, [chatStore, projectStore, getSize]);
 
-	const getSize = () => {
-		const webviewContainer = document.getElementById("webview-container");
-		if (webviewContainer) {
-			const rect = webviewContainer.getBoundingClientRect();
-			window.electronAPI.setSize({
-				x: rect.left,
-				y: rect.top,
-				width: rect.width,
-				height: rect.height,
-			});
-			console.log("setSize", rect);
-		}
-	};
+	if (!chatStore) {
+		return <div>Loading...</div>;
+	}
 
-		return (
-			<div className="h-full min-h-0 flex flex-row overflow-hidden pt-10 px-2 pb-2">
-				<ReactFlowProvider>
-					<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center bg-surface-secondary border-solid border-border-tertiary rounded-2xl gap-2 relative overflow-hidden">
-						<ResizablePanelGroup direction="horizontal">
+	return (
+		<div className="h-full min-h-0 flex flex-row overflow-hidden pt-10 px-2 pb-2">
+			<ReactFlowProvider>
+				<div className="flex-1 min-w-0 min-h-0 flex items-center justify-center bg-surface-secondary border-solid border-border-tertiary rounded-2xl gap-2 relative overflow-hidden">
+					<ResizablePanelGroup direction="horizontal">
 						<ResizablePanel defaultSize={30} minSize={20}>
-							 <ChatBox />
+							<ChatBox />
 						</ResizablePanel>
-							<ResizableHandle withHandle={true} className="custom-resizable-handle" />
+						<ResizableHandle withHandle={true} className="custom-resizable-handle" />
 						<ResizablePanel>
-						{chatStore.tasks[chatStore.activeTaskId as string]
-							?.activeWorkSpace && (
-							<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
-									(agent) =>
-										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
-								)?.type === "browser_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<BrowserAgentWorkSpace />
+							{chatStore.tasks[chatStore.activeTaskId as string]
+								?.activeWorkSpace && (
+									<div className="w-full h-full flex-1 flex flex-col animate-in fade-in-0 pr-2 slide-in-from-right-2 duration-300">
+										{chatStore.tasks[
+											chatStore.activeTaskId as string
+										]?.taskAssigning?.find(
+											(agent) =>
+												agent.agent_id ===
+												chatStore.tasks[chatStore.activeTaskId as string]
+													.activeWorkSpace
+										)?.type === "browser_agent" && (
+												<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+													<BrowserAgentWorkSpace />
+												</div>
+											)}
+										{chatStore.tasks[chatStore.activeTaskId as string]
+											?.activeWorkSpace === "workflow" && (
+												<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+													<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
+														{/*filter blur */}
+														<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
+														<div className="w-full h-full relative z-10">
+															<Workflow
+																taskAssigning={
+																	chatStore.tasks[chatStore.activeTaskId as string]
+																		?.taskAssigning || []
+																}
+															/>
+														</div>
+													</div>
+												</div>
+											)}
+										{chatStore.tasks[
+											chatStore.activeTaskId as string
+										]?.taskAssigning?.find(
+											(agent) =>
+												agent.agent_id ===
+												chatStore.tasks[chatStore.activeTaskId as string]
+													.activeWorkSpace
+										)?.type === "developer_agent" && (
+												<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
+													<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
+													{/* <Terminal content={[]} /> */}
+												</div>
+											)}
+										{chatStore.tasks[chatStore.activeTaskId as string]
+											.activeWorkSpace === "documentWorkSpace" && (
+												<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+													<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-border-subtle-strong border-solid relative">
+														{/*filter blur */}
+														<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+														<div className="w-full h-full relative z-10">
+															<Folder />
+														</div>
+													</div>
+												</div>
+											)}
+										{chatStore.tasks[
+											chatStore.activeTaskId as string
+										]?.taskAssigning?.find(
+											(agent) =>
+												agent.agent_id ===
+												chatStore.tasks[chatStore.activeTaskId as string]
+													.activeWorkSpace
+										)?.type === "document_agent" && (
+												<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
+													<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-border-subtle-strong border-solid relative">
+														{/*filter blur */}
+														<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
+														<div className="w-full h-full relative z-10">
+															<Folder
+																data={chatStore.tasks[
+																	chatStore.activeTaskId as string
+																]?.taskAssigning?.find(
+																	(agent) =>
+																		agent.agent_id ===
+																		chatStore.tasks[chatStore.activeTaskId as string]
+																			.activeWorkSpace
+																)}
+															/>
+														</div>
+													</div>
+												</div>
+											)}
+										<BottomBar />
 									</div>
 								)}
-								{chatStore.tasks[chatStore.activeTaskId as string]
-									?.activeWorkSpace === "workflow" && (
-									<div className="w-full h-full flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-full flex flex-col rounded-2xl border border-transparent border-solid  p-2 relative">
-											{/*filter blur */}
-											<div className="absolute inset-0 pointer-events-none bg-transparent rounded-xl"></div>
-											<div className="w-full h-full relative z-10">
-												<Workflow
-													taskAssigning={
-														chatStore.tasks[chatStore.activeTaskId as string]
-															?.taskAssigning || []
-													}
-												/>
-											</div>
-										</div>
-									</div>
-								)}
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
-									(agent) =>
-										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
-								)?.type === "developer_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<TerminalAgentWrokSpace></TerminalAgentWrokSpace>
-										{/* <Terminal content={[]} /> */}
-									</div>
-								)}
-								{chatStore.tasks[chatStore.activeTaskId as string]
-									.activeWorkSpace === "documentWorkSpace" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
-											{/*filter blur */}
-											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
-											<div className="w-full h-full relative z-10">
-												<Folder />
-											</div>
-										</div>
-									</div>
-								)}
-								{chatStore.tasks[
-									chatStore.activeTaskId as string
-								]?.taskAssigning?.find(
-									(agent) =>
-										agent.agent_id ===
-										chatStore.tasks[chatStore.activeTaskId as string]
-											.activeWorkSpace
-								)?.type === "document_agent" && (
-									<div className="w-full h-[calc(100vh-104px)] flex-1 flex items-center justify-center animate-in fade-in-0 slide-in-from-right-2 duration-300">
-										<div className="w-full h-[calc(100vh-104px)] flex flex-col rounded-2xl border border-zinc-300 border-solid relative">
-											{/*filter blur */}
-											<div className="absolute inset-0 blur-bg pointer-events-none bg-white-50 rounded-xl"></div>
-											<div className="w-full h-full relative z-10">
-												<Folder
-													data={chatStore.tasks[
-														chatStore.activeTaskId as string
-													]?.taskAssigning?.find(
-														(agent) =>
-															agent.agent_id ===
-															chatStore.tasks[chatStore.activeTaskId as string]
-																.activeWorkSpace
-													)}
-												/>
-											</div>
-										</div>
-									</div>
-								)}
-								<BottomBar />
-							</div>
-						)}
-							</ResizablePanel>
-							{/* Fixed sidebar on the right
+						</ResizablePanel>
+						{/* Fixed sidebar on the right
 							<div className="h-full z-30">
 								<SideBar />
 							</div>*/}
-							</ResizablePanelGroup>
-					</div>
+					</ResizablePanelGroup>
+				</div>
 			</ReactFlowProvider>
 			<UpdateElectron />
 		</div>

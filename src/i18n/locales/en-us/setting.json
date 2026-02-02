@@ -13,6 +13,7 @@
 	"select-language": "Select language",
 	"system-default": "System Default",
 	"appearance": "Appearance",
+	"dark": "Dark",
 	"light": "Light",
 	"transparent": "Transparent",
 
@@ -50,12 +51,9 @@
 	"gpt-4.1-mini": "GPT-4.1 Mini: Lower cost, faster responses, but reduced output quality.",
 	"gpt-4.1": "GPT-4.1: Higher cost, slower responses, but superior quality and reasoning.",
 	"claude-opus-4.1": "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning.",
-	"claude-sonnet-4": "Claude Sonnet 4: Higher cost, slower responses, but superior quality and reasoning.",
-	"claude-3.5-haiku": "Claude 3.5 Haiku: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5": "GPT-5: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5-mini": "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5-nano": "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning.",
-	"gemini-2.5-pro": "Gemini 2.5 Pro: Higher cost, slower responses, but superior quality and reasoning.",
 	"custom-model": "Custom Model",
 	"use-your-own-api-keys-or-set-up-a-local-model": "Use your own API keys or set up a local model.",
 	"verify": "Verify",
@@ -189,7 +187,15 @@
 	"failed-to-delete-cookies": "Failed to delete cookies. Please try again.",
 	"confirm-delete-all-cookies": "Are you sure you want to delete all cookies? This action cannot be undone.",
 	"all-cookies-deleted": "All cookies have been deleted successfully.",
-	"cookie-delete-warning": "Note: Deleting cookies will log you out of the associated websites. You may need to restart the browser to see changes take effect."
-	}
+	"cookie-delete-warning": "Note: Deleting cookies will log you out of the associated websites. You may need to restart the browser to see changes take effect.",
+
+	"network-proxy": "Network Proxy",
+	"network-proxy-description": "Configure a proxy server for network requests. This is useful if you need to access external APIs through a proxy.",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "Proxy configuration saved. Restart the app to apply changes.",
+	"proxy-save-failed": "Failed to save proxy configuration.",
+	"proxy-invalid-url": "Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.",
+	"proxy-restart-hint": "Restart required to apply proxy changes."
+}
 
 

@@ -1,5 +1,19 @@
-import React from "react";
-import { motion } from "framer-motion";
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { motion } from 'framer-motion';
+import React from 'react';
 
 type HaloProps = {
   className?: string;
@@ -26,35 +40,35 @@ const Halo: React.FC<HaloProps> = ({
   speed = 5,
 }) => {
   const containerClass = fixed
-    ? "pointer-events-none fixed inset-0 -z-10 overflow-hidden"
-    : "pointer-events-none absolute inset-0 -z-10 overflow-hidden";
+    ? 'pointer-events-none fixed inset-0 -z-10 overflow-hidden'
+    : 'pointer-events-none absolute inset-0 -z-10 overflow-hidden';
 
-  const commonHaloClass = "absolute rounded-full mix-blend-screen";
+  const commonHaloClass = 'absolute rounded-full mix-blend-screen';
 
   const commonStyle: React.CSSProperties = {
     filter: `blur(${blurPx}px)`,
     opacity,
-    willChange: "transform, opacity",
+    willChange: 'transform, opacity',
   };
 
   // Convert speed multiplier into duration scale: lower speed => longer duration
   const durationScale = Math.max(0.01, speed);
 
   return (
-    <div className={[containerClass, className].filter(Boolean).join(" ")}> 
+    <div className={[containerClass, className].filter(Boolean).join(' ')}>
       {/* Orange halo */}
       <motion.div
         aria-hidden
-        className={[commonHaloClass].join(" ")}
+        className={[commonHaloClass].join(' ')}
         style={{
           ...commonStyle,
-          width: "44rem",
-          height: "44rem",
-          left: "-10%",
-          top: "-20%",
+          width: '44rem',
+          height: '44rem',
+          left: '-10%',
+          top: '-20%',
           // soft radial gradient for smoother merging
           background:
-            "radial-gradient(closest-side, rgba(255,237,213,0.9), rgba(255,237,213,0.45), rgba(255,237,213,0.0) 60%)",
+            'radial-gradient(closest-side, rgba(255,237,213,0.9), rgba(255,237,213,0.45), rgba(255,237,213,0.0) 60%)',
         }}
         initial={{ x: 0, y: 0, scale: 1, rotate: 0 }}
         animate={{
@@ -63,21 +77,25 @@ const Halo: React.FC<HaloProps> = ({
           scale: [1, 1.1, 0.95, 1],
           rotate: [0, 10, -8, 0],
         }}
-        transition={{ duration: 28 / durationScale, repeat: Infinity, ease: "easeInOut" }}
+        transition={{
+          duration: 28 / durationScale,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
       />
 
       {/* Red halo */}
       <motion.div
         aria-hidden
-        className={[commonHaloClass].join(" ")}
+        className={[commonHaloClass].join(' ')}
         style={{
           ...commonStyle,
-          width: "36rem",
-          height: "36rem",
-          right: "-12%",
-          top: "10%",
+          width: '36rem',
+          height: '36rem',
+          right: '-12%',
+          top: '10%',
           background:
-            "radial-gradient(closest-side, rgba(254,226,226,0.9), rgba(254,226,226,0.45), rgba(254,226,226,0.0) 70%)",
+            'radial-gradient(closest-side, rgba(254,226,226,0.9), rgba(254,226,226,0.45), rgba(254,226,226,0.0) 70%)',
         }}
         initial={{ x: 0, y: 0, scale: 1, rotate: 0 }}
         animate={{
@@ -86,21 +104,25 @@ const Halo: React.FC<HaloProps> = ({
           scale: [1, 0.9, 1.05, 1],
           rotate: [0, -12, 6, 0],
         }}
-        transition={{ duration: 32 / durationScale, repeat: Infinity, ease: "easeInOut" }}
+        transition={{
+          duration: 32 / durationScale,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
       />
 
       {/* Emerald halo */}
       <motion.div
         aria-hidden
-        className={[commonHaloClass].join(" ")}
+        className={[commonHaloClass].join(' ')}
         style={{
           ...commonStyle,
-          width: "50rem",
-          height: "50rem",
-          left: "10%",
-          bottom: "-18%",
+          width: '50rem',
+          height: '50rem',
+          left: '10%',
+          bottom: '-18%',
           background:
-            "radial-gradient(closest-side, rgba(209,250,229,0.9), rgba(209,250,229,0.45), rgba(209,250,229,0.0) 40%)",
+            'radial-gradient(closest-side, rgba(209,250,229,0.9), rgba(209,250,229,0.45), rgba(209,250,229,0.0) 40%)',
         }}
         initial={{ x: 0, y: 0, scale: 1, rotate: 0 }}
         animate={{
@@ -109,12 +131,14 @@ const Halo: React.FC<HaloProps> = ({
           scale: [1, 1.08, 0.92, 1],
           rotate: [0, 8, -10, 0],
         }}
-        transition={{ duration: 36 / durationScale, repeat: Infinity, ease: "easeInOut" }}
+        transition={{
+          duration: 36 / durationScale,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
       />
     </div>
   );
 };
 
 export default Halo;
-
-

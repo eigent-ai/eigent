@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import * as React from "react";
 import * as ToggleGroupPrimitive from "@radix-ui/react-toggle-group";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -5,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { AnimateIcon as AnimateIconProvider } from "@/components/animate-ui/icons/icon";
 
 const menuButtonVariants = cva(
-	"relative inline-flex items-center justify-center select-none rounded-xs transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default border border-solid border-menubutton-border-default hover:bg-menubutton-fill-hover hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-active data-[state=on]:bg-menubutton-fill-active data-[state=on]:border-menubutton-border-active text-foreground cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg",
+	"relative inline-flex items-center justify-center select-none rounded-xs transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default border border-solid border-menubutton-border-default hover:bg-menubutton-fill-hover hover:border-menubutton-border-hover hover:text-text-primary focus:bg-menubutton-fill-active focus:border-menubutton-border-active focus:text-text-primary data-[state=on]:bg-menubutton-fill-active data-[state=on]:border-menubutton-border-active data-[state=on]:text-text-primary text-text-secondary disabled:text-text-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg",
 	{
 		variants: {
 			size: {

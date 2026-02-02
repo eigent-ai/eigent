@@ -13,6 +13,7 @@
 	"select-language": "Seleccionar idioma",
 	"system-default": "Sistema predeterminado",
 	"appearance": "Apariencia",
+	"dark": "Oscuro",
 	"light": "Claro",
 	"transparent": "Transparente",
 
@@ -50,12 +51,9 @@
 	"gpt-4.1-mini": "GPT-4.1 Mini: Menor costo, respuestas más rápidas, pero calidad de salida reducida.",
 	"gpt-4.1": "GPT-4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"claude-opus-4.1": "Claude Opus 4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-	"claude-sonnet-4": "Claude Sonnet 4: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-	"claude-3.5-haiku": "Claude 3.5 Haiku: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"gpt-5": "GPT-5: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"gpt-5-mini": "GPT-5 mini: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"gpt-5-nano": "GPT-5 nano: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-	"gemini-2.5-pro": "Gemini 2.5 Pro: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
 	"custom-model": "Modelo personalizado",
 	"use-your-own-api-keys-or-set-up-a-local-model": "Usa tus propias API keys o configura un modelo local.",
 	"verify": "Verificar",
@@ -162,6 +160,14 @@
   "recommended": "Recomendado",
   "reset": "Restablecer",
   "reset-success": "¡Restablecido correctamente!",
-  "reset-failed": "¡Error al restablecer!"
+  "reset-failed": "¡Error al restablecer!",
+
+	"network-proxy": "Proxy de red",
+	"network-proxy-description": "Configure un servidor proxy para las solicitudes de red. Esto es útil si necesita acceder a APIs externas a través de un proxy.",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "Configuración de proxy guardada. Reinicie la aplicación para aplicar los cambios.",
+	"proxy-save-failed": "Error al guardar la configuración del proxy.",
+	"proxy-invalid-url": "URL de proxy no válida. Debe comenzar con http://, https://, socks4:// o socks5://.",
+	"proxy-restart-hint": "Es necesario reiniciar para aplicar los cambios del proxy."
 }
 

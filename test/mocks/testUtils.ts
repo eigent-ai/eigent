@@ -1,84 +1,101 @@
-import { setupElectronMocks, TestScenarios, type MockedElectronAPI } from './electronMocks'
-import { setupMockEnvironment } from './environmentMocks'
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { setupElectronMocks, TestScenarios } from './electronMocks';
+import { setupMockEnvironment } from './environmentMocks';
 
 /**
  * Complete test setup utility that combines all mocks and provides
  * easy-to-use functions for testing installation flows
  */
 export function createTestEnvironment() {
-  const { electronAPI, ipcRenderer } = setupElectronMocks()
-  const mockEnv = setupMockEnvironment()
+  const { electronAPI, ipcRenderer } = setupElectronMocks();
+  const mockEnv = setupMockEnvironment();
 
   return {
     electronAPI,
     ipcRenderer,
     mockEnv,
-    
+
     // Quick scenario setups
     scenarios: {
       /**
        * Fresh installation - no .venv, no version file, tools not installed
        */
       freshInstall: () => {
-        TestScenarios.freshInstall(electronAPI)
-        mockEnv.scenarios.freshInstall()
+        TestScenarios.freshInstall(electronAPI);
+        mockEnv.scenarios.freshInstall();
       },
 
       /**
        * Version update - version file exists but version changed
        */
-      versionUpdate: (oldVersion: string = '0.9.0', newVersion: string = '1.0.0') => {
-        TestScenarios.versionUpdate(electronAPI)
-        mockEnv.scenarios.versionUpdate(oldVersion, newVersion)
+      versionUpdate: (
+        oldVersion: string = '0.9.0',
+        newVersion: string = '1.0.0'
+      ) => {
+        TestScenarios.versionUpdate(electronAPI);
+        mockEnv.scenarios.versionUpdate(oldVersion, newVersion);
       },
 
       /**
        * .venv removed - version file exists but .venv is missing
        */
       venvRemoved: () => {
-        TestScenarios.venvRemoved(electronAPI)
-        mockEnv.scenarios.venvRemoved()
+        TestScenarios.venvRemoved(electronAPI);
+        mockEnv.scenarios.venvRemoved();
       },
 
       /**
        * Installation in progress - when user opens app during installation
        */
       installationInProgress: () => {
-        TestScenarios.installationInProgress(electronAPI)
-        mockEnv.scenarios.installationInProgress()
+        TestScenarios.installationInProgress(electronAPI);
+        mockEnv.scenarios.installationInProgress();
       },
 
       /**
        * Installation error - installation fails
        */
       installationError: () => {
-        TestScenarios.installationError(electronAPI)
-        mockEnv.scenarios.completeFailure()
+        TestScenarios.installationError(electronAPI);
+        mockEnv.scenarios.completeFailure();
       },
 
       /**
        * Uvicorn startup with dependency installation
        */
       uvicornDepsInstall: () => {
-        TestScenarios.uvicornDepsInstall(electronAPI)
-        mockEnv.scenarios.uvicornStartupInstall()
+        TestScenarios.uvicornDepsInstall(electronAPI);
+        mockEnv.scenarios.uvicornStartupInstall();
       },
 
       /**
        * Network issues - default mirror fails, backup succeeds
        */
       networkIssues: () => {
-        TestScenarios.allGood(electronAPI)
-        mockEnv.scenarios.networkIssues()
+        TestScenarios.allGood(electronAPI);
+        mockEnv.scenarios.networkIssues();
       },
 
       /**
        * All good - no installation needed
        */
       allGood: () => {
-        TestScenarios.allGood(electronAPI)
+        TestScenarios.allGood(electronAPI);
         // Use default mockEnv state (all good)
-      }
+      },
     },
 
     // Simulation utilities
@@ -87,42 +104,60 @@ export function createTestEnvironment() {
        * Simulate a complete successful installation flow
        */
       successfulInstallation: async (delay: number = 100) => {
-        electronAPI.simulateInstallationStart()
-        
+        electronAPI.simulateInstallationStart();
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Resolving dependencies...')
-        }, delay)
-        
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Resolving dependencies...'
+          );
+        }, delay);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Downloading packages...')
-        }, delay * 2)
-        
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Downloading packages...'
+          );
+        }, delay * 2);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Installing packages...')
-        }, delay * 3)
-        
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Installing packages...'
+          );
+        }, delay * 3);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationComplete(true)
-        }, delay * 4)
+          electronAPI.simulateInstallationComplete(true);
+        }, delay * 4);
       },
 
       /**
        * Simulate a failed installation flow
        */
-      failedInstallation: async (delay: number = 100, errorMessage: string = 'Installation failed') => {
-        electronAPI.simulateInstallationStart()
-        
+      failedInstallation: async (
+        delay: number = 100,
+        errorMessage: string = 'Installation failed'
+      ) => {
+        electronAPI.simulateInstallationStart();
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Resolving dependencies...')
-        }, delay)
-        
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Resolving dependencies...'
+          );
+        }, delay);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stderr', `Error: ${errorMessage}`)
-        }, delay * 2)
-        
+          electronAPI.simulateInstallationLog(
+            'stderr',
+            `Error: ${errorMessage}`
+          );
+        }, delay * 2);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationComplete(false, errorMessage)
-        }, delay * 3)
+          electronAPI.simulateInstallationComplete(false, errorMessage);
+        }, delay * 3);
       },
 
       /**
@@ -130,22 +165,31 @@ export function createTestEnvironment() {
        */
       uvicornWithDeps: async (delay: number = 100) => {
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Uvicorn detected missing dependencies')
-        }, delay)
-        
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Uvicorn detected missing dependencies'
+          );
+        }, delay);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationStart()
-        }, delay * 2)
-        
+          electronAPI.simulateInstallationStart();
+        }, delay * 2);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Resolving dependencies...')
-        }, delay * 3)
-        
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Resolving dependencies...'
+          );
+        }, delay * 3);
+
         setTimeout(() => {
-          electronAPI.simulateInstallationLog('stdout', 'Uvicorn running on http://127.0.0.1:8000')
-          electronAPI.simulateInstallationComplete(true)
-        }, delay * 4)
-      }
+          electronAPI.simulateInstallationLog(
+            'stdout',
+            'Uvicorn running on http://127.0.0.1:8000'
+          );
+          electronAPI.simulateInstallationComplete(true);
+        }, delay * 4);
+      },
     },
 
     // State inspection utilities
@@ -156,49 +200,64 @@ export function createTestEnvironment() {
       getInstallationState: () => ({
         electronState: electronAPI.mockState,
         envState: mockEnv.mockState,
-        isInstalling: electronAPI.mockState.isInstalling || mockEnv.mockState.processes.installationInProgress,
-        hasLockFiles: mockEnv.mockState.filesystem.installingLockExists || mockEnv.mockState.filesystem.installedLockExists,
-        toolsAvailable: mockEnv.mockState.processes.uvAvailable && mockEnv.mockState.processes.bunAvailable,
-        venvExists: electronAPI.mockState.venvExists && mockEnv.mockState.filesystem.venvExists,
+        isInstalling:
+          electronAPI.mockState.isInstalling ||
+          mockEnv.mockState.processes.installationInProgress,
+        hasLockFiles:
+          mockEnv.mockState.filesystem.installingLockExists ||
+          mockEnv.mockState.filesystem.installedLockExists,
+        toolsAvailable:
+          mockEnv.mockState.processes.uvAvailable &&
+          mockEnv.mockState.processes.bunAvailable,
+        venvExists:
+          electronAPI.mockState.venvExists &&
+          mockEnv.mockState.filesystem.venvExists,
       }),
 
       /**
        * Check if environment is in expected state for a scenario
        */
       verifyScenario: (scenarioName: string) => {
-        const state = mockEnv.mockState
-        const electronState = electronAPI.mockState
-        
+        const state = mockEnv.mockState;
+        const electronState = electronAPI.mockState;
+
         switch (scenarioName) {
           case 'freshInstall':
-            return !state.filesystem.venvExists && 
-                   !state.filesystem.versionFileExists && 
-                   !electronState.toolInstalled
-          
+            return (
+              !state.filesystem.venvExists &&
+              !state.filesystem.versionFileExists &&
+              !electronState.toolInstalled
+            );
+
           case 'versionUpdate':
-            return state.filesystem.versionFileExists && 
-                   state.app.currentVersion !== state.filesystem.versionFileContent
-          
+            return (
+              state.filesystem.versionFileExists &&
+              state.app.currentVersion !== state.filesystem.versionFileContent
+            );
+
           case 'venvRemoved':
-            return !state.filesystem.venvExists && 
-                   state.filesystem.versionFileExists
-          
+            return (
+              !state.filesystem.venvExists && state.filesystem.versionFileExists
+            );
+
           case 'installationInProgress':
-            return state.filesystem.installingLockExists || 
-                   electronState.isInstalling
-          
+            return (
+              state.filesystem.installingLockExists ||
+              electronState.isInstalling
+            );
+
           default:
-            return false
+            return false;
         }
-      }
+      },
     },
 
     // Reset everything
     reset: () => {
-      electronAPI.reset()
-      mockEnv.reset()
-    }
-  }
+      electronAPI.reset();
+      mockEnv.reset();
+    },
+  };
 }
 
 /**
@@ -210,20 +269,24 @@ export async function waitForInstallationState(
   timeout: number = 1000
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const startTime = Date.now()
-    
+    const startTime = Date.now();
+
     const check = () => {
       if (getState().state === expectedState) {
-        resolve()
+        resolve();
       } else if (Date.now() - startTime > timeout) {
-        reject(new Error(`Timeout waiting for state ${expectedState}, current: ${getState().state}`))
+        reject(
+          new Error(
+            `Timeout waiting for state ${expectedState}, current: ${getState().state}`
+          )
+        );
       } else {
-        setTimeout(check, 10)
+        setTimeout(check, 10);
       }
-    }
-    
-    check()
-  })
+    };
+
+    check();
+  });
 }
 
 /**
@@ -235,44 +298,48 @@ export async function waitForLogs(
   timeout: number = 1000
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const startTime = Date.now()
-    
+    const startTime = Date.now();
+
     const check = () => {
       if (getLogs().length >= expectedCount) {
-        resolve()
+        resolve();
       } else if (Date.now() - startTime > timeout) {
-        reject(new Error(`Timeout waiting for ${expectedCount} logs, got: ${getLogs().length}`))
+        reject(
+          new Error(
+            `Timeout waiting for ${expectedCount} logs, got: ${getLogs().length}`
+          )
+        );
       } else {
-        setTimeout(check, 10)
+        setTimeout(check, 10);
       }
-    }
-    
-    check()
-  })
+    };
+
+    check();
+  });
 }
 
 /**
  * Example usage in tests:
- * 
+ *
  * ```typescript
  * import { createTestEnvironment, waitForInstallationState } from '../mocks/testUtils'
- * 
+ *
  * describe('Installation Flow', () => {
  *   let testEnv: ReturnType<typeof createTestEnvironment>
- * 
+ *
  *   beforeEach(() => {
  *     testEnv = createTestEnvironment()
  *   })
- * 
+ *
  *   it('should handle fresh installation', async () => {
  *     testEnv.scenarios.freshInstall()
- *     
+ *
  *     // Verify scenario setup
  *     expect(testEnv.inspect.verifyScenario('freshInstall')).toBe(true)
- *     
+ *
  *     // Simulate installation
  *     await testEnv.simulate.successfulInstallation()
- *     
+ *
  *     // Verify result
  *     const state = testEnv.inspect.getInstallationState()
  *     expect(state.isInstalling).toBe(false)

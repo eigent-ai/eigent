@@ -1,20 +1,34 @@
-import { getAuthStore } from '@/store/authStore'
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
+import { getAuthStore } from '@/store/authStore';
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
-}
+};
 
-let baseUrl = ''
+let baseUrl = '';
 export async function getBaseURL() {
   if (baseUrl) {
-    return baseUrl
+    return baseUrl;
   }
-  const port = await window.ipcRenderer.invoke('get-backend-port')
-  baseUrl = `http://localhost:${port}`
-  return baseUrl
+  const port = await window.ipcRenderer.invoke('get-backend-port');
+  baseUrl = `http://localhost:${port}`;
+  return baseUrl;
 }
 
 async function fetchRequest(
@@ -23,94 +37,99 @@ async function fetchRequest(
   data?: Record<string, any>,
   customHeaders: Record<string, string> = {}
 ): Promise<any> {
-  const baseURL = await getBaseURL()
-  const fullUrl = `${baseURL}${url}`
-  const { token } = getAuthStore()
+  const baseURL = await getBaseURL();
+  const fullUrl = `${baseURL}${url}`;
+  const { token } = getAuthStore();
 
   const headers: Record<string, string> = {
     ...defaultHeaders,
     ...customHeaders,
-  }
+  };
 
   // Cases without token: url is a complete http:// path
   if (!url.includes('http://') && token) {
-    headers['Authorization'] = `Bearer ${token}`
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const options: RequestInit = {
     method,
     headers,
-  }
+  };
 
   if (method === 'GET') {
     const query = data
       ? '?' +
-      Object.entries(data)
-        .map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(val)}`)
-        .join('&')
-      : ''
-    return handleResponse(fetch(fullUrl + query, options), data)
+        Object.entries(data)
+          .map(
+            ([key, val]) =>
+              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
+          )
+          .join('&')
+      : '';
+    return handleResponse(fetch(fullUrl + query, options), data);
   }
 
   if (data) {
-    options.body = JSON.stringify(data)
+    options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options), data)
+  return handleResponse(fetch(fullUrl, options), data);
 }
 
-async function handleResponse(responsePromise: Promise<Response>, requestData?: Record<string, any>): Promise<any> {
+async function handleResponse(
+  responsePromise: Promise<Response>,
+  requestData?: Record<string, any>
+): Promise<any> {
   try {
-    const res = await responsePromise
+    const res = await responsePromise;
     if (res.status === 204) {
-      return { code: 0, text: '' }
+      return { code: 0, text: '' };
     }
 
-    const contentType = res.headers.get('content-type') || ''
+    const contentType = res.headers.get('content-type') || '';
     if (res.body && !contentType.includes('application/json')) {
       return {
         isStream: true,
         body: res.body,
         reader: res.body.getReader(),
-      }
+      };
     }
-    const resData = await res.json()
+    const resData = await res.json();
     if (!resData) {
-      return null
+      return null;
     }
-    const { code, text } = resData
+    const { code, text } = resData;
     // showCreditsToast()
     if (code === 1 || code === 300) {
-      return resData
+      return resData;
     }
 
     if (code === 20) {
-      showCreditsToast()
-      return resData
+      showCreditsToast();
+      return resData;
     }
 
     if (code === 21) {
-      showStorageToast()
-      return resData
+      showStorageToast();
+      return resData;
     }
 
     if (code === 13) {
       // const { logout } = getAuthStore()
       // logout()
       // window.location.href = '#/login'
-      throw new Error(text)
+      throw new Error(text);
     }
 
-    return resData
+    return resData;
   } catch (err: any) {
-
     // Only show traffic toast for cloud model requests
-    const isCloudRequest = requestData?.api_url === 'cloud'
+    const isCloudRequest = requestData?.api_url === 'cloud';
     if (isCloudRequest) {
-      showTrafficToast()
+      showTrafficToast();
     }
 
-    console.error('[fetch error]:', err)
+    console.error('[fetch error]:', err);
 
     if (err?.response?.status === 401) {
       // const { logout } = getAuthStore()
@@ -118,41 +137,41 @@ async function handleResponse(responsePromise: Promise<Response>, requestData?: 
       // window.location.href = '#/login'
     }
 
-    throw err
+    throw err;
   }
 }
 
 // Encapsulate common methods
 export const fetchGet = (url: string, params?: any, headers?: any) =>
-  fetchRequest('GET', url, params, headers)
+  fetchRequest('GET', url, params, headers);
 
 export const fetchPost = (url: string, data?: any, headers?: any) =>
-  fetchRequest('POST', url, data, headers)
+  fetchRequest('POST', url, data, headers);
 
 export const fetchPut = (url: string, data?: any, headers?: any) =>
-  fetchRequest('PUT', url, data, headers)
+  fetchRequest('PUT', url, data, headers);
 
 export const fetchDelete = (url: string, data?: any, headers?: any) =>
-  fetchRequest('DELETE', url, data, headers)
+  fetchRequest('DELETE', url, data, headers);
 
 // =============== porxy ===============
 
 // get proxy base URL
 async function getProxyBaseURL() {
-  const isDev = import.meta.env.DEV
+  const isDev = import.meta.env.DEV;
 
   if (isDev) {
-    const proxyUrl = import.meta.env.VITE_PROXY_URL
+    const proxyUrl = import.meta.env.VITE_PROXY_URL;
     if (!proxyUrl) {
-      return 'http://localhost:3001'
+      return 'http://localhost:3001';
     }
-    return proxyUrl
+    return proxyUrl;
   } else {
-    const baseUrl = import.meta.env.VITE_BASE_URL
+    const baseUrl = import.meta.env.VITE_BASE_URL;
     if (!baseUrl) {
-      throw new Error('VITE_BASE_URL not configured')
+      throw new Error('VITE_BASE_URL not configured');
     }
-    return baseUrl
+    return baseUrl;
   }
 }
 
@@ -162,84 +181,90 @@ async function proxyFetchRequest(
   data?: Record<string, any>,
   customHeaders: Record<string, string> = {}
 ): Promise<any> {
-  const baseURL = await getProxyBaseURL()
-  const fullUrl = `${baseURL}${url}`
-  const { token } = getAuthStore()
+  const baseURL = await getProxyBaseURL();
+  const fullUrl = `${baseURL}${url}`;
+  const { token } = getAuthStore();
 
   const headers: Record<string, string> = {
     ...defaultHeaders,
     ...customHeaders,
-  }
+  };
 
   if (!url.includes('http://') && !url.includes('https://') && token) {
-    headers['Authorization'] = `Bearer ${token}`
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
-
   if (import.meta.env.DEV) {
-    const targetUrl = import.meta.env.VITE_BASE_URL
+    const targetUrl = import.meta.env.VITE_BASE_URL;
     if (targetUrl) {
-      headers['X-Proxy-Target'] = targetUrl
+      headers['X-Proxy-Target'] = targetUrl;
     }
   }
 
   const options: RequestInit = {
     method,
     headers,
-  }
+  };
 
   if (method === 'GET') {
     const query = data
       ? '?' +
-      Object.entries(data)
-        .map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(val)}`)
-        .join('&')
-      : ''
-    return handleResponse(fetch(fullUrl + query, options))
+        Object.entries(data)
+          .map(
+            ([key, val]) =>
+              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
+          )
+          .join('&')
+      : '';
+    return handleResponse(fetch(fullUrl + query, options));
   }
 
   if (data) {
-    options.body = JSON.stringify(data)
+    options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options))
+  return handleResponse(fetch(fullUrl, options));
 }
 
 export const proxyFetchGet = (url: string, params?: any, headers?: any) =>
-  proxyFetchRequest('GET', url, params, headers)
+  proxyFetchRequest('GET', url, params, headers);
 
 export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('POST', url, data, headers)
+  proxyFetchRequest('POST', url, data, headers);
 
 export const proxyFetchPut = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PUT', url, data, headers)
+  proxyFetchRequest('PUT', url, data, headers);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('DELETE', url, data, headers)
+  proxyFetchRequest('DELETE', url, data, headers);
 
 // File upload function with FormData
-export async function uploadFile(url: string, formData: FormData, headers?: Record<string, string>): Promise<any> {
-  const baseURL = await getProxyBaseURL()
-  const fullUrl = `${baseURL}${url}`
-  const { token } = getAuthStore()
+export async function uploadFile(
+  url: string,
+  formData: FormData,
+  headers?: Record<string, string>
+): Promise<any> {
+  const baseURL = await getProxyBaseURL();
+  const fullUrl = `${baseURL}${url}`;
+  const { token } = getAuthStore();
 
   const requestHeaders: Record<string, string> = {
     ...headers,
-  }
+  };
 
   // Remove Content-Type header to let browser set it with boundary for FormData
   if (requestHeaders['Content-Type']) {
-    delete requestHeaders['Content-Type']
+    delete requestHeaders['Content-Type'];
   }
 
   if (!url.includes('http://') && !url.includes('https://') && token) {
-    requestHeaders['Authorization'] = `Bearer ${token}`
+    requestHeaders['Authorization'] = `Bearer ${token}`;
   }
 
   if (import.meta.env.DEV) {
-    const targetUrl = import.meta.env.VITE_BASE_URL
+    const targetUrl = import.meta.env.VITE_BASE_URL;
     if (targetUrl) {
-      requestHeaders['X-Proxy-Target'] = targetUrl
+      requestHeaders['X-Proxy-Target'] = targetUrl;
     }
   }
 
@@ -247,9 +272,9 @@ export async function uploadFile(url: string, formData: FormData, headers?: Reco
     method: 'POST',
     headers: requestHeaders,
     body: formData,
-  }
+  };
 
-  return handleResponse(fetch(fullUrl, options))
+  return handleResponse(fetch(fullUrl, options));
 }
 
 // =============== Backend Health Check ===============
@@ -294,14 +319,20 @@ export async function waitForBackendReady(
     const isReady = await checkBackendHealth();
 
     if (isReady) {
-      console.log(`[Backend Health Check] Backend is ready after ${Date.now() - startTime}ms`);
+      console.log(
+        `[Backend Health Check] Backend is ready after ${Date.now() - startTime}ms`
+      );
       return true;
     }
 
-    console.log(`[Backend Health Check] Backend not ready, retrying... (${Date.now() - startTime}ms elapsed)`);
-    await new Promise(resolve => setTimeout(resolve, retryIntervalMs));
+    console.log(
+      `[Backend Health Check] Backend not ready, retrying... (${Date.now() - startTime}ms elapsed)`
+    );
+    await new Promise((resolve) => setTimeout(resolve, retryIntervalMs));
   }
 
-  console.error(`[Backend Health Check] Backend failed to start within ${maxWaitMs}ms`);
+  console.error(
+    `[Backend Health Check] Backend failed to start within ${maxWaitMs}ms`
+  );
   return false;
 }

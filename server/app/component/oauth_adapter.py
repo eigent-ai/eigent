@@ -1,5 +1,20 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
+from urllib.parse import urlencode
 import os
 import httpx
 from pydantic import BaseModel
@@ -177,6 +192,60 @@ class EXAOAuthAdapter(OAuthAdapter):
         return None
 
 
+class LinkedInOAuthAdapter(OAuthAdapter):
+    r"""LinkedIn OAuth 2.0 adapter for 3-legged OAuth flow."""
+
+    AUTHORIZATION_URL = "https://www.linkedin.com/oauth/v2/authorization"
+    TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
+    SCOPES = "openid profile email w_member_social"
+
+    def __init__(self, redirect_uri: Optional[str] = None):
+        self.client_id = env("LINKEDIN_CLIENT_ID", "")
+        self.client_secret = env("LINKEDIN_CLIENT_SECRET", "")
+        self.redirect_uri = redirect_uri or env(
+            "LINKEDIN_REDIRECT_URI", "https://localhost/api/oauth/linkedin/callback"
+        )
+
+    def get_authorize_url(self, state: Optional[str] = None) -> Optional[str]:
+        params = {
+            "response_type": "code",
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "scope": self.SCOPES,
+        }
+        if state:
+            params["state"] = state
+        return f"{self.AUTHORIZATION_URL}?{urlencode(params)}"
+
+    def fetch_token(self, code: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not code:
+            return None
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "redirect_uri": self.redirect_uri,
+        }
+        with httpx.Client() as client:
+            resp = client.post(self.TOKEN_URL, headers=headers, data=data)
+            return resp.json()
+
+    def refresh_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
+        r"""Refresh an expired access token."""
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
+        with httpx.Client() as client:
+            resp = client.post(self.TOKEN_URL, headers=headers, data=data)
+            return resp.json()
+
+
 # 工厂方法
 OAUTH_ADAPTERS = {
     "slack": SlackOAuthAdapter,
@@ -184,20 +253,16 @@ OAUTH_ADAPTERS = {
     "x": XOAuthAdapter,
     "twitter": XOAuthAdapter,
     "googlesuite": GoogleSuiteOAuthAdapter,
+    "linkedin": LinkedInOAuthAdapter,
 }
 
 
 def get_oauth_adapter(app_name: str, redirect_uri: Optional[str] = None) -> OAuthAdapter:
     adapter_cls = OAUTH_ADAPTERS.get(app_name.lower())
     if not adapter_cls:
-        raise ValueError(f"不支持的OAuth应用: {app_name}")
-    if app_name.lower() == "slack":
-        return adapter_cls(redirect_uri=redirect_uri)
-    if app_name.lower() == "notion":
-        return adapter_cls(redirect_uri=redirect_uri)
-    if app_name.lower() == "x" or app_name.lower() == "twitter":
-        return adapter_cls(redirect_uri=redirect_uri)
-    return adapter_cls()
+        raise ValueError(f"Unsupported OAuth application: {app_name}")
+    # All adapters support redirect_uri parameter
+    return adapter_cls(redirect_uri=redirect_uri)
 
 
 class OauthCallbackPayload(BaseModel):

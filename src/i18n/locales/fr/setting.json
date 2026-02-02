@@ -13,6 +13,7 @@
 	"select-language": "Select language",
 	"system-default": "System Default",
 	"appearance": "Appearance",
+	"dark": "Dark",
 	"light": "Light",
 	"transparent": "Transparent",
 
@@ -50,12 +51,9 @@
 	"gpt-4.1-mini": "GPT-4.1 Mini: Lower cost, faster responses, but reduced output quality.",
 	"gpt-4.1": "GPT-4.1: Higher cost, slower responses, but superior quality and reasoning.",
 	"claude-opus-4.1": "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning.",
-	"claude-sonnet-4": "Claude Sonnet 4: Higher cost, slower responses, but superior quality and reasoning.",
-	"claude-3.5-haiku": "Claude 3.5 Haiku: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5": "GPT-5: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5-mini": "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning.",
 	"gpt-5-nano": "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning.",
-	"gemini-2.5-pro": "Gemini 2.5 Pro: Higher cost, slower responses, but superior quality and reasoning.",
 	"custom-model": "Custom Model",
 	"use-your-own-api-keys-or-set-up-a-local-model": "Use your own API keys or set up a local model.",
 	"verify": "Verify",
@@ -138,6 +136,14 @@
   "recommended": "Recommandé",
   "reset": "Réinitialiser",
   "reset-success": "Réinitialisation réussie !",
-  "reset-failed": "Échec de la réinitialisation !"
+  "reset-failed": "Échec de la réinitialisation !",
+
+	"network-proxy": "Proxy réseau",
+	"network-proxy-description": "Configurez un serveur proxy pour les requêtes réseau. Utile si vous devez accéder à des API externes via un proxy.",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "Configuration du proxy enregistrée. Redémarrez l'application pour appliquer les modifications.",
+	"proxy-save-failed": "Échec de l'enregistrement de la configuration du proxy.",
+	"proxy-invalid-url": "URL de proxy invalide. Doit commencer par http://, https://, socks4:// ou socks5://.",
+	"proxy-restart-hint": "Redémarrage nécessaire pour appliquer les modifications du proxy."
 }
 

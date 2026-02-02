@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { TaskType } from "./TaskType";
@@ -60,7 +74,7 @@ export function TaskCard({
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 
 	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
 	const [filterTasks, setFilterTasks] = useState<any[]>([]);
@@ -80,7 +94,7 @@ export function TaskCard({
 							task.status !== "completed" &&
 							task.status !== "skipped" &&
 							task.status !== "waiting" &&
-							task.status !== "" 
+							task.status !== ""
 						);
 					case "pending":
 						return (
@@ -287,9 +301,8 @@ export function TaskCard({
 										>
 											<ChevronDown
 												size={16}
-												className={`transition-transform duration-300 ${
-													isExpanded ? "rotate-180" : ""
-												}`}
+												className={`transition-transform duration-300 ${isExpanded ? "rotate-180" : ""
+													}`}
 											/>
 										</Button>
 									</div>
@@ -297,7 +310,7 @@ export function TaskCard({
 							</div>
 						</div>
 					)}
-					
+
 					<div className="relative">
 						{taskType === 1 && (
 							<div className="mt-sm flex flex-col px-sm animate-in fade-in-0 slide-in-from-bottom-4 duration-500 ease-out">
@@ -358,38 +371,35 @@ export function TaskCard({
 													}
 												}}
 												key={`taskList-${task.id}`}
-												className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
-													task.status === "completed"
-														? "bg-green-50"
+												className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${task.status === "completed"
+														? "bg-task-fill-success"
 														: task.status === "failed"
-														? "bg-task-fill-error"
-														: task.status === "running"
-														? "bg-zinc-50"
-														: task.status === "blocked"
-														? "bg-task-fill-warning"
-														: "bg-zinc-50"
-												} border border-solid border-transparent cursor-pointer ${
-													task.status === "completed"
+															? "bg-task-fill-error"
+															: task.status === "running"
+																? "bg-task-fill-running"
+																: task.status === "blocked"
+																	? "bg-task-fill-warning"
+																	: "bg-task-fill-running"
+													} border border-solid border-transparent cursor-pointer ${task.status === "completed"
 														? "hover:border-bg-fill-success-primary"
 														: task.status === "failed"
-														? "hover:border-task-border-focus-error"
-														: task.status === "running"
-														? "hover:border-border-primary"
-														: task.status === "blocked"
-														? "hover:border-task-border-focus-warning"
-														: "border-transparent"
-												}
+															? "hover:border-task-border-focus-error"
+															: task.status === "running"
+																? "hover:border-border-primary"
+																: task.status === "blocked"
+																	? "hover:border-task-border-focus-warning"
+																	: "border-transparent"
+													}
 												`}
 											>
 												<div className="pt-0.5">
 													{task.status === "running" && (
 														<LoaderCircle
 															size={16}
-															className={`text-icon-information ${
-																chatStore.tasks[
+															className={`text-icon-information ${chatStore.tasks[
 																	chatStore.activeTaskId as string
 																].status === "running" && "animate-spin"
-															} `}
+																} `}
 														/>
 													)}
 													{task.status === "skipped" && (
@@ -422,13 +432,12 @@ export function TaskCard({
 												</div>
 												<div className="flex-1 flex flex-col items-start justify-center">
 													<div
-														className={` w-full break-words whitespace-pre-line ${
-															task.status === "failed"
+														className={` w-full break-words whitespace-pre-line ${task.status === "failed"
 																? "text-text-cuation-default"
 																: task.status === "blocked"
-																? "text-text-body"
-																: "text-text-primary"
-														} text-sm font-medium leading-13   `}
+																	? "text-text-body"
+																	: "text-text-primary"
+															} text-sm font-medium leading-13   `}
 													>
 														{task.content}
 													</div>

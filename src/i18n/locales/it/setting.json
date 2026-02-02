@@ -13,6 +13,7 @@
 	"select-language": "Seleziona lingua",
 	"system-default": "Predefinito di sistema",
 	"appearance": "Aspetto",
+	"dark": "Scuro",
 	"light": "Chiaro",
 	"transparent": "Trasparente",
 
@@ -50,12 +51,9 @@
 	"gpt-4.1-mini": "GPT-4.1 Mini: Costo inferiore, risposte più veloci, ma qualità dell'output ridotta.",
 	"gpt-4.1": "GPT-4.1: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
 	"claude-opus-4.1": "Claude Opus 4.1: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
-	"claude-sonnet-4": "Claude Sonnet 4: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
-	"claude-3.5-haiku": "Claude 3.5 Haiku: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
 	"gpt-5": "GPT-5: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
 	"gpt-5-mini": "GPT-5 mini: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
 	"gpt-5-nano": "GPT-5 nano: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
-	"gemini-2.5-pro": "Gemini 2.5 Pro: Costo superiore, risposte più lente, ma qualità e ragionamento superiori.",
 	"custom-model": "Modello personalizzato",
 	"use-your-own-api-keys-or-set-up-a-local-model": "Usa le tue chiavi API o imposta un modello locale.",
 	"verify": "Verifica",
@@ -162,6 +160,14 @@
   "recommended": "Consigliato",
   "reset": "Reimposta",
   "reset-success": "Reimpostazione riuscita!",
-  "reset-failed": "Reimpostazione non riuscita!"
+  "reset-failed": "Reimpostazione non riuscita!",
+
+	"network-proxy": "Proxy di rete",
+	"network-proxy-description": "Configura un server proxy per le richieste di rete. Utile se devi accedere ad API esterne tramite un proxy.",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "Configurazione proxy salvata. Riavvia l'app per applicare le modifiche.",
+	"proxy-save-failed": "Impossibile salvare la configurazione del proxy.",
+	"proxy-invalid-url": "URL proxy non valido. Deve iniziare con http://, https://, socks4:// o socks5://.",
+	"proxy-restart-hint": "Riavvio necessario per applicare le modifiche del proxy."
 }
 

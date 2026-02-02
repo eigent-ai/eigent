@@ -1,4 +1,4 @@
-@import "./token.css";
+@import './token.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -31,7 +31,80 @@ body {
   width: 100%;
   height: 100%;
   background-color: transparent !important;
+}
 
+@layer base {
+  body {
+    color: var(--text-body);
+  }
+
+  p,
+  span,
+  li,
+  label {
+    color: inherit;
+  }
+
+  button {
+    color: inherit;
+    background-color: transparent;
+  }
+
+  input,
+  textarea,
+  select {
+    color: var(--text-primary);
+    background-color: var(--surface-primary);
+    border: 1px solid var(--border-secondary);
+    outline: none;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
+  }
+
+  .lucide {
+    color: var(--icon-secondary);
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  button .lucide,
+  a .lucide,
+  .lucide[data-state='active'] {
+    color: var(--icon-primary);
+  }
+
+  :is(
+    .bg-white,
+    .bg-white-100,
+    .bg-white-50,
+    [class*='bg-white-100%'],
+    [class*='bg-white-50']
+  ) {
+    color: var(--text-primary);
+    background-color: var(--surface-card) !important;
+    box-shadow: none;
+  }
+
+  [class*='bg-white-50'] {
+    background-color: var(--surface-tertiary) !important;
+  }
+
+  .theme-image-invert-dark {
+    filter: none;
+    transition: filter 150ms ease;
+  }
+
+  [data-theme='dark'] .theme-image-invert-dark {
+    filter: brightness(0) invert(1);
+  }
+
+  [data-theme='transparent'] .theme-image-invert-dark {
+    filter: brightness(0) invert(1);
+  }
 }
 
 #root,
@@ -39,7 +112,6 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-
 }
 
 #root {
@@ -49,6 +121,8 @@ body {
   background-color: var(--bg-page) !important;
   backdrop-filter: blur(75px);
   z-index: 0;
+  position: relative;
+  isolation: isolate;
 }
 
 .blur {
@@ -62,7 +136,7 @@ body {
   -webkit-backdrop-filter: blur(75px);
 }
 
-.blur>* {
+.blur > * {
   position: relative;
   z-index: 3;
 }
@@ -78,7 +152,13 @@ body {
 
 /* Perfect Shadow */
 .perfect-shadow {
-  box-shadow: 0 8px 20px -2px rgba(29, 33, 41, 0.10), 0 32px 48px -12px rgba(29, 33, 41, 0.12), 0 96px 120px -12px rgba(65, 74, 92, 0.06), 0 108px 72px -16px rgba(65, 74, 92, 0.08), 0 32px 64px -8px rgba(113, 153, 189, 0.12), 0 8px 10px 0 rgba(113, 153, 189, 0.12);
+  box-shadow:
+    0 8px 20px -2px rgba(29, 33, 41, 0.1),
+    0 32px 48px -12px rgba(29, 33, 41, 0.12),
+    0 96px 120px -12px rgba(65, 74, 92, 0.06),
+    0 108px 72px -16px rgba(65, 74, 92, 0.08),
+    0 32px 64px -8px rgba(113, 153, 189, 0.12),
+    0 8px 10px 0 rgba(113, 153, 189, 0.12);
 }
 
 .blur-effect {
@@ -93,7 +173,7 @@ body {
 .custom-resizable-handle {
   width: 1px;
   height: 100%;
-  background: rgba(200,200,200,0.3);
+  background: rgba(200, 200, 200, 0.3);
   transition: all 0.2s ease;
   position: relative;
 }
@@ -120,8 +200,6 @@ body {
   width: 100vw;
   height: 100vh;
 }
-
-
 
 h1 {
   font-size: 3.2em;
@@ -164,7 +242,6 @@ code {
 .drag {
   -webkit-app-region: drag;
 }
-
 
 @layer base {
   :root {
@@ -240,7 +317,6 @@ code {
   }
 }
 
-
 /* scroll Style */
 
 .scrollbar {
@@ -311,7 +387,6 @@ code {
   background: transparent;
 }
 
-
 .terminal-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
@@ -366,7 +441,6 @@ code {
   /* Firefox */
 }
 
-
 .xterm .xterm-viewport::-webkit-scrollbar {
   width: 8px;
 }
@@ -419,4 +493,36 @@ code {
 .markdown-container ol {
   padding-left: 1rem;
   font-size: 12px; /* text-sm */
+}
+
+/* Dark mode overrides for FolderComponent (CSV/table content) */
+[data-theme='dark'] .folder-component-content {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .folder-component-content * {
+  color: inherit;
+}
+
+[data-theme='dark'] .folder-component-content table {
+  border-collapse: collapse;
+}
+
+[data-theme='dark'] .folder-component-content table th,
+[data-theme='dark'] .folder-component-content table td {
+  border-color: #30363d !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .folder-component-content table th {
+  background-color: #161b22 !important;
+}
+
+[data-theme='dark'] .folder-component-content table tr {
+  background-color: transparent !important;
+  border-top-color: #30363d !important;
+}
+
+[data-theme='dark'] .folder-component-content table tr:nth-child(2n) {
+  background-color: rgba(110, 118, 129, 0.1) !important;
 }

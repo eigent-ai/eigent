@@ -1,4 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { useMemo, useRef, useState } from "react";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import { Plus } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -7,44 +21,51 @@ import { useTranslation } from "react-i18next";
 import { useAuthStore } from "@/store/authStore";
 import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
 import Project from "@/pages/Dashboard/Project";
-import Trigger from "@/pages/Dashboard/Trigger";
 import AlertDialog from "@/components/ui/alertDialog";
 import { Settings } from "@/components/animate-ui/icons/settings";
-import { Pin } from "@/components/animate-ui/icons/pin";
 import { Compass } from "@/components/animate-ui/icons/compass";
 import Setting from "@/pages/Setting";
-import { cn } from "@/lib/utils";
 import { Hammer } from "@/components/animate-ui/icons/hammer";
 import MCP from "./Setting/MCP";
 import Browser from "./Dashboard/Browser";
 import WordCarousel from "@/components/ui/WordCarousel";
 import { Sparkle } from "@/components/animate-ui/icons/sparkle";
 
+const VALID_TABS = [
+	'projects',
+	'workers',
+	'trigger',
+	'settings',
+	'mcp_tools',
+	'browser',
+] as const;
 
+type TabType = (typeof VALID_TABS)[number];
 
 export default function Home() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
 	const { chatStore, projectStore } = useChatStoreAdapter();
-	if (!chatStore || !projectStore) {
-		return <div>Loading...</div>;
-	}
-  const tabParam = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | "browser" | null;
-  const [activeTab, setActiveTab] = useState<"projects" | "workers" | "trigger" | "settings" | "mcp_tools" | "browser">(tabParam || "projects");
-
 	const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const { username, email } = useAuthStore();
 	const displayName = username ?? email ?? "";
 
-	// Sync activeTab with URL changes
-	useEffect(() => {
-		const tab = searchParams.get("tab") as "projects" | "workers" | "trigger" | "settings" | "mcp_tools" | null;
-		if (tab) {
-			setActiveTab(tab);
+	// Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
+	const activeTab = useMemo(() => {
+		const tabFromUrl = searchParams.get('tab');
+		if (tabFromUrl && VALID_TABS.includes(tabFromUrl as TabType)) {
+			return tabFromUrl as TabType;
 		}
+		return 'projects' as TabType;
 	}, [searchParams]);
+
+	const handleTabChange = (value: string) => {
+		if (value) {
+			navigate(`?tab=${value}`, { replace: true });
+		}
+	};
 
 	const formatWelcomeName = (raw: string): string => {
 		if (!raw) return "";
@@ -61,10 +82,6 @@ export default function Home() {
 
 	const welcomeName = formatWelcomeName(displayName);
 
-	const handleAnimationComplete = () => {
-		console.log('All letters have animated!');
-	};
-
 	const confirmDelete = () => {
 		setDeleteModalOpen(false);
 	};
@@ -72,18 +89,13 @@ export default function Home() {
 	// create task
 	const createChat = () => {
 		//Handles refocusing id & non duplicate logic internally
-		projectStore.createProject("new project");
+		projectStore?.createProject("new project");
 		navigate("/");
 	};
 
-  useEffect(() => {
-		// Update active tab when URL parameter changes
-		const tabFromUrl = searchParams.get('tab');
-		const validTabs = ["projects", "workers", "trigger", "settings", "mcp_tools"];
-		if (tabFromUrl && validTabs.includes(tabFromUrl)) {
-			setActiveTab(tabFromUrl as typeof activeTab);
-		}
-	}, [searchParams]);
+	if (!chatStore || !projectStore) {
+		return <div>Loading...</div>;
+	}
 
 	return (
 		<div ref={scrollContainerRef} className="h-full overflow-y-auto scrollbar-hide mx-auto">
@@ -98,7 +110,7 @@ export default function Home() {
 			cancelText={t("layout.cancel")}
 		/>
 			{/* welcome text */}
-			<div className="flex flex-row w-full pt-16 px-20 bg-gradient-to-b from-transparent to-[#F9F8F6]">
+		<div className="flex flex-row w-full pt-16 px-20 bg-gradient-to-b from-transparent to-background">
 					<WordCarousel
 						words={[`${t("layout.welcome")}, ${welcomeName} !`]}
 						className="text-heading-xl font-bold tracking-tight"
@@ -115,11 +127,11 @@ export default function Home() {
 			</div>
 			{/* Navbar */}
 		<div
-			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-[#F9F8F6] px-20 pt-10 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
+			className={`sticky top-0 z-20 flex flex-col justify-between items-center bg-background px-20 pt-10 pb-4 border-border-disabled border-x-0 border-t-0 border-solid`}
 		>
 				<div className="flex flex-row justify-between items-center w-full mx-auto">
 				<div className="flex items-center gap-2">
-			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={(v) => v && setActiveTab(v as typeof activeTab)}>
+			 	 <MenuToggleGroup type="single" value={activeTab} orientation="horizontal" onValueChange={handleTabChange}>
 			  	 <MenuToggleItem size="xs" value="projects" iconAnimateOnHover="wiggle" icon={<Sparkle/>}>{t("layout.projects")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="mcp_tools" iconAnimateOnHover="default" icon={<Hammer/>}>{t("layout.mcp-tools")}</MenuToggleItem>
 					 <MenuToggleItem size="xs" value="browser" iconAnimateOnHover="default" icon={<Compass/>}>{t("layout.browser")}</MenuToggleItem>

@@ -1,11 +1,25 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import sqlite3
 import os
-from typing import List, Dict, Optional
-from utils import traceroot_wrapper as traceroot
+from typing import Any, List, Dict, Optional
+import logging
 import shutil
 from datetime import datetime
 
-logger = traceroot.get_logger("cookie_manager")
+logger = logging.getLogger("cookie_manager")
 
 
 class CookieManager:
@@ -38,14 +52,25 @@ class CookieManager:
             logger.warning(f"Cookies database not found: {self.cookies_db_path}")
             return None
 
+        temp_db_path = self.cookies_db_path + ".tmp"
+        conn = None
         try:
-            temp_db_path = self.cookies_db_path + ".tmp"
             shutil.copy2(self.cookies_db_path, temp_db_path)
             conn = sqlite3.connect(temp_db_path)
             conn.row_factory = sqlite3.Row
             return conn
         except Exception as e:
             logger.error(f"Error connecting to cookies database: {e}")
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            try:
+                if os.path.exists(temp_db_path):
+                    os.remove(temp_db_path)
+            except OSError:
+                pass
             return None
 
     def _cleanup_temp_db(self):
@@ -57,7 +82,7 @@ class CookieManager:
         except Exception as e:
             logger.debug(f"Error cleaning up temp database: {e}")
 
-    def get_cookie_domains(self) -> List[Dict[str, any]]:
+    def get_cookie_domains(self) -> List[Dict[str, Any]]:
         """Get list of all domains with cookies"""
         conn = self._get_cookies_connection()
         if not conn:
@@ -132,10 +157,17 @@ class CookieManager:
 
             cookies = []
             for row in rows:
+                raw_value = row['value']
+                if raw_value is None:
+                    value_str = ""
+                elif len(raw_value) > 50:
+                    value_str = raw_value[:50] + "..."
+                else:
+                    value_str = raw_value
                 cookies.append({
                     'domain': row['host_key'],
                     'name': row['name'],
-                    'value': row['value'][:50] + '...' if len(row['value']) > 50 else row['value'],
+                    'value': value_str,
                     'path': row['path'],
                     'secure': bool(row['is_secure']),
                     'httponly': bool(row['is_httponly'])
@@ -226,11 +258,11 @@ class CookieManager:
             logger.error(f"Error deleting all cookies: {e}")
             return False
 
-    def search_cookies(self, keyword: str) -> List[Dict[str, any]]:
+    def search_cookies(self, keyword: str) -> List[Dict[str, Any]]:
         """Search cookies by domain keyword"""
         domains = self.get_cookie_domains()
         keyword_lower = keyword.lower()
         return [
             domain for domain in domains
-            if keyword_lower in domain['domain'].lower()
+            if keyword_lower in (domain['domain'] or '').lower()
         ]

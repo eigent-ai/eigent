@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from app.model.chat.chat_snpshot import ChatSnapshot, ChatSnapshotIn
 from typing import List, Optional
 from fastapi import Depends, HTTPException, Response, APIRouter
@@ -5,15 +19,14 @@ from sqlmodel import Session, select
 from app.component.database import session
 from app.component.auth import Auth, auth_must
 from fastapi_babel import _
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_chat_snapshot")
+logger = logging.getLogger("server_chat_snapshot")
 
 router = APIRouter(prefix="/chat", tags=["Chat Snapshot Management"])
 
 
 @router.get("/snapshots", name="list chat snapshots", response_model=List[ChatSnapshot])
-@traceroot.trace()
 async def list_chat_snapshots(
     api_task_id: Optional[str] = None,
     camel_task_id: Optional[str] = None,
@@ -35,7 +48,6 @@ async def list_chat_snapshots(
 
 
 @router.get("/snapshots/{snapshot_id}", name="get chat snapshot", response_model=ChatSnapshot)
-@traceroot.trace()
 async def get_chat_snapshot(snapshot_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get specific chat snapshot."""
     user_id = auth.user.id
@@ -50,7 +62,6 @@ async def get_chat_snapshot(snapshot_id: int, session: Session = Depends(session
 
 
 @router.post("/snapshots", name="create chat snapshot", response_model=ChatSnapshot)
-@traceroot.trace()
 async def create_chat_snapshot(
     snapshot: ChatSnapshotIn, auth: Auth = Depends(auth_must), session: Session = Depends(session)
 ):
@@ -78,7 +89,6 @@ async def create_chat_snapshot(
 
 
 @router.put("/snapshots/{snapshot_id}", name="update chat snapshot", response_model=ChatSnapshot)
-@traceroot.trace()
 async def update_chat_snapshot(
     snapshot_id: int,
     snapshot_update: ChatSnapshot,
@@ -113,7 +123,6 @@ async def update_chat_snapshot(
 
 
 @router.delete("/snapshots/{snapshot_id}", name="delete chat snapshot")
-@traceroot.trace()
 async def delete_chat_snapshot(snapshot_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Delete chat snapshot."""
     user_id = auth.user.id

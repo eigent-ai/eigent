@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { Handle, Position, useReactFlow, NodeResizer } from "@xyflow/react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -104,15 +118,58 @@ export function Node({ id, data }: NodeProps) {
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 	const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
 	const workerList = useWorkerList();
 	const { setWorkerList } = useAuthStore();
 	const nodeRef = useRef<HTMLDivElement>(null);
+	const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		setIsExpanded(data.isExpanded);
 	}, [data.isExpanded]);
+
+	// Auto-expand when a task is running with toolkits
+	useEffect(() => {
+		const tasks = data.agent?.tasks || [];
+
+		// Find running task with active toolkits
+		const runningTaskWithToolkits = tasks.find(
+			(task) =>
+				task.status === "running" &&
+				task.toolkits &&
+				task.toolkits.length > 0
+		);
+
+		// Reset tracking when no tasks are running
+		const hasRunningTasks = tasks.some((task) => task.status === "running");
+		if (!hasRunningTasks && lastAutoExpandedTaskIdRef.current) {
+			lastAutoExpandedTaskIdRef.current = null;
+		}
+
+		// Auto-expand for new running task
+		if (runningTaskWithToolkits && runningTaskWithToolkits.id !== lastAutoExpandedTaskIdRef.current) {
+			// Always select the new task
+			setSelectedTask(runningTaskWithToolkits);
+
+			// Expand if not already expanded
+			if (!isExpanded) {
+				setIsExpanded(true);
+				data.onExpandChange(id, true);
+			}
+
+			lastAutoExpandedTaskIdRef.current = runningTaskWithToolkits.id;
+		}
+	}, [
+		data.agent?.tasks,
+		// Add specific dependencies that actually change
+		data.agent?.tasks?.length,
+		data.agent?.tasks?.find((t) => t.status === "running")?.id,
+		data.agent?.tasks?.find((t) => t.status === "running")?.toolkits?.length,
+		id,
+		data.onExpandChange,
+		isExpanded,
+	]);
 
 	// manually control node size
 	useEffect(() => {
@@ -142,7 +199,7 @@ export function Node({ id, data }: NodeProps) {
 		if (!isExpanded) {
 			setSelectedTask(
 				data.agent?.tasks.find((task) => task.status === "running") ||
-					data.agent?.tasks[0]
+				data.agent?.tasks[0]
 			);
 		}
 		setIsExpanded(!isExpanded);
@@ -319,33 +376,27 @@ export function Node({ id, data }: NodeProps) {
 			/>
 			<div
 				ref={nodeRef}
-				className={`${
-					data.isEditMode
-						? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[342px]"}`
-						: isExpanded
+				className={`${data.isEditMode
+					? `w-full ${isExpanded ? "min-w-[560px]" : "min-w-[342px]"}`
+					: isExpanded
 						? "w-[684px]"
 						: "w-[342px]"
-				} ${
-					data.isEditMode ? "h-full" : "max-h-[calc(100vh-200px)]"
-				}  border-worker-border-default flex border border-solid rounded-xl overflow-hidden bg-worker-surface-primary ${
-					chatStore.tasks[chatStore.activeTaskId as string].activeAgent === id
+					} ${data.isEditMode ? "h-full" : "max-h-[calc(100vh-200px)]"
+					}  border-worker-border-default flex border border-solid rounded-xl overflow-hidden bg-worker-surface-primary ${chatStore.tasks[chatStore.activeTaskId as string].activeAgent === id
 						? `${agentMap[data.type]?.borderColor} z-50`
 						: "border-worker-border-default z-10"
-				} transition-all duration-300 ease-in-out ${
-					(data.agent?.tasks?.length ?? 0) === 0 && "opacity-30"
-				}`}
+					} transition-all duration-300 ease-in-out ${(data.agent?.tasks?.length ?? 0) === 0 && "opacity-30"
+					}`}
 			>
 				<div
-					className={`py-2 px-3 pr-0 flex flex-col ${
-						data.isEditMode ? "flex-1 min-w-[342px]" : "w-[342px] "
-					}`}
+					className={`py-2 px-3 pr-0 flex flex-col ${data.isEditMode ? "flex-1 min-w-[342px]" : "w-[342px] "
+						}`}
 				>
 					<div className=" flex items-center justify-between gap-sm pr-3">
 						<div className="flex items-center justify-between gap-md">
 							<div
-								className={`text-base leading-relaxed font-bold ${
-									agentMap[data.type]?.textColor
-								}`}
+								className={`text-base leading-relaxed font-bold ${agentMap[data.type]?.textColor
+									}`}
 							>
 								{agentMap[data.type]?.name || data.agent?.name}
 							</div>
@@ -403,7 +454,7 @@ export function Node({ id, data }: NodeProps) {
 					</div>
 					<div
 						ref={toolsRef}
-						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3 text-"
+						className="flex-shrink-0 text-text-label text-xs leading-tight min-h-4 font-normal mb-sm pr-3"
 					>
 						{/* {JSON.stringify(data.agent)} */}
 						{agentToolkits[
@@ -437,13 +488,12 @@ export function Node({ id, data }: NodeProps) {
 											img.img && (
 												<img
 													key={index}
-													className={`${
-														data.img.length === 1
-															? "flex-1"
-															: data.img.length === 2
+													className={`${data.img.length === 1
+														? "flex-1"
+														: data.img.length === 2
 															? "max-w-[calc(50%-8px)] h-full"
 															: "max-w-[calc(50%-8px)] h-[calc(50%-8px)]"
-													}  min-w-[calc(50%-8px)] rounded-sm object-cover`}
+														}  min-w-[calc(50%-8px)] rounded-sm object-cover`}
 													src={img.img}
 													alt={data.type}
 												/>
@@ -474,14 +524,13 @@ export function Node({ id, data }: NodeProps) {
 											return (
 												<div
 													key={task.id}
-													className={`${
-														data.agent?.tasks.filter(
-															(task) =>
-																task.terminal && task.terminal.length > 0
-														).length === 1
-															? "min-w-full h-full"
-															: "min-w-[calc(50%-8px)] h-[calc(50%-8px)]"
-													}  flex-1 rounded-sm object-cover relative overflow-hidden`}
+													className={`${data.agent?.tasks.filter(
+														(task) =>
+															task.terminal && task.terminal.length > 0
+													).length === 1
+														? "min-w-full h-full"
+														: "min-w-[calc(50%-8px)] h-[calc(50%-8px)]"
+														}  flex-1 rounded-sm object-cover relative overflow-hidden`}
 												>
 													<div className="absolute left-0 top-0 scale-x-[0.4]  scale-y-[0.3] w-[800px] h-[500px] origin-top-left">
 														<Terminal content={task.terminal} />
@@ -544,9 +593,8 @@ export function Node({ id, data }: NodeProps) {
 						onWheel={(e) => {
 							e.stopPropagation();
 						}}
-						className={`mt-sm flex flex-col gap-2 animate-in fade-in-0 slide-in-from-bottom-4 duration-500 ease-out overflow-y-auto scrollbar pr-3 ${
-							shouldScroll && "!overflow-y-scroll scrollbar "
-						}`}
+						className={`mt-sm flex flex-col gap-2 animate-in fade-in-0 slide-in-from-bottom-4 duration-500 ease-out overflow-y-auto scrollbar pr-3 ${shouldScroll && "!overflow-y-scroll scrollbar "
+							}`}
 						style={{
 							maxHeight:
 								data.img && data.img.length > 0
@@ -575,41 +623,38 @@ export function Node({ id, data }: NodeProps) {
 											}
 										}}
 										key={`taskList-${task.id}-${task.failure_count}`}
-										className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
-											task.reAssignTo
-												? "bg-task-fill-warning"
-												: task.status === "completed"
-												? "bg-green-50"
+										className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${task.reAssignTo
+											? "bg-task-fill-warning"
+											: task.status === "completed"
+												? "bg-task-fill-success"
 												: task.status === "failed"
-												? "bg-task-fill-error"
-												: task.status === "running"
-												? "bg-zinc-50"
-												: task.status === "blocked"
-												? "bg-task-fill-warning"
-												: "bg-zinc-50"
-										} border border-solid border-transparent cursor-pointer ${
-											task.status === "completed"
+													? "bg-task-fill-error"
+													: task.status === "running"
+														? "bg-task-fill-running"
+														: task.status === "blocked"
+															? "bg-task-fill-warning"
+															: "bg-task-fill-running"
+											} border border-solid border-transparent cursor-pointer ${task.status === "completed"
 												? "hover:border-bg-fill-success-primary"
 												: task.status === "failed"
-												? "hover:border-task-border-focus-error"
-												: task.status === "running"
-												? "hover:border-border-primary"
-												: task.status === "blocked"
-												? "hover:border-task-border-focus-warning"
-												: "border-transparent"
-										} ${
-											selectedTask?.id === task.id
+													? "hover:border-task-border-focus-error"
+													: task.status === "running"
+														? "hover:border-border-primary"
+														: task.status === "blocked"
+															? "hover:border-task-border-focus-warning"
+															: "border-transparent"
+											} ${selectedTask?.id === task.id
 												? task.status === "completed"
 													? "!border-bg-fill-success-primary"
 													: task.status === "failed"
-													? "!border-text-cuation-primary"
-													: task.status === "running"
-													? "!border-border-primary"
-													: task.status === "blocked"
-													? "!border-text-warning-primary"
-													: "border-transparent"
+														? "!border-text-cuation-primary"
+														: task.status === "running"
+															? "!border-border-primary"
+															: task.status === "blocked"
+																? "!border-text-warning-primary"
+																: "border-transparent"
 												: "border-transparent"
-										}`}
+											}`}
 									>
 										<div className="">
 											{task.reAssignTo ? (
@@ -621,11 +666,10 @@ export function Node({ id, data }: NodeProps) {
 													{task.status === "running" && (
 														<LoaderCircle
 															size={16}
-															className={`text-icon-information ${
-																chatStore.tasks[
-																	chatStore.activeTaskId as string
-																].status === "running" && "animate-spin"
-															}`}
+															className={`text-icon-information ${chatStore.tasks[
+																chatStore.activeTaskId as string
+															].status === "running" && "animate-spin"
+																}`}
 														/>
 													)}
 													{task.status === "skipped" && (
@@ -654,20 +698,19 @@ export function Node({ id, data }: NodeProps) {
 													)}
 													{(task.status === "" ||
 														task.status === "waiting") && (
-														<Circle size={16} className="text-slate-400" />
-													)}
+															<Circle size={16} className="text-slate-400" />
+														)}
 												</>
 											)}
 										</div>
 										<div className="flex-1 flex flex-col items-start justify-center">
 											<div
-												className={`w-full flex-grow-0 ${
-													task.status === "failed"
-														? "text-text-cuation-default"
-														: task.status === "blocked"
+												className={`w-full flex-grow-0 ${task.status === "failed"
+													? "text-text-cuation-default"
+													: task.status === "blocked"
 														? "text-text-body"
 														: "text-text-primary"
-												} text-xs font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
+													} text-xs font-medium leading-13 select-text pointer-events-auto break-all text-wrap whitespace-pre-line`}
 											>
 												<div className="flex items-center gap-sm">
 													<div className="text-text-body text-xs font-bold leading-13">
@@ -680,13 +723,12 @@ export function Node({ id, data }: NodeProps) {
 													) : (
 														(task.failure_count ?? 0) > 0 && (
 															<div
-																className={`${
-																	task.status === "failed"
-																		? "bg-red-100 text-text-cuation"
-																		: task.status === "completed"
+																className={`${task.status === "failed"
+																	? "bg-surface-error-subtle text-text-cuation"
+																	: task.status === "completed"
 																		? "bg-tag-fill-developer text-text-success-default"
 																		: "bg-tag-surface-hover text-text-label"
-																}  text-xs font-bold leading-none rounded-lg px-1 py-0.5`}
+																	}  text-xs font-bold leading-none rounded-lg px-1 py-0.5`}
 															>
 																Attempt {task.failure_count}
 															</div>
@@ -710,13 +752,12 @@ export function Node({ id, data }: NodeProps) {
 																	<Bot className="w-3 h-3" />
 																)}
 																<div
-																	className={`${
-																		chatStore.tasks[
-																			chatStore.activeTaskId as string
-																		].activeWorkSpace
-																			? "!w-[100px]"
-																			: "!w-[500px]"
-																	} pt-1 flex-shrink-0 flex-grow-0 min-w-0 text-text-primary text-xs leading-17 overflow-hidden text-ellipsis whitespace-nowrap`}
+																	className={`${chatStore.tasks[
+																		chatStore.activeTaskId as string
+																	].activeWorkSpace
+																		? "!w-[100px]"
+																		: "!w-[500px]"
+																		} pt-1 flex-shrink-0 flex-grow-0 min-w-0 text-text-primary text-xs leading-17 overflow-hidden text-ellipsis whitespace-nowrap`}
 																>
 																	<ShinyText
 																		text={task.toolkits?.[0].toolkitName}
@@ -736,9 +777,8 @@ export function Node({ id, data }: NodeProps) {
 				{isExpanded && (
 					<div
 						key={selectedTask?.id || "empty"}
-						className={`${
-							data.isEditMode ? "flex-1" : "w-[342px]"
-						}  flex flex-col gap-sm border-l  bg-worker-surface-secondary rounded-r-xl px-sm pr-0 py-3 pt-sm animate-in fade-in-0 slide-in-from-right-2 duration-300 `}
+						className={`${data.isEditMode ? "flex-1" : "w-[342px]"
+							}  flex flex-col gap-sm border-l  bg-worker-surface-secondary rounded-r-xl px-sm pr-0 py-3 pt-sm animate-in fade-in-0 slide-in-from-right-2 duration-300 `}
 					>
 						<div
 							ref={logRef}
@@ -793,11 +833,10 @@ export function Node({ id, data }: NodeProps) {
 															{toolkit.toolkitStatus === "running" ? (
 																<LoaderCircle
 																	size={16}
-																	className={`${
-																		chatStore.tasks[
-																			chatStore.activeTaskId as string
-																		].status === "running" && "animate-spin"
-																	}`}
+																	className={`${chatStore.tasks[
+																		chatStore.activeTaskId as string
+																	].status === "running" && "animate-spin"
+																		}`}
 																/>
 															) : (
 																agentMap[data.type]?.icon
@@ -814,11 +853,10 @@ export function Node({ id, data }: NodeProps) {
 																	</div>
 
 																	<div
-																		className={` text-text-primary text-xs ${
-																			data.isEditMode
-																				? "overflow-hidden max-h-[15px]"
-																				: "overflow-hidden text-ellipsis whitespace-nowrap"
-																		}`}
+																		className={` text-text-primary text-xs ${data.isEditMode
+																			? "overflow-hidden max-h-[15px]"
+																			: "overflow-hidden text-ellipsis whitespace-nowrap"
+																			}`}
 																	>
 																		{toolkit.message}
 																	</div>

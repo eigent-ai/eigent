@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -261,7 +275,7 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 	};
 	return (
 		<div className="h-full flex flex-col items-center ">
-	  {externalKeyword === undefined && (
+			{externalKeyword === undefined && (
 				<>
 					<div className="text-body flex items-center justify-between sticky top-0 z-[20] py-2 mb-0 w-full max-w-4xl">
 						<Button
@@ -277,13 +291,13 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 						</span>
 					</div>
 					<div className="w-40 max-w-4xl">
-							<SearchInput
-								value={keyword}
-								onChange={(e) => setKeyword(e.target.value)}
-							/>	
+						<SearchInput
+							value={keyword}
+							onChange={(e) => setKeyword(e.target.value)}
+						/>
 					</div>
 				</>
-		  )}
+			)}
 
 			{/* Category toggle row */}
 			<div className="w-full flex py-2">
@@ -304,7 +318,7 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 				</ToggleGroup>
 			</div>
 
-	    {/* list */}
+			{/* list */}
 			<MCPEnvDialog
 				showEnvConfig={showEnvConfig}
 				onClose={onClose}
@@ -313,11 +327,11 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 			></MCPEnvDialog>
 			<div className="flex flex-col gap-4 w-full pt-4">
 				{isLoading && items.length === 0 && (
-					<div className="text-center py-8 text-gray-400">{t("setting.loading")}</div>
+					<div className="text-center py-8 text-text-muted">{t("setting.loading")}</div>
 				)}
-				{error && <div className="text-center py-8 text-red-500">{error}</div>}
+				{error && <div className="text-center py-8 text-text-error">{error}</div>}
 				{!isLoading && !error && items.length === 0 && (
-					<div className="text-center py-8 text-gray-400">{t("setting.no-mcp-services")}</div>
+					<div className="text-center py-8 text-text-muted">{t("setting.no-mcp-services")}</div>
 				)}
 				{items.map((item) => (
 					<div
@@ -363,10 +377,10 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 									{installedIds.includes(item.id)
 										? t("setting.uninstall")
 										: installing[item.id]
-										? t("setting.installing")
-										: installed[item.id]
-										? t("setting.uninstall")
-										: t("setting.install")}
+											? t("setting.installing")
+											: installed[item.id]
+												? t("setting.uninstall")
+												: t("setting.install")}
 								</Button>
 							</div>
 							{item.home_page &&
@@ -391,7 +405,7 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 										</span>
 									</div>
 								)}
-							<div className="text-sm text-gray-500 mt-1 break-words whitespace-pre-line">
+							<div className="text-sm text-text-muted mt-1 break-words whitespace-pre-line">
 								{item.description}
 							</div>
 						</div>
@@ -399,10 +413,10 @@ export default function MCPMarket({ onBack, keyword: externalKeyword }: MCPMarke
 				))}
 				<div ref={loader} />
 				{isLoading && items.length > 0 && (
-					<div className="text-center py-4 text-gray-400">{t("setting.loading-more")}</div>
+					<div className="text-center py-4 text-text-muted">{t("setting.loading-more")}</div>
 				)}
 				{!hasMore && items.length > 0 && (
-					<div className="text-center py-4 text-gray-400">
+					<div className="text-center py-4 text-text-muted">
 						{t("setting.no-more-mcp-servers")}
 					</div>
 				)}

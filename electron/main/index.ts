@@ -1,45 +1,65 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import axios from 'axios';
 import {
   app,
   BrowserWindow,
-  shell,
+  dialog,
   ipcMain,
   Menu,
-  dialog,
   nativeTheme,
   protocol,
   session,
+  shell,
 } from 'electron';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import os, { homedir } from 'node:os';
 import log from 'electron-log';
-import { update, registerUpdateIpcHandlers } from './update';
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
-import { WebViewManager } from './webview';
-import { FileReader } from './fileReader';
-import { ChildProcessWithoutNullStreams } from 'node:child_process';
-import fs, { existsSync, readFileSync } from 'node:fs';
-import fsp from 'fs/promises';
-import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig';
-import {
-  getEnvPath,
-  updateEnvBlock,
-  removeEnvKey,
-  getEmailFolderPath,
-} from './utils/envUtil';
-import { copyBrowserData } from './copy';
-import { findAvailablePort } from './init';
-import kill from 'tree-kill';
-import { zipFolder } from './utils/log';
-import mime from 'mime';
-import axios from 'axios';
 import FormData from 'form-data';
+import fsp from 'fs/promises';
+import mime from 'mime';
+import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import fs, { existsSync } from 'node:fs';
+import os, { homedir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import kill from 'tree-kill';
+import { copyBrowserData } from './copy';
+import { FileReader } from './fileReader';
+import {
+  checkToolInstalled,
+  findAvailablePort,
+  killProcessOnPort,
+  startBackend,
+} from './init';
 import {
   checkAndInstallDepsOnUpdate,
-  PromiseReturnType,
   getInstallationStatus,
+  PromiseReturnType,
 } from './install-deps';
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
+import { registerUpdateIpcHandlers, update } from './update';
+import {
+  getEmailFolderPath,
+  getEnvPath,
+  maskProxyUrl,
+  readGlobalEnvKey,
+  removeEnvKey,
+  updateEnvBlock,
+} from './utils/envUtil';
+import { zipFolder } from './utils/log';
+import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
+import { getBackendPath, getVenvPath, isBinaryExists } from './utils/process';
+import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
 
@@ -59,6 +79,7 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
+let proxyUrl: string | null = null;
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -112,6 +133,39 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== Proxy configuration ====================
+// Read proxy from global .env file on startup
+proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+if (proxyUrl) {
+  log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
+  app.commandLine.appendSwitch('proxy-server', proxyUrl);
+} else {
+  log.info('[PROXY] No proxy configured');
+}
+
+// ==================== Anti-fingerprint settings ====================
+// Disable automation controlled indicator to avoid detection
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+
+// Override User Agent to remove Electron/eigent identifiers
+// Dynamically generate User Agent based on actual platform and Chrome version
+const getPlatformUA = () => {
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
+  switch (process.platform) {
+    case 'darwin':
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'win32':
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'linux':
+      return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    default:
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  }
+};
+const normalUserAgent = getPlatformUA();
+app.userAgentFallback = normalUserAgent;
+
 // ==================== protocol privileges ====================
 // Register custom protocol privileges before app ready
 protocol.registerSchemesAsPrivileged([
@@ -131,8 +185,13 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Disable system theme
-nativeTheme.themeSource = 'light';
+// Respect system theme on Windows, keep light theme on macOS for consistency
+const isWindows = process.platform === 'win32';
+if (isWindows) {
+  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
+} else {
+  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
+}
 
 // Set log level
 log.transports.console.level = 'info';
@@ -595,7 +654,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -617,7 +676,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -946,6 +1005,16 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  // ==================== read global env handler ====================
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
+  ipcMain.handle('read-global-env', async (_event, key: string) => {
+    if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
+      log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
+      return { value: null };
+    }
+    return { value: readGlobalEnvKey(key) };
+  });
+
   // ==================== new window handler ====================
   ipcMain.handle('open-win', (_, arg) => {
     const childWindow = new BrowserWindow({
@@ -1245,21 +1314,39 @@ async function createWindow() {
     )}`
   );
 
+  // Platform-specific window configuration
+  // Windows: Use native frame for better native feel, solid background
+  // macOS: Use frameless with transparency and vibrancy effects
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
     height: 800,
     minWidth: 1050,
     minHeight: 650,
-    frame: false,
-    transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    // Use native frame on Windows for better native integration
+    frame: isWindows ? true : false,
+    show: false, // Don't show until content is ready to avoid white screen
+    // Only use transparency on macOS and Linux (not supported well on Windows)
+    transparent: !isWindows,
+    // macOS-only visual effects
+    vibrancy: isMac ? 'sidebar' : undefined,
+    visualEffectState: isMac ? 'active' : undefined,
+    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    backgroundColor: isWindows
+      ? nativeTheme.shouldUseDarkColors
+        ? '#1e1e1e'
+        : '#ffffff'
+      : '#f5f5f580',
+    // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    roundedCorners: true,
+    // Rounded corners on macOS and Linux (as original)
+    roundedCorners: !isWindows,
+    // Windows-specific options
+    ...(isWindows && {
+      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
@@ -1272,6 +1359,47 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('render-process-gone', (event, details) => {
+    log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    if (win && !win.isDestroyed()) {
+      // Reload the window after a brief delay
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Attempting to reload after crash...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 1000);
+    }
+  });
+
+  win.webContents.on(
+    'did-fail-load',
+    (event, errorCode, errorDescription, validatedURL) => {
+      log.error(
+        `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
+      );
+      // Retry loading after a delay
+      if (errorCode !== -3) {
+        // -3 is USER_CANCELLED, don't retry
+        setTimeout(() => {
+          if (win && !win.isDestroyed()) {
+            log.info('[RENDERER] Retrying load after failure...');
+            if (VITE_DEV_SERVER_URL) {
+              win.loadURL(VITE_DEV_SERVER_URL);
+            } else {
+              win.loadFile(indexHtml);
+            }
+          }
+        }, 2000);
+      }
+    }
+  );
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1520,15 +1648,27 @@ async function createWindow() {
     win.loadFile(indexHtml);
   }
 
-  // Wait for window to be ready
+  // Wait for window to be ready with timeout
   await new Promise<void>((resolve) => {
+    const loadTimeout = setTimeout(() => {
+      log.warn('Window content load timeout (10s), showing window anyway...');
+      resolve();
+    }, 10000);
+
     win!.webContents.once('did-finish-load', () => {
+      clearTimeout(loadTimeout);
       log.info(
         'Window content loaded, starting dependency check immediately...'
       );
       resolve();
     });
   });
+
+  // Show window now that content is loaded (or timeout reached)
+  if (win && !win.isDestroyed()) {
+    win.show();
+    log.info('Window shown after content loaded');
+  }
 
   // Mark window as ready and process any queued protocol URLs
   isWindowReady = true;
@@ -1814,9 +1954,8 @@ app.whenReady().then(async () => {
     try {
       log.info('[DEVTOOLS] Installing React DevTools extension...');
       // Dynamic import to avoid bundling in production
-      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
-        'electron-devtools-installer'
-      );
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } =
+        await import('electron-devtools-installer');
       const name = await installExtension(REACT_DEVELOPER_TOOLS, {
         loadExtensionOptions: { allowFileAccess: true },
       });
@@ -1827,9 +1966,29 @@ app.whenReady().then(async () => {
     }
   }
 
+  // ==================== Anti-fingerprint: Set User Agent for all sessions ====================
+  // Use the same dynamic User Agent as app.userAgentFallback
+  session.defaultSession.setUserAgent(normalUserAgent);
+  // Also set for the user_login partition used by webviews
+  session.fromPartition('persist:user_login').setUserAgent(normalUserAgent);
+  // And for main_window partition
+  session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
+  log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
+
+  // ==================== Apply proxy to Electron sessions ====================
+  if (proxyUrl) {
+    const proxyConfig = { proxyRules: proxyUrl };
+    await session.defaultSession.setProxy(proxyConfig);
+    await session.fromPartition('persist:user_login').setProxy(proxyConfig);
+    await session.fromPartition('persist:main_window').setProxy(proxyConfig);
+    log.info(
+      `[PROXY] Applied proxy to all sessions: ${maskProxyUrl(proxyUrl)}`
+    );
+  }
+
   // ==================== download handle ====================
-  session.defaultSession.on('will-download', (event, item, webContents) => {
-    item.once('done', (event, state) => {
+  session.defaultSession.on('will-download', (event, item, _webContents) => {
+    item.once('done', (_event, _state) => {
       shell.showItemInFolder(item.getURL().replace('localfile://', ''));
     });
   });

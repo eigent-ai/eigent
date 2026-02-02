@@ -1,8 +1,22 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { UserQueryGroup } from './UserQueryGroup';
-import { FloatingAction } from './FloatingAction';
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { VanillaChatStore } from '@/store/chatStore';
+import { motion } from 'framer-motion';
+import React from 'react';
+import { FloatingAction } from './FloatingAction';
+import { UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
   chatId: string;
@@ -14,106 +28,110 @@ interface ProjectSectionProps {
   isPauseResumeLoading: boolean;
 }
 
-export const ProjectSection = React.forwardRef<HTMLDivElement, ProjectSectionProps>(({
-  chatId,
-  chatStore,
-  activeQueryId,
-  onQueryActive,
-  // onPauseResume,  // Commented out - temporary not needed
-  onSkip,
-  isPauseResumeLoading
-}, ref) => {
-  // Subscribe to store changes with throttling to prevent excessive re-renders
-  const [chatState, setChatState] = React.useState(() => chatStore.getState());
+export const ProjectSection = React.forwardRef<
+  HTMLDivElement,
+  ProjectSectionProps
+>(
+  (
+    {
+      chatId,
+      chatStore,
+      activeQueryId,
+      onQueryActive,
+      // onPauseResume,  // Commented out - temporary not needed
+      onSkip,
+      isPauseResumeLoading,
+    },
+    ref
+  ) => {
+    // Subscribe to store changes with throttling to prevent excessive re-renders
+    const [chatState, setChatState] = React.useState(() =>
+      chatStore.getState()
+    );
 
-  React.useEffect(() => {
-    let timeoutId: NodeJS.Timeout | null = null;
-    let latestState: any = null;
+    React.useEffect(() => {
+      let timeoutId: NodeJS.Timeout | null = null;
+      let latestState: any = null;
 
-    const unsubscribe = chatStore.subscribe((state) => {
-      latestState = state;
+      const unsubscribe = chatStore.subscribe((state) => {
+        latestState = state;
 
-      // Throttle updates to max once per 100ms
-      if (!timeoutId) {
-        timeoutId = setTimeout(() => {
+        // Throttle updates to max once per 100ms
+        if (!timeoutId) {
+          timeoutId = setTimeout(() => {
+            if (latestState) {
+              setChatState(latestState);
+            }
+            timeoutId = null;
+          }, 100);
+        }
+      });
+
+      return () => {
+        unsubscribe();
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          // Apply final state on cleanup
           if (latestState) {
             setChatState(latestState);
           }
-          timeoutId = null;
-        }, 100);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        // Apply final state on cleanup
-        if (latestState) {
-          setChatState(latestState);
         }
-      }
-    };
-  }, [chatStore]);
+      };
+    }, [chatStore]);
 
-  const activeTaskId = chatState.activeTaskId;
+    const activeTaskId = chatState.activeTaskId;
+    const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
-  if (!activeTaskId || !chatState.tasks[activeTaskId]) {
-    return null;
-  }
+    const messages = React.useMemo(() => {
+      return task?.messages || [];
+    }, [task?.messages]);
 
-  const task = chatState.tasks[activeTaskId];
-  const messages = task.messages || [];
+    // Memoize grouping to prevent re-creating objects on every render
+    const queryGroups = React.useMemo(() => {
+      return groupMessagesByQuery(messages);
+    }, [messages]);
+    if (!activeTaskId || !task) {
+      return null;
+    }
 
-  // Create a stable key based on messages content to prevent excessive re-renders
-  const lastMessage = messages[messages.length - 1];
-  const messagesKey = React.useMemo(() => {
-    // Only re-compute when message count or last message changes
-    return `${messages.length}-${lastMessage?.id || ''}-${lastMessage?.content?.length || 0}`;
-  }, [messages.length, lastMessage?.id, lastMessage?.content?.length]);
+    return (
+      <motion.div
+        ref={ref}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.3 }}
+        className="relative mb-8"
+      >
+        {/* User Query Groups */}
+        <div className="space-y-0">
+          {queryGroups.map((group, index) => (
+            <UserQueryGroup
+              key={`${chatId}-${group.queryId}`}
+              chatId={chatId}
+              chatStore={chatStore}
+              queryGroup={group}
+              isActive={activeQueryId === group.queryId}
+              onQueryActive={onQueryActive}
+              index={index}
+            />
+          ))}
+        </div>
 
-  // Memoize grouping to prevent re-creating objects on every render
-  const queryGroups = React.useMemo(() => {
-    return groupMessagesByQuery(messages);
-  }, [messagesKey]);
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.3 }}
-      className="relative mb-8"
-    >
-      {/* User Query Groups */}
-      <div className="space-y-0">
-        {queryGroups.map((group, index) => (
-          <UserQueryGroup
-            key={`${chatId}-${group.queryId}`}
-            chatId={chatId}
-            chatStore={chatStore}
-            queryGroup={group}
-            isActive={activeQueryId === group.queryId}
-            onQueryActive={onQueryActive}
-            index={index}
+        {/* Floating Action Button - positioned at project level */}
+        {activeTaskId && (
+          <FloatingAction
+            status={task.status}
+            // onPause={onPauseResume}  // Commented out - temporary not needed
+            // onResume={onPauseResume}  // Commented out - temporary not needed
+            onSkip={onSkip}
+            loading={isPauseResumeLoading}
           />
-        ))}
-      </div>
-
-      {/* Floating Action Button - positioned at project level */}
-      {activeTaskId && (
-        <FloatingAction
-          status={task.status}
-          // onPause={onPauseResume}  // Commented out - temporary not needed
-          // onResume={onPauseResume}  // Commented out - temporary not needed
-          onSkip={onSkip}
-          loading={isPauseResumeLoading}
-        />
-      )}
-    </motion.div>
-  );
-});
+        )}
+      </motion.div>
+    );
+  }
+);
 
 // Add display name for better debugging
 ProjectSection.displayName = 'ProjectSection';
@@ -141,7 +159,7 @@ function groupMessagesByQuery(messages: any[]) {
       currentGroup = {
         queryId: message.id,
         userMessage: message,
-        otherMessages: []
+        otherMessages: [],
       };
     } else if (message.step === 'to_sub_tasks') {
       // Task planning message - each should get its own panel
@@ -153,7 +171,9 @@ function groupMessagesByQuery(messages: any[]) {
       processedTaskMessages.add(message.id);
 
       // Check if any existing group already has this exact taskMessage
-      const existingGroupWithTask = groups.find(g => g.taskMessage && g.taskMessage.id === message.id);
+      const existingGroupWithTask = groups.find(
+        (g) => g.taskMessage && g.taskMessage.id === message.id
+      );
       if (existingGroupWithTask) {
         return;
       }
@@ -174,8 +194,11 @@ function groupMessagesByQuery(messages: any[]) {
         for (let i = index - 1; i >= 0; i--) {
           if (messages[i].role === 'user') {
             // Check if this user message already has a task in existing groups
-            const alreadyHasTask = groups.some(g =>
-              g.userMessage && g.userMessage.id === messages[i].id && g.taskMessage
+            const alreadyHasTask = groups.some(
+              (g) =>
+                g.userMessage &&
+                g.userMessage.id === messages[i].id &&
+                g.taskMessage
             );
 
             if (!alreadyHasTask) {
@@ -187,10 +210,12 @@ function groupMessagesByQuery(messages: any[]) {
 
         // Create new group for this to_sub_tasks
         currentGroup = {
-          queryId: correspondingUserMessage ? correspondingUserMessage.id : `task-${message.id}`,
+          queryId: correspondingUserMessage
+            ? correspondingUserMessage.id
+            : `task-${message.id}`,
           userMessage: correspondingUserMessage,
           taskMessage: message,
-          otherMessages: []
+          otherMessages: [],
         };
       }
     } else {
@@ -203,7 +228,7 @@ function groupMessagesByQuery(messages: any[]) {
         currentGroup = {
           queryId: `orphan-${message.id}`,
           userMessage: null,
-          otherMessages: [message]
+          otherMessages: [message],
         };
       }
     }

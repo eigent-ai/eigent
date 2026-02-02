@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -624,7 +638,7 @@ export default function SettingModels() {
 	return (
 		<div className="flex flex-col gap-4 pb-40">
 			{import.meta.env.VITE_USE_LOCAL_PROXY !== "true" && (
-				<div className="w-full pt-4 self-stretch px-6 py-4 bg-gradient-to-t from-orange-50 to-surface-tertiary rounded-2xl inline-flex flex-col justify-start items-start gap-4 border-solid border-border-disabled">
+				<div className="w-full pt-4 self-stretch px-6 py-4 bg-panel-gradient rounded-2xl inline-flex flex-col justify-start items-start gap-4 border-solid border-border-disabled">
 					<div className="self-stretch flex flex-col justify-start items-start gap-1">
 						<div className="self-stretch inline-flex justify-start items-center gap-2">
 							<div className="flex-1 justify-center text-body-lg text-text-heading font-bold">
@@ -729,11 +743,7 @@ export default function SettingModels() {
 												? t("setting.gpt-4.1")
 												: cloud_model_type === "claude-sonnet-4-5"
 													? t("setting.claude-sonnet-4-5")
-													: cloud_model_type === "claude-sonnet-4-20250514"
-														? t("setting.claude-sonnet-4")
-														: cloud_model_type === "claude-3-5-haiku-20241022"
-															? t("setting.claude-3.5-haiku")
-															: cloud_model_type === "gemini-3-pro-preview"
+													: cloud_model_type === "gemini-3-pro-preview"
 																? t("setting.gemini-3-pro-preview")
 																: cloud_model_type === "gpt-5"
 																	? t("setting.gpt-5")
@@ -743,9 +753,7 @@ export default function SettingModels() {
 																			? t("setting.gpt-5")
 																	: cloud_model_type === "gpt-5-mini"
 																		? t("setting.gpt-5-mini")
-																		: cloud_model_type === "gemini-3-flash-preview"
-																			? t("setting.gemini-3-flash-preview")
-																			: t("setting.gemini-2.5-pro")}
+																		: t("setting.gemini-3-flash-preview")}
 									</span>
 								</TooltipContent>
 							</Tooltip>
@@ -759,8 +767,6 @@ export default function SettingModels() {
 									<SelectValue placeholder="Select Model Type" />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="gemini/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-									<SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
 									<SelectItem value="gemini-3-pro-preview">Gemini 3 Pro Preview</SelectItem>
 									<SelectItem value="gemini-3-flash-preview">Gemini 3 Flash Preview</SelectItem>
 									<SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
@@ -771,12 +777,6 @@ export default function SettingModels() {
 									<SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
 									<SelectItem value="claude-sonnet-4-5">
 										Claude Sonnet 4-5
-									</SelectItem>
-									<SelectItem value="claude-sonnet-4-20250514">
-										Claude Sonnet 4
-									</SelectItem>
-									<SelectItem value="claude-3-5-haiku-20241022">
-										Claude 3.5 Haiku
 									</SelectItem>
 								</SelectContent>
 							</Select>

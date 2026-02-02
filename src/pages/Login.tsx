@@ -1,25 +1,41 @@
-import { useAuthStore } from '@/store/authStore';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useCallback, useEffect, useState, useRef } from 'react';
-import { useStackApp } from '@stackframe/react';
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import loginGif from '@/assets/login.gif';
 import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/store/authStore';
+import { useStackApp } from '@stackframe/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Input } from '@/components/ui/input';
 
+import { proxyFetchPost } from '@/api/http';
+import eyeOff from '@/assets/eye-off.svg';
+import eye from '@/assets/eye.svg';
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
-import eye from '@/assets/eye.svg';
-import eyeOff from '@/assets/eye-off.svg';
-import { proxyFetchPost } from '@/api/http';
+import WindowControls from '@/components/WindowControls';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
-import WindowControls from '@/components/WindowControls';
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
 export default function Login() {
-  const app = HAS_STACK_KEYS ? useStackApp() : null;
+  // Always call hooks unconditionally - React Hooks must be called in the same order
+  const stackApp = useStackApp();
+  const app = HAS_STACK_KEYS ? stackApp : null;
   const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,37 +81,44 @@ export default function Login() {
     return !newErrors.email && !newErrors.password;
   };
 
-  const getLoginErrorMessage = (data: any) => {
-    if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
-      return '';
-    }
-
-    if (data.code === 0) {
-      return '';
-    }
-
-    if (data.code === 10) {
-      return (
-        data.text ||
-        t('layout.login-failed-please-check-your-email-and-password')
-      );
-    }
-
-    if (data.code === 1 && Array.isArray(data.error) && data.error.length > 0) {
-      const firstError = data.error[0];
-      if (typeof firstError === 'string') {
-        return firstError;
+  const getLoginErrorMessage = useCallback(
+    (data: any) => {
+      if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
+        return '';
       }
-      if (typeof firstError?.msg === 'string') {
-        return firstError.msg;
-      }
-      if (typeof firstError?.message === 'string') {
-        return firstError.message;
-      }
-    }
 
-    return data.text || t('layout.login-failed-please-try-again');
-  };
+      if (data.code === 0) {
+        return '';
+      }
+
+      if (data.code === 10) {
+        return (
+          data.text ||
+          t('layout.login-failed-please-check-your-email-and-password')
+        );
+      }
+
+      if (
+        data.code === 1 &&
+        Array.isArray(data.error) &&
+        data.error.length > 0
+      ) {
+        const firstError = data.error[0];
+        if (typeof firstError === 'string') {
+          return firstError;
+        }
+        if (typeof firstError?.msg === 'string') {
+          return firstError.msg;
+        }
+        if (typeof firstError?.message === 'string') {
+          return firstError.message;
+        }
+      }
+
+      return data.text || t('layout.login-failed-please-try-again');
+    },
+    [t]
+  );
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -151,33 +174,49 @@ export default function Login() {
     }
   };
 
-  const handleLoginByStack = async (token: string) => {
-    try {
-      const data = await proxyFetchPost('/api/login-by_stack?token=' + token, {
-        token: token,
-      });
+  const handleLoginByStack = useCallback(
+    async (token: string) => {
+      try {
+        const data = await proxyFetchPost(
+          '/api/login-by_stack?token=' + token,
+          {
+            token: token,
+          }
+        );
 
-      const errorMessage = getLoginErrorMessage(data);
-      if (errorMessage) {
-        setGeneralError(errorMessage);
-        return;
+        const errorMessage = getLoginErrorMessage(data);
+        if (errorMessage) {
+          setGeneralError(errorMessage);
+          return;
+        }
+        console.log('data', data);
+        setModelType('cloud');
+        setAuth({ email: formData.email, ...data });
+        // Record VITE_USE_LOCAL_PROXY value at login
+        const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+        setLocalProxyValue(localProxyValue);
+        navigate('/');
+      } catch (error: any) {
+        console.error('Login failed:', error);
+        setGeneralError(
+          t('layout.login-failed-please-check-your-email-and-password')
+        );
+      } finally {
+        setIsLoading(false);
       }
-      console.log('data', data);
-      setModelType('cloud');
-      setAuth({ email: formData.email, ...data });
-      // Record VITE_USE_LOCAL_PROXY value at login
-      const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
-      setLocalProxyValue(localProxyValue);
-      navigate('/');
-    } catch (error: any) {
-      console.error('Login failed:', error);
-      setGeneralError(
-        t('layout.login-failed-please-check-your-email-and-password')
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [
+      formData.email,
+      navigate,
+      setAuth,
+      setModelType,
+      setLocalProxyValue,
+      setGeneralError,
+      setIsLoading,
+      getLoginErrorMessage,
+      t,
+    ]
+  );
 
   const handleReloadBtn = async (type: string) => {
     if (!app) {
@@ -196,48 +235,51 @@ export default function Login() {
     await app.signInWithOAuth(type);
   };
 
-  const handleGetToken = async (code: string) => {
-    const code_verifier = localStorage.getItem('stack-oauth-outer-');
-    const formData = new URLSearchParams();
-    console.log(
-      'import.meta.env.PROD',
-      import.meta.env.PROD
-        ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-        : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
-    );
-    formData.append(
-      'redirect_uri',
-      import.meta.env.PROD
-        ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-        : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
-    );
-    formData.append('code_verifier', code_verifier || '');
-    formData.append('code', code);
-    formData.append('grant_type', 'authorization_code');
-    formData.append('client_id', 'aa49cdd0-318e-46bd-a540-0f1e5f2b391f');
-    formData.append(
-      'client_secret',
-      'pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8'
-    );
-
-    try {
-      const res = await fetch(
-        'https://api.stack-auth.com/api/v1/auth/oauth/token',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-          },
-          body: formData,
-        }
+  const handleGetToken = useCallback(
+    async (code: string) => {
+      const code_verifier = localStorage.getItem('stack-oauth-outer-');
+      const formData = new URLSearchParams();
+      console.log(
+        'import.meta.env.PROD',
+        import.meta.env.PROD
+          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
+          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
       );
-      const data = await res.json(); // parse response data
-      return data.access_token;
-    } catch (error) {
-      console.error(error);
-      setIsLoading(false);
-    }
-  };
+      formData.append(
+        'redirect_uri',
+        import.meta.env.PROD
+          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
+          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+      );
+      formData.append('code_verifier', code_verifier || '');
+      formData.append('code', code);
+      formData.append('grant_type', 'authorization_code');
+      formData.append('client_id', 'aa49cdd0-318e-46bd-a540-0f1e5f2b391f');
+      formData.append(
+        'client_secret',
+        'pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8'
+      );
+
+      try {
+        const res = await fetch(
+          'https://api.stack-auth.com/api/v1/auth/oauth/token',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            },
+            body: formData,
+          }
+        );
+        const data = await res.json(); // parse response data
+        return data.access_token;
+      } catch (error) {
+        console.error(error);
+        setIsLoading(false);
+      }
+    },
+    [setIsLoading]
+  );
 
   const handleAuthCode = useCallback(
     async (event: any, code: string) => {
@@ -251,7 +293,7 @@ export default function Login() {
         lock = false;
       }, 1500);
     },
-    [location.pathname]
+    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
   );
 
   useEffect(() => {
@@ -260,7 +302,7 @@ export default function Login() {
     return () => {
       window.ipcRenderer?.off('auth-code-received', handleAuthCode);
     };
-  }, []);
+  }, [handleAuthCode]);
 
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
@@ -286,10 +328,10 @@ export default function Login() {
   }, []);
 
   return (
-    <div className="h-full flex flex-col relative overflow-hidden">
+    <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50"
+        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -302,7 +344,7 @@ export default function Login() {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {platform === 'darwin' && (
-            <span className="text-label-md text-text-heading font-bold">
+            <span className="text-label-md font-bold text-text-heading">
               Eigent
             </span>
           )}
@@ -310,10 +352,10 @@ export default function Login() {
 
         {/* Center drag region */}
         <div
-          className="h-full flex-1 flex items-center"
+          className="flex h-full flex-1 items-center"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          <div className="flex-1 h-10"></div>
+          <div className="h-10 flex-1"></div>
         </div>
 
         {/* Right window controls */}
@@ -332,14 +374,14 @@ export default function Login() {
       </div>
 
       {/* Main content - image extends to top, form has padding */}
-      <div className={`p-2 flex items-center justify-center gap-2 h-full`}>
-        <div className="flex items-center justify-center h-full rounded-3xl bg-white-100%">
-          <img src={loginGif} className="rounded-3xl h-full object-cover" />
+      <div className={`flex h-full items-center justify-center gap-2 p-2`}>
+        <div className="flex h-full items-center justify-center rounded-3xl bg-white-100%">
+          <img src={loginGif} className="h-full rounded-3xl object-cover" />
         </div>
-        <div className="h-full flex-1 flex flex-col items-center justify-center pt-11">
-          <div className="flex-1 flex flex-col w-80 items-center justify-center">
-            <div className="flex self-stretch items-end justify-between mb-4">
-              <div className="text-text-heading text-heading-lg font-bold ">
+        <div className="flex h-full flex-1 flex-col items-center justify-center pt-11">
+          <div className="flex w-80 flex-1 flex-col items-center justify-center">
+            <div className="mb-4 flex items-end justify-between self-stretch">
+              <div className="text-heading-lg font-bold text-text-heading">
                 {t('layout.login')}
               </div>
               <Button
@@ -366,10 +408,10 @@ export default function Login() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('google')}
-                  className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
+                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
                   disabled={isLoading}
                 >
-                  <img src={google} className="w-5 h-5" />
+                  <img src={google} className="h-5 w-5" />
                   <span className="ml-2">
                     {t('layout.continue-with-google-login')}
                   </span>
@@ -378,10 +420,10 @@ export default function Login() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('github')}
-                  className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
+                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
                   disabled={isLoading}
                 >
-                  <img src={github2} className="w-5 h-5" />
+                  <img src={github2} className="h-5 w-5" />
                   <span className="ml-2">
                     {t('layout.continue-with-github-login')}
                   </span>
@@ -389,17 +431,17 @@ export default function Login() {
               </div>
             )}
             {HAS_STACK_KEYS && (
-              <div className="mt-2 w-full text-[#222] text-center font-inter text-[15px]  font-medium leading-[22px] mb-6">
+              <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
                 {t('layout.or')}
               </div>
             )}
-            <div className="flex flex-col gap-4 w-full">
+            <div className="flex w-full flex-col gap-4">
               {generalError && (
-                <p className="text-text-cuation text-label-md mt-1 mb-4">
+                <p className="mb-4 mt-1 text-label-md text-text-cuation">
                   {generalError}
                 </p>
               )}
-              <div className="flex flex-col gap-4 w-full mb-4 relative">
+              <div className="relative mb-4 flex w-full flex-col gap-4">
                 <Input
                   id="email"
                   type="email"

@@ -13,6 +13,7 @@
 	"select-language": "選擇語言",
 	"system-default": "系統預設",
 	"appearance": "外觀",
+	"dark": "深色",
 	"light": "淺色",
 	"transparent": "透明",
 
@@ -51,12 +52,9 @@
 	"gpt-4.1-mini": "GPT-4.1 mini: 更低成本，更快回應，但輸出品質降低。",
 	"gpt-4.1": "GPT-4.1: 更高成本，更慢回應，但更高品質和推理。",
 	"claude-opus-4.1": "Claude Opus 4.1: 更高成本，更慢回應，但更高品質和推理。",
-	"claude-sonnet-4": "Claude Sonnet 4: 更高成本，更慢回應，但更高品質和推理。",
-	"claude-3.5-haiku": "Claude 3.5 Haiku: 更高成本，更慢回應，但更高品質和推理。",
 	"gpt-5": "GPT-5: 更高成本，更慢回應，但更高品質和推理。",
 	"gpt-5-mini": "GPT-5 mini: 更高成本，更慢回應，但更高品質和推理。",
 	"gpt-5-nano": "GPT-5 nano: 更高成本，更慢回應，但更高品質和推理。",
-	"gemini-2.5-pro": "Gemini 2.5 Pro: 更高成本，更慢回應，但更高品質和推理。",
 	"custom-model": "自訂模型",
 	"use-your-own-api-keys-or-set-up-a-local-model": "使用您自己的 API 金鑰或設定本地模型。",
 	"verify": "驗證",
@@ -162,5 +160,13 @@
   "recommended": "推薦",
   "reset": "重設",
   "reset-success": "重設成功！",
-  "reset-failed": "重設失敗！"
+  "reset-failed": "重設失敗！",
+
+	"network-proxy": "網路代理",
+	"network-proxy-description": "設定網路請求的代理伺服器。如果您需要透過代理存取外部 API，這將非常有用。",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "代理設定已儲存。請重新啟動應用程式以套用變更。",
+	"proxy-save-failed": "儲存代理設定失敗。",
+	"proxy-invalid-url": "無效的代理 URL。必須以 http://、https://、socks4:// 或 socks5:// 開頭。",
+	"proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。"
 }

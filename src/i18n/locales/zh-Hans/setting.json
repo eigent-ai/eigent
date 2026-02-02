@@ -13,6 +13,7 @@
 	"select-language": "选择语言",
 	"system-default": "系统默认",
 	"appearance": "外观",
+	"dark": "深色",
 	"light": "亮色",
 	"transparent": "透明",
 
@@ -51,12 +52,9 @@
 	"gpt-4.1-mini": "GPT-4.1 mini: 更低成本，更快响应，但输出质量降低。",
 	"gpt-4.1": "GPT-4.1: 更高成本，更慢响应，但更高质量和推理。",
 	"claude-opus-4.1": "Claude Opus 4.1: 更高成本，更慢响应，但更高质量和推理。",
-	"claude-sonnet-4": "Claude Sonnet 4: 更高成本，更慢响应，但更高质量和推理。",
-	"claude-3.5-haiku": "Claude 3.5 Haiku: 更高成本，更慢响应，但更高质量和推理。",
 	"gpt-5": "GPT-5: 更高成本，更慢响应，但更高质量和推理。",
 	"gpt-5-mini": "GPT-5 mini: 更高成本，更慢响应，但更高质量和推理。",
 	"gpt-5-nano": "GPT-5 nano: 更高成本，更慢响应，但更高质量和推理。",
-	"gemini-2.5-pro": "Gemini 2.5 Pro: 更高成本，更慢响应，但更高质量和推理。",
 	"custom-model": "自定义模型",
 	"use-your-own-api-keys-or-set-up-a-local-model": "使用您自己的 API 密钥或设置本地模型。",
 	"verify": "验证",
@@ -189,5 +187,13 @@
 	"failed-to-delete-cookies": "删除 Cookie 失败，请重试。",
 	"confirm-delete-all-cookies": "确定要删除所有 Cookie 吗？此操作无法撤销。",
 	"all-cookies-deleted": "所有 Cookie 已成功删除。",
-	"cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。"
+	"cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。",
+
+	"network-proxy": "网络代理",
+	"network-proxy-description": "配置网络请求的代理服务器。如果您需要通过代理访问外部 API，这将非常有用。",
+	"proxy-placeholder": "http://127.0.0.1:7890",
+	"proxy-saved-restart-required": "代理配置已保存。请重启应用以应用更改。",
+	"proxy-save-failed": "保存代理配置失败。",
+	"proxy-invalid-url": "无效的代理 URL。必须以 http://、https://、socks4:// 或 socks5:// 开头。",
+	"proxy-restart-hint": "需要重启应用以应用代理更改。"
 }
