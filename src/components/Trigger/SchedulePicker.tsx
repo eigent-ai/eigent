@@ -21,14 +21,23 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { format, parse } from "date-fns";
+import { localTimeToUTC, utcTimeToLocal } from "@/lib/utils";
 
 type FrequencyType = "one-time" | "daily" | "weekly" | "monthly";
+
+export type ScheduleConfig = {
+    date?: string; // ISO 8601 UTC datetime for one-time schedules
+    expirationDate?: string; // ISO 8601 UTC datetime for recurring expiration
+    max_failure_count?: number;
+};
 
 type SchedulePickerProps = {
     value: string; // cron expression
     onChange: (cronExpression: string) => void;
+    onConfigChange?: (config: ScheduleConfig) => void;
     onValidationChange?: (isValid: boolean) => void;
     showErrors?: boolean;
+    initialConfig?: ScheduleConfig; // For editing existing triggers
 };
 
 // Generate hour options (0-23)
@@ -56,17 +65,22 @@ const generateMinuteOptions = (): InputSelectOption[] => {
 export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     value,
     onChange,
+    onConfigChange,
     onValidationChange,
     showErrors = false,
+    initialConfig,
 }) => {
     const { t } = useTranslation();
     const [frequency, setFrequency] = useState<FrequencyType>("daily");
-    const [hour, setHour] = useState<string>("00");
-    const [minute, setMinute] = useState<string>("00");
+    // Initialize with current local time instead of 00:00 UTC
+    const now = new Date();
+    const [hour, setHour] = useState<string>(now.getHours().toString().padStart(2, "0"));
+    const [minute, setMinute] = useState<string>(now.getMinutes().toString().padStart(2, "0"));
     const [weekdays, setWeekdays] = useState<string[]>(["1"]); // Array of weekday strings: ["0", "1", ...]
     const [dayOfMonth, setDayOfMonth] = useState<string>("1"); // 1-31
     const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(undefined);
     const [expiredAt, setExpiredAt] = useState<Date | undefined>(undefined);
+    const [maxFailureCount, setMaxFailureCount] = useState<number | undefined>(undefined);
     const [cronError, setCronError] = useState<string | null>(null);
 
     const hourOptions = useMemo(() => generateHourOptions(), []);
@@ -190,92 +204,147 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         return pad ? defaultValue.padStart(2, "0") : defaultValue;
     }, []);
 
-    // Parse initial cron expression (only when value prop changes externally)
+    // Initialize from initialConfig when editing existing triggers
     useEffect(() => {
-        // Skip if this is the cron we just generated (prevent infinite loop)
+        if (initialConfig?.expirationDate) {
+            const date = initialConfig.expirationDate.includes('T') 
+                ? new Date(initialConfig.expirationDate)
+                : parse(initialConfig.expirationDate, "yyyy-MM-dd", new Date());
+            setExpiredAt(date);
+        }
+        if (initialConfig?.date) {
+            const date = initialConfig.date.includes('T')
+                ? new Date(initialConfig.date)
+                : parse(initialConfig.date, "yyyy-MM-dd", new Date());
+            setOneTimeDate(date);
+            if (initialConfig.date.includes('T')) {
+                setHour(date.getHours().toString().padStart(2, "0"));
+                setMinute(date.getMinutes().toString().padStart(2, "0"));
+            }
+        }
+        if (initialConfig?.max_failure_count !== undefined) {
+            setMaxFailureCount(initialConfig.max_failure_count);
+        }
+    }, [initialConfig]);
+
+    // Parse cron expression and convert UTC to local time for display
+    useEffect(() => {
         if (value && value !== previousCronRef.current) {
             const parts = value.split(" ");
             if (parts.length === 5) {
                 const [min, hr, day, month, weekdayPart] = parts;
 
-                // Normalize minute and hour to simple values for InputSelect
-                const normalizedMin = normalizeCronField(min, "0", true);
-                const normalizedHr = normalizeCronField(hr, "0", true);
+                const utcMinuteNum = parseInt(normalizeCronField(min, "0"));
+                const utcHourNum = parseInt(normalizeCronField(hr, "0"));
+                
+                const { localHour, localMinute, dayOffset } = utcTimeToLocal(utcHourNum, utcMinuteNum);
+                const localHourStr = localHour.toString().padStart(2, "0");
+                const localMinuteStr = localMinute.toString().padStart(2, "0");
 
-                // One-time: specific date and time (e.g., "30 14 15 1 *" = Jan 15 at 2:30 PM)
                 if (month !== "*" && day !== "*" && weekdayPart === "*") {
                     setFrequency("one-time");
-                    setMinute(normalizedMin);
-                    setHour(normalizedHr);
-                    // Create date from month and day (assuming current year)
+                    setMinute(localMinuteStr);
+                    setHour(localHourStr);
                     const currentYear = new Date().getFullYear();
-                    const date = new Date(currentYear, parseInt(month) - 1, parseInt(day));
-                    setOneTimeDate(date);
+                    const utcDate = new Date(Date.UTC(currentYear, parseInt(month) - 1, parseInt(day), utcHourNum, utcMinuteNum));
+                    const localDate = new Date(utcDate.getTime());
+                    setOneTimeDate(localDate);
                     setCronError(null);
                 }
-                // Weekly: minute hour * * weekday (can be comma-separated)
                 else if (day === "*" && month === "*" && weekdayPart !== "*") {
                     setFrequency("weekly");
-                    setMinute(normalizedMin);
-                    setHour(normalizedHr);
-                    // Parse weekday - can be single value or comma-separated
-                    const weekdayValues = weekdayPart.split(",").map(w => w.trim());
+                    setMinute(localMinuteStr);
+                    setHour(localHourStr);
+                    let weekdayValues = weekdayPart.split(",").map(w => w.trim());
+                    if (dayOffset !== 0) {
+                        weekdayValues = weekdayValues.map(w => {
+                            const adjusted = (parseInt(w) + dayOffset + 7) % 7;
+                            return adjusted.toString();
+                        });
+                    }
                     setWeekdays(weekdayValues.length > 0 ? weekdayValues : ["0"]);
                     setCronError(null);
                 }
-                // Monthly: minute hour day * *
                 else if (day !== "*" && month === "*" && weekdayPart === "*") {
                     setFrequency("monthly");
-                    setMinute(normalizedMin);
-                    setHour(normalizedHr);
-                    setDayOfMonth(normalizeCronField(day, "1"));
+                    setMinute(localMinuteStr);
+                    setHour(localHourStr);
+                    let adjustedDay = parseInt(normalizeCronField(day, "1")) + dayOffset;
+                    if (adjustedDay < 1) adjustedDay = 1;
+                    if (adjustedDay > 31) adjustedDay = 31;
+                    setDayOfMonth(adjustedDay.toString());
                     setCronError(null);
                 }
-                // Daily: minute hour * * * (also handles */1 patterns as "every hour")
                 else if (day === "*" && month === "*" && weekdayPart === "*") {
                     setFrequency("daily");
-                    setMinute(normalizedMin);
-                    setHour(normalizedHr);
+                    // If it's the default "0 0 * * *" cron (midnight UTC), use current local time instead
+                    if (value === "0 0 * * *") {
+                        const currentLocal = new Date();
+                        setMinute(currentLocal.getMinutes().toString().padStart(2, "0"));
+                        setHour(currentLocal.getHours().toString().padStart(2, "0"));
+                    } else {
+                        setMinute(localMinuteStr);
+                        setHour(localHourStr);
+                    }
                     setCronError(null);
                 } else {
-                    // Default to daily if can't parse
                     setFrequency("daily");
-                    setMinute("0");
-                    setHour("0");
+                    // For unrecognized patterns, use current local time
+                    const currentLocal = new Date();
+                    setMinute(currentLocal.getMinutes().toString().padStart(2, "0"));
+                    setHour(currentLocal.getHours().toString().padStart(2, "0"));
                     setCronError(null);
                 }
-                // Update the ref to track this value so we don't re-parse it
                 previousCronRef.current = value;
             }
         }
     }, [value, normalizeCronField]);
 
-    // Generate cron expression based on frequency - only when local state changes
+    // Generate cron expression and convert local time to UTC
     useEffect(() => {
-        // Generate cron from current local state
+        const localHourNum = parseInt(hour);
+        const localMinuteNum = parseInt(minute);
+        
         let cron = "";
         switch (frequency) {
             case "one-time":
                 if (oneTimeDate) {
-                    const month = oneTimeDate.getMonth() + 1; // getMonth() returns 0-11
-                    const day = oneTimeDate.getDate();
-                    cron = `${minute} ${hour} ${day} ${month} *`;
+                    const { utcHour, utcMinute, dayOffset } = localTimeToUTC(localHourNum, localMinuteNum, oneTimeDate);
+                    const utcDate = new Date(oneTimeDate);
+                    utcDate.setDate(utcDate.getDate() + dayOffset);
+                    const month = utcDate.getMonth() + 1;
+                    const day = utcDate.getDate();
+                    cron = `${utcMinute} ${utcHour} ${day} ${month} *`;
                 } else {
-                    // Don't generate cron if date is not set
                     return;
                 }
                 break;
-            case "daily":
-                cron = `${minute} ${hour} * * *`;
+            case "daily": {
+                const { utcHour, utcMinute } = localTimeToUTC(localHourNum, localMinuteNum);
+                cron = `${utcMinute} ${utcHour} * * *`;
                 break;
-            case "weekly":
-                // Join weekdays with comma if multiple selected
-                const weekdayStr = weekdays.length > 0 ? weekdays.join(",") : "0";
-                cron = `${minute} ${hour} * * ${weekdayStr}`;
+            }
+            case "weekly": {
+                const { utcHour, utcMinute, dayOffset } = localTimeToUTC(localHourNum, localMinuteNum);
+                let adjustedWeekdays = weekdays;
+                if (dayOffset !== 0) {
+                    adjustedWeekdays = weekdays.map(w => {
+                        const adjusted = (parseInt(w) + dayOffset + 7) % 7;
+                        return adjusted.toString();
+                    });
+                }
+                const weekdayStr = adjustedWeekdays.length > 0 ? adjustedWeekdays.join(",") : "0";
+                cron = `${utcMinute} ${utcHour} * * ${weekdayStr}`;
                 break;
-            case "monthly":
-                cron = `${minute} ${hour} ${dayOfMonth} * *`;
+            }
+            case "monthly": {
+                const { utcHour, utcMinute, dayOffset } = localTimeToUTC(localHourNum, localMinuteNum);
+                let adjustedDay = parseInt(dayOfMonth) + dayOffset;
+                if (adjustedDay < 1) adjustedDay = 1;
+                if (adjustedDay > 31) adjustedDay = 31;
+                cron = `${utcMinute} ${utcHour} ${adjustedDay} * *`;
                 break;
+            }
         }
 
         // Only call onChange if the cron has actually changed from what we last generated
@@ -306,6 +375,28 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         }
         onValidationChange?.(isValid);
     }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate, onValidationChange]);
+
+    // Emit config with UTC conversion
+    useEffect(() => {
+        const config: ScheduleConfig = {};
+        
+        if (frequency === "one-time" && oneTimeDate) {
+            const localDate = new Date(oneTimeDate);
+            localDate.setHours(parseInt(hour), parseInt(minute), 0, 0);
+            config.date = localDate.toISOString();
+        } else if (expiredAt) {
+            const utcExpiration = new Date(expiredAt);
+            utcExpiration.setHours(23, 59, 59, 999);
+            config.expirationDate = utcExpiration.toISOString();
+        }
+        
+        if (maxFailureCount !== undefined) {
+            config.max_failure_count = maxFailureCount;
+        }
+        
+        onConfigChange?.(config);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [frequency, oneTimeDate, expiredAt, maxFailureCount, hour, minute]);
 
     // Calculate next execution time from a cron expression
     const getNextExecutionTime = (cronExpression: string, fromDate: Date): Date | null => {
@@ -807,6 +898,19 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                     />
                 </TabsContent>
             </Tabs>
+
+            {/* Max Failure Count - for auto-disable after consecutive failures */}
+            <Input
+                id="max_failure_count"
+                title={t("triggers.base.max_failure_count.label")}
+                placeholder={t("triggers.base.max_failure_count.placeholder")}
+                note={t("triggers.base.max_failure_count.notice")}
+                type="number"
+                value={maxFailureCount ?? ""}
+                onChange={(e) => setMaxFailureCount(e.target.value ? parseInt(e.target.value) : undefined)}
+                min={1}
+                optional
+            />
 
             {/* Scheduled Times Preview */}
             <Accordion type="single" collapsible className="w-full mt-auto">

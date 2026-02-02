@@ -81,3 +81,43 @@ export function formatRelativeTime(utcString: string | null | undefined): string
     return "Invalid date";
   }
 }
+
+/**
+ * Convert local time to UTC with day offset calculation
+ */
+export function localTimeToUTC(localHour: number, localMinute: number, referenceDate?: Date): {
+  utcHour: number;
+  utcMinute: number;
+  dayOffset: number;
+} {
+  const date = referenceDate ? new Date(referenceDate) : new Date();
+  date.setHours(localHour, localMinute, 0, 0);
+  
+  const utcHour = date.getUTCHours();
+  const utcMinute = date.getUTCMinutes();
+  const localDay = date.getDate();
+  const utcDay = date.getUTCDate();
+  const dayOffset = utcDay - localDay;
+  
+  return { utcHour, utcMinute, dayOffset };
+}
+
+/**
+ * Convert UTC time to local with day offset calculation
+ */
+export function utcTimeToLocal(utcHour: number, utcMinute: number, referenceDate?: Date): {
+  localHour: number;
+  localMinute: number;
+  dayOffset: number;
+} {
+  const date = referenceDate ? new Date(referenceDate) : new Date();
+  date.setUTCHours(utcHour, utcMinute, 0, 0);
+  
+  const localHour = date.getHours();
+  const localMinute = date.getMinutes();
+  const utcDay = date.getUTCDate();
+  const localDay = date.getDate();
+  const dayOffset = localDay - utcDay;
+  
+  return { localHour, localMinute, dayOffset };
+}

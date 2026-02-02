@@ -59,7 +59,7 @@ import {
     RequestType,
     TriggerStatus,
 } from "@/types";
-import { SchedulePicker } from "./SchedulePicker";
+import { SchedulePicker, type ScheduleConfig } from "./SchedulePicker";
 import { TriggerTaskInput } from "./TriggerTaskInput";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
 import slackIcon from "@/assets/icon/slack.svg";
@@ -116,6 +116,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     const [configValidationErrors, setConfigValidationErrors] = useState<ValidationError[]>([]);
     const [isScheduleValid, setIsScheduleValid] = useState<boolean>(true);
     const [showScheduleErrors, setShowScheduleErrors] = useState<boolean>(false);
+    const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({});
     const [activeTab, setActiveTab] = useState<"schedule" | "app">("schedule");
 
     // Stable callback for validation changes to prevent infinite loops
@@ -162,8 +163,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 // Load existing trigger config if available
                 if (selectedTrigger.config) {
                     setTriggerConfig(selectedTrigger.config as Record<string, any>);
+                    // For schedule triggers, also set scheduleConfig
+                    if (selectedTrigger.trigger_type === TriggerType.Schedule) {
+                        setScheduleConfig(selectedTrigger.config as ScheduleConfig);
+                    }
                 } else {
                     setTriggerConfig(getDefaultTriggerConfig());
+                    setScheduleConfig({});
                 }
                 // Set selectedApp based on trigger type for app-based triggers
                 if (selectedTrigger.trigger_type === TriggerType.Slack) {
@@ -191,6 +197,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     max_executions_per_day: undefined,
                 });
                 setTriggerConfig(getDefaultTriggerConfig());
+                setScheduleConfig({});
                 setTriggerConfigSchema(null);
                 setSelectedApp("");
                 setActiveTab("schedule");
@@ -269,9 +276,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     max_executions_per_day: formData.max_executions_per_day,
                 };
 
-                // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
-                if (Object.keys(triggerConfig).length > 0) {
-                    // Filter out fields marked with exclude: true in schema
+                // Include config based on trigger type
+                if (formData.trigger_type === TriggerType.Schedule) {
+                    // For schedule triggers, use scheduleConfig (expirationDate, date for one-time)
+                    if (Object.keys(scheduleConfig).length > 0) {
+                        updateData.config = scheduleConfig;
+                    }
+                } else if (Object.keys(triggerConfig).length > 0) {
+                    // For other triggers (Slack, Webhook), use dynamic config
                     updateData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
                 }
 
@@ -306,9 +318,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     project_id: projectStore.activeProjectId,
                 };
 
-                // Include config for triggers that have dynamic config (Slack, Webhook, etc.)
-                if (Object.keys(triggerConfig).length > 0) {
-                    // Filter out fields marked with exclude: true in schema
+                // Include config based on trigger type
+                if (formData.trigger_type === TriggerType.Schedule) {
+                    // For schedule triggers, use scheduleConfig (expirationDate, date for one-time)
+                    if (Object.keys(scheduleConfig).length > 0) {
+                        createData.config = scheduleConfig;
+                    }
+                } else if (Object.keys(triggerConfig).length > 0) {
+                    // For other triggers (Slack, Webhook), use dynamic config
                     createData.config = filterExcludedFields(triggerConfig, triggerConfigSchema);
                 }
 
@@ -422,8 +439,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                             <SchedulePicker
                                 value={formData.custom_cron_expression || "0 0 * * *"}
                                 onChange={(cron) => setFormData({ ...formData, custom_cron_expression: cron })}
+                                onConfigChange={setScheduleConfig}
                                 onValidationChange={setIsScheduleValid}
                                 showErrors={showScheduleErrors}
+                                initialConfig={selectedTrigger?.config as ScheduleConfig | undefined}
                             />
                         </TabsContent>
                         <TabsContent value="app" className="py-4 px-6">
