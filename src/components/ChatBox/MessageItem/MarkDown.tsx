@@ -130,7 +130,7 @@ export const MarkDown = memo(
             .join('\n')
             .trim();
           setHtml(
-            `<pre class="bg-zinc-100 p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
+            `<pre class="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
           );
           return;
         }
@@ -174,7 +174,7 @@ export const MarkDown = memo(
                   // Fallback: show alt text or placeholder
                   const altMatch = fullTag.match(/alt=["']([^"']*)["']/);
                   const alt = altMatch ? altMatch[1] : 'image';
-                  const placeholder = `<span class="inline-block text-sm text-zinc-500">[${alt}]</span>`;
+                  const placeholder = `<span class="inline-block text-sm text-text-secondary">[${alt}]</span>`;
                   rawHtml = rawHtml.replace(fullTag, placeholder);
                 }
               } catch (error) {

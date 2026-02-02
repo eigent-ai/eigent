@@ -133,7 +133,7 @@ export default function FolderComponent({ selectedFile }: Props) {
 
   return (
     <div
-      className="w-full overflow-auto"
+      className="folder-component-content w-full overflow-auto text-text-primary"
       dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
     />
   );

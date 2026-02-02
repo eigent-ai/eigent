@@ -422,11 +422,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       <div
         className={`${
           isCollapsed ? 'w-16' : 'w-64'
-        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-zinc-300 border-r-zinc-200 transition-all duration-300 ease-in-out`}
+        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-border-subtle-strong border-r-border-subtle transition-all duration-300 ease-in-out`}
       >
         {/* head */}
         <div
-          className={`flex-shrink-0 border-b border-zinc-200 py-2 ${
+          className={`flex-shrink-0 border-b border-border-subtle py-2 ${
             isCollapsed ? 'px-2' : 'pl-4 pr-2'
           }`}
         >
@@ -456,7 +456,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               title={isCollapsed ? t('chat.open') : t('chat.close')}
             >
               <ChevronsLeft
-                className={`h-6 w-6 text-zinc-500 ${
+                className={`h-6 w-6 text-icon-secondary ${
                   isCollapsed ? 'rotate-180' : ''
                 } transition-transform ease-in-out`}
               />
@@ -466,13 +466,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="flex-shrink-0 border-b border-zinc-200 px-2">
+          <div className="flex-shrink-0 border-b border-border-subtle px-2">
             <div className="relative">
               <Search className="text-primary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full rounded-md border border-solid border-zinc-200 py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-solid border-border-subtle py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-text-link"
               />
             </div>
           </div>
@@ -508,8 +508,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
                     className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
                       selectedFile?.name === file.name
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-zinc-600'
+                        ? 'bg-surface-information text-text-information'
+                        : 'text-text-secondary'
                     }`}
                     title={file.name}
                   >
@@ -530,7 +530,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="flex-shrink-0 border-b border-zinc-200 px-4 py-2">
+          <div className="flex-shrink-0 border-b border-border-subtle px-4 py-2">
             <div className="flex h-[30px] items-center justify-between gap-2">
               <div
                 onClick={() => {
@@ -550,7 +550,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   {selectedFile.name}
                 </span>
                 <Button size="icon" variant="ghost">
-                  <Download className="h-4 w-4 text-zinc-500" />
+                  <Download className="h-4 w-4 text-icon-secondary" />
                 </Button>
               </div>
               <Button
@@ -559,7 +559,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 className="flex-shrink-0"
                 onClick={() => isShowSourceCodeChange()}
               >
-                <CodeXml className="h-4 w-4 text-zinc-500" />
+                <CodeXml className="h-4 w-4 text-icon-secondary" />
               </Button>
             </div>
           </div>
@@ -606,9 +606,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     />
                   )
                 ) : selectedFile.type === 'zip' ? (
-                  <div className="flex h-full items-center justify-center text-zinc-500">
+                  <div className="flex h-full items-center justify-center text-text-secondary">
                     <div className="text-center">
-                      <FileText className="mx-auto mb-4 h-12 w-12 text-zinc-300" />
+                      <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                       <p className="text-sm">
                         {t('folder.zip-file-is-not-supported-yet')}
                       </p>
@@ -627,7 +627,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
                 ) : (
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-zinc-700">
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
                     {selectedFile.content}
                   </pre>
                 )
@@ -635,14 +635,16 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
                     <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
-                    <p className="text-sm text-zinc-500">{t('chat.loading')}</p>
+                    <p className="text-sm text-text-secondary">
+                      {t('chat.loading')}
+                    </p>
                   </div>
                 </div>
               )
             ) : (
-              <div className="flex h-full items-center justify-center text-zinc-500">
+              <div className="flex h-full items-center justify-center text-text-secondary">
                 <div className="text-center">
-                  <FileText className="mx-auto mb-4 h-12 w-12 text-zinc-300" />
+                  <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>
@@ -985,7 +987,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 flex-1 overflow-hidden bg-zinc-100"
+        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
         onWheel={handleWheel}
       >
         <div
