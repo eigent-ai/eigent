@@ -114,7 +114,11 @@ export function TaskItem({
             </Button>
           ) : (
             <Button
-              onClick={(e) => handleFocus(e, false)}
+              onClick={(e) => {
+                // Explicitly persist current content on Save click
+                onUpdate(taskInfo.content);
+                handleFocus(e, false);
+              }}
               className="rounded-full"
               variant="success"
               size="icon"
