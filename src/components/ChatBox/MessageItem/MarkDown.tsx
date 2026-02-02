@@ -95,8 +95,8 @@ export const MarkDown = memo(
 						),
 						p: ({ children }) => (
 							<p
-								className={`${pTextSize} font-medium text-text-body leading-10 font-inter whitespace-pre-wrap break-all`}
-								style={{ margin: 0, wordBreak: 'break-all' }}
+								className={`${pTextSize} font-medium text-text-body leading-10 font-inter whitespace-pre-wrap break-all mb-2`}
+								style={{ wordBreak: 'break-all' }}
 							>
 								{children}
 							</p>

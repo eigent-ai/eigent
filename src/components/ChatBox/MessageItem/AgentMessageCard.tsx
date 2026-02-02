@@ -78,7 +78,7 @@ export function AgentMessageCard({
 				enableTypewriter={enableTypewriter && typewriter}
 			/>
 			{attaches && attaches.length > 0 && (
-				<div className="flex gap-2 flex-wrap mt-[10px]">
+				<div className="flex gap-2 flex-wrap mt-4">
 					{attaches?.map((file) => {
 						return (
 							<div

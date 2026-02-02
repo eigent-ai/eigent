@@ -210,7 +210,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {task && !isSkeletonPhase && !isHumanReply && (
         <motion.div
           ref={taskBoxRef}
-          className="sticky top-0 z-20"
+          className="sticky top-0 z-20 mb-4"
           style={{
             position: 'sticky',
             top: 0,

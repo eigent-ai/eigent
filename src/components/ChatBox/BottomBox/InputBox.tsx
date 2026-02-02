@@ -309,7 +309,7 @@ export const Inputbox = ({
 
 			{/* File Attachments (only show if has files) */}
 			{files.length > 0 && (
-				<div className="box-border flex flex-wrap gap-1 items-start pb-2 pt-0 px-2 relative w-full">
+				<div className="box-border flex flex-wrap gap-1 items-start pb-2 pt-0 px-2 mt-1 relative w-full">
 					{visibleFiles.map((file) => {
 						const isHovered = hoveredFilePath === file.filePath;
 						return (
