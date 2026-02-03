@@ -331,7 +331,7 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         """Log task decomposition as a span.
 
         Args:
-            event: Task decomposed event from CAMEL
+            event (TaskDecomposedEvent): Task decomposed event from CAMEL
         """
         if not self.enabled:
             return
