@@ -19,9 +19,9 @@ from threading import Lock
 
 # Thread-safe reference to main event loop using contextvars
 # This ensures each request has its own event loop reference, avoiding race conditions
-_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
-    "_main_event_loop", default=None
-)
+_main_event_loop_var: contextvars.ContextVar[
+    asyncio.AbstractEventLoop | None
+] = contextvars.ContextVar("_main_event_loop", default=None)
 
 # Global fallback for main event loop reference
 # Used when contextvars don't propagate to worker threads (e.g., asyncio.to_thread)
