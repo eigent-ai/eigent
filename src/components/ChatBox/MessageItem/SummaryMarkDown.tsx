@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const SummaryMarkDown = ({
 	content,
@@ -56,6 +57,23 @@ export const SummaryMarkDown = ({
 		return () => clearInterval(timer);
 	}, [content, speed, onTyping]);
 
+	// If content is a pure HTML document, render in a styled pre block
+	if (isHtmlDocument(content)) {
+		// Trim leading whitespace from each line for consistent alignment
+		const formattedHtml = displayedContent
+			.split('\n')
+			.map(line => line.trimStart())
+			.join('\n')
+			.trim();
+		return (
+			<div className="prose prose-sm max-w-none">
+				<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap mb-3">
+					<code>{formattedHtml}</code>
+				</pre>
+			</div>
+		);
+	}
+
 	return (
 		<div className="prose prose-sm max-w-none">
 			<ReactMarkdown
@@ -94,12 +112,12 @@ export const SummaryMarkDown = ({
 						<li className="mb-1 text-gray-700 leading-relaxed">{children}</li>
 					),
 					code: ({ children }) => (
-						<code className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs font-mono">
+						<code className="bg-surface-success-subtle text-text-success px-2 py-1 rounded text-xs font-mono">
 							{children}
 						</code>
 					),
 					pre: ({ children }) => (
-						<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs overflow-x-auto mb-3">
+						<pre className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap mb-3">
 							{children}
 						</pre>
 					),

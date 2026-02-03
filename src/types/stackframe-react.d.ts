@@ -12,4 +12,4 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-declare module "@stackframe/react";
+declare module '@stackframe/react';

@@ -37,6 +37,7 @@ import {
 import { useMemo, useState, useRef, useEffect } from "react";
 import { TaskState, TaskStateType } from "@/components/TaskState";
 import useChatStoreAdapter from "@/hooks/useChatStoreAdapter";
+import { TaskStatus, ChatTaskStatus } from "@/types/constants";
 
 interface TaskCardProps {
 	taskInfo: any[];
@@ -74,7 +75,7 @@ export function TaskCard({
 	if (!chatStore) {
 		return <div>Loading...</div>;
 	}
-	
+
 
 	const [selectedState, setSelectedState] = useState<TaskStateType>("all");
 	const [filterTasks, setFilterTasks] = useState<any[]>([]);
@@ -87,24 +88,24 @@ export function TaskCard({
 			const newFiltered = tasks.filter((task) => {
 				switch (selectedState) {
 					case "done":
-						return task.status === "completed" && !task.reAssignTo;
+						return task.status === TaskStatus.COMPLETED && !task.reAssignTo;
 					case "ongoing":
 						return (
-							task.status !== "failed" &&
-							task.status !== "completed" &&
-							task.status !== "skipped" &&
-							task.status !== "waiting" &&
-							task.status !== "" 
+							task.status !== TaskStatus.FAILED &&
+							task.status !== TaskStatus.COMPLETED &&
+							task.status !== TaskStatus.SKIPPED &&
+							task.status !== TaskStatus.WAITING &&
+							task.status !== TaskStatus.EMPTY
 						);
 					case "pending":
 						return (
-							(task.status === "skipped" ||
-								task.status === "waiting" ||
-								task.status === "") &&
+							(task.status === TaskStatus.SKIPPED ||
+								task.status === TaskStatus.WAITING ||
+								task.status === TaskStatus.EMPTY) &&
 							!task.reAssignTo
 						);
 					case "failed":
-						return task.status === "failed";
+						return task.status === TaskStatus.FAILED;
 					default:
 						return false;
 				}
@@ -115,7 +116,7 @@ export function TaskCard({
 
 	const isAllTaskFinished = useMemo(() => {
 		return (
-			chatStore.tasks[chatStore.activeTaskId as string].status === "finished"
+			chatStore.tasks[chatStore.activeTaskId as string].status === ChatTaskStatus.FINISHED
 		);
 	}, [chatStore.tasks[chatStore.activeTaskId as string].status]);
 
@@ -207,32 +208,32 @@ export function TaskCard({
 										done={
 											taskInfo.filter(
 												(task) =>
-													task.content !== "" && task.status === "completed"
+													task.content !== "" && task.status === TaskStatus.COMPLETED
 											).length || 0
 										}
 										progress={
 											taskInfo.filter(
 												(task) =>
 													task.content !== "" &&
-													task.status !== "completed" &&
-													task.status !== "failed" &&
-													task.status !== "skipped" &&
-													task.status !== "waiting" &&
-													task.status !== ""
+													task.status !== TaskStatus.COMPLETED &&
+													task.status !== TaskStatus.FAILED &&
+													task.status !== TaskStatus.SKIPPED &&
+													task.status !== TaskStatus.WAITING &&
+													task.status !== TaskStatus.EMPTY
 											).length || 0
 										}
 										skipped={
 											taskInfo.filter(
 												(task) =>
 													task.content !== "" &&
-													(task.status === "skipped" ||
-														task.status === "waiting" ||
-														task.status === "")
+													(task.status === TaskStatus.SKIPPED ||
+														task.status === TaskStatus.WAITING ||
+														task.status === TaskStatus.EMPTY)
 											).length || 0
 										}
 										failed={
 											taskInfo.filter(
-												(task) => task.content !== "" && task.status === "failed"
+												(task) => task.content !== "" && task.status === TaskStatus.FAILED
 											).length || 0
 										}
 										forceVisible={true}
@@ -243,29 +244,29 @@ export function TaskCard({
 									<TaskState
 										all={taskRunning?.length || 0}
 										done={
-											taskRunning?.filter((task) => task.status === "completed")
+											taskRunning?.filter((task) => task.status === TaskStatus.COMPLETED)
 												.length || 0
 										}
 										progress={
 											taskRunning?.filter(
 												(task) =>
-													task.status !== "completed" &&
-													task.status !== "failed" &&
-													task.status !== "skipped" &&
-													task.status !== "waiting" &&
-													task.status !== ""
+													task.status !== TaskStatus.COMPLETED &&
+													task.status !== TaskStatus.FAILED &&
+													task.status !== TaskStatus.SKIPPED &&
+													task.status !== TaskStatus.WAITING &&
+													task.status !== TaskStatus.EMPTY
 											).length || 0
 										}
 										skipped={
 											taskRunning?.filter(
 												(task) =>
-													task.status === "skipped" ||
-													task.status === "waiting" ||
-													task.status === ""
+													task.status === TaskStatus.SKIPPED ||
+													task.status === TaskStatus.WAITING ||
+													task.status === TaskStatus.EMPTY
 											).length || 0
 										}
 										failed={
-											taskRunning?.filter((task) => task.status === "failed")
+											taskRunning?.filter((task) => task.status === TaskStatus.FAILED)
 												.length || 0
 										}
 										forceVisible={true}
@@ -288,8 +289,8 @@ export function TaskCard({
 											<div className="text-text-tertiary text-xs font-medium leading-17">
 												{taskRunning?.filter(
 													(task) =>
-														task.status === "completed" ||
-														task.status === "failed"
+														task.status === TaskStatus.COMPLETED ||
+														task.status === TaskStatus.FAILED
 												).length || 0}
 												/{taskRunning?.length || 0}
 											</div>
@@ -301,9 +302,8 @@ export function TaskCard({
 										>
 											<ChevronDown
 												size={16}
-												className={`transition-transform duration-300 ${
-													isExpanded ? "rotate-180" : ""
-												}`}
+												className={`transition-transform duration-300 ${isExpanded ? "rotate-180" : ""
+													}`}
 											/>
 										</Button>
 									</div>
@@ -311,7 +311,7 @@ export function TaskCard({
 							</div>
 						</div>
 					)}
-					
+
 					<div className="relative">
 						{taskType === 1 && (
 							<div className="mt-sm flex flex-col px-sm animate-in fade-in-0 slide-in-from-bottom-4 duration-500 ease-out">
@@ -372,77 +372,73 @@ export function TaskCard({
 													}
 												}}
 												key={`taskList-${task.id}`}
-												className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
-													task.status === "completed"
-														? "bg-green-50"
-														: task.status === "failed"
-														? "bg-task-fill-error"
-														: task.status === "running"
-														? "bg-zinc-50"
-														: task.status === "blocked"
-														? "bg-task-fill-warning"
-														: "bg-zinc-50"
-												} border border-solid border-transparent cursor-pointer ${
-													task.status === "completed"
+												className={`rounded-lg flex gap-2 py-sm px-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${task.status === TaskStatus.COMPLETED
+														? "bg-task-fill-success"
+														: task.status === TaskStatus.FAILED
+															? "bg-task-fill-error"
+															: task.status === TaskStatus.RUNNING
+																? "bg-task-fill-running"
+																: task.status === TaskStatus.BLOCKED
+																	? "bg-task-fill-warning"
+																	: "bg-task-fill-running"
+													} border border-solid border-transparent cursor-pointer ${task.status === TaskStatus.COMPLETED
 														? "hover:border-bg-fill-success-primary"
-														: task.status === "failed"
-														? "hover:border-task-border-focus-error"
-														: task.status === "running"
-														? "hover:border-border-primary"
-														: task.status === "blocked"
-														? "hover:border-task-border-focus-warning"
-														: "border-transparent"
-												}
+														: task.status === TaskStatus.FAILED
+															? "hover:border-task-border-focus-error"
+															: task.status === TaskStatus.RUNNING
+																? "hover:border-border-primary"
+																: task.status === TaskStatus.BLOCKED
+																	? "hover:border-task-border-focus-warning"
+																	: "border-transparent"
+													}
 												`}
 											>
 												<div className="pt-0.5">
-													{task.status === "running" && (
+													{task.status === TaskStatus.RUNNING && (
 														<LoaderCircle
 															size={16}
-															className={`text-icon-information ${
-																chatStore.tasks[
+															className={`text-icon-information ${chatStore.tasks[
 																	chatStore.activeTaskId as string
-																].status === "running" && "animate-spin"
-															} `}
+																].status === ChatTaskStatus.RUNNING && "animate-spin"
+																} `}
 														/>
 													)}
-													{task.status === "skipped" && (
+													{task.status === TaskStatus.SKIPPED && (
 														<LoaderCircle
 															size={16}
 															className={`text-icon-secondary `}
 														/>
 													)}
-													{task.status === "completed" && (
+													{task.status === TaskStatus.COMPLETED && (
 														<CircleCheckBig
 															size={16}
 															className="text-icon-success"
 														/>
 													)}
-													{task.status === "failed" && (
+													{task.status === TaskStatus.FAILED && (
 														<CircleSlash
 															size={16}
 															className="text-icon-cuation"
 														/>
 													)}
-													{task.status === "blocked" && (
+													{task.status === TaskStatus.BLOCKED && (
 														<TriangleAlert
 															size={16}
 															className="text-icon-warning"
 														/>
 													)}
-													{task.status === "" && (
+													{task.status === TaskStatus.EMPTY && (
 														<Circle size={16} className="text-icon-secondary" />
 													)}
 												</div>
 												<div className="flex-1 flex flex-col items-start justify-center">
 													<div
-														className={` w-full break-words whitespace-pre-line ${
-															task.status === "failed"
+														className={` w-full break-words whitespace-pre-line ${task.status === TaskStatus.FAILED
 																? "text-text-cuation-default"
-																: task.status === "blocked"
-																? "text-text-body"
-																: "text-text-primary"
-														} text-sm font-medium leading-13   `}
+																: task.status === TaskStatus.BLOCKED
+																	? "text-text-body"
+																	: "text-text-primary"
+															} text-sm font-medium leading-13   `}
 													>
 														{task.content}
 													</div>

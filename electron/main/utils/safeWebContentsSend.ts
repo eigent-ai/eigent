@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import log from 'electron-log'
-import { getMainWindow } from "../init";
+import log from 'electron-log';
+import { getMainWindow } from '../init';
 
 /**
  * Safely send message to main window if it exists and is not destroyed
@@ -26,9 +26,12 @@ function safeMainWindowSend(channel: string, data?: any) {
     mainWindow.webContents.send(channel, data);
     return true;
   } else {
-    log.warn(`[WEBCONTENTS SEND] Cannot send message to main window: ${channel}`, data);
+    log.warn(
+      `[WEBCONTENTS SEND] Cannot send message to main window: ${channel}`,
+      data
+    );
     return false;
   }
 }
 
-export {safeMainWindowSend}
+export { safeMainWindowSend };

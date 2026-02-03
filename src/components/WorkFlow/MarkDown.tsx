@@ -15,6 +15,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isHtmlDocument } from "@/lib/htmlFontStyles";
 
 export const MarkDown = ({
 	content,
@@ -61,6 +62,24 @@ export const MarkDown = ({
 	const processContent = (text: string) => {
 		return text.replace(/\\n/g, "  \n "); // add two spaces before \n, so ReactMarkdown will recognize it as a line break
 	};
+
+	// If content is a pure HTML document, render in a styled pre block
+	if (isHtmlDocument(content)) {
+		// Trim leading whitespace from each line for consistent alignment
+		const formattedHtml = displayedContent
+			.split('\n')
+			.map(line => line.trimStart())
+			.join('\n')
+			.trim();
+		return (
+			<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto markdown-container">
+				<pre className="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+					<code>{formattedHtml}</code>
+				</pre>
+			</div>
+		);
+	}
+
 	return (
 		<div className="prose prose-sm w-full select-text pointer-events-auto overflow-x-auto markdown-container">
 			<ReactMarkdown
@@ -108,7 +127,7 @@ export const MarkDown = ({
 					a: ({ children, href }) => (
 						<a
 							href={href}
-							className=" hover:text-blue-800 underline break-all"
+							className=" hover:text-text-link-hover underline break-all"
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -116,17 +135,17 @@ export const MarkDown = ({
 						</a>
 					),
 					code: ({ children }) => (
-						<code className="bg-zinc-100 px-1 py-0.5 rounded text-xs font-mono">
+						<code className="bg-code-surface px-1 py-0.5 rounded text-xs font-mono">
 							{children}
 						</code>
 					),
 					pre: ({ children }) => (
-						<pre className="bg-zinc-100 p-2 rounded text-xs overflow-x-auto">
+						<pre className="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">
 							{children}
 						</pre>
 					),
 					blockquote: ({ children }) => (
-						<blockquote className="border-l-4 border-zinc-300 pl-3 italic text-primary text-xs">
+						<blockquote className="border-l-4 border-border-subtle-strong pl-3 italic text-primary text-xs">
 							{children}
 						</blockquote>
 					),
@@ -153,10 +172,7 @@ export const MarkDown = ({
 						</div>
 					),
 					thead: ({ children }) => (
-						<thead
-							className="!table-header-group"
-							style={{ backgroundColor: "#f9fafb" }}
-						>
+						<thead className="!table-header-group bg-code-surface">
 							{children}
 						</thead>
 					),
