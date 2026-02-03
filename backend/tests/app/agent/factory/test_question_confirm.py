@@ -13,11 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from app.agent.factory import question_confirm_agent
 from app.model.chat import Chat
-
 
 pytestmark = pytest.mark.unit
 
@@ -31,7 +31,8 @@ def test_question_confirm_agent_creation(sample_chat_data):
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    with patch('app.agent.factory.question_confirm.agent_model') as mock_agent_model, \
+    _mod = 'app.agent.factory.question_confirm'
+    with patch(f'{_mod}.agent_model') as mock_agent_model, \
          patch('asyncio.create_task'):
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent
