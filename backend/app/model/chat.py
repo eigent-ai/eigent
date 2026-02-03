@@ -15,23 +15,15 @@
 import json
 import logging
 import re
-from enum import Enum
 from pathlib import Path
 from typing import Literal
 
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
-from app.agent.prompt import DEFAULT_SUMMARY_PROMPT
+from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status
 
 logger = logging.getLogger("chat_model")
-
-
-class Status(str, Enum):
-    confirming = "confirming"
-    confirmed = "confirmed"
-    processing = "processing"
-    done = "done"
 
 
 class ChatHistory(BaseModel):
