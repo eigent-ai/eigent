@@ -29,10 +29,10 @@ from app.exception.exception import ProgramException
 from app.model.chat import (
     AgentModelConfig,
     McpServers,
-    Status,
     SupplementChat,
     UpdateData,
 )
+from app.model.enums import Status
 
 logger = logging.getLogger("task_service")
 
