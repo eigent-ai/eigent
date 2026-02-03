@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Tests for workforce metrics telemetry."""
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
@@ -8,8 +22,10 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from camel.societies.workforce.events import (LogEvent, TaskAssignedEvent,
                                               TaskCompletedEvent,
                                               TaskCreatedEvent,
+                                              TaskDecomposedEvent,
                                               TaskFailedEvent,
                                               TaskStartedEvent,
+                                              TaskUpdatedEvent,
                                               WorkerCreatedEvent)
 
 
@@ -90,6 +106,24 @@ def test_log_task_created(metrics_callback):
     assert mock_span.set_status.called
 
 
+def test_log_task_decomposed(metrics_callback):
+    """Test log_task_decomposed function."""
+    event = TaskDecomposedEvent(
+        parent_task_id="parent_1",
+        subtask_ids=["task_1", "task_2"],
+    )
+
+    mock_span = Mock()
+    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+
+    metrics_callback.log_task_decomposed(event)
+
+    # Verify span attributes were set
+    assert mock_span.set_attribute.called
+    assert mock_span.set_status.called
+
+
 def test_log_task_assigned(metrics_callback):
     """Test log_task_assigned function."""
     event = TaskAssignedEvent(
@@ -104,6 +138,29 @@ def test_log_task_assigned(metrics_callback):
         __enter__=Mock(return_value=mock_span), __exit__=Mock()))
 
     metrics_callback.log_task_assigned(event)
+
+    # Verify span attributes were set
+    assert mock_span.set_attribute.called
+    assert mock_span.set_status.called
+
+
+def test_log_task_updated(metrics_callback):
+    """Test log_task_updated function."""
+    event = TaskUpdatedEvent(
+        task_id="task_1",
+        worker_id="worker_1",
+        update_type="replan",
+        old_value="old plan",
+        new_value="new plan",
+        parent_task_id="parent_1",
+        metadata={"source": "recovery"},
+    )
+
+    mock_span = Mock()
+    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+
+    metrics_callback.log_task_updated(event)
 
     # Verify span attributes were set
     assert mock_span.set_attribute.called
