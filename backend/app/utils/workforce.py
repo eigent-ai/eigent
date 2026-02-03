@@ -692,11 +692,10 @@ class Workforce(BaseWorkforce):
             event = TaskFailedEvent(
                 task_id=task.id,
                 error_message=error_msg,
+                worker_id=(task.assigned_worker_id
+                           if hasattr(task, "assigned_worker_id") else None),
+                metadata={"failure_count": task.failure_count},
             )
-            # Add failure details if available
-            if hasattr(task, 'assigned_worker_id'):
-                event.worker_id = task.assigned_worker_id
-            event.failure_count = task.failure_count
             metrics_callbacks[0].log_task_failed(event)
 
         return result
