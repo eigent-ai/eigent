@@ -54,7 +54,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     if config.getoption("--llm-test-only"):
         skip_fast = pytest.mark.skip(reason="Skipped for llm test only")
         for item in items:
@@ -118,13 +120,13 @@ def mock_openai_api():
     with patch("openai.OpenAI") as mock_openai:
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
-        
+
         # Mock chat completion
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "Test response"
         mock_response.usage.total_tokens = 100
-        
+
         mock_client.chat.completions.create.return_value = mock_response
         yield mock_client
 
@@ -148,19 +150,21 @@ def mock_camel_agent():
     agent = MagicMock()  # Use MagicMock instead of AsyncMock
     agent.role_name = "test_agent"
     agent.agent_id = "test_agent_123"
-    
+
     # Make step method return proper structure with both .msg and .msgs[0]
     mock_response = MagicMock()
     mock_message = MagicMock()
     mock_message.content = "Test agent response"
     mock_message.parsed = None
-    
+
     mock_response.msg = mock_message
-    mock_response.msgs = [mock_message]  # msgs[0] should point to the same content
+    mock_response.msgs = [
+        mock_message
+    ]  # msgs[0] should point to the same content
     mock_response.info = {"usage": {"total_tokens": 50}}
-    
+
     agent.step.return_value = mock_response
-    
+
     agent.astep = AsyncMock()
     agent.astep.return_value.msg.content = "Test async agent response"
     agent.astep.return_value.msg.parsed = None
@@ -196,17 +200,18 @@ def mock_request():
 def app() -> FastAPI:
     """Create FastAPI test application."""
     from fastapi import FastAPI
+
     from app.controller.chat_controller import router as chat_router
     from app.controller.model_controller import router as model_router
     from app.controller.task_controller import router as task_router
     from app.controller.tool_controller import router as tool_router
-    
+
     app = FastAPI()
     app.include_router(chat_router)
     app.include_router(model_router)
     app.include_router(task_router)
     app.include_router(tool_router)
-    
+
     return app
 
 
@@ -253,14 +258,14 @@ def mock_worker_with_agent():
     worker.agent_id = "test_agent_123"
     worker.astep = AsyncMock()
     worker.step = MagicMock()
-    
+
     # Mock response structure
     mock_response = MagicMock()
     mock_response.msg = MagicMock()
     mock_response.msg.content = "Test worker response"
     mock_response.msg.parsed = {"result": "test"}
     mock_response.info = {"usage": {"total_tokens": 50}}
-    
+
     worker.astep.return_value = mock_response
     worker.step.return_value = mock_response
     return worker
@@ -285,7 +290,7 @@ def mock_environment_variables():
         "file_save_path": "/tmp/test_files",
         "browser_port": "8080"
     }
-    
+
     with patch.dict(os.environ, env_vars, clear=False):
         yield env_vars
 
@@ -327,15 +332,15 @@ async def async_mock_agent() -> AsyncGenerator[AsyncMock, None]:
     agent = AsyncMock()
     agent.role_name = "async_test_agent"
     agent.agent_id = "async_test_agent_456"
-    
+
     # Mock async step method
     mock_response = MagicMock()
     mock_response.msg.content = "Async test response"
     mock_response.msg.parsed = {"test": "data"}
     mock_response.info = {"usage": {"total_tokens": 75}}
-    
+
     agent.astep.return_value = mock_response
-    
+
     yield agent
 
 
@@ -349,7 +354,8 @@ def pytest_configure(config):
         "markers", "model_backend: mark test as requiring model backend"
     )
     config.addinivalue_line(
-        "markers", "very_slow: mark test as very slow (requires full test mode)"
+        "markers",
+        "very_slow: mark test as very slow (requires full test mode)"
     )
     config.addinivalue_line(
         "markers", "optional: mark test as optional (skipped in fast mode)"
@@ -357,6 +363,4 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "integration: mark test as integration test"
     )
-    config.addinivalue_line(
-        "markers", "unit: mark test as unit test"
-    )
+    config.addinivalue_line("markers", "unit: mark test as unit test")

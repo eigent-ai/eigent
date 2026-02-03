@@ -12,9 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-import logging
 
 logger = logging.getLogger("health_controller")
 
@@ -28,9 +29,15 @@ class HealthResponse(BaseModel):
 
 @router.get("/health", name="health check", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint for verifying backend is ready to accept requests."""
+    """Health check endpoint for verifying backend
+    is ready to accept requests."""
     logger.debug("Health check requested")
     response = HealthResponse(status="ok", service="eigent")
-    logger.debug("Health check completed", extra={"status": response.status, "service": response.service})
+    logger.debug(
+        "Health check completed",
+        extra={
+            "status": response.status,
+            "service": response.service
+        }
+    )
     return response
-

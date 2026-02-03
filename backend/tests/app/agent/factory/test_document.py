@@ -13,11 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from app.agent.factory import document_agent
 from app.model.chat import Chat
-
 
 pytestmark = pytest.mark.unit
 
@@ -32,17 +32,18 @@ async def test_document_agent_creation(sample_chat_data):
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    with patch('app.agent.factory.document.agent_model') as mock_agent_model, \
+    _mod = 'app.agent.factory.document'
+    with patch(f'{_mod}.agent_model') as mock_agent_model, \
          patch('asyncio.create_task'), \
-         patch('app.agent.factory.document.HumanToolkit') as mock_human_toolkit, \
-         patch('app.agent.factory.document.FileToolkit') as mock_file_toolkit, \
-         patch('app.agent.factory.document.PPTXToolkit') as mock_pptx_toolkit, \
-         patch('app.agent.factory.document.MarkItDownToolkit') as mock_markdown_toolkit, \
-         patch('app.agent.factory.document.ExcelToolkit') as mock_excel_toolkit, \
-         patch('app.agent.factory.document.NoteTakingToolkit') as mock_note_toolkit, \
-         patch('app.agent.factory.document.TerminalToolkit') as mock_terminal_toolkit, \
-         patch('app.agent.factory.document.GoogleDriveMCPToolkit') as mock_gdrive_toolkit, \
-         patch('app.agent.factory.document.ToolkitMessageIntegration'):
+         patch(f'{_mod}.HumanToolkit') as mock_human_toolkit, \
+         patch(f'{_mod}.FileToolkit') as mock_file_toolkit, \
+         patch(f'{_mod}.PPTXToolkit') as mock_pptx_toolkit, \
+         patch(f'{_mod}.MarkItDownToolkit') as mock_markdown_toolkit, \
+         patch(f'{_mod}.ExcelToolkit') as mock_excel_toolkit, \
+         patch(f'{_mod}.NoteTakingToolkit') as mock_note_toolkit, \
+         patch(f'{_mod}.TerminalToolkit') as mock_terminal_toolkit, \
+         patch(f'{_mod}.GoogleDriveMCPToolkit') as mock_gdrive_toolkit, \
+         patch(f'{_mod}.ToolkitMessageIntegration'):
 
         # Mock all toolkit instances
         mock_human_toolkit.get_can_use_tools.return_value = []
@@ -64,4 +65,6 @@ async def test_document_agent_creation(sample_chat_data):
 
         # Should have called with document-related tools
         call_args = mock_agent_model.call_args
-        assert "document_agent" in str(call_args[0][0])  # agent_name (enum contains this value)
+        assert "document_agent" in str(
+            call_args[0][0]
+        )  # agent_name (enum contains this value)

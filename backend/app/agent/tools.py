@@ -16,6 +16,8 @@ import asyncio
 import logging
 import os
 
+from camel.toolkits import MCPToolkit
+
 from app.component.environment import env
 from app.model.chat import McpServers
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
@@ -41,14 +43,15 @@ from app.utils.toolkit.twitter_toolkit import TwitterToolkit
 from app.utils.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
 from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.utils.toolkit.whatsapp_toolkit import WhatsAppToolkit
-from camel.toolkits import MCPToolkit
 
 logger = logging.getLogger(__name__)
 
 
 async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
-    logger.info(f"Getting toolkits for agent: {agent_name}, "
-                f"task: {api_task_id}, tools: {tools}")
+    logger.info(
+        f"Getting toolkits for agent: {agent_name}, "
+        f"task: {api_task_id}, tools: {tools}"
+    )
     toolkits = {
         "audio_analysis_toolkit": AudioAnalysisToolkit,
         "openai_image_toolkit": OpenAIImageToolkit,
@@ -80,7 +83,8 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit.agent_name = agent_name
             toolkit_tools = toolkit.get_can_use_tools(api_task_id)
             toolkit_tools = await toolkit_tools if asyncio.iscoroutine(
-                toolkit_tools) else toolkit_tools
+                toolkit_tools
+            ) else toolkit_tools
             res.extend(toolkit_tools)
         else:
             logger.warning(f"Toolkit {item} not found for agent {agent_name}")
@@ -89,7 +93,8 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
 
 async def get_mcp_tools(mcp_server: McpServers):
     logger.info(
-        f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers")
+        f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers"
+    )
     if len(mcp_server["mcpServers"]) == 0:
         return []
 
@@ -102,19 +107,26 @@ async def get_mcp_tools(mcp_server: McpServers):
         # Set global auth directory to persist authentication across tasks
         if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
             server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
-                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth"))
+                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
+            )
 
     mcp_toolkit = None
     try:
         mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
         await mcp_toolkit.connect()
 
-        logger.info(f"Successfully connected to MCP toolkit with "
-                    f"{len(mcp_server['mcpServers'])} servers")
+        logger.info(
+            f"Successfully connected to MCP toolkit with "
+            f"{len(mcp_server['mcpServers'])} servers"
+        )
         tools = mcp_toolkit.get_tools()
         if tools:
-            tool_names = [(tool.get_function_name() if hasattr(
-                tool, "get_function_name") else str(tool)) for tool in tools]
+            tool_names = [
+                (
+                    tool.get_function_name()
+                    if hasattr(tool, "get_function_name") else str(tool)
+                ) for tool in tools
+            ]
             logging.debug(f"MCP tool names: {tool_names}")
         return tools
     except asyncio.CancelledError:
