@@ -389,7 +389,9 @@ async def uninstall_tool(tool: str):
             # Calculate the hash for Notion MCP URL
             # mcp-remote uses MD5 hash of the URL to generate file names
             notion_url = "https://mcp.notion.com/mcp"
-            url_hash = hashlib.md5(notion_url.encode()).hexdigest()
+            url_hash = hashlib.md5(
+                notion_url.encode(), usedforsecurity=False
+            ).hexdigest()
 
             # Find and remove Notion-specific auth files
             mcp_auth_dir = os.path.join(os.path.expanduser("~"), ".mcp-auth")

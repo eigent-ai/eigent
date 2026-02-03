@@ -68,6 +68,19 @@ combine-as-imports = true
 quote-style = "double"
 indent-style = "space"
 
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = [
+    "B101",  # assert_used - OK in non-production code
+    "B105",  # hardcoded_password_string - false positive on env var names
+    "B110",  # try_except_pass - used intentionally for error suppression
+    "B113",  # request_without_timeout - handled by httpx defaults
+    "B311",  # random - OK for non-crypto use
+    "B404",  # import subprocess - needed for process management
+    "B603",  # subprocess_without_shell - shell=False is safer
+    "B607",  # start_process_with_partial_path - acceptable for system cmds
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

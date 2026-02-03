@@ -41,6 +41,16 @@ repos:
       - id: ruff-format
         name: Ruff format
 
+  # Security scanning
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        name: Bandit security check
+        args: ["-c", "backend/pyproject.toml", "-r", "backend/"]
+        pass_filenames: false
+        additional_dependencies: ["bandit[toml]"]
+
   - repo: https://github.com/executablebooks/mdformat
     rev: 0.7.22
     hooks:
