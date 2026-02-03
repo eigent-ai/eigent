@@ -86,6 +86,7 @@ class TestAgentIntegration:
         # Create agent
         agent_model_mod = sys.modules['app.agent.agent_model']
         with patch.object(agent_model_mod, 'ModelFactory') as mock_model_factory, \
+             patch.object(agent_model_mod, '_schedule_async_task'), \
              patch.object(agent_model_mod, 'ListenChatAgent') as mock_listen_agent, \
              patch.object(agent_model_mod, 'get_task_lock', return_value=mock_task_lock):
             mock_model = MagicMock()
