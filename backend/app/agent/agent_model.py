@@ -16,14 +16,15 @@ import logging
 import uuid
 from typing import Any, Callable
 
-from app.utils.event_loop_utils import _schedule_async_task
-from app.agent.listen_chat_agent import ListenChatAgent, logger
-from app.model.chat import AgentModelConfig, Chat
-from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from camel.messages import BaseMessage
 from camel.models import ModelFactory
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
+
+from app.utils.event_loop_utils import _schedule_async_task
+from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.model.chat import AgentModelConfig, Chat
+from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
 def agent_model(
@@ -39,8 +40,10 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    logger.info(f"Creating agent: {agent_name} with id: {agent_id} "
-                f"for project: {options.project_id}")
+    logger.info(
+        f"Creating agent: {agent_name} with id: {agent_id} "
+        f"for project: {options.project_id}"
+    )
     # Use thread-safe scheduling to support parallel agent creation
     _schedule_async_task(
         task_lock.put_queue(
@@ -49,7 +52,10 @@ def agent_model(
                     "agent_name": agent_name,
                     "agent_id": agent_id,
                     "tools": tool_names or [],
-                })))
+                }
+            )
+        )
+    )
 
     # Determine model configuration - use custom config if provided,
     # otherwise use task defaults
@@ -60,11 +66,14 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(custom_model_config, attr,
                                              None) or getattr(options, attr)
-        extra_params = (custom_model_config.extra_params
-                        or options.extra_params or {})
-        logger.info(f"Agent {agent_name} using custom model config: "
-                    f"platform={effective_config['model_platform']}, "
-                    f"type={effective_config['model_type']}")
+        extra_params = (
+            custom_model_config.extra_params or options.extra_params or {}
+        )
+        logger.info(
+            f"Agent {agent_name} using custom model config: "
+            f"platform={effective_config['model_platform']}, "
+            f"type={effective_config['model_type']}"
+        )
     else:
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
@@ -106,13 +115,14 @@ def agent_model(
     if agent_name == Agents.browser_agent:
         try:
             model_platform_enum = ModelPlatformType(
-                effective_config["model_platform"].lower())
+                effective_config["model_platform"].lower()
+            )
             if model_platform_enum in {
-                    ModelPlatformType.OPENAI,
-                    ModelPlatformType.AZURE,
-                    ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
-                    ModelPlatformType.LITELLM,
-                    ModelPlatformType.OPENROUTER,
+                ModelPlatformType.OPENAI,
+                ModelPlatformType.AZURE,
+                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                ModelPlatformType.LITELLM,
+                ModelPlatformType.OPENROUTER,
             }:
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):

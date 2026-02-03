@@ -13,6 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import platform
 
+from camel.messages import BaseMessage
+from camel.models import OpenAIAudioModels
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
+
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
@@ -23,34 +28,37 @@ from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
+
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
-from camel.messages import BaseMessage
-from camel.models import OpenAIAudioModels
-from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
 
 
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
         f"Creating multi-modal agent for project: {options.project_id} "
-        f"in directory: {working_directory}")
+        f"in directory: {working_directory}"
+    )
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.multi_modal_agent).send_message_to_user)
+            options.project_id, Agents.multi_modal_agent
+        ).send_message_to_user
+    )
     video_download_toolkit = VideoDownloaderToolkit(
-        options.project_id, working_directory=working_directory)
+        options.project_id, working_directory=working_directory
+    )
     video_download_toolkit = message_integration.register_toolkits(
-        video_download_toolkit)
+        video_download_toolkit
+    )
     image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
     image_analysis_toolkit = message_integration.register_toolkits(
-        image_analysis_toolkit)
+        image_analysis_toolkit
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -70,8 +78,8 @@ def multi_modal_agent(options: Chat):
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.multi_modal_agent),
+        *HumanToolkit.
+        get_can_use_tools(options.project_id, Agents.multi_modal_agent),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
     ]
@@ -88,7 +96,8 @@ def multi_modal_agent(options: Chat):
             url=options.api_url,
         )
         open_ai_image_toolkit = message_integration.register_toolkits(
-            open_ai_image_toolkit)
+            open_ai_image_toolkit
+        )
         tools = [
             *tools,
             *open_ai_image_toolkit.get_tools(),
@@ -109,7 +118,8 @@ def multi_modal_agent(options: Chat):
             ),
         )
         audio_analysis_toolkit = message_integration.register_toolkits(
-            audio_analysis_toolkit)
+            audio_analysis_toolkit
+        )
         tools.extend(audio_analysis_toolkit.get_tools())
 
     system_message = MULTI_MODAL_SYS_PROMPT.format(

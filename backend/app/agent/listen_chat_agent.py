@@ -18,18 +18,6 @@ import logging
 from threading import Event
 from typing import Any, Callable, Dict, List, Tuple
 
-from app.utils.event_loop_utils import _schedule_async_task
-from app.service.task import (
-    Action,
-    ActionActivateAgentData,
-    ActionActivateToolkitData,
-    ActionBudgetNotEnough,
-    ActionDeactivateAgentData,
-    ActionDeactivateToolkitData,
-    get_task_lock,
-    set_process_task,
-)
-
 from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
 from camel.agents.chat_agent import (
@@ -45,6 +33,18 @@ from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
+
+from app.utils.event_loop_utils import _schedule_async_task
+from app.service.task import (
+    Action,
+    ActionActivateAgentData,
+    ActionActivateToolkitData,
+    ActionBudgetNotEnough,
+    ActionDeactivateAgentData,
+    ActionDeactivateToolkitData,
+    get_task_lock,
+    set_process_task,
+)
 
 # Logger for agent tracking
 logger = logging.getLogger("agent")
@@ -494,7 +494,8 @@ class ListenChatAgent(ChatAgent):
                 else:
                     result_msg = result_str
 
-            # Only send deactivate event if tool is NOT wrapped by @listen_toolkit
+            # Only send deactivate event if tool is
+            # NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
                 _schedule_async_task(
                     task_lock.put_queue(
@@ -573,7 +574,9 @@ class ListenChatAgent(ChatAgent):
             toolkit_name = "mcp_toolkit"
 
         logger.info(
-            f"Agent {self.agent_name} executing async tool: {func_name} from toolkit: {toolkit_name} with args: {json.dumps(args, ensure_ascii=False)}"
+            f"Agent {self.agent_name} executing async tool: {func_name} "
+            f"from toolkit: {toolkit_name} "
+            f"with args: {json.dumps(args, ensure_ascii=False)}"
         )
 
         # Check if tool is wrapped by @listen_toolkit decorator
@@ -611,9 +614,11 @@ class ListenChatAgent(ChatAgent):
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
-                    # Check if this is a sync tool to avoid run_in_executor (which breaks ContextVar)
+                    # Check if this is a sync tool to avoid run_in_executor
+                    # (which breaks ContextVar)
                     if hasattr(tool, "is_async") and not tool.is_async:
-                        # Sync tool: call directly to preserve ContextVar in same thread
+                        # Sync tool: call directly to preserve ContextVar
+                        # in same thread
                         result = tool(**args)
                         # Handle case where synchronous call returns a coroutine
                         if asyncio.iscoroutine(result):
