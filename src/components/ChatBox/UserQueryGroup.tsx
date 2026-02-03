@@ -27,6 +27,7 @@ import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 
 interface QueryGroup {
   queryId: string;
@@ -86,7 +87,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         if (userMessageIndex > 0) {
           // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
           const prevMessage = messages[userMessageIndex - 1];
-          return prevMessage?.role === 'agent' && prevMessage?.step === 'ask';
+          return prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK;
         }
         return false;
       })());
@@ -102,7 +103,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         .filter((m: any) => m.role === 'user')
         .pop()?.id &&
     // Only show during active phases (not finished)
-    chatState.tasks[activeTaskId].status !== 'finished';
+    chatState.tasks[activeTaskId].status !== ChatTaskStatus.FINISHED;
 
   // Only show the fallback task box for the newest query while the agent is still splitting work.
   // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
@@ -185,11 +186,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
   // Check if we're in skeleton phase
   const anyToSubTasksMessage = task?.messages.find(
-    (m: any) => m.step === 'to_sub_tasks'
+    (m: any) => m.step === AgentStep.TO_SUB_TASKS
   );
   const isSkeletonPhase =
     task &&
-    ((task.status !== 'finished' &&
+    ((task.status !== ChatTaskStatus.FINISHED &&
       !anyToSubTasksMessage &&
       !task.hasWaitComfirm &&
       task.messages.length > 0) ||
@@ -282,7 +283,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
         if (message.content.length > 0) {
-          if (message.step === 'end') {
+          if (message.step === AgentStep.END) {
             return (
               <motion.div
                 key={`end-${message.id}`}
@@ -375,7 +376,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               </motion.div>
             );
           }
-        } else if (message.step === 'end' && message.content === '') {
+        } else if (message.step === AgentStep.END && message.content === '') {
           return (
             <motion.div
               key={`end-empty-${message.id}`}
@@ -423,7 +424,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
         // Notice Card
         if (
-          message.step === 'notice_card' &&
+          message.step === AgentStep.NOTICE_CARD &&
           !task?.isTakeControl &&
           task?.cotList &&
           task.cotList.length > 0

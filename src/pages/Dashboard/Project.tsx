@@ -22,6 +22,7 @@ import { Bird, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { ChatTaskStatus } from '@/types/constants';
 
 export default function Project() {
   const { t } = useTranslation();
@@ -214,9 +215,9 @@ export default function Project() {
       action: type,
     });
     if (type === 'pause') {
-      chatStore.setStatus(taskId, 'pause');
+      chatStore.setStatus(taskId, ChatTaskStatus.PAUSE);
     } else {
-      chatStore.setStatus(taskId, 'running');
+      chatStore.setStatus(taskId, ChatTaskStatus.RUNNING);
     }
   };
 

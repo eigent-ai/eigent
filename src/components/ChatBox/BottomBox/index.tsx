@@ -16,6 +16,7 @@ import { BoxAction } from './BoxAction';
 import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
+import { type ChatTaskStatusType } from "@/types/constants";
 
 export type BottomBoxState =
   | 'input'
@@ -42,7 +43,7 @@ interface BottomBoxProps {
   // Task info
   tokens?: number;
   taskTime?: string;
-  taskStatus?: 'running' | 'finished' | 'pending' | 'pause';
+  taskStatus?: ChatTaskStatusType;
 
   // Replay
   onReplay?: () => void;
