@@ -128,7 +128,7 @@ class ListenChatAgent(ChatAgent):
             tokens: The total token count used
         """
         task_lock = get_task_lock(self.api_task_id)
-        asyncio.create_task(
+        _schedule_async_task(
             task_lock.put_queue(
                 ActionDeactivateAgentData(
                     data={
@@ -373,7 +373,7 @@ class ListenChatAgent(ChatAgent):
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
-        # For non-streaming responses, handle deactivation here
+        # For non-streaming responses, extract message and tokens from response
         if res is not None and not isinstance(
             res, AsyncStreamingChatAgentResponse
         ):
@@ -389,19 +389,23 @@ class ListenChatAgent(ChatAgent):
                 f"tokens used: {total_tokens}"
             )
 
-            asyncio.create_task(
-                task_lock.put_queue(
-                    ActionDeactivateAgentData(
-                        data={
-                            "agent_name": self.agent_name,
-                            "process_task_id": self.process_task_id,
-                            "agent_id": self.agent_id,
-                            "message": message,
-                            "tokens": total_tokens,
-                        },
-                    )
+        # Send deactivation for all non-streaming cases (success or error)
+        # Streaming responses handle deactivation in _astream_chunks
+        assert message is not None
+
+        asyncio.create_task(
+            task_lock.put_queue(
+                ActionDeactivateAgentData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
+                        "message": message,
+                        "tokens": total_tokens,
+                    },
                 )
             )
+        )
 
         if error_info is not None:
             raise error_info
