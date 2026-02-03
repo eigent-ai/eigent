@@ -215,7 +215,7 @@ class ListenChatAgent(ChatAgent):
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | StreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
-        asyncio.create_task(
+        _schedule_async_task(
             task_lock.put_queue(
                 ActionActivateAgentData(
                     data={
@@ -250,7 +250,7 @@ class ListenChatAgent(ChatAgent):
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
                 logger.warning(f"Agent {self.agent_name} budget exceeded")
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(ActionBudgetNotEnough())
                 )
             else:
@@ -288,7 +288,7 @@ class ListenChatAgent(ChatAgent):
 
         assert message is not None
 
-        asyncio.create_task(
+        _schedule_async_task(
             task_lock.put_queue(
                 ActionDeactivateAgentData(
                     data={
