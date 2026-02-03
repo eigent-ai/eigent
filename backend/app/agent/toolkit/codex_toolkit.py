@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-
 r"""OpenAI Codex OAuth manager.
 
 Handles Authorization Code + PKCE flow using Codex CLI's public client_id.
@@ -57,7 +56,8 @@ def _generate_pkce_pair() -> tuple[str, str]:
     """
     code_verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"="
+                                                             ).decode("ascii")
     return code_verifier, code_challenge
 
 
@@ -90,14 +90,17 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             from html import escape
             self.wfile.write(
                 f"<html><body><h1>Authorization failed</h1>"
-                f"<p>{escape(error)}: {escape(desc)}</p></body></html>".encode()
+                f"<p>{escape(error)}: {escape(desc)}</p></body></html>".encode(
+                )
             )
         else:
             self.send_response(400)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             self.wfile.write(
-                b"<html><body><h1>Missing authorization code</h1></body></html>"
+                b"<html><body><h1>"
+                b"Missing authorization code"
+                b"</h1></body></html>"
             )
 
     def log_message(self, format, *args):
@@ -263,11 +266,16 @@ class CodexOAuthManager:
             new_token = resp.json()
 
             # Merge with existing data
-            token.update({
-                "access_token": new_token["access_token"],
-                "expires_in": new_token.get("expires_in", CODEX_TOKEN_DEFAULT_LIFETIME),
-                "saved_at": int(time.time()),
-            })
+            token.update(
+                {
+                    "access_token":
+                    new_token["access_token"],
+                    "expires_in":
+                    new_token.get("expires_in", CODEX_TOKEN_DEFAULT_LIFETIME),
+                    "saved_at":
+                    int(time.time()),
+                }
+            )
             if new_token.get("refresh_token"):
                 token["refresh_token"] = new_token["refresh_token"]
             token.pop("expires_at", None)
@@ -316,16 +324,18 @@ class CodexOAuthManager:
 
                 redirect_uri = f"http://localhost:{port}/callback"
 
-                params = urlencode({
-                    "response_type": "code",
-                    "client_id": CODEX_CLIENT_ID,
-                    "redirect_uri": redirect_uri,
-                    "scope": "openai.organization.read openai.api.read",
-                    "audience": CODEX_AUDIENCE,
-                    "code_challenge": code_challenge,
-                    "code_challenge_method": "S256",
-                    "codex_cli_simplified_flow": "true",
-                })
+                params = urlencode(
+                    {
+                        "response_type": "code",
+                        "client_id": CODEX_CLIENT_ID,
+                        "redirect_uri": redirect_uri,
+                        "scope": "openai.organization.read openai.api.read",
+                        "audience": CODEX_AUDIENCE,
+                        "code_challenge": code_challenge,
+                        "code_challenge_method": "S256",
+                        "codex_cli_simplified_flow": "true",
+                    }
+                )
                 auth_url = f"{CODEX_AUTH_URL}?{params}"
 
                 if state.is_cancelled():
@@ -361,7 +371,9 @@ class CodexOAuthManager:
                         "redirect_uri": redirect_uri,
                         "code_verifier": code_verifier,
                     },
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
                     timeout=30,
                 )
                 token_resp.raise_for_status()

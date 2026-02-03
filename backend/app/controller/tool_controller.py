@@ -273,12 +273,16 @@ async def install_tool(tool: str):
                             "toolkit_name": "CodexOAuthManager"
                         }
                     # Refresh failed, start new auth
-                    logger.info("Codex token expired and refresh failed, starting re-auth")
+                    logger.info(
+                        "Codex token expired and refresh"
+                        " failed, starting re-auth"
+                    )
                     CodexOAuthManager.start_background_auth()
                     return {
                         "success": False,
                         "status": "authorizing",
-                        "message": "Token expired. Browser should open for re-authorization.",
+                        "message": "Token expired. Browser should"
+                        " open for re-authorization.",
                         "toolkit_name": "CodexOAuthManager",
                         "requires_auth": True
                     }
@@ -294,15 +298,15 @@ async def install_tool(tool: str):
                 return {
                     "success": False,
                     "status": "authorizing",
-                    "message": "Authorization required. Browser should open automatically.",
+                    "message": "Authorization required. Browser"
+                    " should open automatically.",
                     "toolkit_name": "CodexOAuthManager",
                     "requires_auth": True
                 }
         except Exception as e:
             logger.error(f"Failed to install {tool}: {e}")
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to install {tool}: {str(e)}"
+                status_code=500, detail=f"Failed to install {tool}: {str(e)}"
             )
     else:
         raise HTTPException(
@@ -597,13 +601,18 @@ async def uninstall_tool(tool: str):
 
             if success:
                 return {
-                    "success": True,
-                    "message": f"Successfully uninstalled {tool} and cleaned up authentication tokens"
+                    "success":
+                    True,
+                    "message":
+                    f"Successfully uninstalled {tool}"
+                    " and cleaned up"
+                    " authentication tokens"
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"Uninstalled {tool} (no tokens found to clean up)"
+                    "message":
+                    f"Uninstalled {tool} (no tokens found to clean up)"
                 }
         except Exception as e:
             logger.error(f"Failed to uninstall {tool}: {e}")
@@ -747,7 +756,8 @@ async def save_codex_token(token_request: CodexTokenRequest):
     r"""Save Codex/OpenAI API token (manual API key entry fallback).
 
     Args:
-        token_request: Token data containing access_token and optionally expires_in
+        token_request: Token data containing access_token
+            and optionally expires_in
 
     Returns:
         Save result
@@ -765,16 +775,14 @@ async def save_codex_token(token_request: CodexTokenRequest):
             }
         else:
             raise HTTPException(
-                status_code=500,
-                detail="Failed to save Codex token"
+                status_code=500, detail="Failed to save Codex token"
             )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to save Codex token: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save token: {str(e)}"
+            status_code=500, detail=f"Failed to save token: {str(e)}"
         )
 
 
@@ -800,8 +808,11 @@ async def get_codex_status():
         is_expiring_soon = CodexOAuthManager.is_token_expiring_soon()
 
         result = {
-            "authenticated": True,
-            "status": "expired" if is_expired else ("expiring_soon" if is_expiring_soon else "valid"),
+            "authenticated":
+            True,
+            "status":
+            "expired" if is_expired else
+            ("expiring_soon" if is_expiring_soon else "valid"),
         }
 
         if token_info:
@@ -821,7 +832,8 @@ async def get_codex_status():
         if is_expired:
             result["message"] = "Token has expired. Please re-authenticate."
         elif is_expiring_soon:
-            result["message"] = "Token is expiring soon. Consider re-authenticating."
+            result["message"
+                   ] = "Token is expiring soon. Consider re-authenticating."
         else:
             result["message"] = "Codex/OpenAI is connected and token is valid."
 
@@ -829,8 +841,7 @@ async def get_codex_status():
     except Exception as e:
         logger.error(f"Failed to get Codex status: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get status: {str(e)}"
+            status_code=500, detail=f"Failed to get status: {str(e)}"
         )
 
 
