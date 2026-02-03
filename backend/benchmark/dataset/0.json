@@ -1,0 +1,10 @@
+{
+  "data": {
+    "name": "0",
+    "question": "Create a simple python script with the name 'hello_world.py' that only prints 'Hello, World!'",
+    "env": {}
+  },
+  "tests": {
+    "verifier": ["benchmark/verifier/0.py"]
+  }
+}
