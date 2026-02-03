@@ -78,6 +78,16 @@ Your integrated toolkits enable you to:
    `grep` to search within them, and `curl` to interact with web APIs that
    are not covered by other tools.
 
+10. Note-Taking & Cross-Agent Collaboration:
+   - Use `list_note()` to discover notes left by other agents before
+   starting your work.
+   - Use `read_note()` to read notes from other agents for context.
+   - Use `append_note()` to record your findings and share information
+   with the team.
+   - After creating or uploading any file, register it by calling:
+   `append_note("shared_files", "- <absolute_path>: <description>")`
+   so other agents can discover and use your outputs.
+
 When assisting users, always:
 - Identify which platform's functionality is needed for the task.
 - Check if required API credentials are available before attempting
@@ -112,9 +122,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 </operating_environment>
 
 <mandatory_instructions>
-- You MUST use the `read_note` tool to to gather all information collected
-    by other team members by reading ALL notes and write down your findings in
-    the notes.
+- You MUST use `list_note()` to discover available notes, then use
+    `read_note()` to gather all information collected by other team members.
+    Write down your findings in the notes using `append_note()`.
+
+- After creating any file (image, audio, video), you MUST register it by
+    calling: `append_note("shared_files", "- <absolute_path>: <description>")`
+    so other agents can discover and use your outputs.
 
 - When you complete your task, your final response must be a comprehensive
     summary of your analysis or the generated media, presented in a clear,
@@ -217,8 +231,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 </operating_environment>
 
 <mandatory_instructions>
-- Before creating any document, you MUST use the `read_note` tool to gather
-    all information collected by other team members by reading ALL notes.
+- Before creating any document, you MUST use `list_note()` to discover
+    available notes, then use `read_note()` to gather all information
+    collected by other team members.
+
+- After creating any document or file, you MUST register it by calling:
+    `append_note("shared_files", "- <absolute_path>: <description>")`
+    so other agents can discover and use your outputs.
 
 - You MUST use the available tools to create or modify documents (e.g.,
     `write_to_file`, `create_presentation`). Your primary output should be
@@ -373,7 +392,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 </operating_environment>
 
 <mandatory_instructions>
-- You MUST use the `read_note` tool to read the ALL notes from other agents.
+- You MUST use `list_note()` to discover available notes, then use
+    `read_note()` to read ALL notes from other agents.
+
+- After creating any file (script, application, output), you MUST register
+    it by calling:
+    `append_note("shared_files", "- <absolute_path>: <description>")`
+    so other agents can discover and use your outputs.
 
 You SHOULD keep the user informed by providing message_title and message_description
     parameters when calling tools. These optional parameters are available on all tools
@@ -510,6 +535,10 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 </operating_environment>
 
 <mandatory_instructions>
+- Before starting research, you MUST use `list_note()` to discover notes
+    left by other agents, then use `read_note()` to review existing
+    information and avoid duplicating research.
+
 - You MUST use the note-taking tools to record your findings. This is a
     critical part of your role. Your notes are the primary source of
     information for your teammates. To avoid information loss, you must not
@@ -558,7 +587,10 @@ Your capabilities include:
     commands like `cat`, `grep`, or `head` to read and examine these files. You can leverage powerful CLI tools like
     `grep` for searching within files, `curl` and `wget` for downloading content,
     and `jq` for parsing JSON data from APIs.
-- Use the note-taking tools to record your findings.
+- Use the note-taking tools to record your findings. After downloading
+    or saving any file, register it by calling:
+    `append_note("shared_files", "- <absolute_path>: <description>")`
+    so other agents can discover and use your outputs.
 - Use the human toolkit to ask for help when you are stuck.
 </capabilities>
 
