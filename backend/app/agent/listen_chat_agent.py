@@ -13,69 +13,18 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
-import contextvars
 import json
 import logging
-from threading import Event, Lock
+from threading import Event
 from typing import Any, Callable, Dict, List, Tuple
 
+from app.utils.event_loop_utils import _schedule_async_task
 from app.service.task import (Action, ActionActivateAgentData,
                               ActionActivateToolkitData, ActionBudgetNotEnough,
                               ActionDeactivateAgentData,
                               ActionDeactivateToolkitData,
                               ActionStreamingAgentOutputData, get_task_lock,
                               set_process_task)
-
-# Thread-safe reference to main event loop using contextvars
-# This ensures each request has its own event loop reference, avoiding race conditions
-_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
-    "_main_event_loop", default=None
-)
-
-# Global fallback for main event loop reference
-# Used when contextvars don't propagate to worker threads (e.g., asyncio.to_thread)
-_GLOBAL_MAIN_LOOP: asyncio.AbstractEventLoop | None = None
-_GLOBAL_MAIN_LOOP_LOCK = Lock()
-
-
-def set_main_event_loop(loop: asyncio.AbstractEventLoop | None):
-    """Set the main event loop reference for thread-safe task scheduling.
-
-    This should be called from the main async context before spawning threads
-    that need to schedule async tasks. Uses both contextvars (for request isolation)
-    and a global fallback (for thread pool workers where contextvars may not propagate).
-    """
-    global _GLOBAL_MAIN_LOOP
-    _main_event_loop_var.set(loop)
-    with _GLOBAL_MAIN_LOOP_LOCK:
-        _GLOBAL_MAIN_LOOP = loop
-
-
-def _schedule_async_task(coro):
-    """Schedule an async coroutine as a task, thread-safe.
-
-    This function handles scheduling from both the main event loop thread
-    and from worker threads (e.g., when using asyncio.to_thread).
-    """
-    try:
-        # Try to get the running loop (works in main event loop thread)
-        loop = asyncio.get_running_loop()
-        loop.create_task(coro)
-    except RuntimeError:
-        # No running loop in this thread (we're in a worker thread)
-        # First try contextvars, then fallback to global reference
-        main_loop = _main_event_loop_var.get()
-        if main_loop is None:
-            with _GLOBAL_MAIN_LOOP_LOCK:
-                main_loop = _GLOBAL_MAIN_LOOP
-        if main_loop is not None and main_loop.is_running():
-            asyncio.run_coroutine_threadsafe(coro, main_loop)
-        else:
-            # This should not happen in normal operation - log error and skip
-            logging.error(
-                "No event loop available for async task scheduling, task skipped. "
-                "Ensure set_main_event_loop() is called before parallel agent creation."
-            )
 
 from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
@@ -163,6 +112,121 @@ class ListenChatAgent(ChatAgent):
 
     process_task_id: str = ""
 
+    def _send_streaming_chunk(self, content: str, is_final: bool = False) -> None:
+        """Send a streaming output chunk to the frontend.
+        
+        Args:
+            content: The content chunk to send
+            is_final: Whether this is the final chunk
+        """
+        task_lock = get_task_lock(self.api_task_id)
+        _schedule_async_task(
+            task_lock.put_queue(
+                ActionStreamingAgentOutputData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
+                        "content": content,
+                        "is_final": is_final,
+                    },
+                )
+            )
+        )
+
+    def _send_agent_deactivate(self, message: str, tokens: int) -> None:
+        """Send agent deactivation event to the frontend.
+        
+        Args:
+            message: The accumulated message content
+            tokens: The total token count used
+        """
+        task_lock = get_task_lock(self.api_task_id)
+        asyncio.create_task(
+            task_lock.put_queue(
+                ActionDeactivateAgentData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
+                        "message": message,
+                        "tokens": tokens,
+                    },
+                )
+            )
+        )
+
+    @staticmethod
+    def _extract_tokens(response) -> int:
+        """Extract total token count from a response chunk.
+        
+        Args:
+            response: The response chunk (ChatAgentResponse or similar)
+            
+        Returns:
+            Total token count or 0 if not available
+        """
+        if response is None:
+            return 0
+        usage_info = response.info.get("usage") or response.info.get("token_usage") or {}
+        return usage_info.get("total_tokens", 0)
+
+    def _stream_chunks(self, response_gen):
+        """Generator that wraps a streaming response and sends chunks to frontend.
+        
+        Args:
+            response_gen: The original streaming response generator
+            
+        Yields:
+            Each chunk from the original generator
+            
+        Returns:
+            Tuple of (accumulated_content, total_tokens) via StopIteration value
+        """
+        accumulated_content = ""
+        last_chunk = None
+        
+        try:
+            for chunk in response_gen:
+                last_chunk = chunk
+                if chunk.msg and chunk.msg.content:
+                    accumulated_content += chunk.msg.content
+                    # Stream output chunk to frontend (non-blocking)
+                    self._send_streaming_chunk(chunk.msg.content, is_final=False)
+                yield chunk
+        finally:
+            total_tokens = self._extract_tokens(last_chunk)
+            # Send final streaming output marker and deactivate agent
+            self._send_streaming_chunk("", is_final=True)
+            self._send_agent_deactivate(accumulated_content, total_tokens)
+    
+    async def _astream_chunks(self, response_gen):
+        """Async generator that wraps a streaming response and sends chunks to frontend.
+        
+        Args:
+            response_gen: The original async streaming response generator
+            
+        Yields:
+            Each chunk from the original generator
+        """
+        accumulated_content = ""
+        last_chunk = None
+        
+        try:
+            async for chunk in response_gen:
+                last_chunk = chunk
+                if chunk.msg and chunk.msg.content:
+                    delta_content = chunk.msg.content
+                    accumulated_content += delta_content
+                    # Stream output chunk to frontend (non-blocking)
+                    self._send_streaming_chunk(delta_content, is_final=False)
+                yield chunk
+        finally:
+            total_tokens = self._extract_tokens(last_chunk)
+            # Send final streaming output marker and deactivate agent
+            self._send_streaming_chunk("", is_final=True)
+            self._send_agent_deactivate(accumulated_content, total_tokens)
+
     def step(
         self,
         input_message: BaseMessage | str,
@@ -214,73 +278,8 @@ class ListenChatAgent(ChatAgent):
 
         if res is not None:
             if isinstance(res, StreamingChatAgentResponse):
-
-                def _stream_with_deactivate():
-                    last_response: ChatAgentResponse | None = None
-                    # With stream_accumulate=False,
-                    # we need to accumulate delta content
-                    accumulated_content = ""
-                    try:
-                        for chunk in res:
-                            last_response = chunk
-                            # Accumulate content from each chunk (delta mode)
-                            if chunk.msg and chunk.msg.content:
-                                delta_content = chunk.msg.content
-                                accumulated_content += delta_content
-                                # Stream output chunk to frontend (non-blocking)
-                                _schedule_async_task(
-                                    task_lock.put_queue(
-                                        ActionStreamingAgentOutputData(
-                                            data={
-                                                "agent_name": self.agent_name,
-                                                "process_task_id": self.process_task_id,
-                                                "agent_id": self.agent_id,
-                                                "content": delta_content,
-                                                "is_final": False,
-                                            },
-                                        )
-                                    )
-                                )
-                            yield chunk
-                    finally:
-                        total_tokens = 0
-                        if last_response:
-                            usage_info = last_response.info.get(
-                                "usage") or last_response.info.get(
-                                    "token_usage") or {}
-                            if usage_info:
-                                total_tokens = usage_info.get(
-                                    "total_tokens", 0)
-                        # Send final streaming output marker
-                        asyncio.create_task(
-                            task_lock.put_queue(
-                                ActionStreamingAgentOutputData(
-                                    data={
-                                        "agent_name": self.agent_name,
-                                        "process_task_id": self.process_task_id,
-                                        "agent_id": self.agent_id,
-                                        "content": "",
-                                        "is_final": True,
-                                    },
-                                )
-                            )
-                        )
-                        asyncio.create_task(
-                            task_lock.put_queue(
-                                ActionDeactivateAgentData(data={
-                                    "agent_name":
-                                    self.agent_name,
-                                    "process_task_id":
-                                    self.process_task_id,
-                                    "agent_id":
-                                    self.agent_id,
-                                    "message":
-                                    accumulated_content,
-                                    "tokens":
-                                    total_tokens,
-                                }, )))
-
-                return StreamingChatAgentResponse(_stream_with_deactivate())
+                # Use reusable stream wrapper to send chunks to frontend
+                return StreamingChatAgentResponse(self._stream_chunks(res))
 
             message = res.msg.content if res.msg else ""
             usage_info = res.info.get("usage") or res.info.get(
@@ -339,70 +338,8 @@ class ListenChatAgent(ChatAgent):
         try:
             res = await super().astep(input_message, response_format)
             if isinstance(res, AsyncStreamingChatAgentResponse):
-                # Wrap the async streaming response to send chunks to frontend
-                async def _async_stream_with_deactivate():
-                    accumulated_content = ""
-                    last_chunk = None
-                    try:
-                        async for chunk in res:
-                            last_chunk = chunk
-                            if chunk.msg and chunk.msg.content:
-                                delta_content = chunk.msg.content
-                                accumulated_content += delta_content
-                                # Stream output chunk to frontend (non-blocking)
-                                _schedule_async_task(
-                                    task_lock.put_queue(
-                                        ActionStreamingAgentOutputData(
-                                            data={
-                                                "agent_name": self.agent_name,
-                                                "process_task_id": self.process_task_id,
-                                                "agent_id": self.agent_id,
-                                                "content": delta_content,
-                                                "is_final": False,
-                                            },
-                                        )
-                                    )
-                                )
-                            yield chunk
-                    finally:
-                        total_tokens = 0
-                        if last_chunk:
-                            usage_info = (
-                                last_chunk.info.get("usage")
-                                or last_chunk.info.get("token_usage")
-                                or {}
-                            )
-                            if usage_info:
-                                total_tokens = usage_info.get("total_tokens", 0)
-                        # Send final streaming output marker
-                        asyncio.create_task(
-                            task_lock.put_queue(
-                                ActionStreamingAgentOutputData(
-                                    data={
-                                        "agent_name": self.agent_name,
-                                        "process_task_id": self.process_task_id,
-                                        "agent_id": self.agent_id,
-                                        "content": "",
-                                        "is_final": True,
-                                    },
-                                )
-                            )
-                        )
-                        asyncio.create_task(
-                            task_lock.put_queue(
-                                ActionDeactivateAgentData(
-                                    data={
-                                        "agent_name": self.agent_name,
-                                        "process_task_id": self.process_task_id,
-                                        "agent_id": self.agent_id,
-                                        "message": accumulated_content,
-                                        "tokens": total_tokens,
-                                    },
-                                )
-                            )
-                        )
-
-                return AsyncStreamingChatAgentResponse(_async_stream_with_deactivate())
+                # Use reusable async stream wrapper to send chunks to frontend
+                return AsyncStreamingChatAgentResponse(self._astream_chunks(res))
         except ModelProcessingError as e:
             res = None
             error_info = e
@@ -497,19 +434,7 @@ class ListenChatAgent(ChatAgent):
                         }, )))
                 # Stream tool activity to frontend as "thinking" text
                 tool_display = func_name.replace("_", " ").title()
-                _schedule_async_task(
-                    task_lock.put_queue(
-                        ActionStreamingAgentOutputData(
-                            data={
-                                "agent_name": self.agent_name,
-                                "process_task_id": self.process_task_id,
-                                "agent_id": self.agent_id,
-                                "content": f"[Tool] {tool_display}...\n",
-                                "is_final": False,
-                            },
-                        )
-                    )
-                )
+                self._send_streaming_chunk(f"[Tool] {tool_display}...\n", is_final=False)
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)

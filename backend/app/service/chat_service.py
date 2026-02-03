@@ -28,7 +28,7 @@ from fastapi import Request
 from inflection import titleize
 from pydash import chain
 
-from app.agent.agent_model import agent_model, set_main_event_loop
+from app.agent.agent_model import agent_model
 from app.agent.factory import (
     browser_agent,
     developer_agent,
@@ -60,6 +60,7 @@ from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
+from app.utils.event_loop_utils import set_main_event_loop
 
 logger = logging.getLogger("chat_service")
 
