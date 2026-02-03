@@ -14,6 +14,9 @@
 
 import platform
 
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
+
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DEVELOPER_SYS_PROMPT
@@ -23,22 +26,25 @@ from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
+
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.toolkit.web_deploy_toolkit import WebDeployToolkit
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
 
 
 async def developer_agent(options: Chat):
     working_directory = get_working_directory(options)
-    logger.info(f"Creating developer agent for project: {options.project_id} "
-                f"in directory: {working_directory}")
+    logger.info(
+        f"Creating developer agent for project: {options.project_id} "
+        f"in directory: {working_directory}"
+    )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.developer_agent).send_message_to_user)
+            options.project_id, Agents.developer_agent
+        ).send_message_to_user
+    )
     note_toolkit = NoteTakingToolkit(
         api_task_id=options.project_id,
         agent_name=Agents.developer_agent,
@@ -47,11 +53,14 @@ async def developer_agent(options: Chat):
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
     web_deploy_toolkit = message_integration.register_toolkits(
-        web_deploy_toolkit)
-    screenshot_toolkit = ScreenshotToolkit(options.project_id,
-                                           working_directory=working_directory)
+        web_deploy_toolkit
+    )
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id, working_directory=working_directory
+    )
     screenshot_toolkit = message_integration.register_toolkits(
-        screenshot_toolkit)
+        screenshot_toolkit
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -67,8 +76,8 @@ async def developer_agent(options: Chat):
     )
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.developer_agent),
+        *HumanToolkit.
+        get_can_use_tools(options.project_id, Agents.developer_agent),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),

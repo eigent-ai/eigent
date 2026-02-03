@@ -13,11 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import McpServers
-
 
 pytestmark = pytest.mark.unit
 
@@ -32,21 +32,28 @@ class TestToolkitFunctions:
         agent_name = "TestAgent"
         api_task_id = "test_task_123"
 
-        with patch('app.agent.tools.SearchToolkit') as mock_search_toolkit, \
-             patch('app.agent.tools.TerminalToolkit') as mock_terminal_toolkit, \
-             patch('app.agent.tools.FileToolkit') as mock_file_toolkit:
+        _mod = 'app.agent.tools'
+        with patch(f'{_mod}.SearchToolkit') as mock_search_toolkit, \
+             patch(f'{_mod}.TerminalToolkit') as mock_terminal_toolkit, \
+             patch(f'{_mod}.FileToolkit') as mock_file_toolkit:
 
-            # Mock toolkit instances - these should return tools directly from get_can_use_tools
+            # Mock toolkit instances - these should
+            # return tools directly
+            # from get_can_use_tools
             mock_search_instance = MagicMock()
             mock_search_instance.agent_name = agent_name
             mock_search_tools = [MagicMock(), MagicMock()]
-            mock_search_instance.get_can_use_tools.return_value = mock_search_tools
+            mock_search_instance\
+                .get_can_use_tools\
+                .return_value = mock_search_tools
             mock_search_toolkit.return_value = mock_search_instance
 
             mock_terminal_instance = MagicMock()
             mock_terminal_instance.agent_name = agent_name
             mock_terminal_tools = [MagicMock()]
-            mock_terminal_instance.get_can_use_tools.return_value = mock_terminal_tools
+            mock_terminal_instance\
+                .get_can_use_tools\
+                .return_value = mock_terminal_tools
             mock_terminal_toolkit.return_value = mock_terminal_instance
 
             mock_file_instance = MagicMock()
@@ -55,16 +62,26 @@ class TestToolkitFunctions:
             mock_file_instance.get_can_use_tools.return_value = mock_file_tools
             mock_file_toolkit.return_value = mock_file_instance
 
-            # Mock the toolkit classes to have get_can_use_tools class method that returns the mock tools
-            mock_search_toolkit.get_can_use_tools = MagicMock(return_value=mock_search_tools)
-            mock_terminal_toolkit.get_can_use_tools = MagicMock(return_value=mock_terminal_tools)
-            mock_file_toolkit.get_can_use_tools = MagicMock(return_value=mock_file_tools)
+            # Mock the toolkit classes to have
+            # get_can_use_tools class method
+            # that returns the mock tools
+            mock_search_toolkit.get_can_use_tools = MagicMock(
+                return_value=mock_search_tools
+            )
+            mock_terminal_toolkit.get_can_use_tools = MagicMock(
+                return_value=mock_terminal_tools
+            )
+            mock_file_toolkit.get_can_use_tools = MagicMock(
+                return_value=mock_file_tools
+            )
 
             result = await get_toolkits(tools, agent_name, api_task_id)
 
             # The result should contain tools from the toolkits that match
             assert isinstance(result, list)
-            # Since get_toolkits filters by known toolkit names, only matching ones should be included
+            # Since get_toolkits filters by known
+            # toolkit names, only matching ones
+            # should be included
             assert len(result) >= 0  # Should have some tools if any match
 
     @pytest.mark.asyncio
@@ -97,7 +114,10 @@ class TestToolkitFunctions:
         agent_name = "ErrorAgent"
         api_task_id = "error_test_123"
 
-        with patch('app.agent.tools.SearchToolkit', side_effect=Exception("Toolkit init failed")):
+        with patch(
+            'app.agent.tools.SearchToolkit',
+            side_effect=Exception("Toolkit init failed")
+        ):
             # Should handle toolkit initialization errors
             result = await get_toolkits(tools, agent_name, api_task_id)
             # Should return what it can or empty list
@@ -154,7 +174,10 @@ class TestMcpTools:
             }
         }
 
-        with patch('app.agent.tools.MCPToolkit', side_effect=Exception("Connection failed")):
+        with patch(
+            'app.agent.tools.MCPToolkit',
+            side_effect=Exception("Connection failed")
+        ):
             result = await get_mcp_tools(mcp_servers)
             assert result == []
 

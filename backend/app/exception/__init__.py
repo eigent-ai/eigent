@@ -12,17 +12,3 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import pytest
-
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-
-
-@pytest.mark.unit
-def test_working_directory_required():
-    """Test that working_directory is required and raises
-    ValueError if not provided.
-    """
-    with pytest.raises(ValueError) as exc_info:
-        NoteTakingToolkit(api_task_id="test_task_123")
-
-    assert "working_directory is required" in str(exc_info.value)

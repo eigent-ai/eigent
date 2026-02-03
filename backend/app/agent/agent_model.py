@@ -12,75 +12,19 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import asyncio
-import contextvars
 import logging
 import uuid
-from threading import Lock
 from typing import Any, Callable
 
-from app.agent.listen_chat_agent import ListenChatAgent, logger
-from app.model.chat import AgentModelConfig, Chat
-from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from camel.messages import BaseMessage
 from camel.models import ModelFactory
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
 
-# Thread-safe reference to main event loop using contextvars
-# This ensures each request has its own event loop reference,
-# avoiding race conditions
-_main_event_loop_var: contextvars.ContextVar[asyncio.AbstractEventLoop
-                                             | None] = contextvars.ContextVar(
-                                                 "_main_event_loop",
-                                                 default=None)
-
-# Global fallback for main event loop reference
-# Used when contextvars don't propagate to worker threads
-# (e.g., asyncio.to_thread)
-_GLOBAL_MAIN_LOOP: asyncio.AbstractEventLoop | None = None
-_GLOBAL_MAIN_LOOP_LOCK = Lock()
-
-
-def set_main_event_loop(loop: asyncio.AbstractEventLoop | None):
-    """Set the main event loop reference for thread-safe task scheduling.
-
-    This should be called from the main async context before spawning threads
-    that need to schedule async tasks. Uses both contextvars (for request
-    isolation) and a global fallback (for thread pool workers where
-    contextvars may not propagate).
-    """
-    global _GLOBAL_MAIN_LOOP
-    _main_event_loop_var.set(loop)
-    with _GLOBAL_MAIN_LOOP_LOCK:
-        _GLOBAL_MAIN_LOOP = loop
-
-
-def _schedule_async_task(coro):
-    """Schedule an async coroutine as a task, thread-safe.
-
-    This function handles scheduling from both the main event loop thread
-    and from worker threads (e.g., when using asyncio.to_thread).
-    """
-    try:
-        # Try to get the running loop (works in main event loop thread)
-        loop = asyncio.get_running_loop()
-        loop.create_task(coro)
-    except RuntimeError:
-        # No running loop in this thread (we're in a worker thread)
-        # First try contextvars, then fallback to global reference
-        main_loop = _main_event_loop_var.get()
-        if main_loop is None:
-            with _GLOBAL_MAIN_LOOP_LOCK:
-                main_loop = _GLOBAL_MAIN_LOOP
-        if main_loop is not None and main_loop.is_running():
-            asyncio.run_coroutine_threadsafe(coro, main_loop)
-        else:
-            # This should not happen in normal operation - log error and skip
-            logging.error("No event loop available for async task "
-                          "scheduling, task skipped. Ensure "
-                          "set_main_event_loop() is called "
-                          "before parallel agent creation.")
+from app.utils.event_loop_utils import _schedule_async_task
+from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.model.chat import AgentModelConfig, Chat
+from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
 def agent_model(
@@ -96,8 +40,10 @@ def agent_model(
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
-    logger.info(f"Creating agent: {agent_name} with id: {agent_id} "
-                f"for project: {options.project_id}")
+    logger.info(
+        f"Creating agent: {agent_name} with id: {agent_id} "
+        f"for project: {options.project_id}"
+    )
     # Use thread-safe scheduling to support parallel agent creation
     _schedule_async_task(
         task_lock.put_queue(
@@ -106,7 +52,10 @@ def agent_model(
                     "agent_name": agent_name,
                     "agent_id": agent_id,
                     "tools": tool_names or [],
-                })))
+                }
+            )
+        )
+    )
 
     # Determine model configuration - use custom config if provided,
     # otherwise use task defaults
@@ -117,11 +66,14 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(custom_model_config, attr,
                                              None) or getattr(options, attr)
-        extra_params = (custom_model_config.extra_params
-                        or options.extra_params or {})
-        logger.info(f"Agent {agent_name} using custom model config: "
-                    f"platform={effective_config['model_platform']}, "
-                    f"type={effective_config['model_type']}")
+        extra_params = (
+            custom_model_config.extra_params or options.extra_params or {}
+        )
+        logger.info(
+            f"Agent {agent_name} using custom model config: "
+            f"platform={effective_config['model_platform']}, "
+            f"type={effective_config['model_type']}"
+        )
     else:
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
@@ -163,13 +115,14 @@ def agent_model(
     if agent_name == Agents.browser_agent:
         try:
             model_platform_enum = ModelPlatformType(
-                effective_config["model_platform"].lower())
+                effective_config["model_platform"].lower()
+            )
             if model_platform_enum in {
-                    ModelPlatformType.OPENAI,
-                    ModelPlatformType.AZURE,
-                    ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
-                    ModelPlatformType.LITELLM,
-                    ModelPlatformType.OPENROUTER,
+                ModelPlatformType.OPENAI,
+                ModelPlatformType.AZURE,
+                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                ModelPlatformType.LITELLM,
+                ModelPlatformType.OPENROUTER,
             }:
                 model_config["parallel_tool_calls"] = False
         except (ValueError, AttributeError):
