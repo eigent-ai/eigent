@@ -105,7 +105,7 @@ export function Node({ id, data }: NodeProps) {
 							!task.reAssignTo
 						);
 					case "failed":
-						return task.status === TaskStatus.FAILED;
+						return task.status === TaskStatus.FAILED && !task.reAssignTo;
 					default:
 						return false;
 				}
@@ -579,7 +579,7 @@ export function Node({ id, data }: NodeProps) {
 									}
 									failed={
 										data.agent?.tasks?.filter(
-											(task) => task.status === TaskStatus.FAILED
+											(task) => task.status === TaskStatus.FAILED && !task.reAssignTo
 										).length || 0
 									}
 									selectedState={selectedState}

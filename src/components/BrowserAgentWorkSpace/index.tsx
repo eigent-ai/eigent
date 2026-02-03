@@ -224,7 +224,7 @@ export default function Home() {
               }
               done={
                 activeAgent?.tasks?.filter(
-                  (task) => task.status === TaskStatus.COMPLETED
+                  (task) => task.status === TaskStatus.COMPLETED && !task.reAssignTo
                 ).length || 0
               }
               progress={
@@ -233,17 +233,23 @@ export default function Home() {
                     task.status !== TaskStatus.FAILED &&
                     task.status !== TaskStatus.COMPLETED &&
                     task.status !== TaskStatus.SKIPPED &&
-                    task.status !== TaskStatus.WAITING
+                    task.status !== TaskStatus.WAITING &&
+                    task.status !== TaskStatus.EMPTY &&
+                    !task.reAssignTo
                 ).length || 0
               }
               failed={
-                activeAgent?.tasks?.filter((task) => task.status === TaskStatus.FAILED)
-                  .length || 0
+                activeAgent?.tasks?.filter(
+                  (task) => task.status === TaskStatus.FAILED && !task.reAssignTo
+                ).length || 0
               }
               skipped={
                 activeAgent?.tasks?.filter(
                   (task) =>
-                    task.status === TaskStatus.SKIPPED || task.status === TaskStatus.WAITING
+                    (task.status === TaskStatus.SKIPPED ||
+                      task.status === TaskStatus.WAITING ||
+                      task.status === TaskStatus.EMPTY) &&
+                    !task.reAssignTo
                 ).length || 0
               }
             />

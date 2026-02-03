@@ -108,7 +108,7 @@ export function TaskCard({
 							!task.reAssignTo
 						);
 					case "failed":
-						return task.status === TaskStatus.FAILED;
+						return task.status === TaskStatus.FAILED && !task.reAssignTo;
 					default:
 						return false;
 				}
@@ -275,8 +275,9 @@ export function TaskCard({
 											).length || 0
 										}
 										failed={
-											taskRunning?.filter((task) => task.status === TaskStatus.FAILED)
-												.length || 0
+											taskRunning?.filter(
+												(task) => task.status === TaskStatus.FAILED && !task.reAssignTo
+											).length || 0
 										}
 										forceVisible={true}
 										selectedState={selectedState}
