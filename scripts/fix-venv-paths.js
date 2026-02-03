@@ -27,6 +27,8 @@
  * - This makes prebuilt venvs portable across different machines
  */
 
+/* global process, console */
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -63,16 +65,21 @@ function fixPyvenvCfg(venvPath, venvName) {
 
     // Extract cpython directory name from the path
     // Example: /path/to/cpython-3.10.19-macos-aarch64-none/bin -> cpython-3.10.19-macos-aarch64-none
-    const cpythonMatch = originalHome.match(/(cpython-[\w\.\-]+)/);
+    const cpythonMatch = originalHome.match(/(cpython-[\w.-]+)/);
     if (!cpythonMatch) {
-      console.log(`⚠️  Could not extract cpython directory from: ${originalHome}`);
+      console.log(
+        `⚠️  Could not extract cpython directory from: ${originalHome}`
+      );
       return false;
     }
 
     const cpythonDir = cpythonMatch[1];
 
     // Determine if this is Windows or Unix path
-    const isWindowsPath = originalHome.includes('\\') || originalHome.includes('Scripts');
+    const isWindowsPath =
+      /^[A-Za-z]:\\/.test(originalHome) ||
+      originalHome.startsWith('\\\\') ||
+      originalHome.includes('\\');
     const binDir = isWindowsPath ? 'Scripts' : 'bin';
 
     // Replace with placeholder that will be substituted at runtime
@@ -86,7 +93,9 @@ function fixPyvenvCfg(venvPath, venvName) {
     if (content !== originalContent) {
       fs.writeFileSync(pyvenvCfgPath, content);
       console.log(`   ✅ Updated to: ${newHome}`);
-      console.log(`   🔧 Runtime will replace {{PREBUILT_PYTHON_DIR}} with actual path`);
+      console.log(
+        `   🔧 Runtime will replace {{PREBUILT_PYTHON_DIR}} with actual path`
+      );
       return true;
     } else {
       console.log(`   ℹ️  Already using placeholder, no change needed`);
@@ -108,12 +117,12 @@ function main() {
   const venvDirs = [
     {
       path: path.join(projectRoot, 'resources', 'prebuilt', 'venv'),
-      name: 'backend venv'
+      name: 'backend venv',
     },
     {
       path: path.join(projectRoot, 'resources', 'prebuilt', 'terminal_venv'),
-      name: 'terminal venv'
-    }
+      name: 'terminal venv',
+    },
   ];
 
   let successCount = 0;
@@ -132,10 +141,14 @@ function main() {
 
   console.log('\n================================================');
   if (successCount === totalCount && totalCount > 0) {
-    console.log(`✅ Successfully fixed ${successCount}/${totalCount} pyvenv.cfg files`);
+    console.log(
+      `✅ Successfully fixed ${successCount}/${totalCount} pyvenv.cfg files`
+    );
     console.log('✅ Venvs are now portable and will work on user machines!');
   } else if (totalCount === 0) {
-    console.log('⚠️  No venv directories found - this is OK for development builds');
+    console.log(
+      '⚠️  No venv directories found - this is OK for development builds'
+    );
   } else {
     console.log(`⚠️  Fixed ${successCount}/${totalCount} pyvenv.cfg files`);
     process.exit(1);
