@@ -9,7 +9,8 @@ repos:
     rev: v6.0.0
     hooks:
       - id: no-commit-to-branch
-        name: No commits to master
+        name: No commits to main
+        args: [--branch, main]
       - id: end-of-file-fixer
         name: End-of-file fixer
       - name: mixed-line-ending
