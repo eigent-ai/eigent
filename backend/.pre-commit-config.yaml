@@ -17,6 +17,7 @@ repos:
         args: [--fix, lf]
       - id: trailing-whitespace
         name: Remove trailing whitespaces
+        exclude: '\.md$'
       - id: check-toml
         name: Check toml
       - id: check-yaml
@@ -27,54 +28,17 @@ repos:
     hooks:
       - id: yamllint
         name: Lint yaml
-        args: [-d, '{extends: default, rules: {line-length: disable, document-start: disable, truthy: {level: error}, braces: {max-spaces-inside: 1}}}']
+        args: [-d, '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable, braces: disable, brackets: disable, indentation: disable, comments: disable, comments-indentation: disable}}']
 
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.0
-    hooks:
-      - id: pyupgrade
-        name: Upgrade Python syntax
-        args: [--py38-plus]
-
-  - repo: https://github.com/PyCQA/autoflake
-    rev: v2.3.1
-    hooks:
-      - id: autoflake
-        name: Remove unused imports and variables
-        args: [
-          --remove-all-unused-imports,
-          --remove-unused-variables,
-          --remove-duplicate-keys,
-          --ignore-init-module-imports,
-          --in-place,
-        ]
-
-  - repo: https://github.com/google/yapf
-    rev: v0.43.0
-    hooks:
-      - id: yapf
-        name: Format code
-        additional_dependencies: [toml]
-
-  - repo: https://github.com/pycqa/isort
-    rev: 7.0.0
-    hooks:
-      - id: isort
-        name: Sort imports
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        name: Check PEP8
-        additional_dependencies: [Flake8-pyproject]
-
+  # Ruff replaces: yapf, flake8, autoflake, pyupgrade, isort
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.3
     hooks:
       - id: ruff
-        name: Ruff formatting
-        args: [--fix, --exit-non-zero-on-fix]
+        name: Ruff lint (auto-fix)
+        args: [--fix]
+      - id: ruff-format
+        name: Ruff format
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 0.7.22

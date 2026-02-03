@@ -14,17 +14,18 @@
 
 import logging
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from camel.messages import BaseMessage
 from camel.models import ModelFactory
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
 
-from app.utils.event_loop_utils import _schedule_async_task
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
+from app.utils.event_loop_utils import _schedule_async_task
 
 
 def agent_model(
@@ -64,8 +65,9 @@ def agent_model(
 
     if custom_model_config and custom_model_config.has_custom_config():
         for attr in config_attrs:
-            effective_config[attr] = getattr(custom_model_config, attr,
-                                             None) or getattr(options, attr)
+            effective_config[attr] = getattr(
+                custom_model_config, attr, None
+            ) or getattr(options, attr)
         extra_params = (
             custom_model_config.extra_params or options.extra_params or {}
         )

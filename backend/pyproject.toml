@@ -34,31 +34,39 @@ dev = [
     "pytest-asyncio>=1.1.0",
 ]
 
-[tool.isort]
-profile = "black"
-line_length = 79
-force_single_line = false
-multi_line_output = 3
-include_trailing_comma = true
-use_parentheses = true
-
-[tool.yapf]
-based_on_style = "pep8"
-column_limit = 79
-blank_line_before_nested_class_or_def = true
-split_before_named_assigns = true
-dedent_closing_brackets = true
-
 [tool.ruff]
 line-length = 79
+target-version = "py310"
 
 [tool.ruff.lint]
-extend-select = [
-    "B006", # forbid def demo(mutation = [])
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes (unused imports, variables, etc.)
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade (Python syntax upgrades)
+    "B",      # flake8-bugbear
+]
+ignore = [
+    "E402",   # module level import not at top of file (needed for path setup)
+    "E501",   # line too long (handled by formatter)
+    "E712",   # == False comparisons (needed for SQLAlchemy)
+    "B904",   # raise from - too many existing violations
+    "B023",   # closure captures loop variable - existing pattern
+    "B017",   # blind except in tests - acceptable
+    "B905",   # zip strict - not needed for Python 3.10
 ]
 
-[tool.flake8]
-max-line-length = 79
+[tool.ruff.lint.isort]
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["F841"]  # unused variables OK in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

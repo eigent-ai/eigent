@@ -15,7 +15,6 @@
 import logging
 import os
 import time
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -29,10 +28,11 @@ from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 
 class LinkedInTokenRequest(BaseModel):
     r"""Request model for saving LinkedIn OAuth token."""
+
     access_token: str
-    refresh_token: Optional[str] = None
-    expires_in: Optional[int] = None
-    scope: Optional[str] = None
+    refresh_token: str | None = None
+    expires_in: int | None = None
+    scope: str | None = None
 
 
 logger = logging.getLogger("tool_controller")
@@ -77,10 +77,9 @@ async def install_tool(tool: str):
                 return {
                     "success": True,
                     "tools": tools,
-                    "message":
-                    f"Successfully installed and authenticated {tool} toolkit",
+                    "message": f"Successfully installed and authenticated {tool} toolkit",
                     "count": len(tools),
-                    "toolkit_name": "NotionMCPToolkit"
+                    "toolkit_name": "NotionMCPToolkit",
                 }
             except Exception as connect_error:
                 logger.warning(
@@ -89,22 +88,17 @@ async def install_tool(tool: str):
                 # Even if connection fails, mark as
                 # installed so user can use it later
                 return {
-                    "success":
-                    True,
+                    "success": True,
                     "tools": [],
-                    "message":
-                    f"{tool} toolkit installed but"
+                    "message": f"{tool} toolkit installed but"
                     " not connected. Will connect"
                     " when needed.",
-                    "count":
-                    0,
-                    "toolkit_name":
-                    "NotionMCPToolkit",
-                    "warning":
-                    "Could not connect to Notion"
+                    "count": 0,
+                    "toolkit_name": "NotionMCPToolkit",
+                    "warning": "Could not connect to Notion"
                     " MCP server. You may need to"
                     " authenticate when using"
-                    " the tool."
+                    " the tool.",
                 }
         except Exception as e:
             logger.error(f"Failed to install {tool} toolkit: {e}")
@@ -131,7 +125,7 @@ async def install_tool(tool: str):
                     "tools": tools,
                     "message": f"Successfully installed {tool} toolkit",
                     "count": len(tools),
-                    "toolkit_name": "GoogleCalendarToolkit"
+                    "toolkit_name": "GoogleCalendarToolkit",
                 }
             except ValueError as auth_error:
                 # No credentials - need authorization
@@ -147,19 +141,14 @@ async def install_tool(tool: str):
                 GoogleCalendarToolkit.start_background_auth("install_auth")
 
                 return {
-                    "success":
-                    False,
-                    "status":
-                    "authorizing",
-                    "message":
-                    "Authorization required. Browser"
+                    "success": False,
+                    "status": "authorizing",
+                    "message": "Authorization required. Browser"
                     " should open automatically."
                     " Complete authorization and"
                     " try installing again.",
-                    "toolkit_name":
-                    "GoogleCalendarToolkit",
-                    "requires_auth":
-                    True
+                    "toolkit_name": "GoogleCalendarToolkit",
+                    "requires_auth": True,
                 }
         except Exception as e:
             logger.error(f"Failed to install {tool} toolkit: {e}")
@@ -174,20 +163,14 @@ async def install_tool(tool: str):
                 if LinkedInToolkit.is_token_expired():
                     logger.info("LinkedIn token has expired")
                     return {
-                        "success":
-                        False,
-                        "status":
-                        "token_expired",
-                        "message":
-                        "LinkedIn token has expired."
+                        "success": False,
+                        "status": "token_expired",
+                        "message": "LinkedIn token has expired."
                         " Please re-authenticate"
                         " via OAuth.",
-                        "toolkit_name":
-                        "LinkedInToolkit",
-                        "requires_auth":
-                        True,
-                        "oauth_url":
-                        "/api/oauth/linkedin/login"
+                        "toolkit_name": "LinkedInToolkit",
+                        "requires_auth": True,
+                        "oauth_url": "/api/oauth/linkedin/login",
                     }
 
                 try:
@@ -227,7 +210,7 @@ async def install_tool(tool: str):
                         "message": f"Successfully installed {tool} toolkit",
                         "count": len(tools),
                         "toolkit_name": "LinkedInToolkit",
-                        "profile": profile if "error" not in profile else None
+                        "profile": profile if "error" not in profile else None,
                     }
                     if token_warning:
                         result["warning"] = token_warning
@@ -236,20 +219,14 @@ async def install_tool(tool: str):
                     logger.warning(f"LinkedIn token may be invalid: {e}")
                     # Token exists but may be expired/invalid
                     return {
-                        "success":
-                        False,
-                        "status":
-                        "token_invalid",
-                        "message":
-                        "LinkedIn token may be expired"
+                        "success": False,
+                        "status": "token_invalid",
+                        "message": "LinkedIn token may be expired"
                         " or invalid. Please"
                         " re-authenticate via OAuth.",
-                        "toolkit_name":
-                        "LinkedInToolkit",
-                        "requires_auth":
-                        True,
-                        "oauth_url":
-                        "/api/oauth/linkedin/login"
+                        "toolkit_name": "LinkedInToolkit",
+                        "requires_auth": True,
+                        "oauth_url": "/api/oauth/linkedin/login",
                     }
             else:
                 # No credentials - need OAuth authorization
@@ -257,11 +234,10 @@ async def install_tool(tool: str):
                 return {
                     "success": False,
                     "status": "not_configured",
-                    "message":
-                    "LinkedIn OAuth required. Redirect user to OAuth login.",
+                    "message": "LinkedIn OAuth required. Redirect user to OAuth login.",
                     "toolkit_name": "LinkedInToolkit",
                     "requires_auth": True,
-                    "oauth_url": "/api/oauth/linkedin/login"
+                    "oauth_url": "/api/oauth/linkedin/login",
                 }
         except Exception as e:
             logger.error(f"Failed to install {tool} toolkit: {e}")
@@ -277,7 +253,7 @@ async def install_tool(tool: str):
                 " ['notion',"
                 " 'google_calendar',"
                 " 'linkedin']"
-            )
+            ),
         )
 
 
@@ -292,48 +268,34 @@ async def list_available_tools():
     return {
         "tools": [
             {
-                "name":
-                "notion",
-                "display_name":
-                "Notion MCP",
-                "description":
-                "Notion workspace integration"
+                "name": "notion",
+                "display_name": "Notion MCP",
+                "description": "Notion workspace integration"
                 " for reading and managing"
                 " Notion pages",
-                "toolkit_class":
-                "NotionMCPToolkit",
-                "requires_auth":
-                True
-            }, {
-                "name":
-                "google_calendar",
-                "display_name":
-                "Google Calendar",
-                "description":
-                "Google Calendar integration"
+                "toolkit_class": "NotionMCPToolkit",
+                "requires_auth": True,
+            },
+            {
+                "name": "google_calendar",
+                "display_name": "Google Calendar",
+                "description": "Google Calendar integration"
                 " for managing events"
                 " and schedules",
-                "toolkit_class":
-                "GoogleCalendarToolkit",
-                "requires_auth":
-                True
-            }, {
-                "name":
-                "linkedin",
-                "display_name":
-                "LinkedIn",
-                "description":
-                "LinkedIn integration for"
+                "toolkit_class": "GoogleCalendarToolkit",
+                "requires_auth": True,
+            },
+            {
+                "name": "linkedin",
+                "display_name": "LinkedIn",
+                "description": "LinkedIn integration for"
                 " creating posts, managing"
                 " profile, and social media"
                 " automation",
-                "toolkit_class":
-                "LinkedInToolkit",
-                "requires_auth":
-                True,
-                "oauth_url":
-                "/api/oauth/linkedin/login"
-            }
+                "toolkit_class": "LinkedInToolkit",
+                "requires_auth": True,
+                "oauth_url": "/api/oauth/linkedin/login",
+            },
         ]
     }
 
@@ -355,7 +317,7 @@ async def get_oauth_status(provider: str):
         return {
             "provider": provider,
             "status": "not_started",
-            "message": "No authorization in progress"
+            "message": "No authorization in progress",
         }
 
     return state.to_dict()
@@ -377,13 +339,13 @@ async def cancel_oauth(provider: str):
     if not state:
         raise HTTPException(
             status_code=404,
-            detail=f"No authorization found for provider '{provider}'"
+            detail=f"No authorization found for provider '{provider}'",
         )
 
     if state.status not in ["pending", "authorizing"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot cancel authorization with status '{state.status}'"
+            detail=f"Cannot cancel authorization with status '{state.status}'",
         )
 
     state.cancel()
@@ -392,7 +354,7 @@ async def cancel_oauth(provider: str):
     return {
         "success": True,
         "provider": provider,
-        "message": "Authorization cancelled successfully"
+        "message": "Authorization cancelled successfully",
     }
 
 
@@ -456,13 +418,12 @@ async def uninstall_tool(tool: str):
             return {
                 "success": True,
                 "message": message,
-                "deleted_files": deleted_files
+                "deleted_files": deleted_files,
             }
         except Exception as e:
             logger.error(f"Failed to uninstall {tool}: {e}")
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to uninstall {tool}: {str(e)}"
+                status_code=500, detail=f"Failed to uninstall {tool}: {str(e)}"
             )
 
     elif tool == "google_calendar":
@@ -484,8 +445,10 @@ async def uninstall_tool(tool: str):
 
             token_dirs.add(
                 os.path.join(
-                    os.path.expanduser("~"), ".eigent", "tokens",
-                    "google_calendar"
+                    os.path.expanduser("~"),
+                    ".eigent",
+                    "tokens",
+                    "google_calendar",
                 )
             )
 
@@ -510,18 +473,15 @@ async def uninstall_tool(tool: str):
                 logger.info("Cleared Google Calendar OAuth state cache")
 
             return {
-                "success":
-                True,
-                "message":
-                "Successfully uninstalled"
+                "success": True,
+                "message": "Successfully uninstalled"
                 f" {tool} and cleaned up"
-                " authentication tokens"
+                " authentication tokens",
             }
         except Exception as e:
             logger.error(f"Failed to uninstall {tool}: {e}")
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to uninstall {tool}: {str(e)}"
+                status_code=500, detail=f"Failed to uninstall {tool}: {str(e)}"
             )
     elif tool == "linkedin":
         try:
@@ -530,24 +490,20 @@ async def uninstall_tool(tool: str):
 
             if success:
                 return {
-                    "success":
-                    True,
-                    "message":
-                    "Successfully uninstalled"
+                    "success": True,
+                    "message": "Successfully uninstalled"
                     f" {tool} and cleaned up"
-                    " authentication tokens"
+                    " authentication tokens",
                 }
             else:
                 return {
                     "success": True,
-                    "message":
-                    f"Uninstalled {tool} (no tokens found to clean up)"
+                    "message": f"Uninstalled {tool} (no tokens found to clean up)",
                 }
         except Exception as e:
             logger.error(f"Failed to uninstall {tool}: {e}")
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to uninstall {tool}: {str(e)}"
+                status_code=500, detail=f"Failed to uninstall {tool}: {str(e)}"
             )
     else:
         raise HTTPException(
@@ -558,7 +514,7 @@ async def uninstall_tool(tool: str):
                 " ['notion',"
                 " 'google_calendar',"
                 " 'linkedin']"
-            )
+            ),
         )
 
 
@@ -594,14 +550,14 @@ async def save_linkedin_token(token_request: LinkedInTokenRequest):
                     "message": "LinkedIn token saved successfully",
                     "tools": tools,
                     "count": len(tools),
-                    "profile": profile if "error" not in profile else None
+                    "profile": profile if "error" not in profile else None,
                 }
             except Exception as e:
                 logger.warning(f"Token saved but verification failed: {e}")
                 return {
                     "success": True,
                     "message": "LinkedIn token saved (verification pending)",
-                    "warning": str(e)
+                    "warning": str(e),
                 }
         else:
             raise HTTPException(
@@ -631,7 +587,7 @@ async def get_linkedin_status():
                 "authenticated": False,
                 "status": "not_configured",
                 "message": "LinkedIn not configured. OAuth required.",
-                "oauth_url": "/api/oauth/linkedin/login"
+                "oauth_url": "/api/oauth/linkedin/login",
             }
 
         token_info = LinkedInToolkit.get_token_info()
@@ -639,11 +595,10 @@ async def get_linkedin_status():
         is_expiring_soon = LinkedInToolkit.is_token_expiring_soon()
 
         result = {
-            "authenticated":
-            True,
-            "status":
-            "expired" if is_expired else
-            ("expiring_soon" if is_expiring_soon else "valid"),
+            "authenticated": True,
+            "status": "expired"
+            if is_expired
+            else ("expiring_soon" if is_expiring_soon else "valid"),
         }
 
         if token_info:
@@ -662,11 +617,9 @@ async def get_linkedin_status():
             result["message"] = "Token has expired. Please re-authenticate."
             result["oauth_url"] = "/api/oauth/linkedin/login"
         elif is_expiring_soon:
-            days = result.get('days_remaining', 'unknown')
+            days = result.get("days_remaining", "unknown")
             result["message"] = (
-                f"Token expires in {days}"
-                " days. Consider"
-                " re-authenticating."
+                f"Token expires in {days} days. Consider re-authenticating."
             )
             result["oauth_url"] = "/api/oauth/linkedin/login"
         else:
@@ -719,7 +672,7 @@ async def open_browser_login():
         # Check if browser is already running on this port
         def is_port_in_use(port):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                return s.connect_ex(('localhost', port)) == 0
+                return s.connect_ex(("localhost", port)) == 0
 
         if is_port_in_use(cdp_port):
             logger.info(f"Browser already running on port {cdp_port}")
@@ -728,9 +681,8 @@ async def open_browser_login():
                 "session_id": session_id,
                 "user_data_dir": user_data_dir,
                 "cdp_port": cdp_port,
-                "message":
-                "Browser already running. Use existing window to log in.",
-                "note": "Your login data will be saved in the profile."
+                "message": "Browser already running. Use existing window to log in.",
+                "note": "Your login data will be saved in the profile.",
             }
 
         # Use static Electron browser script
@@ -746,8 +698,12 @@ async def open_browser_login():
 
         electron_cmd = "npx"
         electron_args = [
-            electron_cmd, "electron", electron_script_path, user_data_dir,
-            str(cdp_port), "https://www.google.com"
+            electron_cmd,
+            "electron",
+            electron_script_path,
+            user_data_dir,
+            str(cdp_port),
+            "https://www.google.com",
         ]
 
         # Get the app's directory to run npx in the right context
@@ -771,22 +727,24 @@ async def open_browser_login():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Redirect stderr to stdout
             text=True,
-            encoding='utf-8',
-            errors='replace',  # Replace undecodable chars instead of crashing
-            bufsize=1  # Line buffered
+            encoding="utf-8",
+            errors="replace",  # Replace undecodable chars instead of crashing
+            bufsize=1,  # Line buffered
         )
 
         # Create async task to log Electron output
         async def log_electron_output():
-            for line in iter(process.stdout.readline, ''):
+            for line in iter(process.stdout.readline, ""):
                 if line:
                     logger.info(f"[ELECTRON OUTPUT] {line.strip()}")
 
         import asyncio
+
         asyncio.create_task(log_electron_output())
 
         # Wait a bit for Electron to start
         import asyncio
+
         await asyncio.sleep(3)
 
         logger.info(
@@ -796,25 +754,17 @@ async def open_browser_login():
         )
 
         return {
-            "success":
-            True,
-            "session_id":
-            session_id,
-            "user_data_dir":
-            user_data_dir,
-            "cdp_port":
-            cdp_port,
-            "pid":
-            process.pid,
-            "chrome_version":
-            "130.0.6723.191",  # Electron 33's Chrome version
-            "message":
-            "Electron browser opened successfully."
+            "success": True,
+            "session_id": session_id,
+            "user_data_dir": user_data_dir,
+            "cdp_port": cdp_port,
+            "pid": process.pid,
+            "chrome_version": "130.0.6723.191",  # Electron 33's Chrome version
+            "message": "Electron browser opened successfully."
             " Please log in to your accounts.",
-            "note":
-            "The browser will remain open for"
+            "note": "The browser will remain open for"
             " you to log in. Your login data"
-            " will be saved in the profile."
+            " will be saved in the profile.",
         }
 
     except Exception as e:
@@ -875,6 +825,7 @@ async def list_cookie_domains(search: str = None):
             # Try to read actual cookie count
             try:
                 import sqlite3
+
                 conn = sqlite3.connect(cookies_file)
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM cookies")
@@ -890,13 +841,11 @@ async def list_cookie_domains(search: str = None):
 
         if not os.path.exists(user_data_dir):
             return {
-                "success":
-                True,
+                "success": True,
                 "domains": [],
-                "message":
-                "No browser profile found."
+                "message": "No browser profile found."
                 " Please login first"
-                " using /browser/login."
+                " using /browser/login.",
             }
 
         cookie_manager = CookieManager(user_data_dir)
@@ -910,7 +859,7 @@ async def list_cookie_domains(search: str = None):
             "success": True,
             "domains": domains,
             "total": len(domains),
-            "user_data_dir": user_data_dir
+            "user_data_dir": user_data_dir,
         }
 
     except Exception as e:
@@ -942,7 +891,7 @@ async def get_domain_cookies(domain: str):
                     "No browser profile found."
                     " Please login first using"
                     " /browser/login."
-                )
+                ),
             )
 
         cookie_manager = CookieManager(user_data_dir)
@@ -952,7 +901,7 @@ async def get_domain_cookies(domain: str):
             "success": True,
             "domain": domain,
             "cookies": cookies,
-            "count": len(cookies)
+            "count": len(cookies),
         }
 
     except HTTPException:
@@ -986,7 +935,7 @@ async def delete_domain_cookies(domain: str):
                     "No browser profile found."
                     " Please login first using"
                     " /browser/login."
-                )
+                ),
             )
 
         cookie_manager = CookieManager(user_data_dir)
@@ -995,12 +944,12 @@ async def delete_domain_cookies(domain: str):
         if success:
             return {
                 "success": True,
-                "message": f"Successfully deleted cookies for domain: {domain}"
+                "message": f"Successfully deleted cookies for domain: {domain}",
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to delete cookies for domain: {domain}"
+                detail=f"Failed to delete cookies for domain: {domain}",
             )
 
     except HTTPException:
@@ -1035,7 +984,7 @@ async def delete_all_cookies():
         if success:
             return {
                 "success": True,
-                "message": "Successfully deleted all cookies"
+                "message": "Successfully deleted all cookies",
             }
         else:
             raise HTTPException(

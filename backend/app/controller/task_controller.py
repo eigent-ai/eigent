@@ -51,17 +51,11 @@ def start(id: str):
 def put(id: str, data: UpdateData):
     logger.info(
         "Updating task",
-        extra={
-            "task_id": id,
-            "task_items_count": len(data.task)
-        }
+        extra={"task_id": id, "task_items_count": len(data.task)},
     )
     logger.debug(
         "Update task data",
-        extra={
-            "task_id": id,
-            "data": data.model_dump_json()
-        }
+        extra={"task_id": id, "data": data.model_dump_json()},
     )
     task_lock = get_task_lock(id)
     asyncio.run(
@@ -80,19 +74,13 @@ class TakeControl(BaseModel):
 @router.put("/task/{id}/take-control", name="take control pause or resume")
 def take_control(id: str, data: TakeControl):
     logger.info(
-        "Task control action", extra={
-            "task_id": id,
-            "action": data.action
-        }
+        "Task control action", extra={"task_id": id, "action": data.action}
     )
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_queue(ActionTakeControl(action=data.action)))
     logger.info(
         "Task control action completed",
-        extra={
-            "task_id": id,
-            "action": data.action
-        }
+        extra={"task_id": id, "action": data.action},
     )
     return Response(status_code=204)
 
@@ -101,17 +89,11 @@ def take_control(id: str, data: TakeControl):
 def add_agent(id: str, data: NewAgent):
     logger.info(
         "Adding new agent to task",
-        extra={
-            "task_id": id,
-            "agent_name": data.name
-        }
+        extra={"task_id": id, "agent_name": data.name},
     )
     logger.debug(
         "New agent data",
-        extra={
-            "task_id": id,
-            "agent_data": data.model_dump_json()
-        }
+        extra={"task_id": id, "agent_data": data.model_dump_json()},
     )
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -123,10 +105,7 @@ def add_agent(id: str, data: NewAgent):
         get_task_lock(id).put_queue(ActionNewAgent(**data.model_dump()))
     )
     logger.info(
-        "Agent added to task", extra={
-            "task_id": id,
-            "agent_name": data.name
-        }
+        "Agent added to task", extra={"task_id": id, "agent_name": data.name}
     )
     return Response(status_code=204)
 
