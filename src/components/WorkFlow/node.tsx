@@ -739,20 +739,7 @@ export function Node({ id, data }: NodeProps) {
 												<div>{task.content}</div>
 											</div>
 											{task?.status === TaskStatus.RUNNING && (
-												<div className="flex flex-col gap-1 mt-xs animate-in fade-in-0 slide-in-from-bottom-2 duration-400">
-													{/* Streaming agent output */}
-													{chatStore.tasks[chatStore.activeTaskId as string]
-														?.streamingAgentOutput?.[task.id] && (
-														<div className="flex-1 min-w-0 overflow-hidden text-xs leading-normal text-text-secondary animate-in fade-in-0 duration-200">
-															<div className="line-clamp-2 whitespace-pre-wrap break-words">
-																{
-																	chatStore.tasks[
-																		chatStore.activeTaskId as string
-																	].streamingAgentOutput[task.id]
-																}
-															</div>
-														</div>
-													)}
+												<div className="flex items-center gap-2 mt-xs animate-in fade-in-0 slide-in-from-bottom-2 duration-400">
 													{/* active toolkit */}
 													{task.toolkits &&
 														task.toolkits.length > 0 &&

@@ -42,7 +42,6 @@ export const AgentStep = {
 	NOTICE_CARD: 'notice_card',
 	FAILED: 'failed',
 	AGENT_SUMMARY_END: 'agent_summary_end',
-	STREAMING_AGENT_OUTPUT: 'streaming_agent_output',
 } as const;
 
 export type AgentStepType = (typeof AgentStep)[keyof typeof AgentStep];

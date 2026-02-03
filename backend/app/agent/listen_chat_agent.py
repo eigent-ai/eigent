@@ -22,8 +22,7 @@ from app.utils.event_loop_utils import _schedule_async_task
 from app.service.task import (Action, ActionActivateAgentData,
                               ActionActivateToolkitData, ActionBudgetNotEnough,
                               ActionDeactivateAgentData,
-                              ActionDeactivateToolkitData,
-                              ActionStreamingAgentOutputData, get_task_lock,
+                              ActionDeactivateToolkitData, get_task_lock,
                               set_process_task)
 
 from camel.agents import ChatAgent
@@ -112,28 +111,6 @@ class ListenChatAgent(ChatAgent):
 
     process_task_id: str = ""
 
-    def _send_streaming_chunk(self, content: str, is_final: bool = False) -> None:
-        """Send a streaming output chunk to the frontend.
-        
-        Args:
-            content: The content chunk to send
-            is_final: Whether this is the final chunk
-        """
-        task_lock = get_task_lock(self.api_task_id)
-        _schedule_async_task(
-            task_lock.put_queue(
-                ActionStreamingAgentOutputData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "content": content,
-                        "is_final": is_final,
-                    },
-                )
-            )
-        )
-
     def _send_agent_deactivate(self, message: str, tokens: int) -> None:
         """Send agent deactivation event to the frontend.
         
@@ -191,13 +168,9 @@ class ListenChatAgent(ChatAgent):
                 last_chunk = chunk
                 if chunk.msg and chunk.msg.content:
                     accumulated_content += chunk.msg.content
-                    # Stream output chunk to frontend (non-blocking)
-                    self._send_streaming_chunk(chunk.msg.content, is_final=False)
                 yield chunk
         finally:
             total_tokens = self._extract_tokens(last_chunk)
-            # Send final streaming output marker and deactivate agent
-            self._send_streaming_chunk("", is_final=True)
             self._send_agent_deactivate(accumulated_content, total_tokens)
     
     async def _astream_chunks(self, response_gen):
@@ -218,13 +191,9 @@ class ListenChatAgent(ChatAgent):
                 if chunk.msg and chunk.msg.content:
                     delta_content = chunk.msg.content
                     accumulated_content += delta_content
-                    # Stream output chunk to frontend (non-blocking)
-                    self._send_streaming_chunk(delta_content, is_final=False)
                 yield chunk
         finally:
             total_tokens = self._extract_tokens(last_chunk)
-            # Send final streaming output marker and deactivate agent
-            self._send_streaming_chunk("", is_final=True)
             self._send_agent_deactivate(accumulated_content, total_tokens)
 
     def step(
@@ -432,9 +401,6 @@ class ListenChatAgent(ChatAgent):
                             "message":
                             json.dumps(args, ensure_ascii=False),
                         }, )))
-                # Stream tool activity to frontend as "thinking" text
-                tool_display = func_name.replace("_", " ").title()
-                self._send_streaming_chunk(f"[Tool] {tool_display}...\n", is_final=False)
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)
