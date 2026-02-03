@@ -53,6 +53,7 @@ from app.service.task import (
     delete_task_lock,
     set_current_task_id,
 )
+from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
@@ -60,7 +61,6 @@ from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
-from app.utils.event_loop_utils import set_main_event_loop
 
 logger = logging.getLogger("chat_service")
 
