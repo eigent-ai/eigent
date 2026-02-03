@@ -160,27 +160,35 @@ def env(key: str, default=None):
     First checks thread-local user-specific environment,
     then falls back to global environment.
 
-    Security: Uses sanitized path stored in _thread_local.env_path
-    which has already been validated by set_user_env_path.
+    Security: Re-validates path at point of use to ensure integrity.
     """
     # If we have a user-specific environment path, try to reload it
     # to get latest values.
-    # Note: _thread_local.env_path is already sanitized by set_user_env_path
-    if hasattr(_thread_local, "env_path") and os.path.exists(
-        _thread_local.env_path
-    ):
-        # Temporarily load user-specific env to get the latest value
-        from dotenv import dotenv_values
+    if hasattr(_thread_local, "env_path"):
+        # Re-validate path at point of use for security
+        stored_path = _thread_local.env_path
+        validated_path = sanitize_env_path(stored_path)
 
-        user_env_values = dotenv_values(_thread_local.env_path)
-        if key in user_env_values:
-            value = user_env_values[key] or default
-            logger.debug(
-                f"Environment variable retrieved from user-specific "
-                f"config: key={key}, env_path={_thread_local.env_path}, "
-                f"has_value={value is not None}"
+        if validated_path and os.path.exists(validated_path):
+            # Temporarily load user-specific env to get the latest value
+            from dotenv import dotenv_values
+
+            user_env_values = dotenv_values(validated_path)
+            if key in user_env_values:
+                value = user_env_values[key] or default
+                logger.debug(
+                    f"Environment variable retrieved from user-specific "
+                    f"config: key={key}, env_path={validated_path}, "
+                    f"has_value={value is not None}"
+                )
+                return value
+        elif stored_path and not validated_path:
+            # Path failed validation - clear it and log warning
+            logger.warning(
+                f"Security: Thread-local env_path failed re-validation, "
+                f"clearing: {stored_path}"
             )
-            return value
+            delattr(_thread_local, "env_path")
 
     # Fall back to global environment
     value = os.getenv(key, default)

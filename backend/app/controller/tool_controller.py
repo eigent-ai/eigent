@@ -101,9 +101,12 @@ async def install_tool(tool: str):
                     " the tool.",
                 }
         except Exception as e:
-            logger.error(f"Failed to install {tool} toolkit: {e}")
+            logger.error(
+                f"Failed to install {tool} toolkit: {e}", exc_info=True
+            )
             raise HTTPException(
-                status_code=500, detail=f"Failed to install {tool}: {str(e)}"
+                status_code=500,
+                detail=f"Failed to install {tool}. Check server logs for details.",
             )
     elif tool == "google_calendar":
         try:
@@ -151,9 +154,12 @@ async def install_tool(tool: str):
                     "requires_auth": True,
                 }
         except Exception as e:
-            logger.error(f"Failed to install {tool} toolkit: {e}")
+            logger.error(
+                f"Failed to install {tool} toolkit: {e}", exc_info=True
+            )
             raise HTTPException(
-                status_code=500, detail=f"Failed to install {tool}: {str(e)}"
+                status_code=500,
+                detail=f"Failed to install {tool}. Check server logs for details.",
             )
     elif tool == "linkedin":
         try:
@@ -240,9 +246,12 @@ async def install_tool(tool: str):
                     "oauth_url": "/api/oauth/linkedin/login",
                 }
         except Exception as e:
-            logger.error(f"Failed to install {tool} toolkit: {e}")
+            logger.error(
+                f"Failed to install {tool} toolkit: {e}", exc_info=True
+            )
             raise HTTPException(
-                status_code=500, detail=f"Failed to install {tool}: {str(e)}"
+                status_code=500,
+                detail=f"Failed to install {tool}. Check server logs for details.",
             )
     else:
         raise HTTPException(
@@ -421,9 +430,10 @@ async def uninstall_tool(tool: str):
                 "deleted_files": deleted_files,
             }
         except Exception as e:
-            logger.error(f"Failed to uninstall {tool}: {e}")
+            logger.error(f"Failed to uninstall {tool}: {e}", exc_info=True)
             raise HTTPException(
-                status_code=500, detail=f"Failed to uninstall {tool}: {str(e)}"
+                status_code=500,
+                detail=f"Failed to uninstall {tool}. Check server logs for details.",
             )
 
     elif tool == "google_calendar":
@@ -479,9 +489,10 @@ async def uninstall_tool(tool: str):
                 " authentication tokens",
             }
         except Exception as e:
-            logger.error(f"Failed to uninstall {tool}: {e}")
+            logger.error(f"Failed to uninstall {tool}: {e}", exc_info=True)
             raise HTTPException(
-                status_code=500, detail=f"Failed to uninstall {tool}: {str(e)}"
+                status_code=500,
+                detail=f"Failed to uninstall {tool}. Check server logs for details.",
             )
     elif tool == "linkedin":
         try:
@@ -501,9 +512,10 @@ async def uninstall_tool(tool: str):
                     "message": f"Uninstalled {tool} (no tokens found to clean up)",
                 }
         except Exception as e:
-            logger.error(f"Failed to uninstall {tool}: {e}")
+            logger.error(f"Failed to uninstall {tool}: {e}", exc_info=True)
             raise HTTPException(
-                status_code=500, detail=f"Failed to uninstall {tool}: {str(e)}"
+                status_code=500,
+                detail=f"Failed to uninstall {tool}. Check server logs for details.",
             )
     else:
         raise HTTPException(
@@ -557,7 +569,7 @@ async def save_linkedin_token(token_request: LinkedInTokenRequest):
                 return {
                     "success": True,
                     "message": "LinkedIn token saved (verification pending)",
-                    "warning": str(e),
+                    "warning": "Token verification failed. Check server logs.",
                 }
         else:
             raise HTTPException(
@@ -566,9 +578,10 @@ async def save_linkedin_token(token_request: LinkedInTokenRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to save LinkedIn token: {e}")
+        logger.error(f"Failed to save LinkedIn token: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to save token: {str(e)}"
+            status_code=500,
+            detail="Failed to save token. Check server logs for details.",
         )
 
 
@@ -627,9 +640,10 @@ async def get_linkedin_status():
 
         return result
     except Exception as e:
-        logger.error(f"Failed to get LinkedIn status: {e}")
+        logger.error(f"Failed to get LinkedIn status: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to get status: {str(e)}"
+            status_code=500,
+            detail="Failed to get status. Check server logs for details.",
         )
 
 
@@ -768,9 +782,12 @@ async def open_browser_login():
         }
 
     except Exception as e:
-        logger.error(f"Failed to open Electron browser for login: {e}")
+        logger.error(
+            f"Failed to open Electron browser for login: {e}", exc_info=True
+        )
         raise HTTPException(
-            status_code=500, detail=f"Failed to open browser: {str(e)}"
+            status_code=500,
+            detail="Failed to open browser. Check server logs for details.",
         )
 
 
@@ -863,9 +880,10 @@ async def list_cookie_domains(search: str = None):
         }
 
     except Exception as e:
-        logger.error(f"Failed to list cookie domains: {e}")
+        logger.error(f"Failed to list cookie domains: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to list cookies: {str(e)}"
+            status_code=500,
+            detail="Failed to list cookies. Check server logs for details.",
         )
 
 
@@ -907,9 +925,12 @@ async def get_domain_cookies(domain: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get cookies for domain {domain}: {e}")
+        logger.error(
+            f"Failed to get cookies for domain {domain}: {e}", exc_info=True
+        )
         raise HTTPException(
-            status_code=500, detail=f"Failed to get cookies: {str(e)}"
+            status_code=500,
+            detail="Failed to get cookies. Check server logs for details.",
         )
 
 
@@ -955,9 +976,12 @@ async def delete_domain_cookies(domain: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete cookies for domain {domain}: {e}")
+        logger.error(
+            f"Failed to delete cookies for domain {domain}: {e}", exc_info=True
+        )
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete cookies: {str(e)}"
+            status_code=500,
+            detail="Failed to delete cookies. Check server logs for details.",
         )
 
 
@@ -994,7 +1018,8 @@ async def delete_all_cookies():
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete all cookies: {e}")
+        logger.error(f"Failed to delete all cookies: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete cookies: {str(e)}"
+            status_code=500,
+            detail="Failed to delete cookies. Check server logs for details.",
         )
