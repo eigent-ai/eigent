@@ -13,11 +13,16 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
+import re
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.component.oauth_adapter import OauthCallbackPayload, get_oauth_adapter
+
+# Allowed OAuth provider names (alphanumeric and hyphens only)
+ALLOWED_PROVIDER_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 logger = logging.getLogger("server_oauth_controller")
 
@@ -49,29 +54,53 @@ def oauth_login(app: str, request: Request, state: str | None = None):
 
 
 @router.get("/{app}/callback", name="OAuth Callback")
-def oauth_callback(app: str, request: Request, code: str | None = None, state: str | None = None):
+def oauth_callback(
+    app: str,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+):
     """Handle OAuth provider callback and redirect to client app."""
+    # Security: Validate provider name to prevent injection
+    if not ALLOWED_PROVIDER_PATTERN.match(app):
+        logger.warning(
+            "OAuth callback invalid provider name",
+            extra={"provider": app[:50]},  # Truncate for logging
+        )
+        raise HTTPException(status_code=400, detail="Invalid provider")
+
     if not code:
         logger.warning("OAuth callback missing code", extra={"provider": app})
         raise HTTPException(status_code=400, detail="Missing code parameter")
 
-    logger.info("OAuth callback received", extra={"provider": app, "has_state": state is not None})
+    logger.info(
+        "OAuth callback received",
+        extra={"provider": app, "has_state": state is not None},
+    )
 
-    redirect_url = f"eigent://callback/oauth?provider={app}&code={code}&state={state}"
-    html_content = f"""
-    <html>
-        <head>
-            <title>OAuth Callback</title>
-        </head>
-        <body>
-            <script type='text/javascript'>
-                window.location.href = '{redirect_url}';
-            </script>
-            <p>Redirecting, please wait...</p>
-            <button onclick='window.close()'>Close this window</button>
-        </body>
-    </html>
-    """
+    # Security: URL-encode all parameters to prevent XSS
+    params = {"provider": app, "code": code}
+    if state is not None:
+        params["state"] = state
+    redirect_url = f"eigent://callback/oauth?{urlencode(params)}"
+
+    # Security: Use a safe redirect approach without embedding in JavaScript
+    # The redirect URL uses a custom protocol, so we encode it safely
+    safe_redirect_url = quote(redirect_url, safe=":/&?=")
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>OAuth Callback</title>
+    <meta http-equiv="refresh" content="0;url={safe_redirect_url}">
+</head>
+<body>
+    <p>Redirecting, please wait...</p>
+    <p>If you are not redirected, <a href="{safe_redirect_url}">click here</a>.</p>
+    <button onclick="window.close()">Close this window</button>
+</body>
+</html>"""
     return HTMLResponse(content=html_content)
 
 
