@@ -21,7 +21,7 @@ from typing import Literal
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
-from app.model.enums import DEFAULT_SUMMARY_PROMPT
+from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
 
 logger = logging.getLogger("chat_model")
 
