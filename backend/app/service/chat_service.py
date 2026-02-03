@@ -28,7 +28,7 @@ from fastapi import Request
 from inflection import titleize
 from pydash import chain
 
-from app.agent.agent_model import agent_model, set_main_event_loop
+from app.agent.agent_model import agent_model
 from app.agent.factory import (
     browser_agent,
     developer_agent,
@@ -53,6 +53,7 @@ from app.service.task import (
     delete_task_lock,
     set_current_task_id,
 )
+from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback

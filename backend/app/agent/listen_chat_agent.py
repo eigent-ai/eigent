@@ -34,6 +34,7 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
+from app.utils.event_loop_utils import _schedule_async_task
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -50,7 +51,6 @@ logger = logging.getLogger("agent")
 
 
 class ListenChatAgent(ChatAgent):
-
     def __init__(
         self,
         api_task_id: str,
@@ -77,8 +77,7 @@ class ListenChatAgent(ChatAgent):
         tools: List[FunctionTool | Callable[..., Any]] | None = None,
         toolkits_to_register_agent: List[RegisteredAgentToolkit] | None = None,
         external_tools: (
-            List[FunctionTool | Callable[..., Any]
-                 | Dict[str, Any]] | None
+            List[FunctionTool | Callable[..., Any] | Dict[str, Any]] | None
         ) = None,
         response_terminators: List[ResponseTerminator] | None = None,
         scheduling_strategy: str = "round_robin",
@@ -121,26 +120,112 @@ class ListenChatAgent(ChatAgent):
 
     process_task_id: str = ""
 
+    def _send_agent_deactivate(self, message: str, tokens: int) -> None:
+        """Send agent deactivation event to the frontend.
+
+        Args:
+            message: The accumulated message content
+            tokens: The total token count used
+        """
+        task_lock = get_task_lock(self.api_task_id)
+        _schedule_async_task(
+            task_lock.put_queue(
+                ActionDeactivateAgentData(
+                    data={
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
+                        "message": message,
+                        "tokens": tokens,
+                    },
+                )
+            )
+        )
+
+    @staticmethod
+    def _extract_tokens(response) -> int:
+        """Extract total token count from a response chunk.
+
+        Args:
+            response: The response chunk (ChatAgentResponse or similar)
+
+        Returns:
+            Total token count or 0 if not available
+        """
+        if response is None:
+            return 0
+        usage_info = (
+            response.info.get("usage")
+            or response.info.get("token_usage")
+            or {}
+        )
+        return usage_info.get("total_tokens", 0)
+
+    def _stream_chunks(self, response_gen):
+        """Generator that wraps a streaming response and sends chunks to frontend.
+
+        Args:
+            response_gen: The original streaming response generator
+
+        Yields:
+            Each chunk from the original generator
+
+        Returns:
+            Tuple of (accumulated_content, total_tokens) via StopIteration value
+        """
+        accumulated_content = ""
+        last_chunk = None
+
+        try:
+            for chunk in response_gen:
+                last_chunk = chunk
+                if chunk.msg and chunk.msg.content:
+                    accumulated_content += chunk.msg.content
+                yield chunk
+        finally:
+            total_tokens = self._extract_tokens(last_chunk)
+            self._send_agent_deactivate(accumulated_content, total_tokens)
+
+    async def _astream_chunks(self, response_gen):
+        """Async generator that wraps a streaming response and sends chunks to frontend.
+
+        Args:
+            response_gen: The original async streaming response generator
+
+        Yields:
+            Each chunk from the original generator
+        """
+        accumulated_content = ""
+        last_chunk = None
+
+        try:
+            async for chunk in response_gen:
+                last_chunk = chunk
+                if chunk.msg and chunk.msg.content:
+                    delta_content = chunk.msg.content
+                    accumulated_content += delta_content
+                yield chunk
+        finally:
+            total_tokens = self._extract_tokens(last_chunk)
+            self._send_agent_deactivate(accumulated_content, total_tokens)
+
     def step(
         self,
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | StreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
-        asyncio.create_task(
+        _schedule_async_task(
             task_lock.put_queue(
                 ActionActivateAgentData(
                     data={
-                        "agent_name":
-                        self.agent_name,
-                        "process_task_id":
-                        self.process_task_id,
-                        "agent_id":
-                        self.agent_id,
+                        "agent_name": self.agent_name,
+                        "process_task_id": self.process_task_id,
+                        "agent_id": self.agent_id,
                         "message": (
                             input_message.content
-                            if isinstance(input_message, BaseMessage) else
-                            input_message
+                            if isinstance(input_message, BaseMessage)
+                            else input_message
                         ),
                     },
                 )
@@ -151,7 +236,8 @@ class ListenChatAgent(ChatAgent):
         res = None
         msg = (
             input_message.content
-            if isinstance(input_message, BaseMessage) else input_message
+            if isinstance(input_message, BaseMessage)
+            else input_message
         )
         logger.info(
             f"Agent {self.agent_name} starting step with message: {msg}"
@@ -164,7 +250,7 @@ class ListenChatAgent(ChatAgent):
             if "Budget has been exceeded" in str(e):
                 message = "Budget has been exceeded"
                 logger.warning(f"Agent {self.agent_name} budget exceeded")
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(ActionBudgetNotEnough())
                 )
             else:
@@ -178,59 +264,23 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             logger.error(
                 f"Agent {self.agent_name} unexpected error in step: {e}",
-                exc_info=True
+                exc_info=True,
             )
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
         if res is not None:
             if isinstance(res, StreamingChatAgentResponse):
-
-                def _stream_with_deactivate():
-                    last_response: ChatAgentResponse | None = None
-                    # With stream_accumulate=False,
-                    # we need to accumulate delta content
-                    accumulated_content = ""
-                    try:
-                        for chunk in res:
-                            last_response = chunk
-                            # Accumulate content from each chunk (delta mode)
-                            if chunk.msg and chunk.msg.content:
-                                accumulated_content += chunk.msg.content
-                            yield chunk
-                    finally:
-                        total_tokens = 0
-                        if last_response:
-                            usage_info = last_response.info.get(
-                                "usage"
-                            ) or last_response.info.get("token_usage") or {}
-                            if usage_info:
-                                total_tokens = usage_info.get(
-                                    "total_tokens", 0
-                                )
-                        asyncio.create_task(
-                            task_lock.put_queue(
-                                ActionDeactivateAgentData(
-                                    data={
-                                        "agent_name": self.agent_name,
-                                        "process_task_id":
-                                        self.process_task_id,
-                                        "agent_id": self.agent_id,
-                                        "message": accumulated_content,
-                                        "tokens": total_tokens,
-                                    },
-                                )
-                            )
-                        )
-
-                return StreamingChatAgentResponse(_stream_with_deactivate())
+                # Use reusable stream wrapper to send chunks to frontend
+                return StreamingChatAgentResponse(self._stream_chunks(res))
 
             message = res.msg.content if res.msg else ""
-            usage_info = res.info.get("usage") or res.info.get("token_usage"
-                                                               ) or {}
-            total_tokens = usage_info.get(
-                "total_tokens", 0
-            ) if usage_info else 0
+            usage_info = (
+                res.info.get("usage") or res.info.get("token_usage") or {}
+            )
+            total_tokens = (
+                usage_info.get("total_tokens", 0) if usage_info else 0
+            )
             logger.info(
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
@@ -238,7 +288,7 @@ class ListenChatAgent(ChatAgent):
 
         assert message is not None
 
-        asyncio.create_task(
+        _schedule_async_task(
             task_lock.put_queue(
                 ActionDeactivateAgentData(
                     data={
@@ -267,16 +317,13 @@ class ListenChatAgent(ChatAgent):
             ActionActivateAgentData(
                 action=Action.activate_agent,
                 data={
-                    "agent_name":
-                    self.agent_name,
-                    "process_task_id":
-                    self.process_task_id,
-                    "agent_id":
-                    self.agent_id,
+                    "agent_name": self.agent_name,
+                    "process_task_id": self.process_task_id,
+                    "agent_id": self.agent_id,
                     "message": (
                         input_message.content
-                        if isinstance(input_message, BaseMessage) else
-                        input_message
+                        if isinstance(input_message, BaseMessage)
+                        else input_message
                     ),
                 },
             )
@@ -287,17 +334,20 @@ class ListenChatAgent(ChatAgent):
         res = None
         msg = (
             input_message.content
-            if isinstance(input_message, BaseMessage) else input_message
+            if isinstance(input_message, BaseMessage)
+            else input_message
         )
         logger.debug(
-            f"Agent {self.agent_name} starting async step "
-            f"with message: {msg}"
+            f"Agent {self.agent_name} starting async step with message: {msg}"
         )
 
         try:
             res = await super().astep(input_message, response_format)
             if isinstance(res, AsyncStreamingChatAgentResponse):
-                res = await res._get_final_response()
+                # Use reusable async stream wrapper to send chunks to frontend
+                return AsyncStreamingChatAgentResponse(
+                    self._astream_chunks(res)
+                )
         except ModelProcessingError as e:
             res = None
             error_info = e
@@ -318,19 +368,29 @@ class ListenChatAgent(ChatAgent):
             error_info = e
             logger.error(
                 f"Agent {self.agent_name} unexpected error in async step: {e}",
-                exc_info=True
+                exc_info=True,
             )
             message = f"Error processing message: {e!s}"
             total_tokens = 0
 
-        if res is not None:
+        # For non-streaming responses, extract message and tokens from response
+        if res is not None and not isinstance(
+            res, AsyncStreamingChatAgentResponse
+        ):
             message = res.msg.content if res.msg else ""
-            total_tokens = res.info["usage"]["total_tokens"]
+            usage_info = (
+                res.info.get("usage") or res.info.get("token_usage") or {}
+            )
+            total_tokens = (
+                usage_info.get("total_tokens", 0) if usage_info else 0
+            )
             logger.info(
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
 
+        # Send deactivation for all non-streaming cases (success or error)
+        # Streaming responses handle deactivation in _astream_chunks
         assert message is not None
 
         asyncio.create_task(
@@ -377,9 +437,11 @@ class ListenChatAgent(ChatAgent):
         try:
             task_lock = get_task_lock(self.api_task_id)
 
-            toolkit_name = getattr(tool, "_toolkit_name") if hasattr(
-                tool, "_toolkit_name"
-            ) else "mcp_toolkit"
+            toolkit_name = (
+                getattr(tool, "_toolkit_name")
+                if hasattr(tool, "_toolkit_name")
+                else "mcp_toolkit"
+            )
             logger.debug(
                 f"Agent {self.agent_name} executing tool: "
                 f"{func_name} from toolkit: {toolkit_name} "
@@ -389,7 +451,7 @@ class ListenChatAgent(ChatAgent):
             # Only send activate event if tool is
             # NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionActivateToolkitData(
                             data={
@@ -397,8 +459,9 @@ class ListenChatAgent(ChatAgent):
                                 "process_task_id": self.process_task_id,
                                 "toolkit_name": toolkit_name,
                                 "method_name": func_name,
-                                "message":
-                                json.dumps(args, ensure_ascii=False),
+                                "message": json.dumps(
+                                    args, ensure_ascii=False
+                                ),
                             },
                         )
                     )
@@ -424,11 +487,9 @@ class ListenChatAgent(ChatAgent):
                 result_str = repr(result)
                 MAX_RESULT_LENGTH = 500
                 if len(result_str) > MAX_RESULT_LENGTH:
-                    result_msg = (
-                        result_str[:MAX_RESULT_LENGTH] + (
-                            f"... (truncated, total length: "
-                            f"{len(result_str)} chars)"
-                        )
+                    result_msg = result_str[:MAX_RESULT_LENGTH] + (
+                        f"... (truncated, total length: "
+                        f"{len(result_str)} chars)"
                     )
                 else:
                     result_msg = result_str
@@ -436,7 +497,7 @@ class ListenChatAgent(ChatAgent):
             # Only send deactivate event if tool is
             # NOT wrapped by @listen_toolkit
             if not has_listen_decorator:
-                asyncio.create_task(
+                _schedule_async_task(
                     task_lock.put_queue(
                         ActionDeactivateToolkitData(
                             data={
@@ -485,10 +546,12 @@ class ListenChatAgent(ChatAgent):
         if hasattr(tool, "_toolkit_name"):
             toolkit_name = tool._toolkit_name
 
-        # Method 2: For MCP tools, check if func
-        # has __self__ (the toolkit instance)
-        if not toolkit_name and hasattr(tool, "func"
-                                        ) and hasattr(tool.func, "__self__"):
+        # Method 2: For MCP tools, check if func has __self__ (the toolkit instance)
+        if (
+            not toolkit_name
+            and hasattr(tool, "func")
+            and hasattr(tool.func, "__self__")
+        ):
             toolkit_instance = tool.func.__self__
             if hasattr(toolkit_instance, "toolkit_name") and callable(
                 toolkit_instance.toolkit_name
@@ -497,8 +560,9 @@ class ListenChatAgent(ChatAgent):
 
         # Method 3: Check if tool.func is a bound method with toolkit
         if not toolkit_name and hasattr(tool, "func"):
-            if hasattr(tool.func,
-                       "func") and hasattr(tool.func.func, "__self__"):
+            if hasattr(tool.func, "func") and hasattr(
+                tool.func.func, "__self__"
+            ):
                 toolkit_instance = tool.func.func.__self__
                 if hasattr(toolkit_instance, "toolkit_name") and callable(
                     toolkit_instance.toolkit_name
@@ -510,11 +574,9 @@ class ListenChatAgent(ChatAgent):
             toolkit_name = "mcp_toolkit"
 
         logger.info(
-            f"Agent {self.agent_name} executing"
-            f" async tool: {func_name}"
-            f" from toolkit: {toolkit_name}"
-            " with args:"
-            f" {json.dumps(args, ensure_ascii=False)}"
+            f"Agent {self.agent_name} executing async tool: {func_name} "
+            f"from toolkit: {toolkit_name} "
+            f"with args: {json.dumps(args, ensure_ascii=False)}"
         )
 
         # Check if tool is wrapped by @listen_toolkit decorator
@@ -540,8 +602,7 @@ class ListenChatAgent(ChatAgent):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
-                    # Check if the wrapped tool is sync
-                    # to avoid run_in_executor
+                    # Check if the wrapped tool is sync to avoid run_in_executor
                     if hasattr(tool, "is_async") and not tool.is_async:
                         # Sync tool: call directly to preserve ContextVar
                         result = tool(**args)
@@ -553,14 +614,13 @@ class ListenChatAgent(ChatAgent):
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
-                    # Check if this is a sync tool to avoid
-                    # run_in_executor (breaks ContextVar)
+                    # Check if this is a sync tool to avoid run_in_executor
+                    # (which breaks ContextVar)
                     if hasattr(tool, "is_async") and not tool.is_async:
-                        # Sync tool: call directly to preserve
-                        # ContextVar in same thread
+                        # Sync tool: call directly to preserve ContextVar
+                        # in same thread
                         result = tool(**args)
-                        # Handle case where synchronous call
-                        # returns a coroutine
+                        # Handle case where synchronous call returns a coroutine
                         if asyncio.iscoroutine(result):
                             result = await result
                     else:
@@ -578,8 +638,7 @@ class ListenChatAgent(ChatAgent):
                     result = await tool(**args)
 
                 else:
-                    # Fallback: synchronous call - call
-                    # directly in current context
+                    # Fallback: synchronous call - call directly in current context
                     # DO NOT use run_in_executor to preserve ContextVar
                     result = tool(**args)
                     # Handle case where synchronous call returns a coroutine
@@ -592,7 +651,7 @@ class ListenChatAgent(ChatAgent):
             result = {"error": error_msg}
             logger.error(
                 f"Async tool execution failed for {func_name}: {e}",
-                exc_info=True
+                exc_info=True,
             )
 
         # Prepare result message with truncation
@@ -603,9 +662,8 @@ class ListenChatAgent(ChatAgent):
             MAX_RESULT_LENGTH = 500
             if len(result_str) > MAX_RESULT_LENGTH:
                 result_msg = (
-                    result_str[:MAX_RESULT_LENGTH] + "... (truncated, total"
-                    f" length: {len(result_str)}"
-                    " chars)"
+                    result_str[:MAX_RESULT_LENGTH]
+                    + f"... (truncated, total length: {len(result_str)} chars)"
                 )
             else:
                 result_msg = result_str
@@ -655,8 +713,7 @@ class ListenChatAgent(ChatAgent):
                 schema for schema in self._external_tool_schemas.values()
             ],
             response_terminators=self.response_terminators,
-            scheduling_strategy=self.model_backend.scheduling_strategy.
-            __name__,
+            scheduling_strategy=self.model_backend.scheduling_strategy.__name__,
             max_iteration=self.max_iteration,
             stop_event=self.stop_event,
             tool_execution_timeout=self.tool_execution_timeout,
