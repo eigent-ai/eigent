@@ -12,66 +12,63 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import React from "react";
-import { useAuthStore } from "@/store/authStore";
-import { ProgressInstall } from "@/components/ui/progress-install";
-import { Permissions } from "@/components/InstallStep/Permissions";
-import { CarouselStep } from "@/components/InstallStep/Carousel";
-import { useInstallationUI } from "@/store/installationStore";
+import { CarouselStep } from '@/components/InstallStep/Carousel';
+import { Permissions } from '@/components/InstallStep/Permissions';
+import { ProgressInstall } from '@/components/ui/progress-install';
+import { useAuthStore } from '@/store/authStore';
+import { useInstallationUI } from '@/store/installationStore';
+import React from 'react';
 
 export const InstallDependencies: React.FC = () => {
-	const { initState } = useAuthStore();
+  const { initState } = useAuthStore();
 
-	const {
-		progress,
-		latestLog,
-		isInstalling,
-		installationState,
-	} = useInstallationUI();
+  const { progress, latestLog, isInstalling, installationState } =
+    useInstallationUI();
 
-	return (
-		<div className="fixed !z-[100] inset-0 h-full w-full flex items-center justify-center pt-10 px-2 pb-2 overflow-hidden">
-			<div className="w-full h-full p-md flex flex-row justify-center gap-lg bg-surface-secondary rounded-2xl border-solid border-border-tertiary">
-				<div className="flex w-1/3 h-full pt-6">
-					{/* {isInstalling.toString()} */}
-					<div className="flex flex-col w-full">
-						<ProgressInstall
-							value={
-								isInstalling || installationState === "waiting-backend"
-									? progress
-									: 100
-							}
-							className="w-full mb-4"
-						/>
-						<div className="flex flex-col w-full items-start justify-between gap-4 mt-2">
-							<div className="flex flex-row w-full items-start justify-between">
-								<div className="text-text-heading text-body-sm font-medium leading-normal">
-									{isInstalling
-										? "System Installing ..."
-										: installationState === "waiting-backend"
-											? "Starting backend service..."
-											: ""}
-								</div>
-								<div className="text-text-heading text-body-sm font-medium leading-normal">
-								{Math.round(
-									(isInstalling || installationState === "waiting-backend"
-										? progress
-										: 100) ?? 0
-								)}
-								%
-							 </div>
-							</div>
-							<div className="w-full text-text-label text-body-sm font-normal leading-normal">
-								{latestLog?.data}
-							</div>
-						</div>
-					</div>
-				</div>
-				<div className="flex w-2/3 h-full p-md rounded-2xl bg-surface-tertiary">
-					{initState === "permissions" && <Permissions />}
-					{initState === "carousel" && installationState !== 'waiting-backend' && <CarouselStep />}
-				</div>
-			</div>
-		</div>
-	);
+  return (
+    <div className="fixed inset-0 !z-[100] flex h-full w-full items-center justify-center overflow-hidden px-2 pb-2 pt-10">
+      <div className="flex h-full w-full flex-row justify-center gap-lg rounded-2xl border-solid border-border-tertiary bg-surface-secondary p-md">
+        <div className="flex h-full w-1/3 pt-6">
+          {/* {isInstalling.toString()} */}
+          <div className="flex w-full flex-col">
+            <ProgressInstall
+              value={
+                isInstalling || installationState === 'waiting-backend'
+                  ? progress
+                  : 100
+              }
+              className="mb-4 w-full"
+            />
+            <div className="mt-2 flex w-full flex-col items-start justify-between gap-4">
+              <div className="flex w-full flex-row items-start justify-between">
+                <div className="text-body-sm font-medium leading-normal text-text-heading">
+                  {isInstalling
+                    ? 'System Installing ...'
+                    : installationState === 'waiting-backend'
+                      ? 'Starting backend service...'
+                      : ''}
+                </div>
+                <div className="text-body-sm font-medium leading-normal text-text-heading">
+                  {Math.round(
+                    (isInstalling || installationState === 'waiting-backend'
+                      ? progress
+                      : 100) ?? 0
+                  )}
+                  %
+                </div>
+              </div>
+              <div className="w-full text-body-sm font-normal leading-normal text-text-label">
+                {latestLog?.data}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex h-full w-2/3 rounded-2xl bg-surface-tertiary p-md">
+          {initState === 'permissions' && <Permissions />}
+          {initState === 'carousel' &&
+            installationState !== 'waiting-backend' && <CarouselStep />}
+        </div>
+      </div>
+    </div>
+  );
 };

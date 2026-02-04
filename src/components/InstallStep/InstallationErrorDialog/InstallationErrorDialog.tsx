@@ -12,16 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogContentSection,
   DialogFooter,
   DialogHeader,
-} from "@/components/ui/dialog";
-import { t } from "i18next";
-import React from "react";
+} from '@/components/ui/dialog';
+import { t } from 'i18next';
 
 interface InstallationErrorDialogProps {
   error: string;
@@ -36,27 +34,25 @@ const InstallationErrorDialog = ({
   error,
   backendError,
   installationState,
-  latestLog,
+  latestLog: _latestLog,
   retryInstallation,
   retryBackend,
-}:InstallationErrorDialogProps) => {
+}: InstallationErrorDialogProps) => {
   if (backendError) {
     return (
       <Dialog open={true}>
         <DialogContent size="sm">
-          <DialogHeader title={t("layout.backend-startup-failed")} />
+          <DialogHeader title={t('layout.backend-startup-failed')} />
           <DialogContentSection>
-            <div className="text-text-label text-xs font-normal leading-normal">
+            <div className="text-xs font-normal leading-normal text-text-label">
               <div className="mb-1">
-                <span className="text-text-label">
-                  {backendError}
-                </span>
+                <span className="text-text-label">{backendError}</span>
               </div>
             </div>
           </DialogContentSection>
           <DialogFooter
             showConfirmButton
-            confirmButtonText={t("layout.retry")}
+            confirmButtonText={t('layout.retry')}
             onConfirm={retryBackend}
           />
         </DialogContent>
@@ -65,21 +61,19 @@ const InstallationErrorDialog = ({
   }
 
   return (
-    <Dialog open={installationState == "error"}>
+    <Dialog open={installationState == 'error'}>
       <DialogContent size="sm">
-        <DialogHeader title={t("layout.installation-failed")} />
+        <DialogHeader title={t('layout.installation-failed')} />
         <DialogContentSection>
-          <div className="text-text-label text-xs font-normal leading-normal">
+          <div className="text-xs font-normal leading-normal text-text-label">
             <div className="mb-1">
-              <span className="text-text-label">
-                {error}
-              </span>
+              <span className="text-text-label">{error}</span>
             </div>
           </div>
         </DialogContentSection>
         <DialogFooter
           showConfirmButton
-          confirmButtonText={t("layout.retry")}
+          confirmButtonText={t('layout.retry')}
           onConfirm={retryInstallation}
         />
       </DialogContent>

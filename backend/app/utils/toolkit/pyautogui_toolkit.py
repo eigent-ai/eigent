@@ -13,7 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
-from typing import List, Literal
+
 from camel.toolkits import PyAutoGUIToolkit as BasePyAutoGUIToolkit
 
 from app.component.environment import env
@@ -33,6 +33,8 @@ class PyAutoGUIToolkit(BasePyAutoGUIToolkit, AbstractToolkit):
         screenshots_dir: str | None = None,
     ):
         if screenshots_dir is None:
-            screenshots_dir = env("file_save_path", os.path.expanduser("~/Downloads"))
+            screenshots_dir = env(
+                "file_save_path", os.path.expanduser("~/Downloads")
+            )
         super().__init__(timeout, screenshots_dir)
         self.api_task_id = api_task_id

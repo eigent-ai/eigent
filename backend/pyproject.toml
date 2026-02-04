@@ -29,16 +29,56 @@ dependencies = [
 [dependency-groups]
 dev = [
     "babel>=2.17.0",
+    "pre-commit>=4.0.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
 ]
 
 [tool.ruff]
-line-length = 120
+line-length = 79
+target-version = "py310"
 
 [tool.ruff.lint]
-extend-select = [
-    "B006", # forbid def demo(mutation = [])
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes (unused imports, variables, etc.)
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade (Python syntax upgrades)
+    "B",      # flake8-bugbear
+]
+ignore = [
+    "E402",   # module level import not at top of file (needed for path setup)
+    "E501",   # line too long (handled by formatter)
+    "E712",   # == False comparisons (needed for SQLAlchemy)
+    "B904",   # raise from - too many existing violations
+    "B023",   # closure captures loop variable - existing pattern
+    "B017",   # blind except in tests - acceptable
+    "B905",   # zip strict - not needed for Python 3.10
+]
+
+[tool.ruff.lint.isort]
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["F841"]  # unused variables OK in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = [
+    "B101",  # assert_used - OK in non-production code
+    "B105",  # hardcoded_password_string - false positive on env var names
+    "B110",  # try_except_pass - used intentionally for error suppression
+    "B113",  # request_without_timeout - handled by httpx defaults
+    "B311",  # random - OK for non-crypto use
+    "B404",  # import subprocess - needed for process management
+    "B603",  # subprocess_without_shell - shell=False is safer
+    "B607",  # start_process_with_partial_path - acceptable for system cmds
 ]
 
 [tool.pytest.ini_options]

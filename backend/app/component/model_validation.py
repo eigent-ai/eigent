@@ -14,7 +14,6 @@
 
 from camel.agents import ChatAgent
 from camel.models import ModelFactory
-from camel.types import ModelPlatformType, ModelType
 
 
 def get_website_content(url: str) -> str:
@@ -26,11 +25,16 @@ def get_website_content(url: str) -> str:
     Returns:
         str: The content of the website.
     """
-    return f"Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+    return "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
 
 
 def create_agent(
-    model_platform: str, model_type: str, api_key: str = None, url: str = None, model_config_dict: dict = None, **kwargs
+    model_platform: str,
+    model_type: str,
+    api_key: str = None,
+    url: str = None,
+    model_config_dict: dict = None,
+    **kwargs,
 ) -> ChatAgent:
     platform = model_platform
     mtype = model_type

@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,7 +23,7 @@ from app.controller.tool_controller import install_tool
 @pytest.mark.unit
 class TestToolController:
     """Test cases for tool controller endpoints."""
-    
+
     @pytest.mark.asyncio
     async def test_install_notion_tool_success(self):
         tool_name = "notion"
@@ -31,7 +32,10 @@ class TestToolController:
         for tool, name in zip(mock_tools, ["create_page", "update_page"]):
             tool.func.__name__ = name
         mock_toolkit.get_tools = MagicMock(return_value=mock_tools)
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             result = await install_tool(tool_name)
         assert result == ["create_page", "update_page"]
         mock_toolkit.connect.assert_called_once()
@@ -46,15 +50,23 @@ class TestToolController:
     async def test_install_notion_tool_connection_failure(self):
         mock_toolkit = AsyncMock()
         mock_toolkit.connect.side_effect = Exception("Connection failed")
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             with pytest.raises(Exception, match="Connection failed"):
                 await install_tool("notion")
 
     @pytest.mark.asyncio
     async def test_install_notion_tool_get_tools_failure(self):
         mock_toolkit = AsyncMock()
-        mock_toolkit.get_tools = MagicMock(side_effect=Exception("Failed to get tools"))
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        mock_toolkit.get_tools = MagicMock(
+            side_effect=Exception("Failed to get tools")
+        )
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             with pytest.raises(Exception, match="Failed to get tools"):
                 await install_tool("notion")
 
@@ -65,7 +77,10 @@ class TestToolController:
         mock_tools[0].func.__name__ = "test_tool"
         mock_toolkit.get_tools = MagicMock(return_value=mock_tools)
         mock_toolkit.disconnect.side_effect = Exception("Disconnect failed")
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             with pytest.raises(Exception, match="Disconnect failed"):
                 await install_tool("notion")
 
@@ -73,7 +88,10 @@ class TestToolController:
     async def test_install_notion_tool_empty_tools(self):
         mock_toolkit = AsyncMock()
         mock_toolkit.get_tools = MagicMock(return_value=[])
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             result = await install_tool("notion")
         assert result == []
         mock_toolkit.connect.assert_called_once()
@@ -82,14 +100,22 @@ class TestToolController:
     @pytest.mark.asyncio
     async def test_install_notion_tool_with_complex_tools(self):
         mock_toolkit = AsyncMock()
-        names = ["create_database", "query_database", "update_block", "delete_page"]
+        names = [
+            "create_database",
+            "query_database",
+            "update_block",
+            "delete_page",
+        ]
         mock_tools = []
         for name in names:
             mt = MagicMock()
             mt.func.__name__ = name
             mock_tools.append(mt)
         mock_toolkit.get_tools = MagicMock(return_value=mock_tools)
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             result = await install_tool("notion")
         assert result == names
         mock_toolkit.connect.assert_called_once()
@@ -99,54 +125,65 @@ class TestToolController:
 @pytest.mark.integration
 class TestToolControllerIntegration:
     """Integration tests for tool controller."""
-    
-    def test_install_notion_tool_endpoint_integration(self, client: TestClient):
+
+    def test_install_notion_tool_endpoint_integration(
+        self, client: TestClient
+    ):
         """Test install Notion tool endpoint through FastAPI test client."""
         tool_name = "notion"
-        
+
         mock_toolkit = AsyncMock()
         mock_tools = [MagicMock(), MagicMock()]
         mock_tools[0].func.__name__ = "create_page"
         mock_tools[1].func.__name__ = "update_page"
         mock_toolkit.get_tools = MagicMock(return_value=mock_tools)
-        
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             response = client.post(f"/install/tool/{tool_name}")
-            
+
             assert response.status_code == 200
             assert response.json() == ["create_page", "update_page"]
 
-    def test_install_unknown_tool_endpoint_integration(self, client: TestClient):
+    def test_install_unknown_tool_endpoint_integration(
+        self, client: TestClient
+    ):
         """Test install unknown tool endpoint through FastAPI test client."""
         tool_name = "unknown_tool"
-        
+
         response = client.post(f"/install/tool/{tool_name}")
-        
+
         assert response.status_code == 200
         assert response.json() == {"error": "Tool not found"}
 
-    def test_install_notion_tool_endpoint_with_connection_error(self, client: TestClient):
+    def test_install_notion_tool_endpoint_with_connection_error(
+        self, client: TestClient
+    ):
         """Test install Notion tool endpoint when connection fails."""
         tool_name = "notion"
-        
+
         mock_toolkit = AsyncMock()
         mock_toolkit.connect.side_effect = Exception("Connection failed")
-        
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             # The exception should be raised by the endpoint since there's no error handling
             with pytest.raises(Exception, match="Connection failed"):
-                response = client.post(f"/install/tool/{tool_name}")
+                client.post(f"/install/tool/{tool_name}")
 
 
 @pytest.mark.model_backend
 class TestToolControllerWithRealMCP:
     """Tests that require real MCP connections (marked for selective running)."""
-    
+
     @pytest.mark.asyncio
     async def test_install_notion_tool_with_real_connection(self):
         """Test Notion tool installation with real MCP connection."""
-        tool_name = "notion"
-        
+
         # This test would connect to real Notion MCP server
         # Requires actual MCP server setup and credentials
         # Marked as model_backend test for selective execution
@@ -170,13 +207,19 @@ class TestToolControllerErrorCases:
         tools = [MagicMock(), object()]  # Second item lacks func
         tools[0].func.__name__ = "valid_tool"
         mock_toolkit.get_tools = MagicMock(return_value=tools)
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             with pytest.raises(AttributeError):
                 await install_tool("notion")
 
     @pytest.mark.asyncio
     async def test_install_tool_with_none_toolkit(self):
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=None):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=None,
+        ):
             with pytest.raises(AttributeError):
                 await install_tool("notion")
 
@@ -205,6 +248,9 @@ class TestToolControllerErrorCases:
         tools[2].func = None
         mock_toolkit.get_tools = MagicMock(return_value=tools)
         mock_toolkit.disconnect.return_value = None
-        with patch("app.controller.tool_controller.NotionMCPToolkit", return_value=mock_toolkit):
+        with patch(
+            "app.controller.tool_controller.NotionMCPToolkit",
+            return_value=mock_toolkit,
+        ):
             with pytest.raises(AttributeError):
                 await install_tool("notion")

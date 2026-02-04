@@ -176,17 +176,17 @@
 
     /* Component Tokens */
     /* Input Component */
-    --input-bg-input: var(--fill-default);
+    --input-bg-input: var(--surface-secondary);
     --input-bg-spliting: var(--surface-information);
     --input-bg-confirm: var(--surface-success);
     --input-bg-default: var(--surface-primary);
-    --input-bg-hover: var(--fill-default);
-    --input-border-default: var(--border-action);
+    --input-bg-hover: var(--surface-secondary);
+    --input-border-default: var(--border-secondary);
     --input-border-hover: var(--border-action-hover);
     --input-border-focus: var(--border-information);
-    --input-text-default: var(--text-disabled);
-    --input-text-focus: var(--text-action);
-    --input-label-default: var(--text-label);
+    --input-text-default: var(--text-primary);
+    --input-text-focus: var(--text-primary);
+    --input-label-default: var(--text-secondary);
     --input-border-success: var(--border-success);
     --input-border-cuation: var(--border-cuation);
     --input-border-warning: var(--border-warning);
@@ -334,7 +334,7 @@
     --menubutton-border-default: var(--border-transparent);
     --menubutton-border-hover: var(--border-disabled);
     --menubutton-disabled: 1.25rem;
-    
+
     /* Dropdown Component */
     --dropdown-bg: var(--fill-default);
     --dropdown-border: var(--border-secondary);
@@ -393,6 +393,10 @@
     --task-border-focus-success: var(--border-success);
     --task-border-focus-warning: var(--border-warning);
     --task-border-focus-error: var(--border-cuation);
+    --task-fill-running: var(--surface-secondary);
+
+    /* Log Component */
+    --log-default: #f5f5f5;
 
     /* Worker Component */
     --worker-surface-primary: var(--surface-tertiary);
@@ -407,27 +411,44 @@
     /* Code Component */
     --code-bg: var(--bg-dark-default);
     --code-foreground: var(--text-on-action);
+    --code-surface: #f4f4f5;
+    /* zinc-100 equivalent */
+
+    /* Surface Variants */
+    --surface-error-subtle: #fee2e2;
+    /* red-100 equivalent */
+    --surface-hover-subtle: #f3f4f6;
+    /* gray-100 equivalent */
+    --surface-success-subtle: #d1fae5;
+    /* emerald-100 equivalent */
+    --surface-tertiary-subtle: #f9fafb;
+    /* gray-50 equivalent */
+
+    /* Text Variants */
+    --text-muted: var(--colors-primary-5);
+    --text-muted-strong: var(--colors-primary-7);
+    --text-link: var(--colors-blue-500);
+    --text-link-hover: var(--colors-blue-700);
+    --text-error: var(--colors-red-500);
+
+    --border-subtle: var(--colors-primary-2);
+    --border-subtle-strong: var(--colors-primary-3);
+
     /* Shadow Tokens */
 
     /* Perfect Shadow */
     --shadow-perfect:
-      0 8px 20px -2px #1d21291a,
-      0 32px 48px -12px #1d21291f,
-      0 96px 120px -12px #414a5c0f,
-      0 108px 72px -16px #414a5c14,
-      0 32px 64px -8px #7199bd1f,
-      0 8px 10px 0 #7199bd1f;
+      0 8px 20px -2px #1d21291a, 0 32px 48px -12px #1d21291f,
+      0 96px 120px -12px #414a5c0f, 0 108px 72px -16px #414a5c14,
+      0 32px 64px -8px #7199bd1f, 0 8px 10px 0 #7199bd1f;
 
     /* Button Shadow */
     --shadow-button:
-      inset 0 1px 0 0 #ffffff54,
-      0 3px 4px -1px #00000040,
-      0 0 0 1px #d4d4d440;
-
+      inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
   }
 
   .root,
-  [data-theme="transparent"] {
+  [data-theme='transparent'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
     --text-label: var(--colors-primary-7);
@@ -446,7 +467,15 @@
     --text-developer: var(--colors-emerald-default);
     --text-multimodal: var(--colors-fuchsia-default);
     --text-on-hover: var(--colors-primary-2);
-    --surface-primary: var(--colors-off-white-50);
+    --text-primary: var(--text-body);
+    --text-secondary: var(--text-label);
+    --text-tertiary: var(--text-disabled);
+    --text-inverse-primary: var(--text-on-action);
+    --text-success-primary: var(--text-success);
+    --text-success-default: var(--text-success);
+    --text-caution: var(--text-cuation);
+    --text-cuation-default: var(--text-cuation);
+    --surface-primary: var(--colors-off-white-80);
     --surface-secondary: var(--colors-off-white-50);
     --surface-success: var(--colors-green-50);
     --surface-information: var(--colors-blue-50);
@@ -545,7 +574,7 @@
   }
 
   .root,
-  [data-theme="light"] {
+  [data-theme='light'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
     --text-label: var(--colors-primary-7);
@@ -662,4 +691,143 @@
     --bg-page-default: var(--colors-off-white-100);
   }
 
+  .root,
+  [data-theme='dark'] {
+    --text-heading: #e8ecff;
+    --text-body: #f4f6ff;
+    --text-label: #b0bdd8;
+    --text-action: #f8fafc;
+    --text-action-hover: #d9e2ff;
+    --text-disabled: rgba(148, 163, 184, 0.35);
+    --text-information: #7ab3ff;
+    --text-success: #4ade80;
+    --text-warning: #facc15;
+    --text-cuation: #f87171;
+    --text-on-action: #0b1020;
+    --text-on-disabled: rgba(15, 23, 42, 0.7);
+    --text-document: #ffd479;
+    --text-socialmedia: #d8b4fe;
+    --text-browser: #7dd3fc;
+    --text-developer: #6ee7b7;
+    --text-multimodal: #f5a8ff;
+    --text-on-hover: #ffffff;
+    --text-primary: #f4f6ff;
+    --text-secondary: var(--text-label);
+    --text-tertiary: var(--text-disabled);
+    --text-inverse-primary: var(--text-on-action);
+    --text-success-primary: var(--text-success);
+    --text-success-default: var(--text-success);
+    --text-caution: var(--text-cuation);
+    --text-cuation-default: var(--text-cuation);
+    --surface-primary: #131b2b;
+    --surface-secondary: #1b2435;
+    --surface-success: rgba(15, 118, 110, 0.25);
+    --surface-information: rgba(30, 64, 175, 0.22);
+    --surface-warning: rgba(161, 98, 7, 0.26);
+    --surface-cuation: rgba(153, 27, 27, 0.26);
+    --surface-action: #2c3a55;
+    --surface-action-hover: #35476a;
+    --surface-disabled: rgba(148, 163, 184, 0.14);
+    --surface-tertiary: #222d41;
+    --surface-tertiary-hover: #2c3950;
+    --surface-card: #161f30;
+    --surface-card-hover: #1f2a40;
+    --surface-card-focus: #2a3a55;
+    --surface-card-default: 1.25rem;
+    --border-primary: rgba(148, 163, 184, 0.24);
+    --border-secondary: rgba(148, 163, 184, 0.12);
+    --border-tertiary: rgba(148, 163, 184, 0.08);
+    --border-information: rgba(125, 179, 255, 0.65);
+    --border-success: rgba(74, 222, 128, 0.6);
+    --border-cuation: rgba(248, 113, 113, 0.6);
+    --border-warning: rgba(250, 204, 21, 0.6);
+    --border-focus: rgba(226, 232, 240, 0.4);
+    --border-action: rgba(148, 163, 184, 0.24);
+    --border-action-hover: rgba(226, 232, 240, 0.38);
+    --border-disabled: rgba(148, 163, 184, 0.08);
+    --border-developer: rgba(110, 231, 183, 0.6);
+    --border-browser: rgba(125, 211, 252, 0.6);
+    --border-socialmedia: rgba(216, 180, 254, 0.6);
+    --border-multimodal: rgba(245, 168, 255, 0.6);
+    --border-document: rgba(255, 212, 121, 0.6);
+    --border-transparent: var(--colors-black-0);
+    --icon-primary: #d0dcff;
+    --icon-action: #f1f5ff;
+    --icon-disabled: rgba(148, 163, 184, 0.4);
+    --icon-information: #7ab3ff;
+    --icon-success: #4ade80;
+    --icon-warning: #facc15;
+    --icon-cuation: #f87171;
+    --icon-action-hover: #ffffff;
+    --icon-multimodal: #f5a8ff;
+    --icon-socialmedia: #d8b4fe;
+    --icon-document: #ffd479;
+    --icon-browser: #7dd3fc;
+    --icon-developer: #6ee7b7;
+    --icon-on-disabled: rgba(15, 23, 42, 0.7);
+    --icon-on-hover: #ffffff;
+    --icon-on-action: #0b1020;
+    --icon-secondary: rgba(226, 232, 240, 0.55);
+    --developer: #34d399;
+    --browser: #38bdf8;
+    --document: #fbbf24;
+    --multimodal: #f472b6;
+    --socialmedia: #c084fc;
+    --fill-default: #131b2b;
+    --fill-fill-primary: #e2e8ff;
+    --fill-fill-primary-hover: #ffffff;
+    --fill-fill-primary-active: #ffffff;
+    --fill-fill-primary-disabled: rgba(209, 213, 219, 0.4);
+    --fill-fill-tertiary: #1f2937;
+    --fill-fill-transparent: rgba(15, 23, 42, 0.4);
+    --fill-fill-transparent-hover: rgba(59, 74, 99, 0.6);
+    --fill-fill-tertiary-hover: #2c3a55;
+    --fill-fill-tertiary-active: #35476a;
+    --fill-fill-tertiary-disabled: rgba(31, 41, 55, 0.6);
+    --fill-fill-transparent-active: rgba(59, 74, 99, 0.75);
+    --fill-fill-transparent-disabled: rgba(15, 23, 42, 0.2);
+    --fill-fill-secondary-disabled: rgba(148, 163, 184, 0.25);
+    --fill-fill-secondary-active: #f1f5ff;
+    --fill-fill-secondary-hover: rgba(226, 232, 240, 0.85);
+    --fill-fill-secondary: rgba(226, 232, 240, 0.65);
+    --fill-fill-success: #22c55e;
+    --fill-fill-success-hover: #4ade80;
+    --fill-fill-success-active: #a7f3d0;
+    --fill-fill-success-disable: rgba(15, 118, 110, 0.45);
+    --fill-fill-warning: #facc15;
+    --fill-fill-cuation: #f87171;
+    --fill-socialmedia: rgba(134, 94, 189, 0.45);
+    --fill-document: rgba(180, 128, 41, 0.45);
+    --fill-browser: rgba(40, 94, 151, 0.45);
+    --fill-multimodal: rgba(161, 60, 190, 0.45);
+    --fill-developer: rgba(23, 121, 96, 0.45);
+    --fill-scrollbar-dark: rgba(148, 163, 184, 0.2);
+    --fill-scrollbar-light: rgba(209, 213, 219, 0.35);
+    --fill-skeloten-default: rgba(148, 163, 184, 0.18);
+    --fill-fill-information: #7ab3ff;
+    --bg-page: #0d1424;
+    --bg-primary: #121a2a;
+    --bg-secondary: #161f30;
+    --bg-tertiary: #1c2640;
+    --bg-dark: #131b2b;
+    --bg-dark-primary: #1b2435;
+    --bg-dark-secondary: #222d41;
+    --bg-dark-tertiary: #2c3950;
+    --bg-dark-default: #0d1424;
+    --bg-page-default: #0d1424;
+    --task-fill-running: #1f2937;
+    --log-default: #1f2937;
+    --code-surface: #27272a;
+    --surface-error-subtle: rgba(153, 27, 27, 0.3);
+    --surface-hover-subtle: rgba(55, 65, 81, 0.5);
+    --surface-success-subtle: rgba(6, 95, 70, 0.35);
+    --surface-tertiary-subtle: rgba(31, 41, 55, 0.5);
+    --text-muted: var(--colors-primary-4);
+    --text-muted-strong: var(--colors-primary-3);
+    --text-link: var(--colors-blue-400);
+    --text-link-hover: var(--colors-blue-300);
+    --text-error: var(--colors-red-400);
+    --border-subtle: var(--colors-primary-7);
+    --border-subtle-strong: var(--colors-primary-6);
+  }
 }

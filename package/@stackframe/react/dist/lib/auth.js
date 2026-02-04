@@ -76,7 +76,7 @@ function consumeOAuthCallbackQueryParams() {
   if (!cookieResult) {
     console.warn(import_strings.deindent`
       Stack found an outer OAuth callback state in the query parameters, but not in cookies.
-      
+
       This could have multiple reasons:
         - The cookie expired, because the OAuth flow took too long.
         - The user's browser deleted the cookie, either manually or because of a very strict cookie policy.
