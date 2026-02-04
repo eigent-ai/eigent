@@ -103,11 +103,28 @@ const PopoverTrigger = React.forwardRef<
       disabled,
       showChevron = true,
       leadingIcon,
+      asChild,
       ...props
     },
     ref
   ) => {
     const stateCls = resolveStateClasses(state, Boolean(disabled));
+
+    // When asChild is used, we need to ensure only a single child is passed
+    // The custom wrapper UI (title, note, chevron) is incompatible with asChild
+    if (asChild) {
+      return (
+        <PopoverPrimitive.Trigger
+          ref={ref}
+          disabled={disabled}
+          asChild
+          {...props}
+        >
+          {children}
+        </PopoverPrimitive.Trigger>
+      );
+    }
+
     return (
       <div className={cn('w-full', stateCls.wrapper)}>
         {title ? (
