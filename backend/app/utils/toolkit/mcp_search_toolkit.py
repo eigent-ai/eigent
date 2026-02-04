@@ -12,11 +12,13 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Any, List
-from camel.toolkits import BaseToolkit, FunctionTool
+from typing import Any
+
 import httpx
-from app.service.task import Action, ActionSearchMcpData, Agents, get_task_lock
+from camel.toolkits import BaseToolkit, FunctionTool
+
 from app.component.environment import env_not_empty
+from app.service.task import Action, ActionSearchMcpData, Agents, get_task_lock
 from app.utils.listen.toolkit_listen import listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
@@ -65,9 +67,11 @@ class McpSearchToolkit(BaseToolkit, AbstractToolkit):
             data = response.json()
             task_lock = get_task_lock(self.api_task_id)
             await task_lock.put_queue(
-                ActionSearchMcpData(action=Action.search_mcp, data=data["items"])
+                ActionSearchMcpData(
+                    action=Action.search_mcp, data=data["items"]
+                )
             )
             return data
 
-    def get_tools(self) -> List[FunctionTool]:
+    def get_tools(self) -> list[FunctionTool]:
         return [FunctionTool(self.search_mcp_from_url)]

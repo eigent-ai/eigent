@@ -38,11 +38,14 @@ class GoogleGmailMCPToolkit(BaseToolkit, AbstractToolkit):
                 "mcpServers": {
                     "gmail": {
                         "command": bun(),
-                        "args":
-                        ["x", "-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+                        "args": [
+                            "x",
+                            "-y",
+                            "@gongrzhe/server-gmail-autoauth-mcp",
+                        ],
                         "env": {
                             "GMAIL_CREDENTIALS_PATH": credentials_path,
-                            **(input_env or {})
+                            **(input_env or {}),
                         },
                     }
                 }
@@ -61,9 +64,7 @@ class GoogleGmailMCPToolkit(BaseToolkit, AbstractToolkit):
 
     @classmethod
     async def get_can_use_tools(
-        cls,
-        api_task_id: str,
-        input_env: dict[str, str] | None = None
+        cls, api_task_id: str, input_env: dict[str, str] | None = None
     ) -> list[FunctionTool]:
         if env("GMAIL_CREDENTIALS_PATH") is None:
             return []
@@ -73,6 +74,6 @@ class GoogleGmailMCPToolkit(BaseToolkit, AbstractToolkit):
         await toolkit.connect()
         tools = []
         for item in toolkit.get_tools():
-            setattr(item, "_toolkit_name", cls.__name__)
+            item._toolkit_name = cls.__name__
             tools.append(item)
         return tools

@@ -38,14 +38,14 @@ function getEnvVariable(name, defaultValue) {
   if (isBrowserLike()) {
     throw new Error(import_strings.deindent`
       Can't use getEnvVariable on the client because Next.js transpiles expressions of the kind process.env.XYZ at build-time on the client.
-    
+
       Use process.env.XYZ directly instead.
     `);
   }
   if (name === "NEXT_RUNTIME") {
     throw new Error(import_strings.deindent`
       Can't use getEnvVariable to access the NEXT_RUNTIME environment variable because it's compiled into the client bundle.
-    
+
       Use getNextRuntime() instead.
     `);
   }

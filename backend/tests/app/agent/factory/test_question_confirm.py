@@ -28,12 +28,15 @@ def test_question_confirm_agent_creation(sample_chat_data):
 
     # Setup task lock in the registry before calling agent function
     from app.service.task import task_locks
+
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    _mod = 'app.agent.factory.question_confirm'
-    with patch(f'{_mod}.agent_model') as mock_agent_model, \
-         patch('asyncio.create_task'):
+    _mod = "app.agent.factory.question_confirm"
+    with (
+        patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch("asyncio.create_task"),
+    ):
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent
 

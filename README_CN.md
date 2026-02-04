@@ -51,28 +51,28 @@
 
 #### 目录
 
-- [🚀 快速开始 - 开源 Cowork](#-快速开始---开源 Cowork)
-  - [☁️ 云版本](#️-云版本)
-  - [🏠 自托管（社区版）](#-自托管社区版)
-  - [🏢 企业版](#-企业版)
-- [✨ 核心功能 - 开源 Cowork](#-核心功能---开源 Cowork)
-  - [🏭 工作流](#-工作流)
-  - [🧠 全面模型支持](#-全面模型支持)
-  - [🔌 MCP 工具集成](#-mcp-工具集成)
-  - [✋ 人工介入](#-人工介入)
-  - [👐 100% 开源](#-100-开源)
-- [🧩 使用案例 - 开源 Cowork](#-使用案例---开源 Cowork)
-- [🛠️ 技术栈](#️-技术栈)
-  - [后端](#后端)
-  - [前端](#前端)
-- [🌟 保持领先 - 开源 Cowork](#保持领先---开源 Cowork)
-- [🗺️ 路线图 - 开源 Cowork](#️-路线图---开源 Cowork)
-- [📖 贡献](#-贡献)
-  - [核心贡献者](#核心贡献者)
-  - [杰出大使](#杰出大使)
-- [生态系统](#生态系统)
-- [📄 开源许可证](#-开源许可证)
-- [🌐 社区与联系](#-社区与联系)
+- \[🚀 快速开始 - 开源 Cowork\](#-快速开始---开源 Cowork)
+  - [☁️ 云版本](#%EF%B8%8F-%E4%BA%91%E7%89%88%E6%9C%AC)
+  - [🏠 自托管（社区版）](#-%E8%87%AA%E6%89%98%E7%AE%A1%E7%A4%BE%E5%8C%BA%E7%89%88)
+  - [🏢 企业版](#-%E4%BC%81%E4%B8%9A%E7%89%88)
+- \[✨ 核心功能 - 开源 Cowork\](#-核心功能---开源 Cowork)
+  - [🏭 工作流](#-%E5%B7%A5%E4%BD%9C%E6%B5%81)
+  - [🧠 全面模型支持](#-%E5%85%A8%E9%9D%A2%E6%A8%A1%E5%9E%8B%E6%94%AF%E6%8C%81)
+  - [🔌 MCP 工具集成](#-mcp-%E5%B7%A5%E5%85%B7%E9%9B%86%E6%88%90)
+  - [✋ 人工介入](#-%E4%BA%BA%E5%B7%A5%E4%BB%8B%E5%85%A5)
+  - [👐 100% 开源](#-100-%E5%BC%80%E6%BA%90)
+- \[🧩 使用案例 - 开源 Cowork\](#-使用案例---开源 Cowork)
+- [🛠️ 技术栈](#%EF%B8%8F-%E6%8A%80%E6%9C%AF%E6%A0%88)
+  - [后端](#%E5%90%8E%E7%AB%AF)
+  - [前端](#%E5%89%8D%E7%AB%AF)
+- \[🌟 保持领先 - 开源 Cowork\](#保持领先---开源 Cowork)
+- \[🗺️ 路线图 - 开源 Cowork\](#️-路线图---开源 Cowork)
+- [📖 贡献](#-%E8%B4%A1%E7%8C%AE)
+  - [核心贡献者](#%E6%A0%B8%E5%BF%83%E8%B4%A1%E7%8C%AE%E8%80%85)
+  - [杰出大使](#%E6%9D%B0%E5%87%BA%E5%A4%A7%E4%BD%BF)
+- [生态系统](#%E7%94%9F%E6%80%81%E7%B3%BB%E7%BB%9F)
+- [📄 开源许可证](#-%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)
+- [🌐 社区与联系](#-%E7%A4%BE%E5%8C%BA%E4%B8%8E%E8%81%94%E7%B3%BB)
 
 ####
 
@@ -297,7 +297,7 @@ Eigent 开源 Cowork桌面应用基于现代、可靠的技术构建，确保可
 
 ## 🌟 保持领先 - 开源 Cowork
 
-> \[!重要]
+> [!重要]
 >
 > **给 Eigent 加星标**，您将通过 GitHub 及时收到所有发布通知 ⭐️
 
@@ -356,51 +356,42 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 </div>
 
 <!-- LINK GROUP -->
-<!-- Social -->
 
-[discord-url]: https://discord.com/invite/CNcNpquyDc
-[discord-image]: https://img.shields.io/discord/1082486657678311454?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb
-[built-with-camel]: https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=
-[eigent-github]: https://github.com/eigent-ai/eigent
-[github-star]: https://img.shields.io/github/stars/eigent-ai?color=F5F4F0&labelColor=gray&style=plastic&logo=github
-[camel-ai-org-github]: https://github.com/camel-ai
-[camel-github]: https://github.com/camel-ai/camel
-[eigent-github]: https://github.com/eigent-ai/eigent
-[contribution-link]: https:/github.com/eigent-ai/eigent/blob/master/CONTRIBUTING.md
-[social-x-link]: https://x.com/Eigent_AI
-[social-x-shield]: https://img.shields.io/badge/-%40Eigent_AI-white?labelColor=gray&logo=x&logoColor=white&style=plastic
-[reddit-url]: https://www.reddit.com/r/CamelAI/
-[reddit-image]: https://img.shields.io/reddit/subreddit-subscribers/CamelAI?style=plastic&logo=reddit&label=r%2FCAMEL&labelColor=white
-[wechat-url]: https://ghli.org/camel/wechat.png
-[wechat-image]: https://img.shields.io/badge/WeChat-CamelAIOrg-brightgreen?logo=wechat&logoColor=white
-[sponsor-link]: https://github.com/sponsors/camel-ai
-[sponsor-shield]: https://img.shields.io/badge/-Sponsor%20CAMEL--AI-1d1d1d?logo=github&logoColor=white&style=plastic
-[eigent-download]: https://www.eigent.ai/download
-[download-shield]: https://img.shields.io/badge/Download%20Eigent-363AF5?style=plastic
-[join-us]: https://eigent-ai.notion.site/eigent-ai-careers
-[join-us-image]: https://img.shields.io/badge/Join%20Us-yellow?style=plastic
+<!-- Social -->
 
 <!-- camel & eigent -->
 
-[camel-site]: https://www.camel-ai.org
-[eigent-site]: https://www.eigent.ai
-[docs-site]: https://docs.eigent.ai
-[github-issue-link]: https://github.com/eigent-ai/eigent/issues
-
 <!-- marketing -->
-
-[image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png
-[image-head]: https://eigent-ai.github.io/.github/assets/head.png
-[image-public-beta]: https://eigent-ai.github.io/.github/assets/banner.png
-[image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
-[image-opensource]: https://eigent-ai.github.io/.github/assets/opensource.png
-[image-wechat]: https://eigent-ai.github.io/.github/assets/wechat.png
-[image-join-us]: https://camel-ai.github.io/camel_asset/graphics/join_us.png
 
 <!-- feature -->
 
-[image-workforce]: https://eigent-ai.github.io/.github/assets/feature_dynamic_workforce.gif
-[image-human-in-the-loop]: https://eigent-ai.github.io/.github/assets/feature_human_in_the_loop.gif
-[image-customise-workers]: https://eigent-ai.github.io/.github/assets/feature_customise_workers.gif
-[image-add-mcps]: https://eigent-ai.github.io/.github/assets/feature_add_mcps.gif
-[image-local-model]: https://eigent-ai.github.io/.github/assets/feature_local_model.gif
+[built-with-camel]: https://img.shields.io/badge/-Built--with--CAMEL-4C19E8.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI3MiIgdmlld0JveD0iMCAwIDI0OCAyNzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjgzMTE3IDE4LjU4NjVMMCAzMC44MjY3QzUuNDY2OTIgMzUuMDQzMiAxNS4xMzkxIDM4LjgyNTggMjQuODExNCAzNi4yOTU5QzMwLjY5ODggNDAuOTM0MSAzOS42NzAyIDQwLjIzMTMgNDQuMTU1OSA0MC4wOTA4QzQzLjQ1NSA0Ny4zOTk0IDQyLjQ3MzcgNzAuOTU1OCA0NC4xNTU5IDEwNi43MTJDNDUuODM4IDE0Mi40NjggNzEuNzcwOCAxNjYuODY4IDg0LjUyNjkgMTc0LjU5OEw3Ni4wMDAyIDIyMEw4NC41MjY5IDI3MkgxMDguOTE4TDk4LjAwMDIgMjIwTDEwOC45MTggMTc0LjU5OEwxMjkuOTQ0IDI3MkgxNTQuNzU2TDEzNC4xNSAxNzQuNTk4SDE4Ny4xMzdMMTY2LjUzMSAyNzJIMTkxLjc2M0wyMTIuMzY5IDE3NC41OThMMjI2IDIyMEwyMTIuMzY5IDI3MkgyMzcuNjAxTDI0OC4wMDEgMjIwTDIzNy4xOCAxNzQuNTk4QzIzOS4yODMgMTY5LjExNyAyNDAuNDAxIDE2Ni45NzYgMjQxLjgwNiAxNjEuMTA1QzI0OS4zNzUgMTI5LjQ4MSAyMzUuMDc3IDEwMy45MDEgMjI2LjY2NyA5NC40ODRMMjA2LjQ4MSA3My44MjNDMTk3LjY1IDY0Ljk2ODMgMTgyLjUxMSA2NC41NDY3IDE3Mi44MzkgNzIuNTU4MUMxNjUuNzI4IDc4LjQ0NzcgMTYxLjcwMSA3OC43NzI3IDE1NC43NTYgNzIuNTU4MUMxNTEuODEyIDcwLjAyODEgMTQ0LjUzNSA2MS40ODg5IDEzNC45OTEgNTMuNTgzN0MxMjUuMzE5IDQ1LjU3MjMgMTA4LjQ5NyA0OC45NDU1IDEwMi4xODkgNTUuNjkxOUw3My41OTMxIDg0LjM2NDRWNy42MjM0OUw3OS4xMjczIDBDNjAuOTA0MiAzLjY1NDMzIDIzLjgwMjEgOS41NjMwOSAxOS43NjUgMTAuNTc1MUMxNS43Mjc5IDExLjU4NyAxMC43OTM3IDE2LjMzNzcgOC44MzExNyAxOC41ODY1WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTQzLjIwMzggMTguNzE4N0w0OS4wOTEyIDEzLjA0OTNMNTQuOTc4NyAxOC43MTg3TDQ5LjA5MTIgMjQuODI0Mkw0My4yMDM4IDE4LjcxODdaIiBmaWxsPSIjNEMxOUU4Ii8+Cjwvc3ZnPgo=
+[camel-ai-org-github]: https://github.com/camel-ai
+[camel-github]: https://github.com/camel-ai/camel
+[camel-site]: https://www.camel-ai.org
+[contribution-link]: https:/github.com/eigent-ai/eigent/blob/master/CONTRIBUTING.md
+[discord-image]: https://img.shields.io/discord/1082486657678311454?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb
+[discord-url]: https://discord.com/invite/CNcNpquyDc
+[docs-site]: https://docs.eigent.ai
+[download-shield]: https://img.shields.io/badge/Download%20Eigent-363AF5?style=plastic
+[eigent-download]: https://www.eigent.ai/download
+[eigent-github]: https://github.com/eigent-ai/eigent
+[eigent-site]: https://www.eigent.ai
+[github-issue-link]: https://github.com/eigent-ai/eigent/issues
+[github-star]: https://img.shields.io/github/stars/eigent-ai?color=F5F4F0&labelColor=gray&style=plastic&logo=github
+[image-head]: https://eigent-ai.github.io/.github/assets/head.png
+[image-join-us]: https://camel-ai.github.io/camel_asset/graphics/join_us.png
+[image-opensource]: https://eigent-ai.github.io/.github/assets/opensource.png
+[image-public-beta]: https://eigent-ai.github.io/.github/assets/banner.png
+[image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png
+[image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
+[join-us]: https://eigent-ai.notion.site/eigent-ai-careers
+[join-us-image]: https://img.shields.io/badge/Join%20Us-yellow?style=plastic
+[reddit-image]: https://img.shields.io/reddit/subreddit-subscribers/CamelAI?style=plastic&logo=reddit&label=r%2FCAMEL&labelColor=white
+[reddit-url]: https://www.reddit.com/r/CamelAI/
+[social-x-link]: https://x.com/Eigent_AI
+[social-x-shield]: https://img.shields.io/badge/-%40Eigent_AI-white?labelColor=gray&logo=x&logoColor=white&style=plastic
+[sponsor-link]: https://github.com/sponsors/camel-ai
+[sponsor-shield]: https://img.shields.io/badge/-Sponsor%20CAMEL--AI-1d1d1d?logo=github&logoColor=white&style=plastic
+[wechat-image]: https://img.shields.io/badge/WeChat-CamelAIOrg-brightgreen?logo=wechat&logoColor=white
+[wechat-url]: https://ghli.org/camel/wechat.png

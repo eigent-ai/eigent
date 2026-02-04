@@ -37,11 +37,11 @@ services:
       - DATABASE_URL=postgresql://postgres:123456@postgres:5432/eigent
       - ENVIRONMENT=production
       - DEBUG=false
-    volumes:
-       - ./app:/app/app
-       - ./alembic:/app/alembic
-       - ./lang:/app/lang
-       - ./public:/app/public
+    # volumes:
+    #   - ./app:/app/app
+    #   - ./alembic:/app/alembic
+    #   - ./lang:/app/lang
+    #   - ./public:/app/public
     depends_on:
       postgres:
         condition: service_healthy

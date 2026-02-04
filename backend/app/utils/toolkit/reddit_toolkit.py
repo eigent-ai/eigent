@@ -37,8 +37,11 @@ class RedditToolkit(BaseRedditToolkit, AbstractToolkit):
 
     @classmethod
     def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
-        if env("REDDIT_CLIENT_ID") and env("REDDIT_CLIENT_SECRET"
-                                           ) and env("REDDIT_USER_AGENT"):
+        if (
+            env("REDDIT_CLIENT_ID")
+            and env("REDDIT_CLIENT_SECRET")
+            and env("REDDIT_USER_AGENT")
+        ):
             return RedditToolkit(api_task_id).get_tools()
         else:
             return []

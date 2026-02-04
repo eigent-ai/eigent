@@ -236,4 +236,3 @@ msgstr ""
 #: app/model/abstract/model.py:97
 msgid "There is no data that meets the conditions"
 msgstr ""
-

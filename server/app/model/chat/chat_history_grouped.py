@@ -12,21 +12,22 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+
 from pydantic import BaseModel, model_validator
-from typing import List, Optional
-from datetime import datetime
+
 from app.model.chat.chat_history import ChatHistoryOut
 
 
 class ProjectGroup(BaseModel):
     """Project group response model for grouped history"""
+
     project_id: str
-    project_name: Optional[str] = None
+    project_name: str | None = None
     total_tokens: int = 0
     task_count: int = 0
     latest_task_date: str
-    last_prompt: Optional[str] = None
-    tasks: List[ChatHistoryOut] = []
+    last_prompt: str | None = None
+    tasks: list[ChatHistoryOut] = []
     # Additional project-level metadata
     total_completed_tasks: int = 0
     total_ongoing_tasks: int = 0
@@ -44,7 +45,8 @@ class ProjectGroup(BaseModel):
 
 class GroupedHistoryResponse(BaseModel):
     """Response model for grouped history data"""
-    projects: List[ProjectGroup]
+
+    projects: list[ProjectGroup]
     total_projects: int = 0
     total_tasks: int = 0
     total_tokens: int = 0
@@ -60,5 +62,6 @@ class GroupedHistoryResponse(BaseModel):
 
 class HistoryApiOptions(BaseModel):
     """Options for history API requests"""
-    grouped: Optional[bool] = False
-    include_tasks: Optional[bool] = True
+
+    grouped: bool | None = False
+    include_tasks: bool | None = True
