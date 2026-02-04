@@ -1,0 +1,39 @@
+name: Test
+
+'on':
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Run Python Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          uv sync
+
+      - name: Run unit tests
+        run: |
+          cd backend
+          uv run pytest tests/app -v

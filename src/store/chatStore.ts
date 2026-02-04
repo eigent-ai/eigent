@@ -1398,11 +1398,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   setTaskAssigning(currentTaskId, [...taskAssigning]);
                 }
               }
-              // const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
-              // if (taskIndex !== -1) {
-              // 	taskRunning![taskIndex].agent!.status = "completed";
-              // 	taskRunning![taskIndex]!.status = "completed";
-              // }
+              const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+              if (taskIndex !== -1 && taskRunning[taskIndex].agent) {
+                taskRunning[taskIndex].agent!.status = 'completed';
+              }
 
               if (!type && historyId) {
                 const obj = {

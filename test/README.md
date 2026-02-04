@@ -7,8 +7,8 @@ This comprehensive testing environment allows you to test all installation flows
 The testing environment consists of three main components:
 
 1. **Electron API Mocks** (`test/mocks/electronMocks.ts`) - Mock Electron's preload APIs
-2. **Environment State Mocks** (`test/mocks/environmentMocks.ts`) - Mock filesystem, processes, and system state
-3. **Test Scenarios** - Predefined scenarios for different installation flows
+1. **Environment State Mocks** (`test/mocks/environmentMocks.ts`) - Mock filesystem, processes, and system state
+1. **Test Scenarios** - Predefined scenarios for different installation flows
 
 ## Quick Start
 
@@ -413,11 +413,11 @@ await vi.waitFor(
 ## Best Practices
 
 1. **Reset State**: Always reset mock state between tests
-2. **Use Scenarios**: Prefer predefined scenarios over manual state setup
-3. **Test Edge Cases**: Include error conditions and edge cases
-4. **Verify Events**: Check that the correct events are emitted
-5. **Test Cleanup**: Verify that resources are properly cleaned up
-6. **Integration Tests**: Test the complete flow, not just individual functions
+1. **Use Scenarios**: Prefer predefined scenarios over manual state setup
+1. **Test Edge Cases**: Include error conditions and edge cases
+1. **Verify Events**: Check that the correct events are emitted
+1. **Test Cleanup**: Verify that resources are properly cleaned up
+1. **Integration Tests**: Test the complete flow, not just individual functions
 
 ## Example Test Files
 

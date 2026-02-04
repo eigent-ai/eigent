@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-
 """File system utilities."""
 
 from app.component.environment import env
@@ -26,9 +25,14 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
     """
     if not task_lock:
         from app.service.task import get_task_lock_if_exists
+
         task_lock = get_task_lock_if_exists(options.project_id)
-    
-    if task_lock and hasattr(task_lock, 'new_folder_path') and task_lock.new_folder_path:
+
+    if (
+        task_lock
+        and hasattr(task_lock, "new_folder_path")
+        and task_lock.new_folder_path
+    ):
         return str(task_lock.new_folder_path)
     else:
         return env("file_save_path", options.file_save_path())

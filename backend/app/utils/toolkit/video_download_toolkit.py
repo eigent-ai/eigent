@@ -13,8 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
-from typing import List
-from PIL.Image import Image
+
 from camel.toolkits import VideoDownloaderToolkit as BaseVideoDownloaderToolkit
 
 from app.component.environment import env
@@ -35,6 +34,8 @@ class VideoDownloaderToolkit(BaseVideoDownloaderToolkit, AbstractToolkit):
         timeout: float | None = None,
     ) -> None:
         if working_directory is None:
-            working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
+            working_directory = env(
+                "file_save_path", os.path.expanduser("~/Downloads")
+            )
         super().__init__(working_directory, cookies_path, timeout)
         self.api_task_id = api_task_id

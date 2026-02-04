@@ -12,10 +12,11 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from camel.toolkits import NoteTakingToolkit as BaseNoteTakingToolkit
+
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from camel.toolkits import NoteTakingToolkit as BaseNoteTakingToolkit
 
 
 @auto_listen_toolkit(BaseNoteTakingToolkit)
@@ -35,7 +36,8 @@ class NoteTakingToolkit(BaseNoteTakingToolkit, AbstractToolkit):
         if working_directory is None:
             raise ValueError(
                 "working_directory is required for NoteTakingToolkit. "
-                "Notes must be stored in a task-specific directory.")
+                "Notes must be stored in a task-specific directory."
+            )
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name

@@ -14,10 +14,12 @@
 
 from datetime import datetime
 from enum import Enum
+
 from pydantic import BaseModel
-from sqlmodel import Field, Column, SmallInteger, JSON
-from app.model.abstract.model import AbstractModel, DefaultTimes
 from sqlalchemy_utils import ChoiceType
+from sqlmodel import JSON, Column, Field, SmallInteger
+
+from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
 class RoleType(int, Enum):

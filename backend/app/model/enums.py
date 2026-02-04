@@ -12,18 +12,26 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import inspect
+from enum import Enum
 
 
-def dump_class(obj, max_val_len=1000):
-    cls = obj.__class__
-    print(f"Class: {cls.__name__}")
-    print("Attributes:")
-    for name, val in vars(obj).items():
-        val_str = repr(val)
-        if len(val_str) > max_val_len:
-            val_str = val_str[:max_val_len] + "... [truncated]"
-        print(f"  {name} = {val_str}")
-    # print("Methods:")
-    # for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-    #     print(f"  {name}()")
+class Status(str, Enum):
+    confirming = "confirming"
+    confirmed = "confirmed"
+    processing = "processing"
+    done = "done"
+
+
+DEFAULT_SUMMARY_PROMPT = (
+    "After completing the task, please generate"
+    " a summary of the entire task completion. "
+    "The summary must be enclosed in"
+    " <summary></summary> tags and include:\n"
+    "1. A confirmation of task completion,"
+    " referencing the original goal.\n"
+    "2. A high-level overview of the work"
+    " performed and the final outcome.\n"
+    "3. A bulleted list of key results"
+    " or accomplishments.\n"
+    "Adopt a confident and professional tone."
+)
