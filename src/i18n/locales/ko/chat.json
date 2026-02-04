@@ -47,5 +47,6 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "클라우드 스토리지가 현재 플랜의 한도에 도달했습니다.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "트래픽이 많습니다. 잠시 후 다시 시도해 주세요.",
   "new-project": "새 프로젝트",
-  "no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다."
+  "no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다.",
+  "splitting-tasks": "작업을 분할하는 중..."
 }

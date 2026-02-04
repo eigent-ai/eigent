@@ -47,5 +47,6 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Votre stockage cloud a atteint la limite de votre plan actuel.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Nous connaissons un trafic élevé. Veuillez réessayer dans quelques instants.",
   "new-project": "Nouveau projet",
-  "no-reply-received-task-continue": "Aucune réponse reçue, la tâche continue"
+  "no-reply-received-task-continue": "Aucune réponse reçue, la tâche continue",
+  "splitting-tasks": "Division des tâches..."
 }

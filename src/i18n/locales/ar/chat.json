@@ -47,5 +47,6 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": ".لقد وصل تخزينك السحابي إلى الحد الأقصى لخطة الاشتراك الحالية الخاصة بك",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": ".نواجه حركة مرور عالية. يرجى المحاولة مرة أخرى بعد وقت قصيرة",
   "new-project": "مشروع جديد",
-  "no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة"
+  "no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة",
+  "splitting-tasks": "جاري تقسيم المهام..."
 }
