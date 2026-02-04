@@ -12,12 +12,16 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from camel.toolkits import GoogleDriveMCPToolkit as BaseGoogleDriveMCPToolkit, MCPToolkit
+from camel.toolkits import (
+    GoogleDriveMCPToolkit as BaseGoogleDriveMCPToolkit,
+    MCPToolkit,
+)
+from camel.toolkits.function_tool import FunctionTool
+
 from app.component.command import bun
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from camel.toolkits.function_tool import FunctionTool
 
 
 class GoogleDriveMCPToolkit(BaseGoogleDriveMCPToolkit, AbstractToolkit):
@@ -38,8 +42,15 @@ class GoogleDriveMCPToolkit(BaseGoogleDriveMCPToolkit, AbstractToolkit):
                 "mcpServers": {
                     "gdrive": {
                         "command": bun(),
-                        "args": ["x", "-y", "@modelcontextprotocol/server-gdrive"],
-                        "env": {"GDRIVE_CREDENTIALS_PATH": credentials_path, **(input_env or {})},
+                        "args": [
+                            "x",
+                            "-y",
+                            "@modelcontextprotocol/server-gdrive",
+                        ],
+                        "env": {
+                            "GDRIVE_CREDENTIALS_PATH": credentials_path,
+                            **(input_env or {}),
+                        },
                     }
                 }
             },
@@ -47,13 +58,17 @@ class GoogleDriveMCPToolkit(BaseGoogleDriveMCPToolkit, AbstractToolkit):
         )
 
     @classmethod
-    async def get_can_use_tools(cls, api_task_id: str, input_env: dict[str, str] | None = None) -> list[FunctionTool]:
+    async def get_can_use_tools(
+        cls, api_task_id: str, input_env: dict[str, str] | None = None
+    ) -> list[FunctionTool]:
         if env("GDRIVE_CREDENTIALS_PATH") is None:
             return []
-        toolkit = cls(api_task_id, 180, env("GDRIVE_CREDENTIALS_PATH"), input_env)
+        toolkit = cls(
+            api_task_id, 180, env("GDRIVE_CREDENTIALS_PATH"), input_env
+        )
         await toolkit.connect()
         tools = []
         for item in toolkit.get_tools():
-            setattr(item, "_toolkit_name", cls.__name__)
+            item._toolkit_name = cls.__name__
             tools.append(item)
         return tools

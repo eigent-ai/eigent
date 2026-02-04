@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+
 from camel.toolkits import ExcelToolkit as BaseExcelToolkit
 
 from app.component.environment import env
@@ -33,5 +34,7 @@ class ExcelToolkit(BaseExcelToolkit, AbstractToolkit):
     ):
         self.api_task_id = api_task_id
         if working_directory is None:
-            working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
+            working_directory = env(
+                "file_save_path", os.path.expanduser("~/Downloads")
+            )
         super().__init__(timeout=timeout, working_directory=working_directory)

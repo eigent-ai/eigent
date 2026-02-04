@@ -84,9 +84,11 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
             toolkit_tools = toolkit.get_can_use_tools(api_task_id)
-            toolkit_tools = await toolkit_tools if asyncio.iscoroutine(
-                toolkit_tools
-            ) else toolkit_tools
+            toolkit_tools = (
+                await toolkit_tools
+                if asyncio.iscoroutine(toolkit_tools)
+                else toolkit_tools
+            )
             res.extend(toolkit_tools)
         else:
             logger.warning(f"Toolkit {item} not found for agent {agent_name}")
@@ -126,8 +128,10 @@ async def get_mcp_tools(mcp_server: McpServers):
             tool_names = [
                 (
                     tool.get_function_name()
-                    if hasattr(tool, "get_function_name") else str(tool)
-                ) for tool in tools
+                    if hasattr(tool, "get_function_name")
+                    else str(tool)
+                )
+                for tool in tools
             ]
             logging.debug(f"MCP tool names: {tool_names}")
         return tools

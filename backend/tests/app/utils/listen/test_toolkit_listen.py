@@ -67,7 +67,7 @@ def test_format_args_with_positional_args():
 @pytest.mark.unit
 def test_format_args_with_kwargs():
     """Format keyword arguments."""
-    args = ("self", )
+    args = ("self",)
     kwargs = {"key1": "value1", "key2": 42}
     result = _format_args(args, kwargs, None)
     assert "key1='value1'" in result
@@ -204,7 +204,7 @@ def test_listen_toolkit_sync_returns_result():
 
     with patch(
         "app.utils.listen.toolkit_listen.get_task_lock",
-        return_value=mock_task_lock
+        return_value=mock_task_lock,
     ):
 
         @listen_toolkit()
@@ -224,7 +224,7 @@ def test_listen_toolkit_sync_raises_exception():
 
     with patch(
         "app.utils.listen.toolkit_listen.get_task_lock",
-        return_value=mock_task_lock
+        return_value=mock_task_lock,
     ):
 
         @listen_toolkit()
@@ -276,7 +276,7 @@ async def test_listen_toolkit_async_returns_result():
 
     with patch(
         "app.utils.listen.toolkit_listen.get_task_lock",
-        return_value=mock_task_lock
+        return_value=mock_task_lock,
     ):
 
         @listen_toolkit()
@@ -297,7 +297,7 @@ async def test_listen_toolkit_async_raises_exception():
 
     with patch(
         "app.utils.listen.toolkit_listen.get_task_lock",
-        return_value=mock_task_lock
+        return_value=mock_task_lock,
     ):
 
         @listen_toolkit()
@@ -337,7 +337,7 @@ def test_listen_toolkit_with_custom_inputs_formatter():
 
     with patch(
         "app.utils.listen.toolkit_listen.get_task_lock",
-        return_value=mock_task_lock
+        return_value=mock_task_lock,
     ):
 
         @listen_toolkit(inputs=custom_inputs)
@@ -360,10 +360,13 @@ def test_listen_toolkit_with_custom_return_msg_formatter():
     def custom_return_msg(res):
         return f"formatted: {res}"
 
-    with patch(
-        "app.utils.listen.toolkit_listen.get_task_lock",
-        return_value=mock_task_lock
-    ), patch("app.utils.listen.toolkit_listen._format_result") as mock_format:
+    with (
+        patch(
+            "app.utils.listen.toolkit_listen.get_task_lock",
+            return_value=mock_task_lock,
+        ),
+        patch("app.utils.listen.toolkit_listen._format_result") as mock_format,
+    ):
         mock_format.return_value = "formatted: test_result"
 
         @listen_toolkit(return_msg=custom_return_msg)

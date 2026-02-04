@@ -76,8 +76,9 @@ async def developer_agent(options: Chat):
     )
 
     tools = [
-        *HumanToolkit.
-        get_can_use_tools(options.project_id, Agents.developer_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.developer_agent
+        ),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),

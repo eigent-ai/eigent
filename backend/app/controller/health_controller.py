@@ -35,9 +35,6 @@ async def health_check():
     response = HealthResponse(status="ok", service="eigent")
     logger.debug(
         "Health check completed",
-        extra={
-            "status": response.status,
-            "service": response.service
-        }
+        extra={"status": response.status, "service": response.service},
     )
     return response

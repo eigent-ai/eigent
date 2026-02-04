@@ -23,7 +23,7 @@ echo -e "${YELLOW}[1/5] Checking if uv is installed...${NC}"
 if ! command -v uv &> /dev/null; then
     echo -e "${YELLOW}uv is not installed, attempting to install...${NC}"
     echo -e "${YELLOW}Downloading and installing uv...${NC}"
-    
+
     # Try to install uv
     if curl -LsSf https://astral.sh/uv/install.sh | sh; then
         echo -e "${GREEN}uv installation completed${NC}"
@@ -106,4 +106,4 @@ if ! uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0; then
     echo -e "${RED}Service startup failed${NC}"
     read -p "Press Enter to exit"
     exit 1
-fi 
+fi

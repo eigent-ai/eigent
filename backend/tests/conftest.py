@@ -15,8 +15,8 @@
 import asyncio
 import os
 import tempfile
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -288,7 +288,7 @@ def mock_environment_variables():
         "CAMEL_MODEL_LOG_ENABLED": "true",
         "CAMEL_LOG_DIR": "/tmp/test_logs",
         "file_save_path": "/tmp/test_files",
-        "browser_port": "8080"
+        "browser_port": "8080",
     }
 
     with patch.dict(os.environ, env_vars, clear=False):
@@ -311,7 +311,7 @@ def sample_chat_data():
         "new_agents": [],
         "env_path": ".env",
         "browser_port": 8080,
-        "summary_prompt": ""
+        "summary_prompt": "",
     }
 
 
@@ -321,7 +321,7 @@ def sample_task_content():
     return {
         "id": "test_task_123",
         "content": "Test task content",
-        "state": "OPEN"  # Changed from CREATED to OPEN
+        "state": "OPEN",  # Changed from CREATED to OPEN
     }
 
 
@@ -355,7 +355,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "very_slow: mark test as very slow (requires full test mode)"
+        "very_slow: mark test as very slow (requires full test mode)",
     )
     config.addinivalue_line(
         "markers", "optional: mark test as optional (skipped in fast mode)"

@@ -13,18 +13,19 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import datetime
+import logging
+
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
+from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
 from camel.societies.workforce.single_agent_worker import (
     SingleAgentWorker as BaseSingleAgentWorker,
 )
+from camel.societies.workforce.utils import TaskResult
 from camel.tasks.task import Task, TaskState, is_task_result_insufficient
-import logging
+from camel.utils.context_utils import ContextUtility
+from colorama import Fore
 
 from app.agent.listen_chat_agent import ListenChatAgent
-from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
-from colorama import Fore
-from camel.societies.workforce.utils import TaskResult
-from camel.utils.context_utils import ContextUtility
 
 logger = logging.getLogger("single_agent_worker")
 
