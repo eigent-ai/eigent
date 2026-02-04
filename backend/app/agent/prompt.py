@@ -121,7 +121,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <mandatory_instructions>
 - You MUST use `list_note()` to discover available notes, then may use
-    `read_note()` to gather all information collected by other team members.
+    `read_note()` to gather some information collected by other team members.
     Check the `shared_files` note for files created by other agents that
     you may need. Write down your own findings using `append_note()`.
 
