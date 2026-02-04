@@ -138,7 +138,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
     message_description
     parameters when calling tools. These optional parameters are available on
     all tools and will automatically notify the user of your progress.
-<mandatory_instructions>
+</mandatory_instructions>
 
 <capabilities>
 Your capabilities include:
@@ -577,7 +577,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
     summary of your findings, presented in a clear, detailed, and
     easy-to-read format. Avoid using markdown tables for presenting data;
     use plain text formatting instead.
-<mandatory_instructions>
+</mandatory_instructions>
 
 <capabilities>
 Your capabilities include:
