@@ -836,7 +836,7 @@ class Workforce(BaseWorkforce):
                 self._channel.get_returned_task_by_publisher(self.node_id),
                 timeout=self.task_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Send timeout notification to frontend before re-raising
             logger.warning(
                 f"⏰ [WF-TIMEOUT] Task timeout in workforce {self.node_id}. "

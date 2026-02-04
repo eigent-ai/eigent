@@ -778,7 +778,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     timeout=10,
                                 )
                                 task_lock.summary_generated = True
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.warning(
                                     "summary_task timeout",
                                     extra={
@@ -1435,7 +1435,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 "Generated LLM summary for multi-turn task",
                                 extra={"project_id": options.project_id},
                             )
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             logger.warning(
                                 "Multi-turn summary_task timeout",
                                 extra={

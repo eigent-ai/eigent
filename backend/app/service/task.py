@@ -19,11 +19,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from camel.tasks import Task
 from pydantic import BaseModel
-from typing_extensions import Any, TypedDict
+from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
 from app.model.chat import (
