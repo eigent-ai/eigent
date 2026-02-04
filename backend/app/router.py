@@ -16,6 +16,7 @@ Centralized router registration for the Eigent API.
 All routers are explicitly registered here
 for better visibility and maintainability.
 """
+
 import logging
 
 from fastapi import FastAPI
@@ -48,31 +49,27 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         {
             "router": health_controller.router,
             "tags": ["Health"],
-            "description": "Health check endpoint for service readiness"
+            "description": "Health check endpoint for service readiness",
         },
         {
-            "router":
-            chat_controller.router,
+            "router": chat_controller.router,
             "tags": ["chat"],
-            "description":
-            "Chat session management, improvements, and human interactions"
+            "description": "Chat session management, improvements, and human interactions",
         },
         {
             "router": model_controller.router,
             "tags": ["model"],
-            "description": "Model validation and configuration"
+            "description": "Model validation and configuration",
         },
         {
-            "router":
-            task_controller.router,
+            "router": task_controller.router,
             "tags": ["task"],
-            "description":
-            "Task lifecycle management (start, stop, update, control)"
+            "description": "Task lifecycle management (start, stop, update, control)",
         },
         {
             "router": tool_controller.router,
             "tags": ["tool"],
-            "description": "Tool installation and management"
+            "description": "Tool installation and management",
         },
     ]
 

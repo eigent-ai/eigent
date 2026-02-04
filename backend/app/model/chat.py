@@ -21,7 +21,7 @@ from typing import Literal
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
-from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status
+from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
 
 logger = logging.getLogger("chat_model")
 
@@ -38,7 +38,7 @@ class QuestionAnalysisResult(BaseModel):
     answer: str | None = Field(
         default=None,
         description="Direct answer for simple questions."
-        " None for complex tasks."
+        " None for complex tasks.",
     )
 
 
@@ -93,26 +93,34 @@ class Chat(BaseModel):
         return model_type
 
     def get_bun_env(self) -> dict[str, str]:
-        return {
-            "NPM_CONFIG_REGISTRY": self.bun_mirror
-        } if self.bun_mirror else {}
+        return (
+            {"NPM_CONFIG_REGISTRY": self.bun_mirror} if self.bun_mirror else {}
+        )
 
     def get_uvx_env(self) -> dict[str, str]:
-        return {
-            "UV_DEFAULT_INDEX": self.uvx_mirror,
-            "PIP_INDEX_URL": self.uvx_mirror
-        } if self.uvx_mirror else {}
+        return (
+            {
+                "UV_DEFAULT_INDEX": self.uvx_mirror,
+                "PIP_INDEX_URL": self.uvx_mirror,
+            }
+            if self.uvx_mirror
+            else {}
+        )
 
     def is_cloud(self):
         return self.api_url is not None and "44.247.171.124" in self.api_url
 
     def file_save_path(self, path: str | None = None):
-        email = re.sub(r'[\\/*?:"<>|\s]', "_",
-                       self.email.split("@")[0]).strip(".")
+        email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(
+            "."
+        )
         # Use project-based structure: project_{project_id}/task_{task_id}
         save_path = (
-            Path.home() / "eigent" / email / f"project_{self.project_id}" /
-            f"task_{self.task_id}"
+            Path.home()
+            / "eigent"
+            / email
+            / f"project_{self.project_id}"
+            / f"task_{self.task_id}"
         )
         if path is not None:
             save_path = save_path / path
@@ -143,6 +151,7 @@ class UpdateData(BaseModel):
 class AgentModelConfig(BaseModel):
     """Optional per-agent model configuration
     to override the default task model."""
+
     model_platform: str | None = None
     model_type: str | None = None
     api_key: str | None = None

@@ -40,10 +40,10 @@ async def request_exception(request: Request, e: RequestValidationError):
 
     return JSONResponse(
         content={
-            "code":
-            code.form_error,
-            "error":
-            jsonable_encoder(trans.translate(list(e.errors()), locale=lang)),
+            "code": code.form_error,
+            "error": jsonable_encoder(
+                trans.translate(list(e.errors()), locale=lang)
+            ),
         }
     )
 
@@ -65,10 +65,7 @@ async def no_permission(request: Request, exception: NoPermissionException):
     logger.warning(f"No permission on {request.url.path}: {exception.text}")
     return JSONResponse(
         status_code=200,
-        content={
-            "code": code.no_permission_error,
-            "text": exception.text
-        },
+        content={"code": code.no_permission_error, "text": exception.text},
     )
 
 
@@ -78,14 +75,11 @@ async def program_exception(
 ):
     logger.error(
         f"Program exception on {request.url.path}: {exception.text}",
-        exc_info=True
+        exc_info=True,
     )
     return JSONResponse(
         status_code=200,
-        content={
-            "code": code.program_error,
-            "text": exception.text
-        },
+        content={"code": code.program_error, "text": exception.text},
     )
 
 
@@ -99,7 +93,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "request_path": str(request.url.path),
             "request_query": str(request.url.query),
             "client_host": request.client.host if request.client else None,
-        }
+        },
     )
 
     return JSONResponse(

@@ -15,8 +15,9 @@
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from threading import Event
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any
 
 from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
@@ -34,7 +35,6 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
-from app.utils.event_loop_utils import _schedule_async_task
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -45,6 +45,7 @@ from app.service.task import (
     get_task_lock,
     set_process_task,
 )
+from app.utils.event_loop_utils import _schedule_async_task
 
 # Logger for agent tracking
 logger = logging.getLogger("agent")
@@ -59,27 +60,27 @@ class ListenChatAgent(ChatAgent):
         model: (
             BaseModelBackend
             | ModelManager
-            | Tuple[str, str]
+            | tuple[str, str]
             | str
             | ModelType
-            | Tuple[ModelPlatformType, ModelType]
-            | List[BaseModelBackend]
-            | List[str]
-            | List[ModelType]
-            | List[Tuple[str, str]]
-            | List[Tuple[ModelPlatformType, ModelType]]
+            | tuple[ModelPlatformType, ModelType]
+            | list[BaseModelBackend]
+            | list[str]
+            | list[ModelType]
+            | list[tuple[str, str]]
+            | list[tuple[ModelPlatformType, ModelType]]
             | None
         ) = None,
         memory: AgentMemory | None = None,
         message_window_size: int | None = None,
         token_limit: int | None = None,
         output_language: str | None = None,
-        tools: List[FunctionTool | Callable[..., Any]] | None = None,
-        toolkits_to_register_agent: List[RegisteredAgentToolkit] | None = None,
+        tools: list[FunctionTool | Callable[..., Any]] | None = None,
+        toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
         external_tools: (
-            List[FunctionTool | Callable[..., Any] | Dict[str, Any]] | None
+            list[FunctionTool | Callable[..., Any] | dict[str, Any]] | None
         ) = None,
-        response_terminators: List[ResponseTerminator] | None = None,
+        response_terminators: list[ResponseTerminator] | None = None,
         scheduling_strategy: str = "round_robin",
         max_iteration: int | None = None,
         agent_id: str | None = None,
@@ -162,7 +163,9 @@ class ListenChatAgent(ChatAgent):
         return usage_info.get("total_tokens", 0)
 
     def _stream_chunks(self, response_gen):
-        """Generator that wraps a streaming response and sends chunks to frontend.
+        """Generator that wraps a streaming response.
+
+        Sends chunks to frontend.
 
         Args:
             response_gen: The original streaming response generator
@@ -171,7 +174,8 @@ class ListenChatAgent(ChatAgent):
             Each chunk from the original generator
 
         Returns:
-            Tuple of (accumulated_content, total_tokens) via StopIteration value
+            Tuple of (accumulated_content, total_tokens) via
+            StopIteration value
         """
         accumulated_content = ""
         last_chunk = None
@@ -187,7 +191,9 @@ class ListenChatAgent(ChatAgent):
             self._send_agent_deactivate(accumulated_content, total_tokens)
 
     async def _astream_chunks(self, response_gen):
-        """Async generator that wraps a streaming response and sends chunks to frontend.
+        """Async generator that wraps a streaming response.
+
+        Sends chunks to frontend.
 
         Args:
             response_gen: The original async streaming response generator
@@ -438,7 +444,7 @@ class ListenChatAgent(ChatAgent):
             task_lock = get_task_lock(self.api_task_id)
 
             toolkit_name = (
-                getattr(tool, "_toolkit_name")
+                tool._toolkit_name
                 if hasattr(tool, "_toolkit_name")
                 else "mcp_toolkit"
             )
@@ -546,7 +552,8 @@ class ListenChatAgent(ChatAgent):
         if hasattr(tool, "_toolkit_name"):
             toolkit_name = tool._toolkit_name
 
-        # Method 2: For MCP tools, check if func has __self__ (the toolkit instance)
+        # Method 2: For MCP tools, check if func has __self__
+        # (the toolkit instance)
         if (
             not toolkit_name
             and hasattr(tool, "func")
@@ -602,7 +609,7 @@ class ListenChatAgent(ChatAgent):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # Case: FunctionTool wrapping an MCP tool
-                    # Check if the wrapped tool is sync to avoid run_in_executor
+                    # Check if wrapped tool is sync to avoid run_in_executor
                     if hasattr(tool, "is_async") and not tool.is_async:
                         # Sync tool: call directly to preserve ContextVar
                         result = tool(**args)
@@ -620,7 +627,7 @@ class ListenChatAgent(ChatAgent):
                         # Sync tool: call directly to preserve ContextVar
                         # in same thread
                         result = tool(**args)
-                        # Handle case where synchronous call returns a coroutine
+                        # Handle case where sync call returns a coroutine
                         if asyncio.iscoroutine(result):
                             result = await result
                     else:
@@ -638,7 +645,7 @@ class ListenChatAgent(ChatAgent):
                     result = await tool(**args)
 
                 else:
-                    # Fallback: synchronous call - call directly in current context
+                    # Fallback: sync call - call directly in current context
                     # DO NOT use run_in_executor to preserve ContextVar
                     result = tool(**args)
                     # Handle case where synchronous call returns a coroutine

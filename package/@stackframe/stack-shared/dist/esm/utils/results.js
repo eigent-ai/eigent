@@ -100,7 +100,7 @@ var RetryError = class extends AggregateError {
       errors,
       deindent`
       Error after ${errors.length} attempts.
-      
+
       ${isAllSame ? deindent`
         Attempts 1-${errors.length}:
           ${strings[0]}

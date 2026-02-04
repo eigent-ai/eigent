@@ -66,18 +66,15 @@ async def validate_model(request: ValidateModelRequest):
             "platform": platform,
             "model_type": model_type,
             "has_url": has_custom_url,
-            "has_config": has_config
-        }
+            "has_config": has_config,
+        },
     )
 
     # API key validation
     if request.api_key is not None and str(request.api_key).strip() == "":
         logger.warning(
             "Model validation failed: empty API key",
-            extra={
-                "platform": platform,
-                "model_type": model_type
-            }
+            extra={"platform": platform, "model_type": model_type},
         )
         raise HTTPException(
             status_code=400,
@@ -89,7 +86,7 @@ async def validate_model(request: ValidateModelRequest):
                     "param": None,
                     "code": "invalid_api_key",
                 },
-            }
+            },
         )
 
     try:
@@ -97,10 +94,7 @@ async def validate_model(request: ValidateModelRequest):
 
         logger.debug(
             "Creating agent for validation",
-            extra={
-                "platform": platform,
-                "model_type": model_type
-            }
+            extra={"platform": platform, "model_type": model_type},
         )
         agent = create_agent(
             platform,
@@ -113,10 +107,7 @@ async def validate_model(request: ValidateModelRequest):
 
         logger.debug(
             "Agent created, executing test step",
-            extra={
-                "platform": platform,
-                "model_type": model_type
-            }
+            extra={"platform": platform, "model_type": model_type},
         )
         response = agent.step(
             input_message="""
@@ -134,9 +125,9 @@ async def validate_model(request: ValidateModelRequest):
             extra={
                 "platform": platform,
                 "model_type": model_type,
-                "error": str(e)
+                "error": str(e),
             },
-            exc_info=True
+            exc_info=True,
         )
         message, error_code, error_obj = normalize_error_to_openai_format(e)
 
@@ -146,7 +137,7 @@ async def validate_model(request: ValidateModelRequest):
                 "message": message,
                 "error_code": error_code,
                 "error": error_obj,
-            }
+            },
         )
 
     # Check validation results
@@ -163,11 +154,10 @@ async def validate_model(request: ValidateModelRequest):
                 " Website Content:"
                 " Welcome to CAMEL AI!"
             )
-            is_tool_calls = (tool_calls[0].result == expected)
+            is_tool_calls = tool_calls[0].result == expected
 
     no_tool_msg = (
-        "This model doesn't support tool calls."
-        " please try with another model."
+        "This model doesn't support tool calls. please try with another model."
     )
     result = ValidateModelResponse(
         is_valid=is_valid,
@@ -183,8 +173,8 @@ async def validate_model(request: ValidateModelRequest):
             "platform": platform,
             "model_type": model_type,
             "is_valid": is_valid,
-            "is_tool_calls": is_tool_calls
-        }
+            "is_tool_calls": is_tool_calls,
+        },
     )
 
     return result
