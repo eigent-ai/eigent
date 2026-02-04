@@ -27,7 +27,6 @@ import {
   ArrowRight,
   FileText,
   Image,
-  Maximize,
   Plus,
   UploadCloud,
   X,
@@ -549,7 +548,7 @@ export const Inputbox = ({
         {/* Right: Send Button */}
         <div className="flex items-center gap-1">
           {/* Expand Input Dialog Button - hidden when inside ExpandedInputBox */}
-          {!hideExpandButton && (
+          {/*{!hideExpandButton && (
             <Button
               variant="ghost"
               size="icon"
@@ -560,7 +559,7 @@ export const Inputbox = ({
             >
               <Maximize size={16} className="text-icon-primary" />
             </Button>
-          )}
+          )}*/}
           <Button
             size="icon"
             variant={value.trim().length > 0 ? 'success' : 'secondary'}
