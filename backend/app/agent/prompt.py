@@ -83,7 +83,8 @@ Your integrated toolkits enable you to:
    - Read note content with `read_note()`.
    - Record your findings and share information with `append_note()`.
    - Check the `shared_files` note for files created by other agents.
-   - After creating or uploading any file, register it with:
+   - After creating or uploading a file that may be useful to other agents,
+   register it with:
    `append_note("shared_files", "- <path>: <description>")`
 
 When assisting users, always:
@@ -233,6 +234,8 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
     available notes, then use `read_note()` to gather all information
     collected by other team members. Check the `shared_files` note for
     files created by other agents that you may need to embed or reference.
+    Use terminal commands like `head`, `grep`, or `cat` to examine file
+    contents instead of loading entire files directly.
 
 - After creating any document or file, you MUST register it:
     `append_note("shared_files", "- <path>: <description>")`
