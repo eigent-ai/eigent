@@ -94,19 +94,21 @@ function App() {
 
   // render wrapper
   const renderWrapper = (children: React.ReactNode) => {
+    const content = (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
     if (HAS_STACK_KEYS) {
       return (
         <StackProvider app={stackClientApp}>
-          <StackTheme>{children}</StackTheme>
+          <StackTheme>{content}</StackTheme>
           <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
         </StackProvider>
       );
     }
     return (
       <>
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
+        {content}
         <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
       </>
     );
