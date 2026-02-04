@@ -19,9 +19,14 @@ import { useTranslation } from 'react-i18next';
 interface SearchInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
 }
 
-export default function SearchInput({ value, onChange }: SearchInputProps) {
+export default function SearchInput({
+  value,
+  onChange,
+  placeholder,
+}: SearchInputProps) {
   const { t } = useTranslation();
   return (
     <div className="relative w-full">
@@ -29,7 +34,7 @@ export default function SearchInput({ value, onChange }: SearchInputProps) {
         size="sm"
         value={value}
         onChange={onChange}
-        placeholder={t('setting.search-mcp')}
+        placeholder={placeholder || t('setting.search-mcp')}
         leadingIcon={<Search className="h-5 w-5 text-icon-secondary" />}
       />
     </div>

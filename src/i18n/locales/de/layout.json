@@ -31,8 +31,10 @@
   "installation-failed": "Installation fehlgeschlagen",
   "projects": "Projekte",
   "mcp-tools": "MCP & Tools",
+  "connectors": "Konnektoren",
   "browser": "Browser",
   "settings": "Einstellungen",
+  "general": "Allgemein",
   "workers": "Mitarbeiter",
   "triggers": "Trigger",
   "new-project": "Neues Projekt",
@@ -166,5 +168,6 @@
   "days-ago": "Tage zuvor",
   "delete-project": "Projekt löschen",
   "delete-project-confirmation": "Sind Sie sicher, dass Sie dieses Projekt und alle seine Aufgaben löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
-  "please-select-model": "Bitte wählen Sie ein Modell unter Einstellungen > Modelle aus, um fortzufahren."
+  "please-select-model": "Bitte wählen Sie ein Modell unter Einstellungen > Modelle aus, um fortzufahren.",
+  "capabilities": "Fähigkeiten"
 }

@@ -31,8 +31,10 @@
   "installation-failed": "Error al instalar",
   "projects": "Proyectos",
   "mcp-tools": "MCP & Herramientas",
+  "connectors": "Conectores",
   "browser": "Navegador",
   "settings": "Ajustes",
+  "general": "General",
   "workers": "Trabajadores",
   "triggers": "Disparadores",
   "new-project": "Nuevo Proyecto",
@@ -166,5 +168,6 @@
   "days-ago": "días atrás",
   "delete-project": "Eliminar Proyecto",
   "delete-project-confirmation": "¿Estás seguro de que quieres eliminar este proyecto y todas sus tareas? Esta acción no se puede deshacer.",
-  "please-select-model": "Por favor, selecciona un modelo en Configuración > Modelos para continuar."
+  "please-select-model": "Por favor, selecciona un modelo en Configuración > Modelos para continuar.",
+  "capabilities": "Capacidades"
 }

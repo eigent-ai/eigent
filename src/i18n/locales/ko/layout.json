@@ -31,8 +31,10 @@
   "installation-failed": "설치 실패",
   "projects": "프로젝트",
   "mcp-tools": "MCP 및 도구",
+  "connectors": "커넥터",
   "browser": "브라우저",
   "settings": "설정",
+  "general": "일반",
   "workers": "작업자",
   "triggers": "트리거",
   "new-project": "새 프로젝트",
@@ -166,5 +168,6 @@
   "days-ago": "일 전",
   "delete-project": "프로젝트 삭제",
   "delete-project-confirmation": "이 프로젝트와 모든 작업을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
-  "please-select-model": "계속하려면 설정 > 모델에서 모델을 선택하세요."
+  "please-select-model": "계속하려면 설정 > 모델에서 모델을 선택하세요.",
+  "capabilities": "기능"
 }
