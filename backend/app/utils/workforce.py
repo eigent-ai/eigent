@@ -29,6 +29,7 @@ from camel.societies.workforce.prompts import TASK_DECOMPOSE_PROMPT
 from camel.societies.workforce.task_channel import TaskChannel
 from camel.societies.workforce.utils import (
     FailureHandlingConfig,
+    TaskAnalysisResult,
     TaskAssignResult,
 )
 from camel.societies.workforce.workforce import (
@@ -101,6 +102,64 @@ class Workforce(BaseWorkforce):
         logger.info(
             f"[WF-LIFECYCLE] ✅ Workforce.__init__ COMPLETED, id={id(self)}"
         )
+
+    def _analyze_task(
+        self,
+        task: Task,
+        *,
+        for_failure: bool,
+        error_message: str | None = None,
+    ) -> TaskAnalysisResult:
+        """Override to add debugging for None return issue.
+
+        The base class should never return None, but we're seeing it happen.
+        This override adds logging to help diagnose the root cause.
+        """
+        logger.debug(
+            f"[WF-DEBUG] _analyze_task called: task_id={task.id}, "
+            f"for_failure={for_failure}, "
+            f"use_structured_output_handler={self.use_structured_output_handler}"
+        )
+
+        try:
+            result = super()._analyze_task(
+                task, for_failure=for_failure, error_message=error_message
+            )
+
+            logger.debug(
+                f"[WF-DEBUG] _analyze_task result: type={type(result)}, "
+                f"value={result}"
+            )
+
+            if result is None:
+                # This should never happen - log detailed info
+                logger.error(
+                    f"[WF-BUG] _analyze_task returned None unexpectedly! "
+                    f"task_id={task.id}, for_failure={for_failure}, "
+                    f"use_structured_output_handler="
+                    f"{self.use_structured_output_handler}"
+                )
+                # Return fallback to prevent crash
+                if for_failure:
+                    return TaskAnalysisResult(
+                        reasoning="BUG: _analyze_task returned None",
+                        recovery_strategy="retry",
+                        issues=[error_message] if error_message else [],
+                    )
+                else:
+                    return TaskAnalysisResult(
+                        reasoning="BUG: _analyze_task returned None",
+                        quality_score=80,
+                    )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"[WF-DEBUG] _analyze_task exception: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+            raise
 
     def eigent_make_sub_tasks(
         self,
