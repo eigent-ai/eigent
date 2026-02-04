@@ -43,6 +43,11 @@ class ModelKwargs(BaseModel):
     api_url: str | None = None
 
 
+class Metadata(BaseModel):
+    description: str = ""
+    tags: list[str] = []
+
+
 class BenchmarkData(BaseModel):
     name: str
     question: str
@@ -80,6 +85,7 @@ class BenchmarkData(BaseModel):
 
 
 class BenchmarkConfig(BaseModel):
+    metadata: Metadata = Metadata()
     data: BenchmarkData
     model_kwargs: ModelKwargs = ModelKwargs()
     tests: Tests = Tests()
