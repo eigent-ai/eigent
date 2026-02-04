@@ -16,22 +16,20 @@ Our Cloud Service is a subscription-based offering that gives you access to Eige
 - **Pro:** For power users who need advanced capabilities. Includes **10,000 Credits** per month.
 - **Add-On Packs:** If you run out of Credits, you can purchase an Add-On Pack at any time to top up your account.
 
-> *Credits never expire within the billing cycle and you can top‑up at any time.*
-> 
-> *Unused Credits from your monthly plan allowance do not roll over to the next month.*
-> *Credits from Add-On Packages will carry over to subsequent billing cycles.*
-> 
-> 
-> *See your Credits Usage directly in Settings → Account → [Manage](https://www.eigent.ai/dashboard).*
-> 
+> _Credits never expire within the billing cycle and you can top‑up at any time._
+>
+> _Unused Credits from your monthly plan allowance do not roll over to the next month._
+> _Credits from Add-On Packages will carry over to subsequent billing cycles._
+>
+> _See your Credits Usage directly in Settings → Account → [Manage](https://www.eigent.ai/dashboard)._
 
 ### Self-Hosted Service
 
 For users who require more control, privacy, and customization, we offer self-hosted solutions. To view more open-source information, please visit [GitHub](https://github.com/eigent-ai/eigent).
 
-- **Free:** Designed for individual users, open-source developers, small teams, or non-commercial projects. This plan requires you to host your own models and provide your own API keys. 
+- **Free:** Designed for individual users, open-source developers, small teams, or non-commercial projects. This plan requires you to host your own models and provide your own API keys.
 
-- **Scalable:** Ideal for teams requiring enhanced reliability and support. This plan also allows for  logo and brand customization.
+- **Scalable:** Ideal for teams requiring enhanced reliability and support. This plan also allows for logo and brand customization.
 
 - **Custom:** A bespoke solution for enterprise clients with specific needs for features, support, security and control.
 
@@ -59,7 +57,6 @@ For inquiries about our Scalable and Custom plans, please please refer to our [*
 
 ![Support Dashboard](/docs/images/support_dashboard.png)
 
-
 ### Invitation Code
 
 Just below your plan card you’ll see your exclusive invitation code. Share it with a friend! Both of you automatically receive **500 Credits** once they register.
@@ -72,7 +69,6 @@ Scroll to credits usage dashboard to view:
 - **Daily Refreshed Credits:** Your 200‑Credit daily bonus countdown. These daily credits are used first before your main balance is touched.
 - **Credits History:** This is a log of all transactions on your account. You can see how Credits were added (e.g., `monthly`, `invite`, `register`) and how they were spent (`consume`).
 
-
 **Note on Balance**
 
 Your balance is calculated based on the total credits added minus the total consumed within your current billing cycle.
@@ -84,10 +80,9 @@ If your balance becomes negative, it will be displayed as **0**. This means your
 - For free users, your monthly cycle starts on the date you registered. For subscribers, it starts on the date of your first successful subscription.
 - Daily active credits are used first (no rollover), followed by monthly pack credits (no rollover to next month), and finally, top-up pack credits (which don't expire).
 - You can cancel any subscription or Add-On Pack purchase within 7 days for a full refund.
-    - Plan resets to Free and billing cycle resets to registration date.
-    - Credits balance re‑computed according to Free‑tier rules.
+  - Plan resets to Free and billing cycle resets to registration date.
+  - Credits balance re‑computed according to Free‑tier rules.
 - How do I cancel my subscription? Please contact **info@eigent.ai.**
 - You can download invoices from the payment confirmation email sent to your registered email address.
-
 
 For any questions about your bill or account status, email us anytime at [info@eigent.ai](mailto:info@eigent.ai).

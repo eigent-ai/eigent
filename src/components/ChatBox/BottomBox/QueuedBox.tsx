@@ -12,127 +12,138 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { ChevronUp, ChevronDown, Circle, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronUp, Circle, X } from 'lucide-react';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface QueuedMessage {
-    id: string;
-    content: string;
-    timestamp?: number;
+  id: string;
+  content: string;
+  timestamp?: number;
 }
 
 interface QueuedBoxProps {
-    queuedMessages?: QueuedMessage[];
-    onRemoveQueuedMessage?: (id: string) => void;
-    className?: string;
+  queuedMessages?: QueuedMessage[];
+  onRemoveQueuedMessage?: (id: string) => void;
+  className?: string;
 }
 
-export function QueuedBox({ queuedMessages = [], onRemoveQueuedMessage, className }: QueuedBoxProps) {
-    const { t } = useTranslation();
-    const [isExpanded, setIsExpanded] = useState(true);
-    const hasQueued = queuedMessages.length > 0;
+export function QueuedBox({
+  queuedMessages = [],
+  onRemoveQueuedMessage,
+  className,
+}: QueuedBoxProps) {
+  const { t } = useTranslation();
+  const [isExpanded, setIsExpanded] = useState(true);
+  const hasQueued = queuedMessages.length > 0;
 
-    if (!hasQueued) return null;
+  if (!hasQueued) return null;
 
-    return (
-        <div className={cn("flex flex-col py-1 gap-1 items-start justify-center w-full rounded-t-2xl bg-input-bg-input border border-b-0 border-solid-80 border-input-border-default", className)}>
-            {/* Queuing Header Top */}
-            <div className="box-border flex gap-1 items-center px-2.5 py-0 relative w-full">
-                {/* Lead Button for expand/collapse */}
-                <Button
-                    variant="ghost"
-                    size="xs"
-                    className="px-1 focus-visible:outline-none focus:ring-0"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                >
-                    {isExpanded ? (
-                        <ChevronUp size={16} className="text-icon-primary" />
-                    ) : (
-                        <ChevronDown size={16} className="text-icon-primary" />
-                    )}
-                </Button>
+  return (
+    <div
+      className={cn(
+        'border-solid-80 flex w-full flex-col items-start justify-center gap-1 rounded-t-2xl border border-b-0 border-input-border-default bg-input-bg-input py-1',
+        className
+      )}
+    >
+      {/* Queuing Header Top */}
+      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+        {/* Lead Button for expand/collapse */}
+        <Button
+          variant="ghost"
+          size="xs"
+          className="px-1 focus:ring-0 focus-visible:outline-none"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          {isExpanded ? (
+            <ChevronUp size={16} className="text-icon-primary" />
+          ) : (
+            <ChevronDown size={16} className="text-icon-primary" />
+          )}
+        </Button>
 
-                {/* Middle - Queued Title */}
-                <div className="flex-1 flex gap-0.5 items-center min-h-px min-w-px relative">
-                    <div className="flex flex-col justify-center relative shrink-0 mr-1">
-                        <span className="font-bold text-text-body text-xs">
-                            {queuedMessages.length}
-                        </span>
-                    </div>
-                    <div className="flex flex-col justify-center relative shrink-0">
-                        <span className="font-bold text-text-body text-xs">
-                            {t("chat.queued-tasks")}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Header Content - Accordion Items for queued tasks */}
-            <div
-                className={cn(
-                    "box-border flex flex-col gap-1 items-start px-2 py-0 relative w-full overflow-y-auto scrollbar-always-visible transition-all duration-200 ease-in-out",
-                    isExpanded && queuedMessages.length > 0 ? "max-h-[156px] opacity-100" : "max-h-0 opacity-0"
-                )}
-            >
-                {queuedMessages.map((msg) => (
-                    <QueueingItem
-                        key={msg.id}
-                        content={msg.content}
-                        onRemove={() => onRemoveQueuedMessage?.(msg.id)}
-                    />
-                ))}
-            </div>
+        {/* Middle - Queued Title */}
+        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
+          <div className="relative mr-1 flex shrink-0 flex-col justify-center">
+            <span className="text-xs font-bold text-text-body">
+              {queuedMessages.length}
+            </span>
+          </div>
+          <div className="relative flex shrink-0 flex-col justify-center">
+            <span className="text-xs font-bold text-text-body">
+              {t('chat.queued-tasks')}
+            </span>
+          </div>
         </div>
-    );
+      </div>
+
+      {/* Header Content - Accordion Items for queued tasks */}
+      <div
+        className={cn(
+          'scrollbar-always-visible relative box-border flex w-full flex-col items-start gap-1 overflow-y-auto px-2 py-0 transition-all duration-200 ease-in-out',
+          isExpanded && queuedMessages.length > 0
+            ? 'max-h-[156px] opacity-100'
+            : 'max-h-0 opacity-0'
+        )}
+      >
+        {queuedMessages.map((msg) => (
+          <QueueingItem
+            key={msg.id}
+            content={msg.content}
+            onRemove={() => onRemoveQueuedMessage?.(msg.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface QueueingItemProps {
-    content: string;
-    onRemove?: () => void;
+  content: string;
+  onRemove?: () => void;
 }
 
 function QueueingItem({ content, onRemove }: QueueingItemProps) {
-    const { t } = useTranslation();
-    const [isHovered, setIsHovered] = useState(false);
+  const { t } = useTranslation();
+  const [isHovered, setIsHovered] = useState(false);
 
-    return (
-        <div
-            className="box-border flex gap-2 items-center px-1 py-1 relative w-full bg-surface-tertiary hover:bg-surface-secondary rounded-md transition-all duration-200 cursor-pointer"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-        >
-            <div className="bg-transparent rounded-md w-5 h-5 p-0.5 flex items-center justify-center shrink-0">
-                <Circle size={16} className="text-icon-secondary" />
-            </div>
+  return (
+    <div
+      className="relative box-border flex w-full cursor-pointer items-center gap-2 rounded-md bg-surface-tertiary px-1 py-1 transition-all duration-200 hover:bg-surface-secondary"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-transparent p-0.5">
+        <Circle size={16} className="text-icon-secondary" />
+      </div>
 
-            <div className="flex-1 flex flex-col justify-center min-h-px min-w-px overflow-ellipsis overflow-hidden relative">
-                <p className="font-normal m-0 text-xs whitespace-nowrap overflow-ellipsis overflow-hidden">
-                    {content}
-                </p>
-            </div>
+      <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
+        <p className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
+          {content}
+        </p>
+      </div>
 
-            <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                    "rounded-md w-5 h-5 p-0.5 shrink-0 transition-all duration-200",
-                    isHovered ? "opacity-100 translate-x-0 hover:bg-button-transparent-fill-hover" : "opacity-0 translate-x-2 pointer-events-none"
-                )}
-                onClick={(e) => {
-                    e.preventDefault();
-                    onRemove?.();
-                }}
-                aria-label={t("chat.remove-queued-message")}
-            >
-                <X size={16} className="text-icon-secondary" />
-            </Button>
-        </div>
-    );
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn(
+          'h-5 w-5 shrink-0 rounded-md p-0.5 transition-all duration-200',
+          isHovered
+            ? 'translate-x-0 opacity-100 hover:bg-button-transparent-fill-hover'
+            : 'pointer-events-none translate-x-2 opacity-0'
+        )}
+        onClick={(e) => {
+          e.preventDefault();
+          onRemove?.();
+        }}
+        aria-label={t('chat.remove-queued-message')}
+      >
+        <X size={16} className="text-icon-secondary" />
+      </Button>
+    </div>
+  );
 }
 
 export default QueuedBox;
-
-

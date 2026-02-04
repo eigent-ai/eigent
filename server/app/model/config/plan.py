@@ -12,8 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
+from sqlmodel import Column, Field, SQLModel
 
 
 class Plan(SQLModel, table=True):

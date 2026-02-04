@@ -12,9 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import List
+
 from camel.toolkits import NotionToolkit as BaseNotionToolkit
 from camel.toolkits.function_tool import FunctionTool
+
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
@@ -35,7 +36,7 @@ class NotionToolkit(BaseNotionToolkit, AbstractToolkit):
         self.api_task_id = api_task_id
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> List[FunctionTool]:
+    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
         if env("NOTION_TOKEN"):
             return NotionToolkit(api_task_id).get_tools()
         else:

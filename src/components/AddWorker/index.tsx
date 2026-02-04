@@ -602,19 +602,19 @@ export function AddWorker({
 										{showModelConfig ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
 										{t("workforce.advanced-model-config")}
 									</button>
-									
+
 									{showModelConfig && (
-										<div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
+										<div className="flex flex-col gap-3 p-3 bg-surface-tertiary-subtle rounded-lg">
 											<label className="flex items-center gap-2 text-sm">
 												<input
 													type="checkbox"
 													checked={useCustomModel}
 													onChange={(e) => setUseCustomModel(e.target.checked)}
-													className="rounded border-gray-300"
+													className="rounded border-border-subtle-strong"
 												/>
 												{t("workforce.use-custom-model")}
 											</label>
-											
+
 											{useCustomModel && (
 												<>
 													<div className="flex flex-col gap-1">
@@ -632,7 +632,7 @@ export function AddWorker({
 															</SelectContent>
 														</Select>
 													</div>
-													
+
 													<div className="flex flex-col gap-1">
 														<label className="text-xs text-text-body">{t("workforce.model-type")}</label>
 														<Input

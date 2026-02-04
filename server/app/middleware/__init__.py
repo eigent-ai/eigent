@@ -12,9 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from app import api
-from app.component.babel import babel_configs
 from fastapi_babel import BabelMiddleware
 
+from app import api
+from app.component.babel import babel_configs
 
 api.add_middleware(BabelMiddleware, babel_configs=babel_configs)

@@ -13,10 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import Enum
-from sqlmodel import Field, Column, SQLModel, SmallInteger, Session
-from sqlalchemy import JSON
-from app.model.abstract.model import AbstractModel, DefaultTimes
+
 from pydantic import BaseModel
+from sqlalchemy import JSON
+from sqlmodel import Column, Field, Session, SmallInteger
+
+from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
 class OrderType(int, Enum):

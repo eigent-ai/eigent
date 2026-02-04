@@ -12,14 +12,15 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import importlib
 import importlib.util
+import logging
 import os
 from pathlib import Path
-from fastapi import APIRouter, FastAPI
-from dotenv import load_dotenv
-import importlib
 from typing import Any, overload
-import logging
+
+from dotenv import load_dotenv
+from fastapi import APIRouter, FastAPI
 
 logger = logging.getLogger("environment")
 
@@ -42,7 +43,10 @@ def env(key: str, default: Any) -> Any: ...
 
 def env(key: str, default=None):
     value = os.getenv(key, default)
-    logger.debug("Environment variable accessed", extra={"key": key, "has_value": value is not None, "using_default": value == default})
+    logger.debug(
+        "Environment variable accessed",
+        extra={"key": key, "has_value": value is not None, "using_default": value == default},
+    )
     return value
 
 
@@ -95,10 +99,7 @@ def auto_include_routers(api: FastAPI, prefix: str, directory: str):
     :param prefix: 路由前缀
     :param directory: 要扫描的目录路径
     """
-    logger.info("Starting automatic router registration", extra={
-        "prefix": prefix,
-        "directory": directory
-    })
+    logger.info("Starting automatic router registration", extra={"prefix": prefix, "directory": directory})
 
     # 将目录转换为绝对路径
     dir_path = Path(directory).resolve()
@@ -111,10 +112,7 @@ def auto_include_routers(api: FastAPI, prefix: str, directory: str):
                 # 构造完整文件路径
                 file_path = Path(root) / file_name
 
-                logger.debug("Processing controller file", extra={
-                    "file_name": file_name,
-                    "file_path": str(file_path)
-                })
+                logger.debug("Processing controller file", extra={"file_name": file_name, "file_path": str(file_path)})
 
                 # 生成模块名称
                 module_name = file_path.stem
@@ -133,22 +131,20 @@ def auto_include_routers(api: FastAPI, prefix: str, directory: str):
                     if isinstance(router, APIRouter):
                         api.include_router(router, prefix=prefix)
                         router_count += 1
-                        logger.debug("Router registered successfully", extra={
-                            "module_name": module_name,
-                            "prefix": prefix
-                        })
+                        logger.debug(
+                            "Router registered successfully", extra={"module_name": module_name, "prefix": prefix}
+                        )
                     else:
                         logger.debug("No valid router found in module", extra={"module_name": module_name})
 
                 except Exception as e:
-                    logger.error("Failed to load controller module", extra={
-                        "module_name": module_name,
-                        "file_path": str(file_path),
-                        "error": str(e)
-                    }, exc_info=True)
+                    logger.error(
+                        "Failed to load controller module",
+                        extra={"module_name": module_name, "file_path": str(file_path), "error": str(e)},
+                        exc_info=True,
+                    )
 
-    logger.info("Automatic router registration completed", extra={
-        "prefix": prefix,
-        "directory": directory,
-        "routers_registered": router_count
-    })
+    logger.info(
+        "Automatic router registration completed",
+        extra={"prefix": prefix, "directory": directory, "routers_registered": router_count},
+    )

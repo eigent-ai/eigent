@@ -12,8 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from fastapi_babel import BabelConfigs, Babel
 from pathlib import Path
+
+from fastapi_babel import Babel, BabelConfigs
 
 babel_configs = BabelConfigs(
     ROOT_DIR=Path(__file__).parent.parent,

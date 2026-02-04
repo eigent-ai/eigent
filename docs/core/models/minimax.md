@@ -1,6 +1,6 @@
 ---
-title: "MiniMax"
-description: "This guide walks you through setting up your MiniMax API key within Eigent to enable the MiniMax model for your AI workforce."
+title: MiniMax
+description: This guide walks you through setting up your MiniMax API key within Eigent to enable the MiniMax model for your AI workforce.
 ---
 
 ### Prerequisites

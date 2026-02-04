@@ -12,12 +12,13 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from sqlmodel import SQLModel, Field, JSON
-from app.model.abstract.model import AbstractModel, DefaultTimes
-from pydantic import BaseModel
-from typing import Any
-from pydantic import field_validator
 import json
+from typing import Any
+
+from pydantic import BaseModel, field_validator
+from sqlmodel import JSON, Field
+
+from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
 class ChatStep(AbstractModel, DefaultTimes, table=True):

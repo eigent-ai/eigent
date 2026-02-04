@@ -12,9 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from logging.config import fileConfig
-import sys
 import pathlib
+import sys
+from logging.config import fileConfig
 
 # Add project root to Python path to import shared utils
 _project_root = pathlib.Path(__file__).parent.parent.parent
@@ -22,8 +22,9 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from sqlalchemy import engine_from_config, pool
-from alembic import context
 from sqlmodel import SQLModel
+
+from alembic import context
 from app.component.environment import auto_import, env_not_empty
 
 # this is the Alembic Config object, which provides
@@ -43,12 +44,9 @@ auto_import("app.model.user")
 auto_import("app.model.config")
 auto_import("app.model.chat")
 auto_import("app.model.provider")
-auto_import("app.model.trigger")
-
 
 # target_metadata = mymodel.Base.metadata
 target_metadata = SQLModel.metadata
-
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

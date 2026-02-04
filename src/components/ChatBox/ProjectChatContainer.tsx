@@ -12,10 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ProjectSection } from './ProjectSection';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { AnimatePresence } from 'framer-motion';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { ProjectSection } from './ProjectSection';
 
 interface ProjectChatContainerProps {
   className?: string;
@@ -25,10 +31,10 @@ interface ProjectChatContainerProps {
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
-  className = "",
+  className = '',
   // onPauseResume,  // Commented out - temporary not needed
   onSkip,
-  isPauseResumeLoading
+  isPauseResumeLoading,
 }) => {
   const { projectStore, chatStore } = useChatStoreAdapter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,9 +44,18 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
 
   // Get all chat stores for the active project
   const activeProjectId = projectStore.activeProjectId;
-  const chatStores = activeProjectId
-    ? projectStore.getAllChatStores(activeProjectId)
-    : [];
+  const chatStores = useMemo(
+    () =>
+      activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
+    [activeProjectId, projectStore]
+  );
+
+  // Extract messages array to avoid complex expression in dependency array
+  const activeTaskId = chatStore?.activeTaskId as string;
+  const messages = useMemo(
+    () => chatStore?.tasks[activeTaskId]?.messages || [],
+    [chatStore, activeTaskId]
+  );
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
@@ -50,7 +65,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
         if (containerRef.current) {
           containerRef.current.scrollTo({
             top: containerRef.current.scrollHeight,
-            behavior: "smooth",
+            behavior: 'smooth',
           });
         }
       }, 100);
@@ -61,17 +76,16 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   useEffect(() => {
     if (!chatStore || !activeProjectId) return;
 
-    const activeTaskId = chatStore.activeTaskId;
     if (!activeTaskId) return;
 
     const task = chatStore.tasks[activeTaskId];
     if (!task) return;
 
-    const currentMessageCount = task.messages.length;
+    const currentMessageCount = messages.length;
 
     // Check if a new user message was added
     if (currentMessageCount > lastMessageCount) {
-      const lastMessage = task.messages[task.messages.length - 1];
+      const lastMessage = messages[messages.length - 1];
 
       // If the last message is from user, scroll to bottom
       if (lastMessage && lastMessage.role === 'user') {
@@ -79,12 +93,25 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       }
     }
 
-    setLastMessageCount(currentMessageCount);
-  }, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages, lastMessageCount, scrollToBottom, activeProjectId]);
+    // Use setTimeout to defer state update and avoid cascading renders
+    setTimeout(() => {
+      setLastMessageCount(currentMessageCount);
+    }, 0);
+  }, [
+    messages,
+    lastMessageCount,
+    scrollToBottom,
+    activeProjectId,
+    chatStore,
+    activeTaskId,
+  ]);
 
   // Reset message count when active task changes
   useEffect(() => {
-    setLastMessageCount(0);
+    // Use setTimeout to defer state update and avoid cascading renders
+    setTimeout(() => {
+      setLastMessageCount(0);
+    }, 0);
   }, [chatStore?.activeTaskId]);
 
   // Intersection Observer for scroll-based animations
@@ -105,12 +132,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       {
         root: containerRef.current,
         rootMargin: '-20% 0px -60% 0px', // Trigger when query is in upper portion
-        threshold: 0.1
+        threshold: 0.1,
       }
     );
 
     // Observe all query groups
-    const queryGroups = containerRef.current.querySelectorAll('[data-query-id]');
+    const queryGroups =
+      containerRef.current.querySelectorAll('[data-query-id]');
     queryGroups.forEach((group) => observer.observe(group));
 
     return () => {
@@ -151,7 +179,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 relative z-10 flex flex-col overflow-y-scroll scrollbar-always-visible ${className}`}
+      className={`scrollbar-always-visible relative z-10 flex flex-1 flex-col overflow-y-scroll ${className}`}
     >
       <AnimatePresence mode="popLayout">
         {chatStores.map(({ chatId, chatStore }) => {
@@ -166,7 +194,9 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
           const messages = task.messages || [];
 
           // Only render if there are actual user messages (not just empty or system messages)
-          const hasUserMessages = messages.some((msg: any) => msg.role === 'user' && msg.content);
+          const hasUserMessages = messages.some(
+            (msg: any) => msg.role === 'user' && msg.content
+          );
 
           if (!hasUserMessages) {
             return null;

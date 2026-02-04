@@ -12,16 +12,18 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Any, Dict, List, Literal
+import logging
+import os
+from typing import Any
+
+import httpx
 from camel.toolkits import SearchToolkit as BaseSearchToolkit
 from camel.toolkits.function_tool import FunctionTool
-import httpx
-import os
+
 from app.component.environment import env, env_not_empty
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-import logging
 
 logger = logging.getLogger("search_toolkit")
 
@@ -35,14 +37,12 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         api_task_id: str,
         agent_name: str | None = None,
         timeout: float | None = None,
-        exclude_domains: List[str] | None = None,
+        exclude_domains: list[str] | None = None,
     ):
         self.api_task_id = api_task_id
         if agent_name is not None:
             self.agent_name = agent_name
-        super().__init__(
-            timeout=timeout, exclude_domains=exclude_domains
-        )
+        super().__init__(timeout=timeout, exclude_domains=exclude_domains)
         # Cache for user-specific search configurations
         self._user_google_api_key = None
         self._user_search_engine_id = None
@@ -68,7 +68,9 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
             self._user_search_engine_id = search_engine_id
             logger.info("Loaded user-specific Google Search configuration")
         else:
-            logger.debug("No user-specific Google Search configuration found, will use cloud search")
+            logger.debug(
+                "No user-specific Google Search configuration found, will use cloud search"
+            )
 
     # @listen_toolkit(BaseSearchToolkit.search_wiki)
     # def search_wiki(self, entity: str) -> str:
@@ -94,14 +96,18 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseSearchToolkit.search_google,
-        lambda _, query, search_type="web", number_of_result_pages=10, start_page=1: f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}",
+        lambda _,
+        query,
+        search_type="web",
+        number_of_result_pages=10,
+        start_page=1: f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}",
     )
     def search_google(
         self,
         query: str,
         search_type: str = "web",
         number_of_result_pages: int = 10,
-        start_page: int = 1
+        start_page: int = 1,
     ) -> list[dict[str, Any]]:
         # Load user-specific configuration
         self._load_user_search_config()
@@ -116,7 +122,9 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
             try:
                 os.environ["GOOGLE_API_KEY"] = self._user_google_api_key
                 os.environ["SEARCH_ENGINE_ID"] = self._user_search_engine_id
-                return super().search_google(query, search_type, number_of_result_pages, start_page)
+                return super().search_google(
+                    query, search_type, number_of_result_pages, start_page
+                )
             finally:
                 # Restore original environment variables
                 if old_google_key is not None:
@@ -130,15 +138,19 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
                     del os.environ["SEARCH_ENGINE_ID"]
         else:
             # Fallback to cloud search
-            logger.info("Using cloud Google Search (no user configuration found)")
-            return self.cloud_search_google(query, search_type, number_of_result_pages, start_page)
+            logger.info(
+                "Using cloud Google Search (no user configuration found)"
+            )
+            return self.cloud_search_google(
+                query, search_type, number_of_result_pages, start_page
+            )
 
     def cloud_search_google(
         self,
         query: str,
         search_type: str = "web",
         number_of_result_pages: int = 10,
-        start_page: int = 1
+        start_page: int = 1,
     ):
         url = env_not_empty("SERVER_URL")
         res = httpx.get(
@@ -147,7 +159,7 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
                 "query": query,
                 "search_type": search_type,
                 "number_of_result_pages": number_of_result_pages,
-                "start_page": start_page
+                "start_page": start_page,
             },
             headers={"api-key": env_not_empty("cloud_api_key")},
         )
@@ -366,7 +378,9 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # if env("BRAVE_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_brave))
 
-        if (env("GOOGLE_API_KEY") and env("SEARCH_ENGINE_ID")) or env("cloud_api_key"):
+        if (env("GOOGLE_API_KEY") and env("SEARCH_ENGINE_ID")) or env(
+            "cloud_api_key"
+        ):
             tools.append(FunctionTool(search_toolkit.search_google))
 
         # if env("TAVILY_API_KEY"):

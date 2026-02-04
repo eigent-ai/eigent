@@ -1,6 +1,6 @@
 ---
 title: Quick Start
-description: Get started with Eigent in just a few minutes! 
+description: Get started with Eigent in just a few minutes!
 icon: rocket
 ---
 
@@ -17,8 +17,8 @@ Once opened, you'll land on the **Task** page. It’s a clean space designed to 
 At the very top of the window is your main navigation bar. You'll access:
 
 - **Dashboard**: your home base for creating and viewing History and Ongoing tasks.
-    - Project Archives: a detailed log of all your past tasks, including the token usage.
-    - Ongoing Tasks
+  - Project Archives: a detailed log of all your past tasks, including the token usage.
+  - Ongoing Tasks
 - **Settings:** where you can configure the app to your liking.
 
 ![Task Hub](/docs/images/quickstart_thetopbar.png)
@@ -27,27 +27,29 @@ At the very top of the window is your main navigation bar. You'll access:
 
 Your workspace is split into two panels:
 
-**Message Box (Left):** where you'll chat with your AI workforce to start a job. 
-- Before running the task, you can Add, Edit, or Delete any subtask or Back to Edit your request, then resume. When tasks complete, you can use Replay to re-run the flow.
-    ![Message](/docs/images/quickstart_themainview.gif)
+**Message Box (Left):** where you'll chat with your AI workforce to start a job.
 
--  You can pause anytime—hit **Pause**, edit via **Back to Edit**, then resume. When tasks complete, use **Replay** to re-run the flow.![Message 2](/docs/images/quickstart_pause.gif)
-    
+- Before running the task, you can Add, Edit, or Delete any subtask or Back to Edit your request, then resume. When tasks complete, you can use Replay to re-run the flow.
+  ![Message](/docs/images/quickstart_themainview.gif)
+
+- You can pause anytime—hit **Pause**, edit via **Back to Edit**, then resume. When tasks complete, use **Replay** to re-run the flow.![Message 2](/docs/images/quickstart_pause.gif)
+
 **Canvas (Right):** where your AI agents get to work.
+
 - **Before a Task:** You'll see your pre-built agents and and their tools. You can also click **+ New Worker** to add your own. These workers will always be on standby for your task.
 - **During a Task:** The Canvas shows the live status of all subtasks (`Done / In Progress / Unfinished`). Click any subtask to view detailed logs (reasoning steps, tool calls, results). More on this below.
-![Task in Progress](/docs/images/quickstart_canvas_inprogress.png) 
+  ![Task in Progress](/docs/images/quickstart_canvas_inprogress.png)
 - **Canvas Toolbar:** At the bottom of the Canvas, you'll see a toolbar. This is where you manage your views of agents. You can switch between different task views, such as **Home**, **Agent Folder**, or a specific worker's **Workspace**.
-![Add Worker](/docs/images/quickstart_canvas_bottom.png) 
+  ![Add Worker](/docs/images/quickstart_canvas_bottom.png)
 
 ### Agent Folder
 
-This is the filing cabinet for your workforce. Any files your agents create or use (like documents, spreadsheets, code, pictures, or presentations) are automatically saved here. These files are also stored locally on your computer and/or in your cloud for easy access. 
+This is the filing cabinet for your workforce. Any files your agents create or use (like documents, spreadsheets, code, pictures, or presentations) are automatically saved here. These files are also stored locally on your computer and/or in your cloud for easy access.
 
 ![Agent Folder](/docs/images/quickstart_agentfolder.png)
 
-
 #### 📌 Note on File Storage
+
 You can always find your task files in a dedicated folder on your machine.
 
 - **Windows:** `C:\Users\[YourUsername]\eigent\[YourEmailPrefix]\task_[TaskID]`
@@ -55,19 +57,16 @@ You can always find your task files in a dedicated folder on your machine.
 
 Cloud version users: outputs are also saved in your cloud workspace according to your subscription tier. Visit the Support page for more details.
 
-
-
 ### Pre-built Agents
 
 Eigent comes with four ready-to-work agents. Each is equipped with a specific set of tools and shines at specific tasks—click to explore:
 
 1. **Developer Agent** – writes, debugs and executes code
-2. **Browser Agent** – fetches and gathers info from the web
-3. **Multimodal Agent** – ideals with images, videos and more
-4. **Document Agent** – reads, writes and manages files (Markdown, PDF, Word, etc.)
-    
+1. **Browser Agent** – fetches and gathers info from the web
+1. **Multimodal Agent** – ideals with images, videos and more
+1. **Document Agent** – reads, writes and manages files (Markdown, PDF, Word, etc.)
+
 ![Pre-build Agents](/docs/images/quickstart_prebuiltagents.gif)
-    
 
 ### Add your own workers
 
@@ -78,7 +77,6 @@ Click **“+ Add Workers”**, provide:
 - **Agent Tool**: install any tool available from our MCP Servers to give your agent the exact skills it needs.
 
 ![Add Your Own Workers](/docs/images/quickstart_addworker.gif)
-
 
 ## Start Your First Task
 
@@ -92,7 +90,7 @@ Type your task in the top Message Box. Be as descriptive as you like. For exampl
 
 Once you send your task, our **Coordinator Agent** and **Task Agent** kick in to break it into subtasks. You’ll see:
 
-- **Workforce CoT Box**: shows agent’s “Chain-of-Thought.” This tells you *how* the AI interpreted your request and its reasoning path.
+- **Workforce CoT Box**: shows agent’s “Chain-of-Thought.” This tells you _how_ the AI interpreted your request and its reasoning path.
 - **Task Status Box**: displays subtasks with controls. You can **add**, **edit**, or **delete** any subtask to make sure the plan is perfect. If you're not happy with the plan, just click **"Back to edit"** to refine your initial request.
 
 ### Step 3: Lauch the Task
@@ -106,9 +104,9 @@ Once you're happy with the plan, hit **Start Task.** Eigent will automatically a
 Once the task starts, your agents will run in parallel on the Canvas:
 
 - Click a subtask to view logs:
-    - **Reasoning Steps:** The agent's logic for how it's approaching the subtask.
-    - **Tool Calls:** Which specific tool the agent is using (e.g., `search_google`, `load_files`).
-    - **Task Results:** The output or conclusion of the subtask.
+  - **Reasoning Steps:** The agent's logic for how it's approaching the subtask.
+  - **Tool Calls:** Which specific tool the agent is using (e.g., `search_google`, `load_files`).
+  - **Task Results:** The output or conclusion of the subtask.
 - Hover over tasks to see status details
 
 ![Watch Agents Work](/docs/images/quickstart_subtasklog.gif)
@@ -116,19 +114,17 @@ Once the task starts, your agents will run in parallel on the Canvas:
 Click on an agent icon to open its **Workspace**:
 
 - Example 1: open **Browser Agent**, launch embedded browser
-    - Use **“Take Control”** to take over browsing (e.g., accept cookies), then return control to the agent
+  - Use **“Take Control”** to take over browsing (e.g., accept cookies), then return control to the agent
 
 ![Browser Agent](/docs/images/quickstart_takecontrol.gif)
 
 - Example 2: open **Developer Agent**, lauch **Terminal**
 
-
 ![Developer Agent](/docs/images/quickstart_terminal.gif)
 
 <aside>
 
-
-** 📌 Tip: Managing Your View**
+\*\* 📌 Tip: Managing Your View\*\*
 
 You can customize your monitoring experience easily. Workspace toolbar includes scroll, full-screen, and layout toggles (single/dual pane).
 
@@ -139,7 +135,6 @@ You can customize your monitoring experience easily. Workspace toolbar includes 
 Sometimes, an agent may needs your input to proceed with the subtask (e.g., confirmation or extra data). In this case, a request will pop up in the **Message Box**. Simply type your response and send it.
 
 <aside>
-
 
 **⚠️ Note on Timeouts**
 The agent will wait for your input. If you don't respond within **30 seconds**, the task will automatically continue, potentially with incomplete information.
@@ -168,7 +163,6 @@ Your privacy is important to us! Because Eigent agents operate on your desktop, 
 
 <aside>
 
-
 **⚠️ Important: Cloud vs. Self-hosted**
 Eigent can run in two modes. Your choice here affects how you are billed and what models are available.
 
@@ -178,10 +172,8 @@ Eigent can run in two modes. Your choice here affects how you are billed and wha
 
 - **Cloud Version:** We provide pre-configured, state-of-the-art models, including GPT-4.1, GPT-4.1 mini and Gemini 2.5 Pro. Using these models is the easiest way to get started and will be billed to your account based on usage (credits).
 - **Self-hosted Version:** You can connect your own models.
-    - **Cloud Models:** Connect your personal accounts from providers like OpenAI, Anthropic, Qwen, Deepseek and Azure by entering your own API key.
-    - **Local Models:** For advanced users, you can run models locally using Ollama, vLLM, or SGLang.
-    
-    
+  - **Cloud Models:** Connect your personal accounts from providers like OpenAI, Anthropic, Qwen, Deepseek and Azure by entering your own API key.
+  - **Local Models:** For advanced users, you can run models locally using Ollama, vLLM, or SGLang.
 
 ### **MCP Servers**
 

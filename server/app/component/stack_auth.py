@@ -13,11 +13,13 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+
 import httpx
-from app.component.environment import env_not_empty
 import jwt
-from app.exception.exception import UserException
+
 from app.component import code
+from app.component.environment import env_not_empty
+from app.exception.exception import UserException
 
 
 class StackAuth:

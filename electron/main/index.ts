@@ -12,44 +12,54 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import axios from 'axios';
 import {
   app,
   BrowserWindow,
-  shell,
+  dialog,
   ipcMain,
   Menu,
-  dialog,
   nativeTheme,
   protocol,
   session,
+  shell,
 } from 'electron';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import os, { homedir } from 'node:os';
 import log from 'electron-log';
-import { update, registerUpdateIpcHandlers } from './update';
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
-import { WebViewManager } from './webview';
-import { FileReader } from './fileReader';
-import { ChildProcessWithoutNullStreams } from 'node:child_process';
-import fs, { existsSync, readFileSync } from 'node:fs';
-import fsp from 'fs/promises';
-import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig';
-import {
-  getEnvPath,
-  updateEnvBlock,
-  removeEnvKey,
-  getEmailFolderPath,
-} from './utils/envUtil';
-import { copyBrowserData } from './copy';
-import { findAvailablePort } from './init';
-import kill from 'tree-kill';
-import { zipFolder } from './utils/log';
-import mime from 'mime';
-import axios from 'axios';
 import FormData from 'form-data';
-import { checkAndInstallDepsOnUpdate, PromiseReturnType, getInstallationStatus } from './install-deps'
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process'
+import fsp from 'fs/promises';
+import mime from 'mime';
+import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import fs, { existsSync } from 'node:fs';
+import os, { homedir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import kill from 'tree-kill';
+import { copyBrowserData } from './copy';
+import { FileReader } from './fileReader';
+import {
+  checkToolInstalled,
+  findAvailablePort,
+  killProcessOnPort,
+  startBackend,
+} from './init';
+import {
+  checkAndInstallDepsOnUpdate,
+  getInstallationStatus,
+  PromiseReturnType,
+} from './install-deps';
+import { registerUpdateIpcHandlers, update } from './update';
+import {
+  getEmailFolderPath,
+  getEnvPath,
+  maskProxyUrl,
+  readGlobalEnvKey,
+  removeEnvKey,
+  updateEnvBlock,
+} from './utils/envUtil';
+import { zipFolder } from './utils/log';
+import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
+import { getBackendPath, getVenvPath, isBinaryExists } from './utils/process';
+import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
 
@@ -69,6 +79,7 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let browser_port = 9222;
+let proxyUrl: string | null = null;
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -122,12 +133,19 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== Proxy configuration ====================
+// Read proxy from global .env file on startup
+proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+if (proxyUrl) {
+  log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
+  app.commandLine.appendSwitch('proxy-server', proxyUrl);
+} else {
+  log.info('[PROXY] No proxy configured');
+}
+
 // ==================== Anti-fingerprint settings ====================
 // Disable automation controlled indicator to avoid detection
-app.commandLine.appendSwitch(
-  'disable-blink-features',
-  'AutomationControlled'
-);
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
 // Override User Agent to remove Electron/eigent identifiers
 // Dynamically generate User Agent based on actual platform and Chrome version
@@ -167,8 +185,13 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Disable system theme
-nativeTheme.themeSource = 'light';
+// Respect system theme on Windows, keep light theme on macOS for consistency
+const isWindows = process.platform === 'win32';
+if (isWindows) {
+  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
+} else {
+  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
+}
 
 // Set log level
 log.transports.console.level = 'info';
@@ -631,7 +654,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -653,7 +676,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -982,6 +1005,16 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  // ==================== read global env handler ====================
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
+  ipcMain.handle('read-global-env', async (_event, key: string) => {
+    if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
+      log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
+      return { value: null };
+    }
+    return { value: readGlobalEnvKey(key) };
+  });
+
   // ==================== new window handler ====================
   ipcMain.handle('open-win', (_, arg) => {
     const childWindow = new BrowserWindow({
@@ -1281,22 +1314,39 @@ async function createWindow() {
     )}`
   );
 
+  // Platform-specific window configuration
+  // Windows: Use native frame for better native feel, solid background
+  // macOS: Use frameless with transparency and vibrancy effects
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
     height: 800,
     minWidth: 1050,
     minHeight: 650,
-    frame: false,
+    // Use native frame on Windows for better native integration
+    frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
-    transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#F5F5F5',
+    // Only use transparency on macOS and Linux (not supported well on Windows)
+    transparent: !isWindows,
+    // macOS-only visual effects
+    vibrancy: isMac ? 'sidebar' : undefined,
+    visualEffectState: isMac ? 'active' : undefined,
+    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    backgroundColor: isWindows
+      ? nativeTheme.shouldUseDarkColors
+        ? '#1e1e1e'
+        : '#ffffff'
+      : '#f5f5f580',
+    // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    roundedCorners: true,
+    // Rounded corners on macOS and Linux (as original)
+    roundedCorners: !isWindows,
+    // Windows-specific options
+    ...(isWindows && {
+      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
@@ -1328,22 +1378,28 @@ async function createWindow() {
     }
   });
 
-  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    log.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`);
-    // Retry loading after a delay
-    if (errorCode !== -3) { // -3 is USER_CANCELLED, don't retry
-      setTimeout(() => {
-        if (win && !win.isDestroyed()) {
-          log.info('[RENDERER] Retrying load after failure...');
-          if (VITE_DEV_SERVER_URL) {
-            win.loadURL(VITE_DEV_SERVER_URL);
-          } else {
-            win.loadFile(indexHtml);
+  win.webContents.on(
+    'did-fail-load',
+    (event, errorCode, errorDescription, validatedURL) => {
+      log.error(
+        `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
+      );
+      // Retry loading after a delay
+      if (errorCode !== -3) {
+        // -3 is USER_CANCELLED, don't retry
+        setTimeout(() => {
+          if (win && !win.isDestroyed()) {
+            log.info('[RENDERER] Retrying load after failure...');
+            if (VITE_DEV_SERVER_URL) {
+              win.loadURL(VITE_DEV_SERVER_URL);
+            } else {
+              win.loadFile(indexHtml);
+            }
           }
-        }
-      }, 2000);
+        }, 2000);
+      }
     }
-  });
+  );
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1898,9 +1954,8 @@ app.whenReady().then(async () => {
     try {
       log.info('[DEVTOOLS] Installing React DevTools extension...');
       // Dynamic import to avoid bundling in production
-      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
-        'electron-devtools-installer'
-      );
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } =
+        await import('electron-devtools-installer');
       const name = await installExtension(REACT_DEVELOPER_TOOLS, {
         loadExtensionOptions: { allowFileAccess: true },
       });
@@ -1920,9 +1975,20 @@ app.whenReady().then(async () => {
   session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
   log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
 
+  // ==================== Apply proxy to Electron sessions ====================
+  if (proxyUrl) {
+    const proxyConfig = { proxyRules: proxyUrl };
+    await session.defaultSession.setProxy(proxyConfig);
+    await session.fromPartition('persist:user_login').setProxy(proxyConfig);
+    await session.fromPartition('persist:main_window').setProxy(proxyConfig);
+    log.info(
+      `[PROXY] Applied proxy to all sessions: ${maskProxyUrl(proxyUrl)}`
+    );
+  }
+
   // ==================== download handle ====================
-  session.defaultSession.on('will-download', (event, item, webContents) => {
-    item.once('done', (event, state) => {
+  session.defaultSession.on('will-download', (event, item, _webContents) => {
+    item.once('done', (_event, _state) => {
       shell.showItemInFolder(item.getURL().replace('localfile://', ''));
     });
   });

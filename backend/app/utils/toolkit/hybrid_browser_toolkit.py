@@ -12,25 +12,27 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import os
 import asyncio
 import json
+import logging
+import os
 import uuid
-from typing import Any, Dict, List, Optional
-from typing_extensions import TypedDict
+from typing import Any
+
 import websockets
 import websockets.exceptions
-
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
-from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper
-from app.component.command import bun, uv
+from camel.toolkits.hybrid_browser_toolkit.ws_wrapper import (
+    WebSocketBrowserWrapper as BaseWebSocketBrowserWrapper,
+)
+from typing_extensions import TypedDict
+
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-import logging
 
 logger = logging.getLogger("hybrid_browser_toolkit")
 
@@ -39,7 +41,7 @@ logger = logging.getLogger("hybrid_browser_toolkit")
 _global_navigation_lock = asyncio.Lock()
 
 # Global registry: tab_id -> session_id (ensures each tab belongs to only one session)
-_global_tab_registry: Dict[str, str] = {}
+_global_tab_registry: dict[str, str] = {}
 _global_tab_registry_lock = asyncio.Lock()
 
 
@@ -50,7 +52,7 @@ class SheetCell(TypedDict):
 
 
 class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """Initialize wrapper."""
         super().__init__(config)
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
@@ -65,7 +67,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             if not current:
                 os.environ[key] = ",".join(local_hosts)
                 continue
-            parts = [item.strip() for item in current.split(",") if item.strip()]
+            parts = [
+                item.strip() for item in current.split(",") if item.strip()
+            ]
             updated = False
             for host in local_hosts:
                 if host not in parts:
@@ -91,34 +95,53 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                         future = self._pending_responses.pop(message_id)
                         if not future.done():
                             future.set_result(response)
-                            logger.debug(f"Processed response for message {message_id}")
+                            logger.debug(
+                                f"Processed response for message {message_id}"
+                            )
                     else:
                         message_summary = {
                             "id": response.get("id"),
                             "success": response.get("success"),
                             "has_result": "result" in response,
-                            "result_type": type(response.get("result")).__name__ if "result" in response else None
+                            "result_type": type(
+                                response.get("result")
+                            ).__name__
+                            if "result" in response
+                            else None,
                         }
-                        logger.debug(f"Received unexpected message: {message_summary}")
+                        logger.debug(
+                            f"Received unexpected message: {message_summary}"
+                        )
 
                 except asyncio.CancelledError:
                     disconnect_reason = "Receive loop cancelled"
                     logger.info(f"WebSocket disconnect: {disconnect_reason}")
                     break
                 except websockets.exceptions.ConnectionClosed as e:
-                    disconnect_reason = f"WebSocket closed: code={e.code}, reason={e.reason}"
-                    logger.warning(f"WebSocket disconnect: {disconnect_reason}")
+                    disconnect_reason = (
+                        f"WebSocket closed: code={e.code}, reason={e.reason}"
+                    )
+                    logger.warning(
+                        f"WebSocket disconnect: {disconnect_reason}"
+                    )
                     break
                 except websockets.exceptions.WebSocketException as e:
-                    disconnect_reason = f"WebSocket error: {type(e).__name__}: {e}"
+                    disconnect_reason = (
+                        f"WebSocket error: {type(e).__name__}: {e}"
+                    )
                     logger.error(f"WebSocket disconnect: {disconnect_reason}")
                     break
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to decode WebSocket message: {e}")
                     continue  # Try to continue on JSON errors
                 except Exception as e:
-                    disconnect_reason = f"Unexpected error: {type(e).__name__}: {e}"
-                    logger.error(f"WebSocket disconnect: {disconnect_reason}", exc_info=True)
+                    disconnect_reason = (
+                        f"Unexpected error: {type(e).__name__}: {e}"
+                    )
+                    logger.error(
+                        f"WebSocket disconnect: {disconnect_reason}",
+                        exc_info=True,
+                    )
                     # Notify all pending futures of the error
                     for future in self._pending_responses.values():
                         if not future.done():
@@ -126,17 +149,23 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     self._pending_responses.clear()
                     break
         finally:
-            logger.info(f"WebSocket receive loop terminated. Reason: {disconnect_reason or 'Normal shutdown'}")
+            logger.info(
+                f"WebSocket receive loop terminated. Reason: {disconnect_reason or 'Normal shutdown'}"
+            )
             # Mark the websocket as None to indicate disconnection
             self.websocket = None
 
     async def start(self):
         # Simply use the parent implementation which uses system npm/node
         self._ensure_local_no_proxy()
-        logger.info("Starting WebSocket server using parent implementation (system npm/node)")
+        logger.info(
+            "Starting WebSocket server using parent implementation (system npm/node)"
+        )
         await super().start()
 
-    async def _send_command(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _send_command(
+        self, command: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
         """Send a command to the WebSocket server with enhanced error handling."""
         try:
             # First ensure we have a valid connection
@@ -148,7 +177,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 import websockets.protocol
 
                 if self.websocket.state != websockets.protocol.State.OPEN:
-                    raise RuntimeError(f"WebSocket is in {self.websocket.state} state, not OPEN")
+                    raise RuntimeError(
+                        f"WebSocket is in {self.websocket.state} state, not OPEN"
+                    )
 
             logger.debug(f"Sending command '{command}' with params: {params}")
 
@@ -166,10 +197,12 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 self.websocket = None
             raise
         except Exception as e:
-            logger.error(f"Unexpected error sending command '{command}': {type(e).__name__}: {e}")
+            logger.error(
+                f"Unexpected error sending command '{command}': {type(e).__name__}: {e}"
+            )
             raise
 
-    async def visit_page(self, url: str) -> Dict[str, Any]:
+    async def visit_page(self, url: str) -> dict[str, Any]:
         """Override visit_page to add global navigation lock preventing ERR_ABORTED.
 
         Multiple sessions sharing the same browser via CDP can cause conflicts
@@ -180,16 +213,20 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         global _global_navigation_lock
 
         async with _global_navigation_lock:
-            logger.debug(f"[visit_page] Acquired navigation lock, navigating to {url}")
+            logger.debug(
+                f"[visit_page] Acquired navigation lock, navigating to {url}"
+            )
             try:
                 result = await super().visit_page(url)
-                logger.debug(f"[visit_page] Navigation completed, releasing lock")
+                logger.debug(
+                    "[visit_page] Navigation completed, releasing lock"
+                )
                 return result
             except Exception as e:
                 logger.error(f"[visit_page] Navigation failed: {e}")
                 raise
 
-    async def get_tab_info(self) -> List[Dict[str, Any]]:
+    async def get_tab_info(self) -> list[dict[str, Any]]:
         """Override get_tab_info to track and filter tabs for session isolation.
 
         Automatically tracks the current tab (is_current=true) as belonging to
@@ -202,30 +239,34 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         session_id = self._wrapper_session_id  # Stable UUID for this wrapper
 
         # Auto-track: add current tab to this session's tracked tabs (with global lock)
-        current_tab = next((t for t in all_tabs if t.get('is_current')),
-                           None)
-        if current_tab and current_tab.get('tab_id'):
-            tab_id = current_tab['tab_id']
+        current_tab = next((t for t in all_tabs if t.get("is_current")), None)
+        if current_tab and current_tab.get("tab_id"):
+            tab_id = current_tab["tab_id"]
             async with _global_tab_registry_lock:
                 # Only track if not already owned by another session
                 if tab_id not in _global_tab_registry:
                     _global_tab_registry[tab_id] = session_id
                     self._session_tab_ids.add(tab_id)
                     logger.info(
-                        f"[Session Tab Tracking] Auto-tracked current tab: {tab_id}, session {session_id} now has tabs: {self._session_tab_ids}")
+                        f"[Session Tab Tracking] Auto-tracked current tab: {tab_id}, session {session_id} now has tabs: {self._session_tab_ids}"
+                    )
                 elif _global_tab_registry[tab_id] == session_id:
                     # Already owned by this session, ensure local tracking
                     self._session_tab_ids.add(tab_id)
 
         # Filter: only return tabs belonging to this session
-        filtered_tabs = [tab for tab in all_tabs if
-                         tab.get('tab_id') in self._session_tab_ids]
+        filtered_tabs = [
+            tab
+            for tab in all_tabs
+            if tab.get("tab_id") in self._session_tab_ids
+        ]
         logger.info(
-            f"[Session Tab Filtering] Session {session_id}: Returning {len(filtered_tabs)}/{len(all_tabs)} tabs, tracked: {self._session_tab_ids}")
+            f"[Session Tab Filtering] Session {session_id}: Returning {len(filtered_tabs)}/{len(all_tabs)} tabs, tracked: {self._session_tab_ids}"
+        )
 
         return filtered_tabs
 
-    async def close_tab(self, tab_id: str) -> Dict[str, Any]:
+    async def close_tab(self, tab_id: str) -> dict[str, Any]:
         """Override close_tab to update tracking."""
         global _global_tab_registry, _global_tab_registry_lock
 
@@ -238,7 +279,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 if tab_id in _global_tab_registry:
                     del _global_tab_registry[tab_id]
             logger.info(
-                f"[Session Tab Tracking] Removed closed tab: {tab_id}, session now has tabs: {self._session_tab_ids}")
+                f"[Session Tab Tracking] Removed closed tab: {tab_id}, session now has tabs: {self._session_tab_ids}"
+            )
 
         return result
 
@@ -261,7 +303,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             # Clear inside lock to prevent race with concurrent get_tab_info
             self._session_tab_ids.clear()
             logger.info(
-                f"[Session Tab Tracking] Cleaned up {cleaned_count} tabs for session {self._wrapper_session_id}")
+                f"[Session Tab Tracking] Cleaned up {cleaned_count} tabs for session {self._wrapper_session_id}"
+            )
 
 
 # WebSocket connection pool
@@ -269,10 +312,12 @@ class WebSocketConnectionPool:
     """Manage WebSocket browser connections with session-based pooling."""
 
     def __init__(self):
-        self._connections: Dict[str, WebSocketBrowserWrapper] = {}
+        self._connections: dict[str, WebSocketBrowserWrapper] = {}
         self._lock = asyncio.Lock()
 
-    async def get_connection(self, session_id: str, config: Dict[str, Any]) -> WebSocketBrowserWrapper:
+    async def get_connection(
+        self, session_id: str, config: dict[str, Any]
+    ) -> WebSocketBrowserWrapper:
         """Get or create a connection for the given session ID."""
         async with self._lock:
             # Check if we have an existing connection for this session
@@ -287,28 +332,41 @@ class WebSocketConnectionPool:
                         if hasattr(wrapper.websocket, "state"):
                             import websockets.protocol
 
-                            is_healthy = wrapper.websocket.state == websockets.protocol.State.OPEN
+                            is_healthy = (
+                                wrapper.websocket.state
+                                == websockets.protocol.State.OPEN
+                            )
                             if not is_healthy:
-                                logger.debug(f"Session {session_id} WebSocket state: {wrapper.websocket.state}")
+                                logger.debug(
+                                    f"Session {session_id} WebSocket state: {wrapper.websocket.state}"
+                                )
                         elif hasattr(wrapper.websocket, "open"):
                             is_healthy = wrapper.websocket.open
                         else:
                             # Try ping as last resort
                             try:
-                                await asyncio.wait_for(wrapper.websocket.ping(), timeout=1.0)
+                                await asyncio.wait_for(
+                                    wrapper.websocket.ping(), timeout=1.0
+                                )
                                 is_healthy = True
-                            except:
+                            except Exception:
                                 is_healthy = False
                     except Exception as e:
-                        logger.debug(f"Health check failed for session {session_id}: {e}")
+                        logger.debug(
+                            f"Health check failed for session {session_id}: {e}"
+                        )
                         is_healthy = False
 
                 if is_healthy:
-                    logger.debug(f"Reusing healthy WebSocket connection for session {session_id}")
+                    logger.debug(
+                        f"Reusing healthy WebSocket connection for session {session_id}"
+                    )
                     return wrapper
                 else:
                     # Connection is unhealthy, clean it up
-                    logger.info(f"Removing unhealthy WebSocket connection for session {session_id}")
+                    logger.info(
+                        f"Removing unhealthy WebSocket connection for session {session_id}"
+                    )
                     try:
                         await wrapper.cleanup_tab_tracking()
                         await wrapper.stop()
@@ -317,11 +375,15 @@ class WebSocketConnectionPool:
                     del self._connections[session_id]
 
             # Create a new connection
-            logger.info(f"Creating new WebSocket connection for session {session_id}")
+            logger.info(
+                f"Creating new WebSocket connection for session {session_id}"
+            )
             wrapper = WebSocketBrowserWrapper(config)
             await wrapper.start()
             self._connections[session_id] = wrapper
-            logger.info(f"Successfully created WebSocket connection for session {session_id}")
+            logger.info(
+                f"Successfully created WebSocket connection for session {session_id}"
+            )
             return wrapper
 
     async def close_connection(self, session_id: str):
@@ -333,9 +395,13 @@ class WebSocketConnectionPool:
                     await wrapper.cleanup_tab_tracking()
                     await wrapper.stop()
                 except Exception as e:
-                    logger.error(f"Error closing WebSocket connection for session {session_id}: {e}")
+                    logger.error(
+                        f"Error closing WebSocket connection for session {session_id}: {e}"
+                    )
                 del self._connections[session_id]
-                logger.info(f"Closed WebSocket connection for session {session_id}")
+                logger.info(
+                    f"Closed WebSocket connection for session {session_id}"
+                )
 
     async def _close_connection_unlocked(self, session_id: str):
         """Close connection without acquiring lock (for internal use)."""
@@ -345,9 +411,13 @@ class WebSocketConnectionPool:
                 await wrapper.cleanup_tab_tracking()
                 await wrapper.stop()
             except Exception as e:
-                logger.error(f"Error closing WebSocket connection for session {session_id}: {e}")
+                logger.error(
+                    f"Error closing WebSocket connection for session {session_id}: {e}"
+                )
             del self._connections[session_id]
-            logger.info(f"Closed WebSocket connection for session {session_id}")
+            logger.info(
+                f"Closed WebSocket connection for session {session_id}"
+            )
 
     async def close_all(self):
         """Close all connections in the pool."""
@@ -372,12 +442,12 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         headless: bool = False,
         user_data_dir: str | None = None,
         stealth: bool = True,
-        cache_dir: Optional[str] = None,
-        enabled_tools: List[str] | None = None,
+        cache_dir: str | None = None,
+        enabled_tools: list[str] | None = None,
         browser_log_to_file: bool = False,
-        log_dir: Optional[str] = None,
+        log_dir: str | None = None,
         session_id: str | None = None,
-        default_start_url: Optional[str] = None,
+        default_start_url: str | None = None,
         default_timeout: int | None = None,
         short_timeout: int | None = None,
         navigation_timeout: int | None = None,
@@ -391,22 +461,34 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
     ) -> None:
-        logger.info(f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}")
+        logger.info(
+            f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}"
+        )
         self.api_task_id = api_task_id
-        logger.debug(f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}")
-        
+        logger.debug(
+            f"[HybridBrowserToolkit] api_task_id set to: {self.api_task_id}"
+        )
+
         # Set default user_data_dir if not provided
         if user_data_dir is None:
             # Use browser port to determine profile directory
-            browser_port = env('browser_port', '9222')
+            browser_port = env("browser_port", "9222")
             user_data_base = os.path.expanduser("~/.eigent/browser_profiles")
-            user_data_dir = os.path.join(user_data_base, f"profile_{browser_port}")
+            user_data_dir = os.path.join(
+                user_data_base, f"profile_{browser_port}"
+            )
             os.makedirs(user_data_dir, exist_ok=True)
-            logger.info(f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})")
+            logger.info(
+                f"[HybridBrowserToolkit] Using port-based user_data_dir: {user_data_dir} (port: {browser_port})"
+            )
         else:
-            logger.info(f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}")
+            logger.info(
+                f"[HybridBrowserToolkit] Using provided user_data_dir: {user_data_dir}"
+            )
 
-        logger.debug(f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}")
+        logger.debug(
+            f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}"
+        )
         super().__init__(
             headless=headless,
             user_data_dir=user_data_dir,
@@ -429,11 +511,15 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
-        logger.info(f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}")
+        logger.info(
+            f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}"
+        )
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
-        logger.debug(f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}")
+        logger.debug(
+            f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}"
+        )
         global websocket_connection_pool
 
         # Get session ID from config or use default
@@ -441,20 +527,34 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
         # Log when connecting to browser
-        cdp_url = self._ws_config.get("cdp_url", f"http://localhost:{env('browser_port', '9222')}")
-        logger.info(f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}")
+        cdp_url = self._ws_config.get(
+            "cdp_url", f"http://localhost:{env('browser_port', '9222')}"
+        )
+        logger.info(
+            f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}"
+        )
 
         # Get or create connection from pool
-        self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
-        logger.info(f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}")
+        self._ws_wrapper = await websocket_connection_pool.get_connection(
+            session_id, self._ws_config
+        )
+        logger.info(
+            f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}"
+        )
 
         # Additional health check
         if self._ws_wrapper.websocket is None:
-            logger.warning(f"WebSocket connection for session {session_id} is None after pool retrieval, recreating...")
+            logger.warning(
+                f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
+            )
             await websocket_connection_pool.close_connection(session_id)
-            self._ws_wrapper = await websocket_connection_pool.get_connection(session_id, self._ws_config)
+            self._ws_wrapper = await websocket_connection_pool.get_connection(
+                session_id, self._ws_config
+            )
 
-    def clone_for_new_session(self, new_session_id: str | None = None) -> "HybridBrowserToolkit":
+    def clone_for_new_session(
+        self, new_session_id: str | None = None
+    ) -> "HybridBrowserToolkit":
         import uuid
 
         if new_session_id is None:
@@ -462,7 +562,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
         # For cloned sessions, use the same user_data_dir to share login state
         # This allows multiple agents to use the same browser profile without conflicts
-        logger.info(f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}")
+        logger.info(
+            f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}"
+        )
 
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
@@ -491,7 +593,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             full_visual_mode=self._full_visual_mode,
         )
 
-    async def browser_sheet_input(self, *, cells: List[SheetCell]) -> Dict[str, Any]:
+    async def browser_sheet_input(
+        self, *, cells: list[SheetCell]
+    ) -> dict[str, Any]:
         # Use typing_extensions.TypedDict for Pydantic <3.12 compatibility.
         return await super().browser_sheet_input(cells=cells)
 
@@ -517,4 +621,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         """Cleanup when object is garbage collected."""
         if hasattr(self, "_ws_wrapper") and self._ws_wrapper:
             session_id = self._ws_config.get("session_id", "default")
-            logger.debug(f"HybridBrowserToolkit for session {session_id} is being garbage collected")
+            logger.debug(
+                f"HybridBrowserToolkit for session {session_id} is being garbage collected"
+            )

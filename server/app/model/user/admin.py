@@ -13,15 +13,17 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from datetime import datetime
+from enum import IntEnum
+
 from pydantic import BaseModel, EmailStr, computed_field
 from pydash import chain
-from sqlmodel import Field, Column, Relationship, SmallInteger
 from sqlalchemy.orm import Mapped
 from sqlalchemy_utils import ChoiceType
+from sqlmodel import Column, Field, Relationship, SmallInteger
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from enum import IntEnum
-from app.model.user.role import Role, RoleOut
 from app.model.user.admin_role import AdminRole
+from app.model.user.role import Role, RoleOut
 
 
 class Status(IntEnum):

@@ -12,92 +12,98 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Inputbox, InputboxProps, FileAttachment } from "./InputBox";
-import { BoxHeaderSplitting, BoxHeaderConfirm } from "./BoxHeader";
-import { QueuedBox, QueuedMessage } from "./QueuedBox";
-import { useTranslation } from "react-i18next";
+import { type ChatTaskStatusType } from '@/types/constants';
+import { useTranslation } from 'react-i18next';
+import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
+import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
+import { QueuedBox, QueuedMessage } from './QueuedBox';
 
-export type BottomBoxState = "input" | "splitting" | "confirm" | "running" | "finished";
+export type BottomBoxState =
+  | 'input'
+  | 'splitting'
+  | 'confirm'
+  | 'running'
+  | 'finished';
 
 interface BottomBoxProps {
-	// General state
-	state: BottomBoxState;
+  // General state
+  state: BottomBoxState;
 
-	// Queue-related props
-	queuedMessages?: QueuedMessage[];
-	onRemoveQueuedMessage?: (id: string) => void;
+  // Queue-related props
+  queuedMessages?: QueuedMessage[];
+  onRemoveQueuedMessage?: (id: string) => void;
 
-	// Subtask-related props (confirm/splitting state)
-	subtitle?: string;
+  // Subtask-related props (confirm/splitting state)
+  subtitle?: string;
 
-	// Action buttons
-	onStartTask?: () => void;
-	onEdit?: () => void;
+  // Action buttons
+  onStartTask?: () => void;
+  onEdit?: () => void;
 
-	// Task info
-	taskTime?: string;
-	taskStatus?: 'running' | 'finished' | 'pending' | 'pause';
+  // Task info
+  taskTime?: string;
+  taskStatus?: ChatTaskStatusType;
 
-	// Pause/Resume
-	onPauseResume?: () => void;
-	pauseResumeLoading?: boolean;
+  // Pause/Resume
+  onPauseResume?: () => void;
+  pauseResumeLoading?: boolean;
 
-	// Input props
-	inputProps: Omit<InputboxProps, "className"> & { className?: string };
+  // Input props
+  inputProps: Omit<InputboxProps, 'className'> & { className?: string };
 
-	// Loading states
-	loading?: boolean;
+  // Loading states
+  loading?: boolean;
 }
 
 export default function BottomBox({
-	state,
-	queuedMessages = [],
-	onRemoveQueuedMessage,
-	subtitle,
-	onStartTask,
-	onEdit,
-	inputProps,
-	loading = false,
+  state,
+  queuedMessages = [],
+  onRemoveQueuedMessage,
+  subtitle,
+  onStartTask,
+  onEdit,
+  inputProps,
+  loading = false,
 }: BottomBoxProps) {
-	const { t } = useTranslation();
-	const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
+  const { t } = useTranslation();
+  const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
-	// Background color reflects current state only
-	let backgroundClass = "bg-input-bg-default";
-	if (state === "splitting") backgroundClass = "bg-input-bg-spliting";
-	else if (state === "confirm") backgroundClass = "bg-input-bg-confirm";
+  // Background color reflects current state only
+  let backgroundClass = 'bg-input-bg-default';
+  if (state === 'splitting') backgroundClass = 'bg-input-bg-spliting';
+  else if (state === 'confirm') backgroundClass = 'bg-input-bg-confirm';
 
-	return (
-		<div className="flex flex-col w-full relative z-50">
-			{/* QueuedBox overlay (should not affect BoxMain layout) */}
-			{enableQueuedBox && queuedMessages.length > 0 && (
-				<div className="px-2 z-50 pointer-events-auto">
-					<QueuedBox
-						queuedMessages={queuedMessages}
-						onRemoveQueuedMessage={onRemoveQueuedMessage}
-					/>
-				</div>
-			)}
-			{/* BoxMain */}
-			<div className={`flex flex-col w-full p-2 rounded-t-lg ${backgroundClass}`}>
-				{/* BoxHeader variants */}
-				{state === "splitting" && (
-					<BoxHeaderSplitting />
-				)}
-				{state === "confirm" && (
-					<BoxHeaderConfirm
-							subtitle={subtitle}
-							onStartTask={onStartTask}
-							onEdit={onEdit}
-							loading={loading}
-					/>
-				)}
+  return (
+    <div className="relative z-50 flex w-full flex-col">
+      {/* QueuedBox overlay (should not affect BoxMain layout) */}
+      {enableQueuedBox && queuedMessages.length > 0 && (
+        <div className="pointer-events-auto z-50 px-2">
+          <QueuedBox
+            queuedMessages={queuedMessages}
+            onRemoveQueuedMessage={onRemoveQueuedMessage}
+          />
+        </div>
+      )}
+      {/* BoxMain */}
+      <div
+        className={`flex w-full flex-col rounded-t-lg p-2 ${backgroundClass}`}
+      >
+        {/* BoxHeader variants */}
+        {state === 'splitting' && <BoxHeaderSplitting />}
+        {state === 'confirm' && (
+          <BoxHeaderConfirm
+            subtitle={subtitle}
+            onStartTask={onStartTask}
+            onEdit={onEdit}
+            loading={loading}
+          />
+        )}
 
-				{/* Inputbox (always visible) */}
-				<Inputbox {...inputProps} />
-			</div>
-		</div>
-	);
+        {/* Inputbox (always visible) */}
+        <Inputbox {...inputProps} />
+      </div>
+    </div>
+  );
 }
 
 export { type FileAttachment, type QueuedMessage };

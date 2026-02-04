@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 from app.component.environment import env_base_dir, sanitize_env_path
 
 
@@ -58,8 +59,9 @@ def test_path_traversal_attack_rejected():
         # Path traversal should either be rejected
         # or normalized within base_dir
         if result:
-            assert result.startswith(env_base_dir), \
+            assert result.startswith(env_base_dir), (
                 f"Path traversal not blocked: {path} -> {result}"
+            )
 
 
 def test_absolute_path_outside_base_dir_rejected():
@@ -72,8 +74,9 @@ def test_absolute_path_outside_base_dir_rejected():
     ]
     for path in malicious_paths:
         result = sanitize_env_path(path)
-        assert result is None, \
+        assert result is None, (
             f"Absolute path outside base dir not rejected: {path}"
+        )
 
 
 def test_non_env_extension_rejected():
@@ -87,8 +90,7 @@ def test_non_env_extension_rejected():
     ]
     for path in invalid_paths:
         result = sanitize_env_path(path)
-        assert result is None, \
-            f"Non-.env file not rejected: {path}"
+        assert result is None, f"Non-.env file not rejected: {path}"
 
 
 def test_nested_valid_path():
@@ -160,8 +162,9 @@ def test_special_characters_in_path():
     ]
     for path in valid_special_chars:
         result = sanitize_env_path(path)
-        assert result is not None, (f"Valid path with special "
-                                    f"chars rejected: {path}")
+        assert result is not None, (
+            f"Valid path with special chars rejected: {path}"
+        )
         assert result.startswith(env_base_dir)
 
 

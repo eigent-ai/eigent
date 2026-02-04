@@ -14,11 +14,11 @@
 
 import sys
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from app.agent.agent_model import agent_model
 from app.model.chat import Chat
-
 
 pytestmark = pytest.mark.unit
 
@@ -34,15 +34,17 @@ class TestAgentFactoryFunctions:
 
         # Setup task lock in the registry before calling agent_model
         from app.service.task import task_locks
+
         mock_task_lock = MagicMock()
         task_locks[options.task_id] = mock_task_lock
 
-        agent_model_mod = sys.modules['app.agent.agent_model']
-        with patch.object(agent_model_mod, 'ListenChatAgent') as mock_listen_agent, \
-             patch.object(agent_model_mod, 'ModelFactory') as mock_model_factory, \
-             patch.object(agent_model_mod, 'get_task_lock', return_value=mock_task_lock), \
-             patch('asyncio.create_task') as mock_create_task:
-
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent") as mock_listen_agent,
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch("asyncio.create_task"),
+        ):
             mock_agent = MagicMock()
             mock_listen_agent.return_value = mock_agent
             mock_model_factory.create.return_value = MagicMock()
@@ -69,6 +71,7 @@ class TestAgentIntegration:
     def setup_method(self):
         """Clean up before each test."""
         from app.service.task import task_locks
+
         task_locks.clear()
 
     @pytest.mark.asyncio
@@ -84,11 +87,13 @@ class TestAgentIntegration:
         task_locks[api_task_id] = mock_task_lock
 
         # Create agent
-        agent_model_mod = sys.modules['app.agent.agent_model']
-        with patch.object(agent_model_mod, 'ModelFactory') as mock_model_factory, \
-             patch.object(agent_model_mod, '_schedule_async_task'), \
-             patch.object(agent_model_mod, 'ListenChatAgent') as mock_listen_agent, \
-             patch.object(agent_model_mod, 'get_task_lock', return_value=mock_task_lock):
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "_schedule_async_task"),
+            patch.object(_m, "ListenChatAgent") as mock_listen_agent,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+        ):
             mock_model = MagicMock()
             mock_model_factory.return_value = mock_model
 
@@ -96,7 +101,9 @@ class TestAgentIntegration:
             mock_agent_instance.api_task_id = api_task_id
             mock_listen_agent.return_value = mock_agent_instance
 
-            agent = agent_model("IntegrationAgent", "Test system prompt", options, [])
+            agent = agent_model(
+                "IntegrationAgent", "Test system prompt", options, []
+            )
 
             assert agent is mock_agent_instance
             assert agent.api_task_id == api_task_id

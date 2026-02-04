@@ -12,29 +12,27 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useEffect, useRef, useState } from 'react';
-import {
-  ChevronsLeft,
-  Search,
-  FileText,
-  CodeXml,
-  ChevronLeft,
-  Download,
-  Folder as FolderIcon,
-  ChevronRight,
-  ChevronDown,
-} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  ChevronDown,
+  ChevronRight,
+  CodeXml,
+  Download,
+  FileText,
+  Folder as FolderIcon,
+  Search,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
 
-import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
-import { useAuthStore } from '@/store/authStore';
 import { proxyFetchGet } from '@/api/http';
-import { useTranslation } from 'react-i18next';
+import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { ZoomControls } from './ZoomControls';
-import { containsDangerousContent } from '@/lib/htmlSanitization';
 import { injectFontStyles } from '@/lib/htmlFontStyles';
+import { containsDangerousContent } from '@/lib/htmlSanitization';
+import { useAuthStore } from '@/store/authStore';
+import { useTranslation } from 'react-i18next';
+import { ZoomControls } from './ZoomControls';
 
 // Type definitions
 interface FileTreeNode {
@@ -103,29 +101,29 @@ const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
+              className={`text-primary flex w-full items-center justify-start rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
                 selectedFile?.path === child.path
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
             >
               {child.isFolder && (
-                <span className="w-4 h-4 flex items-center justify-center">
+                <span className="flex h-4 w-4 items-center justify-center">
                   {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className="h-4 w-4" />
                   ) : (
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="h-4 w-4" />
                   )}
                 </span>
               )}
               {!child.isFolder && <span className="w-4" />}
 
               {child.isFolder ? (
-                <FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
+                <FolderIcon className="mr-2 h-5 w-5 flex-shrink-0 text-yellow-600" />
               ) : child.icon ? (
-                <child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
+                <child.icon className="mr-2 h-5 w-5 flex-shrink-0" />
               ) : (
-                <FileText className="w-5 h-5 mr-2 flex-shrink-0" />
+                <FileText className="mr-2 h-5 w-5 flex-shrink-0" />
               )}
 
               <span
@@ -170,17 +168,36 @@ function downloadByBrowser(url: string) {
     });
 }
 
-export default function Folder({ data }: { data?: Agent }) {
+export default function Folder({ data: _data }: { data?: Agent }) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
   const authStore = useAuthStore();
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [fileTree, setFileTree] = useState<FileTreeNode>({
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  });
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set()
+  );
+  const [fileGroups, setFileGroups] = useState<
+    {
+      folder: string;
+      files: FileInfo[];
+    }[]
+  >([
+    {
+      folder: 'Reports',
+      files: [],
+    },
+  ]);
+  const hasFetchedRemote = useRef(false);
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
     if (file.type === 'zip') {
@@ -230,14 +247,11 @@ export default function Folder({ data }: { data?: Agent }) {
       });
   };
 
-  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const isShowSourceCodeChange = () => {
     // all files can reload content
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
   };
-
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const buildFileTree = (files: FileInfo[]): FileTreeNode => {
     const root: FileTreeNode = {
@@ -263,7 +277,7 @@ export default function Folder({ data }: { data?: Agent }) {
       // Normalize paths to use forward slashes for cross-platform compatibility
       const normalizedRelativePath = (file.relativePath || '').replace(
         /\\/g,
-        '/',
+        '/'
       );
       const fullRelativePath = normalizedRelativePath
         ? `${normalizedRelativePath}/${file.name}`
@@ -292,17 +306,6 @@ export default function Folder({ data }: { data?: Agent }) {
     return root;
   };
 
-  const [fileTree, setFileTree] = useState<FileTreeNode>({
-    name: 'root',
-    path: '',
-    children: [],
-    isFolder: true,
-  });
-
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(),
-  );
-
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev);
@@ -315,32 +318,19 @@ export default function Folder({ data }: { data?: Agent }) {
     });
   };
 
-  const [fileGroups, setFileGroups] = useState<
-    {
-      folder: string;
-      files: FileInfo[];
-    }[]
-  >([
-    {
-      folder: 'Reports',
-      files: [],
-    },
-  ]);
-
-  const hasFetchedRemote = useRef(false);
-
   // Reset hasFetchedRemote when activeTaskId changes
   useEffect(() => {
     hasFetchedRemote.current = false;
-  }, [chatStore.activeTaskId]);
+  }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
+    if (!chatStore) return;
     const setFileList = async () => {
       let res = null;
       res = await window.ipcRenderer.invoke(
         'get-project-file-list',
         authStore.email,
-        projectStore.activeProjectId as string,
+        projectStore.activeProjectId as string
       );
       let tree: any = null;
       if (
@@ -377,7 +367,7 @@ export default function Folder({ data }: { data?: Agent }) {
         if (chatStoreSelectedFile) {
           console.log(res, chatStoreSelectedFile);
           const file = res.find(
-            (item: any) => item.name === chatStoreSelectedFile.name,
+            (item: any) => item.name === chatStoreSelectedFile.name
           );
           console.log('file', file);
           if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
@@ -393,48 +383,55 @@ export default function Folder({ data }: { data?: Agent }) {
       });
     };
     setFileList();
-  }, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning]);
 
   useEffect(() => {
+    if (!chatStore) return;
     const chatStoreSelectedFile =
       chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
       const file = fileGroups[0].files.find(
-        (item: any) => item.path === chatStoreSelectedFile.path,
+        (item: any) => item.path === chatStoreSelectedFile.path
       );
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
         selectedFileChange(file as FileInfo, isShowSourceCode);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path,
     fileGroups,
     isShowSourceCode,
-    chatStore.activeTaskId,
+    chatStore?.activeTaskId,
   ]);
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   const handleBack = () => {
     chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, 'workflow');
   };
 
   return (
-    <div className="h-full w-full flex overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       {/* fileList */}
       <div
         className={`${
           isCollapsed ? 'w-16' : 'w-64'
-        } border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
+        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-border-subtle-strong border-r-border-subtle transition-all duration-300 ease-in-out`}
       >
         {/* head */}
         <div
-          className={` py-2 border-b border-zinc-200 flex-shrink-0 ${
+          className={`flex-shrink-0 border-b border-border-subtle py-2 ${
             isCollapsed ? 'px-2' : 'pl-4 pr-2'
           }`}
         >
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
-                <span className="text-body-base font-bold text-primary whitespace-nowrap">
+                <span className="text-body-base text-primary whitespace-nowrap font-bold">
                   {t('chat.agent-folder')}
                 </span>
               </div>
@@ -444,24 +441,24 @@ export default function Folder({ data }: { data?: Agent }) {
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="px-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="flex-shrink-0 border-b border-border-subtle px-2">
             <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
+              <Search className="text-primary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-solid border-border-subtle py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-text-link"
               />
             </div>
           </div>
         )}
 
         {/* fileList */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {!isCollapsed ? (
             <div className="p-2">
               <div className="mb-2">
-                <div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
+                <div className="text-primary px-2 py-1 text-[10px] font-bold leading-4">
                   {t('chat.files')}
                 </div>
                 <FileTree
@@ -478,26 +475,26 @@ export default function Folder({ data }: { data?: Agent }) {
             </div>
           ) : (
             // Display simplified file icons when collapsed
-            <div className="p-2 space-y-2">
+            <div className="space-y-2 p-2">
               {fileGroups.map((group) =>
                 group.files.map((file) => (
                   <button
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
-                    className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
+                    className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
                       selectedFile?.name === file.name
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-zinc-600'
+                        ? 'bg-surface-information text-text-information'
+                        : 'text-text-secondary'
                     }`}
                     title={file.name}
                   >
                     {file.icon ? (
-                      <file.icon className="w-4 h-4" />
+                      <file.icon className="h-4 w-4" />
                     ) : (
-                      <FileText className="w-4 h-4" />
+                      <FileText className="h-4 w-4" />
                     )}
                   </button>
-                )),
+                ))
               )}
             </div>
           )}
@@ -505,10 +502,10 @@ export default function Folder({ data }: { data?: Agent }) {
       </div>
 
       {/* content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="flex-shrink-0 border-b border-border-subtle px-4 py-2">
             <div className="flex h-[30px] items-center justify-between gap-2">
               <div
                 onClick={() => {
@@ -519,25 +516,25 @@ export default function Folder({ data }: { data?: Agent }) {
                   }
                   window.ipcRenderer.invoke(
                     'reveal-in-folder',
-                    selectedFile.path,
+                    selectedFile.path
                   );
                 }}
-                className="flex-1 min-w-0 overflow-hidden cursor-pointer flex items-center gap-2"
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden"
               >
-                <span className="block text-[15px] leading-[22px] font-medium text-primary overflow-hidden text-ellipsis whitespace-nowrap">
+                <span className="text-primary block overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-medium leading-[22px]">
                   {selectedFile.name}
                 </span>
                 <Button size="icon" variant="ghost">
-                  <Download className="w-4 h-4 text-zinc-500" />
+                  <Download className="h-4 w-4 text-icon-secondary" />
                 </Button>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
-                className=" flex-shrink-0"
+                className="flex-shrink-0"
                 onClick={() => isShowSourceCodeChange()}
               >
-                <CodeXml className="w-4 h-4 text-zinc-500" />
+                <CodeXml className="h-4 w-4 text-icon-secondary" />
               </Button>
             </div>
           </div>
@@ -545,7 +542,7 @@ export default function Folder({ data }: { data?: Agent }) {
 
         {/* content */}
         <div
-          className={`flex-1 min-h-0 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'overflow-y-auto scrollbar'}`}
+          className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
             className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}
@@ -567,11 +564,11 @@ export default function Folder({ data }: { data?: Agent }) {
                 ) : selectedFile.type === 'pdf' ? (
                   <iframe
                     src={selectedFile.content as string}
-                    className="w-full h-full border-0"
+                    className="h-full w-full border-0"
                     title={selectedFile.name}
                   />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                    selectedFile.type,
+                    selectedFile.type
                   ) ? (
                   <FolderComponent selectedFile={selectedFile} />
                 ) : selectedFile.type === 'html' ? (
@@ -584,9 +581,9 @@ export default function Folder({ data }: { data?: Agent }) {
                     />
                   )
                 ) : selectedFile.type === 'zip' ? (
-                  <div className="flex items-center justify-center h-full text-zinc-500">
+                  <div className="flex h-full items-center justify-center text-text-secondary">
                     <div className="text-center">
-                      <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
+                      <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                       <p className="text-sm">
                         {t('folder.zip-file-is-not-supported-yet')}
                       </p>
@@ -601,26 +598,28 @@ export default function Folder({ data }: { data?: Agent }) {
                     'webp',
                     'svg',
                   ].includes(selectedFile.type.toLowerCase()) ? (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="flex h-full items-center justify-center">
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
                 ) : (
-                  <pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
                     {selectedFile.content}
                   </pre>
                 )
               ) : (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-sm text-zinc-500">{t('chat.loading')}</p>
+                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                    <p className="text-sm text-text-secondary">
+                      {t('chat.loading')}
+                    </p>
                   </div>
                 </div>
               )
             ) : (
-              <div className="flex items-center justify-center h-full text-zinc-500">
+              <div className="flex h-full items-center justify-center text-text-secondary">
                 <div className="text-center">
-                  <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
+                  <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>
@@ -652,7 +651,7 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
     <img
       src={src}
       alt={selectedFile.name}
-      className="max-w-full max-h-full object-contain"
+      className="max-h-full max-w-full object-contain"
     />
   );
 }
@@ -773,10 +772,10 @@ function HtmlRenderer({
       });
 
       const jsFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'js',
+        (f) => f.type?.toLowerCase() === 'js'
       );
       const cssFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'css',
+        (f) => f.type?.toLowerCase() === 'css'
       );
 
       // Check for dangerous Electron/Node.js patterns as defense-in-depth
@@ -830,7 +829,7 @@ function HtmlRenderer({
             // Replace src with data URL
             const newAttributes = attributes.replace(
               /src\s*=\s*["'][^"']+["']/i,
-              `src="${dataUrl}"`,
+              `src="${dataUrl}"`
             );
             // Preserve the original tag format (self-closing or not)
             const isSelfClosing = imgTag.trim().endsWith('/>');
@@ -844,7 +843,7 @@ function HtmlRenderer({
             // Keep original tag if image loading fails
             return { original: imgTag, processed: imgTag };
           }
-        }),
+        })
       );
 
       // Replace all img tags in HTML
@@ -852,7 +851,7 @@ function HtmlRenderer({
       processedImages.forEach(({ original, processed }) => {
         processedHtmlContent = processedHtmlContent.replace(
           original,
-          processed,
+          processed
         );
       });
 
@@ -863,7 +862,7 @@ function HtmlRenderer({
             'open-file',
             'css',
             cssFile.path,
-            false,
+            false
           );
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
@@ -871,11 +870,11 @@ function HtmlRenderer({
             // Try to replace the external link tag with inline style
             const linkRegex = new RegExp(
               `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
-              'gi',
+              'gi'
             );
             const replacedCss = processedHtmlContent.replace(
               linkRegex,
-              styleTag,
+              styleTag
             );
             if (replacedCss !== processedHtmlContent) {
               processedHtmlContent = replacedCss;
@@ -884,7 +883,7 @@ function HtmlRenderer({
               if (processedHtmlContent.includes('<head>')) {
                 processedHtmlContent = processedHtmlContent.replace(
                   '<head>',
-                  `<head>${styleTag}`,
+                  `<head>${styleTag}`
                 );
               } else {
                 processedHtmlContent = styleTag + processedHtmlContent;
@@ -903,18 +902,18 @@ function HtmlRenderer({
             'open-file',
             'js',
             jsFile.path,
-            false,
+            false
           );
           if (jsContent) {
             // Replace external script tag with inline script
             const scriptRegex = new RegExp(
               `<script[^>]*src=["'](?:[^"']*[/\\\\])?${jsFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`,
-              'gi',
+              'gi'
             );
             const inlineScriptTag = `<script data-source="${jsFile.name}">${jsContent}</script>`;
             processedHtmlContent = processedHtmlContent.replace(
               scriptRegex,
-              inlineScriptTag,
+              inlineScriptTag
             );
           }
         } catch (error) {
@@ -952,7 +951,7 @@ function HtmlRenderer({
   };
 
   return (
-    <div className="w-full h-full flex flex-col relative">
+    <div className="relative flex h-full w-full flex-col">
       {/* Floating notch-style zoom controls */}
       <ZoomControls
         zoom={zoom}
@@ -963,11 +962,11 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="flex-1 min-h-0 bg-zinc-100 overflow-hidden"
+        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
         onWheel={handleWheel}
       >
         <div
-          className="origin-top-left transition-transform duration-150 h-full"
+          className="h-full origin-top-left transition-transform duration-150"
           style={{
             transform: `scale(${zoom / 100})`,
             width: `${10000 / zoom}%`,
@@ -977,7 +976,7 @@ function HtmlRenderer({
           <iframe
             ref={iframeRef}
             srcDoc={processedHtml}
-            className="w-full h-full border-0 bg-white"
+            className="bg-white h-full w-full border-0"
             sandbox="allow-scripts allow-forms"
             title={selectedFile.name}
             tabIndex={0}
