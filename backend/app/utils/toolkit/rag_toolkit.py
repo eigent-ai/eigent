@@ -13,6 +13,7 @@ concerns are handled at the orchestration layer (e.g., in get_toolkits()).
 """
 
 import hashlib
+import logging
 import os
 from pathlib import Path
 
@@ -22,18 +23,18 @@ from camel.storages import QdrantStorage
 from camel.toolkits import RetrievalToolkit
 from camel.toolkits.function_tool import FunctionTool
 from camel.types import StorageType
-from utils import traceroot_wrapper as traceroot
 
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
-logger = traceroot.get_logger("rag_toolkit")
+logger = logging.getLogger("rag_toolkit")
 
 # Default paths and constants
 DEFAULT_RAG_STORAGE_PATH = "~/.eigent/rag_storage"
 DEFAULT_COLLECTION_NAME = "default"
 RAW_TEXT_SUBDIR = "raw_text"
+OPENAI_EMBEDDING_DIM = 1536  # OpenAI text-embedding-ada-002 dimension
 
 
 class RAGToolkit(AbstractToolkit):
@@ -113,7 +114,7 @@ class RAGToolkit(AbstractToolkit):
         """Lazily initialize vector storage for raw text."""
         if self._storage is None:
             self._storage = QdrantStorage(
-                vector_dim=1536,  # OpenAI embedding dimension
+                vector_dim=OPENAI_EMBEDDING_DIM,
                 path=str(self._storage_path / RAW_TEXT_SUBDIR),
                 collection_name=self._collection_name,
             )
@@ -141,7 +142,7 @@ class RAGToolkit(AbstractToolkit):
         relevant information. Content is automatically indexed on first use.
 
         Args:
-            query: The question or query for which an answer is required.
+            query (str): The question or query for which an answer is required.
             contents: Local file paths, remote URLs, or string contents to search.
             top_k: Number of top results to return (default: 5).
             similarity_threshold: Minimum similarity score for results (default: 0.5).
