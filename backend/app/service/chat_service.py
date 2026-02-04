@@ -56,7 +56,7 @@ from app.service.task import (
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
-from app.utils.knowledge_base import get_context_for_prompt as get_knowledge_context
+from app.utils.sqlite_toolkit import get_context_for_prompt as get_knowledge_context
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.toolkit.human_toolkit import HumanToolkit

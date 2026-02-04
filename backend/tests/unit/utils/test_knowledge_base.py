@@ -22,12 +22,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.controller import knowledge_controller
-from app.utils import knowledge_base as kb
+from app.utils import sqlite_toolkit as kb
 
 
 @pytest.mark.unit
 class TestKnowledgeBase:
-    """Test knowledge_base add, get, delete, and get_context_for_prompt."""
+    """Test sqlite_toolkit add, get, delete, and get_context_for_prompt."""
 
     def test_add_get_delete_entries(self, tmp_path):
         """Add, list, and delete entries using a temp DB path."""

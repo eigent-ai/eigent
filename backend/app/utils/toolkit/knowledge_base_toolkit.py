@@ -12,12 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Toolkit for long-term memory: agents can save facts to the knowledge base (issue #1099)."""
-
 from camel.toolkits.base import BaseToolkit
 from camel.toolkits.function_tool import FunctionTool
 
-from app.utils.knowledge_base import add_entry
+from app.utils.sqlite_toolkit import add_entry
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
@@ -46,3 +44,8 @@ class KnowledgeBaseToolkit(BaseToolkit, AbstractToolkit):
 
     def get_tools(self) -> list[FunctionTool]:
         return [FunctionTool(self.remember_this)]
+
+
+def get_tools(api_task_id: str, agent_name: str | None = None) -> list[FunctionTool]:
+    """Return the knowledge-base tool(s) for use by an agent (no toolkit instance)."""
+    return KnowledgeBaseToolkit(api_task_id=api_task_id, agent_name=agent_name).get_tools()

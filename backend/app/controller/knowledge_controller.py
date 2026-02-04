@@ -15,7 +15,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.utils.knowledge_base import add_entry, get_entries, delete_entry
+from app.utils.sqlite_toolkit import add_entry, delete_entry, get_entries
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge Base"])
 

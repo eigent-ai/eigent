@@ -374,9 +374,6 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <mandatory_instructions>
 - You MUST use the `read_note` tool to read the ALL notes from other agents.
-- Use the `remember_this` tool to save important facts, decisions, or preferences
-  to the project's long-term knowledge base when the user or task establishes
-  something that should be remembered for future conversations.
 
 You SHOULD keep the user informed by providing message_title and message_description
     parameters when calling tools. These optional parameters are available on all tools
