@@ -6,11 +6,12 @@ RAGToolkit is a generic RAG toolkit with configurable storage:
 - Configurable collection_name and storage_path for flexibility
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
-import tempfile
 import shutil
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from app.utils.toolkit.rag_toolkit import RAGToolkit
 
@@ -53,7 +54,10 @@ class TestRAGToolkit:
                 # Verify AutoRetriever was initialized with configured path
                 mock_ar.assert_called_once()
                 call_kwargs = mock_ar.call_args[1]
-                assert str(temp_storage_path) in call_kwargs["vector_storage_local_path"]
+                assert (
+                    str(temp_storage_path)
+                    in call_kwargs["vector_storage_local_path"]
+                )
 
     def test_toolkit_initialization_with_custom_agent(self, temp_storage_path):
         """Test RAGToolkit with custom agent name."""
@@ -112,22 +116,35 @@ class TestRAGToolkit:
         """Test get_can_use_tools returns empty when no API key."""
         with patch.dict("os.environ", {}, clear=True):
             with patch("app.utils.toolkit.rag_toolkit.env", return_value=None):
-                tools = RAGToolkit.get_can_use_tools("test-task", collection_name="test_collection")
+                tools = RAGToolkit.get_can_use_tools(
+                    "test-task", collection_name="test_collection"
+                )
                 assert tools == []
 
     def test_get_can_use_tools_with_api_key(self, temp_storage_path):
         """Test get_can_use_tools returns tools when API key is set."""
-        with patch("app.utils.toolkit.rag_toolkit.env", return_value="test-key"):
+        with patch(
+            "app.utils.toolkit.rag_toolkit.env", return_value="test-key"
+        ):
             with patch("app.utils.toolkit.rag_toolkit.AutoRetriever"):
                 with patch.object(RAGToolkit, "get_tools") as mock_get_tools:
                     mock_get_tools.return_value = [Mock(), Mock()]
-                    tools = RAGToolkit.get_can_use_tools("test-task", collection_name="test_collection")
+                    tools = RAGToolkit.get_can_use_tools(
+                        "test-task", collection_name="test_collection"
+                    )
                     assert len(tools) == 2
 
-    def test_get_can_use_tools_requires_collection_name(self, temp_storage_path):
+    def test_get_can_use_tools_requires_collection_name(
+        self, temp_storage_path
+    ):
         """Test get_can_use_tools raises error when collection_name is None."""
-        with patch("app.utils.toolkit.rag_toolkit.env", return_value="test-key"):
-            with pytest.raises(ValueError, match="collection_name must be explicitly specified"):
+        with patch(
+            "app.utils.toolkit.rag_toolkit.env", return_value="test-key"
+        ):
+            with pytest.raises(
+                ValueError,
+                match="collection_name must be explicitly specified",
+            ):
                 RAGToolkit.get_can_use_tools("test-task")
 
     def test_default_collection_name(self, temp_storage_path):
@@ -152,11 +169,15 @@ class TestRAGToolkitIntegration:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     @patch("app.utils.toolkit.rag_toolkit.AutoRetriever")
-    def test_information_retrieval_success(self, mock_auto_retriever_class, temp_storage_path):
+    def test_information_retrieval_success(
+        self, mock_auto_retriever_class, temp_storage_path
+    ):
         """Test successful information retrieval."""
         # Setup mocks
         mock_auto_retriever = MagicMock()
-        mock_auto_retriever.run_vector_retriever.return_value = {"text": ["Relevant content about the query"]}
+        mock_auto_retriever.run_vector_retriever.return_value = {
+            "text": ["Relevant content about the query"]
+        }
         mock_auto_retriever_class.return_value = mock_auto_retriever
 
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
@@ -176,11 +197,15 @@ class TestRAGToolkitIntegration:
             mock_auto_retriever.run_vector_retriever.assert_called_once()
 
     @patch("app.utils.toolkit.rag_toolkit.AutoRetriever")
-    def test_information_retrieval_with_error(self, mock_auto_retriever_class, temp_storage_path):
+    def test_information_retrieval_with_error(
+        self, mock_auto_retriever_class, temp_storage_path
+    ):
         """Test information retrieval handles errors gracefully."""
         # Setup mock to raise an exception
         mock_auto_retriever = MagicMock()
-        mock_auto_retriever.run_vector_retriever.side_effect = Exception("Test error")
+        mock_auto_retriever.run_vector_retriever.side_effect = Exception(
+            "Test error"
+        )
         mock_auto_retriever_class.return_value = mock_auto_retriever
 
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
@@ -198,10 +223,14 @@ class TestRAGToolkitIntegration:
             assert "Test error" in result
 
     @patch("app.utils.toolkit.rag_toolkit.AutoRetriever")
-    def test_information_retrieval_with_list_contents(self, mock_auto_retriever_class, temp_storage_path):
+    def test_information_retrieval_with_list_contents(
+        self, mock_auto_retriever_class, temp_storage_path
+    ):
         """Test information retrieval with multiple content sources."""
         mock_auto_retriever = MagicMock()
-        mock_auto_retriever.run_vector_retriever.return_value = {"text": ["Combined results from multiple sources"]}
+        mock_auto_retriever.run_vector_retriever.return_value = {
+            "text": ["Combined results from multiple sources"]
+        }
         mock_auto_retriever_class.return_value = mock_auto_retriever
 
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):

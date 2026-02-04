@@ -15,7 +15,6 @@ concerns are handled at the orchestration layer (e.g., in get_toolkits()).
 import hashlib
 import os
 from pathlib import Path
-from typing import List, Optional, Union
 
 from camel.embeddings import OpenAIEmbedding
 from camel.retrievers import AutoRetriever, VectorRetriever
@@ -23,11 +22,11 @@ from camel.storages import QdrantStorage
 from camel.toolkits import RetrievalToolkit
 from camel.toolkits.function_tool import FunctionTool
 from camel.types import StorageType
+from utils import traceroot_wrapper as traceroot
 
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from utils import traceroot_wrapper as traceroot
 
 logger = traceroot.get_logger("rag_toolkit")
 
@@ -74,7 +73,11 @@ class RAGToolkit(AbstractToolkit):
             self.agent_name = agent_name
 
         # Use provided paths or defaults
-        self._storage_path = Path(storage_path) if storage_path else Path(os.path.expanduser(DEFAULT_RAG_STORAGE_PATH))
+        self._storage_path = (
+            Path(storage_path)
+            if storage_path
+            else Path(os.path.expanduser(DEFAULT_RAG_STORAGE_PATH))
+        )
         self._storage_path.mkdir(parents=True, exist_ok=True)
 
         self._collection_name = collection_name or DEFAULT_COLLECTION_NAME
@@ -86,7 +89,9 @@ class RAGToolkit(AbstractToolkit):
         )
 
         # Wrap CAMEL's RetrievalToolkit using composition (for file/URL retrieval)
-        self._retrieval_toolkit = RetrievalToolkit(auto_retriever=auto_retriever)
+        self._retrieval_toolkit = RetrievalToolkit(
+            auto_retriever=auto_retriever
+        )
 
         # Lazy-initialized components for raw text support
         self._embedding_model = None
@@ -98,7 +103,9 @@ class RAGToolkit(AbstractToolkit):
         if self._embedding_model is None:
             api_key = env("OPENAI_API_KEY")
             if not api_key:
-                raise ValueError("OPENAI_API_KEY is required for RAG embeddings")
+                raise ValueError(
+                    "OPENAI_API_KEY is required for RAG embeddings"
+                )
             self._embedding_model = OpenAIEmbedding(api_key=api_key)
         return self._embedding_model
 
@@ -124,7 +131,7 @@ class RAGToolkit(AbstractToolkit):
     def information_retrieval(
         self,
         query: str,
-        contents: Union[str, List[str]],
+        contents: str | list[str],
         top_k: int = 5,
         similarity_threshold: float = 0.5,
     ) -> str:
@@ -155,7 +162,9 @@ class RAGToolkit(AbstractToolkit):
                 top_k=top_k,
                 similarity_threshold=similarity_threshold,
             )
-            logger.info(f"Retrieved information for query in collection {self._collection_name}")
+            logger.info(
+                f"Retrieved information for query in collection {self._collection_name}"
+            )
             return result
         except Exception as e:
             logger.error(f"Failed to retrieve information: {e}", exc_info=True)
@@ -164,8 +173,8 @@ class RAGToolkit(AbstractToolkit):
     def add_document(
         self,
         content: str,
-        metadata: Optional[dict] = None,
-        doc_id: Optional[str] = None,
+        metadata: dict | None = None,
+        doc_id: str | None = None,
     ) -> str:
         """Add a raw text document to the knowledge base.
 
@@ -195,7 +204,9 @@ class RAGToolkit(AbstractToolkit):
 
             # Generate document ID if not provided
             if doc_id is None:
-                doc_id = hashlib.md5(content.encode()).hexdigest()[:12]
+                doc_id = hashlib.md5(  # noqa: S324
+                    content.encode(), usedforsecurity=False
+                ).hexdigest()[:12]
 
             # Prepare metadata
             doc_metadata = metadata or {}
@@ -206,8 +217,12 @@ class RAGToolkit(AbstractToolkit):
             retriever = self._get_vector_retriever()
             retriever.process(content=content, extra_info=doc_metadata)
 
-            logger.info(f"Added document {doc_id} to collection {self._collection_name}")
-            return f"Successfully added document (ID: {doc_id}) to knowledge base"
+            logger.info(
+                f"Added document {doc_id} to collection {self._collection_name}"
+            )
+            return (
+                f"Successfully added document (ID: {doc_id}) to knowledge base"
+            )
 
         except Exception as e:
             logger.error(f"Failed to add document: {e}", exc_info=True)
@@ -257,7 +272,9 @@ class RAGToolkit(AbstractToolkit):
                         result_text += f" (Source: {source})"
                 formatted_results.append(result_text)
 
-            logger.info(f"Retrieved {len(results)} results for query in collection {self._collection_name}")
+            logger.info(
+                f"Retrieved {len(results)} results for query in collection {self._collection_name}"
+            )
             return "\n\n".join(formatted_results)
 
         except Exception as e:
@@ -280,13 +297,15 @@ class RAGToolkit(AbstractToolkit):
             if not collections:
                 return "No knowledge bases found. Use add_document or information_retrieval to create one."
 
-            return "Available knowledge bases:\n" + "\n".join(f"- {c}" for c in sorted(collections))
+            return "Available knowledge bases:\n" + "\n".join(
+                f"- {c}" for c in sorted(collections)
+            )
 
         except Exception as e:
             logger.error(f"Failed to list knowledge bases: {e}", exc_info=True)
             return f"Error listing knowledge bases: {str(e)}"
 
-    def get_tools(self) -> List[FunctionTool]:
+    def get_tools(self) -> list[FunctionTool]:
         """Return the list of tools provided by this toolkit.
 
         Note: list_knowledge_bases is not exposed as a tool since with task
@@ -323,7 +342,9 @@ class RAGToolkit(AbstractToolkit):
 
         # Require explicit collection_name for task isolation
         if collection_name is None:
-            raise ValueError("collection_name must be explicitly specified for RAG toolkit")
+            raise ValueError(
+                "collection_name must be explicitly specified for RAG toolkit"
+            )
 
         toolkit = RAGToolkit(
             api_task_id=api_task_id,
