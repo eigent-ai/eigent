@@ -59,15 +59,21 @@ class ValidateModelResponse(BaseModel):
     error: dict | None = Field(None, description="OpenAI-style error object")
     message: str = Field(..., description="Message")
     error_type: str | None = Field(None, description="Detailed error type")
-    failed_stage: str | None = Field(None, description="Stage where validation failed")
-    successful_stages: list[str] | None = Field(None, description="Stages that succeeded")
-    diagnostic_info: dict | None = Field(None, description="Diagnostic information")
+    failed_stage: str | None = Field(
+        None, description="Stage where validation failed"
+    )
+    successful_stages: list[str] | None = Field(
+        None, description="Stages that succeeded"
+    )
+    diagnostic_info: dict | None = Field(
+        None, description="Diagnostic information"
+    )
 
 
 @router.post("/model/validate")
 async def validate_model(request: ValidateModelRequest):
     """Validate model configuration and tool call support with detailed error messages.
-    
+
     This endpoint validates a model configuration and provides detailed error messages
     to help users understand the root cause of validation failures. It checks:
     1. Initialization (model type and platform)
@@ -75,7 +81,7 @@ async def validate_model(request: ValidateModelRequest):
     3. Agent creation
     4. Model call execution
     5. Tool call execution
-    
+
     Returns detailed diagnostic information if include_diagnostics is True.
     """
     platform = request.model_platform
@@ -96,7 +102,10 @@ async def validate_model(request: ValidateModelRequest):
 
     # API key validation
     if request.api_key is not None and str(request.api_key).strip() == "":
-        logger.warning("Model validation failed: empty API key", extra={"platform": platform, "model_type": model_type})
+        logger.warning(
+            "Model validation failed: empty API key",
+            extra={"platform": platform, "model_type": model_type},
+        )
         raise HTTPException(
             status_code=400,
             detail={
@@ -110,13 +119,16 @@ async def validate_model(request: ValidateModelRequest):
                     "code": "invalid_api_key",
                     "message": "API key cannot be empty. Please provide a valid API key.",
                 },
-            }
+            },
         )
 
     try:
         extra = request.extra_params or {}
 
-        logger.debug("Starting detailed model validation", extra={"platform": platform, "model_type": model_type})
+        logger.debug(
+            "Starting detailed model validation",
+            extra={"platform": platform, "model_type": model_type},
+        )
         validation_result = validate_model_with_details(
             platform,
             model_type,
@@ -130,38 +142,72 @@ async def validate_model(request: ValidateModelRequest):
         if validation_result.is_tool_calls:
             message = "Validation successful. Model supports tool calling and tool execution completed successfully."
         elif validation_result.is_valid:
-            if validation_result.error_type == ValidationErrorType.TOOL_CALL_NOT_SUPPORTED:
+            if (
+                validation_result.error_type
+                == ValidationErrorType.TOOL_CALL_NOT_SUPPORTED
+            ):
                 message = "Model call succeeded, but this model does not support tool calling functionality. Please try with another model that supports tool calls."
-            elif validation_result.error_type == ValidationErrorType.TOOL_CALL_EXECUTION_FAILED:
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
+            ):
                 message = f"Model call succeeded and tool call was made, but execution failed. {validation_result.error_message}"
             else:
                 message = "Model call succeeded, but tool call validation failed. Please check the model configuration."
         else:
             # Build detailed error message based on error type and stage
-            if validation_result.error_type == ValidationErrorType.AUTHENTICATION_ERROR:
+            if (
+                validation_result.error_type
+                == ValidationErrorType.AUTHENTICATION_ERROR
+            ):
                 message = "Authentication failed. Please check your API key and ensure it is valid and has the necessary permissions."
-            elif validation_result.error_type == ValidationErrorType.MODEL_NOT_FOUND:
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.MODEL_NOT_FOUND
+            ):
                 message = f"Model '{model_type}' not found on platform '{platform}'. Please verify the model name and platform are correct."
-            elif validation_result.error_type == ValidationErrorType.NETWORK_ERROR:
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.NETWORK_ERROR
+            ):
                 message = "Network error occurred. Please check your internet connection and try again."
-            elif validation_result.error_type == ValidationErrorType.TIMEOUT_ERROR:
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.TIMEOUT_ERROR
+            ):
                 message = "Request timed out. The model service may be slow or unavailable. Please try again later."
-            elif validation_result.error_type == ValidationErrorType.QUOTA_EXCEEDED:
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.QUOTA_EXCEEDED
+            ):
                 message = "Quota exceeded. Please check your account billing and usage limits."
-            elif validation_result.error_type == ValidationErrorType.RATE_LIMIT_ERROR:
-                message = "Rate limit exceeded. Please wait a moment and try again."
-            elif validation_result.error_type == ValidationErrorType.INVALID_CONFIGURATION:
-                message = f"Invalid configuration: {validation_result.error_message}"
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.RATE_LIMIT_ERROR
+            ):
+                message = (
+                    "Rate limit exceeded. Please wait a moment and try again."
+                )
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.INVALID_CONFIGURATION
+            ):
+                message = (
+                    f"Invalid configuration: {validation_result.error_message}"
+                )
             else:
-                message = validation_result.error_message or "Model validation failed. Please check your configuration and try again."
+                message = (
+                    validation_result.error_message
+                    or "Model validation failed. Please check your configuration and try again."
+                )
 
         # Convert error type to error code for backward compatibility
         error_code = None
         error_obj = None
-        
+
         if validation_result.error_type:
             error_code = validation_result.error_type.value
-            
+
             # Create OpenAI-style error object
             error_obj = {
                 "type": "invalid_request_error",
@@ -169,7 +215,7 @@ async def validate_model(request: ValidateModelRequest):
                 "code": validation_result.error_type.value,
                 "message": validation_result.error_message or message,
             }
-            
+
             # Add specific error details if available
             if validation_result.error_details:
                 error_obj["details"] = validation_result.error_details
@@ -182,29 +228,51 @@ async def validate_model(request: ValidateModelRequest):
             "error": error_obj,
             "message": message,
         }
-        
+
         # Include detailed diagnostic information if requested
         if request.include_diagnostics:
-            response_data["error_type"] = validation_result.error_type.value if validation_result.error_type else None
-            response_data["failed_stage"] = validation_result.failed_stage.value if validation_result.failed_stage else None
-            response_data["successful_stages"] = [stage.value for stage in validation_result.successful_stages]
-            response_data["diagnostic_info"] = validation_result.diagnostic_info
-            response_data["model_response_info"] = validation_result.model_response_info
+            response_data["error_type"] = (
+                validation_result.error_type.value
+                if validation_result.error_type
+                else None
+            )
+            response_data["failed_stage"] = (
+                validation_result.failed_stage.value
+                if validation_result.failed_stage
+                else None
+            )
+            response_data["successful_stages"] = [
+                stage.value for stage in validation_result.successful_stages
+            ]
+            response_data["diagnostic_info"] = (
+                validation_result.diagnostic_info
+            )
+            response_data["model_response_info"] = (
+                validation_result.model_response_info
+            )
             response_data["tool_call_info"] = validation_result.tool_call_info
             response_data["validation_stages"] = {
-                stage.value: success for stage, success in validation_result.validation_stages.items()
+                stage.value: success
+                for stage, success in validation_result.validation_stages.items()
             }
 
         result = ValidateModelResponse(**response_data)
 
-        logger.info("Model validation completed", extra={
-            "platform": platform,
-            "model_type": model_type,
-            "is_valid": validation_result.is_valid,
-            "is_tool_calls": validation_result.is_tool_calls,
-            "error_type": validation_result.error_type.value if validation_result.error_type else None,
-            "failed_stage": validation_result.failed_stage.value if validation_result.failed_stage else None,
-        })
+        logger.info(
+            "Model validation completed",
+            extra={
+                "platform": platform,
+                "model_type": model_type,
+                "is_valid": validation_result.is_valid,
+                "is_tool_calls": validation_result.is_tool_calls,
+                "error_type": validation_result.error_type.value
+                if validation_result.error_type
+                else None,
+                "failed_stage": validation_result.failed_stage.value
+                if validation_result.failed_stage
+                else None,
+            },
+        )
 
         return result
 
@@ -213,12 +281,16 @@ async def validate_model(request: ValidateModelRequest):
         raise
     except Exception as e:
         # Fallback error handling for unexpected errors
-        logger.error("Unexpected error during model validation", extra={
-            "platform": platform,
-            "model_type": model_type,
-            "error": str(e)
-        }, exc_info=True)
-        
+        logger.error(
+            "Unexpected error during model validation",
+            extra={
+                "platform": platform,
+                "model_type": model_type,
+                "error": str(e),
+            },
+            exc_info=True,
+        )
+
         message, error_code, error_obj = normalize_error_to_openai_format(e)
 
         raise HTTPException(
@@ -226,9 +298,10 @@ async def validate_model(request: ValidateModelRequest):
             detail={
                 "message": f"Unexpected error during validation: {message}",
                 "error_code": error_code or "internal_error",
-                "error": error_obj or {
+                "error": error_obj
+                or {
                     "type": "internal_error",
                     "message": str(e),
                 },
-            }
+            },
         )

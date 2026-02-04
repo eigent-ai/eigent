@@ -15,7 +15,7 @@
 import logging
 import traceback
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from camel.agents import ChatAgent
 from camel.models import ModelFactory, ModelProcessingError
@@ -25,6 +25,7 @@ logger = logging.getLogger("model_validation")
 
 class ValidationStage(str, Enum):
     """Stages of model validation process."""
+
     INITIALIZATION = "initialization"
     MODEL_CREATION = "model_creation"
     AGENT_CREATION = "agent_creation"
@@ -35,6 +36,7 @@ class ValidationStage(str, Enum):
 
 class ValidationErrorType(str, Enum):
     """Types of validation errors."""
+
     AUTHENTICATION_ERROR = "authentication_error"
     NETWORK_ERROR = "network_error"
     MODEL_NOT_FOUND = "model_not_found"
@@ -49,22 +51,22 @@ class ValidationErrorType(str, Enum):
 
 class ValidationResult:
     """Detailed validation result with diagnostic information."""
-    
+
     def __init__(self):
         self.is_valid: bool = False
         self.is_tool_calls: bool = False
-        self.error_type: Optional[ValidationErrorType] = None
-        self.error_code: Optional[str] = None
-        self.error_message: Optional[str] = None
-        self.error_details: Dict[str, Any] = {}
-        self.validation_stages: Dict[ValidationStage, bool] = {}
-        self.diagnostic_info: Dict[str, Any] = {}
-        self.successful_stages: List[ValidationStage] = []
-        self.failed_stage: Optional[ValidationStage] = None
-        self.model_response_info: Optional[Dict[str, Any]] = None
-        self.tool_call_info: Optional[Dict[str, Any]] = None
-        
-    def to_dict(self) -> Dict[str, Any]:
+        self.error_type: ValidationErrorType | None = None
+        self.error_code: str | None = None
+        self.error_message: str | None = None
+        self.error_details: dict[str, Any] = {}
+        self.validation_stages: dict[ValidationStage, bool] = {}
+        self.diagnostic_info: dict[str, Any] = {}
+        self.successful_stages: list[ValidationStage] = []
+        self.failed_stage: ValidationStage | None = None
+        self.model_response_info: dict[str, Any] | None = None
+        self.tool_call_info: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert validation result to dictionary."""
         return {
             "is_valid": self.is_valid,
@@ -73,10 +75,17 @@ class ValidationResult:
             "error_code": self.error_code,
             "error_message": self.error_message,
             "error_details": self.error_details,
-            "validation_stages": {stage.value: success for stage, success in self.validation_stages.items()},
+            "validation_stages": {
+                stage.value: success
+                for stage, success in self.validation_stages.items()
+            },
             "diagnostic_info": self.diagnostic_info,
-            "successful_stages": [stage.value for stage in self.successful_stages],
-            "failed_stage": self.failed_stage.value if self.failed_stage else None,
+            "successful_stages": [
+                stage.value for stage in self.successful_stages
+            ],
+            "failed_stage": self.failed_stage.value
+            if self.failed_stage
+            else None,
             "model_response_info": self.model_response_info,
             "tool_call_info": self.tool_call_info,
         }
@@ -94,49 +103,97 @@ def get_website_content(url: str) -> str:
     return "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
 
 
-def categorize_error(exception: Exception, stage: ValidationStage) -> ValidationErrorType:
+def categorize_error(
+    exception: Exception, stage: ValidationStage
+) -> ValidationErrorType:
     """Categorize exception into specific error type.
-    
+
     Args:
         exception: The exception to categorize
         stage: The validation stage where error occurred
-        
+
     Returns:
         ValidationErrorType: The categorized error type
     """
     error_str = str(exception).lower()
     error_type = exception.__class__.__name__.lower()
     traceback_str = traceback.format_exc().lower()
-    
+
     # Authentication errors
-    if any(keyword in error_str for keyword in ["invalid_api_key", "incorrect api key", "unauthorized", "authentication", "401"]):
+    if any(
+        keyword in error_str
+        for keyword in [
+            "invalid_api_key",
+            "incorrect api key",
+            "unauthorized",
+            "authentication",
+            "401",
+        ]
+    ):
         return ValidationErrorType.AUTHENTICATION_ERROR
-    
+
     # Network errors
-    if any(keyword in error_str for keyword in ["connection", "network", "timeout", "dns", "resolve", "refused"]):
+    if any(
+        keyword in error_str
+        for keyword in [
+            "connection",
+            "network",
+            "timeout",
+            "dns",
+            "resolve",
+            "refused",
+        ]
+    ):
         if "timeout" in error_str:
             return ValidationErrorType.TIMEOUT_ERROR
         return ValidationErrorType.NETWORK_ERROR
-    
+
     # Model not found errors
-    if any(keyword in error_str for keyword in ["model_not_found", "does not exist", "not found", "404", "invalid model"]):
+    if any(
+        keyword in error_str
+        for keyword in [
+            "model_not_found",
+            "does not exist",
+            "not found",
+            "404",
+            "invalid model",
+        ]
+    ):
         return ValidationErrorType.MODEL_NOT_FOUND
-    
+
     # Rate limit and quota errors
-    if any(keyword in error_str for keyword in ["rate limit", "429", "too many requests"]):
+    if any(
+        keyword in error_str
+        for keyword in ["rate limit", "429", "too many requests"]
+    ):
         return ValidationErrorType.RATE_LIMIT_ERROR
-    
-    if any(keyword in error_str for keyword in ["quota", "insufficient_quota", "billing", "payment"]):
+
+    if any(
+        keyword in error_str
+        for keyword in ["quota", "insufficient_quota", "billing", "payment"]
+    ):
         return ValidationErrorType.QUOTA_EXCEEDED
-    
+
     # Timeout errors
-    if any(keyword in error_str for keyword in ["timeout", "timed out", "time out"]):
+    if any(
+        keyword in error_str
+        for keyword in ["timeout", "timed out", "time out"]
+    ):
         return ValidationErrorType.TIMEOUT_ERROR
-    
+
     # Configuration errors
-    if any(keyword in error_str for keyword in ["invalid", "configuration", "config", "parameter", "param"]):
+    if any(
+        keyword in error_str
+        for keyword in [
+            "invalid",
+            "configuration",
+            "config",
+            "parameter",
+            "param",
+        ]
+    ):
         return ValidationErrorType.INVALID_CONFIGURATION
-    
+
     # Check exception type
     if isinstance(exception, ModelProcessingError):
         if "timeout" in error_str:
@@ -145,10 +202,10 @@ def categorize_error(exception: Exception, stage: ValidationStage) -> Validation
             return ValidationErrorType.AUTHENTICATION_ERROR
         if "not found" in error_str or "404" in error_str:
             return ValidationErrorType.MODEL_NOT_FOUND
-    
+
     if "timeout" in error_type or "TimeoutError" in str(type(exception)):
         return ValidationErrorType.TIMEOUT_ERROR
-    
+
     return ValidationErrorType.UNKNOWN_ERROR
 
 
@@ -161,7 +218,7 @@ def create_agent(
     **kwargs,
 ) -> ChatAgent:
     """Create an agent for model validation.
-    
+
     Args:
         model_platform: The model platform
         model_type: The model type
@@ -169,10 +226,10 @@ def create_agent(
         url: Custom model URL
         model_config_dict: Model configuration dictionary
         **kwargs: Additional model parameters
-        
+
     Returns:
         ChatAgent: The created agent
-        
+
     Raises:
         ValueError: If model_type or model_platform is invalid
         Exception: If model creation fails
@@ -207,10 +264,10 @@ def validate_model_with_details(
     api_key: str = None,
     url: str = None,
     model_config_dict: dict = None,
-    **kwargs
+    **kwargs,
 ) -> ValidationResult:
     """Validate model with detailed diagnostic information.
-    
+
     Args:
         model_platform: The model platform
         model_type: The model type
@@ -218,29 +275,33 @@ def validate_model_with_details(
         url: Custom model URL
         model_config_dict: Model configuration dictionary
         **kwargs: Additional model parameters
-        
+
     Returns:
         ValidationResult: Detailed validation result
     """
     result = ValidationResult()
-    
+
     # Stage 1: Initialization
     result.validation_stages[ValidationStage.INITIALIZATION] = False
     try:
         if model_type is None or model_type.strip() == "":
             result.error_type = ValidationErrorType.INVALID_CONFIGURATION
-            result.error_message = "Model type is required but was not provided."
+            result.error_message = (
+                "Model type is required but was not provided."
+            )
             result.error_details = {"missing_field": "model_type"}
             result.failed_stage = ValidationStage.INITIALIZATION
             return result
-        
+
         if model_platform is None or model_platform.strip() == "":
             result.error_type = ValidationErrorType.INVALID_CONFIGURATION
-            result.error_message = "Model platform is required but was not provided."
+            result.error_message = (
+                "Model platform is required but was not provided."
+            )
             result.error_details = {"missing_field": "model_platform"}
             result.failed_stage = ValidationStage.INITIALIZATION
             return result
-        
+
         result.validation_stages[ValidationStage.INITIALIZATION] = True
         result.successful_stages.append(ValidationStage.INITIALIZATION)
         result.diagnostic_info["initialization"] = {
@@ -250,20 +311,33 @@ def validate_model_with_details(
             "has_custom_url": url is not None,
             "has_config": model_config_dict is not None,
         }
-        logger.debug("Initialization stage passed", extra={"platform": model_platform, "model_type": model_type})
-        
+        logger.debug(
+            "Initialization stage passed",
+            extra={"platform": model_platform, "model_type": model_type},
+        )
+
     except Exception as e:
         result.error_type = ValidationErrorType.INVALID_CONFIGURATION
         result.error_message = f"Initialization failed: {str(e)}"
-        result.error_details = {"exception_type": type(e).__name__, "exception_message": str(e)}
+        result.error_details = {
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
         result.failed_stage = ValidationStage.INITIALIZATION
-        logger.error("Initialization stage failed", extra={"error": str(e)}, exc_info=True)
+        logger.error(
+            "Initialization stage failed",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         return result
-    
+
     # Stage 2: Model Creation
     result.validation_stages[ValidationStage.MODEL_CREATION] = False
     try:
-        logger.debug("Creating model", extra={"platform": model_platform, "model_type": model_type})
+        logger.debug(
+            "Creating model",
+            extra={"platform": model_platform, "model_type": model_type},
+        )
         model = ModelFactory.create(
             model_platform=model_platform,
             model_type=model_type,
@@ -280,8 +354,11 @@ def validate_model_with_details(
             "model_type": model_type,
             "model_created": True,
         }
-        logger.debug("Model creation stage passed", extra={"platform": model_platform, "model_type": model_type})
-        
+        logger.debug(
+            "Model creation stage passed",
+            extra={"platform": model_platform, "model_type": model_type},
+        )
+
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.MODEL_CREATION)
         result.error_type = error_type
@@ -292,7 +369,7 @@ def validate_model_with_details(
             "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.MODEL_CREATION
-        
+
         # Provide specific error messages based on error type
         if error_type == ValidationErrorType.AUTHENTICATION_ERROR:
             result.error_message = "Authentication failed. Please check your API key and ensure it is valid and has the necessary permissions."
@@ -305,15 +382,24 @@ def validate_model_with_details(
         elif error_type == ValidationErrorType.QUOTA_EXCEEDED:
             result.error_message = "Quota exceeded. Please check your account billing and usage limits."
         elif error_type == ValidationErrorType.RATE_LIMIT_ERROR:
-            result.error_message = "Rate limit exceeded. Please wait a moment and try again."
-        
-        logger.error("Model creation stage failed", extra={"error": str(e), "error_type": error_type.value}, exc_info=True)
+            result.error_message = (
+                "Rate limit exceeded. Please wait a moment and try again."
+            )
+
+        logger.error(
+            "Model creation stage failed",
+            extra={"error": str(e), "error_type": error_type.value},
+            exc_info=True,
+        )
         return result
-    
+
     # Stage 3: Agent Creation
     result.validation_stages[ValidationStage.AGENT_CREATION] = False
     try:
-        logger.debug("Creating agent", extra={"platform": model_platform, "model_type": model_type})
+        logger.debug(
+            "Creating agent",
+            extra={"platform": model_platform, "model_type": model_type},
+        )
         agent = ChatAgent(
             system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
             model=model,
@@ -326,8 +412,11 @@ def validate_model_with_details(
             "agent_created": True,
             "tools_count": len([get_website_content]),
         }
-        logger.debug("Agent creation stage passed", extra={"platform": model_platform, "model_type": model_type})
-        
+        logger.debug(
+            "Agent creation stage passed",
+            extra={"platform": model_platform, "model_type": model_type},
+        )
+
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.AGENT_CREATION)
         result.error_type = error_type
@@ -338,13 +427,20 @@ def validate_model_with_details(
             "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.AGENT_CREATION
-        logger.error("Agent creation stage failed", extra={"error": str(e)}, exc_info=True)
+        logger.error(
+            "Agent creation stage failed",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         return result
-    
+
     # Stage 4: Model Call
     result.validation_stages[ValidationStage.MODEL_CALL] = False
     try:
-        logger.debug("Executing model call", extra={"platform": model_platform, "model_type": model_type})
+        logger.debug(
+            "Executing model call",
+            extra={"platform": model_platform, "model_type": model_type},
+        )
         response = agent.step(
             input_message="""
             Get the content of https://www.camel-ai.org,
@@ -353,35 +449,53 @@ def validate_model_with_details(
             you must call the get_website_content tool only once.
             """
         )
-        
+
         if response:
             result.validation_stages[ValidationStage.MODEL_CALL] = True
             result.successful_stages.append(ValidationStage.MODEL_CALL)
             result.is_valid = True
-            
+
             # Extract model response information
             result.model_response_info = {
                 "has_response": True,
-                "has_message": hasattr(response, "msg") and response.msg is not None,
-                "has_info": hasattr(response, "info") and response.info is not None,
+                "has_message": hasattr(response, "msg")
+                and response.msg is not None,
+                "has_info": hasattr(response, "info")
+                and response.info is not None,
             }
-            
+
             if hasattr(response, "msg") and response.msg:
-                result.model_response_info["message_content"] = str(response.msg.content)[:200] if hasattr(response.msg, "content") else None
-            
+                result.model_response_info["message_content"] = (
+                    str(response.msg.content)[:200]
+                    if hasattr(response.msg, "content")
+                    else None
+                )
+
             if hasattr(response, "info") and response.info:
-                result.model_response_info["usage"] = response.info.get("usage", {})
-                result.model_response_info["tool_calls_count"] = len(response.info.get("tool_calls", []))
-            
-            logger.debug("Model call stage passed", extra={"platform": model_platform, "model_type": model_type})
+                result.model_response_info["usage"] = response.info.get(
+                    "usage", {}
+                )
+                result.model_response_info["tool_calls_count"] = len(
+                    response.info.get("tool_calls", [])
+                )
+
+            logger.debug(
+                "Model call stage passed",
+                extra={"platform": model_platform, "model_type": model_type},
+            )
         else:
             result.error_type = ValidationErrorType.UNKNOWN_ERROR
-            result.error_message = "Model call succeeded but returned no response."
+            result.error_message = (
+                "Model call succeeded but returned no response."
+            )
             result.error_details = {"response": None}
             result.failed_stage = ValidationStage.MODEL_CALL
-            logger.warning("Model call returned no response", extra={"platform": model_platform, "model_type": model_type})
+            logger.warning(
+                "Model call returned no response",
+                extra={"platform": model_platform, "model_type": model_type},
+            )
             return result
-            
+
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.MODEL_CALL)
         result.error_type = error_type
@@ -392,7 +506,7 @@ def validate_model_with_details(
             "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.MODEL_CALL
-        
+
         # Provide specific error messages
         if error_type == ValidationErrorType.TIMEOUT_ERROR:
             result.error_message = "Model call timed out. The model may be slow or overloaded. Please try again later."
@@ -400,59 +514,99 @@ def validate_model_with_details(
             result.error_message = "Network error occurred during model call. Please check your connection and try again."
         elif error_type == ValidationErrorType.RATE_LIMIT_ERROR:
             result.error_message = "Rate limit exceeded during model call. Please wait and try again."
-        
-        logger.error("Model call stage failed", extra={"error": str(e), "error_type": error_type.value}, exc_info=True)
+
+        logger.error(
+            "Model call stage failed",
+            extra={"error": str(e), "error_type": error_type.value},
+            exc_info=True,
+        )
         return result
-    
+
     # Stage 5: Tool Call Execution Check
     result.validation_stages[ValidationStage.TOOL_CALL_EXECUTION] = False
     try:
         if response and hasattr(response, "info") and response.info:
             tool_calls = response.info.get("tool_calls", [])
-            
+
             result.tool_call_info = {
                 "tool_calls_count": len(tool_calls),
                 "has_tool_calls": len(tool_calls) > 0,
             }
-            
+
             if tool_calls and len(tool_calls) > 0:
                 tool_call = tool_calls[0]
                 result.tool_call_info["first_tool_call"] = {
                     "tool_name": getattr(tool_call, "tool_name", None),
                     "has_result": hasattr(tool_call, "result"),
-                    "result": str(getattr(tool_call, "result", ""))[:200] if hasattr(tool_call, "result") else None,
+                    "result": str(getattr(tool_call, "result", ""))[:200]
+                    if hasattr(tool_call, "result")
+                    else None,
                 }
-                
+
                 expected_result = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
-                actual_result = tool_call.result if hasattr(tool_call, "result") else None
-                
+                actual_result = (
+                    tool_call.result if hasattr(tool_call, "result") else None
+                )
+
                 if actual_result == expected_result:
-                    result.validation_stages[ValidationStage.TOOL_CALL_EXECUTION] = True
-                    result.successful_stages.append(ValidationStage.TOOL_CALL_EXECUTION)
+                    result.validation_stages[
+                        ValidationStage.TOOL_CALL_EXECUTION
+                    ] = True
+                    result.successful_stages.append(
+                        ValidationStage.TOOL_CALL_EXECUTION
+                    )
                     result.is_tool_calls = True
                     result.tool_call_info["execution_successful"] = True
-                    logger.debug("Tool call execution stage passed", extra={"platform": model_platform, "model_type": model_type})
+                    logger.debug(
+                        "Tool call execution stage passed",
+                        extra={
+                            "platform": model_platform,
+                            "model_type": model_type,
+                        },
+                    )
                 else:
-                    result.error_type = ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
+                    result.error_type = (
+                        ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
+                    )
                     result.error_message = f"Tool call was made but execution failed. Expected result: '{expected_result[:50]}...', but got: '{str(actual_result)[:50] if actual_result else 'None'}...'"
                     result.error_details = {
                         "expected_result": expected_result,
-                        "actual_result": str(actual_result) if actual_result else None,
+                        "actual_result": str(actual_result)
+                        if actual_result
+                        else None,
                         "tool_call": str(tool_call)[:200],
                     }
                     result.failed_stage = ValidationStage.TOOL_CALL_EXECUTION
                     result.tool_call_info["execution_successful"] = False
-                    logger.warning("Tool call execution failed", extra={"platform": model_platform, "model_type": model_type, "expected": expected_result[:50], "actual": str(actual_result)[:50] if actual_result else None})
+                    logger.warning(
+                        "Tool call execution failed",
+                        extra={
+                            "platform": model_platform,
+                            "model_type": model_type,
+                            "expected": expected_result[:50],
+                            "actual": str(actual_result)[:50]
+                            if actual_result
+                            else None,
+                        },
+                    )
             else:
                 result.error_type = ValidationErrorType.TOOL_CALL_NOT_SUPPORTED
                 result.error_message = "Model call succeeded, but the model did not make any tool calls. This model may not support tool calling functionality."
                 result.error_details = {
                     "tool_calls": [],
-                    "response_info": str(response.info) if hasattr(response, "info") else None,
+                    "response_info": str(response.info)
+                    if hasattr(response, "info")
+                    else None,
                 }
                 result.failed_stage = ValidationStage.TOOL_CALL_EXECUTION
                 result.tool_call_info["execution_successful"] = False
-                logger.warning("No tool calls made by model", extra={"platform": model_platform, "model_type": model_type})
+                logger.warning(
+                    "No tool calls made by model",
+                    extra={
+                        "platform": model_platform,
+                        "model_type": model_type,
+                    },
+                )
         else:
             result.error_type = ValidationErrorType.TOOL_CALL_NOT_SUPPORTED
             result.error_message = "Model call succeeded, but response does not contain tool call information. This model may not support tool calling functionality."
@@ -461,18 +615,30 @@ def validate_model_with_details(
                 "response_type": type(response).__name__ if response else None,
             }
             result.failed_stage = ValidationStage.TOOL_CALL_EXECUTION
-            result.tool_call_info = {"execution_successful": False, "has_info": False}
-            logger.warning("Response missing tool call info", extra={"platform": model_platform, "model_type": model_type})
-            
+            result.tool_call_info = {
+                "execution_successful": False,
+                "has_info": False,
+            }
+            logger.warning(
+                "Response missing tool call info",
+                extra={"platform": model_platform, "model_type": model_type},
+            )
+
     except Exception as e:
         result.error_type = ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
-        result.error_message = f"Error while checking tool call execution: {str(e)}"
+        result.error_message = (
+            f"Error while checking tool call execution: {str(e)}"
+        )
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
             "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.TOOL_CALL_EXECUTION
-        logger.error("Tool call execution check failed", extra={"error": str(e)}, exc_info=True)
-    
+        logger.error(
+            "Tool call execution check failed",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
+
     return result
