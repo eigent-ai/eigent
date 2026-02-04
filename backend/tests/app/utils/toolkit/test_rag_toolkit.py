@@ -1,11 +1,3 @@
-"""Unit tests for RAGToolkit.
-
-RAGToolkit is a generic RAG toolkit with configurable storage:
-- Raw text document support (add_document + query_knowledge_base)
-- File/URL retrieval via information_retrieval
-- Configurable collection_name and storage_path for flexibility
-"""
-
 import shutil
 import tempfile
 from pathlib import Path

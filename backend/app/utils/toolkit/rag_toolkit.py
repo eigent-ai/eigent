@@ -1,17 +1,3 @@
-"""RAG (Retrieval-Augmented Generation) Toolkit for knowledge base queries.
-
-This toolkit wraps CAMEL's RetrievalToolkit with generic RAG functionality:
-- Raw text document support (add_document + query_knowledge_base)
-- File/URL retrieval via information_retrieval
-- Configurable collection_name and storage_path for flexibility
-
-The toolkit is generic and portable - task isolation and other application-specific
-concerns are handled at the orchestration layer (e.g., in get_toolkits()).
-
-# TODO: Support configurable embedding models (currently OpenAI only)
-# TODO: Add support for other vector storage backends
-"""
-
 import hashlib
 import logging
 import os
