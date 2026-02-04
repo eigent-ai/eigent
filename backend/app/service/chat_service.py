@@ -48,6 +48,7 @@ from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
+    ActionTimeoutData,
     Agents,
     TaskLock,
     delete_task_lock,

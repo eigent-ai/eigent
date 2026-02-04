@@ -13,17 +13,16 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """
 Centralized router registration for the Eigent API.
-All routers are explicitly registered here
-for better visibility and maintainability.
+All routers are explicitly registered here for better visibility and maintainability.
 """
 from fastapi import FastAPI
 from app.controller import (
     chat_controller,
+    health_controller,
+    knowledge_controller,
     model_controller,
     task_controller,
     tool_controller,
-    health_controller,
-    knowledge_controller,
 )
 import logging
 
@@ -50,11 +49,9 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "description": "Health check endpoint for service readiness"
         },
         {
-            "router":
-            chat_controller.router,
+            "router": chat_controller.router,
             "tags": ["chat"],
-            "description":
-            "Chat session management, improvements, and human interactions"
+            "description": "Chat session management, improvements, and human interactions"
         },
         {
             "router": model_controller.router,
@@ -62,11 +59,9 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "description": "Model validation and configuration"
         },
         {
-            "router":
-            task_controller.router,
+            "router": task_controller.router,
             "tags": ["task"],
-            "description":
-            "Task lifecycle management (start, stop, update, control)"
+            "description": "Task lifecycle management (start, stop, update, control)"
         },
         {
             "router": tool_controller.router,
@@ -86,9 +81,7 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         )
         route_count = len(config["router"].routes)
         logger.info(
-            f"Registered {config['tags'][0]} router:"
-            f" {route_count} routes -"
-            f" {config['description']}"
+            f"Registered {config['tags'][0]} router: {route_count} routes - {config['description']}"
         )
 
     logger.info(f"Total routers registered: {len(routers_config)}")
