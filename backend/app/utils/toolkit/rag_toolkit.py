@@ -1,11 +1,25 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import hashlib
 import logging
 import os
 from pathlib import Path
 
-from camel.embeddings import OpenAIEmbedding
+from camel.embeddings import BaseEmbedding, OpenAIEmbedding
 from camel.retrievers import AutoRetriever, VectorRetriever
-from camel.storages import QdrantStorage
+from camel.storages import BaseVectorStorage, QdrantStorage
 from camel.toolkits import RetrievalToolkit
 from camel.toolkits.function_tool import FunctionTool
 from camel.types import StorageType
@@ -20,7 +34,8 @@ logger = logging.getLogger("rag_toolkit")
 DEFAULT_RAG_STORAGE_PATH = "~/.eigent/rag_storage"
 DEFAULT_COLLECTION_NAME = "default"
 RAW_TEXT_SUBDIR = "raw_text"
-OPENAI_EMBEDDING_DIM = 1536  # OpenAI text-embedding-ada-002 dimension
+DEFAULT_STORAGE_TYPE = StorageType.QDRANT
+DEFAULT_EMBEDDING_DIM = 1536  # OpenAI text-embedding-ada-002 dimension
 
 
 class RAGToolkit(AbstractToolkit):
@@ -44,16 +59,20 @@ class RAGToolkit(AbstractToolkit):
         agent_name: str | None = None,
         collection_name: str | None = None,
         storage_path: str | Path | None = None,
+        storage_type: StorageType | None = None,
+        embedding_model: BaseEmbedding | None = None,
+        vector_dim: int | None = None,
     ):
         """Initialize RAGToolkit with configurable storage.
 
         Args:
             api_task_id (str): Task ID for eigent integration.
             agent_name (str | None): Optional agent name override.
-            collection_name (str | None): Name for the vector collection. If not provided,
-                defaults to a generic name.
-            storage_path (str | Path | None): Path for vector storage. If not provided, uses
-                a default path.
+            collection_name (str | None): Name for the vector collection.
+            storage_path (str | Path | None): Path for vector storage.
+            storage_type (StorageType | None): Vector storage type (default: QDRANT).
+            embedding_model (BaseEmbedding | None): Custom embedding model.
+            vector_dim (int | None): Embedding dimension (required if custom model).
         """
         self.api_task_id = api_task_id
         if agent_name is not None:
@@ -68,11 +87,14 @@ class RAGToolkit(AbstractToolkit):
         self._storage_path.mkdir(parents=True, exist_ok=True)
 
         self._collection_name = collection_name or DEFAULT_COLLECTION_NAME
+        self._storage_type = storage_type or DEFAULT_STORAGE_TYPE
+        self._custom_embedding_model = embedding_model
+        self._vector_dim = vector_dim or DEFAULT_EMBEDDING_DIM
 
         # Initialize CAMEL's AutoRetriever with configured storage
         auto_retriever = AutoRetriever(
             vector_storage_local_path=str(self._storage_path),
-            storage_type=StorageType.QDRANT,
+            storage_type=self._storage_type,
         )
 
         # Wrap CAMEL's RetrievalToolkit using composition (for file/URL retrieval)
@@ -88,23 +110,38 @@ class RAGToolkit(AbstractToolkit):
     def _get_embedding_model(self):
         """Lazily initialize embedding model."""
         if self._embedding_model is None:
-            api_key = env("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError(
-                    "OPENAI_API_KEY is required for RAG embeddings"
-                )
-            self._embedding_model = OpenAIEmbedding(api_key=api_key)
+            if self._custom_embedding_model is not None:
+                self._embedding_model = self._custom_embedding_model
+            else:
+                api_key = env("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError(
+                        "OPENAI_API_KEY required (or provide embedding_model)"
+                    )
+                self._embedding_model = OpenAIEmbedding(api_key=api_key)
         return self._embedding_model
 
     def _get_storage(self):
         """Lazily initialize vector storage for raw text."""
         if self._storage is None:
-            self._storage = QdrantStorage(
-                vector_dim=OPENAI_EMBEDDING_DIM,
+            self._storage = self._create_storage(
+                vector_dim=self._vector_dim,
                 path=str(self._storage_path / RAW_TEXT_SUBDIR),
                 collection_name=self._collection_name,
             )
         return self._storage
+
+    def _create_storage(
+        self, vector_dim: int, path: str, collection_name: str
+    ) -> BaseVectorStorage:
+        """Create vector storage based on configured storage type."""
+        if self._storage_type == StorageType.QDRANT:
+            return QdrantStorage(
+                vector_dim=vector_dim,
+                path=path,
+                collection_name=collection_name,
+            )
+        raise ValueError(f"Unsupported storage type: {self._storage_type}")
 
     def _get_vector_retriever(self) -> VectorRetriever:
         """Lazily initialize vector retriever for raw text."""
@@ -306,36 +343,20 @@ class RAGToolkit(AbstractToolkit):
         ]
 
     @classmethod
-    def get_can_use_tools(
-        cls,
-        api_task_id: str,
-        collection_name: str | None = None,
-        storage_path: str | Path | None = None,
-    ) -> list[FunctionTool]:
+    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
         """Return tools that can be used based on available configuration.
 
         Args:
             api_task_id (str): Task ID for eigent integration.
-            collection_name (str | None): Name for the vector collection.
-            storage_path (str | Path | None): Path for vector storage.
-
-        Raises:
-            ValueError: If collection_name is None (must be explicitly specified).
         """
-        # RAG requires OpenAI API key for embeddings
         if not env("OPENAI_API_KEY"):
             logger.warning("RAG toolkit disabled: OPENAI_API_KEY not set")
             return []
 
-        # Require explicit collection_name for task isolation
-        if collection_name is None:
-            raise ValueError(
-                "collection_name must be explicitly specified for RAG toolkit"
-            )
-
+        # Auto-derive collection name for task isolation
+        collection_name = f"task_{api_task_id}"
         toolkit = RAGToolkit(
             api_task_id=api_task_id,
             collection_name=collection_name,
-            storage_path=storage_path,
         )
         return toolkit.get_tools()
