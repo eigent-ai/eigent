@@ -108,9 +108,7 @@ def test_get_can_use_tools_without_api_key(temp_storage_path):
     """Test get_can_use_tools returns empty when no API key."""
     with patch.dict("os.environ", {}, clear=True):
         with patch("app.utils.toolkit.rag_toolkit.env", return_value=None):
-            tools = RAGToolkit.get_can_use_tools(
-                "test-task", collection_name="test_collection"
-            )
+            tools = RAGToolkit.get_can_use_tools("test-task")
             assert tools == []
 
 
@@ -120,20 +118,23 @@ def test_get_can_use_tools_with_api_key(temp_storage_path):
         with patch("app.utils.toolkit.rag_toolkit.AutoRetriever"):
             with patch.object(RAGToolkit, "get_tools") as mock_get_tools:
                 mock_get_tools.return_value = [Mock(), Mock()]
-                tools = RAGToolkit.get_can_use_tools(
-                    "test-task", collection_name="test_collection"
-                )
+                tools = RAGToolkit.get_can_use_tools("test-task")
                 assert len(tools) == 2
 
 
-def test_get_can_use_tools_requires_collection_name(temp_storage_path):
-    """Test get_can_use_tools raises error when collection_name is None."""
+def test_get_can_use_tools_auto_derives_collection_name(temp_storage_path):
+    """Test get_can_use_tools auto-derives collection_name from api_task_id."""
     with patch("app.utils.toolkit.rag_toolkit.env", return_value="test-key"):
-        with pytest.raises(
-            ValueError,
-            match="collection_name must be explicitly specified",
-        ):
-            RAGToolkit.get_can_use_tools("test-task")
+        with patch("app.utils.toolkit.rag_toolkit.AutoRetriever"):
+            with patch.object(
+                RAGToolkit, "__init__", return_value=None
+            ) as mock_init:
+                with patch.object(RAGToolkit, "get_tools", return_value=[]):
+                    RAGToolkit.get_can_use_tools("test-task-123")
+                    mock_init.assert_called_once_with(
+                        api_task_id="test-task-123",
+                        collection_name="task_test-task-123",
+                    )
 
 
 def test_default_collection_name(temp_storage_path):
