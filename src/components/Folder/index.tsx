@@ -23,6 +23,7 @@ import {
   FileText,
   Folder as FolderIcon,
   Search,
+  SquareTerminal,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
@@ -34,6 +35,7 @@ import { injectFontStyles } from '@/lib/htmlFontStyles';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { ZoomControls } from './ZoomControls';
 
 // Type definitions
@@ -446,21 +448,53 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 </span>
               </div>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`${
-                isCollapsed ? 'w-full' : ''
-              } flex items-center justify-center`}
-              title={isCollapsed ? t('chat.open') : t('chat.close')}
-            >
-              <ChevronsLeft
-                className={`h-6 w-6 text-icon-secondary ${
-                  isCollapsed ? 'rotate-180' : ''
-                } transition-transform ease-in-out`}
-              />
-            </Button>
+            <div className="flex items-center">
+              {!isCollapsed && window.electronAPI?.getProjectFolderPath && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    try {
+                      if (!authStore.email || !projectStore.activeProjectId)
+                        return;
+                      const folderPath =
+                        await window.electronAPI.getProjectFolderPath(
+                          authStore.email,
+                          projectStore.activeProjectId
+                        );
+                      const result = await window.electronAPI.openInIDE(
+                        folderPath,
+                        authStore.preferredIDE
+                      );
+                      if (!result.success) {
+                        toast.error(result.error || 'Failed to open folder');
+                      }
+                    } catch (error) {
+                      console.error('Failed to open in IDE:', error);
+                      toast.error('Failed to open folder');
+                    }
+                  }}
+                  title={t('chat.open-in-ide')}
+                >
+                  <SquareTerminal className="h-5 w-5 text-icon-secondary" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className={`${
+                  isCollapsed ? 'w-full' : ''
+                } flex items-center justify-center`}
+                title={isCollapsed ? t('chat.open') : t('chat.close')}
+              >
+                <ChevronsLeft
+                  className={`h-6 w-6 text-icon-secondary ${
+                    isCollapsed ? 'rotate-180' : ''
+                  } transition-transform ease-in-out`}
+                />
+              </Button>
+            </div>
           </div>
         </div>
 

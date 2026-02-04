@@ -28,7 +28,7 @@ import log from 'electron-log';
 import FormData from 'form-data';
 import fsp from 'fs/promises';
 import mime from 'mime';
-import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
@@ -913,6 +913,57 @@ function registerIpcHandlers() {
       };
     }
   });
+
+  // ==================== IDE integration handler ====================
+  ipcMain.handle(
+    'get-project-folder-path',
+    async (_event, email: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const result = manager.createProjectStructure(email, projectId);
+      return result.path;
+    }
+  );
+
+  ipcMain.handle(
+    'open-in-ide',
+    async (_event, folderPath: string, ide: string) => {
+      const cmd = ide === 'vscode' ? 'code' : ide === 'cursor' ? 'cursor' : '';
+      if (!cmd) {
+        const errorMsg = await shell.openPath(folderPath);
+        if (errorMsg) {
+          log.error('[IDE] shell.openPath error:', errorMsg);
+          return { success: false, error: errorMsg };
+        }
+        return { success: true };
+      }
+
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        // Use shell: true so .cmd/.bat wrappers work on Windows
+        const child = spawn(cmd, [folderPath], {
+          shell: true,
+          stdio: 'ignore',
+          detached: true,
+        });
+        child.unref();
+
+        child.on('error', (error) => {
+          log.warn(
+            `[IDE] ${cmd} not found, falling back to system file manager:`,
+            error.message
+          );
+          shell.openPath(folderPath).then((errorMsg) => {
+            resolve(
+              errorMsg ? { success: false, error: errorMsg } : { success: true }
+            );
+          });
+        });
+
+        child.on('spawn', () => {
+          resolve({ success: true });
+        });
+      });
+    }
+  );
 
   // ==================== env handler ====================
 

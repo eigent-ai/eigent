@@ -47,5 +47,6 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Your cloud storage has reached the limit of your current plan.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "We're experiencing high traffic. Please try again in a few moments.",
   "new-project": "Untitled Project",
-  "no-reply-received-task-continue": "No reply received, task continue"
+  "no-reply-received-task-continue": "No reply received, task continue",
+  "open-in-ide": "Open in IDE"
 }
