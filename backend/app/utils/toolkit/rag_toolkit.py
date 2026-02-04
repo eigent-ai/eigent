@@ -349,10 +349,6 @@ class RAGToolkit(AbstractToolkit):
         Args:
             api_task_id (str): Task ID for eigent integration.
         """
-        if not env("OPENAI_API_KEY"):
-            logger.warning("RAG toolkit disabled: OPENAI_API_KEY not set")
-            return []
-
         # Auto-derive collection name for task isolation
         collection_name = f"task_{api_task_id}"
         toolkit = RAGToolkit(
