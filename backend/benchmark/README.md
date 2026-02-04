@@ -54,6 +54,11 @@ benchmark/
     "question": "Your task description",
     "env": {}
   },
+  "metadata": {
+    "difficulty": "easy|medium|hard",
+    "description": "Brief description of what this benchmark tests",
+    "tags": ["tag1", "tag2"]
+  },
   "model_kwargs": {
     "model_platform": "openai",
     "model_type": "gpt-4o"
@@ -64,6 +69,12 @@ benchmark/
   }
 }
 ```
+
+The `metadata` field (optional) provides information about the benchmark:
+
+- `difficulty`: Indicates complexity level: "easy", "medium", or "hard"
+- `description`: Brief explanation of what skills or capabilities the benchmark tests
+- `tags`: Array of keywords for filtering and organization
 
 `model_platform` and `model_type` default to `"openai"` and `"gpt-4o"`. `api_key` defaults to `$OPENAI_API_KEY`. Set `api_url` for custom endpoints.
 

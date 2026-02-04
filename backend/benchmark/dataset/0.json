@@ -1,5 +1,6 @@
 {
   "metadata": {
+    "difficulty": "easy",
     "description": "Google a specific blog post on mathspp.com about obfuscated Python, read and understand the code tricks, then faithfully reproduce the exact program as hello_world.py.",
     "tags": ["browser", "coding", "python", "target-searching"]
   },

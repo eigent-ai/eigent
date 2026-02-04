@@ -44,6 +44,7 @@ class ModelKwargs(BaseModel):
 
 
 class Metadata(BaseModel):
+    difficulty: str = ""
     description: str = ""
     tags: list[str] = []
 
