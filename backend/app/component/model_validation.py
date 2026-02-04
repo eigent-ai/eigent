@@ -117,7 +117,6 @@ def categorize_error(
     """
     error_str = str(exception).lower()
     error_type = exception.__class__.__name__.lower()
-    traceback_str = traceback.format_exc().lower()
 
     # Authentication errors
     if any(
