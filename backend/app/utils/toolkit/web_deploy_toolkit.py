@@ -13,7 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import uuid
-from typing import Any, Dict
+from typing import Any
+
 from camel.toolkits import WebDeployToolkit as BaseWebDeployToolkit
 
 from app.service.task import Agents
@@ -37,7 +38,15 @@ class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
         remote_server_port: int = 8080,
     ):
         self.api_task_id = api_task_id
-        super().__init__(timeout, add_branding_tag, logo_path, tag_text, tag_url, remote_server_ip, remote_server_port)
+        super().__init__(
+            timeout,
+            add_branding_tag,
+            logo_path,
+            tag_text,
+            tag_url,
+            remote_server_ip,
+            remote_server_port,
+        )
 
     @listen_toolkit(BaseWebDeployToolkit.deploy_html_content)
     def deploy_html_content(
@@ -48,13 +57,19 @@ class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
         port: int = 8080,
         domain: str | None = None,
         subdirectory: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         subdirectory = str(uuid.uuid4())
-        return super().deploy_html_content(html_content, html_file_path, file_name, port, domain, subdirectory)
+        return super().deploy_html_content(
+            html_content, html_file_path, file_name, port, domain, subdirectory
+        )
 
     @listen_toolkit(BaseWebDeployToolkit.deploy_folder)
     def deploy_folder(
-        self, folder_path: str, port: int = 8080, domain: str | None = None, subdirectory: str | None = None
-    ) -> Dict[str, Any]:
+        self,
+        folder_path: str,
+        port: int = 8080,
+        domain: str | None = None,
+        subdirectory: str | None = None,
+    ) -> dict[str, Any]:
         subdirectory = str(uuid.uuid4())
         return super().deploy_folder(folder_path, port, domain, subdirectory)

@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-
 """drop_mcp_user_foreign_key_constraint
 
 Revision ID: d74ab2a44600
@@ -20,18 +19,17 @@ Create Date: 2025-09-28 16:21:06.930093
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
-import sqlmodel.sql.sqltypes
-
 
 # revision identifiers, used by Alembic.
 revision: str = "d74ab2a44600"
-down_revision: Union[str, None] = "0001_init"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0001_init"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -41,7 +39,7 @@ def upgrade() -> None:
 
     try:
         op.drop_constraint("mcp_user_mcp_id_fkey", "mcp_user", type_="foreignkey")
-    except Exception as e:
+    except Exception:
         # If the expected constraint name doesn't work, try to find it dynamically
         try:
             connection = op.get_bind()
@@ -51,9 +49,11 @@ def upgrade() -> None:
             # Find the constraint that references mcp_id -> mcp.id
             target_constraint = None
             for fk in fk_constraints:
-                if (fk.get("constrained_columns") == ["mcp_id"] and
-                    fk.get("referred_table") == "mcp" and
-                    fk.get("referred_columns") == ["id"]):
+                if (
+                    fk.get("constrained_columns") == ["mcp_id"]
+                    and fk.get("referred_table") == "mcp"
+                    and fk.get("referred_columns") == ["id"]
+                ):
                     target_constraint = fk.get("name")
                     break
 
@@ -78,20 +78,16 @@ def downgrade() -> None:
         # Check if the constraint already exists
         constraint_exists = False
         for fk in fk_constraints:
-            if (fk.get("constrained_columns") == ["mcp_id"] and
-                fk.get("referred_table") == "mcp" and
-                fk.get("referred_columns") == ["id"]):
+            if (
+                fk.get("constrained_columns") == ["mcp_id"]
+                and fk.get("referred_table") == "mcp"
+                and fk.get("referred_columns") == ["id"]
+            ):
                 constraint_exists = True
                 break
 
         if not constraint_exists:
-            op.create_foreign_key(
-                "mcp_user_mcp_id_fkey",
-                "mcp_user",
-                "mcp",
-                ["mcp_id"],
-                ["id"]
-            )
+            op.create_foreign_key("mcp_user_mcp_id_fkey", "mcp_user", "mcp", ["mcp_id"], ["id"])
         else:
             print("Info: Foreign key constraint for mcp_user.mcp_id -> mcp.id already exists")
     except Exception as e:

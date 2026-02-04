@@ -78,8 +78,9 @@ def multi_modal_agent(options: Chat):
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
-        *HumanToolkit.
-        get_can_use_tools(options.project_id, Agents.multi_modal_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.multi_modal_agent
+        ),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
     ]

@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 from app.type.config_group import ConfigGroup
 

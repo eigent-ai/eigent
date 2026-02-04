@@ -92,7 +92,7 @@ class TestTaskServiceModels:
             "content": "Test content",
             "state": "RUNNING",
             "result": "In progress",
-            "failure_count": 0
+            "failure_count": 0,
         }
         data = ActionTaskStateData(data=state_data)
 
@@ -104,7 +104,7 @@ class TestTaskServiceModels:
         """Test ActionAskData model creation."""
         ask_data = {
             "question": "What should I do next?",
-            "agent": "test_agent"
+            "agent": "test_agent",
         }
         data = ActionAskData(data=ask_data)
 
@@ -117,7 +117,7 @@ class TestTaskServiceModels:
         agent_data = {
             "agent_name": "TestAgent",
             "agent_id": "agent_123",
-            "tools": ["search", "code"]
+            "tools": ["search", "code"],
         }
         data = ActionCreateAgentData(data=agent_data)
 
@@ -149,11 +149,7 @@ class TestTaskServiceModels:
             name="New Agent",
             description="A new agent",
             tools=["search", "code"],
-            mcp_tools={"mcpServers": {
-                "test": {
-                    "config": "value"
-                }
-            }}
+            mcp_tools={"mcpServers": {"test": {"config": "value"}}},
         )
 
         assert data.action == Action.new_agent
@@ -165,9 +161,15 @@ class TestTaskServiceModels:
     def test_agents_enum_values(self):
         """Test Agents enum contains expected values."""
         expected_agents = [
-            "task_agent", "coordinator_agent", "new_worker_agent",
-            "developer_agent", "browser_agent", "document_agent",
-            "multi_modal_agent", "social_media_agent", "mcp_agent"
+            "task_agent",
+            "coordinator_agent",
+            "new_worker_agent",
+            "developer_agent",
+            "browser_agent",
+            "document_agent",
+            "multi_modal_agent",
+            "social_media_agent",
+            "mcp_agent",
         ]
 
         for agent in expected_agents:
@@ -520,17 +522,22 @@ class TestPeriodicCleanup:
         task_lock.last_accessed = datetime.now() - timedelta(hours=3)
 
         # Mock delete_task_lock to raise exception
-        with patch(
-            'app.service.task.delete_task_lock',
-            side_effect=Exception("Test error"),
-        ), patch('app.service.task.logger.error', ) as mock_logger:
-
+        with (
+            patch(
+                "app.service.task.delete_task_lock",
+                side_effect=Exception("Test error"),
+            ),
+            patch(
+                "app.service.task.logger.error",
+            ) as mock_logger,
+        ):
             # Directly call the cleanup logic
             # that should trigger the exception
             try:
                 await delete_task_lock("test_task")
             except Exception as e:
                 import logging
+
                 task_logger = logging.getLogger("task_service")
                 task_logger.error(f"Error during task cleanup: {e}")
 

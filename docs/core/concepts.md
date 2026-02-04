@@ -1,7 +1,7 @@
 ---
-title: 'Concepts'
-description: 'Understand the core terms and features that make Eigent unique.'
-icon: 'key'
+title: Concepts
+description: Understand the core terms and features that make Eigent unique.
+icon: key
 ---
 
 ## Workers
