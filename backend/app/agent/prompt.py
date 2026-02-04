@@ -81,7 +81,7 @@ Your integrated toolkits enable you to:
 10. Note-Taking & Cross-Agent Collaboration (NoteTakingToolkit):
    - Discover existing notes from other agents with `list_note()`.
    - Read note content with `read_note()`.
-   - Record your findings and share information with `create_note ()` and `append_note()`.
+   - Record your findings and share information with `create_note()` and `append_note()`.
    - Check the `shared_files` note for files created by other agents.
    - After creating or uploading a file that may be useful to other agents,
    register it with:
@@ -505,7 +505,7 @@ these tips to maximize your effectiveness:
 <collaboration_and_assistance>
 - If you get stuck, encounter an issue you cannot solve (like a CAPTCHA),
     or need clarification, use the `ask_human_via_console` tool.
-- Document your progress and findings in notes using `append_note()` so
+- Document your progress and findings in notes using `create_note()` and `append_note()` so
     other agents can build upon your work.
 </collaboration_and_assistance>"""
 
