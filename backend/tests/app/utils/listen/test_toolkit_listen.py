@@ -15,9 +15,14 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.utils.listen.toolkit_listen import (MAX_LENGTH, _format_args,
-                                             _format_result, _truncate,
-                                             listen_toolkit)
+
+from app.utils.listen.toolkit_listen import (
+    MAX_LENGTH,
+    _format_args,
+    _format_result,
+    _truncate,
+    listen_toolkit,
+)
 
 
 @pytest.mark.unit
@@ -62,7 +67,7 @@ def test_format_args_with_positional_args():
 @pytest.mark.unit
 def test_format_args_with_kwargs():
     """Format keyword arguments."""
-    args = ("self", )
+    args = ("self",)
     kwargs = {"key1": "value1", "key2": 42}
     result = _format_args(args, kwargs, None)
     assert "key1='value1'" in result
@@ -197,8 +202,10 @@ def test_listen_toolkit_sync_returns_result():
     mock_task_lock = MagicMock()
     mock_task_lock.put_queue = AsyncMock()
 
-    with patch("app.utils.listen.toolkit_listen.get_task_lock",
-               return_value=mock_task_lock):
+    with patch(
+        "app.utils.listen.toolkit_listen.get_task_lock",
+        return_value=mock_task_lock,
+    ):
 
         @listen_toolkit()
         def test_method(self, arg1):
@@ -215,8 +222,10 @@ def test_listen_toolkit_sync_raises_exception():
     mock_task_lock = MagicMock()
     mock_task_lock.put_queue = AsyncMock()
 
-    with patch("app.utils.listen.toolkit_listen.get_task_lock",
-               return_value=mock_task_lock):
+    with patch(
+        "app.utils.listen.toolkit_listen.get_task_lock",
+        return_value=mock_task_lock,
+    ):
 
         @listen_toolkit()
         def test_method(self):
@@ -265,8 +274,10 @@ async def test_listen_toolkit_async_returns_result():
     mock_task_lock = MagicMock()
     mock_task_lock.put_queue = AsyncMock()
 
-    with patch("app.utils.listen.toolkit_listen.get_task_lock",
-               return_value=mock_task_lock):
+    with patch(
+        "app.utils.listen.toolkit_listen.get_task_lock",
+        return_value=mock_task_lock,
+    ):
 
         @listen_toolkit()
         async def test_method(self, arg1):
@@ -284,8 +295,10 @@ async def test_listen_toolkit_async_raises_exception():
     mock_task_lock = MagicMock()
     mock_task_lock.put_queue = AsyncMock()
 
-    with patch("app.utils.listen.toolkit_listen.get_task_lock",
-               return_value=mock_task_lock):
+    with patch(
+        "app.utils.listen.toolkit_listen.get_task_lock",
+        return_value=mock_task_lock,
+    ):
 
         @listen_toolkit()
         async def test_method(self):
@@ -322,8 +335,10 @@ def test_listen_toolkit_with_custom_inputs_formatter():
         custom_formatter_called.append((arg1, arg2))
         return f"custom: {arg1}, {arg2}"
 
-    with patch("app.utils.listen.toolkit_listen.get_task_lock",
-               return_value=mock_task_lock):
+    with patch(
+        "app.utils.listen.toolkit_listen.get_task_lock",
+        return_value=mock_task_lock,
+    ):
 
         @listen_toolkit(inputs=custom_inputs)
         def test_method(self, arg1, arg2):
@@ -345,10 +360,13 @@ def test_listen_toolkit_with_custom_return_msg_formatter():
     def custom_return_msg(res):
         return f"formatted: {res}"
 
-    with patch(
+    with (
+        patch(
             "app.utils.listen.toolkit_listen.get_task_lock",
-            return_value=mock_task_lock
-    ), patch("app.utils.listen.toolkit_listen._format_result") as mock_format:
+            return_value=mock_task_lock,
+        ),
+        patch("app.utils.listen.toolkit_listen._format_result") as mock_format,
+    ):
         mock_format.return_value = "formatted: test_result"
 
         @listen_toolkit(return_msg=custom_return_msg)

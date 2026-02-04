@@ -13,10 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import IntEnum, StrEnum
-from typing import Optional
+
 from pydantic import BaseModel, computed_field
-from sqlmodel import Field, Column, SmallInteger
 from sqlalchemy_utils import ChoiceType
+from sqlmodel import Column, Field, SmallInteger
+
 from app.component.environment import env_not_empty
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
@@ -41,8 +42,8 @@ class Key(AbstractModel, DefaultTimes, table=True):
 
 
 class KeyOut(BaseModel):
-    warning_code: Optional[str] = None
-    warning_text: Optional[str] = None
+    warning_code: str | None = None
+    warning_text: str | None = None
     value: str
 
     @computed_field(return_type=str)

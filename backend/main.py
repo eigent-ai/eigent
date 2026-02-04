@@ -12,12 +12,12 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import os
-import sys
-import pathlib
-import signal
 import asyncio
 import atexit
+import os
+import pathlib
+import signal
+import sys
 
 # Add project root to Python path to import shared utils
 _project_root = pathlib.Path(__file__).parent.parent
@@ -29,7 +29,7 @@ import logging
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 # Disable verbose CAMEL logs
@@ -57,20 +57,26 @@ register_routers(api, prefix)
 app_logger.info("All routers loaded successfully")
 
 # Check if debug mode is enabled via environment variable
-if os.environ.get('ENABLE_PYTHON_DEBUG') == 'true':
+if os.environ.get("ENABLE_PYTHON_DEBUG") == "true":
     try:
         import debugpy
-        DEBUG_PORT = int(os.environ.get('DEBUG_PORT', '5678'))
-        app_logger.info(f"Debug mode enabled - Starting debugpy server on port {DEBUG_PORT}")
+
+        DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "5678"))
+        app_logger.info(
+            f"Debug mode enabled - Starting debugpy server on port {DEBUG_PORT}"
+        )
         debugpy.listen(("localhost", DEBUG_PORT))
-        app_logger.info(f"Debugger ready for attachment on localhost:{DEBUG_PORT}")
-        #📝 In VS Code: Run 'Debug Python Backend (Attach)' configuration
+        app_logger.info(
+            f"Debugger ready for attachment on localhost:{DEBUG_PORT}"
+        )
+        # 📝 In VS Code: Run 'Debug Python Backend (Attach)' configuration
         # Don't wait for client automatically - let it attach when ready
     except ImportError:
-        app_logger.warning("debugpy not available, install with: uv add debugpy")
+        app_logger.warning(
+            "debugpy not available, install with: uv add debugpy"
+        )
     except Exception as e:
         app_logger.error(f"Failed to start debugpy: {e}")
-
 
 dir = pathlib.Path(__file__).parent / "runtime"
 dir.mkdir(parents=True, exist_ok=True)
@@ -89,6 +95,7 @@ async def write_pid_file():
 # PID task will be created on startup
 pid_task = None
 
+
 @api.on_event("startup")
 async def startup_event():
     global pid_task
@@ -96,9 +103,13 @@ async def startup_event():
     app_logger.info("PID write task created")
 
     # Initialize telemetry tracer provider
-    from app.utils.telemetry.workforce_metrics import initialize_tracer_provider
+    from app.utils.telemetry.workforce_metrics import (
+        initialize_tracer_provider,
+    )
+
     initialize_tracer_provider()
     app_logger.info("Telemetry tracer provider initialized")
+
 
 # Graceful shutdown handler
 shutdown_event = asyncio.Event()
@@ -108,7 +119,7 @@ async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
     app_logger.info("Starting graceful shutdown process")
 
-    from app.service.task import task_locks, _cleanup_task
+    from app.service.task import _cleanup_task, task_locks
 
     if _cleanup_task and not _cleanup_task.done():
         _cleanup_task.cancel()
@@ -143,6 +154,7 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
+
 # Register cleanup on exit with safe synchronous wrapper
 def sync_cleanup():
     """Synchronous cleanup for atexit - handles PID file removal"""
@@ -154,6 +166,7 @@ def sync_cleanup():
             app_logger.info("PID file removed during shutdown")
     except Exception as e:
         app_logger.error(f"Error during atexit cleanup: {e}")
+
 
 atexit.register(sync_cleanup)
 

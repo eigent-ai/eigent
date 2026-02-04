@@ -1,6 +1,6 @@
 ---
-title: 'Kimi'
-description: 'This guide walks you through setting up your Kimi (Moonshot AI) API key within Eigent to enable the Kimi model for your AI workforce.'
+title: Kimi
+description: This guide walks you through setting up your Kimi (Moonshot AI) API key within Eigent to enable the Kimi model for your AI workforce.
 ---
 
 ### Prerequisites

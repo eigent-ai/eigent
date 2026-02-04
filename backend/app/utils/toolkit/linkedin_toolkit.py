@@ -16,7 +16,6 @@ import json
 import logging
 import os
 import time
-from typing import Optional
 
 from camel.toolkits import LinkedInToolkit as BaseLinkedInToolkit
 from camel.toolkits.function_tool import FunctionTool
@@ -155,12 +154,14 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
 
             # Calculate expiration time if expires_in is provided
             if "expires_in" in token_data and "expires_at" not in token_data:
-                token_data["expires_at"] = token_data["saved_at"] + token_data[
-                    "expires_in"]
+                token_data["expires_at"] = (
+                    token_data["saved_at"] + token_data["expires_in"]
+                )
             elif "expires_at" not in token_data:
                 # Default to 60 days if no expiration info provided
-                token_data["expires_at"] = token_data[
-                    "saved_at"] + LINKEDIN_TOKEN_LIFETIME_SECONDS
+                token_data["expires_at"] = (
+                    token_data["saved_at"] + LINKEDIN_TOKEN_LIFETIME_SECONDS
+                )
 
             os.makedirs(os.path.dirname(token_path), exist_ok=True)
             with open(token_path, "w") as f:
@@ -169,8 +170,9 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
 
             # Also update environment variable
             if token_data.get("access_token"):
-                os.environ["LINKEDIN_ACCESS_TOKEN"] = token_data["access_token"
-                                                                 ]
+                os.environ["LINKEDIN_ACCESS_TOKEN"] = token_data[
+                    "access_token"
+                ]
 
             return True
         except Exception as e:
@@ -238,7 +240,7 @@ class LinkedInToolkit(BaseLinkedInToolkit, AbstractToolkit):
         return bool(env("LINKEDIN_ACCESS_TOKEN"))
 
     @classmethod
-    def get_token_info(cls) -> Optional[dict]:
+    def get_token_info(cls) -> dict | None:
         r"""Get stored token information including expiration.
 
         Returns:

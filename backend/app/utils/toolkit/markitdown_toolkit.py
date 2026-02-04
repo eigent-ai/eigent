@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Dict, List
 from camel.toolkits import MarkItDownToolkit as BaseMarkItDownToolkit
 
 from app.service.task import Agents
