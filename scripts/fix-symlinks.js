@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console */
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +29,7 @@
  * - Works on any machine after packaging
  */
 
+import { Buffer } from 'buffer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -50,12 +52,22 @@ function findPythonExecutable(uvPythonDir) {
     // Find cpython directory
     for (const entry of entries) {
       if (entry.isDirectory() && entry.name.startsWith('cpython-')) {
-        // Try different possible paths
         const possiblePaths = [
+          // Unix paths
           path.join(uvPythonDir, entry.name, 'bin', 'python3.10'),
           path.join(uvPythonDir, entry.name, 'bin', 'python'),
           path.join(uvPythonDir, entry.name, 'install', 'bin', 'python3.10'),
           path.join(uvPythonDir, entry.name, 'install', 'bin', 'python'),
+          // Windows paths
+          path.join(uvPythonDir, entry.name, 'Scripts', 'python.exe'),
+          path.join(
+            uvPythonDir,
+            entry.name,
+            'install',
+            'Scripts',
+            'python.exe'
+          ),
+          path.join(uvPythonDir, entry.name, 'python.exe'),
         ];
 
         for (const pythonPath of possiblePaths) {
@@ -64,7 +76,7 @@ function findPythonExecutable(uvPythonDir) {
               absolutePath: pythonPath,
               cpythonDir: entry.name,
               // Extract relative path from uv_python
-              relativePath: path.relative(uvPythonDir, pythonPath)
+              relativePath: path.relative(uvPythonDir, pythonPath),
             };
           }
         }
@@ -82,6 +94,16 @@ function findPythonExecutable(uvPythonDir) {
  */
 function fixVenvSymlinks(venvPath, venvName) {
   const binDir = path.join(venvPath, 'bin');
+  const scriptsDir = path.join(venvPath, 'Scripts');
+
+  // Windows uses Scripts directory and doesn't need symlink fixes
+  if (fs.existsSync(scriptsDir) && !fs.existsSync(binDir)) {
+    console.log(`\n📝 Processing ${venvName}`);
+    console.log(
+      `   ℹ️  Windows venv detected - skipping symlink fixes (not needed)`
+    );
+    return true;
+  }
 
   if (!fs.existsSync(binDir)) {
     console.log(`⚠️  ${venvName} bin directory not found: ${binDir}`);
@@ -89,7 +111,12 @@ function fixVenvSymlinks(venvPath, venvName) {
   }
 
   // Find Python in uv_python
-  const uvPythonDir = path.join(projectRoot, 'resources', 'prebuilt', 'uv_python');
+  const uvPythonDir = path.join(
+    projectRoot,
+    'resources',
+    'prebuilt',
+    'uv_python'
+  );
   const pythonInfo = findPythonExecutable(uvPythonDir);
 
   if (!pythonInfo) {
@@ -112,22 +139,34 @@ function fixVenvSymlinks(venvPath, venvName) {
       let needsFix = false;
       let currentTarget = null;
 
-      if (fs.existsSync(symlinkPath) || fs.lstatSync(symlinkPath).isSymbolicLink()) {
+      if (
+        fs.existsSync(symlinkPath) ||
+        fs.lstatSync(symlinkPath).isSymbolicLink()
+      ) {
         try {
           currentTarget = fs.readlinkSync(symlinkPath);
 
           // Check if it's a broken symlink or points to wrong location
-          if (path.isAbsolute(currentTarget) || currentTarget.includes('cache')) {
+          if (
+            path.isAbsolute(currentTarget) ||
+            currentTarget.includes('cache')
+          ) {
             needsFix = true;
-            console.log(`   ❌ ${symlinkName}: broken symlink -> ${currentTarget}`);
+            console.log(
+              `   ❌ ${symlinkName}: broken symlink -> ${currentTarget}`
+            );
           } else {
-            console.log(`   ✓  ${symlinkName}: already fixed -> ${currentTarget}`);
+            console.log(
+              `   ✓  ${symlinkName}: already fixed -> ${currentTarget}`
+            );
             continue;
           }
         } catch (err) {
           // Broken symlink
           needsFix = true;
-          console.log(`   ❌ ${symlinkName}: broken symlink (target doesn't exist)`);
+          console.log(
+            `   ❌ ${symlinkName}: broken symlink (target doesn't exist), ${err.message}`
+          );
         }
       } else {
         needsFix = true;
@@ -137,10 +176,16 @@ function fixVenvSymlinks(venvPath, venvName) {
       if (needsFix) {
         // Remove existing symlink
         try {
-          if (fs.existsSync(symlinkPath) || fs.lstatSync(symlinkPath).isSymbolicLink()) {
+          if (
+            fs.existsSync(symlinkPath) ||
+            fs.lstatSync(symlinkPath).isSymbolicLink()
+          ) {
             fs.unlinkSync(symlinkPath);
           }
         } catch (err) {
+          console.error(
+            `   ❌ Failed to remove ${symlinkName}: ${err.message}`
+          );
           // Ignore
         }
 
@@ -171,9 +216,20 @@ function fixVenvSymlinks(venvPath, venvName) {
 
 /**
  * Fix shebang lines in all executable scripts in venv/bin directory
+ * Note: Windows doesn't use shebangs - it uses .exe wrappers instead
  */
 function fixScriptShebangs(venvPath, venvName) {
   const binDir = path.join(venvPath, 'bin');
+  const scriptsDir = path.join(venvPath, 'Scripts');
+
+  // Windows uses Scripts directory and doesn't need shebang fixes
+  if (fs.existsSync(scriptsDir) && !fs.existsSync(binDir)) {
+    console.log(`\n📝 Processing ${venvName}`);
+    console.log(
+      `   ℹ️  Windows venv detected - skipping shebang fixes (not needed)`
+    );
+    return { fixed: 0, skipped: 0 };
+  }
 
   if (!fs.existsSync(binDir)) {
     console.log(`⚠️  ${venvName} bin directory not found: ${binDir}`);
@@ -198,6 +254,7 @@ function fixScriptShebangs(venvPath, venvName) {
           continue;
         }
       } catch (err) {
+        console.error(`   ❌ Failed to check ${entry}: ${err.message}`);
         continue;
       }
 
@@ -222,7 +279,17 @@ function fixScriptShebangs(venvPath, venvName) {
         }
 
         // Check if it contains an absolute path to the venv
-        if (!path.isAbsolute(firstLine.substring(2).trim()) && !firstLine.includes('/resources/prebuilt/venv/')) {
+        // Support both Unix (/resources/prebuilt/venv/) and Windows (\resources\prebuilt\venv\ or \resources\prebuilt\Scripts\)
+        const shebangPath = firstLine.substring(2).trim();
+        const hasVenvPath =
+          firstLine.includes('/resources/prebuilt/venv/') ||
+          firstLine.includes('\\resources\\prebuilt\\venv\\') ||
+          firstLine.includes('/resources/prebuilt/terminal_venv/') ||
+          firstLine.includes('\\resources\\prebuilt\\terminal_venv\\') ||
+          firstLine.includes('/resources/prebuilt/Scripts/') ||
+          firstLine.includes('\\resources\\prebuilt\\Scripts\\');
+
+        if (!path.isAbsolute(shebangPath) && !hasVenvPath) {
           skippedCount++;
           continue;
         }
@@ -244,12 +311,14 @@ function fixScriptShebangs(venvPath, venvName) {
           fs.chmodSync(filePath, 0o755);
           fixedCount++;
 
-          if (fixedCount <= 5) { // Only show first 5 for brevity
+          if (fixedCount <= 5) {
+            // Only show first 5 for brevity
             console.log(`   ✅ Fixed: ${entry}`);
           }
         }
       } catch (err) {
         // Silently skip files that can't be processed
+        console.error(`   ❌ Failed to process ${entry}: ${err.message}`);
         continue;
       }
     }
@@ -257,8 +326,9 @@ function fixScriptShebangs(venvPath, venvName) {
     if (fixedCount > 5) {
       console.log(`   ✅ ... and ${fixedCount - 5} more files`);
     }
-    console.log(`   📊 Total: ${fixedCount} fixed, ${skippedCount} already correct`);
-
+    console.log(
+      `   📊 Total: ${fixedCount} fixed, ${skippedCount} already correct`
+    );
   } catch (error) {
     console.error(`❌ Error processing ${venvName}: ${error.message}`);
   }
@@ -276,12 +346,12 @@ function main() {
   const venvDirs = [
     {
       path: path.join(projectRoot, 'resources', 'prebuilt', 'venv'),
-      name: 'backend venv'
+      name: 'backend venv',
     },
     {
       path: path.join(projectRoot, 'resources', 'prebuilt', 'terminal_venv'),
-      name: 'terminal venv'
-    }
+      name: 'terminal venv',
+    },
   ];
 
   let symlinkSuccessCount = 0;
@@ -307,9 +377,13 @@ function main() {
 
   console.log('\n==========================================================');
   if (totalCount === 0) {
-    console.log('⚠️  No venv directories found - this is OK for development builds');
+    console.log(
+      '⚠️  No venv directories found - this is OK for development builds'
+    );
   } else {
-    console.log(`✅ Fixed symlinks in ${symlinkSuccessCount}/${totalCount} venv(s)`);
+    console.log(
+      `✅ Fixed symlinks in ${symlinkSuccessCount}/${totalCount} venv(s)`
+    );
     console.log(`✅ Fixed shebangs in ${totalShebangsFixed} script(s)`);
     console.log('✅ Venvs are now fully portable!');
   }

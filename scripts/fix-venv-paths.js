@@ -64,8 +64,8 @@ function fixPyvenvCfg(venvPath, venvName) {
     console.log(`   Original home: ${originalHome}`);
 
     // Extract cpython directory name from the path
-    // Example: /path/to/cpython-3.10.19-macos-aarch64-none/bin -> cpython-3.10.19-macos-aarch64-none
-    const cpythonMatch = originalHome.match(/(cpython-[\w.-]+)/);
+    // Example: /path/to/cpython-3.10.19-macos-aarch64-none/bin -> cpython-3.10.19-macos-aarch64-none + /bin
+    const cpythonMatch = originalHome.match(/(cpython-[\w.-]+)(.*)/);
     if (!cpythonMatch) {
       console.log(
         `⚠️  Could not extract cpython directory from: ${originalHome}`
@@ -74,19 +74,19 @@ function fixPyvenvCfg(venvPath, venvName) {
     }
 
     const cpythonDir = cpythonMatch[1];
+    const pathAfterCpython = cpythonMatch[2];
 
     // Determine if this is Windows or Unix path
     const isWindowsPath =
       /^[A-Za-z]:\\/.test(originalHome) ||
       originalHome.startsWith('\\\\') ||
       originalHome.includes('\\');
-    const binDir = isWindowsPath ? 'Scripts' : 'bin';
 
     // Replace with placeholder that will be substituted at runtime
     // {{PREBUILT_PYTHON_DIR}} will be replaced with the actual path on user's machine
     // Use appropriate path separator for the platform
     const pathSep = isWindowsPath ? '\\' : '/';
-    const newHome = `{{PREBUILT_PYTHON_DIR}}${pathSep}${cpythonDir}${pathSep}${binDir}`;
+    const newHome = `{{PREBUILT_PYTHON_DIR}}${pathSep}${cpythonDir}${pathAfterCpython}`;
     content = content.replace(/^home\s*=\s*.+$/m, `home = ${newHome}`);
 
     // Only write if content changed
