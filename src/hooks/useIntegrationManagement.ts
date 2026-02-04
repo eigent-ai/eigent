@@ -167,20 +167,21 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       if (!items || items.length === 0) {
         // Items not ready, cache event, wait for items to have value
         pendingOauthEventRef.current = data;
-        console.warn('items is empty, cache oauth event', data);
         return;
       }
       const provider = data.provider.toLowerCase();
+      const hasProviderInItems = items.some(
+        (item) => item.key.toLowerCase() === provider
+      );
+      if (!hasProviderInItems) {
+        return;
+      }
       isLockedRef.current = true;
       try {
         const tokenResult = await proxyFetchPost(
           `/api/oauth/${provider}/token`,
           { code: data.code }
         );
-        setInstalled((prev) => ({
-          ...prev,
-          [capitalizeFirstLetter(provider)]: true,
-        }));
         const currentItem = items.find(
           (item) => item.key.toLowerCase() === provider
         );
@@ -193,7 +194,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           ) {
             const envVarKey = currentItem.env_vars[0];
             await saveEnvAndConfig(
-              provider,
+              currentItem.key,
               envVarKey,
               tokenResult.access_token
             );
@@ -281,8 +282,15 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   // Process cached OAuth event when items are ready
   useEffect(() => {
     if (items && items.length > 0 && pendingOauthEventRef.current) {
-      processOauth(pendingOauthEventRef.current);
-      pendingOauthEventRef.current = null;
+      const pending = pendingOauthEventRef.current;
+      const provider = pending.provider.toLowerCase();
+      const hasProviderInItems = items.some(
+        (item) => item.key.toLowerCase() === provider
+      );
+      if (hasProviderInItems) {
+        processOauth(pending);
+        pendingOauthEventRef.current = null;
+      }
     }
   }, [items, processOauth]);
 

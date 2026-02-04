@@ -264,7 +264,6 @@ export default function IntegrationList({
 
   const COMING_SOON_ITEMS = useMemo(
     () => [
-      'Slack',
       'X(Twitter)',
       'WhatsApp',
       // "LinkedIn", // LinkedIn OAuth is now supported
