@@ -13,11 +13,13 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import json
+import os
 from pathlib import Path
 
+from dotenv import dotenv_values
 from pydantic import BaseModel
 
-from app.model.chat import Chat
+from app.model.chat import Chat, McpServers
 
 
 class Env(BaseModel):
@@ -25,10 +27,20 @@ class Env(BaseModel):
     # TODO: allow specifying files in the directory
     files: list[str] = []
     browser_port: int = 9222
+    installed_mcp: McpServers = {"mcpServers": {}}
+    env_file: str | None = None
 
 
 class Tests(BaseModel):
-    verifier: list[str] = []
+    grader: list[str] = []
+    checker: list[str] = []
+
+
+class ModelKwargs(BaseModel):
+    model_platform: str = "openai"
+    model_type: str = "gpt-4o"
+    api_key: str | None = None
+    api_url: str | None = None
 
 
 class BenchmarkData(BaseModel):
@@ -37,24 +49,39 @@ class BenchmarkData(BaseModel):
     env: Env = Env()
     _chat: Chat | None = None
 
-    def to_chat(self, **model_kwargs) -> Chat:
+    def to_chat(self, model_kwargs: ModelKwargs) -> Chat:
+        installed_mcp = self.env.installed_mcp
+        if self.env.env_file:
+            env_vars = dotenv_values(self.env.env_file)
+            for server_cfg in installed_mcp["mcpServers"].values():
+                server_env = server_cfg.get("env", {})
+                server_env.update(env_vars)
+                server_cfg["env"] = server_env
+
+        api_key = model_kwargs.api_key or os.environ["OPENAI_API_KEY"]
+
         self._chat = Chat(
             task_id=f"benchmark_{self.name}",
             project_id=f"benchmark_{self.name}",
             email="benchmark@eigent.ai",
             question=self.question,
+            model_platform=model_kwargs.model_platform,
+            model_type=model_kwargs.model_type,
+            api_key=api_key,
+            api_url=model_kwargs.api_url,
             browser_port=self.env.browser_port,
-            **model_kwargs,
+            installed_mcp=installed_mcp,
         )
         return self._chat
 
-    def get_working_directory(self, **model_kwargs) -> str:
-        chat = self._chat or self.to_chat(**model_kwargs)
+    def get_working_directory(self, model_kwargs: ModelKwargs) -> str:
+        chat = self._chat or self.to_chat(model_kwargs)
         return chat.file_save_path()
 
 
 class BenchmarkConfig(BaseModel):
     data: BenchmarkData
+    model_kwargs: ModelKwargs = ModelKwargs()
     tests: Tests = Tests()
 
     @classmethod

@@ -1,10 +1,15 @@
 {
   "data": {
     "name": "0",
-    "question": "Create a simple python script with the name 'hello_world.py' that only prints 'Hello, World!'",
+    "question": "Google search 'The most obscure Hello, world! program', choose the link from the website mathspp, read the page, and write a Python script named 'hello_world.py' that faithfully reproduces the exact obfuscated Hello World program shown on that page. Do not simplify or rewrite it — copy the same structure, tricks, and naming conventions used by the author. The script must print 'Hello, World!' when run.",
     "env": {}
   },
+  "model_kwargs": {
+    "model_platform": "openai",
+    "model_type": "gpt-5.2"
+  },
   "tests": {
-    "verifier": ["benchmark/verifier/0.py"]
+    "checker": ["benchmark/checker/0.py"],
+    "grader": ["benchmark/grader/0.py"]
   }
 }

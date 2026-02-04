@@ -11,15 +11,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-
-"""Verifier for benchmark 0: hello_world.py should print 'Hello, World!'"""
+"""Checker for benchmark 0: hello_world.py should print 'Hello, World!'"""
 
 import subprocess
 import sys
 from pathlib import Path
 
 
-def verify(working_directory: str) -> bool:
+def check(working_directory: str) -> bool:
     script = Path(working_directory) / "hello_world.py"
 
     if not script.exists():
@@ -46,5 +45,5 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <working_directory>")
         sys.exit(1)
-    success = verify(sys.argv[1])
+    success = check(sys.argv[1])
     sys.exit(0 if success else 1)

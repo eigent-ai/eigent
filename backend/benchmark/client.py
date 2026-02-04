@@ -17,7 +17,7 @@ import json
 
 import httpx
 
-from benchmark.environment import BenchmarkData
+from benchmark.environment import BenchmarkData, ModelKwargs
 
 
 class BenchmarkClient:
@@ -40,11 +40,11 @@ class BenchmarkClient:
     async def run(
         self,
         data: BenchmarkData,
+        model_kwargs: ModelKwargs | None = None,
         verbose: bool | None = None,
-        **model_kwargs
     ) -> list[dict]:
         """Run a single benchmark and return all events."""
-        chat = data.to_chat(**model_kwargs)
+        chat = data.to_chat(model_kwargs or ModelKwargs())
         payload = chat.model_dump()
 
         should_print = verbose if verbose is not None else self.verbose
