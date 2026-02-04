@@ -123,7 +123,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 - You MUST use `list_note()` to discover available notes, then may use
     `read_note()` to gather some information collected by other team members.
     Check the `shared_files` note for files created by other agents that
-    you may need. Write down your own findings using `append_note()`.
+    you may need. Write down your own findings using `create_note()`.
 
 - After creating any file (image, audio, video), you MUST register it:
     `append_note("shared_files", "- <path>: <description>")`
