@@ -28,7 +28,7 @@ Note: All the above data is stored in the local PostgreSQL volume in Docker (see
 
 - **Docker Desktop**: Installed and running
 - **Python**: 3.10.\* (3.10.15 recommended)
-- **Node.js**: >=18.0.0 <23.0.0
+- **Node.js**: >=18.0.0 \<23.0.0
 
 #### Setup Steps
 

@@ -396,7 +396,7 @@
     --task-fill-running: var(--surface-secondary);
 
     /* Log Component */
-    --log-default: #F5F5F5;
+    --log-default: #f5f5f5;
 
     /* Worker Component */
     --worker-surface-primary: var(--surface-tertiary);
@@ -438,23 +438,17 @@
 
     /* Perfect Shadow */
     --shadow-perfect:
-      0 8px 20px -2px #1d21291a,
-      0 32px 48px -12px #1d21291f,
-      0 96px 120px -12px #414a5c0f,
-      0 108px 72px -16px #414a5c14,
-      0 32px 64px -8px #7199bd1f,
-      0 8px 10px 0 #7199bd1f;
+      0 8px 20px -2px #1d21291a, 0 32px 48px -12px #1d21291f,
+      0 96px 120px -12px #414a5c0f, 0 108px 72px -16px #414a5c14,
+      0 32px 64px -8px #7199bd1f, 0 8px 10px 0 #7199bd1f;
 
     /* Button Shadow */
     --shadow-button:
-      inset 0 1px 0 0 #ffffff54,
-      0 3px 4px -1px #00000040,
-      0 0 0 1px #d4d4d440;
-
+      inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
   }
 
   .root,
-  [data-theme="transparent"] {
+  [data-theme='transparent'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
     --text-label: var(--colors-primary-7);
@@ -580,7 +574,7 @@
   }
 
   .root,
-  [data-theme="light"] {
+  [data-theme='light'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
     --text-label: var(--colors-primary-7);
@@ -698,7 +692,7 @@
   }
 
   .root,
-  [data-theme="dark"] {
+  [data-theme='dark'] {
     --text-heading: #e8ecff;
     --text-body: #f4f6ff;
     --text-label: #b0bdd8;
@@ -836,5 +830,4 @@
     --border-subtle: var(--colors-primary-7);
     --border-subtle-strong: var(--colors-primary-6);
   }
-
 }

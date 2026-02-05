@@ -52,11 +52,13 @@ async def social_media_agent(options: Chat):
         *RedditToolkit.get_can_use_tools(options.project_id),
         *await NotionMCPToolkit.get_can_use_tools(options.project_id),
         # *SlackToolkit.get_can_use_tools(options.project_id),
-        *await GoogleGmailMCPToolkit.
-        get_can_use_tools(options.project_id, options.get_bun_env()),
+        *await GoogleGmailMCPToolkit.get_can_use_tools(
+            options.project_id, options.get_bun_env()
+        ),
         *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
-        *HumanToolkit.
-        get_can_use_tools(options.project_id, Agents.social_media_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.social_media_agent
+        ),
         *TerminalToolkit(
             options.project_id,
             agent_name=Agents.social_media_agent,

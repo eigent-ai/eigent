@@ -62,9 +62,9 @@ Cloud version users: outputs are also saved in your cloud workspace according to
 Eigent comes with four ready-to-work agents. Each is equipped with a specific set of tools and shines at specific tasks—click to explore:
 
 1. **Developer Agent** – writes, debugs and executes code
-2. **Browser Agent** – fetches and gathers info from the web
-3. **Multimodal Agent** – ideals with images, videos and more
-4. **Document Agent** – reads, writes and manages files (Markdown, PDF, Word, etc.)
+1. **Browser Agent** – fetches and gathers info from the web
+1. **Multimodal Agent** – ideals with images, videos and more
+1. **Document Agent** – reads, writes and manages files (Markdown, PDF, Word, etc.)
 
 ![Pre-build Agents](/docs/images/quickstart_prebuiltagents.gif)
 
@@ -124,7 +124,7 @@ Click on an agent icon to open its **Workspace**:
 
 <aside>
 
-** 📌 Tip: Managing Your View**
+\*\* 📌 Tip: Managing Your View\*\*
 
 You can customize your monitoring experience easily. Workspace toolbar includes scroll, full-screen, and layout toggles (single/dual pane).
 

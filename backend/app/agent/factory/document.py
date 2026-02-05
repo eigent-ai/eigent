@@ -13,6 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import platform
 
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
+
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DOCUMENT_SYS_PROMPT
@@ -25,36 +28,45 @@ from app.utils.toolkit.file_write_toolkit import FileToolkit
 from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
+
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.pptx_toolkit import PPTXToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
 
 
 async def document_agent(options: Chat):
     working_directory = get_working_directory(options)
-    logger.info(f"Creating document agent for project: {options.project_id} "
-                f"in directory: {working_directory}")
+    logger.info(
+        f"Creating document agent for project: {options.project_id} "
+        f"in directory: {working_directory}"
+    )
 
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id,
-                                     Agents.task_agent).send_message_to_user)
-    file_write_toolkit = FileToolkit(options.project_id,
-                                     working_directory=working_directory)
-    pptx_toolkit = PPTXToolkit(options.project_id,
-                               working_directory=working_directory)
+        message_handler=HumanToolkit(
+            options.project_id, Agents.task_agent
+        ).send_message_to_user
+    )
+    file_write_toolkit = FileToolkit(
+        options.project_id, working_directory=working_directory
+    )
+    pptx_toolkit = PPTXToolkit(
+        options.project_id, working_directory=working_directory
+    )
     pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
     mark_it_down_toolkit = MarkItDownToolkit(options.project_id)
     mark_it_down_toolkit = message_integration.register_toolkits(
-        mark_it_down_toolkit)
-    excel_toolkit = ExcelToolkit(options.project_id,
-                                 working_directory=working_directory)
+        mark_it_down_toolkit
+    )
+    excel_toolkit = ExcelToolkit(
+        options.project_id, working_directory=working_directory
+    )
     excel_toolkit = message_integration.register_toolkits(excel_toolkit)
-    note_toolkit = NoteTakingToolkit(options.project_id,
-                                     Agents.document_agent,
-                                     working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(
+        options.project_id,
+        Agents.document_agent,
+        working_directory=working_directory,
+    )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
     terminal_toolkit = TerminalToolkit(
@@ -67,13 +79,15 @@ async def document_agent(options: Chat):
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     google_drive_tools = await GoogleDriveMCPToolkit.get_can_use_tools(
-        options.project_id, options.get_bun_env())
+        options.project_id, options.get_bun_env()
+    )
 
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.document_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.document_agent
+        ),
         *mark_it_down_toolkit.get_tools(),
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
