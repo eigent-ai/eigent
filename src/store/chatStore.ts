@@ -145,7 +145,7 @@ export interface ChatStore {
   setHasMessages: (taskId: string, hasMessages: boolean) => void;
   getLastUserMessage: () => Message | null;
   addTaskInfo: () => void;
-  updateTaskInfo: (index: number, content: string) => void;
+  updateTaskInfo: (index: number, content: string, immediate?: boolean) => void;
   deleteTaskInfo: (index: number) => void;
   setTaskTime: (taskId: string, taskTime: number) => void;
   setElapsed: (taskId: string, taskTime: number) => void;
@@ -2912,7 +2912,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setTaskAssigning(taskId, taskAssigning);
       }
     },
-    updateTaskInfo(index: number, content: string) {
+    updateTaskInfo(index: number, content: string, immediate = false) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
       // Deep copy the array with updated item to ensure React detects the change
@@ -2921,8 +2921,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       );
       setTaskInfo(activeTaskId, targetTaskInfo);
 
-      // Persist to backend with debounce (fires on every keystroke)
-      persistSubtaskEdits(targetTaskInfo, true);
+      // Persist to backend: debounce for keystrokes, immediate for explicit save
+      persistSubtaskEdits(targetTaskInfo, !immediate);
     },
     deleteTaskInfo(index: number) {
       const { tasks, activeTaskId, setTaskInfo } = get();
