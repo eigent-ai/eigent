@@ -75,7 +75,6 @@
   "enter-your-model-type": "Geben Sie Ihren Modelltyp ein",
   "verifying": "Wird überprüft...",
 
-
   "account": "Konto",
   "you-are-currently-signed-in-with": "Sie sind derzeit angemeldet mit {{email}}",
   "manage": "Verwalten",
@@ -261,7 +260,7 @@
   "gpt-5.1-name": "GPT-5.1",
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
-  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
   "network-proxy": "Netzwerk-Proxy",
   "network-proxy-description": "Konfigurieren Sie einen Proxy-Server für Netzwerkanfragen. Dies ist nützlich, wenn Sie über einen Proxy auf externe APIs zugreifen müssen.",
   "proxy-placeholder": "http://127.0.0.1:7890",

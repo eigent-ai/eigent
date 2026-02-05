@@ -75,7 +75,6 @@
   "enter-your-model-type": "モデルタイプを入力",
   "verifying": "検証中...",
 
-
   "account": "アカウント",
   "you-are-currently-signed-in-with": "{{email}}で現在サインインしています",
   "manage": "管理",
@@ -261,7 +260,7 @@
   "gpt-5.1-name": "GPT-5.1",
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
-  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
   "network-proxy": "ネットワークプロキシ",
   "network-proxy-description": "ネットワークリクエスト用のプロキシサーバーを設定します。プロキシ経由で外部APIにアクセスする必要がある場合に便利です。",
   "proxy-placeholder": "http://127.0.0.1:7890",

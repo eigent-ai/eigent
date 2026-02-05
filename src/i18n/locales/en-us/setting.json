@@ -220,7 +220,7 @@
   "gpt-5.1-name": "GPT-5.1",
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
-  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
 
   "account": "Account",
   "you-are-currently-signed-in-with": "You are currently signed in with {{email}}",
