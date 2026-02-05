@@ -48,5 +48,6 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "We're experiencing high traffic. Please try again in a few moments.",
   "new-project": "Untitled Project",
   "no-reply-received-task-continue": "No reply received, task continue",
-  "open-in-ide": "Open in IDE"
+  "open-in-ide": "Open in IDE",
+  "failed-to-open-folder": "Failed to open folder"
 }

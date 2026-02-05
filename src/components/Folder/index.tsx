@@ -467,11 +467,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                         authStore.preferredIDE
                       );
                       if (!result.success) {
-                        toast.error(result.error || 'Failed to open folder');
+                        toast.error(
+                          result.error || t('chat.failed-to-open-folder')
+                        );
                       }
                     } catch (error) {
                       console.error('Failed to open in IDE:', error);
-                      toast.error('Failed to open folder');
+                      toast.error(t('chat.failed-to-open-folder'));
                     }
                   }}
                   title={t('chat.open-in-ide')}
