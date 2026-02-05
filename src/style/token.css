@@ -176,7 +176,7 @@
 
     /* Component Tokens */
     /* Input Component */
-    --input-bg-input: var(--surface-secondary);
+    --input-bg-input: var(--surface-tertiary);
     --input-bg-spliting: var(--surface-information);
     --input-bg-confirm: var(--surface-success);
     --input-bg-default: var(--surface-primary);
