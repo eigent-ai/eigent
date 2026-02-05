@@ -45,6 +45,8 @@ export interface TriggeredTask {
   timestamp: number;
   /** Current status of the triggered task */
   status: ExecutionStatus;
+  /** Formatted message content for display and processing */
+  formattedMessage?: string;
   /** Error message if task failed */
   errorMessage?: string;
   /** Whether the execution status has been reported to the backend */
@@ -201,6 +203,8 @@ interface TriggerTaskStore {
   completeTask: (taskId: string) => void;
   /** Mark a task as failed */
   failTask: (taskId: string, errorMessage: string) => void;
+  /** Cancel a pending task (user-initiated removal from queue) */
+  cancelTask: (taskId: string, reason?: string) => void;
   /** Get task by ID */
   getTaskById: (taskId: string) => TriggeredTask | undefined;
   /** Get all pending tasks for a specific project */
@@ -361,6 +365,27 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
       };
     });
     console.log('[TriggerTaskStore] Task failed:', taskId, errorMessage);
+  },
+
+  cancelTask: (taskId, reason) => {
+    set((state) => {
+      const cancelledTask = state.taskQueue.find((t) => t.id === taskId);
+
+      if (!cancelledTask) return state;
+
+      return {
+        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
+        taskHistory: [
+          {
+            ...cancelledTask,
+            status: ExecutionStatus.Cancelled as const,
+            errorMessage: reason || 'Task cancelled by user',
+          },
+          ...state.taskHistory,
+        ].slice(0, 50),
+      };
+    });
+    console.log('[TriggerTaskStore] Task cancelled:', taskId, reason);
   },
 
   getTaskById: (taskId) => {

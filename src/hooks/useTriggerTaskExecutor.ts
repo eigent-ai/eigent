@@ -269,6 +269,20 @@ export function useTriggerTaskExecutor() {
         webSocketEvent
       );
 
+      // Format the message before enqueuing
+      const formattedMessage = formatTriggeredTaskMessage({
+        id: '', // Will be assigned by enqueueTask
+        triggerId: webSocketEvent.triggerId,
+        triggerName: webSocketEvent.triggerName,
+        taskPrompt: webSocketEvent.taskPrompt,
+        executionId: webSocketEvent.executionId,
+        triggerType: webSocketEvent.triggerType,
+        projectId: webSocketEvent.projectId,
+        inputData: webSocketEvent.inputData,
+        timestamp: Date.now(),
+        status: 'pending' as import('@/types').ExecutionStatus,
+      });
+
       // Enqueue the task (convert triggerType literal to TriggerType enum)
       triggerTaskStore.enqueueTask({
         triggerId: webSocketEvent.triggerId,
@@ -278,6 +292,7 @@ export function useTriggerTaskExecutor() {
         triggerType: webSocketEvent.triggerType,
         projectId: webSocketEvent.projectId,
         inputData: webSocketEvent.inputData,
+        formattedMessage,
       });
 
       // Clear the event after processing

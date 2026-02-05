@@ -24,10 +24,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
-import {
-  useTriggerTaskStore,
-  type TriggeredTask,
-} from '@/store/triggerTaskStore';
+import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -46,6 +43,9 @@ export default function ChatBox(): JSX.Element {
   if (!chatStore) {
     return <div>Loading...</div>;
   }
+
+  // Subscribe to triggerTaskStore for queue management
+  const triggerTaskStoreState = useTriggerTaskStore();
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -721,11 +721,15 @@ export default function ChatBox(): JSX.Element {
   useEffect(() => {
     if (!projectStore.activeProjectId) return;
 
-    const project = projectStore.getProjectById(projectStore.activeProjectId);
-    const queuedMessages = project?.queuedMessages || [];
+    // Get pending tasks for current project from triggerTaskStore
+    const pendingTasks = triggerTaskStoreState.taskQueue.filter(
+      (t) =>
+        t.projectId === projectStore.activeProjectId &&
+        t.status === ExecutionStatus.Pending
+    );
 
     // No queued messages to process
-    if (queuedMessages.length === 0) return;
+    if (pendingTasks.length === 0) return;
 
     const taskId = chatStore.activeTaskId;
     if (!taskId) return;
@@ -747,51 +751,38 @@ export default function ChatBox(): JSX.Element {
     // Only process if task is idle
     if (isTaskBusy) return;
 
-    // Get the first queued message
-    const firstMessage = queuedMessages[0];
+    // Get the first queued task
+    const firstTask = pendingTasks[0];
 
-    // Remove from queue first to prevent double processing
-    projectStore.removeQueuedMessage(
-      projectStore.activeProjectId,
-      firstMessage.task_id
-    );
+    // Dequeue the task from triggerTaskStore (marks as running)
+    triggerTaskStoreState.dequeueTask();
 
     console.log(
-      '[ChatBox] Processing queued message:',
-      firstMessage.content.substring(0, 50) + '...'
+      '[ChatBox] Processing queued task:',
+      firstTask.triggerName,
+      firstTask.formattedMessage?.substring(0, 50) + '...'
     );
 
-    // For multiturn Store the execution ID mapping for this task
-    // The task_id from queued message is the executionId when added via trigger
-    // We map it to the current activeTaskId which will be used for the new task
-    if (firstMessage.task_id && projectStore.activeProjectId) {
-      // Store mapping: actual taskId -> executionId using triggerTaskStore
-      // The nextTaskId or activeTaskId will be used for the actual task processing
+    // Register execution mapping for this task
+    // The executionId from the queued task will be used for tracking
+    if (firstTask.executionId && projectStore.activeProjectId) {
       const targetTaskId = chatStore.nextTaskId || taskId;
-      const triggerTaskStore = useTriggerTaskStore.getState();
-      // Find the trigger task that has this executionId
-      const triggerTask =
-        triggerTaskStore.taskHistory.find(
-          (t: TriggeredTask) => t.executionId === firstMessage.task_id
-        ) || triggerTaskStore.currentTask;
 
-      if (triggerTask) {
-        triggerTaskStore.registerExecutionMapping(
-          targetTaskId,
-          firstMessage.task_id,
-          triggerTask.id,
-          projectStore.activeProjectId
-        );
-      }
+      triggerTaskStoreState.registerExecutionMapping(
+        targetTaskId,
+        firstTask.executionId,
+        firstTask.id,
+        projectStore.activeProjectId
+      );
     }
 
     // Process the queued message via handleSend
-    // Use the task_id from the queued message if needed for tracking
-    handleSend(firstMessage.content);
+    // Use the formattedMessage from the trigger task
+    const messageContent = firstTask.formattedMessage || firstTask.taskPrompt;
+    handleSend(messageContent);
   }, [
     projectStore.activeProjectId,
-    projectStore.getProjectById(projectStore.activeProjectId || '')
-      ?.queuedMessages?.length,
+    triggerTaskStoreState.taskQueue,
     chatStore.activeTaskId,
     chatStore.tasks[chatStore.activeTaskId as string]?.status,
     chatStore.tasks[chatStore.activeTaskId as string]?.isPending,
@@ -825,32 +816,23 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
-    // Store the original message before removal for potential restoration
-    const project = projectStore.getProjectById(project_id);
-    const originalMessage = project?.queuedMessages?.find(
-      (m) => m.task_id === task_id
-    );
-
-    if (!originalMessage) {
-      console.error(`Message with task_id ${task_id} not found`);
+    // Find the task in triggerTaskStore
+    const taskToCancel = triggerTaskStoreState.getTaskById(task_id);
+    if (!taskToCancel) {
+      console.error(`Task with id ${task_id} not found in trigger queue`);
       return;
     }
 
-    // Create a copy of the original message for restoration
-    const messageBackup = {
-      task_id: originalMessage.task_id,
-      content: originalMessage.content,
-      timestamp: originalMessage.timestamp,
-      attaches: [...originalMessage.attaches],
-    };
-
     try {
-      //Optimistic Removal
-      const removedTask = projectStore.removeQueuedMessage(project_id, task_id);
+      // Cancel the task in triggerTaskStore
+      triggerTaskStoreState.cancelTask(
+        task_id,
+        'Task was removed from queue by user.'
+      );
 
-      //For now return early due to https://github.com/eigent-ai/eigent/issues/684
+      // Update the backend execution status
       await proxyUpdateTriggerExecution(
-        removedTask.task_id,
+        taskToCancel.executionId,
         {
           status: ExecutionStatus.Cancelled,
           error_message: 'Task was removed from queue by user.',
@@ -859,30 +841,13 @@ export default function ChatBox(): JSX.Element {
           projectId: project_id,
         }
       );
-      return;
 
-      // Always try to call the backend to remove the task
-      // The backend will handle the error gracefully if workforce is not initialized
-      // Note: Replay creates a new chatstore, so no conflicts
-      const task = chatStore.tasks[chatStore.activeTaskId as string];
-      // Only skip backend call if task is finished or hasn't started yet (no messages)
-      if (task && task.messages.length > 0 && task.status !== 'finished') {
-        try {
-          await fetchDelete(`/chat/${project_id}/remove-task/${task_id}`, {
-            project_id: project_id,
-            task_id: task_id,
-          });
-        } catch (apiError) {
-          // If backend returns an error, it's okay - the task might not be in the workforce queue yet
-          console.log(
-            `Backend remove call failed (expected if workforce not started): ${apiError}`
-          );
-        }
-      }
+      console.log(`[ChatBox] Task ${task_id} cancelled successfully`);
     } catch (error) {
-      // Revert the optimistic removal by restoring the original message
-      projectStore.restoreQueuedMessage(project_id, messageBackup);
-      console.error(`Can't remove ${task_id} due to ${error}`);
+      console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
+      toast.error('Failed to cancel task', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   };
   const getAllChatStoresMemoized = useMemo(() => {
@@ -1128,15 +1093,17 @@ export default function ChatBox(): JSX.Element {
         {chatStore.activeTaskId && hasAnyMessages && (
           <BottomBox
             state={hasAnyMessages ? getBottomBoxState() : 'input'}
-            queuedMessages={
-              projectStore
-                .getProjectById(projectStore.activeProjectId || '')
-                ?.queuedMessages?.map((m) => ({
-                  id: m.task_id,
-                  content: m.content,
-                  timestamp: m.timestamp,
-                })) || []
-            }
+            queuedMessages={triggerTaskStoreState.taskQueue
+              .filter(
+                (t) =>
+                  t.projectId === projectStore.activeProjectId &&
+                  t.status === ExecutionStatus.Pending
+              )
+              .map((t) => ({
+                id: t.id,
+                content: t.formattedMessage || t.taskPrompt,
+                timestamp: t.timestamp,
+              }))}
             onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
             subtitle={
               hasAnyMessages && getBottomBoxState() === 'confirm'

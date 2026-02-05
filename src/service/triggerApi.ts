@@ -1,6 +1,18 @@
-import { proxyFetchGet, proxyFetchPost, proxyFetchPut, proxyFetchDelete } from "@/api/http";
-import { Trigger, TriggerInput, TriggerUpdate, TriggerType, TriggerStatus, ExecutionStatus } from "@/types";
-import { useActivityLogStore, ActivityType } from "@/store/activityLogStore";
+import {
+  proxyFetchDelete,
+  proxyFetchGet,
+  proxyFetchPost,
+  proxyFetchPut,
+} from '@/api/http';
+import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
+import {
+  ExecutionStatus,
+  Trigger,
+  TriggerInput,
+  TriggerStatus,
+  TriggerType,
+  TriggerUpdate,
+} from '@/types';
 
 // Helper function to update or add execution log
 const updateExecutionLog = (
@@ -15,7 +27,7 @@ const updateExecutionLog = (
   metadata?: Record<string, any>
 ) => {
   const { addLog, modifyLog } = useActivityLogStore.getState();
-  
+
   const logData = {
     type: activityType,
     message,
@@ -24,9 +36,9 @@ const updateExecutionLog = (
     projectId: triggerInfo?.projectId,
     metadata,
   };
-  
+
   const updated = modifyLog(executionId, logData);
-  
+
   if (!updated) {
     addLog({
       ...logData,
@@ -46,21 +58,21 @@ export const proxyFetchTriggers = async (
   try {
     const params: Record<string, any> = {
       page,
-      size
+      size,
     };
-    
+
     if (triggerType !== undefined) {
       params.trigger_type = triggerType;
     }
-    
+
     if (status !== undefined) {
       params.status = status;
     }
-    
+
     const res = await proxyFetchGet(`/api/trigger/`, params);
     return res;
   } catch (error) {
-    console.error("Failed to fetch triggers:", error);
+    console.error('Failed to fetch triggers:', error);
     throw error;
   }
 };
@@ -76,35 +88,37 @@ export const proxyFetchProjectTriggers = async (
     const params: Record<string, any> = {
       page,
       size,
-      project_id
+      project_id,
     };
-    
+
     if (triggerType !== undefined) {
       params.trigger_type = triggerType;
     }
-    
+
     if (status !== undefined) {
       params.status = status;
     }
 
-    if(!project_id) {
-      throw new Error("Project ID is required to fetch project triggers.");
+    if (!project_id) {
+      throw new Error('Project ID is required to fetch project triggers.');
     }
-    
+
     const res = await proxyFetchGet(`/api/trigger/`, params);
     return res;
   } catch (error) {
-    console.error("Failed to fetch triggers:", error);
+    console.error('Failed to fetch triggers:', error);
     throw error;
   }
 };
 
-export const proxyFetchTrigger = async (triggerId: number): Promise<Trigger> => {
+export const proxyFetchTrigger = async (
+  triggerId: number
+): Promise<Trigger> => {
   try {
     const res = await proxyFetchGet(`/api/trigger/${triggerId}`);
     return res;
   } catch (error) {
-    console.error("Failed to fetch trigger:", error);
+    console.error('Failed to fetch trigger:', error);
     throw error;
   }
 };
@@ -114,27 +128,32 @@ export const proxyFetchTriggerConfig = async (triggerType: TriggerType) => {
     const res = await proxyFetchGet(`/api/trigger/${triggerType}/config`);
     return res;
   } catch (error) {
-    console.error("Failed to fetch trigger config:", error);
+    console.error('Failed to fetch trigger config:', error);
     throw error;
   }
 };
 
-export const proxyCreateTrigger = async (triggerData: TriggerInput): Promise<Trigger> => {
+export const proxyCreateTrigger = async (
+  triggerData: TriggerInput
+): Promise<Trigger> => {
   try {
     const res = await proxyFetchPost(`/api/trigger/`, triggerData);
     return res;
   } catch (error) {
-    console.error("Failed to create trigger:", error);
+    console.error('Failed to create trigger:', error);
     throw error;
   }
 };
 
-export const proxyUpdateTrigger = async (triggerId: number, updateData: TriggerUpdate): Promise<Trigger> => {
+export const proxyUpdateTrigger = async (
+  triggerId: number,
+  updateData: TriggerUpdate
+): Promise<Trigger> => {
   try {
     const res = await proxyFetchPut(`/api/trigger/${triggerId}`, updateData);
     return res;
   } catch (error) {
-    console.error("Failed to update trigger:", error);
+    console.error('Failed to update trigger:', error);
     throw error;
   }
 };
@@ -143,27 +162,31 @@ export const proxyDeleteTrigger = async (triggerId: number): Promise<void> => {
   try {
     await proxyFetchDelete(`/api/trigger/${triggerId}`);
   } catch (error) {
-    console.error("Failed to delete trigger:", error);
+    console.error('Failed to delete trigger:', error);
     throw error;
   }
 };
 
-export const proxyActivateTrigger = async (triggerId: number): Promise<Trigger> => {
+export const proxyActivateTrigger = async (
+  triggerId: number
+): Promise<Trigger> => {
   try {
     const res = await proxyFetchPost(`/api/trigger/${triggerId}/activate`);
     return res;
   } catch (error) {
-    console.error("Failed to activate trigger:", error);
+    console.error('Failed to activate trigger:', error);
     throw error;
   }
 };
 
-export const proxyDeactivateTrigger = async (triggerId: number): Promise<Trigger> => {
+export const proxyDeactivateTrigger = async (
+  triggerId: number
+): Promise<Trigger> => {
   try {
     const res = await proxyFetchPost(`/api/trigger/${triggerId}/deactivate`);
     return res;
   } catch (error) {
-    console.error("Failed to deactivate trigger:", error);
+    console.error('Failed to deactivate trigger:', error);
     throw error;
   }
 };
@@ -177,13 +200,16 @@ export const proxyFetchTriggerExecutions = async (
   try {
     const params = {
       page,
-      size
+      size,
     };
-    
-    const res = await proxyFetchGet(`/api/trigger/${triggerId}/executions`, params);
+
+    const res = await proxyFetchGet(
+      `/api/trigger/${triggerId}/executions`,
+      params
+    );
     return res;
   } catch (error) {
-    console.error("Failed to fetch trigger executions:", error);
+    console.error('Failed to fetch trigger executions:', error);
     throw error;
   }
 };
@@ -208,13 +234,16 @@ export const proxyUpdateTriggerExecution = async (
   }
 ) => {
   try {
-    const res = await proxyFetchPut(`/api/trigger/execution/${executionId}`, updateData);
-    
+    const res = await proxyFetchPut(
+      `/api/execution/${executionId}`,
+      updateData
+    );
+
     // Log activity when execution status is updated
     if (updateData.status) {
       let activityType: ActivityType;
       let message: string;
-      
+
       switch (updateData.status) {
         case ExecutionStatus.Completed:
           activityType = ActivityType.ExecutionSuccess;
@@ -236,24 +265,18 @@ export const proxyUpdateTriggerExecution = async (
           activityType = ActivityType.TriggerExecuted;
           message = `Execution ${executionId} status updated to ${updateData.status}`;
       }
-      
-      updateExecutionLog(
-        executionId,
-        activityType,
-        message,
-        triggerInfo,
-        {
-          status: updateData.status,
-          error_message: updateData.error_message,
-          duration_seconds: updateData.duration_seconds,
-          tokens_used: updateData.tokens_used,
-        }
-      );
+
+      updateExecutionLog(executionId, activityType, message, triggerInfo, {
+        status: updateData.status,
+        error_message: updateData.error_message,
+        duration_seconds: updateData.duration_seconds,
+        tokens_used: updateData.tokens_used,
+      });
     }
-    
+
     return res;
   } catch (error) {
-    console.error("Failed to update trigger execution:", error);
+    console.error('Failed to update trigger execution:', error);
     throw error;
   }
 };
@@ -267,8 +290,8 @@ export const proxyRetryTriggerExecution = async (
   }
 ) => {
   try {
-    const res = await proxyFetchPost(`/api/trigger/execution/${executionId}/retry`);
-    
+    const res = await proxyFetchPost(`/api/execution/${executionId}/retry`);
+
     updateExecutionLog(
       executionId,
       ActivityType.TriggerExecuted,
@@ -279,11 +302,10 @@ export const proxyRetryTriggerExecution = async (
         retried: true,
       }
     );
-    
+
     return res;
   } catch (error) {
-    console.error("Failed to retry trigger execution:", error);
+    console.error('Failed to retry trigger execution:', error);
     throw error;
   }
 };
-
