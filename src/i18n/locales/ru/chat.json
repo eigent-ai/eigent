@@ -47,5 +47,7 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Ваше облачное хранилище достигло лимита вашего текущего плана.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Мы испытываем высокую нагрузку. Пожалуйста, попробуйте еще раз через несколько минут.",
   "new-project": "Новый проект",
-  "no-reply-received-task-continue": "Ответ не получен, задача продолжается"
+  "no-reply-received-task-continue": "Ответ не получен, задача продолжается",
+  "open-in-ide": "Открыть в IDE",
+  "failed-to-open-folder": "Не удалось открыть папку"
 }
