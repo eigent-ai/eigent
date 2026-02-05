@@ -31,10 +31,8 @@ class McpSearchToolkit(BaseToolkit, AbstractToolkit):
         self.api_task_id = api_task_id
 
     @listen_toolkit(
-        inputs=lambda _,
-        keyword,
-        size,
-        page: f"keyword: {keyword}, size: {size}, page: {page}",
+        inputs=lambda _, keyword, size, page:
+        f"keyword: {keyword}, size: {size}, page: {page}",
         return_msg=lambda res: f"Search {len(res)} results: ",
     )
     async def search_mcp_from_url(

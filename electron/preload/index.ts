@@ -151,6 +151,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-email-folder-path', email),
   restartApp: () => ipcRenderer.invoke('restart-app'),
   readGlobalEnv: (key: string) => ipcRenderer.invoke('read-global-env', key),
+  getProjectFolderPath: (email: string, projectId: string) =>
+    ipcRenderer.invoke('get-project-folder-path', email, projectId),
+  openInIDE: (folderPath: string, ide: string) =>
+    ipcRenderer.invoke('open-in-ide', folderPath, ide),
 });
 
 // --------- Preload scripts loading ---------

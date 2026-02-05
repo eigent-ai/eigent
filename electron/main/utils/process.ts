@@ -353,7 +353,7 @@ function findPythonForTerminalVenv(): string | null {
   }
 
   // Look for Python executable in the prebuilt directory
-  // UV stores Python in subdirectories like: cpython-3.10.19+.../install/bin/python
+  // UV stores Python in subdirectories like: cpython-3.11.x+.../install/bin/python
   const possiblePaths: string[] = [];
 
   // First, try common direct paths

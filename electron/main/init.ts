@@ -430,7 +430,7 @@ export async function startBackend(
 
         // Step 1: Ensure Python is installed (fixes corrupted/missing Python)
         log.info('Step 1: Ensuring Python is installed...');
-        await execAsync(`${uv_path} python install 3.10`, {
+        await execAsync(`${uv_path} python install 3.11`, {
           cwd: backendPath,
           env: env,
         });
