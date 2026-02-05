@@ -535,7 +535,7 @@ const runInstall = (extraArgs: string[], version: string) => {
 
 /**
  * Find Python executable in prebuilt Python directory
- * UV stores Python installations in directories like: cpython-3.10.19+.../install/bin/python
+ * UV stores Python installations in directories like: cpython-3.11.x+.../install/bin/python
  */
 function findPrebuiltPythonExecutable(): string | null {
   const prebuiltPythonDir = getPrebuiltPythonDir();
@@ -544,7 +544,7 @@ function findPrebuiltPythonExecutable(): string | null {
   }
 
   // Look for Python executable in the prebuilt directory
-  // UV stores Python in subdirectories like: cpython-3.10.19+.../install/bin/python
+  // UV stores Python in subdirectories like: cpython-3.11.x+.../install/bin/python
   const possiblePaths: string[] = [];
 
   // First, try common direct paths
@@ -643,7 +643,7 @@ async function installTerminalBaseVenv(
       const prebuiltPython = findPrebuiltPythonExecutable();
       const venvArgs = prebuiltPython
         ? ['venv', '--python', prebuiltPython, terminalVenvPath]
-        : ['venv', '--python', '3.10', terminalVenvPath];
+        : ['venv', '--python', '3.11', terminalVenvPath];
 
       await new Promise<void>((resolve, reject) => {
         const createVenv = spawn(uv_path, venvArgs, {
