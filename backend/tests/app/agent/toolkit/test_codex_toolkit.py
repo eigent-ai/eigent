@@ -65,7 +65,7 @@ def clean_env() -> Generator[None, None, None]:
 
 
 @contextmanager
-def mock_callback_request(path: str):
+def mock_callback_request(path: str, expected_state: str | None = None):
     r"""Create a mock HTTP request for _CallbackHandler testing."""
     handler = MagicMock(spec=_CallbackHandler)
     handler.path = path
@@ -92,6 +92,7 @@ def mock_callback_request(path: str):
     handler.server = MagicMock()
     handler.server.auth_code = None
     handler.server.auth_error = None
+    handler.server.expected_state = expected_state
 
     yield handler
 
@@ -253,7 +254,10 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_captures_authorization_code(self):
         """Handler should capture auth code from callback URL."""
-        with mock_callback_request("/callback?code=auth_code_123") as handler:
+        path = "/callback?code=auth_code_123&state=valid_state"
+        with mock_callback_request(
+            path, expected_state="valid_state"
+        ) as handler:
             _CallbackHandler.do_GET(handler)
 
             assert handler.server.auth_code == "auth_code_123"
@@ -288,6 +292,42 @@ class TestCallbackHandler:
             output = handler.wfile.getvalue().decode()
             assert "<script>" not in output
             assert "&lt;script&gt;" in output or "script" not in output
+
+    @pytest.mark.unit
+    def test_rejects_mismatched_state(self):
+        """Handler should reject callback with mismatched state (CSRF protection)."""
+        path = "/callback?code=auth_code_123&state=wrong_state"
+        with mock_callback_request(
+            path, expected_state="correct_state"
+        ) as handler:
+            _CallbackHandler.do_GET(handler)
+
+            assert handler.response_code == 400
+            assert handler.server.auth_code is None
+            assert "state_mismatch" in handler.server.auth_error
+
+    @pytest.mark.unit
+    def test_accepts_matching_state(self):
+        """Handler should accept callback with matching state."""
+        path = "/callback?code=auth_code_123&state=my_state_value"
+        with mock_callback_request(
+            path, expected_state="my_state_value"
+        ) as handler:
+            _CallbackHandler.do_GET(handler)
+
+            assert handler.response_code == 200
+            assert handler.server.auth_code == "auth_code_123"
+            assert handler.server.auth_error is None
+
+    @pytest.mark.unit
+    def test_skips_state_validation_when_not_expected(self):
+        """Handler should skip state validation if server has no expected_state."""
+        path = "/callback?code=auth_code_123"
+        with mock_callback_request(path, expected_state=None) as handler:
+            _CallbackHandler.do_GET(handler)
+
+            assert handler.response_code == 200
+            assert handler.server.auth_code == "auth_code_123"
 
 
 # ---------------------------------------------------------------------------

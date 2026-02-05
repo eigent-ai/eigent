@@ -178,6 +178,22 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
 
+        # Validate state parameter to prevent CSRF attacks
+        received_state = params.get("state", [None])[0]
+        expected_state = getattr(self.server, "expected_state", None)
+
+        if expected_state and received_state != expected_state:
+            self.server.auth_error = "state_mismatch: Invalid state parameter"
+            self.send_response(400)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(
+                b"<html><body><h1>Authorization failed</h1>"
+                b"<p>Invalid state parameter. Possible CSRF attack.</p>"
+                b"</body></html>"
+            )
+            return
+
         if "code" in params:
             self.server.auth_code = params["code"][0]
             self.send_response(200)
@@ -430,10 +446,14 @@ class CodexOAuthManager:
 
                 code_verifier, code_challenge = _generate_pkce_pair()
 
+                # Generate state parameter to prevent CSRF attacks
+                oauth_state = secrets.token_urlsafe(32)
+
                 # Start localhost callback server on a random port
                 server = HTTPServer(("127.0.0.1", 0), _CallbackHandler)
                 server.auth_code = None
                 server.auth_error = None
+                server.expected_state = oauth_state
                 state.server = server
                 port = server.server_address[1]
 
@@ -448,6 +468,7 @@ class CodexOAuthManager:
                         "audience": CODEX_AUDIENCE,
                         "code_challenge": code_challenge,
                         "code_challenge_method": "S256",
+                        "state": oauth_state,
                         "codex_cli_simplified_flow": "true",
                     }
                 )
