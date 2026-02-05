@@ -75,7 +75,6 @@
   "enter-your-model-type": "모델 유형 입력",
   "verifying": "확인 중...",
 
-
   "account": "계정",
   "you-are-currently-signed-in-with": "{{email}} 계정으로 로그인되어 있습니다.",
   "manage": "관리",
@@ -261,7 +260,7 @@
   "gpt-5.1-name": "GPT-5.1",
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
-  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
   "network-proxy": "네트워크 프록시",
   "network-proxy-description": "네트워크 요청을 위한 프록시 서버를 구성합니다. 프록시를 통해 외부 API에 접근해야 하는 경우 유용합니다.",
   "proxy-placeholder": "http://127.0.0.1:7890",
