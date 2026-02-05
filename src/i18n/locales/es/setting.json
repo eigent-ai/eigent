@@ -170,5 +170,27 @@
   "proxy-saved-restart-required": "Configuración de proxy guardada. Reinicie la aplicación para aplicar los cambios.",
   "proxy-save-failed": "Error al guardar la configuración del proxy.",
   "proxy-invalid-url": "URL de proxy no válida. Debe comenzar con http://, https://, socks4:// o socks5://.",
-  "proxy-restart-hint": "Es necesario reiniciar para aplicar los cambios del proxy."
+  "proxy-restart-hint": "Es necesario reiniciar para aplicar los cambios del proxy.",
+
+  "cloud-not-available-in-local-proxy": "La versión en la nube no está disponible en modo proxy local",
+  "set-as-default": "Establecer como predeterminado",
+  "api-key-setting": "Configuración de clave API",
+  "api-host-setting": "Configuración de host API",
+  "model-type-setting": "Configuración de tipo de modelo",
+  "please-select": "Por favor seleccione",
+  "configuring": "Configurando...",
+
+  "models-default-setting-title": "Configuración predeterminada",
+  "models-default-setting-description": "Elige uno de tus modelos configurados como modelo predeterminado para Eigent. Se aplicará globalmente en tu espacio de trabajo.",
+  "models-configuration": "Configuración",
+
+  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gpt-4.1-mini-name": "GPT-4.1 Mini",
+  "gpt-4.1-name": "GPT-4.1",
+  "gpt-5-name": "GPT-5",
+  "gpt-5.1-name": "GPT-5.1",
+  "gpt-5.2-name": "GPT-5.2",
+  "gpt-5-mini-name": "GPT-5 Mini",
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
 }

@@ -287,7 +287,7 @@ export default function SettingModels() {
         : cloud_model_type
             .replace(/-/g, ' ')
             .replace(/\b\w/g, (c) => c.toUpperCase());
-      return `Cloud / ${modelName}`;
+      return `${t('setting.eigent-cloud')} / ${modelName}`;
     }
 
     // Check for custom model preference
@@ -295,7 +295,7 @@ export default function SettingModels() {
     if (preferredIdx !== -1) {
       const item = items[preferredIdx];
       const modelType = form[preferredIdx].model_type || '';
-      return `Custom / ${item.name}${modelType ? ` (${modelType})` : ''}`;
+      return `${t('setting.custom-model')} / ${item.name}${modelType ? ` (${modelType})` : ''}`;
     }
 
     // Check for local model preference
@@ -311,7 +311,7 @@ export default function SettingModels() {
               ? 'SGLang'
               : 'LM Studio';
       const modelType = localTypes[localPlatform] || '';
-      return `Local / ${platformName}${modelType ? ` (${modelType})` : ''}`;
+      return `${t('setting.local-model')} / ${platformName}${modelType ? ` (${modelType})` : ''}`;
     }
 
     return t('setting.select-default-model');
@@ -985,12 +985,12 @@ export default function SettingModels() {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
           <div className="flex h-64 items-center justify-center text-text-label">
-            Cloud version is not available in local proxy mode
+            {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-secondary">
+        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
           <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
             <div className="inline-flex items-center justify-start gap-2 self-stretch">
               <div className="text-body-base my-2 flex-1 justify-center font-bold text-text-heading">
@@ -1006,7 +1006,7 @@ export default function SettingModels() {
                     setModelType('custom');
                   }}
                 >
-                  Default
+                  {t('setting.default')}
                 </Button>
               ) : (
                 <Button
@@ -1021,7 +1021,7 @@ export default function SettingModels() {
                     setModelType('cloud');
                   }}
                 >
-                  Set as Default
+                  {t('setting.set-as-default')}
                 </Button>
               )}
             </div>
@@ -1114,23 +1114,35 @@ export default function SettingModels() {
                 onValueChange={setCloudModelType}
               >
                 <SelectTrigger size="sm">
-                  <SelectValue placeholder="Select Model Type" />
+                  <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="gemini-3-pro-preview">
-                    Gemini 3 Pro Preview
+                    {t('setting.gemini-3-pro-preview-name')}
                   </SelectItem>
                   <SelectItem value="gemini-3-flash-preview">
-                    Gemini 3 Flash Preview
+                    {t('setting.gemini-3-flash-preview-name')}
                   </SelectItem>
-                  <SelectItem value="gpt-4.1-mini">GPT-4.1 mini</SelectItem>
-                  <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
-                  <SelectItem value="gpt-5">GPT-5</SelectItem>
-                  <SelectItem value="gpt-5.1">GPT-5.1</SelectItem>
-                  <SelectItem value="gpt-5.2">GPT-5.2</SelectItem>
-                  <SelectItem value="gpt-5-mini">GPT-5 mini</SelectItem>
+                  <SelectItem value="gpt-4.1-mini">
+                    {t('setting.gpt-4.1-mini-name')}
+                  </SelectItem>
+                  <SelectItem value="gpt-4.1">
+                    {t('setting.gpt-4.1-name')}
+                  </SelectItem>
+                  <SelectItem value="gpt-5">
+                    {t('setting.gpt-5-name')}
+                  </SelectItem>
+                  <SelectItem value="gpt-5.1">
+                    {t('setting.gpt-5.1-name')}
+                  </SelectItem>
+                  <SelectItem value="gpt-5.2">
+                    {t('setting.gpt-5.2-name')}
+                  </SelectItem>
+                  <SelectItem value="gpt-5-mini">
+                    {t('setting.gpt-5-mini-name')}
+                  </SelectItem>
                   <SelectItem value="claude-sonnet-4-5">
-                    Claude Sonnet 4-5
+                    {t('setting.claude-sonnet-4-5-name')}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1150,7 +1162,7 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-secondary">
+        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="text-body-base my-2 font-bold text-text-heading">
@@ -1159,7 +1171,7 @@ export default function SettingModels() {
               <div className="flex items-center gap-2">
                 {form[idx].prefer ? (
                   <span className="inline-flex items-center rounded-full px-2 py-1 text-label-xs font-bold text-text-success">
-                    Default
+                    {t('setting.default')}
                   </span>
                 ) : (
                   <Button
@@ -1173,7 +1185,9 @@ export default function SettingModels() {
                         : 'inline-flex items-center gap-1.5'
                     }
                   >
-                    {!canSwitch ? 'Not Configured' : 'Set as Default'}
+                    {!canSwitch
+                      ? t('setting.not-configured')
+                      : t('setting.set-as-default')}
                   </Button>
                 )}
                 {form[idx].provider_id ? (
@@ -1193,7 +1207,7 @@ export default function SettingModels() {
               id={`apiKey-${item.id}`}
               type={showApiKey[idx] ? 'text' : 'password'}
               size="default"
-              title="API Key Setting"
+              title={t('setting.api-key-setting')}
               state={errors[idx]?.apiKey ? 'error' : 'default'}
               note={errors[idx]?.apiKey ?? undefined}
               placeholder={` ${t('setting.enter-your-api-key')} ${
@@ -1224,7 +1238,7 @@ export default function SettingModels() {
             <Input
               id={`apiHost-${item.id}`}
               size="default"
-              title="API Host Setting"
+              title={t('setting.api-host-setting')}
               state={errors[idx]?.apiHost ? 'error' : 'default'}
               note={errors[idx]?.apiHost ?? undefined}
               placeholder={`${t('setting.enter-your-api-host')} ${
@@ -1245,7 +1259,7 @@ export default function SettingModels() {
             <Input
               id={`modelType-${item.id}`}
               size="default"
-              title="Model Type Setting"
+              title={t('setting.model-type-setting')}
               state={errors[idx]?.model_type ? 'error' : 'default'}
               note={errors[idx]?.model_type ?? undefined}
               placeholder={`${t('setting.enter-your-model-type')} ${
@@ -1296,7 +1310,7 @@ export default function SettingModels() {
                         }
                         note={errors[idx]?.externalConfig ?? undefined}
                       >
-                        <SelectValue placeholder="please select" />
+                        <SelectValue placeholder={t('setting.please-select')} />
                       </SelectTrigger>
                       <SelectContent>
                         {ec.options.map((opt) => (
@@ -1351,7 +1365,7 @@ export default function SettingModels() {
               disabled={loading === idx}
             >
               <span className="text-text-inverse-primary">
-                {loading === idx ? 'Configuring...' : 'Save'}
+                {loading === idx ? t('setting.configuring') : t('setting.save')}
               </span>
             </Button>
           </div>
@@ -1373,7 +1387,7 @@ export default function SettingModels() {
       const isPreferred = localPrefer && localPlatform === platform;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-secondary">
+        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">
@@ -1394,7 +1408,7 @@ export default function SettingModels() {
                     disabled={!isConnected}
                     onClick={() => handleLocalSwitch(false)}
                   >
-                    Default
+                    {t('setting.default')}
                   </Button>
                 ) : (
                   <Button
@@ -1408,7 +1422,9 @@ export default function SettingModels() {
                         : ''
                     }
                   >
-                    {!isConnected ? 'Not Configured' : 'Set as Default'}
+                    {!isConnected
+                      ? t('setting.not-configured')
+                      : t('setting.set-as-default')}
                   </Button>
                 )}
               </div>
@@ -1476,7 +1492,7 @@ export default function SettingModels() {
               size="sm"
             >
               <span className="text-text-inverse-primary">
-                {localVerifying ? 'Configuring...' : 'Save'}
+                {localVerifying ? t('setting.configuring') : t('setting.save')}
               </span>
             </Button>
           </div>
@@ -1490,288 +1506,303 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="sticky top-0 z-10 flex w-full items-center justify-between bg-surface-primary pb-6 pl-6 pt-8">
-        <div className="flex w-full flex-row items-end justify-between gap-4">
+      <div className="sticky top-0 z-10 flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
+        <div className="flex w-full flex-col items-start justify-between gap-4">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-text-heading">
               {t('setting.models')}
             </div>
           </div>
-          {/* Default Model Cascading Dropdown */}
-          <div className="flex w-fit flex-row items-center gap-4">
-            <div className="text-body-sm font-semibold text-text-heading">
-              Default
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
-                  <span className="whitespace-nowrap text-body-sm">
-                    {getDefaultModelDisplayText()}
-                  </span>
-                  <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[180px]">
-                {/* Cloud Category */}
-                {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger className="gap-2">
-                      <img src={eigentImage} alt="Cloud" className="h-5 w-5" />
-                      <span className="text-body-sm">
-                        {t('setting.eigent-cloud')}
-                      </span>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="max-h-[300px] w-[200px] overflow-y-auto">
-                      {cloudModelOptions.map((model) => (
-                        <DropdownMenuItem
-                          key={model.id}
-                          onClick={() =>
-                            handleDefaultModelSelect('cloud', model.id)
-                          }
-                          className="flex items-center justify-between"
-                        >
-                          <span className="text-body-sm">{model.name}</span>
-                          {cloudPrefer && cloud_model_type === model.id && (
-                            <Check className="h-4 w-4 text-text-success" />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                )}
-
-                {/* Custom Model Category */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="gap-2">
-                    <Key className="h-5 w-5 text-icon-primary" />
-                    <span className="text-body-sm">
-                      {t('setting.custom-model')}
-                    </span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
-                    {items.map((item, idx) => {
-                      const isConfigured = !!form[idx]?.provider_id;
-                      const isPreferred = form[idx]?.prefer;
-                      const modelImage = getModelImage(item.id);
-
-                      return (
-                        <DropdownMenuItem
-                          key={item.id}
-                          onClick={() =>
-                            handleDefaultModelSelect('custom', item.id)
-                          }
-                          className="flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-2">
-                            {modelImage ? (
-                              <img
-                                src={modelImage}
-                                alt={item.name}
-                                className="h-4 w-4"
-                              />
-                            ) : (
-                              <Key className="h-4 w-4 text-icon-secondary" />
-                            )}
-                            <span
-                              className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
-                            >
-                              {item.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {!isConfigured && (
-                              <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
-                            )}
-                            {isPreferred && (
-                              <Check className="h-4 w-4 text-text-success" />
-                            )}
-                            {isConfigured && !isPreferred && (
-                              <div className="h-2 w-2 rounded-full bg-text-success" />
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-
-                {/* Local Host Category */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="gap-2">
-                    <Server className="h-5 w-5 text-icon-primary" />
-                    <span className="text-body-sm">
-                      {t('setting.local-model')}
-                    </span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-[200px]">
-                    {localModelOptions.map((model) => {
-                      const isConfigured = !!localEndpoints[model.id];
-                      const isPreferred =
-                        localPrefer && localPlatform === model.id;
-                      const modelImage = getModelImage(`local-${model.id}`);
-
-                      return (
-                        <DropdownMenuItem
-                          key={model.id}
-                          onClick={() =>
-                            handleDefaultModelSelect('local', model.id)
-                          }
-                          className="flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-2">
-                            {modelImage ? (
-                              <img
-                                src={modelImage}
-                                alt={model.name}
-                                className="h-4 w-4"
-                              />
-                            ) : (
-                              <Server className="h-4 w-4 text-icon-secondary" />
-                            )}
-                            <span
-                              className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
-                            >
-                              {model.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {!isConfigured && (
-                              <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
-                            )}
-                            {isPreferred && (
-                              <Check className="h-4 w-4 text-text-success" />
-                            )}
-                            {isConfigured && !isPreferred && (
-                              <div className="h-2 w-2 rounded-full bg-text-success" />
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
       </div>
-
-      {/* Content Section with Sidebar */}
-      <div className="sticky top-[88px] mx-auto flex min-h-0 w-full flex-1 self-start pb-8">
-        {/* Sidebar */}
-        <div className="hover-style-scrollbar mr-4 max-h-[calc(100vh-200px)] w-[240px] flex-shrink-0 overflow-y-auto rounded-2xl bg-surface-secondary py-2 pl-3 pr-2">
-          <div className="flex flex-col gap-4">
-            {/* Eigent Cloud Section */}
-            <div className="flex flex-col gap-1">
-              <div className="text-body-base px-3 py-2 font-bold text-text-heading">
-                {t('setting.eigent-cloud')}
-              </div>
-              {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
-                renderSidebarItem(
-                  'cloud',
-                  t('setting.eigent-cloud'),
-                  'cloud',
-                  selectedTab === 'cloud',
-                  false,
-                  cloudPrefer
-                )}
+      {/* Content Section */}
+      <div className="mb-8 flex flex-col gap-6">
+        {/* Default Model Cascading Dropdown */}
+        <div className="flex w-full flex-row items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex w-full flex-col items-start justify-center gap-1">
+            <div className="text-body-base font-bold text-text-heading">
+              {t('setting.models-default-setting-title')}
             </div>
-            {/* Bring Your Own Key Section */}
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => setByokCollapsed(!byokCollapsed)}
-                className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
-              >
-                <div className="text-body-base font-bold text-text-heading">
-                  {t('setting.custom-model')}
-                </div>
-                {byokCollapsed ? (
-                  <ChevronDown className="h-4 w-4 text-text-label" />
-                ) : (
-                  <ChevronUp className="h-4 w-4 text-text-label" />
-                )}
+            <div className="text-body-sm">
+              {t('setting.models-default-setting-description')}
+            </div>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
+                <span className="whitespace-nowrap text-body-sm">
+                  {getDefaultModelDisplayText()}
+                </span>
+                <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
               </button>
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  byokCollapsed
-                    ? 'max-h-0 opacity-0'
-                    : 'max-h-[2000px] opacity-100'
-                }`}
-              >
-                {items.map((item, idx) =>
-                  renderSidebarItem(
-                    `byok-${item.id}` as SidebarTab,
-                    item.name,
-                    item.id,
-                    selectedTab === `byok-${item.id}`,
-                    true,
-                    !!form[idx].provider_id
-                  )
-                )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[180px]">
+              {/* Cloud Category */}
+              {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="gap-2">
+                    <img src={eigentImage} alt="Cloud" className="h-5 w-5" />
+                    <span className="text-body-sm">
+                      {t('setting.eigent-cloud')}
+                    </span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-[300px] w-[200px] overflow-y-auto">
+                    {cloudModelOptions.map((model) => (
+                      <DropdownMenuItem
+                        key={model.id}
+                        onClick={() =>
+                          handleDefaultModelSelect('cloud', model.id)
+                        }
+                        className="flex items-center justify-between"
+                      >
+                        <span className="text-body-sm">{model.name}</span>
+                        {cloudPrefer && cloud_model_type === model.id && (
+                          <Check className="h-4 w-4 text-text-success" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+
+              {/* Custom Model Category */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Key className="h-5 w-5 text-icon-primary" />
+                  <span className="text-body-sm">
+                    {t('setting.custom-model')}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
+                  {items.map((item, idx) => {
+                    const isConfigured = !!form[idx]?.provider_id;
+                    const isPreferred = form[idx]?.prefer;
+                    const modelImage = getModelImage(item.id);
+
+                    return (
+                      <DropdownMenuItem
+                        key={item.id}
+                        onClick={() =>
+                          handleDefaultModelSelect('custom', item.id)
+                        }
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          {modelImage ? (
+                            <img
+                              src={modelImage}
+                              alt={item.name}
+                              className="h-4 w-4"
+                            />
+                          ) : (
+                            <Key className="h-4 w-4 text-icon-secondary" />
+                          )}
+                          <span
+                            className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                          >
+                            {item.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!isConfigured && (
+                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                          )}
+                          {isPreferred && (
+                            <Check className="h-4 w-4 text-text-success" />
+                          )}
+                          {isConfigured && !isPreferred && (
+                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              {/* Local Host Category */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Server className="h-5 w-5 text-icon-primary" />
+                  <span className="text-body-sm">
+                    {t('setting.local-model')}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-[200px]">
+                  {localModelOptions.map((model) => {
+                    const isConfigured = !!localEndpoints[model.id];
+                    const isPreferred =
+                      localPrefer && localPlatform === model.id;
+                    const modelImage = getModelImage(`local-${model.id}`);
+
+                    return (
+                      <DropdownMenuItem
+                        key={model.id}
+                        onClick={() =>
+                          handleDefaultModelSelect('local', model.id)
+                        }
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          {modelImage ? (
+                            <img
+                              src={modelImage}
+                              alt={model.name}
+                              className="h-4 w-4"
+                            />
+                          ) : (
+                            <Server className="h-4 w-4 text-icon-secondary" />
+                          )}
+                          <span
+                            className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                          >
+                            {model.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!isConfigured && (
+                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                          )}
+                          {isPreferred && (
+                            <Check className="h-4 w-4 text-text-success" />
+                          )}
+                          {isConfigured && !isPreferred && (
+                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Content Section with Sidebar */}
+        <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="text-body-base sticky top-[86px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
+            {t('setting.models-configuration')}
+          </div>
+
+          <div className="flex w-full flex-row items-start justify-between">
+            {/* Sidebar */}
+            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-surface-secondary">
+              <div className="flex flex-col gap-4">
+                {/* Eigent Cloud Section */}
+                <div className="flex flex-col gap-1">
+                  <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
+                    {t('setting.eigent-cloud')}
+                  </div>
+                  {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
+                    renderSidebarItem(
+                      'cloud',
+                      t('setting.eigent-cloud'),
+                      'cloud',
+                      selectedTab === 'cloud',
+                      false,
+                      cloudPrefer
+                    )}
+                </div>
+                {/* Bring Your Own Key Section */}
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={() => setByokCollapsed(!byokCollapsed)}
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
+                  >
+                    <div className="text-body-sm font-bold text-text-heading">
+                      {t('setting.custom-model')}
+                    </div>
+                    {byokCollapsed ? (
+                      <ChevronDown className="h-4 w-4 text-text-label" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 text-text-label" />
+                    )}
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      byokCollapsed
+                        ? 'max-h-0 opacity-0'
+                        : 'max-h-[2000px] opacity-100'
+                    }`}
+                  >
+                    {items.map((item, idx) =>
+                      renderSidebarItem(
+                        `byok-${item.id}` as SidebarTab,
+                        item.name,
+                        item.id,
+                        selectedTab === `byok-${item.id}`,
+                        true,
+                        !!form[idx].provider_id
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Local Model Section */}
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={() => setLocalCollapsed(!localCollapsed)}
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
+                  >
+                    <div className="text-body-sm font-bold text-text-heading">
+                      {t('setting.local-model')}
+                    </div>
+                    {localCollapsed ? (
+                      <ChevronDown className="h-4 w-4 text-text-label" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 text-text-label" />
+                    )}
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      localCollapsed
+                        ? 'max-h-0 opacity-0'
+                        : 'max-h-[2000px] opacity-100'
+                    }`}
+                  >
+                    {renderSidebarItem(
+                      'local-ollama',
+                      'Ollama',
+                      'local-ollama',
+                      selectedTab === 'local-ollama',
+                      true,
+                      !!localEndpoints['ollama']
+                    )}
+                    {renderSidebarItem(
+                      'local-vllm',
+                      'vLLM',
+                      'local-vllm',
+                      selectedTab === 'local-vllm',
+                      true,
+                      !!localEndpoints['vllm']
+                    )}
+                    {renderSidebarItem(
+                      'local-sglang',
+                      'SGLang',
+                      'local-sglang',
+                      selectedTab === 'local-sglang',
+                      true,
+                      !!localEndpoints['sglang']
+                    )}
+                    {renderSidebarItem(
+                      'local-lmstudio',
+                      'LM Studio',
+                      'local-lmstudio',
+                      selectedTab === 'local-lmstudio',
+                      true,
+                      !!localEndpoints['lmstudio']
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-
-            {/* Local Model Section */}
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => setLocalCollapsed(!localCollapsed)}
-                className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
-              >
-                <div className="text-body-base font-bold text-text-heading">
-                  {t('setting.local-model')}
-                </div>
-                {localCollapsed ? (
-                  <ChevronDown className="h-4 w-4 text-text-label" />
-                ) : (
-                  <ChevronUp className="h-4 w-4 text-text-label" />
-                )}
-              </button>
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  localCollapsed
-                    ? 'max-h-0 opacity-0'
-                    : 'max-h-[2000px] opacity-100'
-                }`}
-              >
-                {renderSidebarItem(
-                  'local-ollama',
-                  'Ollama',
-                  'local-ollama',
-                  selectedTab === 'local-ollama',
-                  true,
-                  !!localEndpoints['ollama']
-                )}
-                {renderSidebarItem(
-                  'local-vllm',
-                  'vLLM',
-                  'local-vllm',
-                  selectedTab === 'local-vllm',
-                  true,
-                  !!localEndpoints['vllm']
-                )}
-                {renderSidebarItem(
-                  'local-sglang',
-                  'SGLang',
-                  'local-sglang',
-                  selectedTab === 'local-sglang',
-                  true,
-                  !!localEndpoints['sglang']
-                )}
-                {renderSidebarItem(
-                  'local-lmstudio',
-                  'LM Studio',
-                  'local-lmstudio',
-                  selectedTab === 'local-lmstudio',
-                  true,
-                  !!localEndpoints['lmstudio']
-                )}
-              </div>
+            {/* Main Content */}
+            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
+              {renderContent()}
             </div>
           </div>
         </div>
-
-        {/* Main Content */}
-        <div className="min-w-0 flex-1">{renderContent()}</div>
       </div>
     </div>
   );

@@ -170,5 +170,27 @@
   "proxy-saved-restart-required": "프록시 설정이 저장되었습니다. 변경 사항을 적용하려면 앱을 다시 시작하세요.",
   "proxy-save-failed": "프록시 설정 저장에 실패했습니다.",
   "proxy-invalid-url": "잘못된 프록시 URL입니다. http://, https://, socks4://, 또는 socks5://로 시작해야 합니다.",
-  "proxy-restart-hint": "프록시 변경 사항을 적용하려면 다시 시작해야 합니다."
+  "proxy-restart-hint": "프록시 변경 사항을 적용하려면 다시 시작해야 합니다.",
+
+  "cloud-not-available-in-local-proxy": "로컬 프록시 모드에서는 클라우드 버전을 사용할 수 없습니다",
+  "set-as-default": "기본값으로 설정",
+  "api-key-setting": "API 키 설정",
+  "api-host-setting": "API 호스트 설정",
+  "model-type-setting": "모델 타입 설정",
+  "please-select": "선택하세요",
+  "configuring": "구성 중...",
+
+  "models-default-setting-title": "기본 설정",
+  "models-default-setting-description": "구성된 모델 중 하나를 Eigent의 기본 모델로 선택하세요. 워크스페이스 전체에 전역으로 적용됩니다.",
+  "models-configuration": "구성",
+
+  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gpt-4.1-mini-name": "GPT-4.1 Mini",
+  "gpt-4.1-name": "GPT-4.1",
+  "gpt-5-name": "GPT-5",
+  "gpt-5.1-name": "GPT-5.1",
+  "gpt-5.2-name": "GPT-5.2",
+  "gpt-5-mini-name": "GPT-5 Mini",
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
 }

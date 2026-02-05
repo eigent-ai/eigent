@@ -144,7 +144,7 @@ export default function SettingPrivacy() {
       </div>
 
       {/* Content Section */}
-      <div className="flex flex-col gap-6">
+      <div className="mb-8 flex flex-col gap-6">
         {/* How We Handle Your Data Section */}
         <div className="rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex items-start justify-between gap-4">

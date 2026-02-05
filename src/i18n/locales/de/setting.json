@@ -170,5 +170,27 @@
   "proxy-saved-restart-required": "Proxy-Konfiguration gespeichert. Starten Sie die App neu, um die Änderungen anzuwenden.",
   "proxy-save-failed": "Proxy-Konfiguration konnte nicht gespeichert werden.",
   "proxy-invalid-url": "Ungültige Proxy-URL. Muss mit http://, https://, socks4:// oder socks5:// beginnen.",
-  "proxy-restart-hint": "Neustart erforderlich, um Proxy-Änderungen anzuwenden."
+  "proxy-restart-hint": "Neustart erforderlich, um Proxy-Änderungen anzuwenden.",
+
+  "cloud-not-available-in-local-proxy": "Cloud-Version ist im lokalen Proxy-Modus nicht verfügbar",
+  "set-as-default": "Als Standard festlegen",
+  "api-key-setting": "API-Schlüssel-Einstellung",
+  "api-host-setting": "API-Host-Einstellung",
+  "model-type-setting": "Modelltyp-Einstellung",
+  "please-select": "Bitte auswählen",
+  "configuring": "Wird konfiguriert...",
+
+  "models-default-setting-title": "Standard-Einstellung",
+  "models-default-setting-description": "Wähle eines deiner konfigurierten Modelle als Standardmodell für Eigent. Es wird global in deinem Arbeitsbereich angewendet.",
+  "models-configuration": "Konfiguration",
+
+  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gpt-4.1-mini-name": "GPT-4.1 Mini",
+  "gpt-4.1-name": "GPT-4.1",
+  "gpt-5-name": "GPT-5",
+  "gpt-5.1-name": "GPT-5.1",
+  "gpt-5.2-name": "GPT-5.2",
+  "gpt-5-mini-name": "GPT-5 Mini",
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
 }

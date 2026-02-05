@@ -170,5 +170,27 @@
   "proxy-saved-restart-required": "プロキシ設定が保存されました。変更を適用するにはアプリを再起動してください。",
   "proxy-save-failed": "プロキシ設定の保存に失敗しました。",
   "proxy-invalid-url": "無効なプロキシURLです。http://、https://、socks4://、またはsocks5://で始まる必要があります。",
-  "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。"
+  "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。",
+
+  "cloud-not-available-in-local-proxy": "ローカルプロキシモードではクラウド版は利用できません",
+  "set-as-default": "デフォルトに設定",
+  "api-key-setting": "APIキー設定",
+  "api-host-setting": "APIホスト設定",
+  "model-type-setting": "モデルタイプ設定",
+  "please-select": "選択してください",
+  "configuring": "設定中...",
+
+  "models-default-setting-title": "デフォルト設定",
+  "models-default-setting-description": "設定済みモデルの中から、Eigent のデフォルトモデルを1つ選択します。ワークスペース全体にグローバルに適用されます。",
+  "models-configuration": "構成",
+
+  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gpt-4.1-mini-name": "GPT-4.1 Mini",
+  "gpt-4.1-name": "GPT-4.1",
+  "gpt-5-name": "GPT-5",
+  "gpt-5.1-name": "GPT-5.1",
+  "gpt-5.2-name": "GPT-5.2",
+  "gpt-5-mini-name": "GPT-5 Mini",
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
 }

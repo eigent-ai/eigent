@@ -170,5 +170,27 @@
   "proxy-saved-restart-required": "تم حفظ تكوين الوكيل. أعد تشغيل التطبيق لتطبيق التغييرات.",
   "proxy-save-failed": "فشل حفظ تكوين الوكيل.",
   "proxy-invalid-url": "عنوان URL للوكيل غير صالح. يجب أن يبدأ بـ http:// أو https:// أو socks4:// أو socks5://.",
-  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل."
+  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل.",
+
+  "cloud-not-available-in-local-proxy": "إصدار السحابة غير متاح في وضع الوكيل المحلي",
+  "set-as-default": "تعيين كافتراضي",
+  "api-key-setting": "إعداد مفتاح API",
+  "api-host-setting": "إعداد مضيف API",
+  "model-type-setting": "إعداد نوع النموذج",
+  "please-select": "يرجى الاختيار",
+  "configuring": "جارٍ التكوين...",
+
+  "models-default-setting-title": "الإعداد الافتراضي",
+  "models-default-setting-description": "اختر أحد النماذج المكوّنة ليكون النموذج الافتراضي لـ Eigent، وسيتم تطبيقه عالميًا عبر مساحة العمل الخاصة بك.",
+  "models-configuration": "التكوين",
+
+  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gpt-4.1-mini-name": "GPT-4.1 Mini",
+  "gpt-4.1-name": "GPT-4.1",
+  "gpt-5-name": "GPT-5",
+  "gpt-5.1-name": "GPT-5.1",
+  "gpt-5.2-name": "GPT-5.2",
+  "gpt-5-mini-name": "GPT-5 Mini",
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
 }
