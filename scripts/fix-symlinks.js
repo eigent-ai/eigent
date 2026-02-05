@@ -138,11 +138,18 @@ function fixVenvSymlinks(venvPath, venvName) {
       // Check if symlink exists
       let needsFix = false;
       let currentTarget = null;
+      let symlinkExists = false;
 
-      if (
-        fs.existsSync(symlinkPath) ||
-        fs.lstatSync(symlinkPath).isSymbolicLink()
-      ) {
+      // Use lstatSync to check if symlink exists (works for broken symlinks too)
+      try {
+        const stat = fs.lstatSync(symlinkPath);
+        symlinkExists = stat.isSymbolicLink();
+      } catch {
+        // File/symlink doesn't exist at all
+        symlinkExists = false;
+      }
+
+      if (symlinkExists) {
         try {
           currentTarget = fs.readlinkSync(symlinkPath);
 
@@ -162,7 +169,7 @@ function fixVenvSymlinks(venvPath, venvName) {
             continue;
           }
         } catch (err) {
-          // Broken symlink
+          // readlinkSync failed - symlink is broken
           needsFix = true;
           console.log(
             `   ❌ ${symlinkName}: broken symlink (target doesn't exist), ${err.message}`
@@ -174,19 +181,13 @@ function fixVenvSymlinks(venvPath, venvName) {
       }
 
       if (needsFix) {
-        // Remove existing symlink
+        // Remove existing symlink if it exists
         try {
-          if (
-            fs.existsSync(symlinkPath) ||
-            fs.lstatSync(symlinkPath).isSymbolicLink()
-          ) {
-            fs.unlinkSync(symlinkPath);
-          }
-        } catch (err) {
-          console.error(
-            `   ❌ Failed to remove ${symlinkName}: ${err.message}`
-          );
-          // Ignore
+          fs.lstatSync(symlinkPath);
+          // If lstatSync succeeds, the file/symlink exists
+          fs.unlinkSync(symlinkPath);
+        } catch {
+          // File doesn't exist, nothing to remove
         }
 
         // Calculate relative path from bin/ to the Python executable
