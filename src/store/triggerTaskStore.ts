@@ -450,7 +450,7 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
     tokens: number,
     errorMessage?: string
   ) => {
-    const { executionMappings, removeExecutionMapping } = get();
+    const { executionMappings, removeExecutionMapping, completeTask, failTask } = get();
     const mapping = executionMappings.get(chatTaskId);
 
     if (!mapping) {
@@ -497,6 +497,14 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
         '->',
         status
       );
+
+      // Complete or fail the trigger task based on status
+      // This moves the task from currentTask to taskHistory
+      if (status === ExecutionStatus.Completed) {
+        completeTask(mapping.triggerTaskId);
+      } else if (status === ExecutionStatus.Failed || status === ExecutionStatus.Cancelled) {
+        failTask(mapping.triggerTaskId, errorMessage || 'Task failed');
+      }
 
       // Clean up mapping after successful update
       removeExecutionMapping(chatTaskId);

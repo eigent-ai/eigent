@@ -283,8 +283,9 @@ export function useTriggerTaskExecutor() {
         status: 'pending' as import('@/types').ExecutionStatus,
       });
 
-      // Enqueue the task (convert triggerType literal to TriggerType enum)
-      triggerTaskStore.enqueueTask({
+      // Enqueue the task using getState() to ensure we're using the same store reference
+      // as processNextTask, avoiding timing issues with React-subscribed state
+      useTriggerTaskStore.getState().enqueueTask({
         triggerId: webSocketEvent.triggerId,
         triggerName: webSocketEvent.triggerName,
         taskPrompt: webSocketEvent.taskPrompt,
@@ -298,10 +299,12 @@ export function useTriggerTaskExecutor() {
       // Clear the event after processing
       clearWebSocketEvent();
 
-      // Start processing
-      processNextTask();
+      // Start processing using queueMicrotask to ensure state is fully committed
+      queueMicrotask(() => {
+        processNextTask();
+      });
     }
-  }, [webSocketEvent, clearWebSocketEvent, processNextTask, triggerTaskStore]);
+  }, [webSocketEvent, clearWebSocketEvent, processNextTask]);
 
   // Also process on mount if there are pending tasks
   // useEffect(() => {
