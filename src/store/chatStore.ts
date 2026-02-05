@@ -26,6 +26,7 @@ import {
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { ExecutionStatus } from '@/types';
 import {
   AgentMessageStatus,
   AgentStatusValue,
@@ -40,9 +41,7 @@ import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
 import { useProjectStore } from './projectStore';
-
-import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
-import { ExecutionStatus } from '@/types';
+import { useTriggerTaskStore } from './triggerTaskStore';
 
 interface Task {
   messages: Message[];
@@ -229,37 +228,23 @@ const ttftTracking: Record<
   { confirmedAt: number; firstTokenLogged: boolean }
 > = {};
 
-// Helper function to update trigger execution status
+// Helper function to update trigger execution status using triggerTaskStore
 const updateTriggerExecutionStatus = async (
-  projectStore: any,
-  project_id: string | null | undefined,
+  _projectStore: any,
+  _project_id: string | null | undefined,
   currentTaskId: string,
-  status: ExecutionStatus,
+  status: import('@/types').ExecutionStatus,
   tokens: number,
   errorMessage?: string
 ) => {
-  const projectId = project_id || projectStore.activeProjectId;
-  if (!projectId) return;
-
-  const executionId = projectStore.getExecutionId(projectId, currentTaskId);
-  if (!executionId) return;
-
-  try {
-    await proxyUpdateTriggerExecution(
-      executionId,
-      {
-        status,
-        completed_at: new Date().toISOString(),
-        ...(errorMessage && { error_message: errorMessage }),
-        tokens_used: tokens,
-      },
-      { projectId }
-    );
-    // Clean up the execution ID mapping after successful update
-    projectStore.removeExecutionId(projectId, currentTaskId);
-  } catch (err) {
-    console.warn(`Failed to update execution status to ${status}:`, err);
-  }
+  // Use triggerTaskStore for reliable execution status tracking
+  const triggerTaskStore = useTriggerTaskStore.getState();
+  await triggerTaskStore.updateExecutionStatus(
+    currentTaskId,
+    status,
+    tokens,
+    errorMessage
+  );
 };
 
 const chatStore = (initial?: Partial<ChatStore>) =>
@@ -1459,6 +1444,33 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   tokens: getTokens(currentTaskId),
                 };
                 proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+              }
+
+              // Check if this is a quick reply completion (simple question answered directly)
+              // This happens when question_confirm_agent deactivates with a non-yes/no answer
+              // and tokens are used (indicating actual response generation, not just classification)
+              const isQuestionConfirmAgent =
+                agentMessages.data.agent_name === 'question_confirm_agent';
+              const hasTokens =
+                agentMessages.data.tokens && agentMessages.data.tokens > 0;
+              const isNotClassificationAnswer =
+                agentMessages.data.message &&
+                agentMessages.data.message.trim().toLowerCase() !== 'yes' &&
+                agentMessages.data.message.trim().toLowerCase() !== 'no';
+
+              if (
+                isQuestionConfirmAgent &&
+                hasTokens &&
+                isNotClassificationAnswer
+              ) {
+                // This is a quick reply - update trigger execution status to Completed
+                updateTriggerExecutionStatus(
+                  projectStore,
+                  project_id,
+                  currentTaskId,
+                  ExecutionStatus.Completed,
+                  tasks[currentTaskId]?.tokens || 0
+                );
               }
 
               setTaskRunning(currentTaskId, [...taskRunning]);

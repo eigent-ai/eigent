@@ -48,8 +48,6 @@ interface Project {
      * instead in history api
      */
     historyId?: string;
-    /**Map of task_id to execution_id for trigger execution tracking */
-    executionIdMap?: { [taskId: string]: string };
   };
 }
 
@@ -130,15 +128,6 @@ interface ProjectStore {
   //History ID
   setHistoryId: (projectId: string, historyId: string) => void;
   getHistoryId: (projectId: string | null) => string | null;
-
-  // Execution ID mapping (for trigger execution tracking)
-  setExecutionId: (
-    projectId: string,
-    taskId: string,
-    executionId: string
-  ) => void;
-  getExecutionId: (projectId: string, taskId: string) => string | null;
-  removeExecutionId: (projectId: string, taskId: string) => void;
 }
 
 // Helper function to check if a project is empty/unused
@@ -977,73 +966,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
   isEmptyProject: (project: Project) => {
     return isEmptyProject(project);
-  },
-
-  // Execution ID mapping methods for trigger execution tracking
-  setExecutionId: (projectId: string, taskId: string, executionId: string) => {
-    const { projects } = get();
-
-    if (!projects[projectId]) {
-      console.warn(`Project ${projectId} not found for setting execution ID`);
-      return;
-    }
-
-    set((state) => ({
-      projects: {
-        ...state.projects,
-        [projectId]: {
-          ...state.projects[projectId],
-          metadata: {
-            ...state.projects[projectId].metadata,
-            executionIdMap: {
-              ...state.projects[projectId].metadata?.executionIdMap,
-              [taskId]: executionId,
-            },
-          },
-          updatedAt: Date.now(),
-        },
-      },
-    }));
-  },
-
-  getExecutionId: (projectId: string, taskId: string) => {
-    const { projects } = get();
-    const project = projects[projectId];
-
-    if (!project) {
-      return null;
-    }
-
-    return project.metadata?.executionIdMap?.[taskId] || null;
-  },
-
-  removeExecutionId: (projectId: string, taskId: string) => {
-    const { projects } = get();
-
-    if (!projects[projectId]) {
-      return;
-    }
-
-    const currentMap = projects[projectId].metadata?.executionIdMap;
-    if (!currentMap || !currentMap[taskId]) {
-      return;
-    }
-
-    const { [taskId]: _, ...remainingMap } = currentMap;
-
-    set((state) => ({
-      projects: {
-        ...state.projects,
-        [projectId]: {
-          ...state.projects[projectId],
-          metadata: {
-            ...state.projects[projectId].metadata,
-            executionIdMap: remainingMap,
-          },
-          updatedAt: Date.now(),
-        },
-      },
-    }));
   },
 }));
 

@@ -24,6 +24,10 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import {
+  useTriggerTaskStore,
+  type TriggeredTask,
+} from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -761,14 +765,24 @@ export default function ChatBox(): JSX.Element {
     // The task_id from queued message is the executionId when added via trigger
     // We map it to the current activeTaskId which will be used for the new task
     if (firstMessage.task_id && projectStore.activeProjectId) {
-      // Store mapping: actual taskId -> executionId
+      // Store mapping: actual taskId -> executionId using triggerTaskStore
       // The nextTaskId or activeTaskId will be used for the actual task processing
       const targetTaskId = chatStore.nextTaskId || taskId;
-      projectStore.setExecutionId(
-        projectStore.activeProjectId,
-        targetTaskId,
-        firstMessage.task_id
-      );
+      const triggerTaskStore = useTriggerTaskStore.getState();
+      // Find the trigger task that has this executionId
+      const triggerTask =
+        triggerTaskStore.taskHistory.find(
+          (t: TriggeredTask) => t.executionId === firstMessage.task_id
+        ) || triggerTaskStore.currentTask;
+
+      if (triggerTask) {
+        triggerTaskStore.registerExecutionMapping(
+          targetTaskId,
+          firstMessage.task_id,
+          triggerTask.id,
+          projectStore.activeProjectId
+        );
+      }
     }
 
     // Process the queued message via handleSend
@@ -1115,15 +1129,13 @@ export default function ChatBox(): JSX.Element {
           <BottomBox
             state={hasAnyMessages ? getBottomBoxState() : 'input'}
             queuedMessages={
-              hasAnyMessages && isTaskBusy
-                ? projectStore
-                    .getProjectById(projectStore.activeProjectId || '')
-                    ?.queuedMessages?.map((m) => ({
-                      id: m.task_id,
-                      content: m.content,
-                      timestamp: m.timestamp,
-                    })) || []
-                : []
+              projectStore
+                .getProjectById(projectStore.activeProjectId || '')
+                ?.queuedMessages?.map((m) => ({
+                  id: m.task_id,
+                  content: m.content,
+                  timestamp: m.timestamp,
+                })) || []
             }
             onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
             subtitle={
