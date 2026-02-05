@@ -256,6 +256,7 @@ class RAGToolkit(AbstractToolkit):
         self,
         query: str,
         top_k: int = 5,
+        similarity_threshold: float = 0.5,
     ) -> str:
         """Query the knowledge base for relevant information from added documents.
 
@@ -265,6 +266,7 @@ class RAGToolkit(AbstractToolkit):
         Args:
             query (str): The question or search query to find relevant documents.
             top_k (int): Maximum number of relevant chunks to return (default: 5).
+            similarity_threshold (float): Minimum similarity score (default: 0.5).
 
         Returns:
             Retrieved relevant text chunks from the knowledge base,
@@ -278,10 +280,11 @@ class RAGToolkit(AbstractToolkit):
                 return "Error: Query cannot be empty"
 
             retriever = self._get_vector_retriever()
-            results = retriever.query(query=query, top_k=top_k)
-
-            if not results:
-                return f"No relevant information found for query: {query}"
+            results = retriever.query(
+                query=query,
+                top_k=top_k,
+                similarity_threshold=similarity_threshold,
+            )
 
             # Format results as a simple numbered list
             formatted_results = []
@@ -295,6 +298,9 @@ class RAGToolkit(AbstractToolkit):
                     if source:
                         result_text += f" (Source: {source})"
                 formatted_results.append(result_text)
+
+            if not formatted_results:
+                return f"No relevant information found for query: {query}"
 
             logger.info(
                 f"Retrieved {len(results)} results for query in collection {self._collection_name}"
