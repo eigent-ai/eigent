@@ -12,14 +12,20 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import asyncio
+import logging
+
 from camel.toolkits.base import BaseToolkit
 from camel.toolkits.function_tool import FunctionTool
-from app.service.task import Action, ActionAskData, ActionNoticeData, get_task_lock
+
+from app.service.task import (
+    Action,
+    ActionAskData,
+    ActionNoticeData,
+    get_task_lock,
+    process_task,
+)
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from app.service.task import process_task
-import logging
 
 logger = logging.getLogger("human_toolkit")
 
@@ -34,7 +40,9 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
 
     agent_name: str
 
-    def __init__(self, api_task_id: str, agent_name: str, timeout: float | None = None):
+    def __init__(
+        self, api_task_id: str, agent_name: str, timeout: float | None = None
+    ):
         super().__init__(timeout)
         self.api_task_id = api_task_id
         self.agent_name = agent_name
@@ -126,7 +134,9 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         current_process_task_id = process_task.get("")
         if not current_process_task_id:
             current_process_task_id = self.api_task_id
-            logger.warning(f"[send_message_to_user] ContextVar process_task is empty, using api_task_id as fallback: '{current_process_task_id}'")
+            logger.warning(
+                f"[send_message_to_user] ContextVar process_task is empty, using api_task_id as fallback: '{current_process_task_id}'"
+            )
 
         from app.utils.listen.toolkit_listen import _safe_put_queue
 
@@ -136,7 +146,9 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         )
         _safe_put_queue(task_lock, notice_data)
 
-        attachment_info = f" {message_attachment}" if message_attachment else ""
+        attachment_info = (
+            f" {message_attachment}" if message_attachment else ""
+        )
         return f"Message successfully sent to user: '{message_title} {message_description}{attachment_info}'"
 
     def get_tools(self) -> list[FunctionTool]:
@@ -153,7 +165,9 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         ]
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str, agent_name: str) -> list[FunctionTool]:
+    def get_can_use_tools(
+        cls, api_task_id: str, agent_name: str
+    ) -> list[FunctionTool]:
         human = cls(api_task_id, agent_name)
         return [
             FunctionTool(human.ask_human_via_gui),

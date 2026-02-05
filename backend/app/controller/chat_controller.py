@@ -78,7 +78,7 @@ async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
     if task_lock.id not in task_locks:
         chat_logger.debug(
             f"[{reason}] Task lock already removed, skipping cleanup",
-            extra={"task_id": task_lock.id}
+            extra={"task_id": task_lock.id},
         )
         return False
 
@@ -87,17 +87,14 @@ async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
         await delete_task_lock(task_lock.id)
         chat_logger.info(
             f"[{reason}] Task lock cleanup completed",
-            extra={"task_id": task_lock.id}
+            extra={"task_id": task_lock.id},
         )
         return True
     except Exception as e:
         chat_logger.error(
             f"[{reason}] Failed to cleanup task lock",
-            extra={
-                "task_id": task_lock.id,
-                "error": str(e)
-            },
-            exc_info=True
+            extra={"task_id": task_lock.id, "error": str(e)},
+            exc_info=True,
         )
         return False
 
@@ -105,7 +102,7 @@ async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
 async def timeout_stream_wrapper(
     stream_generator,
     timeout_seconds: int = SSE_TIMEOUT_SECONDS,
-    task_lock=None
+    task_lock=None,
 ):
     """Wraps a stream generator with timeout handling.
 
@@ -127,19 +124,19 @@ async def timeout_stream_wrapper(
                 )
                 last_data_time = time.time()
                 yield data
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 chat_logger.warning(
                     "SSE timeout: No data received, closing connection",
-                    extra={"timeout_seconds": timeout_seconds}
+                    extra={"timeout_seconds": timeout_seconds},
                 )
                 timeout_min = timeout_seconds // 60
                 yield sse_json(
-                    "error", {
-                        "message":
-                        "Connection timeout: No data"
+                    "error",
+                    {
+                        "message": "Connection timeout: No data"
                         f" received for {timeout_min}"
                         " minutes"
-                    }
+                    },
                 )
                 cleanup_triggered = await _cleanup_task_lock_safe(
                     task_lock, "TIMEOUT"
@@ -159,7 +156,7 @@ async def timeout_stream_wrapper(
         chat_logger.error(
             "[STREAM-ERROR] Unexpected error in stream wrapper",
             extra={"error": str(e)},
-            exc_info=True
+            exc_info=True,
         )
         if not cleanup_triggered:
             await _cleanup_task_lock_safe(task_lock, "ERROR")
@@ -173,8 +170,8 @@ async def post(data: Chat, request: Request):
         extra={
             "project_id": data.project_id,
             "task_id": data.task_id,
-            "user": data.email
-        }
+            "user": data.email,
+        },
     )
 
     task_lock = get_or_create_task_lock(data.project_id)
@@ -189,8 +186,9 @@ async def post(data: Chat, request: Request):
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
     os.environ["OPENAI_API_KEY"] = data.api_key
-    os.environ["OPENAI_API_BASE_URL"
-               ] = data.api_url or "https://api.openai.com/v1"
+    os.environ["OPENAI_API_BASE_URL"] = (
+        data.api_url or "https://api.openai.com/v1"
+    )
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
     # Set user-specific search engine configuration if provided
@@ -200,15 +198,19 @@ async def post(data: Chat, request: Request):
                 os.environ[key] = value
                 chat_logger.debug(
                     f"Set search config: {key}",
-                    extra={"project_id": data.project_id}
+                    extra={"project_id": data.project_id},
                 )
 
-    email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_",
-                             data.email.split("@")[0]).strip(".")
+    email_sanitized = re.sub(
+        r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]
+    ).strip(".")
     camel_log = (
-        Path.home() / ".eigent" / email_sanitized /
-        ("project_" + data.project_id) / ("task_" + data.task_id) /
-        "camel_logs"
+        Path.home()
+        / ".eigent"
+        / email_sanitized
+        / ("project_" + data.project_id)
+        / ("task_" + data.task_id)
+        / "camel_logs"
     )
     camel_log.mkdir(parents=True, exist_ok=True)
 
@@ -230,14 +232,14 @@ async def post(data: Chat, request: Request):
         extra={
             "project_id": data.project_id,
             "task_id": data.task_id,
-            "log_dir": str(camel_log)
+            "log_dir": str(camel_log),
         },
     )
     return StreamingResponse(
         timeout_stream_wrapper(
             step_solve(data, request, task_lock), task_lock=task_lock
         ),
-        media_type="text/event-stream"
+        media_type="text/event-stream",
     )
 
 
@@ -245,10 +247,7 @@ async def post(data: Chat, request: Request):
 def improve(id: str, data: SupplementChat):
     chat_logger.info(
         "Chat improvement requested",
-        extra={
-            "task_id": id,
-            "question_length": len(data.question)
-        }
+        extra={"task_id": id, "question_length": len(data.question)},
     )
     task_lock = get_task_lock(id)
 
@@ -266,14 +265,12 @@ def improve(id: str, data: SupplementChat):
         if hasattr(task_lock, "conversation_history"):
             hist_len = len(task_lock.conversation_history)
             chat_logger.info(
-                "[CONTEXT] Preserved"
-                f" {hist_len} conversation entries"
+                f"[CONTEXT] Preserved {hist_len} conversation entries"
             )
         if hasattr(task_lock, "last_task_result"):
             result_len = len(task_lock.last_task_result)
             chat_logger.info(
-                "[CONTEXT] Preserved task"
-                f" result: {result_len} chars"
+                f"[CONTEXT] Preserved task result: {result_len} chars"
             )
 
     # If task_id is provided, optimistically update
@@ -301,8 +298,11 @@ def improve(id: str, data: SupplementChat):
                 # Create new path using the existing
                 # pattern: email/project_{id}/task_{id}
                 new_folder_path = (
-                    Path.home() / "eigent" / current_email / f"project_{id}" /
-                    f"task_{data.task_id}"
+                    Path.home()
+                    / "eigent"
+                    / current_email
+                    / f"project_{id}"
+                    / f"task_{data.task_id}"
                 )
                 new_folder_path.mkdir(parents=True, exist_ok=True)
                 os.environ["file_save_path"] = str(new_folder_path)
@@ -336,7 +336,7 @@ def improve(id: str, data: SupplementChat):
     )
     chat_logger.info(
         "Improvement request queued with preserved context",
-        extra={"project_id": id}
+        extra={"project_id": id},
     )
     return Response(status_code=201)
 
@@ -395,10 +395,7 @@ def stop(id: str):
 def human_reply(id: str, data: HumanReply):
     chat_logger.info(
         "Human reply received",
-        extra={
-            "task_id": id,
-            "reply_length": len(data.reply)
-        }
+        extra={"task_id": id, "reply_length": len(data.reply)},
     )
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_human_input(data.agent, data.reply))
@@ -412,8 +409,8 @@ def install_mcp(id: str, data: McpServers):
         "Installing MCP servers",
         extra={
             "task_id": id,
-            "servers_count": len(data.get("mcpServers", {}))
-        }
+            "servers_count": len(data.get("mcpServers", {})),
+        },
     )
     task_lock = get_task_lock(id)
     asyncio.run(
@@ -454,7 +451,7 @@ def add_task(id: str, data: AddTaskRequest):
 
 @router.delete(
     "/chat/{project_id}/remove-task/{task_id}",
-    name="remove task from workforce"
+    name="remove task from workforce",
 )
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""

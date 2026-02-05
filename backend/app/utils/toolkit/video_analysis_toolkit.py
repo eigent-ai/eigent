@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+
 from camel.models import BaseModelBackend
 from camel.toolkits import VideoAnalysisToolkit as BaseVideoAnalysisToolkit
 
@@ -40,7 +41,9 @@ class VideoAnalysisToolkit(BaseVideoAnalysisToolkit, AbstractToolkit):
     ) -> None:
         self.api_task_id = api_task_id
         if working_directory is None:
-            working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
+            working_directory = env(
+                "file_save_path", os.path.expanduser("~/Downloads")
+            )
         super().__init__(
             working_directory,
             model,

@@ -12,20 +12,22 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlmodel import Session, select
+
 from app.component.auth import Auth, auth_must
 from app.component.database import session
+from app.model.chat.chat_history import ChatHistory
+from app.model.chat.chat_snpshot import ChatSnapshot
+from app.model.config.config import Config
+from app.model.mcp.mcp_user import McpUser
 from app.model.user.privacy import UserPrivacy, UserPrivacySettings
 from app.model.user.user import User, UserIn, UserOut, UserProfile
-from app.model.user.user_stat import UserStat, UserStatActionIn, UserStatOut
-from app.model.chat.chat_history import ChatHistory
-from app.model.mcp.mcp_user import McpUser
-from app.model.config.config import Config
-from app.model.chat.chat_snpshot import ChatSnapshot
 from app.model.user.user_credits_record import UserCreditsRecord
-import logging
+from app.model.user.user_stat import UserStat, UserStatActionIn, UserStatOut
 
 logger = logging.getLogger("server_user_controller")
 
@@ -73,7 +75,7 @@ def get_privacy(session: Session = Depends(session), auth: Auth = Depends(auth_m
     if not model:
         logger.debug("Privacy settings not found, returning defaults", extra={"user_id": user_id})
         return UserPrivacySettings.default_settings()
-    
+
     logger.debug("Privacy settings retrieved", extra={"user_id": user_id})
     return model.pricacy_setting
 
@@ -109,8 +111,11 @@ def get_user_credits(auth: Auth = Depends(auth_must), session: Session = Depends
     if daily_credits:
         current_daily_credits = daily_credits.amount - daily_credits.balance
         credits += current_daily_credits if current_daily_credits > 0 else 0
-    
-    logger.debug("Credits retrieved", extra={"user_id": user.id, "total_credits": credits, "daily_credits": current_daily_credits})
+
+    logger.debug(
+        "Credits retrieved",
+        extra={"user_id": user.id, "total_credits": credits, "daily_credits": current_daily_credits},
+    )
     return {"credits": credits, "daily_credits": current_daily_credits}
 
 
@@ -120,12 +125,12 @@ def get_user_stat(auth: Auth = Depends(auth_must), session: Session = Depends(se
     user_id = auth.user.id
     stat = session.exec(select(UserStat).where(UserStat.user_id == user_id)).first()
     data = UserStatOut()
-    
+
     if stat:
         data = UserStatOut(**stat.model_dump())
     else:
         data = UserStatOut(user_id=user_id)
-    
+
     data.task_queries = ChatHistory.count(ChatHistory.user_id == user_id, s=session)
     mcp = McpUser.count(McpUser.user_id == user_id, s=session)
     tool: list = session.exec(
@@ -134,13 +139,16 @@ def get_user_stat(auth: Auth = Depends(auth_must), session: Session = Depends(se
     tool = tool.__len__()
     data.mcp_install_count = mcp + tool
     data.storage_used = ChatSnapshot.caclDir(ChatSnapshot.get_user_dir(user_id))
-    
-    logger.debug("User stats retrieved", extra={
-        "user_id": user_id,
-        "task_queries": data.task_queries,
-        "mcp_install_count": data.mcp_install_count,
-        "storage_used": data.storage_used
-    })
+
+    logger.debug(
+        "User stats retrieved",
+        extra={
+            "user_id": user_id,
+            "task_queries": data.task_queries,
+            "mcp_install_count": data.mcp_install_count,
+            "storage_used": data.storage_used,
+        },
+    )
     return data
 
 
@@ -153,5 +161,8 @@ def record_user_stat(
     """Record or update current user's operation statistics."""
     data.user_id = auth.user.id
     stat = UserStat.record_action(session, data)
-    logger.info("User stat recorded", extra={"user_id": data.user_id, "action": data.action if hasattr(data, 'action') else "unknown"})
+    logger.info(
+        "User stat recorded",
+        extra={"user_id": data.user_id, "action": data.action if hasattr(data, "action") else "unknown"},
+    )
     return stat

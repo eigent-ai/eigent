@@ -43,8 +43,9 @@ async def document_agent(options: Chat):
     )
 
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.task_agent
-                                     ).send_message_to_user
+        message_handler=HumanToolkit(
+            options.project_id, Agents.task_agent
+        ).send_message_to_user
     )
     file_write_toolkit = FileToolkit(
         options.project_id, working_directory=working_directory
@@ -64,7 +65,7 @@ async def document_agent(options: Chat):
     note_toolkit = NoteTakingToolkit(
         options.project_id,
         Agents.document_agent,
-        working_directory=working_directory
+        working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
@@ -84,8 +85,9 @@ async def document_agent(options: Chat):
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
-        *HumanToolkit.
-        get_can_use_tools(options.project_id, Agents.document_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.document_agent
+        ),
         *mark_it_down_toolkit.get_tools(),
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
