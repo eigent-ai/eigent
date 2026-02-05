@@ -603,7 +603,10 @@ async def uninstall_tool(tool: str):
             if success:
                 return {
                     "success": True,
-                    "message": f"Successfully uninstalled {tool}"
+                    "message": (f"Successfully uninstalled {tool}"
+                    " and cleaned up"
+                    " authentication tokens"),
+                }
                     " and cleaned up"
                     " authentication tokens",
                 }
