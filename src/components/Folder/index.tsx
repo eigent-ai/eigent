@@ -449,38 +449,40 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </div>
             )}
             <div className="flex items-center">
-              {!isCollapsed && window.electronAPI?.getProjectFolderPath && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={async () => {
-                    try {
-                      if (!authStore.email || !projectStore.activeProjectId)
-                        return;
-                      const folderPath =
-                        await window.electronAPI.getProjectFolderPath(
-                          authStore.email,
-                          projectStore.activeProjectId
+              {!isCollapsed &&
+                window.electronAPI?.getProjectFolderPath &&
+                window.electronAPI?.openInIDE && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={async () => {
+                      try {
+                        if (!authStore.email || !projectStore.activeProjectId)
+                          return;
+                        const folderPath =
+                          await window.electronAPI.getProjectFolderPath(
+                            authStore.email,
+                            projectStore.activeProjectId
+                          );
+                        const result = await window.electronAPI.openInIDE(
+                          folderPath,
+                          authStore.preferredIDE
                         );
-                      const result = await window.electronAPI.openInIDE(
-                        folderPath,
-                        authStore.preferredIDE
-                      );
-                      if (!result.success) {
-                        toast.error(
-                          result.error || t('chat.failed-to-open-folder')
-                        );
+                        if (!result.success) {
+                          toast.error(
+                            result.error || t('chat.failed-to-open-folder')
+                          );
+                        }
+                      } catch (error) {
+                        console.error('Failed to open in IDE:', error);
+                        toast.error(t('chat.failed-to-open-folder'));
                       }
-                    } catch (error) {
-                      console.error('Failed to open in IDE:', error);
-                      toast.error(t('chat.failed-to-open-folder'));
-                    }
-                  }}
-                  title={t('chat.open-in-ide')}
-                >
-                  <SquareTerminal className="h-5 w-5 text-icon-secondary" />
-                </Button>
-              )}
+                    }}
+                    title={t('chat.open-in-ide')}
+                  >
+                    <SquareTerminal className="h-5 w-5 text-icon-secondary" />
+                  </Button>
+                )}
               <Button
                 variant="ghost"
                 size="icon"

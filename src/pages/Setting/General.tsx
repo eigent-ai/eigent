@@ -166,7 +166,7 @@ export default function SettingGeneral() {
           if (result?.value) {
             setProxyUrl(result.value);
           }
-        } catch (error) {
+        } catch (_error) {
           console.log('No proxy configured');
         }
       }
