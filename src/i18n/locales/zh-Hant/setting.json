@@ -192,5 +192,9 @@
   "gpt-5.1-name": "GPT-5.1",
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
-  "claude-sonnet-4-5-name": "Claude Sonnet 4-5"
+  "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+
+  "preferred-ide": "偏好 IDE",
+  "preferred-ide-description": "選擇開啟智能體專案資料夾時使用的應用程式。",
+  "system-file-manager": "系統檔案管理器"
 }
