@@ -48,5 +48,13 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Wir erleben hohen Datenverkehr. Bitte versuchen Sie es in wenigen Augenblicken erneut.",
   "new-project": "Neues Projekt",
   "no-reply-received-task-continue": "Keine Antwort erhalten, Aufgabe wird fortgesetzt",
-  "splitting-tasks": "Aufgaben werden geteilt..."
+  "splitting-tasks": "Aufgaben teilen",
+  "start-task": "Aufgabe starten",
+  "message-cannot-be-empty": "Nachricht darf nicht leer sein",
+  "remove-file": "Datei entfernen",
+  "drop-files-to-attach": "Dateien zum Anhängen ablegen",
+  "expand-input": "Eingabe erweitern (⌘P)",
+  "queued-tasks": "Aufgaben in Warteschlange",
+  "remove-queued-message": "Nachricht aus Warteschlange entfernen",
+  "no-agents-added": "Keine Agenten hinzugefügt"
 }

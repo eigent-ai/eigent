@@ -48,5 +48,13 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "トラフィックが多いため、しばらくしてからもう一度お試しください。",
   "new-project": "新規プロジェクト",
   "no-reply-received-task-continue": "応答がないため、タスクを続行します",
-  "splitting-tasks": "タスクを分割中..."
+  "splitting-tasks": "タスク分割",
+  "start-task": "タスク開始",
+  "message-cannot-be-empty": "メッセージは空にできません",
+  "remove-file": "ファイルを削除",
+  "drop-files-to-attach": "ファイルをドロップして添付",
+  "expand-input": "入力を展開 (⌘P)",
+  "queued-tasks": "キューに入れたタスク",
+  "remove-queued-message": "キューに入れたメッセージを削除",
+  "no-agents-added": "エージェントが追加されていません"
 }

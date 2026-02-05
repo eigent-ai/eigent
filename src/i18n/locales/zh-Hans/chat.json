@@ -48,5 +48,13 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "我们正在经历高流量。请稍后再试。",
   "new-project": "新项目",
   "no-reply-received-task-continue": "没有收到回复，任务继续",
-  "splitting-tasks": "正在拆分任务..."
+  "splitting-tasks": "拆分任务",
+  "start-task": "开始任务",
+  "message-cannot-be-empty": "消息不能为空",
+  "remove-file": "移除文件",
+  "drop-files-to-attach": "拖放文件以附加",
+  "expand-input": "展开输入 (⌘P)",
+  "queued-tasks": "排队任务",
+  "remove-queued-message": "移除排队消息",
+  "no-agents-added": "未添加智能体"
 }

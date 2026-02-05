@@ -8,5 +8,13 @@
   "save-changes": "Enregistrer les modifications",
   "description-optional": "Description (facultatif)",
   "agent-tool": "Outil d'agent",
-  "share": "Partager"
+  "share": "Partager",
+  "advanced-model-config": "Configuration Avancée du Modèle",
+  "use-custom-model": "Utiliser une configuration de modèle personnalisée",
+  "model-platform": "Plateforme de Modèle",
+  "select-platform": "Sélectionner la plateforme",
+  "model-type": "Type de Modèle",
+  "model-type-placeholder": "ex. gpt-4o-mini",
+  "worker-name-cannot-be-empty": "Le nom du travailleur ne peut pas être vide",
+  "worker-name-already-exists": "Le nom du travailleur existe déjà"
 }

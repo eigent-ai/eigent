@@ -48,5 +48,13 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Estamos experimentando mucho tráfico. Inténtalo de nuevo en unos momentos.",
   "new-project": "Nuevo proyecto",
   "no-reply-received-task-continue": "No se recibió respuesta, la tarea continúa",
-  "splitting-tasks": "Dividiendo tareas..."
+  "splitting-tasks": "Dividiendo tareas",
+  "start-task": "Iniciar tarea",
+  "message-cannot-be-empty": "El mensaje no puede estar vacío",
+  "remove-file": "Eliminar archivo",
+  "drop-files-to-attach": "Arrastra archivos para adjuntar",
+  "expand-input": "Expandir entrada (⌘P)",
+  "queued-tasks": "Tareas en cola",
+  "remove-queued-message": "Eliminar mensaje en cola",
+  "no-agents-added": "No se han agregado agentes"
 }

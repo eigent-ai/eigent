@@ -48,5 +48,13 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Nous connaissons un trafic élevé. Veuillez réessayer dans quelques instants.",
   "new-project": "Nouveau projet",
   "no-reply-received-task-continue": "Aucune réponse reçue, la tâche continue",
-  "splitting-tasks": "Division des tâches..."
+  "splitting-tasks": "Division des tâches",
+  "start-task": "Démarrer la tâche",
+  "message-cannot-be-empty": "Le message ne peut pas être vide",
+  "remove-file": "Supprimer le fichier",
+  "drop-files-to-attach": "Déposez les fichiers à joindre",
+  "expand-input": "Développer l'entrée (⌘P)",
+  "queued-tasks": "Tâches en file d'attente",
+  "remove-queued-message": "Supprimer le message en file d'attente",
+  "no-agents-added": "Aucun agent ajouté"
 }

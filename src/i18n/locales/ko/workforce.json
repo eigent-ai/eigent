@@ -8,5 +8,13 @@
   "save-changes": "변경 사항 저장",
   "description-optional": "설명 (선택 사항)",
   "agent-tool": "에이전트 도구",
-  "share": "공유"
+  "share": "공유",
+  "advanced-model-config": "고급 모델 구성",
+  "use-custom-model": "사용자 지정 모델 구성 사용",
+  "model-platform": "모델 플랫폼",
+  "select-platform": "플랫폼 선택",
+  "model-type": "모델 유형",
+  "model-type-placeholder": "예: gpt-4o-mini",
+  "worker-name-cannot-be-empty": "작업자 이름은 비워둘 수 없습니다",
+  "worker-name-already-exists": "작업자 이름이 이미 존재합니다"
 }
