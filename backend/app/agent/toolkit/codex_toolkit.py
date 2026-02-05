@@ -64,8 +64,9 @@ def _generate_pkce_pair() -> tuple[str, str]:
     """
     code_verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"="
-                                                             ).decode("ascii")
+    code_challenge = (
+        base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    )
     return code_verifier, code_challenge
 
 
@@ -96,10 +97,10 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.end_headers()
             # Escape HTML to prevent XSS from query parameters
             from html import escape
+
             self.wfile.write(
                 f"<html><body><h1>Authorization failed</h1>"
-                f"<p>{escape(error)}: {escape(desc)}</p></body></html>".encode(
-                )
+                f"<p>{escape(error)}: {escape(desc)}</p></body></html>".encode()
             )
         else:
             self.send_response(400)
@@ -144,9 +145,7 @@ class CodexOAuthManager:
                 expires_in = token_data.pop(
                     "expires_in", CODEX_TOKEN_DEFAULT_LIFETIME
                 )
-                token_data["expires_at"] = (
-                    token_data["saved_at"] + expires_in
-                )
+                token_data["expires_at"] = token_data["saved_at"] + expires_in
             else:
                 token_data.pop("expires_in", None)
 
@@ -276,12 +275,11 @@ class CodexOAuthManager:
             # Merge with existing data
             token.update(
                 {
-                    "access_token":
-                    new_token["access_token"],
-                    "expires_in":
-                    new_token.get("expires_in", CODEX_TOKEN_DEFAULT_LIFETIME),
-                    "saved_at":
-                    int(time.time()),
+                    "access_token": new_token["access_token"],
+                    "expires_in": new_token.get(
+                        "expires_in", CODEX_TOKEN_DEFAULT_LIFETIME
+                    ),
+                    "saved_at": int(time.time()),
                 }
             )
             if new_token.get("refresh_token"):
