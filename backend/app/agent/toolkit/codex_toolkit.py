@@ -19,15 +19,19 @@ OPENAI_API_KEY for agent usage.
 """
 
 import base64
+import getpass
 import hashlib
 import json
 import logging
 import os
+import platform
 import secrets
+import socket
 import stat
 import threading
 import time
 import webbrowser
+from html import escape as html_escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -68,10 +72,6 @@ def _get_machine_identifier() -> bytes:
     Returns:
         Machine identifier as bytes.
     """
-    import getpass
-    import platform
-    import socket
-
     components = [
         getpass.getuser(),
         socket.gethostname(),
@@ -197,11 +197,10 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             # Escape HTML to prevent XSS from query parameters
-            from html import escape
-
             self.wfile.write(
                 f"<html><body><h1>Authorization failed</h1>"
-                f"<p>{escape(error)}: {escape(desc)}</p></body></html>".encode()
+                f"<p>{html_escape(error)}: {html_escape(desc)}</p>"
+                f"</body></html>".encode()
             )
         else:
             self.send_response(400)
