@@ -21,8 +21,8 @@ import { LocaleEnum, switchLanguage } from '@/i18n';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
-import { createRef, RefObject, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { createRef, RefObject, useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -234,52 +234,74 @@ export default function SettingGeneral() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="text-base font-bold leading-12 text-text-body">
-          {t('setting.account')}
-        </div>
-        <div className="mb-4 text-sm leading-13">
-          {t('setting.you-are-currently-signed-in-with', {
-            email: authStore.email,
-          })}
-        </div>
-        <div className="flex items-center gap-sm">
-          <Button
-            onClick={() => {
-              window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
-            }}
-            variant="primary"
-            size="xs"
-          >
-            <Settings className="h-4 w-4 text-button-primary-icon-default" />
-            {t('setting.manage')}
-          </Button>
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => {
-              chatStore.clearTasks();
-
-              resetInstallation(); // Reset installation state for new account
-              setNeedsBackendRestart(true); // Mark that backend is restarting
-
-              authStore.logout();
-              navigate('/login');
-            }}
-          >
-            <LogOut className="h-4 w-4 text-button-tertiery-text-default" />
-            {t('setting.log-out')}
-          </Button>
+    <div className="m-auto h-auto w-full flex-1">
+      {/* Header Section */}
+      <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-6 pt-8">
+        <div className="flex w-full flex-row items-center justify-between gap-4">
+          <div className="flex flex-col">
+            <div className="text-heading-sm font-bold text-text-heading">
+              {t('setting.general')}
+            </div>
+          </div>
         </div>
       </div>
-      <div className="rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="text-text-primary text-base font-bold leading-12">
-          {t('setting.language')}
+      {/* Content Section */}
+      <div className="mb-8 flex flex-col gap-6">
+        {/* Profile Section */}
+        <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex flex-col gap-2">
+            <div className="text-body-base font-bold text-text-heading">
+              {t('setting.profile')}
+            </div>
+            <div className="text-body-sm">
+              <Trans
+                i18nKey="setting.you-are-currently-signed-in-with"
+                values={{ email: authStore.email }}
+                components={{
+                  email: <span className="text-text-information underline" />,
+                }}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-sm">
+            <Button
+              onClick={() => {
+                window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
+              }}
+              variant="primary"
+              size="sm"
+            >
+              <Settings className="h-4 w-4 text-button-primary-icon-default" />
+              {t('setting.manage')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                chatStore.clearTasks();
+
+                resetInstallation(); // Reset installation state for new account
+                setNeedsBackendRestart(true); // Mark that backend is restarting
+
+                authStore.logout();
+                navigate('/login');
+              }}
+            >
+              <LogOut className="h-4 w-4 text-button-tertiery-text-default" />
+              {t('setting.log-out')}
+            </Button>
+          </div>
         </div>
-        <div className="mt-md">
+
+        {/* Language Section */}
+        <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex flex-1 items-center">
+            <div className="text-body-base font-bold text-text-heading">
+              {t('setting.language')}
+            </div>
+          </div>
           <Select value={language} onValueChange={switchLanguage}>
-            <SelectTrigger>
+            <SelectTrigger className="w-48">
               <SelectValue placeholder={t('setting.select-language')} />
             </SelectTrigger>
             <SelectContent className="border bg-input-bg-default">
@@ -296,78 +318,78 @@ export default function SettingGeneral() {
             </SelectContent>
           </Select>
         </div>
-      </div>
-      <div className="rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="text-text-primary text-base font-bold leading-12">
-          {t('setting.appearance')}
-        </div>
-        <div className="mt-md flex items-center gap-md">
-          {themeList.map((item: any) => (
-            <div
-              key={item.label}
-              className="group flex flex-col items-center gap-sm hover:cursor-pointer"
-              onClick={() => setAppearance(item.value)}
-            >
-              <img
-                src={item.img}
-                className={`group-hover:border-bg-fill-info-primary aspect-[183/91.67] h-[91.67px] rounded-lg border border-solid border-transparent transition-all ${
-                  item.value == appearance ? 'border-bg-fill-info-primary' : ''
-                }`}
-                alt=""
-              />
-              <div
-                className={`text-text-primary text-sm leading-13 group-hover:underline ${
-                  item.value == appearance ? 'underline' : ''
-                }`}
-              >
-                {t(item.label)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="text-text-primary text-base font-bold leading-12">
-          {t('setting.network-proxy')}
-        </div>
-        <div className="text-text-secondary mb-4 text-sm leading-13">
-          {t('setting.network-proxy-description')}
-        </div>
-        <div className="flex flex-col gap-md">
-          <div className="flex items-center gap-md">
-            <Input
-              placeholder={t('setting.proxy-placeholder')}
-              value={proxyUrl}
-              onChange={(e) => {
-                setProxyUrl(e.target.value);
-                setProxyNeedsRestart(false);
-              }}
-              className="flex-1"
-            />
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleSaveProxy}
-              disabled={isProxySaving}
-            >
-              {isProxySaving ? t('setting.saving') : t('setting.save')}
-            </Button>
+
+        {/* Appearance Section */}
+        <div className="item-center flex flex-col justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="text-body-base font-bold text-text-heading">
+            {t('setting.appearance')}
           </div>
-          {proxyNeedsRestart && (
-            <div className="flex items-center gap-sm">
-              <span className="text-sm text-text-warning">
-                {t('setting.proxy-restart-hint')}
-              </span>
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => window.electronAPI?.restartApp()}
+          <div className="flex w-full flex-row items-center gap-md">
+            {themeList.map((item: any) => (
+              <div
+                key={item.label}
+                className="group flex w-full flex-col items-center gap-sm hover:cursor-pointer"
+                onClick={() => setAppearance(item.value)}
               >
-                {t('setting.restart-to-apply')}
-              </Button>
-            </div>
-          )}
+                <img
+                  src={item.img}
+                  className={`group-hover:border-bg-fill-info-primary aspect-[183/91.67] w-full rounded-lg border border-solid border-transparent transition-all ${
+                    item.value == appearance
+                      ? 'border-bg-fill-info-primary'
+                      : ''
+                  }`}
+                  alt=""
+                />
+                <div
+                  className={`text-sm text-text-primary group-hover:underline ${
+                    item.value == appearance ? 'underline' : ''
+                  }`}
+                >
+                  {t(item.label)}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
+      </div>
+      <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="flex flex-col gap-1">
+          <div className="text-body-base font-bold text-text-heading">
+            {t('setting.network-proxy')}
+          </div>
+          <div className="mb-4 text-sm leading-13 text-text-secondary">
+            {t('setting.network-proxy-description')}
+          </div>
+        </div>
+        <Input
+          placeholder={t('setting.proxy-placeholder')}
+          value={proxyUrl}
+          onChange={(e) => {
+            setProxyUrl(e.target.value);
+            setProxyNeedsRestart(false);
+          }}
+          className="flex-1"
+          size="default"
+          note={proxyNeedsRestart ? t('setting.proxy-restart-hint') : undefined}
+          trailingButton={
+            <Button
+              variant={proxyNeedsRestart ? 'outline' : 'primary'}
+              size="sm"
+              onClick={
+                proxyNeedsRestart
+                  ? () => window.electronAPI?.restartApp()
+                  : handleSaveProxy
+              }
+              disabled={!proxyNeedsRestart && isProxySaving}
+            >
+              {proxyNeedsRestart
+                ? t('setting.restart-to-apply')
+                : isProxySaving
+                  ? t('setting.saving')
+                  : t('setting.save')}
+            </Button>
+          }
+        />
       </div>
     </div>
   );
