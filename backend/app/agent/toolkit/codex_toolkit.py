@@ -32,16 +32,24 @@ from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
+from filelock import FileLock
 
 from app.utils.oauth_state_manager import oauth_state_manager
 
 logger = logging.getLogger("codex_toolkit")
 
 # OpenAI / Codex OAuth constants
+# Fixed public client_id from the Codex CLI (not a secret).
 CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_AUTH_URL = "https://auth.openai.com/authorize"
 CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
 CODEX_AUDIENCE = "https://api.openai.com/v1"
+
+# Token storage path
+CODEX_TOKEN_DIR = os.path.join(
+    os.path.expanduser("~"), ".eigent", "tokens", "codex"
+)
+CODEX_TOKEN_PATH = os.path.join(CODEX_TOKEN_DIR, "codex_token.json")
 
 # Token lifetime defaults (seconds)
 CODEX_TOKEN_DEFAULT_LIFETIME = 3600  # 1 hour
@@ -112,13 +120,7 @@ class CodexOAuthManager:
 
     @staticmethod
     def _token_path() -> str:
-        return os.path.join(
-            os.path.expanduser("~"),
-            ".eigent",
-            "tokens",
-            "codex",
-            "codex_token.json",
-        )
+        return CODEX_TOKEN_PATH
 
     @classmethod
     def save_token(cls, token_data: dict) -> bool:
@@ -135,17 +137,22 @@ class CodexOAuthManager:
             if "saved_at" not in token_data:
                 token_data["saved_at"] = int(time.time())
 
-            if "expires_in" in token_data and "expires_at" not in token_data:
-                token_data["expires_at"] = (
-                    token_data["saved_at"] + token_data["expires_in"]
+            # Compute absolute expiry from the relative expires_in value
+            # (if present), then discard expires_in so we only store the
+            # absolute timestamp.
+            if "expires_at" not in token_data:
+                expires_in = token_data.pop(
+                    "expires_in", CODEX_TOKEN_DEFAULT_LIFETIME
                 )
-            elif "expires_at" not in token_data:
                 token_data["expires_at"] = (
-                    token_data["saved_at"] + CODEX_TOKEN_DEFAULT_LIFETIME
+                    token_data["saved_at"] + expires_in
                 )
+            else:
+                token_data.pop("expires_in", None)
 
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w") as f:
+            lock = FileLock(path + ".lock")
+            with lock, open(path, "w") as f:
                 json.dump(token_data, f, indent=2)
             logger.info("Saved Codex token to %s", path)
 
@@ -163,7 +170,8 @@ class CodexOAuthManager:
         path = cls._token_path()
         if os.path.exists(path):
             try:
-                with open(path) as f:
+                lock = FileLock(path + ".lock")
+                with lock, open(path) as f:
                     return json.load(f)
             except Exception:
                 pass

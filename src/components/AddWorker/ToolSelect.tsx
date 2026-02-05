@@ -36,6 +36,12 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
+
+// Codex OAuth constants
+const CODEX_CONFIG_GROUP = 'Codex';
+const CODEX_CONFIG_NAME = 'OPENAI_API_KEY';
+const CODEX_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 interface McpItem {
   id: number;
   name: string;
@@ -168,6 +174,7 @@ const ToolSelect = forwardRef<
                           config_value: 'exists',
                         };
 
+<<<<<<< HEAD
                         if (existing) {
                           await proxyFetchPut(
                             `/api/configs/${existing.id}`,
@@ -232,13 +239,14 @@ const ToolSelect = forwardRef<
                         const existing = Array.isArray(existingConfigs)
                           ? existingConfigs.find(
                               (c: any) =>
-                                c.config_group?.toLowerCase() === 'codex' &&
-                                c.config_name === 'OPENAI_API_KEY'
+                                c.config_group?.toLowerCase() ===
+                                  CODEX_CONFIG_GROUP.toLowerCase() &&
+                                c.config_name === CODEX_CONFIG_NAME
                             )
                           : null;
                         const configPayload = {
-                          config_group: 'Codex',
-                          config_name: 'OPENAI_API_KEY',
+                          config_group: CODEX_CONFIG_GROUP,
+                          config_name: CODEX_CONFIG_NAME,
                           config_value: 'exists',
                         };
                         if (existing) {
@@ -265,9 +273,9 @@ const ToolSelect = forwardRef<
                       };
                       addOption(codexItem, true);
                     } else if (response.status === 'authorizing') {
+                      // TODO: Improve response status string handling (e.g. use an enum or constants)
                       const start = Date.now();
-                      const timeoutMs = 5 * 60 * 1000;
-                      while (Date.now() - start < timeoutMs) {
+                      while (Date.now() - start < CODEX_POLL_TIMEOUT_MS) {
                         try {
                           const statusResponse = await fetchGet(
                             '/oauth/status/codex'
@@ -283,13 +291,13 @@ const ToolSelect = forwardRef<
                                 ? existingConfigs.find(
                                     (c: any) =>
                                       c.config_group?.toLowerCase() ===
-                                        'codex' &&
-                                      c.config_name === 'OPENAI_API_KEY'
+                                        CODEX_CONFIG_GROUP.toLowerCase() &&
+                                      c.config_name === CODEX_CONFIG_NAME
                                   )
                                 : null;
                               const configPayload = {
-                                config_group: 'Codex',
-                                config_name: 'OPENAI_API_KEY',
+                                config_group: CODEX_CONFIG_GROUP,
+                                config_name: CODEX_CONFIG_NAME,
                                 config_value: 'exists',
                               };
                               if (existing) {

@@ -347,6 +347,9 @@ export default function SettingMCP() {
                 );
               }
             };
+            // TODO: Refactor – Codex and MCP install/background handling share
+            // a lot of logic with the other OAuth integrations above. Consider
+            // extracting a shared helper to reduce duplication.
           } else if (key.toLowerCase() === 'codex') {
             onInstall = async () => {
               try {

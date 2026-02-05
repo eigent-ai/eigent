@@ -607,9 +607,6 @@ async def uninstall_tool(tool: str):
                     " and cleaned up"
                     " authentication tokens"),
                 }
-                    " and cleaned up"
-                    " authentication tokens",
-                }
             else:
                 return {
                     "success": True,
