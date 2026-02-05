@@ -24,7 +24,7 @@ interface TaskItemProps {
     content: string;
   };
   taskIndex: number;
-  onUpdate: (content: string, immediate?: boolean) => void;
+  onUpdate: (content: string) => void;
   onDelete: () => void;
 }
 
@@ -115,8 +115,8 @@ export function TaskItem({
           ) : (
             <Button
               onClick={(e) => {
-                // Explicitly persist current content on Save click (immediate, no debounce)
-                onUpdate(taskInfo.content, true);
+                // Explicitly persist current content on Save click
+                onUpdate(taskInfo.content);
                 handleFocus(e, false);
               }}
               className="rounded-full"

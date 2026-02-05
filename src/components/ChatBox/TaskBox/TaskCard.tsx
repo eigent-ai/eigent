@@ -38,11 +38,7 @@ interface TaskCardProps {
   progressValue: number;
   summaryTask: string;
   onAddTask: () => void;
-  onUpdateTask: (
-    taskIndex: number,
-    content: string,
-    immediate?: boolean
-  ) => void;
+  onUpdateTask: (taskIndex: number, content: string) => void;
   onDeleteTask: (taskIndex: number) => void;
   clickable?: boolean;
   chatId?: string;
@@ -339,9 +335,7 @@ export function TaskCard({
                     <TaskItem
                       taskInfo={task}
                       taskIndex={taskIndex}
-                      onUpdate={(content, immediate) =>
-                        onUpdateTask(taskIndex, content, immediate)
-                      }
+                      onUpdate={(content) => onUpdateTask(taskIndex, content)}
                       onDelete={() => onDeleteTask(taskIndex)}
                     />
                   </div>
