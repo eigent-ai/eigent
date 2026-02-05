@@ -340,7 +340,9 @@ function fixScriptShebangs(venvPath, venvName) {
  * Main function
  */
 function main() {
-  console.log('🔧 Fixing Python symlinks and shebangs in venv directories...');
+  console.log(
+    '🔧 Fixing Python symlinks and placeholders in venv directories...'
+  );
   console.log('==========================================================\n');
 
   const venvDirs = [
@@ -384,7 +386,7 @@ function main() {
     console.log(
       `✅ Fixed symlinks in ${symlinkSuccessCount}/${totalCount} venv(s)`
     );
-    console.log(`✅ Fixed shebangs in ${totalShebangsFixed} script(s)`);
+    console.log(`✅ Fixed placeholders in ${totalShebangsFixed} script(s)`);
     console.log('✅ Venvs are now fully portable!');
   }
 }

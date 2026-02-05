@@ -21,7 +21,7 @@
     "fix-symlinks": "node scripts/fix-symlinks.js",
     "clean-symlinks": "node scripts/clean-symlinks.js",
     "test-signing": "node scripts/test-signing.js",
-    "compile-babel": "cd backend && uv run pybabel compile -d lang",
+    "compile-babel": "node scripts/compile-babel.js",
     "prebuild:deps": "npm run preinstall-deps && npm run compile-babel && npm run fix-venv-paths && npm run fix-symlinks",
     "prebuild:deps:clean": "npm run prebuild:deps && npm run clean-symlinks",
     "prebuild:compile": "tsc -p tsconfig.build.json && vite build",

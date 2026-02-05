@@ -912,9 +912,10 @@ async function installPythonDeps(uvPath) {
   console.log('✅ Python dependencies installed');
 
   console.log('📝 Compiling babel...');
-  execSync(`"${uvPath}" run pybabel compile -d lang`, {
+
+  execSync(`"${pythonExePath}" -m babel.messages.frontend compile -d lang`, {
     cwd: BACKEND_DIR,
-    env: env,
+    env: { ...env },
     stdio: 'inherit',
   });
 
