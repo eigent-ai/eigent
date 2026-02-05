@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus, TriggerType } from '@/types';
 import { create } from 'zustand';
 
@@ -224,15 +223,6 @@ interface TriggerTaskStore {
   getExecutionMapping: (chatTaskId: string) => ExecutionMapping | undefined;
   /** Remove execution mapping */
   removeExecutionMapping: (chatTaskId: string) => void;
-  /** Update execution status on the backend */
-  updateExecutionStatus: (
-    chatTaskId: string,
-    status: ExecutionStatus,
-    tokens: number,
-    errorMessage?: string
-  ) => Promise<void>;
-  /** Check if a task has been reported */
-  isExecutionReported: (chatTaskId: string) => boolean;
 }
 
 export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
@@ -442,82 +432,5 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
       newMappings.delete(chatTaskId);
       return { executionMappings: newMappings };
     });
-  },
-
-  updateExecutionStatus: async (
-    chatTaskId: string,
-    status: ExecutionStatus,
-    tokens: number,
-    errorMessage?: string
-  ) => {
-    const { executionMappings, removeExecutionMapping, completeTask, failTask } = get();
-    const mapping = executionMappings.get(chatTaskId);
-
-    if (!mapping) {
-      console.warn(
-        '[TriggerTaskStore] No execution mapping found for chat task:',
-        chatTaskId
-      );
-      return;
-    }
-
-    if (mapping.reported) {
-      console.log(
-        '[TriggerTaskStore] Execution already reported for chat task:',
-        chatTaskId
-      );
-      return;
-    }
-
-    try {
-      await proxyUpdateTriggerExecution(
-        mapping.executionId,
-        {
-          status,
-          completed_at: new Date().toISOString(),
-          ...(errorMessage && { error_message: errorMessage }),
-          tokens_used: tokens,
-        },
-        { projectId: mapping.projectId }
-      );
-
-      // Mark as reported
-      set((state) => {
-        const newMappings = new Map(state.executionMappings);
-        const updatedMapping = newMappings.get(chatTaskId);
-        if (updatedMapping) {
-          updatedMapping.reported = true;
-        }
-        return { executionMappings: newMappings };
-      });
-
-      console.log(
-        '[TriggerTaskStore] Execution status updated:',
-        mapping.executionId,
-        '->',
-        status
-      );
-
-      // Complete or fail the trigger task based on status
-      // This moves the task from currentTask to taskHistory
-      if (status === ExecutionStatus.Completed) {
-        completeTask(mapping.triggerTaskId);
-      } else if (status === ExecutionStatus.Failed || status === ExecutionStatus.Cancelled) {
-        failTask(mapping.triggerTaskId, errorMessage || 'Task failed');
-      }
-
-      // Clean up mapping after successful update
-      removeExecutionMapping(chatTaskId);
-    } catch (err) {
-      console.warn(
-        `[TriggerTaskStore] Failed to update execution status to ${status}:`,
-        err
-      );
-    }
-  },
-
-  isExecutionReported: (chatTaskId: string) => {
-    const mapping = get().executionMappings.get(chatTaskId);
-    return mapping?.reported ?? false;
   },
 }));

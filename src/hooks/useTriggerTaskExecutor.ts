@@ -1,5 +1,5 @@
 import { proxyFetchGet } from '@/api/http';
-import { useProjectStore } from '@/store/projectStore';
+import { ProjectType, useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import {
   TriggeredTask,
@@ -87,7 +87,14 @@ export function useTriggerTaskExecutor() {
         });
 
         // Use replayProject to load the project from history
-        store.replayProject(taskIdsList, question, projectId, historyId);
+        // store.replayProject(taskIdsList, question, projectId, historyId);
+        store.createProject(
+          `Trigger Project ${question}`,
+          `No tasks to replay`,
+          projectId,
+          ProjectType.NORMAL,
+          historyId
+        );
 
         return true;
       } catch (error) {

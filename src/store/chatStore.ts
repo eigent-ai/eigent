@@ -26,6 +26,7 @@ import {
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
   AgentMessageStatus,
@@ -77,6 +78,9 @@ interface Task {
   isContextExceeded?: boolean;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
+  // Trigger execution ID for tracking trigger task completion
+  executionId?: string;
+  nextExecutionId?: string;
 }
 
 export interface ChatStore {
@@ -96,7 +100,8 @@ export interface ChatStore {
     shareToken?: string,
     delayTime?: number,
     messageContent?: string,
-    messageAttaches?: File[]
+    messageAttaches?: File[],
+    executionId?: string
   ) => Promise<void>;
   handleConfirmTask: (
     project_id: string,
@@ -170,6 +175,11 @@ export interface ChatStore {
   setNextTaskId: (taskId: string | null) => void;
   setStreamingDecomposeText: (taskId: string, text: string) => void;
   clearStreamingDecomposeText: (taskId: string) => void;
+  setExecutionId: (taskId: string, executionId: string | undefined) => void;
+  setNextExecutionId: (
+    taskId: string,
+    nextExecutionId: string | undefined
+  ) => void;
 }
 
 export type VanillaChatStore = {
@@ -228,23 +238,95 @@ const ttftTracking: Record<
   { confirmedAt: number; firstTokenLogged: boolean }
 > = {};
 
-// Helper function to update trigger execution status using triggerTaskStore
+// Track which executionIds have already been reported to prevent duplicate updates
+const reportedExecutionIds = new Set<string>();
+
+// Helper function to update trigger execution status using executionId from task
 const updateTriggerExecutionStatus = async (
-  _projectStore: any,
-  _project_id: string | null | undefined,
+  chatStoreState: ChatStore,
+  projectId: string | null | undefined,
   currentTaskId: string,
   status: import('@/types').ExecutionStatus,
   tokens: number,
   errorMessage?: string
 ) => {
-  // Use triggerTaskStore for reliable execution status tracking
-  const triggerTaskStore = useTriggerTaskStore.getState();
-  await triggerTaskStore.updateExecutionStatus(
+  console.log('[updateTriggerExecutionStatus] Called with:', {
+    projectId,
     currentTaskId,
     status,
     tokens,
-    errorMessage
-  );
+  });
+
+  // Get executionId directly from the task
+  const executionId = chatStoreState.tasks[currentTaskId]?.executionId;
+
+  if (!executionId) {
+    // No executionId means this is not a trigger-initiated task, skip silently
+    console.log(
+      '[updateTriggerExecutionStatus] No executionId found for task:',
+      currentTaskId,
+      '- skipping (not a trigger-initiated task)'
+    );
+    return;
+  }
+
+  // Check if this execution has already been reported
+  if (reportedExecutionIds.has(executionId)) {
+    console.log(
+      '[updateTriggerExecutionStatus] Execution already reported:',
+      executionId
+    );
+    return;
+  }
+
+  try {
+    // Mark as reported to prevent duplicate updates
+    reportedExecutionIds.add(executionId);
+
+    // Call the API to update execution status
+    await proxyUpdateTriggerExecution(
+      executionId,
+      {
+        status,
+        completed_at: new Date().toISOString(),
+        ...(errorMessage && { error_message: errorMessage }),
+        tokens_used: tokens,
+      },
+      { projectId: projectId || undefined }
+    );
+
+    console.log(
+      '[updateTriggerExecutionStatus] Execution status updated:',
+      executionId,
+      '->',
+      status
+    );
+
+    // Complete or fail the current trigger task in triggerTaskStore
+    const triggerTaskStore = useTriggerTaskStore.getState();
+    const currentTask = triggerTaskStore.currentTask;
+
+    if (currentTask && currentTask.executionId === executionId) {
+      if (status === ExecutionStatus.Completed) {
+        triggerTaskStore.completeTask(currentTask.id);
+      } else if (
+        status === ExecutionStatus.Failed ||
+        status === ExecutionStatus.Cancelled
+      ) {
+        triggerTaskStore.failTask(
+          currentTask.id,
+          errorMessage || 'Task failed'
+        );
+      }
+    }
+  } catch (err) {
+    console.warn(
+      `[updateTriggerExecutionStatus] Failed to update execution status to ${status}:`,
+      err
+    );
+    // Remove from reported set so it can be retried
+    reportedExecutionIds.delete(executionId);
+  }
 };
 
 const chatStore = (initial?: Partial<ChatStore>) =>
@@ -292,6 +374,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             isTakeControl: false,
             isTaskEdit: false,
             streamingDecomposeText: '',
+            executionId: undefined,
           },
         },
       }));
@@ -426,7 +509,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       shareToken?: string,
       delayTime?: number,
       messageContent?: string,
-      messageAttaches?: File[]
+      messageAttaches?: File[],
+      executionId?: string
     ) => {
       // ✅ Wait for backend to be ready before starting task (except for replay/share)
       if (!type || type === 'normal') {
@@ -482,6 +566,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           newTaskId = newChatResult.taskId;
           targetChatStore = newChatResult.chatStore;
           targetChatStore.getState().setIsPending(newTaskId, true);
+
+          // Set executionId if this is a trigger-initiated task
+          if (executionId) {
+            targetChatStore.getState().setExecutionId(newTaskId, executionId);
+          }
 
           //From handleSend if message is given
           // Add the message to the new chatStore if provided
@@ -850,6 +939,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 updateLockedReferences(newChatStore, newTaskId);
                 newChatStore.getState().setIsPending(newTaskId, false);
 
+                // If nextExecutionId exists, pass it to new task
+                if (previousChatStore.tasks[currentTaskId]?.nextExecutionId) {
+                  newChatStore
+                    .getState()
+                    .setExecutionId(
+                      newTaskId,
+                      previousChatStore.tasks[currentTaskId]?.nextExecutionId
+                    );
+                }
+
                 if (type === 'replay') {
                   newChatStore
                     .getState()
@@ -918,7 +1017,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   const currentTaskId = getCurrentTaskId();
                   // Update trigger execution status to Completed for connection closed by server
                   updateTriggerExecutionStatus(
-                    projectStore,
+                    getCurrentChatStore(),
                     project_id,
                     currentTaskId,
                     ExecutionStatus.Running,
@@ -1268,6 +1367,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               step: AgentStep.WAIT_CONFIRM,
               isConfirm: false,
             });
+
+            // Update trigger execution status to Completed for simple question/answer flow
+            // This handles cases where the task ends with wait_confirm instead of the end step
+            updateTriggerExecutionStatus(
+              currentChatStore,
+              project_id,
+              currentTaskId,
+              ExecutionStatus.Completed,
+              currentChatStore.tasks[currentTaskId]?.tokens || 0
+            );
+
             return;
           }
           // Task State
@@ -1465,7 +1575,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ) {
                 // This is a quick reply - update trigger execution status to Completed
                 updateTriggerExecutionStatus(
-                  projectStore,
+                  getCurrentChatStore(),
                   project_id,
                   currentTaskId,
                   ExecutionStatus.Completed,
@@ -1984,7 +2094,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               uploadLog(currentTaskId, type);
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
-                projectStore,
+                getCurrentChatStore(),
                 project_id,
                 currentTaskId,
                 ExecutionStatus.Failed,
@@ -2296,7 +2406,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             // Update trigger execution status to Completed
             updateTriggerExecutionStatus(
-              projectStore,
+              getCurrentChatStore(),
               project_id,
               currentTaskId,
               ExecutionStatus.Completed,
@@ -2420,7 +2530,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const currentTaskId = getCurrentTaskId();
           // Update trigger execution status to Completed for connection closed by server
           updateTriggerExecutionStatus(
-            projectStore,
+            getCurrentChatStore(),
             project_id,
             currentTaskId,
             ExecutionStatus.Cancelled,
@@ -3230,6 +3340,36 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...state.tasks[taskId],
               streamingDecomposeText: '',
+            },
+          },
+        };
+      });
+    },
+    setExecutionId: (taskId, executionId) => {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              executionId,
+            },
+          },
+        };
+      });
+    },
+    setNextExecutionId: (taskId, nextExecutionId) => {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              nextExecutionId,
             },
           },
         };

@@ -119,7 +119,11 @@ export default function ChatBox(): JSX.Element {
 
   const navigate = useNavigate();
 
-  const handleSend = async (messageStr?: string, taskId?: string) => {
+  const handleSend = async (
+    messageStr?: string,
+    taskId?: string,
+    executionId?: string
+  ) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
     const tempMessageContent = messageStr || message;
@@ -254,7 +258,8 @@ export default function ChatBox(): JSX.Element {
                 undefined,
                 undefined,
                 tempMessageContent,
-                attachesToSend
+                attachesToSend,
+                executionId
               );
             } catch (err: any) {
               console.error('Failed to start task:', err);
@@ -274,6 +279,7 @@ export default function ChatBox(): JSX.Element {
             //Generate nextId in case new chatStore is created to sync with the backend beforehand
             const nextTaskId = generateUniqueId();
             chatStore.setNextTaskId(nextTaskId);
+            chatStore.setNextExecutionId(taskId as string, executionId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
             // This reuses the existing SSE connection and step_solve loop
@@ -329,7 +335,8 @@ export default function ChatBox(): JSX.Element {
               undefined,
               undefined,
               tempMessageContent,
-              attachesToSend
+              attachesToSend,
+              executionId
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
           } catch (err: any) {
@@ -784,7 +791,7 @@ export default function ChatBox(): JSX.Element {
       // Dequeue the task from triggerTaskStore (marks as running)
       taskToProcess = triggerTaskStoreState.dequeueTask();
       if (!taskToProcess) return;
-      
+
       // Skip if we've already started processing this trigger task
       if (processedTriggerTaskRef.current === taskToProcess.id) {
         console.log(
@@ -803,8 +810,7 @@ export default function ChatBox(): JSX.Element {
     // Mark this trigger task as being processed to prevent duplicate sends
     processedTriggerTaskRef.current = taskToProcess.id;
 
-    // Register execution mapping for this task
-    // The executionId from the queued task will be used for tracking
+    // Register execution mapping for this task (for external tracking)
     if (taskToProcess.executionId && projectStore.activeProjectId) {
       const targetTaskId = chatStore.nextTaskId || taskId;
 
@@ -817,10 +823,10 @@ export default function ChatBox(): JSX.Element {
     }
 
     // Process the queued message via handleSend
-    // Use the formattedMessage from the trigger task
+    // Pass executionId so startTask can set it on the new task
     const messageContent =
       taskToProcess.formattedMessage || taskToProcess.taskPrompt;
-    handleSend(messageContent);
+    handleSend(messageContent, undefined, taskToProcess.executionId);
   }, [
     projectStore.activeProjectId,
     triggerTaskStoreState.taskQueue,
@@ -1088,7 +1094,7 @@ export default function ChatBox(): JSX.Element {
                         href="https://www.eigent.ai/terms-of-use"
                         target="_blank"
                         className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()} rel="noreferrer"
                       >
                         {t('layout.terms-of-use')}
                       </a>{' '}
@@ -1097,7 +1103,7 @@ export default function ChatBox(): JSX.Element {
                         href="https://www.eigent.ai/privacy-policy"
                         target="_blank"
                         className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()} rel="noreferrer"
                       >
                         {t('layout.privacy-policy')}
                       </a>
