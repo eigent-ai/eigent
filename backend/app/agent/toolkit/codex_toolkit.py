@@ -24,14 +24,17 @@ import json
 import logging
 import os
 import secrets
+import stat
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from filelock import FileLock
 
 from app.utils.oauth_state_manager import oauth_state_manager
@@ -49,11 +52,109 @@ CODEX_AUDIENCE = "https://api.openai.com/v1"
 CODEX_TOKEN_DIR = os.path.join(
     os.path.expanduser("~"), ".eigent", "tokens", "codex"
 )
-CODEX_TOKEN_PATH = os.path.join(CODEX_TOKEN_DIR, "codex_token.json")
+CODEX_TOKEN_PATH = os.path.join(CODEX_TOKEN_DIR, "codex_token.enc")
 
 # Token lifetime defaults (seconds)
 CODEX_TOKEN_DEFAULT_LIFETIME = 3600  # 1 hour
 CODEX_TOKEN_REFRESH_THRESHOLD = 300  # 5 minutes before expiry
+
+
+def _get_machine_identifier() -> bytes:
+    r"""Get a machine-specific identifier for key derivation.
+
+    Combines multiple machine-specific values to create a stable identifier
+    that is unique to this machine but consistent across restarts.
+
+    Returns:
+        Machine identifier as bytes.
+    """
+    import getpass
+    import platform
+    import socket
+
+    components = [
+        getpass.getuser(),
+        socket.gethostname(),
+        platform.node(),
+        # Add home directory path for additional uniqueness
+        os.path.expanduser("~"),
+    ]
+
+    # Try to get machine-id on Linux
+    machine_id_paths = [
+        "/etc/machine-id",
+        "/var/lib/dbus/machine-id",
+    ]
+    for path in machine_id_paths:
+        try:
+            with open(path) as f:
+                components.append(f.read().strip())
+                break
+        except (FileNotFoundError, PermissionError):
+            continue
+
+    return "|".join(components).encode("utf-8")
+
+
+def _derive_encryption_key() -> bytes:
+    r"""Derive an encryption key from machine-specific identifiers.
+
+    Uses PBKDF2 to derive a Fernet-compatible key from machine identifiers.
+    This ties the encryption to the specific machine without storing a key file.
+
+    Returns:
+        The Fernet encryption key as bytes.
+    """
+    # Fixed salt for this application (not secret, just ensures uniqueness)
+    # The security comes from the machine-specific identifier
+    app_salt = b"eigent-codex-token-encryption-v1"
+
+    machine_id = _get_machine_identifier()
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=app_salt,
+        iterations=100_000,
+    )
+
+    # Derive a 32-byte key and encode it as base64 for Fernet
+    derived_key = kdf.derive(machine_id)
+    return base64.urlsafe_b64encode(derived_key)
+
+
+def _encrypt_token_data(token_data: dict) -> bytes:
+    r"""Encrypt token data using Fernet symmetric encryption.
+
+    Args:
+        token_data: Dictionary containing token information.
+
+    Returns:
+        Encrypted bytes.
+    """
+    key = _derive_encryption_key()
+    fernet = Fernet(key)
+    json_bytes = json.dumps(token_data).encode("utf-8")
+    return fernet.encrypt(json_bytes)
+
+
+def _decrypt_token_data(encrypted_data: bytes) -> dict | None:
+    r"""Decrypt token data.
+
+    Args:
+        encrypted_data: Encrypted bytes from file.
+
+    Returns:
+        Decrypted token dictionary, or None if decryption fails.
+    """
+    try:
+        key = _derive_encryption_key()
+        fernet = Fernet(key)
+        decrypted = fernet.decrypt(encrypted_data)
+        return json.loads(decrypted.decode("utf-8"))
+    except (InvalidToken, json.JSONDecodeError) as e:
+        logger.warning("Failed to decrypt token data: %s", e)
+        return None
 
 
 def _generate_pkce_pair() -> tuple[str, str]:
@@ -125,7 +226,7 @@ class CodexOAuthManager:
 
     @classmethod
     def save_token(cls, token_data: dict) -> bool:
-        r"""Save token data to disk.
+        r"""Save token data to disk with encryption.
 
         Args:
             token_data: Dictionary with at least ``access_token``.
@@ -151,9 +252,17 @@ class CodexOAuthManager:
 
             os.makedirs(os.path.dirname(path), exist_ok=True)
             lock = FileLock(path + ".lock")
-            with lock, open(path, "w") as f:
-                json.dump(token_data, f, indent=2)
-            logger.info("Saved Codex token to %s", path)
+
+            # Encrypt token data before saving
+            encrypted_data = _encrypt_token_data(token_data)
+
+            with lock, open(path, "wb") as f:
+                f.write(encrypted_data)
+
+            # Set restrictive permissions on token file
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+            logger.info("Saved encrypted Codex token to %s", path)
 
             if token_data.get("access_token"):
                 os.environ["OPENAI_API_KEY"] = token_data["access_token"]
@@ -164,16 +273,17 @@ class CodexOAuthManager:
             return False
 
     @classmethod
-    def load_token(cls) -> Optional[dict]:
-        r"""Load token data from disk."""
+    def load_token(cls) -> dict | None:
+        r"""Load and decrypt token data from disk."""
         path = cls._token_path()
         if os.path.exists(path):
             try:
                 lock = FileLock(path + ".lock")
-                with lock, open(path) as f:
-                    return json.load(f)
-            except Exception:
-                pass
+                with lock, open(path, "rb") as f:
+                    encrypted_data = f.read()
+                return _decrypt_token_data(encrypted_data)
+            except Exception as e:
+                logger.warning("Failed to load token: %s", e)
         return None
 
     @classmethod
@@ -228,7 +338,7 @@ class CodexOAuthManager:
         return (expires_at - int(time.time())) < CODEX_TOKEN_REFRESH_THRESHOLD
 
     @classmethod
-    def get_access_token(cls) -> Optional[str]:
+    def get_access_token(cls) -> str | None:
         r"""Return the current access token, preferring the stored file."""
         token = cls.load_token()
         if token and token.get("access_token"):
@@ -236,7 +346,7 @@ class CodexOAuthManager:
         return os.environ.get("OPENAI_API_KEY")
 
     @classmethod
-    def get_token_info(cls) -> Optional[dict]:
+    def get_token_info(cls) -> dict | None:
         r"""Return stored token metadata."""
         return cls.load_token()
 
