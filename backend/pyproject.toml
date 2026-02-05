@@ -3,7 +3,7 @@ name = "backend"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "pip>=23.0",
     "camel-ai[eigent]==0.2.85a0",
@@ -36,7 +36,7 @@ dev = [
 
 [tool.ruff]
 line-length = 79
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
@@ -54,7 +54,7 @@ ignore = [
     "B904",   # raise from - too many existing violations
     "B023",   # closure captures loop variable - existing pattern
     "B017",   # blind except in tests - acceptable
-    "B905",   # zip strict - not needed for Python 3.10
+    "B905",   # zip strict - existing code doesn't use strict parameter
 ]
 
 [tool.ruff.lint.isort]
