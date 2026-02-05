@@ -523,6 +523,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     //TODO: For now handle the question as unique identifier to avoid duplicate
     if (!projectId) projectId = 'Replay: ' + question;
 
+    if (!taskIds || taskIds.length === 0) {
+      console.warn('[ProjectStore] No taskIds provided for replayProject');
+      return createProject(
+        `Replay Project ${question}`,
+        `No tasks to replay`,
+        projectId,
+        ProjectType.NORMAL,
+        historyId
+      );
+    }
+
     // If projectId is provided, reset that project
     if (projectId) {
       if (projects[projectId]) {
