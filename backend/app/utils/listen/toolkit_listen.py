@@ -23,13 +23,13 @@ from functools import wraps
 from inspect import iscoroutinefunction, signature
 from typing import Any, TypeVar
 
+from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import (
     ActionActivateToolkitData,
     ActionDeactivateToolkitData,
     get_task_lock,
     process_task,
 )
-from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 logger = logging.getLogger("toolkit_listen")
 
