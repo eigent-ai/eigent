@@ -48,7 +48,6 @@ from app.service.task import (
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
-    ActionTimeoutData,
     Agents,
     TaskLock,
     delete_task_lock,
@@ -56,7 +55,6 @@ from app.service.task import (
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
-from app.utils.sqlite_toolkit import get_context_for_prompt as get_knowledge_context
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.toolkit.human_toolkit import HumanToolkit
@@ -239,37 +237,18 @@ def check_conversation_history_length(
 def build_conversation_context(
     task_lock: TaskLock,
     header: str = "=== CONVERSATION HISTORY ===",
-    query: str | None = None,
 ) -> str:
     """Build conversation context from task_lock history
     with files listed only once at the end.
-    Prepends knowledge base (long-term memory) entries when available.
 
     Args:
         task_lock: TaskLock containing conversation history
         header: Header text for the context section
-        query: Optional user query to filter relevant knowledge base entries
 
     Returns:
-        Formatted context string with knowledge base (if any),
-        task history and files listed once at the end
+        Formatted context string with task history and files listed once at the end
     """
     context = ""
-    try:
-        kb_context = get_knowledge_context(
-            project_id=task_lock.id,
-            query=query,
-            max_chars=4000,
-            limit_entries=20,
-        )
-        if kb_context:
-            context = kb_context
-    except Exception as e:
-        logger.warning(
-            "Failed to load knowledge base context",
-            extra={"error": str(e)},
-        )
-
     working_directories = set()  # Collect all unique working directories
 
     if task_lock.conversation_history:
@@ -554,7 +533,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     conv_ctx = build_conversation_context(
                         task_lock,
                         header="=== Previous Conversation ===",
-                        query=question,
                     )
                     simple_answer_prompt = (
                         f"{conv_ctx}"
@@ -1245,7 +1223,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             conv_ctx = build_conversation_context(
                                 task_lock,
                                 header="=== Previous Conversation ===",
-                                query=new_task_content,
                             )
                             simple_answer_prompt = (
                                 f"{conv_ctx}"
@@ -1971,7 +1948,6 @@ async def question_confirm(
         context_prompt = build_conversation_context(
             task_lock,
             header="=== Previous Conversation ===",
-            query=prompt,
         )
 
     full_prompt = f"""{context_prompt}User Query: {prompt}

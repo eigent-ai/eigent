@@ -78,7 +78,7 @@ class TestKnowledgeBase:
             assert "dark mode" in ctx
 
             empty_ctx = kb.get_context_for_prompt("nonexistent-project-999")
-            assert empty_ctx == ""
+            assert empty_ctx is None
 
     def test_delete_entry_wrong_project_no_op(self, tmp_path):
         """delete_entry with wrong project_id does not delete."""

@@ -46,7 +46,11 @@ class KnowledgeEntryOut(BaseModel):
 
 @router.post("", name="add knowledge", response_model=KnowledgeAddOut)
 async def knowledge_add(body: KnowledgeAddIn):
-    """Add a knowledge entry for long-term memory (issue #1099)."""
+    """Add a knowledge entry for long-term memory (issue #1099).
+
+    Args:
+        body: Request body with project_id and content to store.
+    """
     try:
         entry_id = add_entry(project_id=body.project_id, content=body.content)
         return KnowledgeAddOut(id=entry_id, project_id=body.project_id)
@@ -57,10 +61,16 @@ async def knowledge_add(body: KnowledgeAddIn):
 @router.get("", name="list knowledge")
 async def knowledge_list(
     project_id: str = Query(..., description="Project ID"),
-    query: str | None = Query(None, description="Optional keyword filter"),
+    query: str | None = Query(None, description="Optional search query (FTS5 full-text)"),
     limit: int = Query(50, ge=1, le=200, description="Max entries to return"),
 ):
-    """List knowledge entries for a project, optionally filtered by keyword."""
+    """List knowledge entries for a project, optionally filtered by search query.
+
+    Args:
+        project_id: Project ID to list entries for.
+        query: Optional search query; when set, FTS5 full-text search with BM25 ranking is used.
+        limit: Maximum number of entries to return (1–200).
+    """
     try:
         entries = get_entries(project_id=project_id, query=query, limit=limit)
         return {"project_id": project_id, "entries": entries}
@@ -73,7 +83,12 @@ async def knowledge_delete(
     entry_id: int,
     project_id: str = Query(..., description="Project ID"),
 ):
-    """Delete a knowledge entry by id (scoped to project)."""
+    """Delete a knowledge entry by id (scoped to project).
+
+    Args:
+        entry_id: ID of the entry to delete (path parameter).
+        project_id: Project ID (entry is only deleted if it belongs to this project).
+    """
     try:
         deleted = delete_entry(project_id=project_id, entry_id=entry_id)
         if not deleted:

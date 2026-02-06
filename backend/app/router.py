@@ -19,6 +19,7 @@ All routers are explicitly registered here for better visibility and maintainabi
 import logging
 
 from fastapi import FastAPI
+
 from app.controller import (
     chat_controller,
     health_controller,

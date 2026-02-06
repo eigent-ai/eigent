@@ -23,6 +23,7 @@ _DEFAULT_BASE_PATH = os.path.join(os.path.expanduser("~"), ".eigent")
 _KB_SUBDIR = ".eigent_knowledge"
 _DB_NAME = "knowledge.db"
 _LOCK = threading.Lock()
+SEP = "\n\n"
 
 
 def _backfill_fts(conn: sqlite3.Connection) -> None:
@@ -145,6 +146,14 @@ def get_entries(
 ) -> list[dict]:
     """List knowledge entries for the project.
     When query is set, uses FTS5 full-text search with BM25 ranking; otherwise by created_at.
+
+    Args:
+        project_id: Project identifier to filter entries.
+        query: Optional search query; when set, FTS5 BM25 ranking is used.
+        limit: Maximum number of entries to return.
+
+    Returns:
+        List of dicts with keys id, project_id, content, created_at.
     """
     conn = _get_connection()
     try:
@@ -225,14 +234,21 @@ def get_context_for_prompt(
     query: str | None = None,
     max_chars: int = 4000,
     limit_entries: int = 20,
-) -> str:
-    """
-    Build a string of relevant knowledge entries to inject into the chat prompt.
-    Returns empty string if no entries or on error.
+) -> str | None:
+    """Build a string of relevant knowledge entries to inject into the chat prompt.
+
+    Args:
+        project_id: Project identifier to filter entries.
+        query: Optional search query for FTS5 BM25 ranking; when None, recent entries.
+        max_chars: Maximum total character length of included content.
+        limit_entries: Maximum number of entries to consider.
+
+    Returns:
+        Formatted string with knowledge base section, or None if no entries/error.
     """
     entries = get_entries(project_id, query=query, limit=limit_entries)
     if not entries:
-        return ""
+        return None
 
     parts = []
     total = 0
@@ -240,11 +256,11 @@ def get_context_for_prompt(
         content = (e["content"] or "").strip()
         if not content:
             continue
-        if total + len(content) + 2 > max_chars:
+        if total + len(content) + len(SEP) > max_chars:
             break
         parts.append(content)
-        total += len(content) + 2
+        total += len(content) + len(SEP)
 
     if not parts:
-        return ""
-    return "=== Knowledge Base (long-term memory) ===\n" + "\n\n".join(parts) + "\n\n"
+        return None
+    return "=== Knowledge Base (long-term memory) ===\n" + SEP.join(parts) + SEP

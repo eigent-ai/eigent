@@ -20,21 +20,32 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 
 class KnowledgeBaseToolkit(BaseToolkit, AbstractToolkit):
-    """Toolkit that lets agents save information to the project's knowledge base."""
+    """Toolkit that lets agents save information to the project's knowledge base.
 
-    def __init__(self, api_task_id: str, agent_name: str | None = None, timeout: float | None = None):
+    Args:
+        api_task_id: Project identifier used when storing/retrieving entries.
+        agent_name: Optional name of the agent using this toolkit.
+        timeout: Optional timeout in seconds for tool execution.
+    """
+
+    def __init__(
+        self,
+        api_task_id: str,
+        agent_name: str | None = None,
+        timeout: float | None = None,
+    ):
         super().__init__(timeout=timeout)
         self.api_task_id = api_task_id
         self.agent_name = agent_name or "agent"
 
-    def remember_this(self, content: str) -> str:
+    def store_project_knowledge(self, content: str) -> str:
         """Save a fact or piece of information to the project's long-term knowledge base.
         Use this when the user or the task establishes something that should be remembered
         for future conversations (e.g. preferences, decisions, project-specific facts).
         The content will be available in later sessions for this project.
 
         Args:
-            content: The information to remember (clear, self-contained text).
+            content (str): The information to remember (clear, self-contained text).
 
         Returns:
             Confirmation message with the new entry id.
@@ -43,9 +54,14 @@ class KnowledgeBaseToolkit(BaseToolkit, AbstractToolkit):
         return f"Saved to long-term memory (id={entry_id}). This will be available in future conversations for this project."
 
     def get_tools(self) -> list[FunctionTool]:
-        return [FunctionTool(self.remember_this)]
+        return [FunctionTool(self.store_project_knowledge)]
 
 
 def get_tools(api_task_id: str, agent_name: str | None = None) -> list[FunctionTool]:
-    """Return the knowledge-base tool(s) for use by an agent (no toolkit instance)."""
+    """Return the knowledge-base tool(s) for use by an agent (no toolkit instance).
+
+    Args:
+        api_task_id: Project identifier used when storing entries.
+        agent_name: Optional name of the agent using the tools.
+    """
     return KnowledgeBaseToolkit(api_task_id=api_task_id, agent_name=agent_name).get_tools()
