@@ -679,7 +679,7 @@ class TestChatServiceAgentOperations:
                 return_value=mock_mcp_agent,
             ),
             patch(
-                "app.utils.toolkit.human_toolkit.get_task_lock",
+                "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=mock_task_lock,
             ),
         ):
@@ -1209,7 +1209,7 @@ class TestChatServiceErrorCases:
 
         with (
             patch(
-                "app.utils.toolkit.human_toolkit.get_task_lock",
+                "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=mock_task_lock,
             ),
             patch(
