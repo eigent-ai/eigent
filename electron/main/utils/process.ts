@@ -38,24 +38,35 @@ export function getBackendPath() {
  * Get proxy environment variables from global ~/.eigent/.env config.
  * Returns an object with HTTP_PROXY, HTTPS_PROXY, and lowercase variants
  * if a proxy is configured, or an empty object if not.
+ * Supports separate HTTP and HTTPS proxy configurations.
  */
 function getProxyEnvVars(): Record<string, string> {
-  const proxyUrl = readGlobalEnvKey('HTTP_PROXY');
-  if (!proxyUrl) {
+  const httpProxy = readGlobalEnvKey('HTTP_PROXY');
+  const httpsProxy = readGlobalEnvKey('HTTPS_PROXY');
+
+  if (!httpProxy && !httpsProxy) {
     return {};
   }
 
-  log.info(
-    `[INSTALL SCRIPT] Proxy configured: ${maskProxyUrl(proxyUrl)}`
-  );
+  const result: Record<string, string> = {};
 
-  // Set all common proxy env var names for maximum compatibility
-  return {
-    HTTP_PROXY: proxyUrl,
-    HTTPS_PROXY: proxyUrl,
-    http_proxy: proxyUrl,
-    https_proxy: proxyUrl,
-  };
+  if (httpProxy) {
+    result.HTTP_PROXY = httpProxy;
+    result.http_proxy = httpProxy;
+    log.info(
+      `[INSTALL SCRIPT] HTTP Proxy configured: ${maskProxyUrl(httpProxy)}`
+    );
+  }
+
+  if (httpsProxy) {
+    result.HTTPS_PROXY = httpsProxy;
+    result.https_proxy = httpsProxy;
+    log.info(
+      `[INSTALL SCRIPT] HTTPS Proxy configured: ${maskProxyUrl(httpsProxy)}`
+    );
+  }
+
+  return result;
 }
 
 export function runInstallScript(scriptPath: string): Promise<boolean> {

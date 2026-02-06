@@ -143,9 +143,27 @@ function makeRequest(url, callback, onError) {
       },
     });
 
+    // Track resources for cleanup
+    let tlsSocket = null;
+    let httpsReq = null;
+
+    // Cleanup function to destroy all connections
+    const cleanup = () => {
+      if (httpsReq && !httpsReq.destroyed) {
+        httpsReq.destroy();
+      }
+      if (tlsSocket && !tlsSocket.destroyed) {
+        tlsSocket.destroy();
+      }
+      if (connectReq && !connectReq.destroyed) {
+        connectReq.destroy();
+      }
+    };
+
     connectReq.on('connect', (res, socket) => {
       if (res.statusCode !== 200) {
         socket.destroy();
+        cleanup();
         onError(
           new Error(
             `Proxy CONNECT failed with status ${res.statusCode}: ${res.statusMessage}`
@@ -155,7 +173,7 @@ function makeRequest(url, callback, onError) {
       }
 
       // Upgrade socket to TLS
-      const tlsSocket = tls.connect(
+      tlsSocket = tls.connect(
         {
           host: targetUrl.hostname,
           port: targetPort,
@@ -164,7 +182,7 @@ function makeRequest(url, callback, onError) {
         },
         () => {
           // Make HTTPS request over TLS socket
-          const req = https.request(
+          httpsReq = https.request(
             {
               hostname: targetUrl.hostname,
               port: targetPort,
@@ -175,26 +193,36 @@ function makeRequest(url, callback, onError) {
               // Use createConnection to provide the pre-established TLS socket
               createConnection: () => tlsSocket,
             },
-            callback
+            (response) => {
+              // Cleanup connections when response ends
+              response.on('end', cleanup);
+              response.on('close', cleanup);
+              callback(response);
+            }
           );
-          req.on('error', (err) => {
+
+          httpsReq.on('error', (err) => {
+            cleanup();
             onError(new Error(`HTTPS request error: ${err.message}`));
           });
-          req.end();
+
+          httpsReq.end();
         }
       );
 
       tlsSocket.on('error', (err) => {
+        cleanup();
         onError(new Error(`TLS connection error: ${err.message}`));
       });
     });
 
     connectReq.on('error', (err) => {
+      cleanup();
       onError(new Error(`Proxy connection error: ${err.message}`));
     });
 
     connectReq.setTimeout(30000, () => {
-      connectReq.destroy();
+      cleanup();
       onError(new Error('Proxy connection timeout after 30 seconds'));
     });
 
