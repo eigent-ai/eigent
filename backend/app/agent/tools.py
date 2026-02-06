@@ -35,6 +35,7 @@ from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.utils.toolkit.pptx_toolkit import PPTXToolkit
+from app.utils.toolkit.rag_toolkit import RAGToolkit
 from app.utils.toolkit.reddit_toolkit import RedditToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
 from app.utils.toolkit.slack_toolkit import SlackToolkit
@@ -67,6 +68,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "mcp_search_toolkit": McpSearchToolkit,
         "notion_mcp_toolkit": NotionMCPToolkit,
         "pptx_toolkit": PPTXToolkit,
+        "rag_toolkit": RAGToolkit,
         "reddit_toolkit": RedditToolkit,
         "search_toolkit": SearchToolkit,
         "slack_toolkit": SlackToolkit,
