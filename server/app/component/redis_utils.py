@@ -23,6 +23,8 @@ import logging
 import os
 import asyncio
 
+logger = logging.getLogger("server_redis_utils")
+
 
 class RedisSessionManager:
     """Manages WebSocket sessions in Redis for scalability and persistence."""
