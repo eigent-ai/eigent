@@ -256,7 +256,7 @@ def improve(id: str, data: SupplementChat):
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
     )
-    task_lock = get_task_lock(id)
+    task_lock = get_or_create_task_lock(id)
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
