@@ -91,6 +91,7 @@ export function TaskItem({
             onChange={(e) => onUpdate(e.target.value)}
             onBlur={() => {
               setTimeout(() => {
+                onSave();
                 setIsFocus(false);
               }, 100);
             }}
