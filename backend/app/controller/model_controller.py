@@ -139,6 +139,7 @@ async def validate_model(request: ValidateModelRequest):
         )
 
         # Build response message based on validation result
+        # Prefer raw error messages from providers as they are usually clear and informative
         if validation_result.is_tool_calls:
             message = "Validation successful. Model supports tool calling and tool execution completed successfully."
         elif validation_result.is_valid:
@@ -151,55 +152,27 @@ async def validate_model(request: ValidateModelRequest):
                 validation_result.error_type
                 == ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
             ):
-                message = f"Model call succeeded and tool call was made, but execution failed. {validation_result.error_message}"
+                # Use raw error message if available, otherwise use the formatted one
+                message = (
+                    validation_result.raw_error_message
+                    or validation_result.error_message
+                    or "Tool call execution failed."
+                )
             else:
-                message = "Model call succeeded, but tool call validation failed. Please check the model configuration."
+                message = (
+                    validation_result.raw_error_message
+                    or validation_result.error_message
+                    or "Model call succeeded, but tool call validation failed. Please check the model configuration."
+                )
         else:
-            # Build detailed error message based on error type and stage
-            if (
-                validation_result.error_type
-                == ValidationErrorType.AUTHENTICATION_ERROR
-            ):
-                message = "Authentication failed. Please check your API key and ensure it is valid and has the necessary permissions."
-            elif (
-                validation_result.error_type
-                == ValidationErrorType.MODEL_NOT_FOUND
-            ):
-                message = f"Model '{model_type}' not found on platform '{platform}'. Please verify the model name and platform are correct."
-            elif (
-                validation_result.error_type
-                == ValidationErrorType.NETWORK_ERROR
-            ):
-                message = "Network error occurred. Please check your internet connection and try again."
-            elif (
-                validation_result.error_type
-                == ValidationErrorType.TIMEOUT_ERROR
-            ):
-                message = "Request timed out. The model service may be slow or unavailable. Please try again later."
-            elif (
-                validation_result.error_type
-                == ValidationErrorType.QUOTA_EXCEEDED
-            ):
-                message = "Quota exceeded. Please check your account billing and usage limits."
-            elif (
-                validation_result.error_type
-                == ValidationErrorType.RATE_LIMIT_ERROR
-            ):
-                message = (
-                    "Rate limit exceeded. Please wait a moment and try again."
-                )
-            elif (
-                validation_result.error_type
-                == ValidationErrorType.INVALID_CONFIGURATION
-            ):
-                message = (
-                    f"Invalid configuration: {validation_result.error_message}"
-                )
+            # Use raw error message as primary message - provider errors are usually clear
+            # Only add context for specific cases where it's helpful
+            if validation_result.raw_error_message:
+                message = validation_result.raw_error_message
+            elif validation_result.error_message:
+                message = validation_result.error_message
             else:
-                message = (
-                    validation_result.error_message
-                    or "Model validation failed. Please check your configuration and try again."
-                )
+                message = "Model validation failed. Please check your configuration and try again."
 
         # Convert error type to error code for backward compatibility
         error_code = None

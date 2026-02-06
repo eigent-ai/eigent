@@ -61,6 +61,9 @@ class ValidationResult:
         self.error_type: ValidationErrorType | None = None
         self.error_code: str | None = None
         self.error_message: str | None = None
+        self.raw_error_message: str | None = (
+            None  # Original error message from provider
+        )
         self.error_details: dict[str, Any] = {}
         self.validation_stages: dict[ValidationStage, bool] = {}
         self.diagnostic_info: dict[str, Any] = {}
@@ -77,6 +80,7 @@ class ValidationResult:
             "error_type": self.error_type.value if self.error_type else None,
             "error_code": self.error_code,
             "error_message": self.error_message,
+            "raw_error_message": self.raw_error_message,
             "error_details": self.error_details,
             "validation_stages": {
                 stage.value: success
@@ -106,27 +110,47 @@ def get_website_content(url: str) -> str:
     return EXPECTED_TOOL_RESULT
 
 
+def format_raw_error(exception: Exception, max_length: int = 300) -> str:
+    """Format raw error message from exception, truncating if too long.
+
+    This preserves the original error message from the provider without
+    translation, as provider error messages are often clear and informative.
+
+    Args:
+        exception: The exception to format
+        max_length: Maximum length of the error message
+
+    Returns:
+        str: Formatted error message
+    """
+    raw = str(exception)
+    if len(raw) > max_length:
+        raw = raw[:max_length] + "..."
+    return raw
+
+
 def categorize_error(
     exception: Exception, stage: ValidationStage
 ) -> ValidationErrorType:
     """Categorize exception into specific error type.
 
-    This function attempts to categorize errors from various model platforms/providers
-    (OpenAI, Anthropic, LiteLLM, Qwen, etc.) into standardized error types.
+    This function attempts to categorize errors conservatively, only when
+    we have high confidence (e.g., exception types, HTTP status codes).
+    The raw error message is always preserved separately.
 
     Args:
         exception: The exception to categorize
         stage: The validation stage where error occurred
 
     Returns:
-        ValidationErrorType: The categorized error type
+        ValidationErrorType: The categorized error type, or UNKNOWN_ERROR if uncertain
     """
     error_str = str(exception).lower()
     error_type = exception.__class__.__name__.lower()
     exception_type_str = str(type(exception)).lower()
 
     # First, check exception type for common patterns
-    # This helps catch errors from different providers that use standard exception types
+    # This is the most reliable way to categorize errors
     if "timeout" in error_type or "timeouterror" in exception_type_str:
         return ValidationErrorType.TIMEOUT_ERROR
 
@@ -137,167 +161,39 @@ def categorize_error(
         return ValidationErrorType.AUTHENTICATION_ERROR
 
     # Check for ModelProcessingError from camel-ai, which wraps provider-specific errors
+    # This is reliable because camel-ai standardizes error handling
     if isinstance(exception, ModelProcessingError):
-        # ModelProcessingError often contains provider-specific error messages
+        # Check for HTTP status codes first (most reliable)
+        if "401" in error_str or "unauthorized" in error_str:
+            return ValidationErrorType.AUTHENTICATION_ERROR
+        if "404" in error_str or "not found" in error_str:
+            return ValidationErrorType.MODEL_NOT_FOUND
+        if "429" in error_str or "rate limit" in error_str:
+            return ValidationErrorType.RATE_LIMIT_ERROR
         if "timeout" in error_str or "timed out" in error_str:
             return ValidationErrorType.TIMEOUT_ERROR
-        if any(
-            keyword in error_str
-            for keyword in [
-                "authentication",
-                "unauthorized",
-                "401",
-                "invalid_api_key",
-                "api key",
-            ]
-        ):
-            return ValidationErrorType.AUTHENTICATION_ERROR
-        if any(
-            keyword in error_str
-            for keyword in [
-                "not found",
-                "404",
-                "model_not_found",
-                "does not exist",
-            ]
-        ):
-            return ValidationErrorType.MODEL_NOT_FOUND
-        if any(
-            keyword in error_str
-            for keyword in ["rate limit", "429", "too many requests"]
-        ):
-            return ValidationErrorType.RATE_LIMIT_ERROR
-        if any(
-            keyword in error_str
-            for keyword in [
-                "quota",
-                "insufficient_quota",
-                "billing",
-                "payment",
-            ]
-        ):
+        if "quota" in error_str or "insufficient_quota" in error_str:
             return ValidationErrorType.QUOTA_EXCEEDED
-        if any(
-            keyword in error_str
-            for keyword in [
-                "connection",
-                "network",
-                "dns",
-                "resolve",
-                "refused",
-            ]
-        ):
+        if "connection" in error_str or "network" in error_str:
             return ValidationErrorType.NETWORK_ERROR
 
-    # Authentication errors - check for various provider-specific patterns
-    auth_keywords = [
-        "invalid_api_key",
-        "incorrect api key",
-        "api key is invalid",
-        "unauthorized",
-        "authentication failed",
-        "authentication error",
-        "401",
-        "invalid key",
-        "api key required",
-        "missing api key",
-        "authentication required",
-    ]
-    if any(keyword in error_str for keyword in auth_keywords):
+    # Only check for very specific, unambiguous patterns in error messages
+    # Prefer HTTP status codes and exception types over string matching
+
+    # HTTP status codes are reliable indicators
+    if "401" in error_str or "unauthorized" in error_str:
         return ValidationErrorType.AUTHENTICATION_ERROR
-
-    # Network errors - check before timeout to avoid misclassification
-    network_keywords = [
-        "connection",
-        "network",
-        "dns",
-        "resolve",
-        "refused",
-        "connection refused",
-        "connection error",
-        "network error",
-        "connection timeout",  # This is network-related, not just timeout
-    ]
-    if any(keyword in error_str for keyword in network_keywords):
-        # Distinguish between network timeout and general timeout
-        if "timeout" in error_str and "connection" in error_str:
-            return ValidationErrorType.NETWORK_ERROR
-        if "timeout" in error_str:
-            return ValidationErrorType.TIMEOUT_ERROR
-        return ValidationErrorType.NETWORK_ERROR
-
-    # Model not found errors - check for various provider-specific patterns
-    model_not_found_keywords = [
-        "model_not_found",
-        "model does not exist",
-        "model not found",
-        "does not exist",
-        "not found",
-        "404",
-        "invalid model",
-        "model name",
-        "unknown model",
-        "model unavailable",
-    ]
-    if any(keyword in error_str for keyword in model_not_found_keywords):
+    if "404" in error_str:
         return ValidationErrorType.MODEL_NOT_FOUND
-
-    # Rate limit errors - check before quota to avoid misclassification
-    rate_limit_keywords = [
-        "rate limit",
-        "rate_limit",
-        "429",
-        "too many requests",
-        "rate limit exceeded",
-        "requests per minute",
-        "requests per hour",
-    ]
-    if any(keyword in error_str for keyword in rate_limit_keywords):
+    if "429" in error_str:
         return ValidationErrorType.RATE_LIMIT_ERROR
 
-    # Quota errors
-    quota_keywords = [
-        "quota",
-        "insufficient_quota",
-        "quota exceeded",
-        "billing",
-        "payment",
-        "payment required",
-        "account limit",
-        "usage limit",
-    ]
-    if any(keyword in error_str for keyword in quota_keywords):
+    # Very specific error patterns that are unlikely to be false positives
+    if "insufficient_quota" in error_str or "quota exceeded" in error_str:
         return ValidationErrorType.QUOTA_EXCEEDED
 
-    # Timeout errors - check after network to avoid misclassification
-    timeout_keywords = [
-        "timeout",
-        "timed out",
-        "time out",
-        "request timeout",
-        "read timeout",
-    ]
-    if any(keyword in error_str for keyword in timeout_keywords):
-        return ValidationErrorType.TIMEOUT_ERROR
-
-    # Configuration errors - use specific phrases to avoid false positives
-    # Check for configuration-related errors with more specific keywords
-    config_keywords = [
-        "invalid configuration",
-        "invalid config",
-        "configuration error",
-        "config error",
-        "invalid parameter",
-        "invalid param",
-        "parameter error",
-        "param error",
-        "missing required",
-        "required parameter",
-        "required param",
-    ]
-    if any(keyword in error_str for keyword in config_keywords):
-        return ValidationErrorType.INVALID_CONFIGURATION
-
+    # Return unknown if we're not confident
+    # The raw error message will still be available to users
     return ValidationErrorType.UNKNOWN_ERROR
 
 
@@ -410,7 +306,8 @@ def validate_model_with_details(
 
     except Exception as e:
         result.error_type = ValidationErrorType.INVALID_CONFIGURATION
-        result.error_message = f"Initialization failed: {str(e)}"
+        result.raw_error_message = format_raw_error(e)
+        result.error_message = result.raw_error_message
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
@@ -454,29 +351,16 @@ def validate_model_with_details(
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.MODEL_CREATION)
         result.error_type = error_type
-        result.error_message = f"Model creation failed: {str(e)}"
+        # Always preserve the raw error message from the provider
+        result.raw_error_message = format_raw_error(e)
+        # Use raw error as primary message - it's usually clear and informative
+        result.error_message = result.raw_error_message
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
             "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.MODEL_CREATION
-
-        # Provide specific error messages based on error type
-        if error_type == ValidationErrorType.AUTHENTICATION_ERROR:
-            result.error_message = "Authentication failed. Please check your API key and ensure it is valid and has the necessary permissions."
-        elif error_type == ValidationErrorType.MODEL_NOT_FOUND:
-            result.error_message = f"Model '{model_type}' not found on platform '{model_platform}'. Please verify the model name and platform are correct."
-        elif error_type == ValidationErrorType.NETWORK_ERROR:
-            result.error_message = "Network error occurred while creating the model. Please check your internet connection and try again."
-        elif error_type == ValidationErrorType.TIMEOUT_ERROR:
-            result.error_message = "Model creation timed out. The model service may be slow or unavailable. Please try again later."
-        elif error_type == ValidationErrorType.QUOTA_EXCEEDED:
-            result.error_message = "Quota exceeded. Please check your account billing and usage limits."
-        elif error_type == ValidationErrorType.RATE_LIMIT_ERROR:
-            result.error_message = (
-                "Rate limit exceeded. Please wait a moment and try again."
-            )
 
         logger.error(
             "Model creation stage failed",
@@ -512,7 +396,9 @@ def validate_model_with_details(
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.AGENT_CREATION)
         result.error_type = error_type
-        result.error_message = f"Agent creation failed: {str(e)}"
+        # Always preserve the raw error message from the provider
+        result.raw_error_message = format_raw_error(e)
+        result.error_message = result.raw_error_message
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
@@ -591,21 +477,15 @@ def validate_model_with_details(
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.MODEL_CALL)
         result.error_type = error_type
-        result.error_message = f"Model call failed: {str(e)}"
+        # Always preserve the raw error message from the provider
+        result.raw_error_message = format_raw_error(e)
+        result.error_message = result.raw_error_message
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
             "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.MODEL_CALL
-
-        # Provide specific error messages
-        if error_type == ValidationErrorType.TIMEOUT_ERROR:
-            result.error_message = "Model call timed out. The model may be slow or overloaded. Please try again later."
-        elif error_type == ValidationErrorType.NETWORK_ERROR:
-            result.error_message = "Network error occurred during model call. Please check your connection and try again."
-        elif error_type == ValidationErrorType.RATE_LIMIT_ERROR:
-            result.error_message = "Rate limit exceeded during model call. Please wait and try again."
 
         logger.error(
             "Model call stage failed",
@@ -717,10 +597,10 @@ def validate_model_with_details(
             )
 
     except Exception as e:
-        result.error_type = ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
-        result.error_message = (
-            f"Error while checking tool call execution: {str(e)}"
-        )
+        error_type = categorize_error(e, ValidationStage.TOOL_CALL_EXECUTION)
+        result.error_type = error_type
+        result.raw_error_message = format_raw_error(e)
+        result.error_message = result.raw_error_message
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
