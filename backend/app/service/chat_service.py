@@ -471,9 +471,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
-                    question = item.data
+                    question = item.data.question
                     attaches_to_use = (
-                        item.attaches if item.attaches else options.attaches
+                        item.data.attaches
+                        if item.data.attaches
+                        else options.attaches
                     )
                     logger.info(
                         "[NEW-QUESTION] Follow-up "

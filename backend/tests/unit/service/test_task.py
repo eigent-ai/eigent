@@ -34,6 +34,7 @@ from app.service.task import (
     ActionTaskStateData,
     ActionUpdateTaskData,
     Agents,
+    ImprovePayload,
     TaskLock,
     create_task_lock,
     delete_task_lock,
@@ -52,20 +53,21 @@ class TestTaskServiceModels:
 
     def test_action_improve_data_creation(self):
         """Test ActionImproveData model creation."""
-        data = ActionImproveData(data="Improve this code")
+        payload = ImprovePayload(question="Improve this code")
+        data = ActionImproveData(data=payload)
 
         assert data.action == Action.improve
-        assert data.data == "Improve this code"
+        assert data.data.question == "Improve this code"
+        assert data.data.attaches == []
         assert data.new_task_id is None
 
     def test_action_improve_data_with_new_task_id(self):
         """Test ActionImproveData model creation with new_task_id."""
-        data = ActionImproveData(
-            data="Improve this code", new_task_id="task_123"
-        )
+        payload = ImprovePayload(question="Improve this code")
+        data = ActionImproveData(data=payload, new_task_id="task_123")
 
         assert data.action == Action.improve
-        assert data.data == "Improve this code"
+        assert data.data.question == "Improve this code"
         assert data.new_task_id == "task_123"
 
     def test_action_start_data_creation(self):
@@ -568,7 +570,9 @@ class TestTaskServiceIntegration:
         task_lock.add_human_input_listen(agent_name)
 
         # Test queue operations
-        improve_data = ActionImproveData(data="Improve this")
+        improve_data = ActionImproveData(
+            data=ImprovePayload(question="Improve this")
+        )
         await task_lock.put_queue(improve_data)
 
         retrieved_data = await task_lock.get_queue()
