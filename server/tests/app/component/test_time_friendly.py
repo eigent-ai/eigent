@@ -13,17 +13,16 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from datetime import date, datetime
-from unittest.mock import patch
 
 from app.component.time_friendly import monday_start_time, to_date
 
 
-def test_to_date_iso_format_string():
+def test_to_date_iso():
     result = to_date("2026-01-15")
     assert result == date(2026, 1, 15)
 
 
-def test_to_date_iso_datetime_string():
+def test_to_date_iso_datetime():
     result = to_date("2026-03-20T14:30:00")
     assert result == date(2026, 3, 20)
 
@@ -33,37 +32,37 @@ def test_to_date_custom_format():
     assert result == date(2026, 1, 15)
 
 
-def test_to_date_custom_format_us_style():
+def test_to_date_us_format():
     result = to_date("01-15-2026", "MM-DD-YYYY")
     assert result == date(2026, 1, 15)
 
 
-def test_to_date_invalid_date_returns_none():
+def test_to_date_invalid():
     result = to_date("not-a-date")
     assert result is None
 
 
-def test_to_date_empty_string_returns_none():
+def test_to_date_empty():
     result = to_date("")
     assert result is None
 
 
-def test_to_date_wrong_format_returns_none():
+def test_to_date_wrong_format():
     result = to_date("2026-01-15", "DD/MM/YYYY")
     assert result is None
 
 
-def test_to_date_partial_date():
+def test_to_date_partial():
     result = to_date("2026-01")
     assert result is None or isinstance(result, date)
 
 
-def test_monday_start_time_returns_datetime():
+def test_monday_returns_datetime():
     result = monday_start_time()
     assert isinstance(result, datetime)
 
 
-def test_monday_start_time_is_midnight():
+def test_monday_is_midnight():
     result = monday_start_time()
     assert result.hour == 0
     assert result.minute == 0
@@ -71,17 +70,17 @@ def test_monday_start_time_is_midnight():
     assert result.microsecond == 0
 
 
-def test_monday_start_time_day_is_monday():
+def test_monday_weekday():
     result = monday_start_time()
     assert result.weekday() == 0
 
 
-def test_monday_start_time_not_in_future():
+def test_monday_not_future():
     result = monday_start_time()
     assert result <= datetime.now()
 
 
-def test_monday_start_time_within_current_week():
+def test_monday_within_week():
     result = monday_start_time()
     now = datetime.now()
     days_diff = (now - result).days
