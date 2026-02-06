@@ -146,6 +146,7 @@ export interface ChatStore {
   getLastUserMessage: () => Message | null;
   addTaskInfo: () => void;
   updateTaskInfo: (index: number, content: string) => void;
+  saveTaskInfo: () => void;
   deleteTaskInfo: (index: number) => void;
   setTaskTime: (taskId: string, taskTime: number) => void;
   setElapsed: (taskId: string, taskTime: number) => void;
@@ -178,9 +179,6 @@ export type VanillaChatStore = {
 // Track auto-confirm timers per task to avoid reusing stale timers across rounds
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
-// Debounce timers for persisting subtask edits to backend
-const subtaskPersistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
 
@@ -194,45 +192,15 @@ const normalizeToolkitMessage = (value: unknown) => {
   }
 };
 
-/**
- * Persist subtask edits to backend via PUT /task/{project_id}.
- * When `debounce` is true, delays the request by 500ms (for keystroke-driven edits).
- * Immediate calls always cancel any pending debounced call first to prevent stale
- * data from overwriting the latest state.
- */
-const persistSubtaskEdits = (taskInfo: TaskInfo[], debounce = false) => {
+/** Persist subtask edits to backend via PUT /task/{project_id}. */
+const persistSubtaskEdits = (taskInfo: TaskInfo[]) => {
   const projectId = useProjectStore.getState().activeProjectId;
   if (!projectId) return;
 
-  // Always cancel any pending debounced persist to avoid stale data races
-  if (subtaskPersistTimers[projectId]) {
-    clearTimeout(subtaskPersistTimers[projectId]);
-    delete subtaskPersistTimers[projectId];
-  }
-
-  const doSend = () => {
-    const nonEmpty = taskInfo.filter((t) => t.content !== '');
-    fetchPut(`/task/${projectId}`, { task: nonEmpty }).catch((err) =>
-      console.error('Failed to persist subtask edits:', err)
-    );
-  };
-
-  if (debounce) {
-    subtaskPersistTimers[projectId] = setTimeout(() => {
-      delete subtaskPersistTimers[projectId];
-      doSend();
-    }, 500);
-  } else {
-    doSend();
-  }
-};
-
-/** Cancel any pending debounced subtask persist for the given project. */
-const cancelPendingSubtaskPersist = (projectId: string) => {
-  if (subtaskPersistTimers[projectId]) {
-    clearTimeout(subtaskPersistTimers[projectId]);
-    delete subtaskPersistTimers[projectId];
-  }
+  const nonEmpty = taskInfo.filter((t) => t.content !== '');
+  fetchPut(`/task/${projectId}`, { task: nonEmpty }).catch((err) =>
+    console.error('Failed to persist subtask edits:', err)
+  );
 };
 
 const resolveProcessTaskIdForToolkitEvent = (
@@ -2697,10 +2665,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         );
       }
 
-      // Cancel any pending debounced subtask persist to prevent stale data
-      // from overwriting the confirmed task list after start
-      cancelPendingSubtaskPersist(project_id);
-
       // record task start time
       setTaskTime(taskId, Date.now());
       // Filter out empty tasks from the user-edited taskInfo
@@ -2913,26 +2877,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     updateTaskInfo(index: number, content: string) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
-      // Deep copy the array with updated item to ensure React detects the change
       const targetTaskInfo = tasks[activeTaskId].taskInfo.map((item, i) =>
         i === index ? { ...item, content } : item
       );
       setTaskInfo(activeTaskId, targetTaskInfo);
-
-      // Persist to backend with debounce (fires on every keystroke)
-      persistSubtaskEdits(targetTaskInfo, true);
+    },
+    saveTaskInfo() {
+      const { tasks, activeTaskId } = get();
+      if (!activeTaskId) return;
+      persistSubtaskEdits(tasks[activeTaskId].taskInfo);
     },
     deleteTaskInfo(index: number) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
-      let targetTaskInfo = [...tasks[activeTaskId].taskInfo];
-
-      if (targetTaskInfo) {
-        targetTaskInfo.splice(index, 1);
-      }
+      const targetTaskInfo = [...tasks[activeTaskId].taskInfo];
+      targetTaskInfo.splice(index, 1);
       setTaskInfo(activeTaskId, targetTaskInfo);
-
-      // Persist to backend (no debounce — discrete action)
       persistSubtaskEdits(targetTaskInfo);
     },
     getLastUserMessage() {

@@ -25,6 +25,7 @@ interface TaskItemProps {
   };
   taskIndex: number;
   onUpdate: (content: string) => void;
+  onSave: () => void;
   onDelete: () => void;
 }
 
@@ -32,6 +33,7 @@ export function TaskItem({
   taskInfo,
   taskIndex,
   onUpdate,
+  onSave,
   onDelete,
 }: TaskItemProps) {
   const { t } = useTranslation();
@@ -115,8 +117,7 @@ export function TaskItem({
           ) : (
             <Button
               onClick={(e) => {
-                // Explicitly persist current content on Save click
-                onUpdate(taskInfo.content);
+                onSave();
                 handleFocus(e, false);
               }}
               className="rounded-full"
