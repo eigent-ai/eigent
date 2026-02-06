@@ -462,6 +462,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # tracer.start()
                 if start_event_loop is True:
                     question = options.question
+                    attaches_to_use = options.attaches
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
@@ -471,6 +472,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data
+                    attaches_to_use = (
+                        item.attaches if item.attaches else options.attaches
+                    )
                     logger.info(
                         "[NEW-QUESTION] Follow-up "
                         "question from "
@@ -508,7 +512,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Determine task complexity: attachments
                 # mean workforce, otherwise let agent decide
                 is_complex_task: bool
-                if len(options.attaches) > 0:
+                if len(attaches_to_use) > 0:
                     is_complex_task = True
                     logger.info(
                         "[NEW-QUESTION] Has attachments"
@@ -655,10 +659,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     camel_task = Task(
                         content=clean_task_content, id=options.task_id
                     )
-                    if len(options.attaches) > 0:
+                    if len(attaches_to_use) > 0:
                         camel_task.additional_info = {
                             Path(file_path).name: file_path
-                            for file_path in options.attaches
+                            for file_path in attaches_to_use
                         }
 
                     # Stream decomposition in background

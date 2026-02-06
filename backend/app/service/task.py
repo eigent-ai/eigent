@@ -75,6 +75,7 @@ class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
     data: str
     new_task_id: str | None = None
+    attaches: list[str] = []
 
 
 class ActionStartData(BaseModel):

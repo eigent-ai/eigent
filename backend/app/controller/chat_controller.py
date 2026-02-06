@@ -331,7 +331,11 @@ def improve(id: str, data: SupplementChat):
 
     asyncio.run(
         task_lock.put_queue(
-            ActionImproveData(data=data.question, new_task_id=data.task_id)
+            ActionImproveData(
+                data=data.question,
+                new_task_id=data.task_id,
+                attaches=data.attaches or [],
+            )
         )
     )
     chat_logger.info(
