@@ -84,6 +84,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
+      # Install LLVM for macOS Intel
+      - name: Install LLVM (macOS Intel)
+        if: runner.os == 'macOS' && matrix.arch == 'x64'
+        run: |
+          brew install llvm
+          echo "LLVM_DIR=$(brew --prefix llvm)/lib/cmake/llvm" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm)/lib/cmake/llvm" >> $GITHUB_ENV
+
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
