@@ -577,7 +577,7 @@ class TestTaskServiceIntegration:
 
         retrieved_data = await task_lock.get_queue()
         assert retrieved_data.action == Action.improve
-        assert retrieved_data.data == "Improve this"
+        assert retrieved_data.data.question == "Improve this"
 
         # Test human input operations
         await task_lock.put_human_input(agent_name, "User response")
