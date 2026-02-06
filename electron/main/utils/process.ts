@@ -439,7 +439,7 @@ function ensureVenvPythonSymlink(venvPath: string): boolean {
   const entries = fs.readdirSync(binDir, { withFileTypes: true });
   const py3 = entries.find(
     (e) =>
-      e.isFile() &&
+      !e.isDirectory() &&
       (e.name === 'python3' ||
         (e.name.startsWith('python3.') && !e.name.endsWith('.py')))
   );
