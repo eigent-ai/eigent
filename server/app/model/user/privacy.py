@@ -12,12 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from datetime import datetime
-from enum import IntEnum
-from sqlalchemy import JSON, SmallInteger
-from sqlalchemy_utils import ChoiceType
-from pydantic import BaseModel, EmailStr
-from sqlmodel import Field, Column
+from pydantic import BaseModel
+from sqlalchemy import JSON
+from sqlmodel import Column, Field
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 

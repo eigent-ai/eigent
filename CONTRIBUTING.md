@@ -39,10 +39,6 @@ We're thrilled to have your support.
     opening your pull request; this will allow the PR to pass all tests
     that require [GitHub Secrets][gh-secrets].
 
-[fork-pr]: https://docs.github.com/en/get-started/quickstart/contributing-to-projects
-[checkout-pr]: https://dev.to/ceceliacreates/how-to-create-a-pull-request-on-github-16h1
-[gh-secrets]: https://docs.github.com/en/actions/security-guides/encrypted-secrets
-
 Make sure to mention any related issues and tag the relevant
 maintainers too. 💪
 
@@ -96,18 +92,22 @@ our coding standards.
 #### Code Review Checklist
 
 - Functionality
+
   - Correctness: Does the code perform the intended task? Are edge cases handled?
   - Testing: Is there sufficient test coverage? Do all tests pass?
   - Security: Are there any security vulnerabilities introduced by the change?
   - Performance: Does the code introduce any performance regressions?
 
 - Code Quality
+
   - Readability: Is the code easy to read and understand? Is it well-commented where necessary?
   - Maintainability: Is the code structured in a way that makes future changes easy?
   - Style: Does the code follow the project’s style guidelines?
-    Currently we use Ruff for format check and take [Google Python Style Guide]("https://google.github.io/styleguide/pyguide.html") as reference.
+    Currently we use Ruff for format check and take [Google Python Style Guide](%22https://google.github.io/styleguide/pyguide.html%22) as reference.
   - Documentation: Are public methods, classes, and any complex logic well-documented?
+
 - Design
+
   - Consistency: Does the code follow established design patterns and project architecture?
   - Modularity: Are the changes modular and self-contained? Does the code avoid unnecessary duplication?
   - Dependencies: Are dependencies minimized and used appropriately?
@@ -243,7 +243,7 @@ To run the application locally in developer mode:
 1. Configure `.env.development`:
    - Set `VITE_USE_LOCAL_PROXY=true`
    - Set `VITE_PROXY_URL=http://localhost:3001`
-2. Go to the settings to specify your model key and model type.
+1. Go to the settings to specify your model key and model type.
 
 ## Common Actions 🔄
 
@@ -256,3 +256,7 @@ Whenever you add, update, or delete any dependencies in `pyproject.toml`, please
 If your contribution has been included in a release, we'd love to give you credit on Twitter, but only if you're comfortable with it!
 
 If you have a Twitter account that you would like us to mention, please let us know either in the pull request or through another communication method. We want to make sure you receive proper recognition for your valuable contributions. 😄
+
+[checkout-pr]: https://dev.to/ceceliacreates/how-to-create-a-pull-request-on-github-16h1
+[fork-pr]: https://docs.github.com/en/get-started/quickstart/contributing-to-projects
+[gh-secrets]: https://docs.github.com/en/actions/security-guides/encrypted-secrets

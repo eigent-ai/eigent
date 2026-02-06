@@ -12,7 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from app.agent.agent_model import agent_model, set_main_event_loop
+from app.agent.agent_model import agent_model
 from app.agent.factory import (
     browser_agent,
     developer_agent,
@@ -31,7 +31,6 @@ __all__ = [
     "agent_model",
     "get_mcp_tools",
     "get_toolkits",
-    "set_main_event_loop",
     "browser_agent",
     "developer_agent",
     "document_agent",

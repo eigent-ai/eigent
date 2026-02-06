@@ -20,7 +20,7 @@ from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
-from app.service.task import Agents, ActionCreateAgentData, get_task_lock
+from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
 
 
@@ -30,19 +30,24 @@ async def mcp_agent(options: Chat):
         f"with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
     tools = [
-        # *HumanToolkit.get_can_use_tools(options.project_id, Agents.mcp_agent),
         *McpSearchToolkit(options.project_id).get_tools(),
     ]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
             logger.info(
-                f"Retrieved {len(mcp_tools)} MCP tools for task {options.project_id}"
+                f"Retrieved {len(mcp_tools)} MCP tools "
+                f"for task {options.project_id}"
             )
             if mcp_tools:
-                tool_names = [(tool.get_function_name() if hasattr(
-                    tool, "get_function_name") else str(tool))
-                              for tool in mcp_tools]
+                tool_names = [
+                    (
+                        tool.get_function_name()
+                        if hasattr(tool, "get_function_name")
+                        else str(tool)
+                    )
+                    for tool in mcp_tools
+                ]
                 logger.debug(f"MCP tools: {tool_names}")
             tools = [*tools, *mcp_tools]
         except Exception as e:
@@ -51,21 +56,23 @@ async def mcp_agent(options: Chat):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
     logger.info(
-        f"Creating MCP agent: {Agents.mcp_agent} with id: {agent_id} for task: {options.project_id}"
+        f"Creating MCP agent: {Agents.mcp_agent} with id: "
+        f"{agent_id} for task: {options.project_id}"
     )
     asyncio.create_task(
         task_lock.put_queue(
             ActionCreateAgentData(
                 data={
-                    "agent_name":
-                    Agents.mcp_agent,
-                    "agent_id":
-                    agent_id,
+                    "agent_name": Agents.mcp_agent,
+                    "agent_id": agent_id,
                     "tools": [
                         key
                         for key in options.installed_mcp["mcpServers"].keys()
                     ],
-                })))
+                }
+            )
+        )
+    )
     return ListenChatAgent(
         options.project_id,
         Agents.mcp_agent,
@@ -75,9 +82,13 @@ async def mcp_agent(options: Chat):
             model_type=options.model_type,
             api_key=options.api_key,
             url=options.api_url,
-            model_config_dict=({
-                "user": str(options.project_id),
-            } if options.is_cloud() else None),
+            model_config_dict=(
+                {
+                    "user": str(options.project_id),
+                }
+                if options.is_cloud()
+                else None
+            ),
             timeout=600,  # 10 minutes
             **{
                 k: v

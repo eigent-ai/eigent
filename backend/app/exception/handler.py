@@ -12,17 +12,22 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import traceback
+import logging
+
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
 from app import api
 from app.component import code
-from app.exception.exception import NoPermissionException, ProgramException, TokenException
-from app.component.pydantic.i18n import trans, get_language
-from app.exception.exception import UserException
-import logging
+from app.component.pydantic.i18n import get_language, trans
+from app.exception.exception import (
+    NoPermissionException,
+    ProgramException,
+    TokenException,
+    UserException,
+)
 
 logger = logging.getLogger("exception_handler")
 
@@ -32,11 +37,13 @@ async def request_exception(request: Request, e: RequestValidationError):
     if (lang := get_language(request.headers.get("Accept-Language"))) is None:
         lang = "en_US"
     logger.warning(f"Validation error on {request.url.path}: {e.errors()}")
-    
+
     return JSONResponse(
         content={
             "code": code.form_error,
-            "error": jsonable_encoder(trans.translate(list(e.errors()), locale=lang)),
+            "error": jsonable_encoder(
+                trans.translate(list(e.errors()), locale=lang)
+            ),
         }
     )
 
@@ -63,8 +70,13 @@ async def no_permission(request: Request, exception: NoPermissionException):
 
 
 @api.exception_handler(ProgramException)
-async def program_exception(request: Request, exception: NoPermissionException):
-    logger.error(f"Program exception on {request.url.path}: {exception.text}", exc_info=True)
+async def program_exception(
+    request: Request, exception: NoPermissionException
+):
+    logger.error(
+        f"Program exception on {request.url.path}: {exception.text}",
+        exc_info=True,
+    )
     return JSONResponse(
         status_code=200,
         content={"code": code.program_error, "text": exception.text},
@@ -81,7 +93,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "request_path": str(request.url.path),
             "request_query": str(request.url.query),
             "client_host": request.client.host if request.client else None,
-        }
+        },
     )
 
     return JSONResponse(

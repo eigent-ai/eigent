@@ -18,6 +18,7 @@ import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { fetchHistoryTasks } from '@/service/historyApi';
+import { ChatTaskStatus } from '@/types/constants';
 import { Bird, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -214,9 +215,9 @@ export default function Project() {
       action: type,
     });
     if (type === 'pause') {
-      chatStore.setStatus(taskId, 'pause');
+      chatStore.setStatus(taskId, ChatTaskStatus.PAUSE);
     } else {
-      chatStore.setStatus(taskId, 'running');
+      chatStore.setStatus(taskId, ChatTaskStatus.RUNNING);
     }
   };
 
@@ -264,7 +265,7 @@ export default function Project() {
       </div>
 
       <div className="flex w-full">
-        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[900px] flex-col items-start justify-start px-6 py-8">
+        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start px-6 py-8">
           <GroupedHistoryView
             onTaskSelect={handleSetActive}
             onTaskDelete={handleDelete}

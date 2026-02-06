@@ -29,6 +29,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
+import { TaskStatus } from "@/types/constants";
 
 export default function Home() {
   //Get Chatstore for the active project's task
@@ -223,26 +224,32 @@ export default function Home() {
               }
               done={
                 activeAgent?.tasks?.filter(
-                  (task) => task.status === 'completed'
+                  (task) => task.status === TaskStatus.COMPLETED && !task.reAssignTo
                 ).length || 0
               }
               progress={
                 activeAgent?.tasks?.filter(
                   (task) =>
-                    task.status !== 'failed' &&
-                    task.status !== 'completed' &&
-                    task.status !== 'skipped' &&
-                    task.status !== 'waiting'
+                    task.status !== TaskStatus.FAILED &&
+                    task.status !== TaskStatus.COMPLETED &&
+                    task.status !== TaskStatus.SKIPPED &&
+                    task.status !== TaskStatus.WAITING &&
+                    task.status !== TaskStatus.EMPTY &&
+                    !task.reAssignTo
                 ).length || 0
               }
               failed={
-                activeAgent?.tasks?.filter((task) => task.status === 'failed')
-                  .length || 0
+                activeAgent?.tasks?.filter(
+                  (task) => task.status === TaskStatus.FAILED && !task.reAssignTo
+                ).length || 0
               }
               skipped={
                 activeAgent?.tasks?.filter(
                   (task) =>
-                    task.status === 'skipped' || task.status === 'waiting'
+                    (task.status === TaskStatus.SKIPPED ||
+                      task.status === TaskStatus.WAITING ||
+                      task.status === TaskStatus.EMPTY) &&
+                    !task.reAssignTo
                 ).length || 0
               }
             />

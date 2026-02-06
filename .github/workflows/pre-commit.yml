@@ -21,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -30,21 +30,33 @@ jobs:
         run: uv sync --group dev
 
       - name: Run pre-commit
-        run: >-
-          uv run pre-commit run --files
-          app/agent/README.md
-          app/agent/__init__.py
-          app/agent/factory/__init__.py
-          app/agent/factory/social_media.py
-          app/service/chat_service.py
-          app/service/task.py
-          app/utils/toolkit/google_calendar_toolkit.py
-          app/utils/toolkit/google_gmail_mcp_toolkit.py
-          app/utils/toolkit/linkedin_toolkit.py
-          app/utils/toolkit/reddit_toolkit.py
-          app/utils/toolkit/slack_toolkit.py
-          app/utils/toolkit/twitter_toolkit.py
-          app/utils/toolkit/whatsapp_toolkit.py
-          tests/app/agent/factory/test_social_media.py
+        run: |
+          uv run pre-commit run --files \
+            $(find \
+              app/agent \
+              app/controller \
+              app/exception \
+              app/middleware \
+              app/model \
+              app/service \
+              tests/app \
+              -type f ! -path '*__pycache__*') \
+            app/__init__.py \
+            app/router.py \
+            app/component/__init__.py \
+            app/component/pydantic/__init__.py \
+            app/utils/listen/__init__.py \
+            app/utils/server/__init__.py \
+            app/utils/toolkit/__init__.py \
+            app/utils/toolkit/google_calendar_toolkit.py \
+            app/utils/toolkit/google_gmail_mcp_toolkit.py \
+            app/utils/toolkit/linkedin_toolkit.py \
+            app/utils/toolkit/reddit_toolkit.py \
+            app/utils/toolkit/slack_toolkit.py \
+            app/utils/toolkit/twitter_toolkit.py \
+            app/utils/toolkit/whatsapp_toolkit.py \
+            app/utils/workforce.py \
+            app/utils/single_agent_worker.py \
+            tests/conftest.py
         env:
           SKIP: no-commit-to-branch

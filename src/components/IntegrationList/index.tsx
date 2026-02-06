@@ -103,8 +103,11 @@ export default function IntegrationList({
       console.log(item);
       const searchKey = isSelectMode ? 'EXA Search' : 'Search';
 
-      if (item.key === searchKey || item.key === 'Lark') {
-        const mcp = createMcpFromItem(item, item.key === 'Lark' ? 15 : 13);
+      if (item.key === searchKey || item.key === 'Lark' || item.key === 'RAG') {
+        const mcp = createMcpFromItem(
+          item,
+          item.key === 'Lark' ? 15 : item.key === 'RAG' ? 16 : 13
+        );
         if (isSelectMode) {
           onShowEnvConfig?.(mcp);
         } else {
@@ -264,7 +267,6 @@ export default function IntegrationList({
 
   const COMING_SOON_ITEMS = useMemo(
     () => [
-      'Slack',
       'X(Twitter)',
       'WhatsApp',
       // "LinkedIn", // LinkedIn OAuth is now supported
@@ -457,22 +459,20 @@ export default function IntegrationList({
                     {' '}
                     Default {item.name}
                   </div>
-                  <div className="max-w-[300px] flex-1">
-                    <Select onValueChange={(v) => onSelectChange?.(v, item)}>
-                      <SelectTrigger size="default">
-                        <SelectValue placeholder={selectPlaceholder} />
-                      </SelectTrigger>
-                      <SelectContent className="z-100">
-                        {selectContent ?? (
-                          <>
-                            <SelectItem value="more">
-                              More integrations
-                            </SelectItem>
-                          </>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select onValueChange={(v) => onSelectChange?.(v, item)}>
+                    <SelectTrigger size="default" className="w-[240px]">
+                      <SelectValue placeholder={selectPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent className="z-100">
+                      {selectContent ?? (
+                        <>
+                          <SelectItem value="more">
+                            More integrations
+                          </SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}

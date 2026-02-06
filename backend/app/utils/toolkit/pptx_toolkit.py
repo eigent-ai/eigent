@@ -12,15 +12,23 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import asyncio
 import os
+
 from camel.toolkits import PPTXToolkit as BasePPTXToolkit
 
 from app.component.environment import env
-from app.service.task import ActionWriteFileData, Agents, get_task_lock
-from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit, _safe_put_queue
+from app.service.task import (
+    ActionWriteFileData,
+    Agents,
+    get_task_lock,
+    process_task,
+)
+from app.utils.listen.toolkit_listen import (
+    _safe_put_queue,
+    auto_listen_toolkit,
+    listen_toolkit,
+)
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from app.service.task import process_task
 
 
 @auto_listen_toolkit(BasePPTXToolkit)
@@ -35,7 +43,9 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
     ) -> None:
         self.api_task_id = api_task_id
         if working_directory is None:
-            working_directory = env("file_save_path", os.path.expanduser("~/Downloads"))
+            working_directory = env(
+                "file_save_path", os.path.expanduser("~/Downloads")
+            )
         super().__init__(working_directory, timeout)
 
     @listen_toolkit(
@@ -45,7 +55,9 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
         filename,
         template=None: f"create presentation with content: {content}, filename: {filename}, template: {template}",
     )
-    def create_presentation(self, content: str, filename: str, template: str | None = None) -> str:
+    def create_presentation(
+        self, content: str, filename: str, template: str | None = None
+    ) -> str:
         if not filename.lower().endswith(".pptx"):
             filename += ".pptx"
 
@@ -59,6 +71,9 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
             # Use _safe_put_queue to handle both sync and async contexts
             _safe_put_queue(
                 task_lock,
-                ActionWriteFileData(process_task_id=current_process_task_id, data=str(file_path))
+                ActionWriteFileData(
+                    process_task_id=current_process_task_id,
+                    data=str(file_path),
+                ),
             )
         return res

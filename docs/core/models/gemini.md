@@ -1,6 +1,6 @@
 ---
-title: 'Gemini'
-description: 'This guide walks you through setting up your Google Gemini API key within Eigent to enable the Gemini model for your AI workforce.'
+title: Gemini
+description: This guide walks you through setting up your Google Gemini API key within Eigent to enable the Gemini model for your AI workforce.
 ---
 
 ### Prerequisites
@@ -48,7 +48,7 @@ Click on the Gemini Config card and fill in the following fields:
 
 ![Gemini 4 Pn](/docs/images/gemini_3.png)
 
----
+______________________________________________________________________
 
 > **Video Tutorial:** Prefer a visual guide? Watch the full configuration video
 > here.

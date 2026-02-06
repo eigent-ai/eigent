@@ -15,6 +15,9 @@
 import platform
 import uuid
 
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
+
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import BROWSER_SYS_PROMPT
@@ -25,21 +28,24 @@ from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 from app.utils.toolkit.human_toolkit import HumanToolkit
 from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.utils.toolkit.search_toolkit import SearchToolkit
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
 
 
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
-    logger.info(f"Creating browser agent for project: {options.project_id} "
-                f"in directory: {working_directory}")
+    logger.info(
+        f"Creating browser agent for project: {options.project_id} "
+        f"in directory: {working_directory}"
+    )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.browser_agent).send_message_to_user)
+            options.project_id, Agents.browser_agent
+        ).send_message_to_user
+    )
 
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
@@ -70,7 +76,8 @@ def browser_agent(options: Chat):
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
     web_toolkit_custom = message_integration.register_toolkits(
-        web_toolkit_custom)
+        web_toolkit_custom
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -80,11 +87,14 @@ def browser_agent(options: Chat):
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_functions(
-        [terminal_toolkit.shell_exec])
+        [terminal_toolkit.shell_exec]
+    )
 
-    note_toolkit = NoteTakingToolkit(options.project_id,
-                                     Agents.browser_agent,
-                                     working_directory=working_directory)
+    note_toolkit = NoteTakingToolkit(
+        options.project_id,
+        Agents.browser_agent,
+        working_directory=working_directory,
+    )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
@@ -94,8 +104,9 @@ def browser_agent(options: Chat):
         search_tools = []
 
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.browser_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.browser_agent
+        ),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),

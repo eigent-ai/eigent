@@ -12,24 +12,25 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from datetime import datetime, timedelta
+
+import jwt
 from fastapi import Depends, Header
-from fastapi_babel import _
-from sqlmodel import Session, select
-from app.component import code
 from fastapi.security import OAuth2PasswordBearer
+from fastapi_babel import _
+from jwt.exceptions import InvalidTokenError
+from sqlmodel import Session, select
+
+from app.component import code
 from app.component.database import session
 from app.component.environment import env, env_not_empty
-from datetime import timedelta, datetime
-import jwt
-from jwt.exceptions import InvalidTokenError
-from app.model.mcp.proxy import ApiKey
-from app.model.user.key import Key
-from app.model.user.user import User
-
 from app.exception.exception import (
     NoPermissionException,
     TokenException,
 )
+from app.model.mcp.proxy import ApiKey
+from app.model.user.key import Key
+from app.model.user.user import User
 
 
 class Auth:

@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 from app.type.config_group import ConfigGroup
 
@@ -162,6 +163,10 @@ class ConfigInfo:
         ConfigGroup.PPTX.value: {
             "env_vars": [],
             "toolkit": "pptx_toolkit",
+        },
+        ConfigGroup.RAG.value: {
+            "env_vars": ["OPENAI_API_KEY"],
+            "toolkit": "rag_toolkit",
         },
         ConfigGroup.REDDIT.value: {
             "env_vars": [

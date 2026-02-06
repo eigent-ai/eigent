@@ -214,14 +214,14 @@ The BottomBox directory contains input and action components:
 ### Message Flow
 
 1. **User Input** → `BottomBox/InputBox` → `index.tsx` → Chat Store
-2. **Message Processing** → `index.tsx` → Backend API
-3. **Response Rendering** → Chat Store → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageCard`
+1. **Message Processing** → `index.tsx` → Backend API
+1. **Response Rendering** → Chat Store → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageCard`
 
 ### Task Flow
 
 1. **Task Planning** → `UserQueryGroup` → `TypeCardSkeleton` (loading) → `TaskCard` (planning)
-2. **Task Execution** → `TaskCard` → Task status updates → `FloatingAction` (controls)
-3. **Task Completion** → `TaskCard` → Final results → `MessageCard` (end message)
+1. **Task Execution** → `TaskCard` → Task status updates → `FloatingAction` (controls)
+1. **Task Completion** → `TaskCard` → Final results → `MessageCard` (end message)
 
 ### State Management
 
@@ -267,19 +267,19 @@ The BottomBox directory contains input and action components:
 ### Adding New Message Types
 
 1. Add message type handling in `UserQueryGroup.tsx`
-2. Create specific rendering logic in the appropriate component
-3. Update message grouping logic in `ProjectSection.tsx`
+1. Create specific rendering logic in the appropriate component
+1. Update message grouping logic in `ProjectSection.tsx`
 
 ### Extending Task Management
 
 1. Add new task states in `TaskCard.tsx`
-2. Update task filtering logic
-3. Add corresponding UI elements in `TaskItem.tsx`
+1. Update task filtering logic
+1. Add corresponding UI elements in `TaskItem.tsx`
 
 ### Customizing Message Rendering
 
 1. Modify `MessageCard.tsx` for basic message display
-2. Update `MarkDown.tsx` for content rendering
-3. Add new attachment types as needed
+1. Update `MarkDown.tsx` for content rendering
+1. Add new attachment types as needed
 
 This structure provides a scalable foundation for complex chat interactions while maintaining clear separation of concerns and efficient state management.
