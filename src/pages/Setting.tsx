@@ -14,6 +14,7 @@
 
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
+import versionLogo from '@/assets/version-logo.png';
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Navigation';
@@ -22,7 +23,7 @@ import General from '@/pages/Setting/General';
 import Models from '@/pages/Setting/Models';
 import Privacy from '@/pages/Setting/Privacy';
 import { useAuthStore } from '@/store/authStore';
-import { CircleCheck, Fingerprint, Settings, TextSelect } from 'lucide-react';
+import { CircleCheck，Fingerprint, Settings, TagIcon, TextSelect } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -70,24 +71,21 @@ export default function Setting() {
   };
 
   // Close settings page
-  const handleClose = () => {
+  const _handleClose = () => {
     navigate('/');
   };
 
   return (
-    <div className="m-auto flex h-auto max-w-[900px] flex-col px-4 py-4">
-      <div className="flex h-auto w-full px-3">
-        <div className="sticky top-20 flex !w-[222px] flex-shrink-0 flex-grow-0 flex-col self-start pr-4 pt-md">
+    <div className="m-auto flex h-auto max-w-[940px] flex-col">
+      <div className="flex h-auto w-full px-6">
+        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
           <VerticalNavigation
             items={
               settingMenus.map((menu) => {
-                const Icon = menu.icon;
                 return {
                   value: menu.id,
                   label: (
-                    <span className="text-sm font-bold leading-13 text-text-primary">
-                      {menu.name}
-                    </span>
+                    <span className="text-body-sm font-bold">{menu.name}</span>
                   ),
                 };
               }) as VerticalNavItem[]
@@ -98,21 +96,39 @@ export default function Setting() {
             listClassName="w-full h-full overflow-y-auto"
             contentClassName="hidden"
           />
-          <div className="mt-8 flex w-full flex-shrink-0 flex-grow-0 items-center justify-center border-[0px] border-t border-solid border-white-80% pb-2 pt-4">
-            <div className="flex items-center gap-1 leading-9">
-              <img src={logoSrc} alt="version-logo" className="h-6" />
-            </div>
-            <div className="bg-bg-surface-tertiary flex items-center justify-center gap-1 rounded-full px-sm py-0.5">
-              <CircleCheck className="text-bg-fill-success-primary h-4 w-4" />
-              <div className="text-primary text-xs font-bold leading-17">
+          <div className="mt-4 flex w-full flex-shrink-0 flex-grow-0 flex-col items-center justify-center gap-4 border-x-0 border-b-0 border-t-[0.5px] border-solid border-border-secondary py-4">
+            <button
+              onClick={() =>
+                window.open(
+                  'https://github.com/eigent-ai/eigent',
+                  '_blank',
+                  'noopener,noreferrer'
+                )
+              }
+              className="flex w-full cursor-pointer flex-row items-center justify-center gap-2 rounded-lg bg-surface-tertiary px-6 py-1.5 transition-opacity duration-200 hover:opacity-60"
+            >
+              <TagIcon className="h-4 w-4 text-text-success" />
+              <div className="text-label-sm font-semibold text-text-body">
                 {version}
               </div>
-            </div>
+            </button>
+            <button
+              onClick={() =>
+                window.open(
+                  'https://www.eigent.ai',
+                  '_blank',
+                  'noopener,noreferrer'
+                )
+              }
+              className="flex cursor-pointer items-center bg-transparent transition-opacity duration-200 hover:opacity-60"
+            >
+              <img src={versionLogo} alt="version-logo" className="h-5" />
+            </button>
           </div>
         </div>
 
         <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="flex flex-col gap-4 py-md pb-md">
+          <div className="flex flex-col gap-4">
             {activeTab === 'general' && <General />}
             {activeTab === 'privacy' && <Privacy />}
             {activeTab === 'models' && <Models />}

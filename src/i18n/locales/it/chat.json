@@ -47,5 +47,7 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Il tuo spazio di archiviazione cloud ha raggiunto il limite del tuo piano attuale.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Stiamo riscontrando un traffico elevato. Riprova tra qualche istante.",
   "new-project": "Nuovo Progetto",
-  "no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua"
+  "no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua",
+  "open-in-ide": "Apri in IDE",
+  "failed-to-open-folder": "Impossibile aprire la cartella"
 }

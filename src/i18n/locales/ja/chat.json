@@ -47,5 +47,7 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "クラウドストレージが現在のプランの制限に達しました。",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "トラフィックが多いため、しばらくしてからもう一度お試しください。",
   "new-project": "新規プロジェクト",
-  "no-reply-received-task-continue": "応答がないため、タスクを続行します"
+  "no-reply-received-task-continue": "応答がないため、タスクを続行します",
+  "open-in-ide": "IDEで開く",
+  "failed-to-open-folder": "フォルダを開けませんでした"
 }

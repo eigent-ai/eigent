@@ -223,7 +223,11 @@ const ToolSelect = forwardRef<
                 };
               } else {
                 onInstall = () =>
-                  (window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+                  window.open(
+                    `${baseURL}/api/oauth/${key.toLowerCase()}/login`,
+                    '_blank',
+                    'width=600,height=700'
+                  );
               }
 
               return {
@@ -690,6 +694,7 @@ const ToolSelect = forwardRef<
     fetchData();
     fetchIntegrationsData();
     fetchInstalledMcps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -707,6 +712,7 @@ const ToolSelect = forwardRef<
         clearTimeout(debounceTimerRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword]);
 
   useEffect(() => {

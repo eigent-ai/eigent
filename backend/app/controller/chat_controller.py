@@ -124,7 +124,7 @@ async def timeout_stream_wrapper(
                 )
                 last_data_time = time.time()
                 yield data
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 chat_logger.warning(
                     "SSE timeout: No data received, closing connection",
                     extra={"timeout_seconds": timeout_seconds},

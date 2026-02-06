@@ -525,298 +525,298 @@ export default function SettingMCP() {
       setLocalJson(`{
 				"mcpServers": {}
 			}`);
-      setRemoteName('');
-      setRemoteUrl('');
-      fetchList();
-    } finally {
-      setInstalling(false);
-    }
-  };
+			setRemoteName("");
+			setRemoteUrl("");
+			fetchList();
+		} finally {
+			setInstalling(false);
+		}
+	};
 
-  // delete dialog
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      checkAgentTool(deleteTarget.mcp_name);
-      await proxyFetchDelete(`/api/mcp/users/${deleteTarget.id}`);
-      // notify main process
-      if (window.ipcRenderer) {
-        console.log('deleteTarget', deleteTarget.mcp_key);
-        await window.ipcRenderer.invoke('mcp-remove', deleteTarget.mcp_key);
-      }
-      setDeleteTarget(null);
-      fetchList();
-    } finally {
-      setDeleting(false);
-    }
-  };
+	// delete dialog
+	const handleDelete = async () => {
+		if (!deleteTarget) return;
+		setDeleting(true);
+		try {
+			checkAgentTool(deleteTarget.mcp_name);
+			await proxyFetchDelete(`/api/mcp/users/${deleteTarget.id}`);
+			// notify main process
+			if (window.ipcRenderer) {
+				console.log("deleteTarget", deleteTarget.mcp_key);
+				await window.ipcRenderer.invoke("mcp-remove", deleteTarget.mcp_key);
+			}
+			setDeleteTarget(null);
+			fetchList();
+		} finally {
+			setDeleting(false);
+		}
+	};
 
-  // Generate search engine selection content
-  const generateSearchEngineSelectContent = () => {
-    console.log('Generating search engine select content, configs:', configs);
-    const isCustom = modelType === 'custom';
+	// Generate search engine selection content
+	const generateSearchEngineSelectContent = () => {
+		console.log("Generating search engine select content, configs:", configs);
+		const isCustom = modelType === "custom";
 
-    // Google Search - requires API key and Search Engine ID in custom mode
-    const hasGoogleApiKey = configs.some(
-      (c: any) => c.config_name === 'GOOGLE_API_KEY'
-    );
-    const hasGoogleCseId = configs.some(
-      (c: any) => c.config_name === 'SEARCH_ENGINE_ID'
-    );
-    const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
+		// Google Search - requires API key and Search Engine ID in custom mode
+		const hasGoogleApiKey = configs.some(
+			(c: any) => c.config_name === "GOOGLE_API_KEY"
+		);
+		const hasGoogleCseId = configs.some(
+			(c: any) => c.config_name === "SEARCH_ENGINE_ID"
+		);
+		const hasGoogle = hasGoogleApiKey && hasGoogleCseId;
 
-    console.log('Search engine status:', { hasGoogle, isCustom });
+		console.log("Search engine status:", { hasGoogle, isCustom });
 
-    return (
-      <>
-        {/* Custom mode: require API key configuration */}
-        {isCustom ? (
-          <SelectItemWithButton
-            value="google"
-            label={
-              <span>
-                <span>Google Search </span>
-                <TagComponent asChild>
-                  <span>{t('setting.recommended')}</span>
-                </TagComponent>
-              </span>
-            }
-            enabled={hasGoogle}
-            buttonText={t('setting.setting')}
-            onButtonClick={() => setShowSearchEngineConfig(true)}
-          />
-        ) : (
-          <>
-            {/* Cloud or Local mode: Google enabled by default */}
-            <SelectItem value="google">
-              <span>Google Search </span>
-              <TagComponent asChild>
-                <span>{t('setting.recommended')}</span>
-              </TagComponent>
-            </SelectItem>
-          </>
-        )}
-      </>
-    );
-  };
+		return (
+			<>
+				{/* Custom mode: require API key configuration */}
+				{isCustom ? (
+					<SelectItemWithButton
+						value="google"
+						label={
+							<span>
+								<span>Google Search </span>
+								<TagComponent asChild>
+									<span>{t("setting.recommended")}</span>
+								</TagComponent>
+							</span>
+						}
+						enabled={hasGoogle}
+						buttonText={t("setting.setting")}
+						onButtonClick={() => setShowSearchEngineConfig(true)}
+					/>
+				) : (
+					<>
+						{/* Cloud or Local mode: Google enabled by default */}
+						<SelectItem value="google">
+							<span>Google Search </span>
+							<TagComponent asChild>
+								<span>{t("setting.recommended")}</span>
+							</TagComponent>
+						</SelectItem>
+					</>
+				)}
+			</>
+		);
+	};
 
-  return (
-    <div className="m-auto h-auto flex-1">
-      {/* Header Section */}
-      <div className="flex w-full">
-        <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-4 pt-8">
-          <div className="flex w-full items-center justify-between">
-            {showMarket ? (
-              <div className="flex w-full items-center justify-between gap-sm">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowMarket(false)}
-                >
-                  <ChevronLeft />
-                </Button>
-                <div className="text-heading-sm font-bold text-text-heading">
-                  {t('setting.mcp-market')}
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                  <div className="w-full">
-                    <SearchInput
-                      value={marketKeyword}
-                      onChange={(e) => setMarketKeyword(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex w-full items-center justify-between">
-                <div className="text-heading-sm font-bold text-text-heading">
-                  {t('setting.mcp-and-tools')}
-                </div>
-                <div className="flex items-center gap-sm">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAdd(true)}
-                  >
-                    <Plus />
-                    <span>{t('setting.add-mcp-server')}</span>
-                  </Button>
-                  {/* <Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
+	return (
+		<div className="flex-1 h-auto m-auto">
+			{/* Header Section */}
+			<div className="flex w-full">
+				<div className="flex px-6 pt-8 pb-4 max-w-[940px] mx-auto w-full items-center justify-between">
+					<div className="flex w-full items-center justify-between">
+						{showMarket ? (
+							<div className="flex w-full items-center justify-between gap-sm">
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => setShowMarket(false)}
+								>
+									<ChevronLeft />
+								</Button>
+								<div className="text-heading-sm font-bold text-text-heading">
+									{t("setting.mcp-market")}
+								</div>
+								<div className="flex items-center gap-2 ml-auto">
+									<div className="w-full">
+										<SearchInput
+											value={marketKeyword}
+											onChange={(e) => setMarketKeyword(e.target.value)}
+										/>
+									</div>
+								</div>
+							</div>
+						) : (
+							<div className="flex w-full items-center justify-between">
+								<div className="text-heading-sm font-bold text-text-heading">
+									{t("setting.mcp-and-tools")}
+								</div>
+								<div className="flex items-center gap-sm">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setShowAdd(true)}
+									>
+										<Plus />
+										<span>{t("setting.add-mcp-server")}</span>
+									</Button>
+									{/* <Button variant="outline" size="sm" onClick={() => setShowMarket(true)}>
 										<Store />
 										<span>{t("setting.market")}</span>
 									</Button> */}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
+			</div>
 
-      {/* Content Section */}
-      <div className="flex w-full">
-        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[900px] items-start justify-center px-6 py-8">
-          <div className="flex w-full flex-col gap-8">
-            {showMarket ? (
-              <div className="pt-2">
-                <MCPMarket
-                  onBack={() => setShowMarket(false)}
-                  keyword={marketKeyword}
-                />
-              </div>
-            ) : (
-              <>
-                <div className="w-full flex-1">
-                  <IntegrationList
-                    variant="manage"
-                    items={essentialIntegrations}
-                    showConfigButton={true}
-                    showInstallButton={false}
-                    showSelect
-                    showStatusDot={false}
-                    selectPlaceholder="Google Search"
-                    selectContent={generateSearchEngineSelectContent()}
-                    onSelectChange={async (value) => {
-                      try {
-                        setDefaultSearchEngine(value);
-                        await proxyFetchPost('/api/configs', {
-                          config_group: 'Search',
-                          config_name: 'DEFAULT_SEARCH_ENGINE',
-                          config_value: value,
-                        });
-                      } catch (e) {}
-                    }}
-                    onConfigClick={(item) => {
-                      if (item.key === 'Search') {
-                        setShowSearchEngineConfig(true);
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <div className="inline-flex items-center justify-start gap-2 self-stretch py-2">
-                    <span className="text-body-md font-bold text-text-body">
-                      {t('setting.mcp')}
-                    </span>
-                    <div className="flex-1" />
-                    <Button
-                      variant="ghost"
-                      size="md"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setCollapsedMCP((c) => !c);
-                      }}
-                    >
-                      {collapsedMCP ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronUp className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                  {!collapsedMCP && (
-                    <IntegrationList
-                      key={refreshKey}
-                      variant="manage"
-                      items={integrations}
-                      showConfigButton={false}
-                      showInstallButton={true}
-                    />
-                  )}
-                </div>
-                <div className="flex flex-col">
-                  <div className="inline-flex items-center justify-start gap-2 self-stretch py-2">
-                    <div className="justify-center text-body-md font-bold text-text-body">
-                      {t('setting.your-own-mcps')}
-                    </div>
-                    <div className="flex-1" />
-                    <Button
-                      variant="ghost"
-                      size="md"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setCollapsedExternal((c) => !c);
-                      }}
-                    >
-                      {collapsedExternal ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronUp className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                  {!collapsedExternal && (
-                    <>
-                      {isLoading && (
-                        <div className="py-8 text-center text-text-label">
-                          {t('setting.loading')}
-                        </div>
-                      )}
-                      {error && (
-                        <div className="py-8 text-center text-text-error">
-                          {error}
-                        </div>
-                      )}
-                      {!isLoading && !error && items.length === 0 && (
-                        <div className="py-8 text-center text-text-label">
-                          {t('setting.no-mcp-servers')}
-                        </div>
-                      )}
-                      {!isLoading && (
-                        <MCPList
-                          items={items}
-                          onSetting={setShowConfig}
-                          onDelete={setDeleteTarget}
-                          onSwitch={handleSwitch}
-                          switchLoading={switchLoading}
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-                <MCPConfigDialog
-                  open={!!showConfig}
-                  form={configForm}
-                  mcp={showConfig}
-                  onChange={setConfigForm as any}
-                  onSave={handleConfigSave}
-                  onClose={handleConfigClose}
-                  loading={saving}
-                  errorMsg={errorMsg}
-                  onSwitchStatus={handleConfigSwitch}
-                />
-                <MCPAddDialog
-                  open={showAdd}
-                  addType={addType}
-                  setAddType={setAddType}
-                  localJson={localJson}
-                  setLocalJson={setLocalJson}
-                  remoteName={remoteName}
-                  setRemoteName={setRemoteName}
-                  remoteUrl={remoteUrl}
-                  setRemoteUrl={setRemoteUrl}
-                  installing={installing}
-                  onClose={() => setShowAdd(false)}
-                  onInstall={handleInstall}
-                />
-                <MCPDeleteDialog
-                  open={!!deleteTarget}
-                  target={deleteTarget}
-                  onCancel={() => setDeleteTarget(null)}
-                  onConfirm={handleDelete}
-                  loading={deleting}
-                />
-                <SearchEngineConfigDialog
-                  open={showSearchEngineConfig}
-                  onClose={() => setShowSearchEngineConfig(false)}
-                />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+			{/* Content Section */}
+			<div className="flex w-full">
+				<div className="flex px-6 py-8 max-w-[940px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
+					<div className="flex flex-col w-full gap-8">
+						{showMarket ? (
+							<div className="pt-2">
+								<MCPMarket
+									onBack={() => setShowMarket(false)}
+									keyword={marketKeyword}
+								/>
+							</div>
+						) : (
+							<>
+								<div className="flex-1 w-full">
+									<IntegrationList
+										variant="manage"
+										items={essentialIntegrations}
+										showConfigButton={true}
+										showInstallButton={false}
+										showSelect
+										showStatusDot={false}
+										selectPlaceholder="Google Search"
+										selectContent={generateSearchEngineSelectContent()}
+										onSelectChange={async (value) => {
+											try {
+												setDefaultSearchEngine(value);
+												await proxyFetchPost("/api/configs", {
+													config_group: "Search",
+													config_name: "DEFAULT_SEARCH_ENGINE",
+													config_value: value,
+												});
+											} catch (e) { }
+										}}
+										onConfigClick={(item) => {
+											if (item.key === "Search") {
+												setShowSearchEngineConfig(true);
+											}
+										}}
+									/>
+								</div>
+								<div className="flex flex-col">
+									<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
+										<span className="text-text-body text-body-md font-bold">
+											{t("setting.mcp")}
+										</span>
+										<div className="flex-1" />
+										<Button
+											variant="ghost"
+											size="md"
+											onClick={(e) => {
+												e.preventDefault();
+												e.stopPropagation();
+												setCollapsedMCP((c) => !c);
+											}}
+										>
+											{collapsedMCP ? (
+												<ChevronDown className="w-4 h-4" />
+											) : (
+												<ChevronUp className="w-4 h-4" />
+											)}
+										</Button>
+									</div>
+									{!collapsedMCP && (
+										<IntegrationList
+											key={refreshKey}
+											variant="manage"
+											items={integrations}
+											showConfigButton={false}
+											showInstallButton={true}
+										/>
+									)}
+								</div>
+								<div className="flex flex-col">
+									<div className="self-stretch inline-flex justify-start items-center gap-2 py-2">
+										<div className="justify-center text-text-body text-body-md font-bold">
+											{t("setting.your-own-mcps")}
+										</div>
+										<div className="flex-1" />
+										<Button
+											variant="ghost"
+											size="md"
+											onClick={(e) => {
+												e.preventDefault();
+												e.stopPropagation();
+												setCollapsedExternal((c) => !c);
+											}}
+										>
+											{collapsedExternal ? (
+												<ChevronDown className="w-4 h-4" />
+											) : (
+												<ChevronUp className="w-4 h-4" />
+											)}
+										</Button>
+									</div>
+									{!collapsedExternal && (
+										<>
+											{isLoading && (
+												<div className="text-center py-8 text-text-label">
+													{t("setting.loading")}
+												</div>
+											)}
+											{error && (
+												<div className="text-center py-8 text-text-error">
+													{error}
+												</div>
+											)}
+											{!isLoading && !error && items.length === 0 && (
+												<div className="text-center py-8 text-text-label">
+													{t("setting.no-mcp-servers")}
+												</div>
+											)}
+											{!isLoading && (
+												<MCPList
+													items={items}
+													onSetting={setShowConfig}
+													onDelete={setDeleteTarget}
+													onSwitch={handleSwitch}
+													switchLoading={switchLoading}
+												/>
+											)}
+										</>
+									)}
+								</div>
+								<MCPConfigDialog
+									open={!!showConfig}
+									form={configForm}
+									mcp={showConfig}
+									onChange={setConfigForm as any}
+									onSave={handleConfigSave}
+									onClose={handleConfigClose}
+									loading={saving}
+									errorMsg={errorMsg}
+									onSwitchStatus={handleConfigSwitch}
+								/>
+								<MCPAddDialog
+									open={showAdd}
+									addType={addType}
+									setAddType={setAddType}
+									localJson={localJson}
+									setLocalJson={setLocalJson}
+									remoteName={remoteName}
+									setRemoteName={setRemoteName}
+									remoteUrl={remoteUrl}
+									setRemoteUrl={setRemoteUrl}
+									installing={installing}
+									onClose={() => setShowAdd(false)}
+									onInstall={handleInstall}
+								/>
+								<MCPDeleteDialog
+									open={!!deleteTarget}
+									target={deleteTarget}
+									onCancel={() => setDeleteTarget(null)}
+									onConfirm={handleDelete}
+									loading={deleting}
+								/>
+								<SearchEngineConfigDialog
+									open={showSearchEngineConfig}
+									onClose={() => setShowSearchEngineConfig(false)}
+								/>
+							</>
+						)}
+					</div>
+				</div>
+			</div>
+		</div>
+	);
 }
