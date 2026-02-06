@@ -18,8 +18,8 @@ import time
 
 import pytest
 
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.service.task import TaskLock, task_locks
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 
 
 @pytest.mark.unit
