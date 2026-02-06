@@ -56,7 +56,7 @@ export const TypeCardSkeleton = ({
 
             <div className="transition-all duration-300 ease-in-out">
               <div className="flex items-center gap-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                <div className="text-text-tertiary text-xs font-medium leading-17">
+                <div className="text-xs font-medium leading-17 text-text-tertiary">
                   {t('layout.tasks')}
                 </div>
                 <Button variant="ghost" size="icon">

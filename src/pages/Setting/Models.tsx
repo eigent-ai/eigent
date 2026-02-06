@@ -98,7 +98,7 @@ type SidebarTab =
 export default function SettingModels() {
   const { modelType, cloud_model_type, setModelType, setCloudModelType } =
     useAuthStore();
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
   const { t } = useTranslation();
   const getValidateMessage = (res: any) =>
     res?.message ??
@@ -106,7 +106,7 @@ export default function SettingModels() {
     res?.detail?.error?.message ??
     res?.error?.message ??
     t('setting.validate-failed');
-  const [items, setItems] = useState<Provider[]>(
+  const [items, _setItems] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
   );
   const [form, setForm] = useState(() =>
@@ -139,7 +139,7 @@ export default function SettingModels() {
       apiHost: '',
     }))
   );
-  const [collapsed, setCollapsed] = useState(false);
+  const [_collapsed, _setCollapsed] = useState(false);
 
   // Sidebar selected tab - default to cloud
   const [selectedTab, setSelectedTab] = useState<SidebarTab>('cloud');
@@ -266,6 +266,7 @@ export default function SettingModels() {
           setCloudPrefer(false);
         }
       } catch (e) {
+        console.error('Error fetching providers:', e);
         // ignore error
       }
     })();
@@ -274,7 +275,7 @@ export default function SettingModels() {
       fetchSubscription();
       updateCredits();
     }
-  }, []);
+  }, [items, modelType]);
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -760,6 +761,7 @@ export default function SettingModels() {
       setForm((f) => f.map((fi, i) => ({ ...fi, prefer: i === idx }))); // Only one prefer allowed
       setLocalPrefer(false);
     } catch (e) {
+      console.error('Error switching model:', e);
       // Optional: add error message
     }
   };
@@ -793,6 +795,7 @@ export default function SettingModels() {
       setLocalPrefer(true);
       setCloudPrefer(false);
     } catch (e) {
+      console.error('Error switching local model:', e);
       // Optional: add error message
     }
   };
@@ -814,6 +817,7 @@ export default function SettingModels() {
       setActiveModelIdx(null);
       toast.success(t('setting.reset-success'));
     } catch (e) {
+      console.error('Error resetting local model:', e);
       toast.error(t('setting.reset-failed'));
     }
   };
@@ -852,6 +856,7 @@ export default function SettingModels() {
       }
       toast.success(t('setting.reset-success'));
     } catch (e) {
+      console.error('Error deleting model:', e);
       toast.error(t('setting.reset-failed'));
     }
   };

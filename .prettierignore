@@ -6,6 +6,7 @@ package/@stackframe/
 dist/
 dist-electron/
 build/
+release/
 
 # Cache
 .cache/

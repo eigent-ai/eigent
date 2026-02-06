@@ -390,6 +390,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning]);
 
+  const selectedFilePath =
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path;
+
   useEffect(() => {
     if (!chatStore) return;
     const chatStoreSelectedFile =
@@ -403,12 +406,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path,
-    fileGroups,
-    isShowSourceCode,
-    chatStore?.activeTaskId,
-  ]);
+  }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);
 
   if (!chatStore) {
     return <div>Loading...</div>;

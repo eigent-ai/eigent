@@ -20,7 +20,6 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import { capitalizeFirstLetter } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
