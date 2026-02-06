@@ -39,6 +39,7 @@ interface TaskCardProps {
   summaryTask: string;
   onAddTask: () => void;
   onUpdateTask: (taskIndex: number, content: string) => void;
+  onSaveTask: () => void;
   onDeleteTask: (taskIndex: number) => void;
   clickable?: boolean;
   chatId?: string;
@@ -52,6 +53,7 @@ export function TaskCard({
   summaryTask,
   onAddTask,
   onUpdateTask,
+  onSaveTask,
   onDeleteTask,
   clickable = true,
   chatId,
@@ -336,6 +338,7 @@ export function TaskCard({
                       taskInfo={task}
                       taskIndex={taskIndex}
                       onUpdate={(content) => onUpdateTask(taskIndex, content)}
+                      onSave={() => onSaveTask()}
                       onDelete={() => onDeleteTask(taskIndex)}
                     />
                   </div>

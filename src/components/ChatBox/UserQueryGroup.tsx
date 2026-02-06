@@ -271,6 +271,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   chatState.setIsTaskEdit(activeTaskId as string, true);
                   chatState.updateTaskInfo(taskIndex, content);
                 }}
+                onSaveTask={() => {
+                  chatState.saveTaskInfo();
+                }}
                 onDeleteTask={(taskIndex) => {
                   chatState.setIsTaskEdit(activeTaskId as string, true);
                   chatState.deleteTaskInfo(taskIndex);
