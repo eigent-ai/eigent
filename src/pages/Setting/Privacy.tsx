@@ -17,18 +17,21 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/store/authStore';
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 export default function SettingPrivacy() {
   const { email } = useAuthStore();
   const [_privacy, setPrivacy] = useState(false);
   const { t } = useTranslation();
-  const API_FIELDS = [
-    'take_screenshot',
-    'access_local_software',
-    'access_your_address',
-    'password_storage',
-  ];
+  const API_FIELDS = useMemo(
+    () => [
+      'take_screenshot',
+      'access_local_software',
+      'access_your_address',
+      'password_storage',
+    ],
+    []
+  );
   const [settings, setSettings] = useState([
     {
       title: t('setting.allow-agent-to-take-screenshots'),
@@ -71,7 +74,7 @@ export default function SettingPrivacy() {
         setPrivacy(!hasFalse);
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
-  }, []);
+  }, [API_FIELDS]);
 
   const handleTurnOnAll = (type: boolean) => {
     const newSettings = settings.map((item) => ({
@@ -90,7 +93,7 @@ export default function SettingPrivacy() {
     proxyFetchPut('/api/user/privacy', requestData);
   };
 
-  const handleToggle = (index: number) => {
+  const _handleToggle = (index: number) => {
     setSettings((prev) => {
       const newSettings = [...prev];
       newSettings[index] = {

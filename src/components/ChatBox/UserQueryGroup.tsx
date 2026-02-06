@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { VanillaChatStore } from '@/store/chatStore';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { motion } from 'framer-motion';
 import { FileText } from 'lucide-react';
 import React, {
@@ -27,7 +28,6 @@ import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
 
 interface QueryGroup {
   queryId: string;
@@ -87,7 +87,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         if (userMessageIndex > 0) {
           // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
           const prevMessage = messages[userMessageIndex - 1];
-          return prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK;
+          return (
+            prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK
+          );
         }
         return false;
       })());

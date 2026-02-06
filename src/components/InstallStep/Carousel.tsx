@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import addWorkerVideo from '@/assets/add_worker.mp4';
+import dynamicWorkforceVideo from '@/assets/dynamic_workforce.mp4';
+import localModelVideo from '@/assets/local_model.mp4';
+import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 import {
   Carousel,
@@ -19,11 +23,8 @@ import {
   CarouselItem,
 } from '@/components/ui/carousel';
 import { useAuthStore } from '@/store/authStore';
+import { Pause, Play } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
-
-import addWorkerVideo from '@/assets/add_worker.mp4';
-import dynamicWorkforceVideo from '@/assets/dynamic_workforce.mp4';
-import localModelVideo from '@/assets/local_model.mp4';
 
 export const CarouselStep: React.FC = () => {
   const { setInitState: _setInitState } = useAuthStore();
@@ -32,11 +33,19 @@ export const CarouselStep: React.FC = () => {
   const [api, setApi] = useState<any>(null);
   const [isDismissed, _setIsDismissed] = useState(false);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
+  const videoEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // listen to carousel change
   useEffect(() => {
     if (!api) return;
 
     const onSelect = () => {
+      // Clear any pending video end timeout when slide changes manually
+      if (videoEndTimeoutRef.current) {
+        clearTimeout(videoEndTimeoutRef.current);
+        videoEndTimeoutRef.current = null;
+      }
       setCurrentSlide(api.selectedScrollSnap());
     };
 
@@ -45,6 +54,15 @@ export const CarouselStep: React.FC = () => {
       api.off('select', onSelect);
     };
   }, [api]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (videoEndTimeoutRef.current) {
+        clearTimeout(videoEndTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // click indicator to jump to corresponding slide
   const scrollTo = (index: number) => {
@@ -65,17 +83,34 @@ export const CarouselStep: React.FC = () => {
   const handleIndicatorHover = (index: number) => {
     scrollTo(index);
   };
+
+  const handleTogglePause = () => {
+    const newPausedState = !isPaused;
+    setIsPaused(newPausedState);
+
+    const currentVideo = videoRefs.current[currentSlide];
+    if (currentVideo) {
+      if (newPausedState) {
+        currentVideo.pause();
+      } else {
+        currentVideo.play().catch((err) => {
+          console.warn('video.play() error:', err);
+        });
+      }
+    }
+  };
+
   const carouselItems = [
     {
-      title: '“Dynamic Workforce break it down, get task done”',
+      title: 'Dynamic Workforce break it down, get task done',
       video: dynamicWorkforceVideo,
     },
     {
-      title: '“Add worker with pluggable mcp”',
+      title: 'Add worker with pluggable MCP',
       video: addWorkerVideo,
     },
     {
-      title: '“private and secure with local model settings”',
+      title: 'Private and secure with local model settings',
       video: localModelVideo,
     },
   ];
@@ -87,9 +122,11 @@ export const CarouselStep: React.FC = () => {
     if (video) {
       const tryPlay = () => {
         video.currentTime = 0;
-        video.play().catch((err) => {
-          console.warn('video.play() error:', err);
-        });
+        if (!isPaused) {
+          video.play().catch((err) => {
+            console.warn('video.play() error:', err);
+          });
+        }
       };
 
       if (video.readyState >= 1) {
@@ -104,7 +141,7 @@ export const CarouselStep: React.FC = () => {
         video.addEventListener('loadedmetadata', handler);
       }
     }
-  }, [currentSlide, api]);
+  }, [currentSlide, api, isPaused]);
 
   // If carousel is dismissed, don't show anything
   // The actual transition to 'done' will be handled by useInstallationSetup
@@ -114,14 +151,14 @@ export const CarouselStep: React.FC = () => {
   }
 
   return (
-    <div className="flex w-[1120px] flex-col gap-lg max-lg:w-[100%]">
-      <div className="flex flex-col gap-md">
-        <div className="text-4xl font-bold leading-5xl text-text-heading">
+    <div className="flex h-full w-full flex-col">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <div className="mb-md text-heading-sm font-bold text-text-heading">
           {carouselItems[currentSlide].title}
         </div>
 
         <Carousel
-          className="scrollbar max-h-[490px] min-h-[400px] rounded-3xl bg-white-100% p-0 short:max-h-[300px] short:overflow-y-auto"
+          className="min-h-0 flex-1 bg-transparent"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
           setApi={setApi}
@@ -129,26 +166,45 @@ export const CarouselStep: React.FC = () => {
           <CarouselContent className="h-full">
             {carouselItems.map((_, index) => (
               <CarouselItem key={index} className="h-full">
-                <div className="h-full p-0">
-                  <CardContent className="h-full w-full items-center justify-center p-0">
-                    <video
-                      ref={(el) => (videoRefs.current[index] = el)}
-                      src={carouselItems[index].video}
-                      muted
-                      playsInline
-                      preload="auto"
-                      onEnded={() => {
-                        if (api) {
-                          const currentIndex = api.selectedScrollSnap();
-                          if (currentIndex < carouselItems.length - 1) {
-                            api.scrollNext();
-                          } else {
-                            api.scrollTo(0);
+                <div className="h-full w-full p-0">
+                  <CardContent className="flex h-full w-full items-center justify-center p-0">
+                    <div
+                      key={
+                        index === currentSlide
+                          ? `slide-active-${currentSlide}`
+                          : `slide-${index}`
+                      }
+                      className={`h-full w-full ${
+                        index === currentSlide ? 'animate-fade-in' : ''
+                      }`}
+                    >
+                      <video
+                        ref={(el) => (videoRefs.current[index] = el)}
+                        src={carouselItems[index].video}
+                        muted
+                        playsInline
+                        preload="auto"
+                        onEnded={() => {
+                          if (api && !isPaused) {
+                            // Clear any existing timeout
+                            if (videoEndTimeoutRef.current) {
+                              clearTimeout(videoEndTimeoutRef.current);
+                            }
+                            // Wait 2 seconds before moving to next video
+                            videoEndTimeoutRef.current = setTimeout(() => {
+                              const currentIndex = api.selectedScrollSnap();
+                              if (currentIndex < carouselItems.length - 1) {
+                                api.scrollNext();
+                              } else {
+                                api.scrollTo(0);
+                              }
+                              videoEndTimeoutRef.current = null;
+                            }, 500);
                           }
-                        }
-                      }}
-                      className="h-full w-full rounded-3xl object-contain"
-                    />
+                        }}
+                        className="h-full w-full rounded-3xl object-contain"
+                      />
+                    </div>
                   </CardContent>
                 </div>
               </CarouselItem>
@@ -156,20 +212,33 @@ export const CarouselStep: React.FC = () => {
           </CarouselContent>
         </Carousel>
       </div>
-      <div className="flex items-center justify-center gap-sm">
+      <div className="relative mt-2 flex items-center justify-center gap-sm">
         <div className="flex items-center justify-center gap-6">
           {carouselItems.map((item, index) => (
             <div
               key={index}
               onMouseEnter={() => handleIndicatorHover(index)}
-              className={`h-1.5 w-[120px] cursor-pointer rounded-full transition-all duration-300 ${
+              className={`h-1 w-32 cursor-pointer rounded-full transition-all duration-300 ${
                 index === currentSlide
                   ? 'bg-fill-fill-secondary'
-                  : 'bg-white-100% hover:bg-fill-fill-secondary'
+                  : 'bg-fill-fill-tertiary hover:bg-fill-fill-secondary'
               }`}
             ></div>
           ))}
         </div>
+        <Button
+          onClick={handleTogglePause}
+          variant="ghost"
+          size="icon"
+          className="absolute bottom-0 right-0 rounded-full"
+          aria-label={isPaused ? 'Resume' : 'Pause'}
+        >
+          {isPaused ? (
+            <Play className="h-4 w-4" />
+          ) : (
+            <Pause className="h-4 w-4" />
+          )}
+        </Button>
       </div>
     </div>
   );

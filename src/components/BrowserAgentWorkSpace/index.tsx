@@ -14,6 +14,7 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { TaskStatus } from '@/types/constants';
 import {
   ArrowDown,
   ArrowUp,
@@ -29,7 +30,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
-import { TaskStatus } from "@/types/constants";
 
 export default function Home() {
   //Get Chatstore for the active project's task
@@ -224,7 +224,8 @@ export default function Home() {
               }
               done={
                 activeAgent?.tasks?.filter(
-                  (task) => task.status === TaskStatus.COMPLETED && !task.reAssignTo
+                  (task) =>
+                    task.status === TaskStatus.COMPLETED && !task.reAssignTo
                 ).length || 0
               }
               progress={
@@ -240,7 +241,8 @@ export default function Home() {
               }
               failed={
                 activeAgent?.tasks?.filter(
-                  (task) => task.status === TaskStatus.FAILED && !task.reAssignTo
+                  (task) =>
+                    task.status === TaskStatus.FAILED && !task.reAssignTo
                 ).length || 0
               }
               skipped={

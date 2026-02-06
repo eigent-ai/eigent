@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console process */
 /**
  * Test script to verify pyvenv.cfg fix works correctly
  */
@@ -17,12 +18,24 @@ function testVenvFix() {
   const testCases = [
     {
       name: 'Backend venv',
-      path: path.join(projectRoot, 'resources', 'prebuilt', 'venv', 'pyvenv.cfg')
+      path: path.join(
+        projectRoot,
+        'resources',
+        'prebuilt',
+        'venv',
+        'pyvenv.cfg'
+      ),
     },
     {
       name: 'Terminal venv',
-      path: path.join(projectRoot, 'resources', 'prebuilt', 'terminal_venv', 'pyvenv.cfg')
-    }
+      path: path.join(
+        projectRoot,
+        'resources',
+        'prebuilt',
+        'terminal_venv',
+        'pyvenv.cfg'
+      ),
+    },
   ];
 
   let allPassed = true;
@@ -52,12 +65,15 @@ function testVenvFix() {
       console.log(`     Home: ${homePath}`);
 
       // Verify placeholder format (accept both / and \ for cross-platform)
-      const expectedPattern = /^\{\{PREBUILT_PYTHON_DIR\}\}[\/\\]cpython-[\w\.\-]+[\/\\](bin|Scripts)$/;
+      const expectedPattern =
+        /^\{\{PREBUILT_PYTHON_DIR\}\}[/\\]cpython-[\w.-]+[/\\](bin|Scripts)$/;
       if (expectedPattern.test(homePath)) {
         console.log(`  ✅ PASS: Placeholder format is correct`);
       } else {
         console.log(`  ⚠️  WARNING: Placeholder format might be incorrect`);
-        console.log(`     Expected: {{PREBUILT_PYTHON_DIR}}/cpython-X.Y.Z-platform/bin (or \\ on Windows)`);
+        console.log(
+          `     Expected: {{PREBUILT_PYTHON_DIR}}/cpython-X.Y.Z-platform/bin (or \\ on Windows)`
+        );
         console.log(`     Got: ${homePath}`);
       }
     } else {

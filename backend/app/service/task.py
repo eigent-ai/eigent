@@ -73,9 +73,16 @@ class Action(str, Enum):
     timeout = "timeout"  # backend -> user (task timeout error)
 
 
+class ImprovePayload(BaseModel):
+    """User input payload for an improve action."""
+
+    question: str
+    attaches: list[str] = []
+
+
 class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
-    data: str
+    data: ImprovePayload
     new_task_id: str | None = None
 
 
