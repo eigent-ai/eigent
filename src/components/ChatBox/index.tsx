@@ -587,6 +587,7 @@ export default function ChatBox(): JSX.Element {
             chatStore.setNextTaskId(nextTaskId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
+            // This reuses the existing SSE connection and step_solve loop
             fetchPost(`/chat/${projectStore.activeProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
