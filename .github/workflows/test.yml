@@ -26,19 +26,14 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.11
 
       - name: Install dependencies
         run: |
           cd backend
           uv sync
 
-      - name: Run model validation tests
+      - name: Run unit tests
         run: |
           cd backend
-          PYTHONPATH=/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_model_validation.py -v || echo "No validation tests yet"
-
-      - name: Run task validation tests
-        run: |
-          cd backend
-          PYTHONPATH=/home/runner/work/eigent/eigent/backend:/home/runner/work/eigent/eigent:$PYTHONPATH uv run pytest tests/app/service/test_task_validate.py -v
+          uv run pytest tests/app -v

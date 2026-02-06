@@ -1,16 +1,36 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """Tests for workforce metrics telemetry."""
+
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
-import app.utils.telemetry.workforce_metrics as wm_module
 import pytest
+from camel.societies.workforce.events import (
+    LogEvent,
+    TaskAssignedEvent,
+    TaskCompletedEvent,
+    TaskCreatedEvent,
+    TaskDecomposedEvent,
+    TaskFailedEvent,
+    TaskStartedEvent,
+    TaskUpdatedEvent,
+    WorkerCreatedEvent,
+)
+
+import app.utils.telemetry.workforce_metrics as wm_module
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
-from camel.societies.workforce.events import (LogEvent, TaskAssignedEvent,
-                                              TaskCompletedEvent,
-                                              TaskCreatedEvent,
-                                              TaskFailedEvent,
-                                              TaskStartedEvent,
-                                              WorkerCreatedEvent)
 
 
 @pytest.fixture(autouse=True)
@@ -30,8 +50,8 @@ def mock_env_vars():
         "LANGFUSE_BASE_URL": "https://test.langfuse.com",
     }
     with patch.dict(
-            "os.environ",
-            envs,
+        "os.environ",
+        envs,
     ):
         yield
 
@@ -43,8 +63,9 @@ def metrics_callback(mock_env_vars):
         # Initialize the tracer provider first
         wm_module.initialize_tracer_provider()
 
-        callback = WorkforceMetricsCallback(project_id="test_project",
-                                            task_id="test_task")
+        callback = WorkforceMetricsCallback(
+            project_id="test_project", task_id="test_task"
+        )
         # Mock the tracer and spans
         callback.tracer = Mock()
         callback.root_span = Mock()
@@ -53,17 +74,20 @@ def metrics_callback(mock_env_vars):
 
 def test_log_worker_created(metrics_callback):
     """Test log_worker_created function."""
-    event = WorkerCreatedEvent(worker_id="worker_1",
-                               worker_type="test_worker",
-                               role="test_role")
+    event = WorkerCreatedEvent(
+        worker_id="worker_1", worker_type="test_worker", role="test_role"
+    )
 
     mock_span = Mock()
-    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
-        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
 
-    metrics_callback.log_worker_created(event,
-                                        agent_class="TestAgent",
-                                        model_type="gpt-4")
+    metrics_callback.log_worker_created(
+        event, agent_class="TestAgent", model_type="gpt-4"
+    )
 
     # Verify span attributes were set
     assert mock_span.set_attribute.called
@@ -80,10 +104,34 @@ def test_log_task_created(metrics_callback):
     )
 
     mock_span = Mock()
-    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
-        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
 
     metrics_callback.log_task_created(event)
+
+    # Verify span attributes were set
+    assert mock_span.set_attribute.called
+    assert mock_span.set_status.called
+
+
+def test_log_task_decomposed(metrics_callback):
+    """Test log_task_decomposed function."""
+    event = TaskDecomposedEvent(
+        parent_task_id="parent_1",
+        subtask_ids=["task_1", "task_2"],
+    )
+
+    mock_span = Mock()
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
+
+    metrics_callback.log_task_decomposed(event)
 
     # Verify span attributes were set
     assert mock_span.set_attribute.called
@@ -100,10 +148,39 @@ def test_log_task_assigned(metrics_callback):
     )
 
     mock_span = Mock()
-    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
-        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
 
     metrics_callback.log_task_assigned(event)
+
+    # Verify span attributes were set
+    assert mock_span.set_attribute.called
+    assert mock_span.set_status.called
+
+
+def test_log_task_updated(metrics_callback):
+    """Test log_task_updated function."""
+    event = TaskUpdatedEvent(
+        task_id="task_1",
+        worker_id="worker_1",
+        update_type="replan",
+        old_value="old plan",
+        new_value="new plan",
+        parent_task_id="parent_1",
+        metadata={"source": "recovery"},
+    )
+
+    mock_span = Mock()
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
+
+    metrics_callback.log_task_updated(event)
 
     # Verify span attributes were set
     assert mock_span.set_attribute.called
@@ -137,10 +214,7 @@ def test_log_task_completed(metrics_callback):
         parent_task_id="parent_1",
         processing_time_seconds=2.5,
         timestamp=datetime.now(),
-        token_usage={
-            "input_tokens": 100,
-            "output_tokens": 50
-        },
+        token_usage={"input_tokens": 100, "output_tokens": 50},
     )
 
     metrics_callback.log_task_completed(event)
@@ -177,13 +251,16 @@ def test_log_task_failed(metrics_callback):
 
 def test_log_message_error(metrics_callback):
     """Test log_message function with error level."""
-    event = LogEvent(level="error",
-                     message="Test error message",
-                     metadata={"key": "value"})
+    event = LogEvent(
+        level="error", message="Test error message", metadata={"key": "value"}
+    )
 
     mock_span = Mock()
-    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
-        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
 
     metrics_callback.log_message(event)
 
@@ -212,8 +289,11 @@ def test_log_all_tasks_completed(metrics_callback):
     event.total_tasks = 5
 
     mock_span = Mock()
-    metrics_callback.tracer.start_as_current_span = Mock(return_value=Mock(
-        __enter__=Mock(return_value=mock_span), __exit__=Mock()))
+    metrics_callback.tracer.start_as_current_span = Mock(
+        return_value=Mock(
+            __enter__=Mock(return_value=mock_span), __exit__=Mock()
+        )
+    )
 
     metrics_callback.log_all_tasks_completed(event)
 
@@ -225,10 +305,14 @@ def test_log_all_tasks_completed(metrics_callback):
 
 def test_batch_span_processor_configuration_prevents_oom(mock_env_vars):
     """Test BatchSpanProcessor config with limits to prevent OOM."""
-    with patch("app.utils.telemetry.workforce_metrics.OTLPSpanExporter"
-               ) as mock_exporter_class, patch(
-                   "app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
-               ) as mock_processor_class:
+    with (
+        patch(
+            "app.utils.telemetry.workforce_metrics.OTLPSpanExporter"
+        ) as mock_exporter_class,
+        patch(
+            "app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
+        ) as mock_processor_class,
+    ):
         # Initialize tracer provider
         wm_module.initialize_tracer_provider()
 
@@ -248,17 +332,22 @@ def test_batch_span_processor_configuration_prevents_oom(mock_env_vars):
 
 def test_missing_langfuse_env_vars_disables_tracing():
     """Test that missing Langfuse env vars disables tracing."""
-    with patch.dict("os.environ", {}, clear=True), patch(
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch(
             "app.utils.telemetry.workforce_metrics.OTLPSpanExporter"
-    ) as mock_exporter_class, patch(
+        ) as mock_exporter_class,
+        patch(
             "app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
-    ) as mock_processor_class:
+        ) as mock_processor_class,
+    ):
         # Initialize tracer provider without credentials
         wm_module.initialize_tracer_provider()
 
         # Create callback without Langfuse credentials
-        callback = WorkforceMetricsCallback(project_id="test_project",
-                                            task_id="test_task")
+        callback = WorkforceMetricsCallback(
+            project_id="test_project", task_id="test_task"
+        )
 
         # Verify tracing is disabled
         assert callback.enabled is False
@@ -268,26 +357,29 @@ def test_missing_langfuse_env_vars_disables_tracing():
         mock_processor_class.assert_not_called()
 
         # Verify log methods do nothing when disabled
-        event = WorkerCreatedEvent(worker_id="worker_1",
-                                   worker_type="test_worker",
-                                   role="test_role")
+        event = WorkerCreatedEvent(
+            worker_id="worker_1", worker_type="test_worker", role="test_role"
+        )
         callback.log_worker_created(event)  # Should not raise errors
 
 
 def test_multiple_callbacks_share_tracer_provider(mock_env_vars):
     """Test that multiple callbacks share the same TracerProvider."""
-    with patch("app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
-               ) as mock_processor_class:
+    with patch(
+        "app.utils.telemetry.workforce_metrics.BatchSpanProcessor"
+    ) as mock_processor_class:
         # Initialize tracer provider once
         wm_module.initialize_tracer_provider()
 
         # Create first callback
-        callback1 = WorkforceMetricsCallback(project_id="project1",
-                                             task_id="task1")
+        callback1 = WorkforceMetricsCallback(
+            project_id="project1", task_id="task1"
+        )
 
         # Create second callback
-        callback2 = WorkforceMetricsCallback(project_id="project2",
-                                             task_id="task2")
+        callback2 = WorkforceMetricsCallback(
+            project_id="project2", task_id="task2"
+        )
 
         # Verify BatchSpanProcessor was only called once (singleton)
         assert mock_processor_class.call_count == 1

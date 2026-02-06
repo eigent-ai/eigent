@@ -12,16 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import * as React from "react"
-import * as TooltipPrimitive from "@radix-ui/react-tooltip"
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import * as React from 'react';
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils';
 
-const TooltipProvider = TooltipPrimitive.Provider
+const TooltipProvider = TooltipPrimitive.Provider;
 
-const Tooltip = TooltipPrimitive.Root
+const Tooltip = TooltipPrimitive.Root;
 
-const TooltipTrigger = TooltipPrimitive.Trigger
+const TooltipTrigger = TooltipPrimitive.Trigger;
 
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
@@ -32,18 +32,18 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 overflow-hidden shadow-sm rounded-md bg-off-white-100%  px-1.5 py-1.5 text-xs text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-tooltip-content-transform-origin]",
+        'z-50 origin-[--radix-tooltip-content-transform-origin] overflow-hidden rounded-md border border-border-secondary bg-surface-tertiary px-2 py-1.5 text-xs text-text-primary shadow-md backdrop-blur-sm animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
         className
       )}
       {...props}
     />
   </TooltipPrimitive.Portal>
-))
-TooltipContent.displayName = TooltipPrimitive.Content.displayName
+));
+TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
 /**
  * A simpler interface for Tooltip when you just need a trigger and content.
- * 
+ *
  * Usage:
  * ```jsx
  * <TooltipSimple content="This is a tooltip">
@@ -51,7 +51,10 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName
  * </TooltipSimple>
  * ```
  */
-interface TooltipSimpleProps extends Omit<React.ComponentPropsWithoutRef<typeof TooltipContent>, 'children' | 'content'> {
+interface TooltipSimpleProps extends Omit<
+  React.ComponentPropsWithoutRef<typeof TooltipContent>,
+  'children' | 'content'
+> {
   children: React.ReactNode;
   content: React.ReactNode;
 }
@@ -62,20 +65,27 @@ const TooltipSimple = React.forwardRef<
 >(({ children, content, className, sideOffset = 4, ...props }, ref) => {
   return (
     <TooltipProvider>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					{children}
-				</TooltipTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
 
-        <TooltipContent ref={ref}
+        <TooltipContent
+          ref={ref}
           sideOffset={sideOffset}
-          className={cn(className)} 
-          {...props}>
-            {content}
-        </TooltipContent >
-			</Tooltip>
-		</TooltipProvider>
-	);
-})
+          className={cn(className)}
+          {...props}
+        >
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+});
+TooltipSimple.displayName = 'TooltipSimple';
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, TooltipSimple }
+export {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipSimple,
+  TooltipTrigger,
+};

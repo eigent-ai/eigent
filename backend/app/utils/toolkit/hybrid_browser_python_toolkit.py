@@ -15,23 +15,28 @@
 import asyncio
 import datetime
 import json
+import logging
 import os
-from typing import Any, Dict, List
 import uuid
-from camel.models import BaseModelBackend
-from camel.toolkits.hybrid_browser_toolkit_py import HybridBrowserToolkit as BaseHybridBrowserToolkit
-from camel.toolkits.hybrid_browser_toolkit_py.config_loader import ConfigLoader
-from camel.toolkits.hybrid_browser_toolkit_py.browser_session import HybridBrowserSession as BaseHybridBrowserSession
-from camel.toolkits.hybrid_browser_toolkit_py.actions import ActionExecutor
-from camel.toolkits.hybrid_browser_toolkit_py.snapshot import PageSnapshot
-from camel.toolkits.hybrid_browser_toolkit_py.agent import PlaywrightLLMAgent
+from typing import Any
+
 from camel.toolkits.function_tool import FunctionTool
+from camel.toolkits.hybrid_browser_toolkit_py import (
+    HybridBrowserToolkit as BaseHybridBrowserToolkit,
+)
+from camel.toolkits.hybrid_browser_toolkit_py.actions import ActionExecutor
+from camel.toolkits.hybrid_browser_toolkit_py.agent import PlaywrightLLMAgent
+from camel.toolkits.hybrid_browser_toolkit_py.browser_session import (
+    HybridBrowserSession as BaseHybridBrowserSession,
+)
+from camel.toolkits.hybrid_browser_toolkit_py.config_loader import ConfigLoader
+from camel.toolkits.hybrid_browser_toolkit_py.snapshot import PageSnapshot
+
 from app.component.environment import env
 from app.exception.exception import ProgramException
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-import logging
 
 logger = logging.getLogger("hybrid_browser_python_toolkit")
 
@@ -46,15 +51,17 @@ class BrowserSession(BaseHybridBrowserSession):
         self._playwright = await async_playwright().start()
 
         # Prepare stealth options
-        launch_options: Dict[str, Any] = {"headless": self._headless}
-        context_options: Dict[str, Any] = {}
+        launch_options: dict[str, Any] = {"headless": self._headless}
+        context_options: dict[str, Any] = {}
         if self._stealth and self._stealth_config:
             # Use preloaded stealth configuration
             launch_options["args"] = self._stealth_config["launch_args"]
             context_options.update(self._stealth_config["context_options"])
 
         if self._user_data_dir:
-            raise ProgramException("connect over cdp does not support set user_data_dir")
+            raise ProgramException(
+                "connect over cdp does not support set user_data_dir"
+            )
             # Path(self._user_data_dir).mkdir(parents=True, exist_ok=True)
             # pl = self._playwright
             # assert pl is not None
@@ -68,7 +75,9 @@ class BrowserSession(BaseHybridBrowserSession):
             assert pl is not None
             # self._browser = await pl.chromium.launch(headless=self._headless)
             port = env("browser_port", 9222)
-            self._browser = await pl.chromium.connect_over_cdp(f"http://localhost:{port}")
+            self._browser = await pl.chromium.connect_over_cdp(
+                f"http://localhost:{port}"
+            )
             self._context = self._browser.contexts[0]
 
         # Reuse an already open page (persistent context may restore last
@@ -84,7 +93,10 @@ class BrowserSession(BaseHybridBrowserSession):
         self._pages = {}
 
         for index, item in enumerate(self._context.pages):
-            if item.url.startswith("about:blank") and item.url != "about:blank":
+            if (
+                item.url.startswith("about:blank")
+                and item.url != "about:blank"
+            ):
                 tab_id = "tab-" + str(index)
                 self._page = item
                 self._pages[tab_id] = self._page
@@ -94,10 +106,14 @@ class BrowserSession(BaseHybridBrowserSession):
 
         # If no suitable page found, create a new one
         if not self._page:
-            logger.debug(json.dumps([item.url for item in self._context.pages]))
+            logger.debug(
+                json.dumps([item.url for item in self._context.pages])
+            )
             await asyncio.sleep(3)  # wait 3 sec, retry get new page
             await self.get_new_tab()
-            logger.debug(json.dumps([item.url for item in self._context.pages]))
+            logger.debug(
+                json.dumps([item.url for item in self._context.pages])
+            )
             if not self._page:
                 raise ProgramException("Maximum Window Limit Reached.")
 
@@ -131,7 +147,10 @@ class BrowserSession(BaseHybridBrowserSession):
             self._pages = {}
 
         for index, item in enumerate(self._context.pages):
-            if item.url.startswith("about:blank") and item.url != "about:blank":
+            if (
+                item.url.startswith("about:blank")
+                and item.url != "about:blank"
+            ):
                 tab_id = "tab-" + str(index)
                 self._pages[tab_id] = item
                 await item.goto("about:blank")
@@ -152,7 +171,7 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         user_data_dir: str | None = None,
         stealth: bool = False,
         cache_dir: str = os.path.expanduser("~/.eigent/tmp/"),
-        enabled_tools: List[str] | None = None,
+        enabled_tools: list[str] | None = None,
         browser_log_to_file: bool = False,
         session_id: str | None = None,
         default_start_url: str = "https://google.com/",
@@ -176,11 +195,23 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         # Store timeout configuration
         self._default_timeout = default_timeout
         self._short_timeout = short_timeout
-        self._navigation_timeout = ConfigLoader.get_navigation_timeout(navigation_timeout)
-        self._network_idle_timeout = ConfigLoader.get_network_idle_timeout(network_idle_timeout)
-        self._screenshot_timeout = ConfigLoader.get_screenshot_timeout(screenshot_timeout)
-        self._page_stability_timeout = ConfigLoader.get_page_stability_timeout(page_stability_timeout)
-        self._dom_content_loaded_timeout = ConfigLoader.get_dom_content_loaded_timeout(dom_content_loaded_timeout)
+        self._navigation_timeout = ConfigLoader.get_navigation_timeout(
+            navigation_timeout
+        )
+        self._network_idle_timeout = ConfigLoader.get_network_idle_timeout(
+            network_idle_timeout
+        )
+        self._screenshot_timeout = ConfigLoader.get_screenshot_timeout(
+            screenshot_timeout
+        )
+        self._page_stability_timeout = ConfigLoader.get_page_stability_timeout(
+            page_stability_timeout
+        )
+        self._dom_content_loaded_timeout = (
+            ConfigLoader.get_dom_content_loaded_timeout(
+                dom_content_loaded_timeout
+            )
+        )
 
         # Logging configuration - fixed values for simplicity
         self.enable_action_logging = True
@@ -204,23 +235,29 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             self.log_file_path = None
 
         # Initialize log buffer for in-memory storage
-        self.log_buffer: List[Dict[str, Any]] = []
+        self.log_buffer: list[dict[str, Any]] = []
 
         # Configure enabled tools
         if enabled_tools is None:
             self.enabled_tools = self.DEFAULT_TOOLS.copy()
         else:
             # Validate enabled tools
-            invalid_tools = [tool for tool in enabled_tools if tool not in self.ALL_TOOLS]
+            invalid_tools = [
+                tool for tool in enabled_tools if tool not in self.ALL_TOOLS
+            ]
             if invalid_tools:
-                raise ValueError(f"Invalid tools specified: {invalid_tools}. Available tools: {self.ALL_TOOLS}")
+                raise ValueError(
+                    f"Invalid tools specified: {invalid_tools}. Available tools: {self.ALL_TOOLS}"
+                )
             self.enabled_tools = enabled_tools.copy()
 
         logger.info(f"Enabled tools: {self.enabled_tools}")
 
         # Log initialization if file logging is enabled
         if self.log_to_file:
-            logger.info("HybridBrowserToolkit initialized with file logging enabled")
+            logger.info(
+                "HybridBrowserToolkit initialized with file logging enabled"
+            )
             logger.info(f"Log file path: {self.log_file_path}")
 
         # Core components
@@ -239,8 +276,10 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         self._agent: PlaywrightLLMAgent | None = None
         self._unified_script = self._load_unified_analyzer()
 
-    @listen_toolkit(BaseHybridBrowserToolkit.browser_visit_page, lambda _, url: url)
-    async def browser_visit_page(self, url: str) -> Dict[str, Any]:
+    @listen_toolkit(
+        BaseHybridBrowserToolkit.browser_visit_page, lambda _, url: url
+    )
+    async def browser_visit_page(self, url: str) -> dict[str, Any]:
         r"""Navigates to a URL.
 
         This method creates a new tab for the URL instead of navigating
@@ -280,7 +319,9 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         # Get snapshot
         snapshot = ""
         try:
-            snapshot = await session.get_snapshot(force_refresh=True, diff_only=False)
+            snapshot = await session.get_snapshot(
+                force_refresh=True, diff_only=False
+            )
         except Exception as e:
             logger.warning(f"Failed to capture snapshot: {e}")
 
@@ -314,14 +355,15 @@ class HybridBrowserPythonToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             # FunctionTool(browser.wait_user),
         ]
 
-
         return base_tools
 
     @classmethod
     def toolkit_name(cls) -> str:
         return "Browser Toolkit"
 
-    def clone_for_new_session(self, new_session_id: str | None = None) -> "HybridBrowserPythonToolkit":
+    def clone_for_new_session(
+        self, new_session_id: str | None = None
+    ) -> "HybridBrowserPythonToolkit":
         if new_session_id is None:
             new_session_id = str(uuid.uuid4())[:8]
 

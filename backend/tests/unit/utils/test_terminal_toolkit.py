@@ -15,8 +15,10 @@
 import asyncio
 import threading
 import time
+
 import pytest
-from app.service.task import task_locks, TaskLock
+
+from app.service.task import TaskLock, task_locks
 from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 
 
@@ -29,9 +31,11 @@ class TestTerminalToolkit:
         test_api_task_id = "test_api_task_123"
 
         if test_api_task_id not in task_locks:
-            task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
+            task_locks[test_api_task_id] = TaskLock(
+                id=test_api_task_id, queue=asyncio.Queue(), human_input={}
+            )
         toolkit = TerminalToolkit("test_api_task_123")
-        
+
         # This should NOT raise RuntimeError: no running event loop
         # This simulates the exact scenario from the error traceback
         try:
@@ -40,7 +44,9 @@ class TestTerminalToolkit:
 
         except RuntimeError as e:
             if "no running event loop" in str(e):
-                pytest.fail("RuntimeError: no running event loop should not be raised - the fix is not working!")
+                pytest.fail(
+                    "RuntimeError: no running event loop should not be raised - the fix is not working!"
+                )
             else:
                 raise  # Re-raise if it's a different RuntimeError
 
@@ -49,9 +55,11 @@ class TestTerminalToolkit:
         test_api_task_id = "test_api_task_123"
 
         if test_api_task_id not in task_locks:
-            task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
+            task_locks[test_api_task_id] = TaskLock(
+                id=test_api_task_id, queue=asyncio.Queue(), human_input={}
+            )
         toolkit = TerminalToolkit("test_api_task_123")
-        
+
         # Make multiple calls - none should raise RuntimeError
         try:
             for i in range(5):
@@ -59,7 +67,9 @@ class TestTerminalToolkit:
             time.sleep(0.2)  # Give threads time to complete
         except RuntimeError as e:
             if "no running event loop" in str(e):
-                pytest.fail("RuntimeError: no running event loop should not be raised!")
+                pytest.fail(
+                    "RuntimeError: no running event loop should not be raised!"
+                )
             else:
                 raise
 
@@ -68,7 +78,9 @@ class TestTerminalToolkit:
         test_api_task_id = "test_api_task_123"
 
         if test_api_task_id not in task_locks:
-            task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
+            task_locks[test_api_task_id] = TaskLock(
+                id=test_api_task_id, queue=asyncio.Queue(), human_input={}
+            )
         toolkit = TerminalToolkit("test_api_task_123")
 
         # Create multiple threads that call _write_to_log
@@ -76,17 +88,17 @@ class TestTerminalToolkit:
         for i in range(5):
             thread = threading.Thread(
                 target=toolkit._write_to_log,
-                args=(f"/tmp/test_{i}.log", f"Thread {i} output")
+                args=(f"/tmp/test_{i}.log", f"Thread {i} output"),
             )
             threads.append(thread)
             thread.start()
-        
+
         # Wait for all threads to complete
         for thread in threads:
             thread.join()
-        
+
         time.sleep(0.2)  # Give async operations time to complete
-        
+
         # Should not have raised any RuntimeError
 
     def test_async_context_still_works(self):
@@ -94,21 +106,22 @@ class TestTerminalToolkit:
         test_api_task_id = "test_api_task_123"
 
         if test_api_task_id not in task_locks:
-            task_locks[test_api_task_id] = TaskLock(id=test_api_task_id, queue=asyncio.Queue(), human_input={})
+            task_locks[test_api_task_id] = TaskLock(
+                id=test_api_task_id, queue=asyncio.Queue(), human_input={}
+            )
         toolkit = TerminalToolkit("test_api_task_123")
 
         async def test_async_context():
             toolkit._write_to_log("/tmp/async_test.log", "Async context test")
             await asyncio.sleep(0.1)
-        
+
         # Should work in async context without RuntimeError
         try:
             asyncio.run(test_async_context())
         except RuntimeError as e:
             if "no running event loop" in str(e):
-                pytest.fail("RuntimeError: no running event loop should not be raised in async context!")
+                pytest.fail(
+                    "RuntimeError: no running event loop should not be raised in async context!"
+                )
             else:
                 raise
-
-
-

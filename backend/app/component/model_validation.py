@@ -25,17 +25,17 @@ def get_website_content(url: str) -> str:
     Returns:
         str: The content of the website.
     """
-    return ("Tool execution completed successfully for "
-            "https://www.camel-ai.org, "
-            "Website Content: Welcome to CAMEL AI!")
+    return "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
 
 
-def create_agent(model_platform: str,
-                 model_type: str,
-                 api_key: str = None,
-                 url: str = None,
-                 model_config_dict: dict = None,
-                 **kwargs) -> ChatAgent:
+def create_agent(
+    model_platform: str,
+    model_type: str,
+    api_key: str = None,
+    url: str = None,
+    model_config_dict: dict = None,
+    **kwargs,
+) -> ChatAgent:
     platform = model_platform
     mtype = model_type
     if mtype is None:
@@ -52,9 +52,7 @@ def create_agent(model_platform: str,
         **kwargs,
     )
     agent = ChatAgent(
-        system_message=("You are a helpful assistant that must use "
-                        "the tool get_website_content to get the content "
-                        "of a website."),
+        system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
         model=model,
         tools=[get_website_content],
         step_timeout=1800,  # 30 minutes

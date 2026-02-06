@@ -1,6 +1,6 @@
 ---
-title: "Models (Local Model)"
-description: "Configure and deploy your preferred LLM models with Eigent."
+title: Models (Local Model)
+description: Configure and deploy your preferred LLM models with Eigent.
 ---
 
 ## **Self-Host Model**

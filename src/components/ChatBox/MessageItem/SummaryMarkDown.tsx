@@ -112,7 +112,7 @@ export const SummaryMarkDown = ({
 						<li className="mb-1 text-gray-700 leading-relaxed">{children}</li>
 					),
 					code: ({ children }) => (
-						<code className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs font-mono">
+						<code className="bg-surface-success-subtle text-text-success px-2 py-1 rounded text-xs font-mono">
 							{children}
 						</code>
 					),

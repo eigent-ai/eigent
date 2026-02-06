@@ -1,6 +1,6 @@
 ---
-title: "Bring Your Own Key (BYOK)"
-description: "Configure your own API keys to use various LLM providers with Eigent."
+title: Bring Your Own Key (BYOK)
+description: Configure your own API keys to use various LLM providers with Eigent.
 ---
 
 ## What is BYOK?
@@ -16,22 +16,24 @@ description: "Configure your own API keys to use various LLM providers with Eige
 ### Step 1: Get Your API Key
 
 1. Visit the [OpenAI API Keys page](https://platform.openai.com/api-keys)
-2. Click **"Create new secret key"**
-3. Copy the generated key (you won't be able to see it again)
+1. Click **"Create new secret key"**
+1. Copy the generated key (you won't be able to see it again)
 
 ### Step 2: Configure in Eigent
 
-1. Launch Eigent and go to **Settings** \> **Models**
-2. Find the **OpenAI** card in the Custom Model section
+1. Launch Eigent and go to **Settings** > **Models**
 
-   <img
-     src="/images/Screenshot2026-01-20at18.13.45.png"
-     alt="Screenshot 2026 01 20 At 18 13 45"
-     title="Screenshot 2026 01 20 At 18 13 45"
-     className="mr-auto"
-     style={{ width:"74%" }}
+1. Find the **OpenAI** card in the Custom Model section
+
+   \<img
+   src="/images/Screenshot2026-01-20at18.13.45.png"
+   alt="Screenshot 2026 01 20 At 18 13 45"
+   title="Screenshot 2026 01 20 At 18 13 45"
+   className="mr-auto"
+   style={{ width:"74%" }}
    />
-3. Fill in the following fields:
+
+1. Fill in the following fields:
 
 | Field          | Value                     | Example                     |
 | -------------- | ------------------------- | --------------------------- |
@@ -40,7 +42,7 @@ description: "Configure your own API keys to use various LLM providers with Eige
 | **Model Type** | The model you want to use | `gpt-4o`, `gpt-4o-mini`     |
 
 4. Click **Save** to validate and store your configuration
-5. Click **Set as Default** to use this provider for your agents
+1. Click **Set as Default** to use this provider for your agents
 
 ## Configuration Fields
 

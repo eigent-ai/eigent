@@ -110,7 +110,7 @@ export default function SettingMCP() {
 								window.location.href =
 									"https://developers.google.com/custom-search/v1/overview";
 							}}
-							className="underline text-blue-500"
+							className="underline text-text-link"
 						>
 							{t("setting.google-custom-search-api")}
 						</a>
@@ -210,11 +210,11 @@ export default function SettingMCP() {
 										const existingConfigs = await proxyFetchGet("/api/configs");
 										const existing = Array.isArray(existingConfigs)
 											? existingConfigs.find(
-													(c: any) =>
-														c.config_group?.toLowerCase() ===
-															"google calendar" &&
-														c.config_name === "GOOGLE_REFRESH_TOKEN"
-											  )
+												(c: any) =>
+													c.config_group?.toLowerCase() ===
+													"google calendar" &&
+													c.config_name === "GOOGLE_REFRESH_TOKEN"
+											)
 											: null;
 
 										const configPayload = {
@@ -263,11 +263,11 @@ export default function SettingMCP() {
 													const configs = await proxyFetchGet("/api/configs");
 													const existing = Array.isArray(configs)
 														? configs.find(
-																(c: any) =>
-																	c.config_group?.toLowerCase() ===
-																		"google calendar" &&
-																	c.config_name === "GOOGLE_REFRESH_TOKEN"
-														  )
+															(c: any) =>
+																c.config_group?.toLowerCase() ===
+																"google calendar" &&
+																c.config_name === "GOOGLE_REFRESH_TOKEN"
+														)
 														: null;
 
 													const payload = {
@@ -314,14 +314,14 @@ export default function SettingMCP() {
 								} else {
 									toast.error(
 										response.error ||
-											response.message ||
-											t("setting.failed-to-install-google-calendar")
+										response.message ||
+										t("setting.failed-to-install-google-calendar")
 									);
 								}
 							} catch (error: any) {
 								toast.error(
 									error.message ||
-										t("setting.failed-to-install-google-calendar")
+									t("setting.failed-to-install-google-calendar")
 								);
 							}
 						};
@@ -340,13 +340,13 @@ export default function SettingMCP() {
 						desc:
 							value.env_vars && value.env_vars.length > 0
 								? `${t(
-										"setting.environmental-variables-required"
-								  )}: ${value.env_vars.join(", ")}`
+									"setting.environmental-variables-required"
+								)}: ${value.env_vars.join(", ")}`
 								: key.toLowerCase() === "notion"
-								? t("setting.notion-workspace-integration")
-								: key.toLowerCase() === "google calendar"
-								? t("setting.google-calendar-integration")
-								: "",
+									? t("setting.notion-workspace-integration")
+									: key.toLowerCase() === "google calendar"
+										? t("setting.google-calendar-integration")
+										: "",
 						onInstall,
 					};
 				});
@@ -605,7 +605,7 @@ export default function SettingMCP() {
 		<div className="flex-1 h-auto m-auto">
 			{/* Header Section */}
 			<div className="flex w-full">
-				<div className="flex px-6 pt-8 pb-4 max-w-[900px] mx-auto w-full items-center justify-between">
+				<div className="flex px-6 pt-8 pb-4 max-w-[940px] mx-auto w-full items-center justify-between">
 					<div className="flex w-full items-center justify-between">
 						{showMarket ? (
 							<div className="flex w-full items-center justify-between gap-sm">
@@ -655,7 +655,7 @@ export default function SettingMCP() {
 
 			{/* Content Section */}
 			<div className="flex w-full">
-				<div className="flex px-6 py-8 max-w-[900px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
+				<div className="flex px-6 py-8 max-w-[940px] min-h-[calc(100vh-86px)] mx-auto w-full items-start justify-center">
 					<div className="flex flex-col w-full gap-8">
 						{showMarket ? (
 							<div className="pt-2">
@@ -684,7 +684,7 @@ export default function SettingMCP() {
 													config_name: "DEFAULT_SEARCH_ENGINE",
 													config_value: value,
 												});
-											} catch (e) {}
+											} catch (e) { }
 										}}
 										onConfigClick={(item) => {
 											if (item.key === "Search") {
@@ -755,7 +755,7 @@ export default function SettingMCP() {
 												</div>
 											)}
 											{error && (
-												<div className="text-center py-8 text-red-500">
+												<div className="text-center py-8 text-text-error">
 													{error}
 												</div>
 											)}

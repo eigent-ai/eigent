@@ -43,7 +43,9 @@ interface ElectronAPI {
   createWebView: (id: string, url: string) => Promise<any>;
   hideWebView: (id: string) => Promise<any>;
   changeViewSize: (id: string, size: any) => Promise<any>;
-  onWebviewNavigated: (callback: (id: string, url: string) => void) => () => void;
+  onWebviewNavigated: (
+    callback: (id: string, url: string) => void
+  ) => () => void;
   showWebview: (id: string) => Promise<any>;
   getActiveWebview: () => Promise<any>;
   setSize: (size: any) => Promise<any>;
@@ -55,38 +57,70 @@ interface ElectronAPI {
   mcpRemove: (name: string) => Promise<any>;
   mcpUpdate: (name: string, mcp: any) => Promise<any>;
   mcpList: () => Promise<any>;
-  envWrite: (email: string, kv: { key: string, value: string }) => Promise<any>;
+  envWrite: (email: string, kv: { key: string; value: string }) => Promise<any>;
   envRemove: (email: string, key: string) => Promise<any>;
   getEnvPath: (email: string) => Promise<string>;
-  executeCommand: (command: string, email: string) => Promise<{ success: boolean; stdout?: string; stderr?: string; error?: string }>;
+  executeCommand: (
+    command: string,
+    email: string
+  ) => Promise<{
+    success: boolean;
+    stdout?: string;
+    stderr?: string;
+    error?: string;
+  }>;
   readFile: (filePath: string) => Promise<any>;
   readFileAsDataUrl: (path: string) => Promise<string>;
   deleteFolder: (email: string) => Promise<any>;
   getMcpConfigPath: (email: string) => Promise<string>;
-  uploadLog: (email: string, taskId: string, baseUrl: string, token: string) => Promise<any>;
+  uploadLog: (
+    email: string,
+    taskId: string,
+    baseUrl: string,
+    token: string
+  ) => Promise<any>;
   startBrowserImport: (args?: any) => Promise<any>;
-  checkAndInstallDepsOnUpdate: () => Promise<{ success: boolean; error?: string }>;
-  checkInstallBrowser: () => Promise<{ data:any[] }>;
+  checkAndInstallDepsOnUpdate: () => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  checkInstallBrowser: () => Promise<{ data: any[] }>;
   getInstallationStatus: () => Promise<{
     success: boolean;
     isInstalling?: boolean;
     hasLockFile?: boolean;
     installedExists?: boolean;
     timestamp?: number;
-    error?: string
+    error?: string;
   }>;
   getBackendPort: () => Promise<number | null>;
   restartBackend: () => Promise<{ success: boolean; error?: string }>;
   onInstallDependenciesStart: (callback: () => void) => void;
-  onInstallDependenciesLog: (callback: (data: { type: string; data: string }) => void) => void;
-  onInstallDependenciesComplete: (callback: (data: { success: boolean; code?: number; error?: string }) => void) => void;
-  onUpdateNotification: (callback: (data: {
-    type: string;
-    currentVersion: string;
-    previousVersion: string;
-    reason: string;
-  }) => void) => void;
-  onBackendReady: (callback: (data: { success: boolean; port?: number; error?: string }) => void) => void;
+  onInstallDependenciesLog: (
+    callback: (data: { type: string; data: string }) => void
+  ) => void;
+  onInstallDependenciesComplete: (
+    callback: (data: {
+      success: boolean;
+      code?: number;
+      error?: string;
+    }) => void
+  ) => void;
+  onUpdateNotification: (
+    callback: (data: {
+      type: string;
+      currentVersion: string;
+      previousVersion: string;
+      reason: string;
+    }) => void
+  ) => void;
+  onBackendReady: (
+    callback: (data: {
+      success: boolean;
+      port?: number;
+      error?: string;
+    }) => void
+  ) => void;
   removeAllListeners: (channel: string) => void;
   getEmailFolderPath: (email: string) => Promise<{
     MCP_REMOTE_CONFIG_DIR: string;
@@ -94,6 +128,12 @@ interface ElectronAPI {
     tempEmail: string;
   }>;
   restartApp: () => Promise<void>;
+  readGlobalEnv: (key: string) => Promise<{ value: string | null }>;
+  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  openInIDE: (
+    folderPath: string,
+    ide: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {
@@ -101,4 +141,4 @@ declare global {
     ipcRenderer: IpcRenderer;
     electronAPI: ElectronAPI;
   }
-} 
+}

@@ -12,6 +12,5 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export * from "./WordCarousel";
-export { default } from "./WordCarousel";
-
+export * from './WordCarousel';
+export { default } from './WordCarousel';

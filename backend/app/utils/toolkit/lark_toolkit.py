@@ -22,7 +22,6 @@ from app.utils.toolkit.abstract_toolkit import AbstractToolkit
 
 @auto_listen_toolkit(BaseLarkToolkit)
 class LarkToolkit(BaseLarkToolkit, AbstractToolkit):
-
     def __init__(self, api_task_id: str, timeout: float | None = None):
         super().__init__(timeout=timeout)
         self.api_task_id = api_task_id

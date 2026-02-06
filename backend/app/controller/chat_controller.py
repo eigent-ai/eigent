@@ -19,21 +19,38 @@ import re
 import time
 from pathlib import Path
 
-from app.component import code
-from app.component.environment import sanitize_env_path, set_user_env_path
-from app.exception.exception import UserException
-from app.model.chat import (AddTaskRequest, Chat, HumanReply, McpServers,
-                            Status, SupplementChat, sse_json)
-from app.service.chat_service import step_solve
-from app.service.task import (Action, ActionAddTaskData, ActionImproveData,
-                              ActionInstallMcpData, ActionRemoveTaskData,
-                              ActionSkipTaskData, ActionStopData,
-                              ActionSupplementData, delete_task_lock,
-                              get_or_create_task_lock, get_task_lock,
-                              set_current_task_id, task_locks)
 from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
+
+from app.component import code
+from app.component.environment import sanitize_env_path, set_user_env_path
+from app.exception.exception import UserException
+from app.model.chat import (
+    AddTaskRequest,
+    Chat,
+    HumanReply,
+    McpServers,
+    Status,
+    SupplementChat,
+    sse_json,
+)
+from app.service.chat_service import step_solve
+from app.service.task import (
+    Action,
+    ActionAddTaskData,
+    ActionImproveData,
+    ActionInstallMcpData,
+    ActionRemoveTaskData,
+    ActionSkipTaskData,
+    ActionStopData,
+    ActionSupplementData,
+    delete_task_lock,
+    get_or_create_task_lock,
+    get_task_lock,
+    set_current_task_id,
+    task_locks,
+)
 
 router = APIRouter()
 
@@ -61,28 +78,32 @@ async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
     if task_lock.id not in task_locks:
         chat_logger.debug(
             f"[{reason}] Task lock already removed, skipping cleanup",
-            extra={"task_id": task_lock.id})
+            extra={"task_id": task_lock.id},
+        )
         return False
 
     try:
         task_lock.status = Status.done
         await delete_task_lock(task_lock.id)
-        chat_logger.info(f"[{reason}] Task lock cleanup completed",
-                         extra={"task_id": task_lock.id})
+        chat_logger.info(
+            f"[{reason}] Task lock cleanup completed",
+            extra={"task_id": task_lock.id},
+        )
         return True
     except Exception as e:
-        chat_logger.error(f"[{reason}] Failed to cleanup task lock",
-                          extra={
-                              "task_id": task_lock.id,
-                              "error": str(e)
-                          },
-                          exc_info=True)
+        chat_logger.error(
+            f"[{reason}] Failed to cleanup task lock",
+            extra={"task_id": task_lock.id, "error": str(e)},
+            exc_info=True,
+        )
         return False
 
 
-async def timeout_stream_wrapper(stream_generator,
-                                 timeout_seconds: int = SSE_TIMEOUT_SECONDS,
-                                 task_lock=None):
+async def timeout_stream_wrapper(
+    stream_generator,
+    timeout_seconds: int = SSE_TIMEOUT_SECONDS,
+    task_lock=None,
+):
     """Wraps a stream generator with timeout handling.
 
     Closes the SSE connection if no data is received within the timeout period.
@@ -98,35 +119,45 @@ async def timeout_stream_wrapper(stream_generator,
             remaining_timeout = timeout_seconds - elapsed
 
             try:
-                data = await asyncio.wait_for(generator.__anext__(),
-                                              timeout=remaining_timeout)
+                data = await asyncio.wait_for(
+                    generator.__anext__(), timeout=remaining_timeout
+                )
                 last_data_time = time.time()
                 yield data
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 chat_logger.warning(
                     "SSE timeout: No data received, closing connection",
-                    extra={"timeout_seconds": timeout_seconds})
+                    extra={"timeout_seconds": timeout_seconds},
+                )
+                timeout_min = timeout_seconds // 60
                 yield sse_json(
-                    "error", {
-                        "message":
-                        f"Connection timeout: No data received for {timeout_seconds // 60} minutes"
-                    })
+                    "error",
+                    {
+                        "message": "Connection timeout: No data"
+                        f" received for {timeout_min}"
+                        " minutes"
+                    },
+                )
                 cleanup_triggered = await _cleanup_task_lock_safe(
-                    task_lock, "TIMEOUT")
+                    task_lock, "TIMEOUT"
+                )
                 break
             except StopAsyncIteration:
                 break
 
     except asyncio.CancelledError:
         chat_logger.info(
-            "[STREAM-CANCELLED] Stream cancelled, triggering cleanup")
+            "[STREAM-CANCELLED] Stream cancelled, triggering cleanup"
+        )
         if not cleanup_triggered:
             await _cleanup_task_lock_safe(task_lock, "CANCELLED")
         raise
     except Exception as e:
-        chat_logger.error("[STREAM-ERROR] Unexpected error in stream wrapper",
-                          extra={"error": str(e)},
-                          exc_info=True)
+        chat_logger.error(
+            "[STREAM-ERROR] Unexpected error in stream wrapper",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         if not cleanup_triggered:
             await _cleanup_task_lock_safe(task_lock, "ERROR")
         raise
@@ -134,12 +165,14 @@ async def timeout_stream_wrapper(stream_generator,
 
 @router.post("/chat", name="start chat")
 async def post(data: Chat, request: Request):
-    chat_logger.info("Starting new chat session",
-                     extra={
-                         "project_id": data.project_id,
-                         "task_id": data.task_id,
-                         "user": data.email
-                     })
+    chat_logger.info(
+        "Starting new chat session",
+        extra={
+            "project_id": data.project_id,
+            "task_id": data.task_id,
+            "user": data.email,
+        },
+    )
 
     task_lock = get_or_create_task_lock(data.project_id)
 
@@ -153,8 +186,9 @@ async def post(data: Chat, request: Request):
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
     os.environ["OPENAI_API_KEY"] = data.api_key
-    os.environ[
-        "OPENAI_API_BASE_URL"] = data.api_url or "https://api.openai.com/v1"
+    os.environ["OPENAI_API_BASE_URL"] = (
+        data.api_url or "https://api.openai.com/v1"
+    )
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
     # Set user-specific search engine configuration if provided
@@ -162,14 +196,22 @@ async def post(data: Chat, request: Request):
         for key, value in data.search_config.items():
             if value:
                 os.environ[key] = value
-                chat_logger.debug(f"Set search config: {key}",
-                                  extra={"project_id": data.project_id})
+                chat_logger.debug(
+                    f"Set search config: {key}",
+                    extra={"project_id": data.project_id},
+                )
 
-    email_sanitized = re.sub(r'[\\/*?:"<>|\s]', "_",
-                             data.email.split("@")[0]).strip(".")
-    camel_log = (Path.home() / ".eigent" / email_sanitized /
-                 ("project_" + data.project_id) / ("task_" + data.task_id) /
-                 "camel_logs")
+    email_sanitized = re.sub(
+        r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]
+    ).strip(".")
+    camel_log = (
+        Path.home()
+        / ".eigent"
+        / email_sanitized
+        / ("project_" + data.project_id)
+        / ("task_" + data.task_id)
+        / "camel_logs"
+    )
     camel_log.mkdir(parents=True, exist_ok=True)
 
     os.environ["CAMEL_LOG_DIR"] = str(camel_log)
@@ -182,29 +224,31 @@ async def post(data: Chat, request: Request):
 
     # Put initial action in queue to start processing
     await task_lock.put_queue(
-        ActionImproveData(data=data.question, new_task_id=data.task_id))
+        ActionImproveData(data=data.question, new_task_id=data.task_id)
+    )
 
     chat_logger.info(
         "Chat session initialized",
         extra={
             "project_id": data.project_id,
             "task_id": data.task_id,
-            "log_dir": str(camel_log)
+            "log_dir": str(camel_log),
         },
     )
-    return StreamingResponse(timeout_stream_wrapper(step_solve(
-        data, request, task_lock),
-                                                    task_lock=task_lock),
-                             media_type="text/event-stream")
+    return StreamingResponse(
+        timeout_stream_wrapper(
+            step_solve(data, request, task_lock), task_lock=task_lock
+        ),
+        media_type="text/event-stream",
+    )
 
 
 @router.post("/chat/{id}", name="improve chat")
 def improve(id: str, data: SupplementChat):
-    chat_logger.info("Chat improvement requested",
-                     extra={
-                         "task_id": id,
-                         "question_length": len(data.question)
-                     })
+    chat_logger.info(
+        "Chat improvement requested",
+        extra={"task_id": id, "question_length": len(data.question)},
+    )
     task_lock = get_task_lock(id)
 
     # Allow continuing conversation even after task is done
@@ -219,15 +263,19 @@ def improve(id: str, data: SupplementChat):
 
         # Log context preservation
         if hasattr(task_lock, "conversation_history"):
+            hist_len = len(task_lock.conversation_history)
             chat_logger.info(
-                f"[CONTEXT] Preserved {len(task_lock.conversation_history)} conversation entries"
+                f"[CONTEXT] Preserved {hist_len} conversation entries"
             )
         if hasattr(task_lock, "last_task_result"):
+            result_len = len(task_lock.last_task_result)
             chat_logger.info(
-                f"[CONTEXT] Preserved task result: {len(task_lock.last_task_result)} chars"
+                f"[CONTEXT] Preserved task result: {result_len} chars"
             )
 
-    # If task_id is provided, optimistically update file_save_path (will be destroyed if task is not complex)
+    # If task_id is provided, optimistically update
+    # file_save_path (will be destroyed if task is
+    # not complex)
     # this is because a NEW workforce instance may be created for this task
     new_folder_path = None
     if data.task_id:
@@ -244,33 +292,52 @@ def improve(id: str, data: SupplementChat):
                     if eigent_index + 1 < len(path_parts):
                         current_email = path_parts[eigent_index + 1]
 
-            # If we have the necessary information, update the file_save_path
+            # If we have the necessary info, update
+            # the file_save_path
             if current_email and id:
-                # Create new path using the existing pattern: email/project_{project_id}/task_{task_id}
-                new_folder_path = Path.home(
-                ) / "eigent" / current_email / f"project_{id}" / f"task_{data.task_id}"
+                # Create new path using the existing
+                # pattern: email/project_{id}/task_{id}
+                new_folder_path = (
+                    Path.home()
+                    / "eigent"
+                    / current_email
+                    / f"project_{id}"
+                    / f"task_{data.task_id}"
+                )
                 new_folder_path.mkdir(parents=True, exist_ok=True)
                 os.environ["file_save_path"] = str(new_folder_path)
                 chat_logger.info(
-                    f"Updated file_save_path to: {new_folder_path}")
+                    f"Updated file_save_path to: {new_folder_path}"
+                )
 
-                # Store the new folder path in task_lock for potential cleanup and persistence
+                # Store the new folder path in task_lock
+                # for potential cleanup and persistence
                 task_lock.new_folder_path = new_folder_path
             else:
                 chat_logger.warning(
-                    f"Could not update file_save_path - email: {current_email}, project_id: {id}"
+                    "Could not update"
+                    " file_save_path -"
+                    f" email: {current_email},"
+                    f" project_id: {id}"
                 )
 
         except Exception as e:
             chat_logger.error(
-                f"Error updating file path for project_id: {id}, task_id: {data.task_id}: {e}"
+                "Error updating file path for"
+                f" project_id: {id},"
+                f" task_id: {data.task_id}:"
+                f" {e}"
             )
 
     asyncio.run(
         task_lock.put_queue(
-            ActionImproveData(data=data.question, new_task_id=data.task_id)))
-    chat_logger.info("Improvement request queued with preserved context",
-                     extra={"project_id": id})
+            ActionImproveData(data=data.question, new_task_id=data.task_id)
+        )
+    )
+    chat_logger.info(
+        "Improvement request queued with preserved context",
+        extra={"project_id": id},
+    )
     return Response(status_code=201)
 
 
@@ -290,36 +357,46 @@ def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
     chat_logger.info(
-        "🛑 [STOP-BUTTON] DELETE /chat/{id} request received from frontend")
+        "🛑 [STOP-BUTTON] DELETE /chat/{id} request received from frontend"
+    )
     chat_logger.info(f"[STOP-BUTTON] project_id/task_id: {id}")
     chat_logger.info("=" * 80)
     try:
         task_lock = get_task_lock(id)
         chat_logger.info(
-            f"[STOP-BUTTON] Task lock retrieved, task_lock.id: {task_lock.id}, task_lock.status: {task_lock.status}"
+            "[STOP-BUTTON] Task lock retrieved,"
+            f" task_lock.id: {task_lock.id},"
+            f" task_lock.status: {task_lock.status}"
         )
         chat_logger.info(
-            "[STOP-BUTTON] Queueing ActionStopData(Action.stop) to task_lock queue"
+            "[STOP-BUTTON] Queueing"
+            " ActionStopData(Action.stop)"
+            " to task_lock queue"
         )
         asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
         chat_logger.info(
-            "[STOP-BUTTON] ✅ ActionStopData queued successfully, this will trigger workforce.stop_gracefully()"
+            "[STOP-BUTTON] ActionStopData queued"
+            " successfully, this will trigger"
+            " workforce.stop_gracefully()"
         )
     except Exception as e:
-        # Task lock may not exist if task is already finished or never started
+        # Task lock may not exist if task is already
+        # finished or never started
         chat_logger.warning(
-            f"[STOP-BUTTON] ⚠️  Task lock not found or already stopped, task_id: {id}, error: {str(e)}"
+            "[STOP-BUTTON] Task lock not found"
+            " or already stopped,"
+            f" task_id: {id},"
+            f" error: {str(e)}"
         )
     return Response(status_code=204)
 
 
 @router.post("/chat/{id}/human-reply")
 def human_reply(id: str, data: HumanReply):
-    chat_logger.info("Human reply received",
-                     extra={
-                         "task_id": id,
-                         "reply_length": len(data.reply)
-                     })
+    chat_logger.info(
+        "Human reply received",
+        extra={"task_id": id, "reply_length": len(data.reply)},
+    )
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_human_input(data.agent, data.reply))
     chat_logger.debug("Human reply processed", extra={"task_id": id})
@@ -328,15 +405,19 @@ def human_reply(id: str, data: HumanReply):
 
 @router.post("/chat/{id}/install-mcp")
 def install_mcp(id: str, data: McpServers):
-    chat_logger.info("Installing MCP servers",
-                     extra={
-                         "task_id": id,
-                         "servers_count": len(data.get("mcpServers", {}))
-                     })
+    chat_logger.info(
+        "Installing MCP servers",
+        extra={
+            "task_id": id,
+            "servers_count": len(data.get("mcpServers", {})),
+        },
+    )
     task_lock = get_task_lock(id)
     asyncio.run(
         task_lock.put_queue(
-            ActionInstallMcpData(action=Action.install_mcp, data=data)))
+            ActionInstallMcpData(action=Action.install_mcp, data=data)
+        )
+    )
     chat_logger.info("MCP installation queued", extra={"task_id": id})
     return Response(status_code=201)
 
@@ -345,7 +426,9 @@ def install_mcp(id: str, data: McpServers):
 def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(
-        f"Adding task to workforce for task_id: {id}, content: {data.content[:100]}..."
+        "Adding task to workforce for"
+        f" task_id: {id},"
+        f" content: {data.content[:100]}..."
     )
     task_lock = get_task_lock(id)
 
@@ -366,28 +449,35 @@ def add_task(id: str, data: AddTaskRequest):
         raise UserException(code.error, f"Failed to add task: {str(e)}")
 
 
-@router.delete("/chat/{project_id}/remove-task/{task_id}",
-               name="remove task from workforce")
+@router.delete(
+    "/chat/{project_id}/remove-task/{task_id}",
+    name="remove task from workforce",
+)
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
     chat_logger.info(
-        f"Removing task {task_id} from workforce for project_id: {project_id}")
+        f"Removing task {task_id} from workforce for project_id: {project_id}"
+    )
     task_lock = get_task_lock(project_id)
 
     try:
         # Queue the remove task action
-        remove_task_action = ActionRemoveTaskData(task_id=task_id,
-                                                  project_id=project_id)
+        remove_task_action = ActionRemoveTaskData(
+            task_id=task_id, project_id=project_id
+        )
         asyncio.run(task_lock.put_queue(remove_task_action))
 
         chat_logger.info(
-            f"Task removal request queued for project_id: {project_id}, removing task: {task_id}"
+            "Task removal request queued for"
+            f" project_id: {project_id},"
+            f" removing task: {task_id}"
         )
         return Response(status_code=204)
 
     except Exception as e:
         chat_logger.error(
-            f"Error removing task {task_id} for project_id: {project_id}: {e}")
+            f"Error removing task {task_id} for project_id: {project_id}: {e}"
+        )
         raise UserException(code.error, f"Failed to remove task: {str(e)}")
 
 
@@ -406,30 +496,44 @@ def skip_task(project_id: str):
     """
     chat_logger.info("=" * 80)
     chat_logger.info(
-        "🛑 [STOP-BUTTON] SKIP-TASK request received from frontend (User clicked Stop)"
+        "[STOP-BUTTON] SKIP-TASK request"
+        " received from frontend"
+        " (User clicked Stop)"
     )
     chat_logger.info(f"[STOP-BUTTON] project_id: {project_id}")
     chat_logger.info("=" * 80)
     task_lock = get_task_lock(project_id)
     chat_logger.info(
-        f"[STOP-BUTTON] Task lock retrieved, task_lock.id: {task_lock.id}, task_lock.status: {task_lock.status}"
+        "[STOP-BUTTON] Task lock retrieved,"
+        f" task_lock.id: {task_lock.id},"
+        " task_lock.status:"
+        f" {task_lock.status}"
     )
 
     try:
-        # Queue the skip task action - this will preserve context for multi-turn
+        # Queue the skip task action - this will
+        # preserve context for multi-turn
         skip_task_action = ActionSkipTaskData(project_id=project_id)
         chat_logger.info(
-            "[STOP-BUTTON] Queueing ActionSkipTaskData (preserves context, marks as done)"
+            "[STOP-BUTTON] Queueing"
+            " ActionSkipTaskData"
+            " (preserves context,"
+            " marks as done)"
         )
         asyncio.run(task_lock.put_queue(skip_task_action))
 
         chat_logger.info(
-            "[STOP-BUTTON] ✅ Skip request queued - task will stop gracefully and preserve context"
+            "[STOP-BUTTON] Skip request"
+            " queued - task will stop"
+            " gracefully and preserve context"
         )
         return Response(status_code=201)
 
     except Exception as e:
         chat_logger.error(
-            f"[STOP-BUTTON] Error skipping task for project_id: {project_id}: {e}"
+            "[STOP-BUTTON] Error skipping"
+            " task for"
+            f" project_id: {project_id}:"
+            f" {e}"
         )
         raise UserException(code.error, f"Failed to skip task: {str(e)}")

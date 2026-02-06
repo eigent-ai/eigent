@@ -12,9 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Literal
 from camel.toolkits import GithubToolkit as BaseGithubToolkit
 from camel.toolkits.function_tool import FunctionTool
+
 from app.component.environment import env
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit

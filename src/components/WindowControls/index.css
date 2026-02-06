@@ -12,14 +12,13 @@
   cursor: pointer;
   text-align: center;
   line-height: 20px;
-	height: 100%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	pointer-events: auto;
-	-webkit-app-region: no-drag;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
-.control-btn:hover{
+.control-btn:hover {
   background-color: #f0f0f0;
 }
-
