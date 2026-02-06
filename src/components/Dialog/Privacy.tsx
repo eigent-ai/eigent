@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { AlertCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface PrivacyDialogProps {
@@ -46,12 +46,15 @@ export function PrivacyDialog({
   trigger,
 }: PrivacyDialogProps) {
   const { t } = useTranslation();
-  const API_FIELDS = [
-    'take_screenshot',
-    'access_local_software',
-    'access_your_address',
-    'password_storage',
-  ];
+  const API_FIELDS = useMemo(
+    () => [
+      'take_screenshot',
+      'access_local_software',
+      'access_your_address',
+      'password_storage',
+    ],
+    []
+  );
 
   const [settings, setSettings] = useState([
     {
@@ -87,7 +90,7 @@ export function PrivacyDialog({
         );
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
-  }, []);
+  }, [API_FIELDS]);
 
   const handleToggle = (index: number) => {
     setSettings((prev) => {

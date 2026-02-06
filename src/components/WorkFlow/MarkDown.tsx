@@ -56,7 +56,7 @@ export const MarkDown = ({
     }, speed);
 
     return () => clearInterval(timer);
-  }, [content, speed]);
+  }, [content, speed, enableTypewriter, onTyping]);
 
   // process line breaks, convert \n to <br> tag
   const processContent = (text: string) => {

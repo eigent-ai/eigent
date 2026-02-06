@@ -38,14 +38,14 @@ interface MCPItem {
   };
   homepage?: string;
 }
-interface EnvValue {
+interface _EnvValue {
   value: string;
   required: boolean;
   tip: string;
 }
 
-const PAGE_SIZE = 10;
-const STICKY_Z = 20;
+const _PAGE_SIZE = 10;
+const _STICKY_Z = 20;
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -231,6 +231,7 @@ export default function MCPMarket({
         );
       }
     } catch (e) {
+      console.error('Error installing MCP:', e);
     } finally {
       setInstalling((prev) => ({ ...prev, [id]: false }));
     }

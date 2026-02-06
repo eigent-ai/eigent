@@ -96,22 +96,15 @@ function HeaderWin() {
     navigate('/');
   };
 
+  const summaryTask =
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
+
   const activeTaskTitle = useMemo(() => {
-    if (
-      chatStore?.activeTaskId &&
-      chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask
-    ) {
-      return chatStore.tasks[
-        chatStore.activeTaskId as string
-      ].summaryTask.split('|')[0];
+    if (chatStore?.activeTaskId && summaryTask) {
+      return summaryTask.split('|')[0];
     }
     return t('layout.new-project');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    chatStore?.activeTaskId,
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask,
-    t,
-  ]);
+  }, [chatStore?.activeTaskId, summaryTask, t]);
 
   if (!chatStore) {
     return <div>Loading...</div>;

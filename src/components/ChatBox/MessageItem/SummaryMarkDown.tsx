@@ -28,7 +28,7 @@ export const SummaryMarkDown = ({
   enableTypewriter?: boolean;
 }) => {
   const [displayedContent, setDisplayedContent] = useState('');
-  const [isTyping, setIsTyping] = useState(true);
+  const [_isTyping, setIsTyping] = useState(true);
 
   useEffect(() => {
     if (!enableTypewriter) {
@@ -55,7 +55,7 @@ export const SummaryMarkDown = ({
     }, speed);
 
     return () => clearInterval(timer);
-  }, [content, speed, onTyping]);
+  }, [content, speed, onTyping, enableTypewriter]);
 
   // If content is a pure HTML document, render in a styled pre block
   if (isHtmlDocument(content)) {

@@ -52,6 +52,7 @@ export default [
       'dist/**',
       'dist-electron/**',
       'build/**',
+      'release/**',
       // Cache
       '.cache/**',
       '.vite/**',

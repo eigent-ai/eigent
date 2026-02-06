@@ -198,7 +198,7 @@ export default function TerminalComponent({
 
     // use ResizeObserver to listen to container size change
     const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
+      for (const _entry of entries) {
         // delay execution of fit to ensure layout stability
         setTimeout(() => {
           if (fitAddonRef.current) {
@@ -344,7 +344,7 @@ export default function TerminalComponent({
       // show prompt
       xtermRef.current.write(promptText);
     }, 200);
-  }, [chatStore.activeTaskId, showWelcome, instanceId]);
+  }, [chatStore.activeTaskId, showWelcome, instanceId, content]);
 
   if (!chatStore) {
     return <div>Loading...</div>;

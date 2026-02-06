@@ -76,6 +76,7 @@ export default function SettingAPI() {
         config_group: configGroup,
       });
     } catch (e) {
+      console.error('Failed to verify config:', e);
     } finally {
       setLoading((prev) => ({ ...prev, [env]: false }));
     }
