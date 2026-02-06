@@ -58,8 +58,8 @@ COPY server/start.sh /app/start.sh
 RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 # Make Celery scripts executable
-RUN sed -i 's/\r$//' /app/app/celery/worker/start && chmod +x /app/app/celery/worker/start
-RUN sed -i 's/\r$//' /app/app/celery/beat/start && chmod +x /app/app/celery/beat/start
+RUN sed -i 's/\r$//' /app/celery/worker/start && chmod +x /app/celery/worker/start
+RUN sed -i 's/\r$//' /app/celery/beat/start && chmod +x /app/celery/beat/start
 
 # Reset the entrypoint, don't invoke `uv`
 ENTRYPOINT []
