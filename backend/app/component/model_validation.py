@@ -22,6 +22,9 @@ from camel.models import ModelFactory, ModelProcessingError
 
 logger = logging.getLogger("model_validation")
 
+# Expected result from tool execution for validation
+EXPECTED_TOOL_RESULT = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+
 
 class ValidationStage(str, Enum):
     """Stages of model validation process."""
@@ -100,13 +103,16 @@ def get_website_content(url: str) -> str:
     Returns:
         str: The content of the website.
     """
-    return "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+    return EXPECTED_TOOL_RESULT
 
 
 def categorize_error(
     exception: Exception, stage: ValidationStage
 ) -> ValidationErrorType:
     """Categorize exception into specific error type.
+
+    This function attempts to categorize errors from various model platforms/providers
+    (OpenAI, Anthropic, LiteLLM, Qwen, etc.) into standardized error types.
 
     Args:
         exception: The exception to categorize
@@ -117,93 +123,180 @@ def categorize_error(
     """
     error_str = str(exception).lower()
     error_type = exception.__class__.__name__.lower()
+    exception_type_str = str(type(exception)).lower()
 
-    # Authentication errors
-    if any(
-        keyword in error_str
-        for keyword in [
-            "invalid_api_key",
-            "incorrect api key",
-            "unauthorized",
-            "authentication",
-            "401",
-        ]
-    ):
+    # First, check exception type for common patterns
+    # This helps catch errors from different providers that use standard exception types
+    if "timeout" in error_type or "timeouterror" in exception_type_str:
+        return ValidationErrorType.TIMEOUT_ERROR
+
+    if "connection" in error_type or "connectionerror" in exception_type_str:
+        return ValidationErrorType.NETWORK_ERROR
+
+    if "authentication" in error_type or "autherror" in exception_type_str:
         return ValidationErrorType.AUTHENTICATION_ERROR
 
-    # Network errors
-    if any(
-        keyword in error_str
-        for keyword in [
-            "connection",
-            "network",
-            "timeout",
-            "dns",
-            "resolve",
-            "refused",
-        ]
-    ):
+    # Check for ModelProcessingError from camel-ai, which wraps provider-specific errors
+    if isinstance(exception, ModelProcessingError):
+        # ModelProcessingError often contains provider-specific error messages
+        if "timeout" in error_str or "timed out" in error_str:
+            return ValidationErrorType.TIMEOUT_ERROR
+        if any(
+            keyword in error_str
+            for keyword in [
+                "authentication",
+                "unauthorized",
+                "401",
+                "invalid_api_key",
+                "api key",
+            ]
+        ):
+            return ValidationErrorType.AUTHENTICATION_ERROR
+        if any(
+            keyword in error_str
+            for keyword in [
+                "not found",
+                "404",
+                "model_not_found",
+                "does not exist",
+            ]
+        ):
+            return ValidationErrorType.MODEL_NOT_FOUND
+        if any(
+            keyword in error_str
+            for keyword in ["rate limit", "429", "too many requests"]
+        ):
+            return ValidationErrorType.RATE_LIMIT_ERROR
+        if any(
+            keyword in error_str
+            for keyword in [
+                "quota",
+                "insufficient_quota",
+                "billing",
+                "payment",
+            ]
+        ):
+            return ValidationErrorType.QUOTA_EXCEEDED
+        if any(
+            keyword in error_str
+            for keyword in [
+                "connection",
+                "network",
+                "dns",
+                "resolve",
+                "refused",
+            ]
+        ):
+            return ValidationErrorType.NETWORK_ERROR
+
+    # Authentication errors - check for various provider-specific patterns
+    auth_keywords = [
+        "invalid_api_key",
+        "incorrect api key",
+        "api key is invalid",
+        "unauthorized",
+        "authentication failed",
+        "authentication error",
+        "401",
+        "invalid key",
+        "api key required",
+        "missing api key",
+        "authentication required",
+    ]
+    if any(keyword in error_str for keyword in auth_keywords):
+        return ValidationErrorType.AUTHENTICATION_ERROR
+
+    # Network errors - check before timeout to avoid misclassification
+    network_keywords = [
+        "connection",
+        "network",
+        "dns",
+        "resolve",
+        "refused",
+        "connection refused",
+        "connection error",
+        "network error",
+        "connection timeout",  # This is network-related, not just timeout
+    ]
+    if any(keyword in error_str for keyword in network_keywords):
+        # Distinguish between network timeout and general timeout
+        if "timeout" in error_str and "connection" in error_str:
+            return ValidationErrorType.NETWORK_ERROR
         if "timeout" in error_str:
             return ValidationErrorType.TIMEOUT_ERROR
         return ValidationErrorType.NETWORK_ERROR
 
-    # Model not found errors
-    if any(
-        keyword in error_str
-        for keyword in [
-            "model_not_found",
-            "does not exist",
-            "not found",
-            "404",
-            "invalid model",
-        ]
-    ):
+    # Model not found errors - check for various provider-specific patterns
+    model_not_found_keywords = [
+        "model_not_found",
+        "model does not exist",
+        "model not found",
+        "does not exist",
+        "not found",
+        "404",
+        "invalid model",
+        "model name",
+        "unknown model",
+        "model unavailable",
+    ]
+    if any(keyword in error_str for keyword in model_not_found_keywords):
         return ValidationErrorType.MODEL_NOT_FOUND
 
-    # Rate limit and quota errors
-    if any(
-        keyword in error_str
-        for keyword in ["rate limit", "429", "too many requests"]
-    ):
+    # Rate limit errors - check before quota to avoid misclassification
+    rate_limit_keywords = [
+        "rate limit",
+        "rate_limit",
+        "429",
+        "too many requests",
+        "rate limit exceeded",
+        "requests per minute",
+        "requests per hour",
+    ]
+    if any(keyword in error_str for keyword in rate_limit_keywords):
         return ValidationErrorType.RATE_LIMIT_ERROR
 
-    if any(
-        keyword in error_str
-        for keyword in ["quota", "insufficient_quota", "billing", "payment"]
-    ):
+    # Quota errors
+    quota_keywords = [
+        "quota",
+        "insufficient_quota",
+        "quota exceeded",
+        "billing",
+        "payment",
+        "payment required",
+        "account limit",
+        "usage limit",
+    ]
+    if any(keyword in error_str for keyword in quota_keywords):
         return ValidationErrorType.QUOTA_EXCEEDED
 
-    # Timeout errors
-    if any(
-        keyword in error_str
-        for keyword in ["timeout", "timed out", "time out"]
-    ):
+    # Timeout errors - check after network to avoid misclassification
+    timeout_keywords = [
+        "timeout",
+        "timed out",
+        "time out",
+        "request timeout",
+        "read timeout",
+    ]
+    if any(keyword in error_str for keyword in timeout_keywords):
         return ValidationErrorType.TIMEOUT_ERROR
 
-    # Configuration errors
-    if any(
-        keyword in error_str
-        for keyword in [
-            "invalid",
-            "configuration",
-            "config",
-            "parameter",
-            "param",
-        ]
-    ):
+    # Configuration errors - use specific phrases to avoid false positives
+    # Check for configuration-related errors with more specific keywords
+    config_keywords = [
+        "invalid configuration",
+        "invalid config",
+        "configuration error",
+        "config error",
+        "invalid parameter",
+        "invalid param",
+        "parameter error",
+        "param error",
+        "missing required",
+        "required parameter",
+        "required param",
+    ]
+    if any(keyword in error_str for keyword in config_keywords):
         return ValidationErrorType.INVALID_CONFIGURATION
-
-    # Check exception type
-    if isinstance(exception, ModelProcessingError):
-        if "timeout" in error_str:
-            return ValidationErrorType.TIMEOUT_ERROR
-        if "authentication" in error_str or "401" in error_str:
-            return ValidationErrorType.AUTHENTICATION_ERROR
-        if "not found" in error_str or "404" in error_str:
-            return ValidationErrorType.MODEL_NOT_FOUND
-
-    if "timeout" in error_type or "TimeoutError" in str(type(exception)):
-        return ValidationErrorType.TIMEOUT_ERROR
 
     return ValidationErrorType.UNKNOWN_ERROR
 
@@ -542,7 +635,7 @@ def validate_model_with_details(
                     else None,
                 }
 
-                expected_result = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+                expected_result = EXPECTED_TOOL_RESULT
                 actual_result = (
                     tool_call.result if hasattr(tool_call, "result") else None
                 )
