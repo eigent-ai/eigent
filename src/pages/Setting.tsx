@@ -23,7 +23,7 @@ import General from '@/pages/Setting/General';
 import Models from '@/pages/Setting/Models';
 import Privacy from '@/pages/Setting/Privacy';
 import { useAuthStore } from '@/store/authStore';
-import { CircleCheck，Fingerprint, Settings, TagIcon, TextSelect } from 'lucide-react';
+import { Fingerprint, Settings, TagIcon, TextSelect } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
