@@ -25,11 +25,9 @@ from camel.tasks import Task
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
-from app.component.model_validation import create_agent
 from app.exception.exception import ProgramException
 from app.model.chat import (
     AgentModelConfig,
-    Chat,
     McpServers,
     SupplementChat,
     UpdateData,
@@ -676,52 +674,3 @@ def set_process_task(process_task_id: str):
         yield
     finally:
         process_task.reset(origin)
-
-
-async def validate_model_before_task(options: Chat) -> tuple[bool, str | None]:
-    """
-    Validate model configuration before starting a task.
-    Makes a simple test request to ensure the API key and model are valid.
-
-    Args:
-        options (Chat): Chat options containing model configuration.
-
-    Returns:
-        (is_valid, error_message)
-            - is_valid: True if validation passed
-            - error_message: Raw error message if validation failed,
-                None otherwise
-    """
-    try:
-        logger.info(
-            f"Validating model configuration for task {options.task_id}"
-        )
-
-        # Create test agent with same config as task will use
-        agent = create_agent(
-            model_platform=options.model_platform,
-            model_type=options.model_type,
-            api_key=options.api_key,
-            url=options.api_url,
-            model_config_dict=options.model_config,
-        )
-
-        # Make a simple test call in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: agent.step("test"))
-
-        logger.info(f"Model validation passed for task {options.task_id}")
-        return True, None
-
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(
-            f"Model validation failed for task {options.task_id}: {error_msg}",
-            extra={
-                "project_id": options.project_id,
-                "task_id": options.task_id,
-                "error": error_msg,
-            },
-            exc_info=True,
-        )
-        return False, error_msg

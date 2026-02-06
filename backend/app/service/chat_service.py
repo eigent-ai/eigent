@@ -52,7 +52,6 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
-    validate_model_before_task,
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
@@ -321,9 +320,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     """Main task execution loop. Called when POST /chat endpoint
     is hit to start a new chat session.
 
-    Validates model configuration, processes task queue, manages
-    workforce lifecycle, and streams responses back to the client
-    via SSE.
+    Processes task queue, manages workforce lifecycle, and streams
+    responses back to the client via SSE.
 
     Args:
         options (Chat): Chat configuration containing task details and
@@ -335,15 +333,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     Yields:
         SSE formatted responses for task progress, errors, and results
     """
-    # Validate model configuration before starting task
-    is_valid, error_msg = await validate_model_before_task(options)
-    if not is_valid:
-        yield sse_json(
-            "error", {"message": f"Model validation failed: {error_msg}"}
-        )
-        task_lock.status = Status.done
-        return
-
     start_event_loop = True
 
     # Initialize task_lock attributes
@@ -2028,7 +2017,7 @@ Is this a complex task? (yes/no):"""
 
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")
-        return True
+        raise
 
 
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
