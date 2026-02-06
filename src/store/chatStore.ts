@@ -845,17 +845,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   );
                 }
 
+                const attachesForNewMessage =
+                  lastMessage?.role === 'user' && lastMessage?.attaches?.length
+                    ? lastMessage.attaches
+                    : [
+                        ...(previousChatStore.tasks[currentTaskId]?.attaches ||
+                          []),
+                        ...(messageAttaches || []),
+                      ];
+
                 //Trick: by the time the question is retrieved from event,
                 //the last message from previous chatStore is at display
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',
                   content: question || (messageContent as string),
-                  //TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-                  attaches: [
-                    ...(previousChatStore.tasks[currentTaskId]?.attaches || []),
-                    ...(messageAttaches || []),
-                  ],
+                  attaches: attachesForNewMessage,
                 });
                 console.log('[NEW CHATSTORE] Created for ', project_id);
 
@@ -1398,7 +1403,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   setTaskAssigning(currentTaskId, [...taskAssigning]);
                 }
               }
-              const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+              const taskIndex = taskRunning.findIndex(
+                (task) => task.id === process_task_id
+              );
               if (taskIndex !== -1 && taskRunning[taskIndex].agent) {
                 taskRunning[taskIndex].agent!.status = 'completed';
               }

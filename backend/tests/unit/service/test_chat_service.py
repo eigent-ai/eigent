@@ -39,6 +39,7 @@ from app.service.task import (
     ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
+    ImprovePayload,
     TaskLock,
 )
 
@@ -854,7 +855,10 @@ class TestChatServiceIntegration:
         mock_task_lock.get_queue = AsyncMock(
             side_effect=[
                 # First call returns improve action
-                ActionImproveData(action=Action.improve, data="Test question"),
+                ActionImproveData(
+                    action=Action.improve,
+                    data=ImprovePayload(question="Test question"),
+                ),
                 # Second call returns end action
                 ActionEndData(action=Action.end),
             ]
