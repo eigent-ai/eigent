@@ -109,6 +109,7 @@
     "zustand": "^5.0.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@playwright/test": "^1.48.2",
     "@storybook/addon-a11y": "^10.1.11",
     "@storybook/addon-docs": "^10.1.11",
@@ -125,7 +126,6 @@
     "@types/react-dom": "^18.3.1",
     "@types/unzipper": "^0.10.11",
     "@types/xml2js": "^0.4.14",
-    "@eslint/js": "^9.39.2",
     "@typescript-eslint/eslint-plugin": "^8.53.0",
     "@typescript-eslint/parser": "^8.53.0",
     "@vitejs/plugin-react": "^4.3.3",
@@ -147,7 +147,7 @@
     "postcss-import": "^16.1.0",
     "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "prettier-plugin-tailwindcss": "^0.7.2",
+    "prettier-plugin-tailwindcss": "^0.6.14",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.7.3",
