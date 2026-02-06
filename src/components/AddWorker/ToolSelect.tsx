@@ -663,25 +663,6 @@ const ToolSelect = forwardRef<
     }
   };
 
-  // select management
-  const addOption = (item: McpItem, isLocal?: boolean) => {
-    setKeyword('');
-    const currentSelected = initialSelectedTools || [];
-    console.log(currentSelected.find((i) => i.id === item.id));
-    if (isLocal) {
-      if (!currentSelected.find((i) => i.key === item.key)) {
-        const newSelected = [...currentSelected, { ...item, isLocal }];
-        onSelectedToolsChange?.(newSelected);
-      }
-      return;
-    }
-    if (!currentSelected.find((i) => i.id === item.id)) {
-      if (!isLocal) isLocal = false;
-      const newSelected = [...currentSelected, { ...item, isLocal }];
-      onSelectedToolsChange?.(newSelected);
-    }
-  };
-
   const removeOption = (item: McpItem) => {
     const currentSelected = initialSelectedTools || [];
     const newSelected = currentSelected.filter((i) => i.id !== item.id);
@@ -692,10 +673,9 @@ const ToolSelect = forwardRef<
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName) return <Store className="h-4 w-4 text-icon-primary" />;
 
-    const iconKey = categoryIconMap[categoryName];
-    const iconUrl = iconKey
-      ? (svgIcons[`/src/assets/mcp/${iconKey}.svg`] as string)
-      : undefined;
+    const normalizedName = categoryName.toLowerCase();
+    const iconKey = categoryIconMap[normalizedName];
+    const iconUrl = iconKey ? svgIcons[iconKey] : undefined;
 
     return iconUrl ? (
       <img src={iconUrl} alt={categoryName} className="h-4 w-4" />
@@ -723,7 +703,6 @@ const ToolSelect = forwardRef<
     fetchIntegrationsData();
     fetchInstalledMcps();
   }, [fetchData, fetchIntegrationsData, fetchInstalledMcps]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -741,7 +720,6 @@ const ToolSelect = forwardRef<
       }
     };
   }, [keyword, fetchData, fetchIntegrationsData]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

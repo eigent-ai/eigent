@@ -242,9 +242,17 @@ export default function MCPMarket({
     try {
       checkAgentTool(deleteTarget.name);
       console.log(userInstallMcp, deleteTarget);
-      const id = userInstallMcp.find(
+      const userMcpRecord = userInstallMcp.find(
         (item: any) => item.mcp_id === deleteTarget.id
-      )?.id;
+      );
+      const id = userMcpRecord?.id;
+      if (!id) {
+        console.warn(
+          'No matching user MCP record found for delete target:',
+          deleteTarget
+        );
+        return;
+      }
       console.log('deleteTarget', deleteTarget);
       await proxyFetchDelete(`/api/mcp/users/${id}`);
       // notify main process
@@ -335,7 +343,10 @@ export default function MCPMarket({
             <div className="mr-4 flex items-center">
               {(() => {
                 const catName = item.category?.name;
-                const iconKey = catName ? categoryIconMap[catName] : undefined;
+                const normalizedName = catName?.toLowerCase() || '';
+                const iconKey = normalizedName
+                  ? categoryIconMap[normalizedName]
+                  : undefined;
                 const iconUrl = iconKey ? svgIcons[iconKey] : undefined;
                 return iconUrl ? (
                   <img src={iconUrl} alt={catName} className="h-11 w-9" />
