@@ -347,51 +347,56 @@ export default function SettingMCP() {
                 );
               }
             };
-            // TODO: Refactor – Codex and MCP install/background handling share
-            // a lot of logic with the other OAuth integrations above. Consider
-            // extracting a shared helper to reduce duplication.
+            // Codex OAuth obtains an OpenAI API key for model access.
+            // After a successful flow we save it as an OpenAI *Provider*
+            // (not a toolkit config) so it integrates with the model
+            // configuration system.
           } else if (key.toLowerCase() === 'codex') {
+            const saveCodexAsProvider = async (installResponse: any) => {
+              if (!installResponse?.access_token) return;
+              try {
+                const providers = await proxyFetchGet('/api/providers');
+                const existing = Array.isArray(providers)
+                  ? providers.find(
+                      (p: any) =>
+                        p.provider_name === 'openai' &&
+                        p.endpoint_url ===
+                          (installResponse.endpoint_url ||
+                            'https://api.openai.com/v1')
+                    )
+                  : null;
+
+                const providerPayload = {
+                  provider_name: installResponse.provider_name || 'openai',
+                  api_key: installResponse.access_token,
+                  endpoint_url:
+                    installResponse.endpoint_url || 'https://api.openai.com/v1',
+                  model_type: existing?.model_type || 'gpt-4.1',
+                  is_vaild: 2,
+                };
+
+                if (existing?.id) {
+                  await proxyFetchPut(
+                    `/api/provider/${existing.id}`,
+                    providerPayload
+                  );
+                } else {
+                  await proxyFetchPost('/api/provider', providerPayload);
+                }
+              } catch (providerError) {
+                console.warn(
+                  'Failed to save Codex token as provider',
+                  providerError
+                );
+              }
+            };
+
             onInstall = async () => {
               try {
                 const response = await fetchPost('/install/tool/codex');
                 if (response.success) {
-                  toast.success(
-                    t('setting.codex-installed-successfully') !==
-                      'setting.codex-installed-successfully'
-                      ? t('setting.codex-installed-successfully')
-                      : 'Codex installed successfully'
-                  );
-                  try {
-                    const existingConfigs =
-                      await proxyFetchGet('/api/configs');
-                    const existing = Array.isArray(existingConfigs)
-                      ? existingConfigs.find(
-                          (c: any) =>
-                            c.config_group?.toLowerCase() === 'codex' &&
-                            c.config_name === 'OPENAI_API_KEY'
-                        )
-                      : null;
-
-                    const configPayload = {
-                      config_group: 'Codex',
-                      config_name: 'OPENAI_API_KEY',
-                      config_value: 'exists',
-                    };
-
-                    if (existing) {
-                      await proxyFetchPut(
-                        `/api/configs/${existing.id}`,
-                        configPayload
-                      );
-                    } else {
-                      await proxyFetchPost('/api/configs', configPayload);
-                    }
-                  } catch (configError) {
-                    console.warn(
-                      'Failed to persist Codex config',
-                      configError
-                    );
-                  }
+                  toast.success(t('setting.codex-installed-successfully'));
+                  await saveCodexAsProvider(response);
                   fetchList();
                   setRefreshKey((prev) => prev + 1);
                 } else if (response.status === 'authorizing') {
@@ -401,46 +406,14 @@ export default function SettingMCP() {
 
                   const pollInterval = setInterval(async () => {
                     try {
-                      const statusResp = await fetchGet(
-                        '/oauth/status/codex'
-                      );
+                      const statusResp = await fetchGet('/oauth/status/codex');
                       if (statusResp?.status === 'success') {
                         clearInterval(pollInterval);
-                        const finalize = await fetchPost(
-                          '/install/tool/codex'
-                        );
+                        const finalize = await fetchPost('/install/tool/codex');
                         if (finalize?.success) {
-                          const configs =
-                            await proxyFetchGet('/api/configs');
-                          const existing = Array.isArray(configs)
-                            ? configs.find(
-                                (c: any) =>
-                                  c.config_group?.toLowerCase() ===
-                                    'codex' &&
-                                  c.config_name === 'OPENAI_API_KEY'
-                              )
-                            : null;
-
-                          const payload = {
-                            config_group: 'Codex',
-                            config_name: 'OPENAI_API_KEY',
-                            config_value: 'exists',
-                          };
-
-                          if (existing) {
-                            await proxyFetchPut(
-                              `/api/configs/${existing.id}`,
-                              payload
-                            );
-                          } else {
-                            await proxyFetchPost('/api/configs', payload);
-                          }
-
+                          await saveCodexAsProvider(finalize);
                           toast.success(
-                            t('setting.codex-installed-successfully') !==
-                              'setting.codex-installed-successfully'
-                              ? t('setting.codex-installed-successfully')
-                              : 'Codex installed successfully'
+                            t('setting.codex-installed-successfully')
                           );
                           fetchList();
                           setRefreshKey((prev) => prev + 1);
@@ -462,19 +435,18 @@ export default function SettingMCP() {
                     }
                   }, 2000);
 
-                  setTimeout(
-                    () => clearInterval(pollInterval),
-                    5 * 60 * 1000
-                  );
+                  setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
                 } else {
                   toast.error(
                     response.error ||
                       response.message ||
-                      'Failed to install Codex'
+                      t('setting.failed-to-install-codex')
                   );
                 }
               } catch (error: any) {
-                toast.error(error.message || 'Failed to install Codex');
+                toast.error(
+                  error.message || t('setting.failed-to-install-codex')
+                );
               }
             };
           } else {
@@ -499,15 +471,11 @@ export default function SettingMCP() {
                   : key.toLowerCase() === 'google calendar'
                     ? t('setting.google-calendar-integration')
                     : key.toLowerCase() === 'codex'
-                      ? 'OpenAI Codex integration via OAuth'
+                      ? t('setting.codex-integration')
                       : '',
             onInstall,
           };
         });
-        console.log('API response:', res);
-        console.log('Generated list:', list);
-        console.log('Essential integrations:', essentialIntegrations);
-
         setIntegrations(
           list.filter(
             (item) => !essentialIntegrations.find((i) => i.key === item.key)

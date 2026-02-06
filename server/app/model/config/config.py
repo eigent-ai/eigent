@@ -168,9 +168,14 @@ class ConfigInfo:
             "env_vars": ["OPENAI_API_KEY"],
             "toolkit": "rag_toolkit",
         },
+        # Codex OAuth is a model-provider integration (obtains an
+        # OpenAI API key).  After OAuth the key is stored via the
+        # Provider API, not here.  The entry is kept only for
+        # install-state detection in the integration list UI.
         ConfigGroup.CODEX.value: {
-            "env_vars": ["OPENAI_API_KEY"],
-            "toolkit": "codex_oauth",
+            "env_vars": [],
+            "toolkit": None,
+            "type": "provider",
         },
     }
 

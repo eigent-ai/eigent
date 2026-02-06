@@ -38,8 +38,6 @@ import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
 
 // Codex OAuth constants
-const CODEX_CONFIG_GROUP = 'Codex';
-const CODEX_CONFIG_NAME = 'OPENAI_API_KEY';
 const CODEX_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 interface McpItem {
@@ -174,7 +172,6 @@ const ToolSelect = forwardRef<
                           config_value: 'exists',
                         };
 
-<<<<<<< HEAD
                         if (existing) {
                           await proxyFetchPut(
                             `/api/configs/${existing.id}`,
@@ -229,51 +226,63 @@ const ToolSelect = forwardRef<
                   }
                 };
               } else if (key.toLowerCase() === 'codex') {
+                // Codex OAuth obtains an OpenAI API key – save it as a
+                // Provider (model configuration) rather than a toolkit config.
+                const saveCodexAsProvider = async (installResponse: any) => {
+                  if (!installResponse?.access_token) return;
+                  try {
+                    const providers = await proxyFetchGet('/api/providers');
+                    const existing = Array.isArray(providers)
+                      ? providers.find(
+                          (p: any) =>
+                            p.provider_name === 'openai' &&
+                            p.endpoint_url ===
+                              (installResponse.endpoint_url ||
+                                'https://api.openai.com/v1')
+                        )
+                      : null;
+
+                    const providerPayload = {
+                      provider_name: installResponse.provider_name || 'openai',
+                      api_key: installResponse.access_token,
+                      endpoint_url:
+                        installResponse.endpoint_url ||
+                        'https://api.openai.com/v1',
+                      model_type: existing?.model_type || 'gpt-4.1',
+                      is_vaild: 2,
+                    };
+
+                    if (existing?.id) {
+                      await proxyFetchPut(
+                        `/api/provider/${existing.id}`,
+                        providerPayload
+                      );
+                    } else {
+                      await proxyFetchPost('/api/provider', providerPayload);
+                    }
+                  } catch (providerError) {
+                    console.warn(
+                      'Failed to save Codex token as provider',
+                      providerError
+                    );
+                  }
+                };
+
                 onInstall = async () => {
                   try {
                     const response = await fetchPost('/install/tool/codex');
                     if (response.success) {
-                      try {
-                        const existingConfigs =
-                          await proxyFetchGet('/api/configs');
-                        const existing = Array.isArray(existingConfigs)
-                          ? existingConfigs.find(
-                              (c: any) =>
-                                c.config_group?.toLowerCase() ===
-                                  CODEX_CONFIG_GROUP.toLowerCase() &&
-                                c.config_name === CODEX_CONFIG_NAME
-                            )
-                          : null;
-                        const configPayload = {
-                          config_group: CODEX_CONFIG_GROUP,
-                          config_name: CODEX_CONFIG_NAME,
-                          config_value: 'exists',
-                        };
-                        if (existing) {
-                          await proxyFetchPut(
-                            `/api/configs/${existing.id}`,
-                            configPayload
-                          );
-                        } else {
-                          await proxyFetchPost('/api/configs', configPayload);
-                        }
-                      } catch (configError) {
-                        console.warn(
-                          'Failed to persist Codex config',
-                          configError
-                        );
-                      }
+                      await saveCodexAsProvider(response);
                       const codexItem = {
                         id: 0,
                         key: key,
                         name: key,
-                        description: 'OpenAI Codex integration via OAuth',
+                        description: t('layout.codex-integration'),
                         toolkit: 'codex_oauth',
                         isLocal: true,
                       };
                       addOption(codexItem, true);
                     } else if (response.status === 'authorizing') {
-                      // TODO: Improve response status string handling (e.g. use an enum or constants)
                       const start = Date.now();
                       while (Date.now() - start < CODEX_POLL_TIMEOUT_MS) {
                         try {
@@ -285,38 +294,13 @@ const ToolSelect = forwardRef<
                               '/install/tool/codex'
                             );
                             if (retryResponse.success) {
-                              const existingConfigs =
-                                await proxyFetchGet('/api/configs');
-                              const existing = Array.isArray(existingConfigs)
-                                ? existingConfigs.find(
-                                    (c: any) =>
-                                      c.config_group?.toLowerCase() ===
-                                        CODEX_CONFIG_GROUP.toLowerCase() &&
-                                      c.config_name === CODEX_CONFIG_NAME
-                                  )
-                                : null;
-                              const configPayload = {
-                                config_group: CODEX_CONFIG_GROUP,
-                                config_name: CODEX_CONFIG_NAME,
-                                config_value: 'exists',
-                              };
-                              if (existing) {
-                                await proxyFetchPut(
-                                  `/api/configs/${existing.id}`,
-                                  configPayload
-                                );
-                              } else {
-                                await proxyFetchPost(
-                                  '/api/configs',
-                                  configPayload
-                                );
-                              }
+                              await saveCodexAsProvider(retryResponse);
                               fetchIntegrationsData();
                               const codexItem = {
                                 id: 0,
                                 key: key,
                                 name: key,
-                                description: 'OpenAI Codex integration via OAuth',
+                                description: t('layout.codex-integration'),
                                 toolkit: 'codex_oauth',
                                 isLocal: true,
                               };
@@ -367,7 +351,7 @@ const ToolSelect = forwardRef<
                       : key.toLowerCase() === 'google calendar'
                         ? t('layout.google-calendar-integration')
                         : key.toLowerCase() === 'codex'
-                          ? 'OpenAI Codex integration via OAuth'
+                          ? t('layout.codex-integration')
                           : '',
                 onInstall,
               };

@@ -272,6 +272,9 @@ async def install_tool(tool: str):
                             "success": True,
                             "message": "Codex token refreshed successfully",
                             "toolkit_name": "CodexOAuthManager",
+                            "access_token": CodexOAuthManager.get_access_token(),
+                            "provider_name": "openai",
+                            "endpoint_url": "https://api.openai.com/v1",
                         }
                     # Refresh failed, start new auth
                     logger.info(
@@ -292,6 +295,9 @@ async def install_tool(tool: str):
                     "success": True,
                     "message": "Codex/OpenAI is already authenticated",
                     "toolkit_name": "CodexOAuthManager",
+                    "access_token": CodexOAuthManager.get_access_token(),
+                    "provider_name": "openai",
+                    "endpoint_url": "https://api.openai.com/v1",
                 }
             else:
                 logger.info("No Codex credentials found, starting OAuth flow")
