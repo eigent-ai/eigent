@@ -555,3 +555,33 @@ code {
 [data-theme='dark'] .folder-component-content table tr:nth-child(2n) {
   background-color: rgba(110, 118, 129, 0.1) !important;
 }
+
+/* ProgressInstall shimmer background */
+.progress-install-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    color-mix(in srgb, var(--colors-primary-4) 8%, transparent) 25%,
+    color-mix(in srgb, var(--colors-primary-4) 20%, transparent) 50%,
+    color-mix(in srgb, var(--colors-primary-4) 8%, transparent) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  animation: progress-install-shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: var(--borderRadius-lg);
+  will-change: background-position;
+}
+
+@keyframes progress-install-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

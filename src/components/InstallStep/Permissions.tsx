@@ -84,13 +84,13 @@ export const Permissions: React.FC = () => {
     );
   };
   return (
-    <div className="flex flex-col gap-lg">
-      <div className="flex h-[568px] gap-md">
-        <div className="flex w-[438px] flex-col gap-md">
-          <div className="text-4xl font-bold leading-5xl text-text-heading">
-            <div>Enable Permissions</div>
+    <div className="flex h-full w-full flex-col gap-lg">
+      <div className="flex h-full w-full gap-md">
+        <div className="flex w-full flex-col gap-md">
+          <div className="text-heading-sm font-bold text-text-heading">
+            Enable Permissions
           </div>
-          <div className="text-xl font-medium leading-2xl text-text-body">
+          <div className="text-body-md font-medium text-text-body">
             ${`Grant permission to activate the Agent's autonomous actions.`}
           </div>
           {settings.map((item, index) => (
@@ -120,8 +120,8 @@ export const Permissions: React.FC = () => {
           />
         </div>
       </div>
-      <div className="flex items-center justify-end gap-sm">
-        <div className="flex items-center justify-center gap-sm">
+      <div className="flex h-full w-full items-center justify-end gap-sm">
+        <div className="flex w-full items-center justify-center gap-sm">
           <Button
             onClick={() => setInitState('carousel')}
             variant="ghost"

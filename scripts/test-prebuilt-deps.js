@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console process */
 /**
  * Comprehensive test for prebuilt dependencies
  * Verifies pyvenv.cfg and Python symlinks are correct
@@ -96,7 +97,7 @@ function testPythonSymlinks(venvPath, venvName) {
         fail(`  Target: ${target}`);
         warn('Run: npm run fix-symlinks');
       } catch (err) {
-        fail(`${symlinkName}: missing`);
+        fail(`${symlinkName}: missing - ${err.message}`);
         warn('Run: npm run fix-symlinks');
       }
       continue;
@@ -172,12 +173,12 @@ function main() {
   const venvs = [
     {
       path: path.join(projectRoot, 'resources', 'prebuilt', 'venv'),
-      name: 'Backend venv'
+      name: 'Backend venv',
     },
     {
       path: path.join(projectRoot, 'resources', 'prebuilt', 'terminal_venv'),
-      name: 'Terminal venv'
-    }
+      name: 'Terminal venv',
+    },
   ];
 
   for (const venv of venvs) {
@@ -193,7 +194,9 @@ function main() {
   }
 
   console.log('\n' + '='.repeat(50));
-  console.log(`\n📊 Test Results: ${testsPassed} passed, ${testsFailed} failed`);
+  console.log(
+    `\n📊 Test Results: ${testsPassed} passed, ${testsFailed} failed`
+  );
 
   if (testsFailed > 0) {
     console.log('\n❌ Some tests failed!');

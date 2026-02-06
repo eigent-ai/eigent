@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { type ChatTaskStatusType } from '@/types/constants';
 import { BoxAction } from './BoxAction';
 import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
-import { type ChatTaskStatusType } from "@/types/constants";
 
 export type BottomBoxState =
   | 'input'
