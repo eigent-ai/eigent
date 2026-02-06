@@ -434,7 +434,6 @@ function ensureVenvPythonSymlink(venvPath: string): boolean {
   }
 
   const actualPython = getActualPythonPathFromPyvenvCfg(venvPath);
-  if (!actualPython || !fs.existsSync(actualPython)) return false;
 
   // Find python3.X in venv/bin as fallback (e.g. python3.10)
   const entries = fs.readdirSync(binDir, { withFileTypes: true });
@@ -454,16 +453,26 @@ function ensureVenvPythonSymlink(venvPath: string): boolean {
     } catch {
       // ENOENT = path doesn't exist, that's fine
     }
-    // Prefer actual Python (app bundle); fallback to python3.X in same dir
-    const target =
-      actualPython ??
-      (targetInBin && fs.existsSync(targetInBin) ? py3!.name : null);
-    if (!target) return false;
+
+    // Prefer actual Python from pyvenv.cfg (absolute path to app bundle);
+    // fallback to python3.X in same dir (relative symlink)
+    let target: string | null = null;
+    if (actualPython && fs.existsSync(actualPython)) {
+      target = actualPython;
+    } else if (targetInBin && fs.existsSync(targetInBin)) {
+      // Use relative name for symlink within same directory
+      target = py3!.name;
+    }
+
+    if (!target) {
+      log.warn(`[VENV] No valid Python target found for symlink`);
+      return false;
+    }
 
     fs.symlinkSync(target, pythonPath);
-    if (path.isAbsolute(target)) {
+    try {
       fs.chmodSync(pythonPath, 0o755);
-    }
+    } catch {}
     log.info(`[VENV] Created python symlink -> ${target}`);
     return true;
   } catch (error) {
