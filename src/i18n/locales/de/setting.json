@@ -271,5 +271,7 @@
 
   "preferred-ide": "Bevorzugte IDE",
   "preferred-ide-description": "Wählen Sie die Anwendung aus, die beim Öffnen von Agent-Projektordnern verwendet werden soll.",
-  "system-file-manager": "System-Dateimanager"
+  "system-file-manager": "System-Dateimanager",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }

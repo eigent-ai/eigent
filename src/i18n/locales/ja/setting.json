@@ -271,5 +271,7 @@
 
   "preferred-ide": "優先IDE",
   "preferred-ide-description": "エージェントプロジェクトフォルダを開くときに使用するアプリケーションを選択します。",
-  "system-file-manager": "システムファイルマネージャー"
+  "system-file-manager": "システムファイルマネージャー",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }

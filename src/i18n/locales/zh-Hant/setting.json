@@ -193,5 +193,7 @@
   "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。",
   "preferred-ide": "偏好 IDE",
   "preferred-ide-description": "選擇開啟智能體專案資料夾時使用的應用程式。",
-  "system-file-manager": "系統檔案管理器"
+  "system-file-manager": "系統檔案管理器",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }
