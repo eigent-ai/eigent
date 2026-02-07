@@ -98,15 +98,15 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         );
         map[item.key] = hasAccessToken;
       } else if (item.key === 'Codex') {
-        // Codex: check if OPENAI_API_KEY config is present
-        const hasApiKey = configs.some(
+        // Codex: check if CODEX_OAUTH_TOKEN marker config is present
+        const hasOAuthToken = configs.some(
           (c: any) =>
             c.config_group?.toLowerCase() === 'codex' &&
-            c.config_name === 'OPENAI_API_KEY' &&
+            c.config_name === 'CODEX_OAUTH_TOKEN' &&
             c.config_value &&
             String(c.config_value).length > 0
         );
-        map[item.key] = hasApiKey;
+        map[item.key] = hasOAuthToken;
       } else {
         // For other integrations, use config_group presence
         const hasConfig = configs.some(

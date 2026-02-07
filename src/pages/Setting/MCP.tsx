@@ -347,11 +347,11 @@ export default function SettingMCP() {
                 );
               }
             };
+          } else if (key.toLowerCase() === 'codex') {
             // Codex OAuth obtains an OpenAI API key for model access.
             // After a successful flow we save it as an OpenAI *Provider*
             // (not a toolkit config) so it integrates with the model
             // configuration system.
-          } else if (key.toLowerCase() === 'codex') {
             const saveCodexAsProvider = async (installResponse: any) => {
               if (!installResponse?.access_token) return;
               try {
@@ -391,12 +391,46 @@ export default function SettingMCP() {
               }
             };
 
+            const saveCodexMarkerConfig = async () => {
+              try {
+                const existingConfigs = await proxyFetchGet('/api/configs');
+                const existing = Array.isArray(existingConfigs)
+                  ? existingConfigs.find(
+                      (c: any) =>
+                        c.config_group?.toLowerCase() === 'codex' &&
+                        c.config_name === 'CODEX_OAUTH_TOKEN'
+                    )
+                  : null;
+
+                const configPayload = {
+                  config_group: 'Codex',
+                  config_name: 'CODEX_OAUTH_TOKEN',
+                  config_value: 'exists',
+                };
+
+                if (existing) {
+                  await proxyFetchPut(
+                    `/api/configs/${existing.id}`,
+                    configPayload
+                  );
+                } else {
+                  await proxyFetchPost('/api/configs', configPayload);
+                }
+              } catch (configError) {
+                console.warn(
+                  'Failed to persist Codex marker config',
+                  configError
+                );
+              }
+            };
+
             onInstall = async () => {
               try {
                 const response = await fetchPost('/install/tool/codex');
                 if (response.success) {
                   toast.success(t('setting.codex-installed-successfully'));
                   await saveCodexAsProvider(response);
+                  await saveCodexMarkerConfig();
                   fetchList();
                   setRefreshKey((prev) => prev + 1);
                 } else if (response.status === 'authorizing') {
@@ -412,6 +446,7 @@ export default function SettingMCP() {
                         const finalize = await fetchPost('/install/tool/codex');
                         if (finalize?.success) {
                           await saveCodexAsProvider(finalize);
+                          await saveCodexMarkerConfig();
                           toast.success(
                             t('setting.codex-installed-successfully')
                           );
@@ -462,16 +497,16 @@ export default function SettingMCP() {
             name: key,
             env_vars: value.env_vars,
             desc:
-              value.env_vars && value.env_vars.length > 0
-                ? `${t(
-                    'setting.environmental-variables-required'
-                  )}: ${value.env_vars.join(', ')}`
+              key.toLowerCase() === 'codex'
+                ? t('setting.codex-integration')
                 : key.toLowerCase() === 'notion'
                   ? t('setting.notion-workspace-integration')
                   : key.toLowerCase() === 'google calendar'
                     ? t('setting.google-calendar-integration')
-                    : key.toLowerCase() === 'codex'
-                      ? t('setting.codex-integration')
+                    : value.env_vars && value.env_vars.length > 0
+                      ? `${t(
+                          'setting.environmental-variables-required'
+                        )}: ${value.env_vars.join(', ')}`
                       : '',
             onInstall,
           };

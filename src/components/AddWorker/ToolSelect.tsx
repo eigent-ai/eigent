@@ -268,11 +268,45 @@ const ToolSelect = forwardRef<
                   }
                 };
 
+                const saveCodexMarkerConfig = async () => {
+                  try {
+                    const existingConfigs = await proxyFetchGet('/api/configs');
+                    const existing = Array.isArray(existingConfigs)
+                      ? existingConfigs.find(
+                          (c: any) =>
+                            c.config_group?.toLowerCase() === 'codex' &&
+                            c.config_name === 'CODEX_OAUTH_TOKEN'
+                        )
+                      : null;
+
+                    const configPayload = {
+                      config_group: 'Codex',
+                      config_name: 'CODEX_OAUTH_TOKEN',
+                      config_value: 'exists',
+                    };
+
+                    if (existing) {
+                      await proxyFetchPut(
+                        `/api/configs/${existing.id}`,
+                        configPayload
+                      );
+                    } else {
+                      await proxyFetchPost('/api/configs', configPayload);
+                    }
+                  } catch (configError) {
+                    console.warn(
+                      'Failed to persist Codex marker config',
+                      configError
+                    );
+                  }
+                };
+
                 onInstall = async () => {
                   try {
                     const response = await fetchPost('/install/tool/codex');
                     if (response.success) {
                       await saveCodexAsProvider(response);
+                      await saveCodexMarkerConfig();
                       const codexItem = {
                         id: 0,
                         key: key,
@@ -295,6 +329,7 @@ const ToolSelect = forwardRef<
                             );
                             if (retryResponse.success) {
                               await saveCodexAsProvider(retryResponse);
+                              await saveCodexMarkerConfig();
                               fetchIntegrationsData();
                               const codexItem = {
                                 id: 0,
@@ -342,16 +377,16 @@ const ToolSelect = forwardRef<
                 env_vars: value.env_vars,
                 toolkit: value.toolkit,
                 desc:
-                  value.env_vars && value.env_vars.length > 0
-                    ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
-                        ', '
-                      )}`
+                  key.toLowerCase() === 'codex'
+                    ? t('layout.codex-integration')
                     : key.toLowerCase() === 'notion'
                       ? t('layout.notion-workspace-integration')
                       : key.toLowerCase() === 'google calendar'
                         ? t('layout.google-calendar-integration')
-                        : key.toLowerCase() === 'codex'
-                          ? t('layout.codex-integration')
+                        : value.env_vars && value.env_vars.length > 0
+                          ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
+                              ', '
+                            )}`
                           : '',
                 onInstall,
               };

@@ -250,6 +250,7 @@ class CodexOAuthManager:
             True on success.
         """
         path = cls._token_path()
+        token_data = token_data.copy()
         try:
             if "saved_at" not in token_data:
                 token_data["saved_at"] = int(time.time())
