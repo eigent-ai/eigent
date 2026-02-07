@@ -28,6 +28,7 @@ from app.utils.cookie_manager import CookieManager
 from app.utils.oauth_state_manager import oauth_state_manager
 
 
+
 class LinkedInTokenRequest(BaseModel):
     r"""Request model for saving LinkedIn OAuth token."""
 
