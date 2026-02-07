@@ -45,7 +45,7 @@ export const InstallDependencies: React.FC = () => {
                   {isInstalling
                     ? 'System Installing ...'
                     : installationState === 'waiting-backend'
-                      ? 'Starting up... First launch may take a minute.'
+                      ? 'Starting backend service...'
                       : ''}
                 </div>
                 <div className="text-body-sm font-medium leading-normal text-text-heading">
