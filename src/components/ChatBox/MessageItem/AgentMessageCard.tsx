@@ -65,7 +65,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`bg-white-0% relative w-full rounded-xl border px-sm py-3 ${className || ''} group overflow-hidden`}
+      className={`relative w-full rounded-xl border bg-message-fill-default px-sm py-3 ${className || ''} group overflow-hidden`}
     >
       <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <Button onClick={handleCopy} variant="ghost" size="icon">
