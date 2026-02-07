@@ -234,5 +234,11 @@
   "proxy-saved-restart-required": "Configuration du proxy enregistrée. Redémarrez l'application pour appliquer les modifications.",
   "proxy-save-failed": "Échec de l'enregistrement de la configuration du proxy.",
   "proxy-invalid-url": "URL de proxy invalide. Doit commencer par http://, https://, socks4:// ou socks5://.",
-  "proxy-restart-hint": "Redémarrage nécessaire pour appliquer les modifications du proxy."
+  "proxy-restart-hint": "Redémarrage nécessaire pour appliquer les modifications du proxy.",
+
+  "preferred-ide": "IDE préféré",
+  "preferred-ide-description": "Choisissez l'application à utiliser lors de l'ouverture des dossiers de projets d'agent.",
+  "system-file-manager": "Gestionnaire de fichiers système",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }

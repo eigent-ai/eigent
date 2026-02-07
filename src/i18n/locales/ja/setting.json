@@ -259,5 +259,11 @@
   "proxy-saved-restart-required": "プロキシ設定が保存されました。変更を適用するにはアプリを再起動してください。",
   "proxy-save-failed": "プロキシ設定の保存に失敗しました。",
   "proxy-invalid-url": "無効なプロキシURLです。http://、https://、socks4://、またはsocks5://で始まる必要があります。",
-  "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。"
+  "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。",
+
+  "preferred-ide": "優先IDE",
+  "preferred-ide-description": "エージェントプロジェクトフォルダを開くときに使用するアプリケーションを選択します。",
+  "system-file-manager": "システムファイルマネージャー",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }
