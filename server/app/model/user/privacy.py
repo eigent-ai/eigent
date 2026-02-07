@@ -30,6 +30,7 @@ class UserPrivacySettings(BaseModel):
     access_local_software: bool | None = False
     access_your_address: bool | None = False
     password_storage: bool | None = False
+    help_improve: bool | None = False
 
     @classmethod
     def default_settings(cls) -> dict:
