@@ -208,5 +208,11 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
-  "minimax-m2-5-name": "Minimax M2.5"
+  "minimax-m2-5-name": "Minimax M2.5",
+
+  "preferred-ide": "首选 IDE",
+  "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
+  "system-file-manager": "系统文件管理器",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }
