@@ -23,6 +23,10 @@
       "filter": ["**/*", "!.venv/**/*", "!workspace/.initial_env/**/*"]
     },
     {
+      "from": "utils",
+      "to": "utils"
+    },
+    {
       "from": "resources/prebuilt",
       "to": "prebuilt",
       "filter": [
@@ -32,12 +36,7 @@
         "!uv_python/**/*.pyc",
         "!uv_python/**/__pycache__",
         "!terminal_venv/**/*.pyc",
-        "!terminal_venv/**/__pycache__",
-        "!**/__pycache__/**",
-        "!**/*.pyc",
-        "!**/*.pyo",
-        "!venv/**/__pycache__/**",
-        "!venv/**/*.pyc"
+        "!terminal_venv/**/__pycache__"
       ]
     }
   ],

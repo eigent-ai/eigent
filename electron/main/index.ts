@@ -58,11 +58,7 @@ import {
 } from './utils/envUtil';
 import { zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
-import {
-  checkVenvExistsForPreCheck,
-  getBackendPath,
-  isBinaryExists,
-} from './utils/process';
+import { getBackendPath, getVenvPath, isBinaryExists } from './utils/process';
 import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
@@ -1648,9 +1644,11 @@ async function createWindow() {
   let hasPrebuiltDeps = false;
   if (app.isPackaged) {
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
-    const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
-    const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
-    const venvZipPath = path.join(prebuiltDir, 'venv.zip');
+    const prebuiltVenvDir = path.join(
+      process.resourcesPath,
+      'prebuilt',
+      'venv'
+    );
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
@@ -1661,10 +1659,10 @@ async function createWindow() {
     );
     const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
 
-    // macOS: venv is venv.zip (extracted at runtime); others: venv dir
-    const hasVenv = fs.existsSync(pyvenvCfg) || fs.existsSync(venvZipPath);
     hasPrebuiltDeps =
-      fs.existsSync(uvPath) && fs.existsSync(bunPath) && hasVenv;
+      fs.existsSync(uvPath) &&
+      fs.existsSync(bunPath) &&
+      fs.existsSync(pyvenvCfg);
     if (hasPrebuiltDeps) {
       log.info(
         '[PRE-CHECK] Prebuilt dependencies found, skipping installation check'
@@ -1689,9 +1687,9 @@ async function createWindow() {
   const installedLockPath = path.join(backendPath, 'uv_installed.lock');
   const installationCompleted = fs.existsSync(installedLockPath);
 
-  // Check venv existence WITHOUT triggering extraction (defers to startBackend when window is visible)
-  const { exists: venvExists, path: venvPath } =
-    checkVenvExistsForPreCheck(currentVersion);
+  // Check if venv path exists for current version
+  const venvPath = getVenvPath(currentVersion);
+  const venvExists = fs.existsSync(venvPath);
 
   // If prebuilt deps are available, skip installation
   const needsInstallation = hasPrebuiltDeps
