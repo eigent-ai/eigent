@@ -12,15 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { app } from 'electron';
 import log from 'electron-log';
 import fs from 'fs';
-import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
-
-const require = createRequire(import.meta.url);
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -215,60 +212,31 @@ function fixPyvenvCfgPlaceholder(pyvenvCfgPath: string): boolean {
 }
 
 /**
- * Get the actual Python interpreter path from venv's pyvenv.cfg (home points to Python's bin dir).
- * Used to fix shebangs when venv is in userData but Python is in app bundle.
- */
-function getActualPythonPathFromPyvenvCfg(venvPath: string): string | null {
-  const pyvenvCfgPath = path.join(venvPath, 'pyvenv.cfg');
-  if (!fs.existsSync(pyvenvCfgPath)) return null;
-
-  const content = fs.readFileSync(pyvenvCfgPath, 'utf-8');
-  const homeMatch = content.match(/^home\s*=\s*(.+)$/m);
-  if (!homeMatch) return null;
-
-  const home = homeMatch[1].trim();
-  if (!path.isAbsolute(home) || !fs.existsSync(home)) return null;
-
-  // home is Python's bin dir; find python3.X or python3
-  try {
-    const entries = fs.readdirSync(home);
-    const py = entries.find(
-      (e) => e === 'python3' || (e.startsWith('python3.') && !e.endsWith('.py'))
-    );
-    if (py) {
-      const fullPath = path.join(home, py);
-      if (fs.existsSync(fullPath)) return fullPath;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-/**
- * Fix shebang lines in venv scripts by replacing placeholder or broken relative path with actual Python path.
- * The venv/bin/python script was previously skipped but must be fixed when venv is extracted to userData
- * (relative paths like ../../uv_python/... break because Python lives in the app bundle).
+ * Fix shebang lines in venv scripts by replacing placeholder with actual Python path
+ * This ensures scripts can be executed directly (not just via `uv run`)
+ * Note: Windows doesn't use shebangs - it uses .exe wrappers instead
  */
 function fixVenvScriptShebangs(venvPath: string): boolean {
   const isWindows = process.platform === 'win32';
 
+  // Windows doesn't use shebangs - skip this step
   if (isWindows) {
     log.info(`[VENV] Skipping shebang fixes on Windows (not needed)`);
     return true;
   }
 
   const binDir = path.join(venvPath, 'bin');
-  if (!fs.existsSync(binDir)) return false;
+
+  if (!fs.existsSync(binDir)) {
+    return false;
+  }
 
   const pythonExe = path.join(binDir, 'python');
+
   if (!fs.existsSync(pythonExe)) {
     log.warn(`[VENV] Python executable not found: ${pythonExe}`);
     return false;
   }
-
-  const actualPythonPath =
-    getActualPythonPathFromPyvenvCfg(venvPath) ?? findPythonForTerminalVenv();
 
   try {
     const entries = fs.readdirSync(binDir);
@@ -279,58 +247,59 @@ function fixVenvScriptShebangs(venvPath: string): boolean {
 
       try {
         const stat = fs.lstatSync(filePath);
-        if (stat.isDirectory() || stat.isSymbolicLink()) continue;
+        if (stat.isDirectory() || stat.isSymbolicLink()) {
+          continue;
+        }
+        // Skip .exe files (binary), .dll, .pyd (compiled Python modules)
         if (
           entry.endsWith('.exe') ||
           entry.endsWith('.dll') ||
-          entry.endsWith('.pyd')
+          entry.endsWith('.pyd') ||
+          entry.startsWith('python') ||
+          entry.startsWith('activate')
         ) {
           continue;
         }
-        // Include python/activate scripts - they were previously skipped but need shebang fix
-        // when venv is in userData with relative paths
       } catch {
         continue;
       }
 
       try {
         const content = fs.readFileSync(filePath, 'utf-8');
-        const firstLine = content.split('\n')[0];
-        if (!firstLine?.startsWith('#!')) continue;
 
-        const shebangPath = firstLine.slice(2).trim();
-        let newContent = content;
+        // Check if file contains any placeholders
+        const hasVenvPythonPlaceholder = content.includes(
+          '{{PREBUILT_VENV_PYTHON}}'
+        );
+        const hasPythonDirPlaceholder = content.includes(
+          '{{PREBUILT_PYTHON_DIR}}'
+        );
 
-        // Replace placeholders
-        if (content.includes('{{PREBUILT_VENV_PYTHON}}')) {
-          newContent = newContent.replace(
-            /\{\{PREBUILT_VENV_PYTHON\}\}/g,
-            actualPythonPath ?? pythonExe
-          );
-        }
-        if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
-          const prebuiltPythonDir = getPrebuiltPythonDir();
-          if (prebuiltPythonDir) {
+        if (hasVenvPythonPlaceholder || hasPythonDirPlaceholder) {
+          let newContent = content;
+          if (hasVenvPythonPlaceholder) {
             newContent = newContent.replace(
-              /\{\{PREBUILT_PYTHON_DIR\}\}/g,
-              prebuiltPythonDir
+              /\{\{PREBUILT_VENV_PYTHON\}\}/g,
+              pythonExe
             );
           }
-        }
-
-        if (actualPythonPath && shebangPath && !shebangPath.startsWith('{{')) {
-          const resolved = path.resolve(path.dirname(filePath), shebangPath);
-          if (!fs.existsSync(resolved)) {
-            newContent = newContent.replace(/^#!.*$/m, `#!${actualPythonPath}`);
+          if (hasPythonDirPlaceholder) {
+            const prebuiltPythonDir = getPrebuiltPythonDir();
+            if (prebuiltPythonDir) {
+              newContent = newContent.replace(
+                /\{\{PREBUILT_PYTHON_DIR\}\}/g,
+                prebuiltPythonDir
+              );
+            }
           }
-        }
 
-        if (newContent !== content) {
-          fs.writeFileSync(filePath, newContent, 'utf-8');
-          if (process.platform !== 'win32') {
-            fs.chmodSync(filePath, 0o755);
+          if (newContent !== content) {
+            fs.writeFileSync(filePath, newContent, 'utf-8');
+            if (process.platform !== 'win32') {
+              fs.chmodSync(filePath, 0o755);
+            }
+            fixedCount++;
           }
-          fixedCount++;
         }
       } catch {
         // Silently skip files that can't be processed
@@ -347,196 +316,21 @@ function fixVenvScriptShebangs(venvPath: string): boolean {
   }
 }
 
-const PREBUILT_VERSION_FILE = '.prebuilt_version';
-
-/**
- * Extract venv.zip to userData (macOS: venv is zipped to fix EMFILE during signing).
- * Re-extracts when app version changes so we don't reuse stale venv from older releases.
- */
-function extractVenvZipIfNeeded(venvZipPath: string): string | null {
-  const userData = app.getPath('userData');
-  const prebuiltDir = path.join(userData, 'prebuilt');
-  const extractedVenvPath = path.join(prebuiltDir, 'venv');
-  const pyvenvCfgPath = path.join(extractedVenvPath, 'pyvenv.cfg');
-  const versionFile = path.join(prebuiltDir, PREBUILT_VERSION_FILE);
-  const currentVersion = app.getVersion();
-
-  if (fs.existsSync(pyvenvCfgPath)) {
-    const storedVersion = fs.existsSync(versionFile)
-      ? fs.readFileSync(versionFile, 'utf-8').trim()
-      : null;
-    if (storedVersion === currentVersion) {
-      log.info(
-        `[VENV] venv already extracted at ${extractedVenvPath}, using existing (v${currentVersion})`
-      );
-      fixExtractedVenvPermissions(extractedVenvPath);
-      return extractedVenvPath;
-    }
-    log.info(
-      `[VENV] Version changed (${storedVersion ?? 'unknown'} -> ${currentVersion}), re-extracting venv...`
-    );
-    try {
-      fs.rmSync(extractedVenvPath, { recursive: true, force: true });
-    } catch (e) {
-      log.warn(`[VENV] Failed to remove old venv: ${e}`);
-    }
-  }
-
-  log.info(`[VENV] Extracting venv.zip to ${extractedVenvPath}...`);
-  const extractDir = path.dirname(extractedVenvPath);
-  fs.mkdirSync(extractDir, { recursive: true });
-
-  try {
-    // Use native ditto on macOS - typically 2-5x faster than adm-zip for large zips
-    if (process.platform === 'darwin') {
-      execSync(`ditto -x -k --sequesterRsrc "${venvZipPath}" "${extractDir}"`, {
-        stdio: 'ignore',
-      });
-    } else {
-      const AdmZip = require('adm-zip');
-      const zip = new AdmZip(venvZipPath);
-      zip.extractAllTo(extractDir, true);
-    }
-    log.info(`[VENV] Extracted venv successfully`);
-
-    // Fix executable permissions (ditto preserves them, adm-zip doesn't)
-    fixExtractedVenvPermissions(extractedVenvPath);
-
-    // Record version so we re-extract on upgrade
-    fs.mkdirSync(prebuiltDir, { recursive: true });
-    fs.writeFileSync(versionFile, currentVersion, 'utf-8');
-
-    return extractedVenvPath;
-  } catch (error) {
-    log.error(`[VENV] Failed to extract venv.zip: ${error}`);
-    return null;
-  }
-}
-
-/**
- * Ensure venv/bin/python exists - create symlink if missing or broken.
- */
-function ensureVenvPythonSymlink(venvPath: string): boolean {
-  if (process.platform === 'win32') return true;
-
-  const binDir = path.join(venvPath, 'bin');
-  const pythonPath = path.join(binDir, 'python');
-  if (!fs.existsSync(binDir)) return false;
-
-  try {
-    fs.accessSync(pythonPath, fs.constants.X_OK);
-    return true;
-  } catch {
-    // python missing or broken symlink - create/fix below
-    log.info(
-      `[VENV] python not found or broken at ${pythonPath}, creating symlink...`
-    );
-  }
-
-  const actualPython = getActualPythonPathFromPyvenvCfg(venvPath);
-
-  // Find python3.X in venv/bin as fallback (e.g. python3.10)
-  const entries = fs.readdirSync(binDir, { withFileTypes: true });
-  const py3 = entries.find(
-    (e) =>
-      !e.isDirectory() &&
-      (e.name === 'python3' ||
-        (e.name.startsWith('python3.') && !e.name.endsWith('.py')))
-  );
-  const targetInBin = py3 ? path.join(binDir, py3.name) : null;
-
-  try {
-    // Remove existing file/symlink (existsSync is false for broken symlinks, so use lstat)
-    try {
-      fs.lstatSync(pythonPath);
-      fs.unlinkSync(pythonPath);
-    } catch {
-      // ENOENT = path doesn't exist, that's fine
-    }
-
-    // Prefer actual Python from pyvenv.cfg (absolute path to app bundle);
-    // fallback to python3.X in same dir (relative symlink)
-    let target: string | null = null;
-    if (actualPython && fs.existsSync(actualPython)) {
-      target = actualPython;
-    } else if (targetInBin && fs.existsSync(targetInBin)) {
-      // Use relative name for symlink within same directory
-      target = py3!.name;
-    }
-
-    if (!target) {
-      log.warn(`[VENV] No valid Python target found for symlink`);
-      return false;
-    }
-
-    fs.symlinkSync(target, pythonPath);
-    try {
-      fs.chmodSync(pythonPath, 0o755);
-    } catch {}
-    log.info(`[VENV] Created python symlink -> ${target}`);
-    return true;
-  } catch (error) {
-    log.warn(`[VENV] Failed to create python symlink: ${error}`);
-    return false;
-  }
-}
-
-/**
- * Set executable permissions on venv bin files (adm-zip doesn't preserve them).
- * Also remove macOS quarantine attr which can cause "Permission denied".
- */
-function fixExtractedVenvPermissions(venvPath: string): void {
-  if (process.platform === 'win32') return;
-
-  const binDir = path.join(venvPath, 'bin');
-  if (!fs.existsSync(binDir)) return;
-
-  try {
-    const entries = fs.readdirSync(binDir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(binDir, entry.name);
-      if (entry.isFile()) {
-        fs.chmodSync(fullPath, 0o755);
-      }
-    }
-    log.info(
-      `[VENV] Fixed executable permissions on ${entries.length} entries in bin/`
-    );
-
-    // Remove macOS quarantine - extracted files may be blocked from execution
-    if (process.platform === 'darwin') {
-      try {
-        execSync(`xattr -cr "${venvPath}"`, { stdio: 'ignore' });
-        log.info(`[VENV] Removed quarantine attributes`);
-      } catch {
-        // xattr may fail if not needed, ignore
-      }
-    }
-  } catch (error) {
-    log.warn(`[VENV] Failed to fix permissions: ${error}`);
-  }
-}
-
 /**
  * Get path to prebuilt venv (if available in packaged app)
- * On macOS, venv is shipped as venv.zip to avoid EMFILE during code signing.
  */
 export function getPrebuiltVenvPath(): string | null {
   if (!app.isPackaged) {
     return null;
   }
 
-  const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
-  const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
-  const venvZipPath = path.join(prebuiltDir, 'venv.zip');
+  const prebuiltVenvPath = path.join(process.resourcesPath, 'prebuilt', 'venv');
   const pyvenvCfgPath = path.join(prebuiltVenvPath, 'pyvenv.cfg');
 
   log.info(`[VENV] Checking prebuilt venv at: ${prebuiltVenvPath}`);
 
-  // Case 1: venv as directory (Windows, Linux - before-sign doesn't run there)
   if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(pyvenvCfgPath)) {
     fixPyvenvCfgPlaceholder(pyvenvCfgPath);
-    ensureVenvPythonSymlink(prebuiltVenvPath);
     fixVenvScriptShebangs(prebuiltVenvPath);
 
     const pythonExePath = getVenvPythonPath(prebuiltVenvPath);
@@ -546,23 +340,6 @@ export function getPrebuiltVenvPath(): string | null {
     }
     log.warn(`[VENV] Prebuilt venv Python missing at: ${pythonExePath}`);
   }
-
-  // Case 2: venv as zip (macOS - compressed in before-sign to fix EMFILE)
-  if (fs.existsSync(venvZipPath)) {
-    const extractedPath = extractVenvZipIfNeeded(venvZipPath);
-    if (extractedPath) {
-      fixPyvenvCfgPlaceholder(path.join(extractedPath, 'pyvenv.cfg'));
-      ensureVenvPythonSymlink(extractedPath);
-      fixVenvScriptShebangs(extractedPath);
-
-      const pythonExePath = getVenvPythonPath(extractedPath);
-      if (fs.existsSync(pythonExePath)) {
-        log.info(`[VENV] Using extracted venv: ${extractedPath}`);
-        return extractedPath;
-      }
-    }
-  }
-
   return null;
 }
 
@@ -696,62 +473,6 @@ export function getVenvPythonPath(venvPath: string): string {
   return isWindows
     ? path.join(venvPath, 'Scripts', 'python.exe')
     : path.join(venvPath, 'bin', 'python');
-}
-
-/**
- * Check venv existence for pre-check WITHOUT triggering extraction.
- * Used to avoid blocking app launch - extraction is deferred to startBackend when window is already visible.
- */
-export function checkVenvExistsForPreCheck(version: string): {
-  exists: boolean;
-  path: string;
-} {
-  if (!app.isPackaged) {
-    const venvDir = path.join(
-      os.homedir(),
-      '.eigent',
-      'venvs',
-      `backend-${version}`
-    );
-    const pyvenvCfg = path.join(venvDir, 'pyvenv.cfg');
-    return {
-      exists: fs.existsSync(pyvenvCfg),
-      path: venvDir,
-    };
-  }
-
-  const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
-  const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
-  const venvZipPath = path.join(prebuiltDir, 'venv.zip');
-  const prebuiltPyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
-
-  // Case 1: venv as directory (Windows, Linux)
-  if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(prebuiltPyvenvCfg)) {
-    return { exists: true, path: prebuiltVenvPath };
-  }
-
-  // Case 2: venv as zip (macOS) - we have prebuilt, extract when needed; no extraction here
-  if (fs.existsSync(venvZipPath)) {
-    const userData = app.getPath('userData');
-    const extractedPath = path.join(userData, 'prebuilt', 'venv');
-    const extractedPyvenvCfg = path.join(extractedPath, 'pyvenv.cfg');
-    // exists = already extracted OR we have venv.zip (will extract in startBackend)
-    const exists =
-      fs.existsSync(extractedPyvenvCfg) || fs.existsSync(venvZipPath);
-    return { exists, path: extractedPath };
-  }
-
-  const venvDir = path.join(
-    os.homedir(),
-    '.eigent',
-    'venvs',
-    `backend-${version}`
-  );
-  const pyvenvCfg = path.join(venvDir, 'pyvenv.cfg');
-  return {
-    exists: fs.existsSync(pyvenvCfg),
-    path: venvDir,
-  };
 }
 
 export function getVenvPath(version: string): string {
