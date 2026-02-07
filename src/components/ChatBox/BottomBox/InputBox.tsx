@@ -66,8 +66,6 @@ export interface InputboxProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement>;
   /** Allow drag and drop */
   allowDragDrop?: boolean;
-  /** Privacy mode enabled */
-  privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
 }
@@ -123,7 +121,6 @@ export const Inputbox = ({
   className,
   textareaRef: externalTextareaRef,
   allowDragDrop = false,
-  privacy = true,
   useCloudModelInDev = false,
 }: InputboxProps) => {
   const { t } = useTranslation();
@@ -211,7 +208,7 @@ export const Inputbox = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!allowDragDrop || useCloudModelInDev) return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -220,7 +217,7 @@ export const Inputbox = ({
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!allowDragDrop || useCloudModelInDev) return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -240,7 +237,7 @@ export const Inputbox = ({
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!allowDragDrop || useCloudModelInDev) return;
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
       if (dropped.length === 0) return;
@@ -452,7 +449,7 @@ export const Inputbox = ({
             size="icon"
             className="rounded-full"
             onClick={onAddFile}
-            disabled={disabled || !privacy || useCloudModelInDev}
+            disabled={disabled || useCloudModelInDev}
           >
             <Plus size={16} className="text-icon-primary" />
           </Button>
