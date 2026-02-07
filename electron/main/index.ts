@@ -25,6 +25,17 @@ import {
   shell,
 } from 'electron';
 import log from 'electron-log';
+
+// ==================== EPIPE error prevention ====================
+// During app shutdown, the stdout/stderr pipes may close before all log
+// writes complete. This causes uncaught EPIPE errors that crash the app.
+// Handle them gracefully by ignoring broken pipe writes.
+for (const stream of [process.stdout, process.stderr]) {
+  stream?.on?.('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EPIPE') return; // Silently ignore broken pipe
+  });
+}
+
 import FormData from 'form-data';
 import fsp from 'fs/promises';
 import mime from 'mime';
@@ -198,6 +209,25 @@ log.transports.console.level = 'info';
 log.transports.file.level = 'info';
 log.transports.console.format = '[{level}]{text}';
 log.transports.file.format = '[{level}]{text}';
+
+// Catch any uncaught exceptions from broken pipes during shutdown
+// to prevent the app from crashing with EPIPE errors
+process.on('uncaughtException', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EPIPE') {
+    // Broken pipe during shutdown - safe to ignore.
+    // This happens when electron-log's console transport tries to write
+    // after the renderer process or stdout pipe has been closed.
+    return;
+  }
+  // For non-EPIPE errors, log to file (not console to avoid recursion) and re-throw
+  log.transports.file?.({
+    data: [`[UNCAUGHT] ${error.stack || error.message}`],
+    level: 'error',
+    date: new Date(),
+    variables: {},
+  } as any);
+  throw error;
+});
 
 // Disable GPU Acceleration for Windows 7
 if (os.release().startsWith('6.1')) app.disableHardwareAcceleration();
@@ -2234,6 +2264,9 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
 
+  // Disable console transport - all windows are closed so stdout pipe may break
+  log.transports.console.level = false;
+
   // Clean up WebView manager
   if (webViewManager) {
     webViewManager.destroy();
@@ -2270,6 +2303,12 @@ app.on('before-quit', async (event) => {
 
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();
+
+  // Disable console transport BEFORE destroying the window.
+  // Once the window/renderer is destroyed, stdout pipe may close,
+  // causing EPIPE errors on any subsequent console.info/log writes.
+  // File transport remains active for debugging shutdown issues.
+  log.transports.console.level = false;
 
   try {
     // NOTE: Profile sync removed - we now use app userData directly for all partitions

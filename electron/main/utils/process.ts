@@ -631,12 +631,68 @@ export function getUvEnv(version: string): Record<string, string> {
   const prebuiltPython = getPrebuiltPythonDir();
   const pythonInstallDir = prebuiltPython || getCachePath('uv_python');
 
-  return {
+  // Ensure PATH includes common tool directories (cmake, brew, etc.)
+  // Electron GUI apps on macOS don't inherit the full shell PATH
+  const currentPath = process.env.PATH || '';
+  const extraPaths = [
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ];
+
+  // Add LLVM directories so llvmlite can find the correct version during builds.
+  // Prefer LLVM 20 (required by llvmlite >=0.46) over older versions.
+  const llvmPaths = [
+    '/usr/local/opt/llvm@20/bin',
+    '/opt/homebrew/opt/llvm@20/bin',
+  ];
+
+  const pathParts = currentPath.split(':');
+  // Prepend LLVM paths so they take priority over older LLVM versions
+  const allExtraPaths = [...llvmPaths, ...extraPaths];
+  const missingPaths = allExtraPaths.filter(
+    (p) => !pathParts.includes(p) && fs.existsSync(p)
+  );
+  const enhancedPath =
+    missingPaths.length > 0
+      ? [...missingPaths, ...pathParts].join(':')
+      : currentPath;
+
+  // Set LLVM_CONFIG explicitly for llvmlite builds
+  const env: Record<string, string> = {
     UV_PYTHON_INSTALL_DIR: pythonInstallDir,
     UV_TOOL_DIR: getCachePath('uv_tool'),
     UV_PROJECT_ENVIRONMENT: getVenvPath(version),
     UV_HTTP_TIMEOUT: '300',
+    PATH: enhancedPath,
   };
+
+  // Point llvmlite/cmake to the correct LLVM 20 installation.
+  // llvmlite >=0.46 requires LLVM 20. Without explicit LLVM_DIR, cmake may
+  // find an older LLVM version (e.g. 14) via system paths and fail the build.
+  // CMAKE_ARGS with -DLLVM_DIR forces cmake's find_package(LLVM) to use LLVM 20.
+  // LLVM_CONFIG provides the direct path for llvmlite's build.py.
+  const llvmPrefixes = [
+    '/usr/local/opt/llvm@20', // Intel Mac (Homebrew)
+    '/opt/homebrew/opt/llvm@20', // Apple Silicon (Homebrew)
+  ];
+
+  for (const llvmPrefix of llvmPrefixes) {
+    const llvmCmakeDir = path.join(llvmPrefix, 'lib', 'cmake', 'llvm');
+    if (fs.existsSync(llvmCmakeDir)) {
+      env.CMAKE_ARGS = `-DLLVM_DIR=${llvmCmakeDir}`;
+      const llvmConfigPath = path.join(llvmPrefix, 'bin', 'llvm-config');
+      if (fs.existsSync(llvmConfigPath)) {
+        env.LLVM_CONFIG = llvmConfigPath;
+      }
+      break;
+    }
+  }
+
+  return env;
 }
 
 export async function killProcessByName(name: string): Promise<void> {

@@ -406,6 +406,8 @@ class InstallLogs {
         '--no-dev',
         '--cache-dir',
         getCachePath('uv_cache'),
+        '--no-build-isolation-package',
+        'llvmlite',
         ...extraArgs,
       ],
       {
