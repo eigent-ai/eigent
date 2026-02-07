@@ -146,6 +146,7 @@ export interface ChatStore {
   getLastUserMessage: () => Message | null;
   addTaskInfo: () => void;
   updateTaskInfo: (index: number, content: string) => void;
+  saveTaskInfo: () => void;
   deleteTaskInfo: (index: number) => void;
   setTaskTime: (taskId: string, taskTime: number) => void;
   setElapsed: (taskId: string, taskTime: number) => void;
@@ -189,6 +190,17 @@ const normalizeToolkitMessage = (value: unknown) => {
   } catch {
     return String(value);
   }
+};
+
+/** Persist subtask edits to backend via PUT /task/{project_id}. */
+const persistSubtaskEdits = (taskInfo: TaskInfo[]) => {
+  const projectId = useProjectStore.getState().activeProjectId;
+  if (!projectId) return;
+
+  const nonEmpty = taskInfo.filter((t) => t.content !== '');
+  fetchPut(`/task/${projectId}`, { task: nonEmpty }).catch((err) =>
+    console.error('Failed to persist subtask edits:', err)
+  );
 };
 
 const resolveProcessTaskIdForToolkitEvent = (
@@ -845,17 +857,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   );
                 }
 
+                const attachesForNewMessage =
+                  lastMessage?.role === 'user' && lastMessage?.attaches?.length
+                    ? lastMessage.attaches
+                    : [
+                        ...(previousChatStore.tasks[currentTaskId]?.attaches ||
+                          []),
+                        ...(messageAttaches || []),
+                      ];
+
                 //Trick: by the time the question is retrieved from event,
                 //the last message from previous chatStore is at display
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',
                   content: question || (messageContent as string),
-                  //TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-                  attaches: [
-                    ...(previousChatStore.tasks[currentTaskId]?.attaches || []),
-                    ...(messageAttaches || []),
-                  ],
+                  attaches: attachesForNewMessage,
                 });
                 console.log('[NEW CHATSTORE] Created for ', project_id);
 
@@ -2699,6 +2716,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       };
       targetTaskInfo.push(newTaskInfo);
       setTaskInfo(activeTaskId, targetTaskInfo);
+      // No backend persist here — the new task is empty, so it gets filtered out.
+      // It will be persisted once the user types content (via updateTaskInfo).
     },
     addTerminal(taskId, processTaskId, terminal) {
       if (!processTaskId) return;
@@ -2858,21 +2877,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     updateTaskInfo(index: number, content: string) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
-      // Deep copy the array with updated item to ensure React detects the change
       const targetTaskInfo = tasks[activeTaskId].taskInfo.map((item, i) =>
         i === index ? { ...item, content } : item
       );
       setTaskInfo(activeTaskId, targetTaskInfo);
     },
+    saveTaskInfo() {
+      const { tasks, activeTaskId } = get();
+      if (!activeTaskId) return;
+      persistSubtaskEdits(tasks[activeTaskId].taskInfo);
+    },
     deleteTaskInfo(index: number) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
-      let targetTaskInfo = [...tasks[activeTaskId].taskInfo];
-
-      if (targetTaskInfo) {
-        targetTaskInfo.splice(index, 1);
-      }
+      const targetTaskInfo = [...tasks[activeTaskId].taskInfo];
+      targetTaskInfo.splice(index, 1);
       setTaskInfo(activeTaskId, targetTaskInfo);
+      persistSubtaskEdits(targetTaskInfo);
     },
     getLastUserMessage() {
       const { activeTaskId, tasks } = get();

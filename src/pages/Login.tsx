@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import loginGif from '@/assets/login.gif';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
@@ -29,6 +28,9 @@ import google from '@/assets/google.svg';
 import WindowControls from '@/components/WindowControls';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
+
+import background from '@/assets/background.png';
+import eigentLogo from '@/assets/logo/eigent_icon.png';
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
@@ -336,20 +338,6 @@ export default function Login() {
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        {/* Left spacer for macOS */}
-        <div
-          className={`${
-            platform === 'darwin' ? 'w-[70px]' : 'w-0'
-          } flex items-center justify-center`}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          {platform === 'darwin' && (
-            <span className="text-label-md font-bold text-text-heading">
-              Eigent
-            </span>
-          )}
-        </div>
-
         {/* Center drag region */}
         <div
           className="flex h-full flex-1 items-center"
@@ -374,12 +362,22 @@ export default function Login() {
       </div>
 
       {/* Main content - image extends to top, form has padding */}
-      <div className={`flex h-full items-center justify-center gap-2 p-2`}>
-        <div className="flex h-full items-center justify-center rounded-3xl bg-white-100%">
-          <img src={loginGif} className="h-full rounded-3xl object-cover" />
-        </div>
-        <div className="flex h-full flex-1 flex-col items-center justify-center pt-11">
-          <div className="flex w-80 flex-1 flex-col items-center justify-center">
+      <div
+        className={`flex h-full items-center justify-center gap-2 px-2 pb-2 pt-10`}
+      >
+        <div
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary px-2 pb-2"
+          style={{
+            backgroundImage: `url(${background})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >
+          <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+            <img
+              src={eigentLogo}
+              className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+            />
             <div className="mb-4 flex items-end justify-between self-stretch">
               <div className="text-heading-lg font-bold text-text-heading">
                 {t('layout.login')}

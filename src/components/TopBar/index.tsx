@@ -28,7 +28,9 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
+import { useInstallationUI } from '@/store/installationStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { ChatTaskStatus } from '@/types/constants';
 import {
   ChevronDown,
   ChevronLeft,
@@ -45,7 +47,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChatTaskStatus } from '@/types/constants';
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -60,6 +61,10 @@ function HeaderWin() {
   const appearance = useAuthStore((state) => state.appearance);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
+  const { isInstalling, installationState } = useInstallationUI();
+  const _isInstallationActive =
+    isInstalling || installationState === 'waiting-backend';
+
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
@@ -91,22 +96,15 @@ function HeaderWin() {
     navigate('/');
   };
 
+  const summaryTask =
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
+
   const activeTaskTitle = useMemo(() => {
-    if (
-      chatStore?.activeTaskId &&
-      chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask
-    ) {
-      return chatStore.tasks[
-        chatStore.activeTaskId as string
-      ].summaryTask.split('|')[0];
+    if (chatStore?.activeTaskId && summaryTask) {
+      return summaryTask.split('|')[0];
     }
     return t('layout.new-project');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    chatStore?.activeTaskId,
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask,
-    t,
-  ]);
+  }, [chatStore?.activeTaskId, summaryTask, t]);
 
   if (!chatStore) {
     return <div>Loading...</div>;

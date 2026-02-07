@@ -21,6 +21,7 @@ import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -45,7 +46,6 @@ import {
 import { Tag } from '../ui/tag';
 import { TooltipSimple } from '../ui/tooltip';
 import SearchInput from './SearchInput';
-import { ChatTaskStatus } from "@/types/constants";
 
 export default function HistorySidebar() {
   const { t } = useTranslation();

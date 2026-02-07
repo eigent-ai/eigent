@@ -34,7 +34,7 @@ export default function Setting() {
   const version = useAppVersion();
   const { appearance } = useAuthStore();
   const { t } = useTranslation();
-  const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
+  const _logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
   // Setting menu configuration
   const settingMenus = [
     {
