@@ -84,14 +84,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
-      # Install LLVM 20 for macOS Intel - llvmlite 0.46.0 only supports LLVM 20 (not 21)
-      - name: Install LLVM 20 (macOS Intel)
-        if: runner.os == 'macOS' && matrix.arch == 'x64'
-        run: |
-          brew install llvm@20
-          echo "LLVM_DIR=$(brew --prefix llvm@20)/lib/cmake/llvm" >> $GITHUB_ENV
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm@20)/lib/cmake/llvm" >> $GITHUB_ENV
-
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
