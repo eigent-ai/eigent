@@ -13,9 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { generateUniqueId } from '@/lib';
+import { ChatTaskStatus } from '@/types/constants';
 import { create } from 'zustand';
 import { createChatStoreInstance, VanillaChatStore } from './chatStore';
-import { ChatTaskStatus } from '@/types/constants';
 
 export enum ProjectType {
   NORMAL = 'normal',

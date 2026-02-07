@@ -18,33 +18,33 @@ import os
 
 from camel.toolkits import MCPToolkit
 
+from app.agent.toolkit.abstract_toolkit import AbstractToolkit
+from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
+from app.agent.toolkit.excel_toolkit import ExcelToolkit
+from app.agent.toolkit.file_write_toolkit import FileToolkit
+from app.agent.toolkit.github_toolkit import GithubToolkit
+from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
+from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
+from app.agent.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
+from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
+from app.agent.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
+from app.agent.toolkit.lark_toolkit import LarkToolkit
+from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
+from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
+from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
+from app.agent.toolkit.openai_image_toolkit import OpenAIImageToolkit
+from app.agent.toolkit.pptx_toolkit import PPTXToolkit
+from app.agent.toolkit.rag_toolkit import RAGToolkit
+from app.agent.toolkit.reddit_toolkit import RedditToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.slack_toolkit import SlackToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.twitter_toolkit import TwitterToolkit
+from app.agent.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
+from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
+from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
 from app.component.environment import env
 from app.model.chat import McpServers
-from app.utils.toolkit.abstract_toolkit import AbstractToolkit
-from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
-from app.utils.toolkit.excel_toolkit import ExcelToolkit
-from app.utils.toolkit.file_write_toolkit import FileToolkit
-from app.utils.toolkit.github_toolkit import GithubToolkit
-from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
-from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
-from app.utils.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
-from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
-from app.utils.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
-from app.utils.toolkit.lark_toolkit import LarkToolkit
-from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
-from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
-from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
-from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
-from app.utils.toolkit.pptx_toolkit import PPTXToolkit
-from app.utils.toolkit.rag_toolkit import RAGToolkit
-from app.utils.toolkit.reddit_toolkit import RedditToolkit
-from app.utils.toolkit.search_toolkit import SearchToolkit
-from app.utils.toolkit.slack_toolkit import SlackToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.twitter_toolkit import TwitterToolkit
-from app.utils.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
-from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
-from app.utils.toolkit.whatsapp_toolkit import WhatsAppToolkit
 
 logger = logging.getLogger(__name__)
 
