@@ -55,6 +55,7 @@ import {
   Info,
   Key,
   Loader2,
+  RotateCcw,
   Server,
   Settings,
 } from 'lucide-react';
@@ -83,6 +84,7 @@ import vllmImage from '@/assets/model/vllm.svg';
 import zaiImage from '@/assets/model/zai.svg';
 
 const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
+const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
 
 // Sidebar tab types
 type SidebarTab =
@@ -168,6 +170,38 @@ export default function SettingModels() {
   const [localInputError, setLocalInputError] = useState(false);
   const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state (for current platform)
 
+  // Ollama-specific state for model fetching
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(
+    null
+  );
+
+  // Fetch available models from Ollama API
+  const fetchOllamaModels = async (endpoint?: string) => {
+    const url = endpoint || DEFAULT_OLLAMA_ENDPOINT;
+    setOllamaModelsLoading(true);
+    setOllamaModelsError(null);
+    try {
+      const baseUrl = url.replace(/\/v1\/?$/, '').replace(/\/$/, '');
+      const response = await fetch(`${baseUrl}/api/tags`);
+      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
+      const data = await response.json();
+      const modelNames = data.models?.map((m: any) => m.name) || [];
+      setOllamaModels(modelNames);
+    } catch (error: any) {
+      console.error('Failed to fetch Ollama models:', error);
+      setOllamaModels([]);
+      setOllamaModelsError(
+        t('setting.failed-to-fetch-ollama-models') ||
+          'Failed to fetch Ollama models. Is Ollama running?'
+      );
+    } finally {
+      setOllamaModelsLoading(false);
+    }
+  };
+
   // Default model dropdown state (removed - using DropdownMenu's built-in state)
 
   // Pending model to set as default after configuration
@@ -226,7 +260,10 @@ export default function SettingModels() {
         localProviders.forEach((local: any) => {
           const platform =
             local.encrypted_config?.model_platform || local.provider_name;
-          endpoints[platform] = local.endpoint_url || '';
+          // Auto-populate default Ollama endpoint if not set
+          endpoints[platform] =
+            local.endpoint_url ||
+            (platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '');
           types[platform] = local.encrypted_config?.model_type || '';
           providerIds[platform] = local.id;
 
@@ -241,10 +278,15 @@ export default function SettingModels() {
         setLocalTypes(types);
         setLocalProviderIds(providerIds);
 
-        // If no local providers found, initialize empty state
+        // Fetch Ollama models if ollama endpoint is set
+        const ollamaEndpoint = endpoints['ollama'] || DEFAULT_OLLAMA_ENDPOINT;
+        fetchOllamaModels(ollamaEndpoint);
+
+        // If no local providers found, initialize empty state with Ollama default
         if (localProviders.length === 0) {
           LOCAL_PROVIDER_NAMES.forEach((platform) => {
-            endpoints[platform] = '';
+            endpoints[platform] =
+              platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '';
             types[platform] = '';
             providerIds[platform] = undefined;
           });
@@ -580,6 +622,12 @@ export default function SettingModels() {
       setLocalVerifying(false);
       return;
     }
+    if (!currentType) {
+      setLocalError(t('setting.model-type-can-not-be-empty'));
+      setLocalInputError(true);
+      setLocalVerifying(false);
+      return;
+    }
     try {
       // // 1. Check if endpoint returns response
       // let baseUrl = localEndpoint;
@@ -806,7 +854,13 @@ export default function SettingModels() {
       if (currentProviderId !== undefined) {
         await proxyFetchDelete(`/api/provider/${currentProviderId}`);
       }
-      setLocalEndpoints((prev) => ({ ...prev, [localPlatform]: '' }));
+      // Set endpoint to default for Ollama, empty for others
+      const defaultEndpoint =
+        localPlatform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '';
+      setLocalEndpoints((prev) => ({
+        ...prev,
+        [localPlatform]: defaultEndpoint,
+      }));
       setLocalTypes((prev) => ({ ...prev, [localPlatform]: '' }));
       setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: undefined }));
       // Reset prefer state only if this platform was the preferred one
@@ -815,6 +869,11 @@ export default function SettingModels() {
       }
       setLocalEnabled(true);
       setActiveModelIdx(null);
+      // Re-fetch Ollama models after reset
+      if (localPlatform === 'ollama') {
+        setOllamaModelsError(null);
+        fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
+      }
       toast.success(t('setting.reset-success'));
     } catch (e) {
       console.error('Error resetting local model:', e);
@@ -1454,6 +1513,10 @@ export default function SettingModels() {
                 }));
                 setLocalInputError(false);
                 setLocalError(null);
+                // Clear Ollama models error when endpoint changes
+                if (platform === 'ollama') {
+                  setOllamaModelsError(null);
+                }
               }}
               disabled={!localEnabled}
               placeholder={
@@ -1465,20 +1528,100 @@ export default function SettingModels() {
               }
               note={localError ?? undefined}
             />
-            <Input
-              size="default"
-              title={t('setting.model-type')}
-              state={localInputError ? 'error' : 'default'}
-              placeholder={t('setting.enter-your-local-model-type')}
-              value={currentType}
-              onChange={(e) =>
-                setLocalTypes((prev) => ({
-                  ...prev,
-                  [platform]: e.target.value,
-                }))
-              }
-              disabled={!localEnabled}
-            />
+            {platform === 'ollama' ? (
+              <div className="flex w-full flex-col gap-1">
+                <div className="flex w-full items-end gap-2">
+                  <div className="flex-1">
+                    <Select
+                      value={currentType}
+                      onValueChange={(v) =>
+                        setLocalTypes((prev) => ({
+                          ...prev,
+                          [platform]: v,
+                        }))
+                      }
+                      disabled={!localEnabled || ollamaModelsLoading}
+                    >
+                      <SelectTrigger
+                        size="default"
+                        title={t('setting.model-type')}
+                        state={
+                          localInputError || ollamaModelsError
+                            ? 'error'
+                            : undefined
+                        }
+                      >
+                        <SelectValue
+                          placeholder={
+                            ollamaModelsLoading
+                              ? 'Loading models...'
+                              : 'Select model'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white-100%">
+                        {(() => {
+                          const modelList =
+                            currentType && !ollamaModels.includes(currentType)
+                              ? [currentType, ...ollamaModels]
+                              : [
+                                  ...new Set([currentType, ...ollamaModels]),
+                                ].filter(Boolean);
+                          return modelList.length > 0 ? (
+                            modelList.map((model) => (
+                              <SelectItem key={model} value={model}>
+                                {model}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="_no_models" disabled>
+                              No models found
+                            </SelectItem>
+                          );
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      fetchOllamaModels(
+                        currentEndpoint || DEFAULT_OLLAMA_ENDPOINT
+                      )
+                    }
+                    disabled={!localEnabled || ollamaModelsLoading}
+                    className="mb-1 flex-shrink-0"
+                  >
+                    {ollamaModelsLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                {ollamaModelsError && (
+                  <span className="text-label-sm text-text-error">
+                    {ollamaModelsError}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <Input
+                size="default"
+                title={t('setting.model-type')}
+                state={localInputError ? 'error' : 'default'}
+                placeholder={t('setting.enter-your-local-model-type')}
+                value={currentType}
+                onChange={(e) =>
+                  setLocalTypes((prev) => ({
+                    ...prev,
+                    [platform]: e.target.value,
+                  }))
+                }
+                disabled={!localEnabled}
+              />
+            )}
           </div>
           {/* Action Button */}
           <div className="flex justify-end gap-2 px-6 py-4">
