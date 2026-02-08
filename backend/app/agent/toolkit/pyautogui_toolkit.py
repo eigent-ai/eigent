@@ -36,5 +36,6 @@ class PyAutoGUIToolkit(BasePyAutoGUIToolkit, AbstractToolkit):
             screenshots_dir = env(
                 "file_save_path", os.path.expanduser("~/Downloads")
             )
+        os.makedirs(screenshots_dir, exist_ok=True)
         super().__init__(timeout, screenshots_dir)
         self.api_task_id = api_task_id

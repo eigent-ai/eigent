@@ -81,6 +81,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         base_dir = env(
             "file_save_path", os.path.expanduser("~/.eigent/terminal/")
         )
+        os.makedirs(base_dir, exist_ok=True)
 
         if working_directory is None:
             working_directory = base_dir
