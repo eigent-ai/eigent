@@ -37,8 +37,12 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
 
-// Codex OAuth constants
-const CODEX_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// OAuth polling constants
+const OAUTH_POLL_INTERVAL_MS = 1500;
+const OAUTH_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// TODO: Extract OAuth status strings ('authorizing', 'success', 'failed',
+// 'cancelled') into a shared enum to avoid hardcoded comparisons.
 
 interface McpItem {
   id: number;
@@ -225,143 +229,6 @@ const ToolSelect = forwardRef<
                     return null; // Return null on authorization flow errors
                   }
                 };
-              } else if (key.toLowerCase() === 'codex') {
-                // Codex OAuth obtains an OpenAI API key – save it as a
-                // Provider (model configuration) rather than a toolkit config.
-                const saveCodexAsProvider = async (installResponse: any) => {
-                  if (!installResponse?.access_token) return;
-                  try {
-                    const providers = await proxyFetchGet('/api/providers');
-                    const existing = Array.isArray(providers)
-                      ? providers.find(
-                          (p: any) =>
-                            p.provider_name === 'openai' &&
-                            p.endpoint_url ===
-                              (installResponse.endpoint_url ||
-                                'https://api.openai.com/v1')
-                        )
-                      : null;
-
-                    const providerPayload = {
-                      provider_name: installResponse.provider_name || 'openai',
-                      api_key: installResponse.access_token,
-                      endpoint_url:
-                        installResponse.endpoint_url ||
-                        'https://api.openai.com/v1',
-                      model_type: existing?.model_type || 'gpt-4.1',
-                      is_vaild: 2,
-                    };
-
-                    if (existing?.id) {
-                      await proxyFetchPut(
-                        `/api/provider/${existing.id}`,
-                        providerPayload
-                      );
-                    } else {
-                      await proxyFetchPost('/api/provider', providerPayload);
-                    }
-                  } catch (providerError) {
-                    console.warn(
-                      'Failed to save Codex token as provider',
-                      providerError
-                    );
-                  }
-                };
-
-                const saveCodexMarkerConfig = async () => {
-                  try {
-                    const existingConfigs = await proxyFetchGet('/api/configs');
-                    const existing = Array.isArray(existingConfigs)
-                      ? existingConfigs.find(
-                          (c: any) =>
-                            c.config_group?.toLowerCase() === 'codex' &&
-                            c.config_name === 'CODEX_OAUTH_TOKEN'
-                        )
-                      : null;
-
-                    const configPayload = {
-                      config_group: 'Codex',
-                      config_name: 'CODEX_OAUTH_TOKEN',
-                      config_value: 'exists',
-                    };
-
-                    if (existing) {
-                      await proxyFetchPut(
-                        `/api/configs/${existing.id}`,
-                        configPayload
-                      );
-                    } else {
-                      await proxyFetchPost('/api/configs', configPayload);
-                    }
-                  } catch (configError) {
-                    console.warn(
-                      'Failed to persist Codex marker config',
-                      configError
-                    );
-                  }
-                };
-
-                onInstall = async () => {
-                  try {
-                    const response = await fetchPost('/install/tool/codex');
-                    if (response.success) {
-                      await saveCodexAsProvider(response);
-                      await saveCodexMarkerConfig();
-                      const codexItem = {
-                        id: 0,
-                        key: key,
-                        name: key,
-                        description: t('layout.codex-integration'),
-                        toolkit: 'codex_oauth',
-                        isLocal: true,
-                      };
-                      addOption(codexItem, true);
-                    } else if (response.status === 'authorizing') {
-                      const start = Date.now();
-                      while (Date.now() - start < CODEX_POLL_TIMEOUT_MS) {
-                        try {
-                          const statusResponse = await fetchGet(
-                            '/oauth/status/codex'
-                          );
-                          if (statusResponse.status === 'success') {
-                            const retryResponse = await fetchPost(
-                              '/install/tool/codex'
-                            );
-                            if (retryResponse.success) {
-                              await saveCodexAsProvider(retryResponse);
-                              await saveCodexMarkerConfig();
-                              fetchIntegrationsData();
-                              const codexItem = {
-                                id: 0,
-                                key: key,
-                                name: key,
-                                description: t('layout.codex-integration'),
-                                toolkit: 'codex_oauth',
-                                isLocal: true,
-                              };
-                              addOption(codexItem, true);
-                            }
-                            return;
-                          } else if (
-                            statusResponse.status === 'failed' ||
-                            statusResponse.status === 'cancelled'
-                          ) {
-                            return;
-                          }
-                        } catch (error) {
-                          console.error(
-                            'Error polling Codex OAuth status:',
-                            error
-                          );
-                        }
-                        await new Promise((r) => setTimeout(r, 1500));
-                      }
-                    }
-                  } catch (error: any) {
-                    console.error('Failed to install Codex:', error.message);
-                    throw error;
-                  }
-                };
               } else {
                 onInstall = () =>
                   window.open(
@@ -377,17 +244,15 @@ const ToolSelect = forwardRef<
                 env_vars: value.env_vars,
                 toolkit: value.toolkit,
                 desc:
-                  key.toLowerCase() === 'codex'
-                    ? t('layout.codex-integration')
-                    : key.toLowerCase() === 'notion'
-                      ? t('layout.notion-workspace-integration')
-                      : key.toLowerCase() === 'google calendar'
-                        ? t('layout.google-calendar-integration')
-                        : value.env_vars && value.env_vars.length > 0
-                          ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
-                              ', '
-                            )}`
-                          : '',
+                  key.toLowerCase() === 'notion'
+                    ? t('layout.notion-workspace-integration')
+                    : key.toLowerCase() === 'google calendar'
+                      ? t('layout.google-calendar-integration')
+                      : value.env_vars && value.env_vars.length > 0
+                        ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
+                            ', '
+                          )}`
+                        : '',
                 onInstall,
               };
             });
@@ -629,9 +494,7 @@ const ToolSelect = forwardRef<
 
             // WAIT for OAuth status completion instead of using setInterval
             const start = Date.now();
-            const timeoutMs = 5 * 60 * 1000; // 5 minutes
-
-            while (Date.now() - start < timeoutMs) {
+            while (Date.now() - start < OAUTH_POLL_TIMEOUT_MS) {
               try {
                 const statusResponse = await fetchGet(
                   '/oauth/status/google_calendar'
@@ -714,7 +577,7 @@ const ToolSelect = forwardRef<
               }
 
               // Wait before next poll
-              await new Promise((r) => setTimeout(r, 1500));
+              await new Promise((r) => setTimeout(r, OAUTH_POLL_INTERVAL_MS));
             }
 
             console.log('[ToolSelect installMcp] Polling timeout');
