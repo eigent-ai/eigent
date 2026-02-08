@@ -193,10 +193,7 @@ export default function SettingModels() {
     } catch (error: any) {
       console.error('Failed to fetch Ollama models:', error);
       setOllamaModels([]);
-      setOllamaModelsError(
-        t('setting.failed-to-fetch-ollama-models') ||
-          'Failed to fetch Ollama models. Is Ollama running?'
-      );
+      setOllamaModelsError('Failed to fetch Ollama models. Is Ollama running?');
     } finally {
       setOllamaModelsLoading(false);
     }
@@ -373,7 +370,7 @@ export default function SettingModels() {
       return idx !== -1 && !!form[idx]?.provider_id;
     }
     if (category === 'local') {
-      return !!localEndpoints[modelId];
+      return !!localProviderIds[modelId];
     }
     return false;
   };
@@ -782,6 +779,16 @@ export default function SettingModels() {
     }
   }, [localEnabled]);
 
+  // Sync localPlatform when switching to a local model tab
+  useEffect(() => {
+    if (selectedTab.startsWith('local-')) {
+      const platform = selectedTab.replace('local-', '');
+      if (localPlatform !== platform) {
+        setLocalPlatform(platform);
+      }
+    }
+  }, [selectedTab, localPlatform]);
+
   const handleSwitch = async (idx: number, checked: boolean) => {
     if (!checked) {
       setActiveModelIdx(null);
@@ -864,7 +871,7 @@ export default function SettingModels() {
       setLocalTypes((prev) => ({ ...prev, [localPlatform]: '' }));
       setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: undefined }));
       // Reset prefer state only if this platform was the preferred one
-      if (localPrefer && localPlatform === localPlatform) {
+      if (localPrefer) {
         setLocalPrefer(false);
       }
       setLocalEnabled(true);
@@ -1440,14 +1447,9 @@ export default function SettingModels() {
     // Local model content - specific platforms
     if (selectedTab.startsWith('local-')) {
       const platform = selectedTab.replace('local-', '');
-      // Update localPlatform when switching to a local model tab
-      if (localPlatform !== platform) {
-        setLocalPlatform(platform);
-      }
-
       const currentEndpoint = localEndpoints[platform] || '';
       const currentType = localTypes[platform] || '';
-      const isConnected = !!currentEndpoint;
+      const isConfigured = !!localProviderIds[platform];
       const isPreferred = localPrefer && localPlatform === platform;
 
       return (
@@ -1469,7 +1471,7 @@ export default function SettingModels() {
                     variant="success"
                     size="xs"
                     className="focus-none rounded-full shadow-none"
-                    disabled={!isConnected}
+                    disabled={!isConfigured}
                     onClick={() => handleLocalSwitch(false)}
                   >
                     {t('setting.default')}
@@ -1478,21 +1480,21 @@ export default function SettingModels() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    disabled={!isConnected}
+                    disabled={!isConfigured}
                     onClick={() => handleLocalSwitch(true)}
                     className={
-                      isConnected
+                      isConfigured
                         ? 'rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none'
                         : ''
                     }
                   >
-                    {!isConnected
+                    {!isConfigured
                       ? t('setting.not-configured')
                       : t('setting.set-as-default')}
                   </Button>
                 )}
               </div>
-              {isConnected ? (
+              {isConfigured ? (
                 <div className="h-2 w-2 rounded-full bg-text-success" />
               ) : (
                 <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
@@ -1559,7 +1561,7 @@ export default function SettingModels() {
                           }
                         />
                       </SelectTrigger>
-                      <SelectContent className="bg-white-100%">
+                      <SelectContent>
                         {(() => {
                           const modelList =
                             currentType && !ollamaModels.includes(currentType)
@@ -1778,7 +1780,7 @@ export default function SettingModels() {
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-[200px]">
                   {localModelOptions.map((model) => {
-                    const isConfigured = !!localEndpoints[model.id];
+                    const isConfigured = !!localProviderIds[model.id];
                     const isPreferred =
                       localPrefer && localPlatform === model.id;
                     const modelImage = getModelImage(`local-${model.id}`);
@@ -1915,7 +1917,7 @@ export default function SettingModels() {
                       'local-ollama',
                       selectedTab === 'local-ollama',
                       true,
-                      !!localEndpoints['ollama']
+                      !!localProviderIds['ollama']
                     )}
                     {renderSidebarItem(
                       'local-vllm',
@@ -1923,7 +1925,7 @@ export default function SettingModels() {
                       'local-vllm',
                       selectedTab === 'local-vllm',
                       true,
-                      !!localEndpoints['vllm']
+                      !!localProviderIds['vllm']
                     )}
                     {renderSidebarItem(
                       'local-sglang',
@@ -1931,7 +1933,7 @@ export default function SettingModels() {
                       'local-sglang',
                       selectedTab === 'local-sglang',
                       true,
-                      !!localEndpoints['sglang']
+                      !!localProviderIds['sglang']
                     )}
                     {renderSidebarItem(
                       'local-lmstudio',
@@ -1939,7 +1941,7 @@ export default function SettingModels() {
                       'local-lmstudio',
                       selectedTab === 'local-lmstudio',
                       true,
-                      !!localEndpoints['lmstudio']
+                      !!localProviderIds['lmstudio']
                     )}
                   </div>
                 </div>
