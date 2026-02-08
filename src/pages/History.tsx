@@ -132,7 +132,7 @@ export default function Home() {
         />
       </div>
       {/* Navbar */}
-      {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; -1px overlaps and hides it */}
+      {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
         className={`sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-border-disabled bg-bg-page-default px-20 pb-4 pt-10`}
       >
