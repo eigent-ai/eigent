@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  fetchDelete,
+  fetchGet,
   fetchPost,
   proxyFetchDelete,
   proxyFetchGet,
@@ -50,6 +52,7 @@ import {
   ChevronDown,
   ChevronUp,
   Cloud,
+  ExternalLink,
   Eye,
   EyeOff,
   Info,
@@ -85,6 +88,10 @@ import zaiImage from '@/assets/model/zai.svg';
 
 const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
 const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
+
+// OAuth polling constants
+const OAUTH_POLL_INTERVAL_MS = 2000;
+const OAUTH_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 // Sidebar tab types
 type SidebarTab =
@@ -207,6 +214,10 @@ export default function SettingModels() {
     modelId: string;
   } | null>(null);
 
+  // Codex OAuth state
+  const [codexConnecting, setCodexConnecting] = useState(false);
+  const [codexConnected, setCodexConnected] = useState(false);
+
   // Load provider list and populate form
   useEffect(() => {
     (async () => {
@@ -303,6 +314,22 @@ export default function SettingModels() {
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
+        }
+
+        // Detect Codex OAuth connection via marker config
+        try {
+          const configs = await proxyFetchGet('/api/configs');
+          const configList = Array.isArray(configs) ? configs : [];
+          const hasCodex = configList.some(
+            (c: any) =>
+              c.config_group?.toLowerCase() === 'codex' &&
+              c.config_name === 'CODEX_OAUTH_TOKEN' &&
+              c.config_value &&
+              String(c.config_value).length > 0
+          );
+          setCodexConnected(hasCodex);
+        } catch {
+          // ignore config check failure
         }
       } catch (e) {
         console.error('Error fetching providers:', e);
@@ -555,39 +582,7 @@ export default function SettingModels() {
       } else {
         await proxyFetchPost('/api/provider', data);
       }
-      // add: refresh provider list after saving, update form and switch editable status
-      const res = await proxyFetchGet('/api/providers');
-      const providerList = Array.isArray(res) ? res : res.items || [];
-      setForm((f) =>
-        f.map((fi, i) => {
-          const item = items[i];
-          const found = providerList.find(
-            (p: any) => p.provider_name === item.id
-          );
-          if (found) {
-            return {
-              ...fi,
-              provider_id: found.id,
-              apiKey: found.api_key || '',
-              apiHost: found.endpoint_url || '',
-              is_valid: !!found.is_valid,
-              prefer: found.prefer ?? false,
-              externalConfig: fi.externalConfig
-                ? fi.externalConfig.map((ec) => {
-                    if (
-                      found.encrypted_config &&
-                      found.encrypted_config[ec.key] !== undefined
-                    ) {
-                      return { ...ec, value: found.encrypted_config[ec.key] };
-                    }
-                    return ec;
-                  })
-                : undefined,
-            };
-          }
-          return fi;
-        })
-      );
+      await refreshProviderForm();
 
       // Check if this was a pending default model selection
       if (
@@ -942,6 +937,204 @@ export default function SettingModels() {
     return _hasApiKey && _hasApiId;
   };
 
+  // Refresh provider list from backend and sync form state
+  const refreshProviderForm = async () => {
+    const res = await proxyFetchGet('/api/providers');
+    const providerList = Array.isArray(res) ? res : res.items || [];
+    setForm((f) =>
+      f.map((fi, i) => {
+        const item = items[i];
+        const found = providerList.find(
+          (p: any) => p.provider_name === item.id
+        );
+        if (found) {
+          return {
+            ...fi,
+            provider_id: found.id,
+            apiKey: found.api_key || '',
+            apiHost: found.endpoint_url || '',
+            is_valid: !!found.is_valid,
+            prefer: found.prefer ?? false,
+            model_type: found.model_type ?? '',
+            externalConfig: fi.externalConfig
+              ? fi.externalConfig.map((ec) => {
+                  if (
+                    found.encrypted_config &&
+                    found.encrypted_config[ec.key] !== undefined
+                  ) {
+                    return { ...ec, value: found.encrypted_config[ec.key] };
+                  }
+                  return ec;
+                })
+              : undefined,
+          };
+        }
+        return fi;
+      })
+    );
+  };
+
+  // Save or update the Codex OAuth marker config
+  const saveCodexMarkerConfig = async () => {
+    const existingConfigs = await proxyFetchGet('/api/configs');
+    const existing = Array.isArray(existingConfigs)
+      ? existingConfigs.find(
+          (c: any) =>
+            c.config_group?.toLowerCase() === 'codex' &&
+            c.config_name === 'CODEX_OAUTH_TOKEN'
+        )
+      : null;
+
+    const configPayload = {
+      config_group: 'Codex',
+      config_name: 'CODEX_OAUTH_TOKEN',
+      config_value: 'exists',
+    };
+
+    if (existing) {
+      await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+    } else {
+      await proxyFetchPost('/api/configs', configPayload);
+    }
+  };
+
+  // Codex OAuth: connect via PKCE flow and save as OpenAI provider
+  const handleCodexOAuth = async (idx: number) => {
+    setCodexConnecting(true);
+    try {
+      const response = await fetchPost('/install/tool/codex');
+      if (response.success) {
+        await saveCodexAsProvider(response, idx);
+        toast.success(t('setting.codex-installed-successfully'));
+        setCodexConnected(true);
+      } else if (response.status === 'authorizing') {
+        toast.info(t('setting.please-complete-authorization-in-browser'));
+        const start = Date.now();
+        while (Date.now() - start < OAUTH_POLL_TIMEOUT_MS) {
+          try {
+            const statusResp = await fetchGet('/oauth/status/codex');
+            if (statusResp?.status === 'success') {
+              const finalize = await fetchPost('/install/tool/codex');
+              if (finalize?.success) {
+                await saveCodexAsProvider(finalize, idx);
+                toast.success(t('setting.codex-installed-successfully'));
+                setCodexConnected(true);
+              }
+              return;
+            } else if (
+              statusResp?.status === 'failed' ||
+              statusResp?.status === 'cancelled'
+            ) {
+              const msg =
+                statusResp?.error ||
+                (statusResp?.status === 'cancelled'
+                  ? t('setting.authorization-cancelled')
+                  : t('setting.authorization-failed'));
+              toast.error(msg);
+              return;
+            }
+          } catch (err) {
+            console.error('Polling Codex OAuth status failed', err);
+          }
+          await new Promise((r) => setTimeout(r, OAUTH_POLL_INTERVAL_MS));
+        }
+      } else {
+        toast.error(
+          response.error ||
+            response.message ||
+            t('setting.failed-to-install-codex')
+        );
+      }
+    } catch (error: any) {
+      toast.error(error.message || t('setting.failed-to-install-codex'));
+    } finally {
+      setCodexConnecting(false);
+    }
+  };
+
+  // Save Codex OAuth token as an OpenAI provider and persist marker config
+  const saveCodexAsProvider = async (installResponse: any, idx: number) => {
+    if (!installResponse?.access_token) return;
+    try {
+      const providerPayload = {
+        provider_name: installResponse.provider_name || 'openai',
+        api_key: installResponse.access_token,
+        endpoint_url:
+          installResponse.endpoint_url || 'https://api.openai.com/v1',
+        model_type: form[idx]?.model_type || 'gpt-4.1',
+        is_vaild: 2,
+      };
+
+      if (form[idx]?.provider_id) {
+        await proxyFetchPut(
+          `/api/provider/${form[idx].provider_id}`,
+          providerPayload
+        );
+      } else {
+        await proxyFetchPost('/api/provider', providerPayload);
+      }
+      await refreshProviderForm();
+    } catch (providerError) {
+      console.warn('Failed to save Codex token as provider', providerError);
+    }
+
+    try {
+      await saveCodexMarkerConfig();
+    } catch (configError) {
+      console.warn('Failed to persist Codex marker config', configError);
+    }
+  };
+
+  // Disconnect Codex OAuth: revoke token, remove marker config, reset provider
+  const handleCodexDisconnect = async (idx: number) => {
+    try {
+      await fetchDelete('/uninstall/tool/codex');
+    } catch {
+      // ignore cleanup failure
+    }
+    // Remove marker config
+    try {
+      const existingConfigs = await proxyFetchGet('/api/configs');
+      const existing = Array.isArray(existingConfigs)
+        ? existingConfigs.find(
+            (c: any) =>
+              c.config_group?.toLowerCase() === 'codex' &&
+              c.config_name === 'CODEX_OAUTH_TOKEN'
+          )
+        : null;
+      if (existing) {
+        await proxyFetchDelete(`/api/configs/${existing.id}`);
+      }
+    } catch {
+      // ignore config cleanup failure
+    }
+    // Delete the provider so the form doesn't show a revoked key
+    const { provider_id } = form[idx];
+    if (provider_id) {
+      try {
+        await proxyFetchDelete(`/api/provider/${provider_id}`);
+      } catch {
+        // ignore
+      }
+    }
+    setForm((prev) =>
+      prev.map((fi, i) => {
+        if (i !== idx) return fi;
+        return {
+          ...fi,
+          apiKey: '',
+          apiHost: '',
+          is_valid: false,
+          model_type: '',
+          provider_id: undefined,
+          prefer: false,
+        };
+      })
+    );
+    setCodexConnected(false);
+    toast.success(t('setting.codex-disconnected'));
+  };
+
   const [subscription, setSubscription] = useState<any>(null);
   const fetchSubscription = async () => {
     const res = await proxyFetchGet('/api/subscription');
@@ -1272,6 +1465,60 @@ export default function SettingModels() {
               {item.description}
             </div>
           </div>
+          {/* Codex OAuth — only for OpenAI provider */}
+          {item.id === 'openai' && (
+            <>
+              <div className="mx-6 mb-2 flex items-center justify-between rounded-xl border-[0.5px] border-solid border-border-secondary px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <ExternalLink className="h-4 w-4 text-icon-secondary" />
+                  <span className="text-body-sm text-text-body">
+                    {t('setting.connect-via-codex')}
+                  </span>
+                </div>
+                {codexConnected ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-label-xs font-bold text-text-success">
+                      {t('setting.codex-connected')}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="!text-text-label"
+                      onClick={() => handleCodexDisconnect(idx)}
+                    >
+                      {t('setting.codex-disconnect')}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    className="rounded-full"
+                    disabled={codexConnecting}
+                    onClick={() => handleCodexOAuth(idx)}
+                  >
+                    {codexConnecting ? (
+                      <>
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        {t('setting.codex-connecting')}
+                      </>
+                    ) : (
+                      t('setting.connect-via-codex')
+                    )}
+                  </Button>
+                )}
+              </div>
+              {!codexConnected && (
+                <div className="mx-6 mb-1 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border-secondary" />
+                  <span className="text-label-xs text-text-label">
+                    {t('setting.or')}
+                  </span>
+                  <div className="h-px flex-1 bg-border-secondary" />
+                </div>
+              )}
+            </>
+          )}
           <div className="flex w-full flex-col items-center gap-4 px-6">
             {/* API Key Setting */}
             <Input
