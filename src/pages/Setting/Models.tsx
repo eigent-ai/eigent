@@ -519,6 +519,13 @@ export default function SettingModels() {
       // add: refresh provider list after saving, update form and switch editable status
       const res = await proxyFetchGet('/api/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
+
+      // Find the saved provider's id from the freshly fetched list
+      // to avoid using stale form state in handleSwitch
+      const savedProvider = providerList.find(
+        (p: any) => p.provider_name === item.id
+      );
+
       setForm((f) =>
         f.map((fi, i) => {
           const item = items[i];
@@ -550,16 +557,17 @@ export default function SettingModels() {
         })
       );
 
-      // Check if this was a pending default model selection
-      if (
-        pendingDefaultModel &&
-        pendingDefaultModel.category === 'custom' &&
-        pendingDefaultModel.modelId === item.id
-      ) {
-        await handleSwitch(idx, true);
-        setPendingDefaultModel(null);
-      } else {
-        handleSwitch(idx, true);
+      // Set this provider as preferred using the freshly fetched
+      // provider_id, since form state may not have been updated yet
+      if (savedProvider?.id) {
+        await handleSwitch(idx, true, savedProvider.id);
+        if (
+          pendingDefaultModel &&
+          pendingDefaultModel.category === 'custom' &&
+          pendingDefaultModel.modelId === item.id
+        ) {
+          setPendingDefaultModel(null);
+        }
       }
     } finally {
       setLoading(null);
@@ -734,7 +742,11 @@ export default function SettingModels() {
     }
   }, [localEnabled]);
 
-  const handleSwitch = async (idx: number, checked: boolean) => {
+  const handleSwitch = async (
+    idx: number,
+    checked: boolean,
+    providerId?: number
+  ) => {
     if (!checked) {
       setActiveModelIdx(null);
       setLocalEnabled(true);
@@ -752,7 +764,7 @@ export default function SettingModels() {
     }
     try {
       await proxyFetchPost('/api/provider/prefer', {
-        provider_id: form[idx].provider_id,
+        provider_id: providerId ?? form[idx].provider_id,
       });
       setModelType('custom');
       setActiveModelIdx(idx);
