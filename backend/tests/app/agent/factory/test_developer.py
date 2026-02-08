@@ -42,6 +42,8 @@ async def test_developer_agent_creation(sample_chat_data):
         patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
         patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
+        patch(f"{_mod}.SearchToolkit") as mock_search_toolkit,
+        patch(f"{_mod}.Crawl4AIToolkit") as mock_crawl_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
     ):
         # Mock all toolkit instances
@@ -50,6 +52,8 @@ async def test_developer_agent_creation(sample_chat_data):
         mock_web_toolkit.return_value.get_tools.return_value = []
         mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
+        mock_search_toolkit.get_can_use_tools.return_value = []
+        mock_crawl_toolkit.return_value.get_tools.return_value = []
 
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent
@@ -88,6 +92,8 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
         patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
         patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
+        patch(f"{_mod}.SearchToolkit") as mock_search_toolkit,
+        patch(f"{_mod}.Crawl4AIToolkit") as mock_crawl_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
     ):
         # Mock all toolkit instances
@@ -96,6 +102,8 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
         mock_web_toolkit.return_value.get_tools.return_value = []
         mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
+        mock_search_toolkit.get_can_use_tools.return_value = []
+        mock_crawl_toolkit.return_value.get_tools.return_value = []
 
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent

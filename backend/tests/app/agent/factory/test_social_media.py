@@ -47,6 +47,8 @@ async def test_social_media_agent_creation(sample_chat_data):
         patch(f"{mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{mod}.NoteTakingToolkit") as mock_note_toolkit,
+        patch(f"{mod}.SearchToolkit") as mock_search_toolkit,
+        patch(f"{mod}.Crawl4AIToolkit") as mock_crawl_toolkit,
     ):
         # Mock all toolkit instances
         mock_whatsapp_toolkit.get_can_use_tools.return_value = []
@@ -59,6 +61,8 @@ async def test_social_media_agent_creation(sample_chat_data):
         mock_human_toolkit.get_can_use_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []
+        mock_search_toolkit.get_can_use_tools.return_value = []
+        mock_crawl_toolkit.return_value.get_tools.return_value = []
 
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent

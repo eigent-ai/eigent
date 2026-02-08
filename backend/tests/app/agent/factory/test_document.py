@@ -45,6 +45,8 @@ async def test_document_agent_creation(sample_chat_data):
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.GoogleDriveMCPToolkit") as mock_gdrive_toolkit,
+        patch(f"{_mod}.SearchToolkit") as mock_search_toolkit,
+        patch(f"{_mod}.Crawl4AIToolkit") as mock_crawl_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
     ):
         # Mock all toolkit instances
@@ -56,6 +58,8 @@ async def test_document_agent_creation(sample_chat_data):
         mock_note_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
         mock_gdrive_toolkit.get_can_use_tools = AsyncMock(return_value=[])
+        mock_search_toolkit.get_can_use_tools.return_value = []
+        mock_crawl_toolkit.return_value.get_tools.return_value = []
 
         mock_agent = MagicMock()
         mock_agent_model.return_value = mock_agent
