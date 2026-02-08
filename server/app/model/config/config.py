@@ -168,14 +168,6 @@ class ConfigInfo:
             "env_vars": ["OPENAI_API_KEY"],
             "toolkit": "rag_toolkit",
         },
-        # TODO: Codex is a model-provider integration, not a toolkit.
-        # Its OAuth entry point should move to the Model/Provider settings
-        # page. Keeping it here temporarily for install-state detection.
-        ConfigGroup.CODEX.value: {
-            "env_vars": ["CODEX_OAUTH_TOKEN"],
-            "toolkit": None,
-            "type": "provider",
-        },
     }
 
     @classmethod

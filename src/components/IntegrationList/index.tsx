@@ -137,15 +137,6 @@ export default function IntegrationList({
         return;
       }
 
-      // Codex uses local PKCE OAuth flow (same pattern as Google Calendar)
-      if (item.key === 'Codex') {
-        await item.onInstall();
-        if (isSelectMode) {
-          await fetchInstalled();
-        }
-        return;
-      }
-
       if (installed[item.key]) return;
       await item.onInstall();
       // Only refresh in select mode
