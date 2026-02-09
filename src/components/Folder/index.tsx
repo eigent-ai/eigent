@@ -60,6 +60,10 @@ interface FileInfo {
   isRemote?: boolean;
 }
 
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogv', 'mov', 'avi', 'mkv'];
+const MEDIA_EXTENSIONS = [...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS];
+
 // FileTree component to render nested file structure
 interface FileTreeProps {
   node: FileTreeNode;
@@ -222,24 +226,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     console.log('file', JSON.parse(JSON.stringify(file)));
 
     // For PDF and audio/video files, use data URL instead of custom protocol
-    if (
-      [
-        'pdf',
-        'mp3',
-        'wav',
-        'ogg',
-        'flac',
-        'aac',
-        'm4a',
-        'wma',
-        'mp4',
-        'webm',
-        'ogv',
-        'mov',
-        'avi',
-        'mkv',
-      ].includes(file.type?.toLowerCase())
-    ) {
+    if (['pdf', ...MEDIA_EXTENSIONS].includes(file.type?.toLowerCase())) {
       window.ipcRenderer
         .invoke('read-file-dataurl', file.path)
         .then((dataUrl: string) => {
@@ -679,7 +666,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   <div className="flex h-full items-center justify-center">
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
-                ) : ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(
+                ) : AUDIO_EXTENSIONS.includes(
                     selectedFile.type.toLowerCase()
                   ) ? (
                   <div className="flex h-full items-center justify-center">
@@ -691,7 +678,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       {t('folder.audio-not-supported')}
                     </audio>
                   </div>
-                ) : ['mp4', 'webm', 'ogv', 'mov', 'avi', 'mkv'].includes(
+                ) : VIDEO_EXTENSIONS.includes(
                     selectedFile.type.toLowerCase()
                   ) ? (
                   <div className="flex h-full items-center justify-center">
