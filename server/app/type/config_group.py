@@ -40,6 +40,7 @@ class ConfigGroup(str, Enum):
     IMAGE_ANALYSIS = "Image Analysis"
     MCP_SEARCH = "MCP Search"
     PPTX = "PPTX"
+    RAG = "RAG"
     TERMINAL = "Terminal"
 
     @classmethod

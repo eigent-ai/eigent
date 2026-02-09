@@ -12,8 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import animationData from '@/assets/animation/openning_animaiton.json';
-import { AnimationJson } from '@/components/AnimationJson';
 import { queryClient } from '@/lib/queryClient';
 import AppRoutes from '@/routers/index';
 import { stackClientApp } from '@/stack/client';
@@ -79,19 +77,6 @@ function App() {
     };
   }, [navigate, setInitState]);
 
-  // render main content
-  const renderMainContent = () => {
-    if (isFirstLaunch && !animationFinished) {
-      return (
-        <AnimationJson
-          onComplete={() => setAnimationFinished(true)}
-          animationData={animationData}
-        />
-      );
-    }
-    return <AppRoutes />;
-  };
-
   // render wrapper
   const renderWrapper = (children: React.ReactNode) => {
     const content = (
@@ -114,7 +99,7 @@ function App() {
     );
   };
 
-  return renderWrapper(renderMainContent());
+  return renderWrapper(<AppRoutes />);
 }
 
 export default App;

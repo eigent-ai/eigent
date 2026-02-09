@@ -301,7 +301,7 @@ export default function Home() {
               });
             }
           })
-          .catch((error) => {
+          .catch((error: any) => {
             console.error('capture webview error:', error);
           });
       });

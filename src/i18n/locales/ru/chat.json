@@ -56,5 +56,7 @@
   "expand-input": "Развернуть ввод (⌘P)",
   "queued-tasks": "Задачи в очереди",
   "remove-queued-message": "Удалить сообщение из очереди",
-  "no-agents-added": "Агенты не добавлены"
+  "no-agents-added": "Агенты не добавлены",
+  "open-in-ide": "Открыть в IDE",
+  "failed-to-open-folder": "Не удалось открыть папку"
 }

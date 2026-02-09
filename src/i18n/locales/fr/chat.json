@@ -56,5 +56,7 @@
   "expand-input": "Développer l'entrée (⌘P)",
   "queued-tasks": "Tâches en file d'attente",
   "remove-queued-message": "Supprimer le message en file d'attente",
-  "no-agents-added": "Aucun agent ajouté"
+  "no-agents-added": "Aucun agent ajouté",
+  "open-in-ide": "Ouvrir dans l'IDE",
+  "failed-to-open-folder": "Impossible d'ouvrir le dossier"
 }

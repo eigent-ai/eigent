@@ -261,7 +261,7 @@ export default function Browser() {
 
       {/* Content Section */}
       <div className="flex w-full">
-        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[900px] flex-col items-start justify-center px-6 py-8">
+        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-center px-6 py-8">
           <div className="relative flex min-h-full w-full flex-col items-center justify-start rounded-xl border-solid border-border-disabled bg-surface-secondary p-6">
             <div className="absolute right-6 top-6">
               <Button

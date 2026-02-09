@@ -56,5 +56,7 @@
   "expand-input": "توسيع الإدخال (⌘P)",
   "queued-tasks": "المهام في قائمة الانتظار",
   "remove-queued-message": "إزالة الرسالة من قائمة الانتظار",
-  "no-agents-added": "لم تتم إضافة وكلاء"
+  "no-agents-added": "لم تتم إضافة وكلاء",
+  "open-in-ide": "فتح في IDE",
+  "failed-to-open-folder": "فشل في فتح المجلد"
 }

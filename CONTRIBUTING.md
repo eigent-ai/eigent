@@ -92,12 +92,14 @@ our coding standards.
 #### Code Review Checklist
 
 - Functionality
+
   - Correctness: Does the code perform the intended task? Are edge cases handled?
   - Testing: Is there sufficient test coverage? Do all tests pass?
   - Security: Are there any security vulnerabilities introduced by the change?
   - Performance: Does the code introduce any performance regressions?
 
 - Code Quality
+
   - Readability: Is the code easy to read and understand? Is it well-commented where necessary?
   - Maintainability: Is the code structured in a way that makes future changes easy?
   - Style: Does the code follow the project’s style guidelines?
@@ -105,6 +107,7 @@ our coding standards.
   - Documentation: Are public methods, classes, and any complex logic well-documented?
 
 - Design
+
   - Consistency: Does the code follow established design patterns and project architecture?
   - Modularity: Are the changes modular and self-contained? Does the code avoid unnecessary duplication?
   - Dependencies: Are dependencies minimized and used appropriately?
@@ -232,7 +235,9 @@ npm run dev
 
 # In a separate terminal, start the backend server
 cd eigent/server
-docker compose up
+docker compose up -d
+# Stream the logs if you needed
+docker compose logs -f
 ```
 
 To run the application locally in developer mode:

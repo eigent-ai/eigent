@@ -28,7 +28,7 @@ import log from 'electron-log';
 import FormData from 'form-data';
 import fsp from 'fs/promises';
 import mime from 'mime';
-import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
@@ -913,6 +913,159 @@ function registerIpcHandlers() {
       };
     }
   });
+
+  // ==================== IDE integration handler ====================
+  ipcMain.handle(
+    'get-project-folder-path',
+    async (_event, email: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const result = manager.createProjectStructure(email, projectId);
+      return result.path;
+    }
+  );
+
+  ipcMain.handle(
+    'open-in-ide',
+    async (_event, folderPath: string, ide: string) => {
+      const getIDECommand = (): string => {
+        const platform = process.platform;
+        const homeDir = homedir();
+
+        if (ide === 'vscode') {
+          if (platform === 'darwin') {
+            // macOS: Check common VS Code CLI paths
+            const vscodePaths = [
+              '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+              '/usr/local/bin/code',
+            ];
+            for (const p of vscodePaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] VS Code not found on macOS, using system file manager'
+            );
+            return '';
+          } else if (platform === 'win32') {
+            // Windows: Check common VS Code paths
+            const vscodePaths = [
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Microsoft VS Code',
+                'bin',
+                'code.cmd'
+              ),
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Microsoft VS Code',
+                'Code.exe'
+              ),
+              'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
+              'C:\\Program Files\\Microsoft VS Code\\Code.exe',
+            ];
+            for (const p of vscodePaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] VS Code not found on Windows, using system file manager'
+            );
+            return '';
+          }
+          return 'code'; // Linux
+        } else if (ide === 'cursor') {
+          if (platform === 'darwin') {
+            // macOS: Check common Cursor CLI paths
+            const cursorPaths = [
+              '/Applications/Cursor.app/Contents/Resources/app/bin/cursor',
+              '/usr/local/bin/cursor',
+            ];
+            for (const p of cursorPaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] Cursor not found on macOS, using system file manager'
+            );
+            return '';
+          } else if (platform === 'win32') {
+            // Windows: Check common Cursor paths
+            const cursorPaths = [
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Cursor',
+                'resources',
+                'app',
+                'bin',
+                'cursor.cmd'
+              ),
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Cursor',
+                'Cursor.exe'
+              ),
+              path.join(homeDir, 'AppData', 'Local', 'Cursor', 'Cursor.exe'),
+            ];
+            for (const p of cursorPaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] Cursor not found on Windows, using system file manager'
+            );
+            return '';
+          }
+          return 'cursor'; // Linux
+        }
+        return '';
+      };
+
+      const cmd = getIDECommand();
+      if (!cmd) {
+        // IDE not found or 'system' selected - open with system file manager
+        const errorMsg = await shell.openPath(folderPath);
+        if (errorMsg) {
+          log.error('[IDE] shell.openPath error:', errorMsg);
+          return { success: false, error: errorMsg };
+        }
+        return { success: true };
+      }
+
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        // Use shell: true so .cmd/.bat wrappers work on Windows
+        const child = spawn(cmd, [folderPath], {
+          shell: true,
+          stdio: 'ignore',
+          detached: true,
+        });
+        child.unref();
+
+        child.on('error', (error) => {
+          log.warn(
+            `[IDE] ${cmd} not found, falling back to system file manager:`,
+            error.message
+          );
+          shell.openPath(folderPath).then((errorMsg) => {
+            resolve(
+              errorMsg ? { success: false, error: errorMsg } : { success: true }
+            );
+          });
+        });
+
+        child.on('spawn', () => {
+          resolve({ success: true });
+        });
+      });
+    }
+  );
 
   // ==================== env handler ====================
 

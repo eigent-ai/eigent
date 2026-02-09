@@ -56,5 +56,7 @@
   "expand-input": "Espandi input (⌘P)",
   "queued-tasks": "Compiti in coda",
   "remove-queued-message": "Rimuovi messaggio in coda",
-  "no-agents-added": "Nessun agente aggiunto"
+  "no-agents-added": "Nessun agente aggiunto",
+  "open-in-ide": "Apri in IDE",
+  "failed-to-open-folder": "Impossibile aprire la cartella"
 }

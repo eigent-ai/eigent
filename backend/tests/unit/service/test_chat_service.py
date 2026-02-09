@@ -39,6 +39,7 @@ from app.service.task import (
     ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
+    ImprovePayload,
     TaskLock,
 )
 
@@ -678,7 +679,7 @@ class TestChatServiceAgentOperations:
                 return_value=mock_mcp_agent,
             ),
             patch(
-                "app.utils.toolkit.human_toolkit.get_task_lock",
+                "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=mock_task_lock,
             ),
         ):
@@ -854,7 +855,10 @@ class TestChatServiceIntegration:
         mock_task_lock.get_queue = AsyncMock(
             side_effect=[
                 # First call returns improve action
-                ActionImproveData(action=Action.improve, data="Test question"),
+                ActionImproveData(
+                    action=Action.improve,
+                    data=ImprovePayload(question="Test question"),
+                ),
                 # Second call returns end action
                 ActionEndData(action=Action.end),
             ]
@@ -1205,7 +1209,7 @@ class TestChatServiceErrorCases:
 
         with (
             patch(
-                "app.utils.toolkit.human_toolkit.get_task_lock",
+                "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=mock_task_lock,
             ),
             patch(

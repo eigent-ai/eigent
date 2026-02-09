@@ -116,11 +116,11 @@ export default function CookieManager() {
     <div className="rounded-2xl bg-surface-secondary px-6 py-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <div className="text-text-primary flex items-center gap-2 text-base font-bold leading-12">
+          <div className="flex items-center gap-2 text-base font-bold leading-12 text-text-primary">
             <Cookie className="h-5 w-5" />
             {t('setting.cookie-manager')}
           </div>
-          <div className="text-text-secondary mt-1 text-sm leading-13">
+          <div className="mt-1 text-sm leading-13 text-text-secondary">
             {t('setting.cookie-manager-description')}
           </div>
         </div>
@@ -153,7 +153,7 @@ export default function CookieManager() {
 
       {/* Search Bar */}
       <div className="relative mb-4">
-        <Search className="text-text-tertiary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-text-tertiary" />
         <Input
           type="text"
           placeholder={t('setting.search-domains')}
@@ -166,12 +166,12 @@ export default function CookieManager() {
       {/* Cookie List */}
       <div className="space-y-2">
         {isLoading ? (
-          <div className="text-text-secondary py-8 text-center">
+          <div className="py-8 text-center text-text-secondary">
             <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin" />
             {t('setting.loading-cookies')}
           </div>
         ) : filteredDomains.length === 0 ? (
-          <div className="text-text-secondary py-8 text-center">
+          <div className="py-8 text-center text-text-secondary">
             <Cookie className="mx-auto mb-3 h-12 w-12 opacity-30" />
             <div className="mb-1 text-base font-medium">
               {domains.length === 0
@@ -191,10 +191,10 @@ export default function CookieManager() {
               className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary p-3 transition-colors hover:border-border-secondary"
             >
               <div className="min-w-0 flex-1">
-                <div className="text-text-primary truncate font-medium">
+                <div className="truncate font-medium text-text-primary">
                   {item.domain}
                 </div>
-                <div className="text-text-tertiary mt-1 flex items-center gap-3 text-xs">
+                <div className="mt-1 flex items-center gap-3 text-xs text-text-tertiary">
                   <span>
                     {t('setting.cookies-count', { count: item.cookie_count })}
                   </span>

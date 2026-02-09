@@ -56,5 +56,7 @@
   "expand-input": "Expandir entrada (⌘P)",
   "queued-tasks": "Tareas en cola",
   "remove-queued-message": "Eliminar mensaje en cola",
-  "no-agents-added": "No se han agregado agentes"
+  "no-agents-added": "No se han agregado agentes",
+  "open-in-ide": "Abrir en IDE",
+  "failed-to-open-folder": "No se pudo abrir la carpeta"
 }

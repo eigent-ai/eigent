@@ -536,11 +536,11 @@
     --fill-fill-primary-disabled: var(--colors-primary-5);
     --fill-fill-tertiary: var(--colors-primary-1);
     --fill-fill-transparent: var(--colors-white-0);
-    --fill-fill-transparent-hover: var(--colors-primary-1);
+    --fill-fill-transparent-hover: var(--colors-white-50);
     --fill-fill-tertiary-hover: var(--colors-primary-2);
     --fill-fill-tertiary-active: var(--colors-primary-3);
     --fill-fill-tertiary-disabled: var(--colors-off-white-50);
-    --fill-fill-transparent-active: var(--colors-primary-2);
+    --fill-fill-transparent-active: var(--colors-white-80);
     --fill-fill-transparent-disabled: var(--colors-white-0);
     --fill-fill-secondary-disabled: var(--colors-primary-4);
     --fill-fill-secondary-active: var(--colors-primary-7);
@@ -654,11 +654,11 @@
     --fill-fill-primary-disabled: var(--colors-primary-5);
     --fill-fill-tertiary: var(--colors-primary-1);
     --fill-fill-transparent: var(--colors-white-0);
-    --fill-fill-transparent-hover: var(--colors-primary-1);
+    --fill-fill-transparent-hover: var(--colors-white-80);
     --fill-fill-tertiary-hover: var(--colors-primary-2);
     --fill-fill-tertiary-active: var(--colors-primary-3);
     --fill-fill-tertiary-disabled: var(--colors-primary-2);
-    --fill-fill-transparent-active: var(--colors-primary-2);
+    --fill-fill-transparent-active: var(--colors-white-100);
     --fill-fill-transparent-disabled: var(--colors-white-0);
     --fill-fill-secondary-disabled: var(--colors-primary-4);
     --fill-fill-secondary-active: var(--colors-primary-7);
