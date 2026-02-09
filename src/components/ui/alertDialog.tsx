@@ -67,7 +67,7 @@ export default function ConfirmModal({
             className="alert-dialog-wrapper fixed max-w-md rounded-xl shadow-perfect"
           >
             <div className="p-6">
-              <span className="text-text-primary mb-2 text-body-lg font-bold">
+              <span className="mb-2 text-body-lg font-bold text-text-primary">
                 {title}
               </span>
               <p className="mb-6 text-label-md text-text-label">{message}</p>

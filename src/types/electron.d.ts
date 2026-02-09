@@ -129,6 +129,11 @@ interface ElectronAPI {
   }>;
   restartApp: () => Promise<void>;
   readGlobalEnv: (key: string) => Promise<{ value: string | null }>;
+  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  openInIDE: (
+    folderPath: string,
+    ide: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

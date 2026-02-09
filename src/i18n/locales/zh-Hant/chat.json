@@ -47,5 +47,7 @@
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "您的雲存儲已達到當前計劃的限制。",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "我們正在經歷高流量。請稍後再試。",
   "new-project": "新項目",
-  "no-reply-received-task-continue": "沒有收到回复，任務繼續"
+  "no-reply-received-task-continue": "沒有收到回复，任務繼續",
+  "open-in-ide": "在 IDE 中開啟",
+  "failed-to-open-folder": "無法開啟資料夾"
 }

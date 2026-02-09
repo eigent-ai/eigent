@@ -57,6 +57,8 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 
 logger = logging.getLogger("workforce")
 
+_ANALYZE_TASK_MAX_RETRIES = 3
+
 
 class Workforce(BaseWorkforce):
     def __init__(
@@ -110,56 +112,64 @@ class Workforce(BaseWorkforce):
         for_failure: bool,
         error_message: str | None = None,
     ) -> TaskAnalysisResult:
-        """Override to add debugging for None return issue.
+        """Override to retry when the base class returns None.
 
-        The base class should never return None, but we're seeing it happen.
-        This override adds logging to help diagnose the root cause.
+        The base class can return None when the LLM fails to produce
+        valid structured output. We retry up to _ANALYZE_TASK_MAX_RETRIES
+        times before falling back.
         """
-        logger.debug(
-            f"[WF-DEBUG] _analyze_task called: task_id={task.id}, "
-            f"for_failure={for_failure}, "
-            f"use_structured_output_handler={self.use_structured_output_handler}"
+        last_exception: Exception | None = None
+
+        for attempt in range(1, _ANALYZE_TASK_MAX_RETRIES + 1):
+            try:
+                result = super()._analyze_task(
+                    task,
+                    for_failure=for_failure,
+                    error_message=error_message,
+                )
+
+                if result is not None:
+                    return result
+
+                logger.warning(
+                    f"[WF-RETRY] _analyze_task returned None "
+                    f"(attempt {attempt}/{_ANALYZE_TASK_MAX_RETRIES}), "
+                    f"task_id={task.id}, for_failure={for_failure}"
+                )
+
+            except Exception as e:
+                last_exception = e
+                logger.warning(
+                    f"[WF-RETRY] _analyze_task raised "
+                    f"{type(e).__name__}: {e} "
+                    f"(attempt {attempt}/{_ANALYZE_TASK_MAX_RETRIES}), "
+                    f"task_id={task.id}, for_failure={for_failure}"
+                )
+
+        # All retries exhausted
+        logger.error(
+            f"[WF-BUG] _analyze_task failed after "
+            f"{_ANALYZE_TASK_MAX_RETRIES} retries, "
+            f"task_id={task.id}, for_failure={for_failure}"
         )
 
-        try:
-            result = super()._analyze_task(
-                task, for_failure=for_failure, error_message=error_message
-            )
+        if for_failure:
+            # Task already failed + analysis failed — raise to halt
+            raise RuntimeError(
+                f"_analyze_task returned None after "
+                f"{_ANALYZE_TASK_MAX_RETRIES} retries for "
+                f"failed task {task.id}"
+            ) from last_exception
 
-            logger.debug(
-                f"[WF-DEBUG] _analyze_task result: type={type(result)}, "
-                f"value={result}"
-            )
-
-            if result is None:
-                # This should never happen - log detailed info
-                logger.error(
-                    f"[WF-BUG] _analyze_task returned None unexpectedly! "
-                    f"task_id={task.id}, for_failure={for_failure}, "
-                    f"use_structured_output_handler="
-                    f"{self.use_structured_output_handler}"
-                )
-                # Return fallback to prevent crash
-                if for_failure:
-                    return TaskAnalysisResult(
-                        reasoning="BUG: _analyze_task returned None",
-                        recovery_strategy="retry",
-                        issues=[error_message] if error_message else [],
-                    )
-                else:
-                    return TaskAnalysisResult(
-                        reasoning="BUG: _analyze_task returned None",
-                        quality_score=80,
-                    )
-
-            return result
-
-        except Exception as e:
-            logger.error(
-                f"[WF-DEBUG] _analyze_task exception: {type(e).__name__}: {e}",
-                exc_info=True,
-            )
-            raise
+        # Quality evaluation failed — accept the task result as-is
+        return TaskAnalysisResult(
+            reasoning=(
+                f"_analyze_task returned None after "
+                f"{_ANALYZE_TASK_MAX_RETRIES} retries, "
+                f"accepting task result"
+            ),
+            quality_score=80,
+        )
 
     def eigent_make_sub_tasks(
         self,
@@ -809,14 +819,17 @@ class Workforce(BaseWorkforce):
 
         if metrics_callbacks:
             error_msg = error_message or str(task.result or "Unknown error")
+            # Pass all values during construction since TaskFailedEvent is frozen
+            worker_id = (
+                task.assigned_worker_id
+                if hasattr(task, "assigned_worker_id")
+                else None
+            )
             event = TaskFailedEvent(
                 task_id=task.id,
                 error_message=error_msg,
+                worker_id=worker_id,
             )
-            # Add failure details if available
-            if hasattr(task, "assigned_worker_id"):
-                event.worker_id = task.assigned_worker_id
-            event.failure_count = task.failure_count
             metrics_callbacks[0].log_task_failed(event)
 
         return result

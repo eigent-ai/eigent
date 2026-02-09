@@ -40,7 +40,7 @@ export default function MCPListItem({
     <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-surface-secondary p-4">
       <div className="flex items-center gap-xs">
         <div className="mx-xs h-3 w-3 rounded-full bg-green-500"></div>
-        <div className="text-text-primary text-base font-bold leading-9">
+        <div className="text-base font-bold leading-9 text-text-primary">
           {item.mcp_name}
         </div>
         <div className="flex items-center">

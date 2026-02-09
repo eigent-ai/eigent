@@ -94,6 +94,18 @@
       ]
     }
   },
+  "dmg": {
+    "background": "src/assets/dmg-background.png",
+    "window": {
+      "width": 660,
+      "height": 400
+    },
+    "iconSize": 128,
+    "contents": [
+      { "x": 180, "y": 200, "type": "file" },
+      { "x": 480, "y": 200, "type": "link", "path": "/Applications" }
+    ]
+  },
   "win": {
     "icon": "build/icon.ico",
     "artifactName": "${productName}.Setup.${version}.exe",

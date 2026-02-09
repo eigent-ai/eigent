@@ -39,6 +39,9 @@ from app.agent.factory import (
     task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
@@ -57,9 +60,6 @@ from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
-from app.utils.toolkit.human_toolkit import HumanToolkit
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
@@ -317,6 +317,22 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 @sync_step
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
+    """Main task execution loop. Called when POST /chat endpoint
+    is hit to start a new chat session.
+
+    Processes task queue, manages workforce lifecycle, and streams
+    responses back to the client via SSE.
+
+    Args:
+        options (Chat): Chat configuration containing task details and
+            model settings.
+        request (Request): FastAPI request object for client connection
+            management.
+        task_lock (TaskLock): Shared task state and queue for the project.
+
+    Yields:
+        SSE formatted responses for task progress, errors, and results
+    """
     start_event_loop = True
 
     # Initialize task_lock attributes
@@ -462,6 +478,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # tracer.start()
                 if start_event_loop is True:
                     question = options.question
+                    attaches_to_use = options.attaches
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
@@ -470,7 +487,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
-                    question = item.data
+                    question = item.data.question
+                    attaches_to_use = (
+                        item.data.attaches
+                        if item.data.attaches
+                        else options.attaches
+                    )
                     logger.info(
                         "[NEW-QUESTION] Follow-up "
                         "question from "
@@ -508,7 +530,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Determine task complexity: attachments
                 # mean workforce, otherwise let agent decide
                 is_complex_task: bool
-                if len(options.attaches) > 0:
+                if len(attaches_to_use) > 0:
                     is_complex_task = True
                     logger.info(
                         "[NEW-QUESTION] Has attachments"
@@ -655,10 +677,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     camel_task = Task(
                         content=clean_task_content, id=options.task_id
                     )
-                    if len(options.attaches) > 0:
+                    if len(attaches_to_use) > 0:
                         camel_task.additional_info = {
                             Path(file_path).name: file_path
-                            for file_path in options.attaches
+                            for file_path in attaches_to_use
                         }
 
                     # Stream decomposition in background
@@ -1995,7 +2017,7 @@ Is this a complex task? (yes/no):"""
 
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")
-        return True
+        raise
 
 
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:

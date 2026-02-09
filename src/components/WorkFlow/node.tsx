@@ -21,7 +21,6 @@ import {
   ChatTaskStatus,
   TaskStatus,
 } from '@/types/constants';
-import { TooltipContent } from '@radix-ui/react-tooltip';
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -54,7 +53,7 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
-import { Tooltip, TooltipTrigger } from '../ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { MarkDown } from './MarkDown';
 
 interface NodeProps {
