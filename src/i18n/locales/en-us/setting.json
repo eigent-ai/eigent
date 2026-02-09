@@ -164,6 +164,8 @@
   "reset-success": "Reset successfully!",
   "reset-failed": "Reset failed!",
   "select-default-model": "Select Default Model",
+  "api-key-expired-or-invalid": "API key is expired or invalid. Please reconfigure.",
+  "model-disconnected-or-invalid": "Model is disconnected or not responding. Please check your connection.",
 
   "browser-login": "Browser Login",
   "browser-login-description": "Open a Chrome browser to log in to your accounts. Your login data will be saved locally in a secure profile.",
