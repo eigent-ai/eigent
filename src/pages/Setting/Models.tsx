@@ -104,8 +104,8 @@ const DARK_FILL_MODELS = new Set([
   'moonshot',
   'ollama',
   'openrouter',
-  'lmstudio',
-  'Z.ai',
+  'z.ai',
+  'openai-compatible-model',
 ]);
 
 export default function SettingModels() {
