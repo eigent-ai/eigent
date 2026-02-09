@@ -723,7 +723,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               api_key: apiModel.api_key,
               api_url: apiModel.api_url,
               extra_params: apiModel.extra_params,
-              installed_mcp: { mcpServers: {} },
+              installed_mcp:
+                mcpLocal &&
+                typeof (mcpLocal as { mcpServers?: unknown }).mcpServers ===
+                  'object'
+                  ? (mcpLocal as { mcpServers: Record<string, unknown> })
+                  : { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
               attaches: (
@@ -1415,7 +1420,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   setTaskAssigning(currentTaskId, [...taskAssigning]);
                 }
               }
-              const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+              const taskIndex = taskRunning.findIndex(
+                (task) => task.id === process_task_id
+              );
               if (taskIndex !== -1 && taskRunning[taskIndex].agent) {
                 taskRunning[taskIndex].agent!.status = 'completed';
               }
