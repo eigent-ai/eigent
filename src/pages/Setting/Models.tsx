@@ -19,6 +19,7 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
+import { ModelTypeCombobox } from '@/components/ModelTypeCombobox';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -1327,18 +1328,12 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <Input
-              id={`modelType-${item.id}`}
-              size="default"
-              title={t('setting.model-type-setting')}
-              state={errors[idx]?.model_type ? 'error' : 'default'}
-              note={errors[idx]?.model_type ?? undefined}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
+            <ModelTypeCombobox
+              platform={item.id}
+              apiKey={form[idx].apiKey}
+              apiUrl={form[idx].apiHost}
               value={form[idx].model_type}
-              onChange={(e) => {
-                const v = e.target.value;
+              onValueChange={(v) => {
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
                 );
@@ -1348,6 +1343,12 @@ export default function SettingModels() {
                   )
                 );
               }}
+              placeholder={`${t('setting.enter-your-model-type')} ${
+                item.name
+              } ${t('setting.model-type')}`}
+              disabled={loading === idx}
+              error={errors[idx]?.model_type}
+              title={t('setting.model-type-setting')}
             />
             {/* externalConfig render */}
             {item.externalConfig &&
@@ -1609,19 +1610,21 @@ export default function SettingModels() {
                 )}
               </div>
             ) : (
-              <Input
-                size="default"
-                title={t('setting.model-type')}
-                state={localInputError ? 'error' : 'default'}
-                placeholder={t('setting.enter-your-local-model-type')}
+              <ModelTypeCombobox
+                platform={platform}
+                apiKey={undefined}
+                apiUrl={currentEndpoint}
                 value={currentType}
-                onChange={(e) =>
+                onValueChange={(v) =>
                   setLocalTypes((prev) => ({
                     ...prev,
-                    [platform]: e.target.value,
+                    [platform]: v,
                   }))
                 }
+                placeholder={t('setting.enter-your-local-model-type')}
                 disabled={!localEnabled}
+                error={localInputError ? localError || undefined : undefined}
+                title={t('setting.model-type')}
               />
             )}
           </div>

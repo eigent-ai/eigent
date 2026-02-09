@@ -178,3 +178,141 @@ async def validate_model(request: ValidateModelRequest):
     )
 
     return result
+
+
+class ModelTypeSuggestionRequest(BaseModel):
+    platform: str | None = Field(None, description="Model platform")
+    api_key: str | None = Field(
+        None, description="Optional API key for OpenAI"
+    )
+    api_url: str | None = Field(None, description="Optional API URL")
+
+
+class ModelTypeSuggestionResponse(BaseModel):
+    model_types: list[str] = Field(
+        ..., description="List of available model types"
+    )
+    source: str = Field(
+        ..., description="Source of suggestions: 'camel' or 'openai'"
+    )
+
+
+@router.post("/model/types")
+async def get_model_types(request: ModelTypeSuggestionRequest):
+    """Get available model types for a given platform.
+
+    Returns model types from CAMEL enum filtered by platform.
+    If api_key is provided for OpenAI-compatible platforms,
+    also fetches available models from the API.
+    """
+    from camel.types import ModelType
+
+    platform = request.platform
+    api_key = request.api_key
+    api_url = request.api_url
+
+    model_types: list[str] = []
+    source = "camel"
+
+    # Platform name → model name prefixes for filtering
+    PLATFORM_PREFIXES: dict[str, list[str]] = {
+        "openai": ["gpt-", "o1", "o3", "o4", "chatgpt-"],
+        "anthropic": ["claude-"],
+        "gemini": ["gemini-"],
+        "deepseek": ["deepseek"],
+        "qwen": ["qwen"],
+        "minimax": ["minimax"],
+        "moonshot": ["moonshot", "kimi"],
+        "azure": ["gpt-", "o1", "o3", "o4"],
+        # These platforms can run any model → return all
+        "openrouter": [],
+        "bedrock": [],
+        "ollama": [],
+        "vllm": [],
+        "sglang": [],
+        "lmstudio": [],
+        "modelark": [],
+        "zai": [],
+    }
+
+    try:
+        all_model_types = [mt.value for mt in ModelType]
+
+        if platform:
+            platform_lower = platform.lower().replace("-", "_")
+            prefixes = PLATFORM_PREFIXES.get(platform_lower)
+
+            if prefixes is not None and len(prefixes) > 0:
+                # Filter model types by known prefixes for this platform
+                model_types = [
+                    mt
+                    for mt in all_model_types
+                    if any(mt.lower().startswith(p) for p in prefixes)
+                ]
+            else:
+                # Unknown platform or open platform → return all
+                model_types = all_model_types
+        else:
+            model_types = all_model_types
+
+        # For OpenAI-compatible platforms with an API key,
+        # also fetch live models from the API
+        openai_like = {
+            "openai",
+            "openai_compatible_model",
+            "openai-compatible-model",
+            "azure",
+            "openrouter",
+            "lmstudio",
+            "vllm",
+            "sglang",
+            "zai",
+            "modelark",
+        }
+        platform_lower = (platform or "").lower().replace("-", "_")
+        if api_key and platform_lower in openai_like:
+            try:
+                import httpx
+
+                api_base_url = (api_url or "https://api.openai.com/v1").rstrip(
+                    "/"
+                )
+                headers = {"Authorization": f"Bearer {api_key}"}
+
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(
+                        f"{api_base_url}/models",
+                        headers=headers,
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        api_models = [
+                            model["id"]
+                            for model in data.get("data", [])
+                            if model.get("id")
+                        ]
+                        combined = list(set(model_types + api_models))
+                        model_types = sorted(combined)
+                        source = "camel+api"
+                        logger.info(
+                            f"Fetched {len(api_models)} models from API"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to fetch models from API: "
+                            f"{response.status_code}"
+                        )
+            except Exception as e:
+                logger.warning(f"Error fetching models from API: {e}")
+
+        model_types = sorted(set(model_types))
+        return ModelTypeSuggestionResponse(
+            model_types=model_types, source=source
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting model types: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Failed to get model types: {str(e)}"},
+        )
