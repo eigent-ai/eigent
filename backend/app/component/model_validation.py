@@ -358,7 +358,6 @@ def validate_model_with_details(
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
-            "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.MODEL_CREATION
 
@@ -401,7 +400,6 @@ def validate_model_with_details(
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
-            "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.AGENT_CREATION
         logger.error(
@@ -430,7 +428,6 @@ def validate_model_with_details(
         if response:
             result.validation_stages[ValidationStage.MODEL_CALL] = True
             result.successful_stages.append(ValidationStage.MODEL_CALL)
-            result.is_valid = True
 
             # Extract model response information
             result.model_response_info = {
@@ -482,7 +479,6 @@ def validate_model_with_details(
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
-            "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.MODEL_CALL
 
@@ -527,6 +523,7 @@ def validate_model_with_details(
                         ValidationStage.TOOL_CALL_EXECUTION
                     )
                     result.is_tool_calls = True
+                    result.is_valid = True
                     result.tool_call_info["execution_successful"] = True
                     logger.debug(
                         "Tool call execution stage passed",
@@ -603,7 +600,6 @@ def validate_model_with_details(
         result.error_details = {
             "exception_type": type(e).__name__,
             "exception_message": str(e),
-            "traceback": traceback.format_exc(),
         }
         result.failed_stage = ValidationStage.TOOL_CALL_EXECUTION
         logger.error(
