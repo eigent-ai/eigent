@@ -24,7 +24,7 @@ from app.utils import memory_file as mf
 
 @pytest.mark.unit
 class TestMemoryFile:
-    """Test memory_file read, write, append, and get_context_for_prompt."""
+    """Test memory_file read, write, append, and get_index_for_prompt."""
 
     def test_read_nonexistent_memory(self, tmp_path: Path) -> None:
         """Reading memory from a directory without memory.md returns None."""
@@ -72,33 +72,34 @@ class TestMemoryFile:
         assert "Original content" not in content
         assert "Completely replaced" in content
 
-    def test_get_context_for_prompt(self, tmp_path: Path) -> None:
-        """get_context_for_prompt returns formatted string."""
+    def test_get_index_for_prompt(self, tmp_path: Path) -> None:
+        """get_index_for_prompt returns first portion of memory.md for system prompt."""
         working_dir = str(tmp_path)
 
         mf.append_memory(working_dir, "User prefers Python 3.10.")
 
-        ctx = mf.get_context_for_prompt(working_dir)
+        ctx = mf.get_index_for_prompt(working_dir)
         assert ctx is not None
-        assert "Project Memory" in ctx
+        assert "memory index" in ctx.lower() or "memory.md" in ctx
         assert "Python 3.10" in ctx
 
-    def test_get_context_for_prompt_empty(self, tmp_path: Path) -> None:
-        """get_context_for_prompt returns None for empty/nonexistent memory."""
+    def test_get_index_for_prompt_empty(self, tmp_path: Path) -> None:
+        """get_index_for_prompt returns None for empty/nonexistent memory."""
         working_dir = str(tmp_path)
-        ctx = mf.get_context_for_prompt(working_dir)
+        ctx = mf.get_index_for_prompt(working_dir)
         assert ctx is None
 
-    def test_get_context_for_prompt_truncation(self, tmp_path: Path) -> None:
-        """get_context_for_prompt truncates long content."""
+    def test_get_index_for_prompt_max_lines(self, tmp_path: Path) -> None:
+        """get_index_for_prompt limits to first max_lines and adds note."""
         working_dir = str(tmp_path)
-        long_content = "A" * 5000
-        mf.append_memory(working_dir, long_content)
+        for i in range(300):
+            mf.append_memory(working_dir, f"Line entry {i}.")
 
-        ctx = mf.get_context_for_prompt(working_dir, max_chars=100)
+        ctx = mf.get_index_for_prompt(working_dir, max_lines=50)
         assert ctx is not None
-        assert "truncated" in ctx
-        assert len(ctx) < 200
+        assert "further memory" in ctx or ".eigent" in ctx
+        lines = ctx.splitlines()
+        assert len(lines) <= 55  # 50 + header + trailer
 
     def test_memory_file_path(self, tmp_path: Path) -> None:
         """Memory file is created in .eigent subdirectory."""
@@ -125,50 +126,17 @@ class TestMemoryFile:
 
 @pytest.mark.unit
 class TestKnowledgeBaseToolkit:
-    """Test the KnowledgeBaseToolkit read and write tools."""
+    """Test KnowledgeBaseToolkit (no tools; memory via file ops and prompt)."""
 
-    def test_toolkit_remember_and_read(self, tmp_path: Path) -> None:
-        """Toolkit can remember and read back information."""
-        working_dir = str(tmp_path)
-        toolkit = KnowledgeBaseToolkit(
-            api_task_id="test-task", working_directory=working_dir
-        )
-
-        result = toolkit.read_project_memory()
-        assert "No project memory exists" in result
-
-        result = toolkit.remember_this("The API uses FastAPI.")
-        assert "Saved to project memory" in result
-
-        result = toolkit.read_project_memory()
-        assert "FastAPI" in result
-
-    def test_toolkit_get_tools(self, tmp_path: Path) -> None:
-        """Toolkit returns both read and write tools."""
+    def test_toolkit_get_tools_empty(self, tmp_path: Path) -> None:
+        """Toolkit returns no tools; memory is via file operations."""
         working_dir = str(tmp_path)
         toolkit = KnowledgeBaseToolkit(
             api_task_id="test-task", working_directory=working_dir
         )
 
         tools = toolkit.get_tools()
-        assert len(tools) == 2
-
-        tool_names = [t.get_function_name() for t in tools]
-        assert "read_project_memory" in tool_names
-        assert "remember_this" in tool_names
-
-    def test_toolkit_empty_content_rejected(self, tmp_path: Path) -> None:
-        """Toolkit rejects empty content."""
-        working_dir = str(tmp_path)
-        toolkit = KnowledgeBaseToolkit(
-            api_task_id="test-task", working_directory=working_dir
-        )
-
-        result = toolkit.remember_this("")
-        assert "Cannot save empty content" in result
-
-        result = toolkit.remember_this("   ")
-        assert "Cannot save empty content" in result
+        assert len(tools) == 0
 
     def test_toolkit_invalid_api_task_id(self, tmp_path: Path) -> None:
         """Toolkit raises ValueError for empty api_task_id."""
