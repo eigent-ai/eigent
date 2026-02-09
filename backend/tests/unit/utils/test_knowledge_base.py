@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
 from app.utils import memory_file as mf
 
 
@@ -97,32 +96,3 @@ class TestMemoryFile:
         """Invalid working directory returns None for read."""
         content = mf.read_memory("/nonexistent/path/that/does/not/exist")
         assert content is None
-
-
-@pytest.mark.unit
-class TestKnowledgeBaseToolkit:
-    """Test KnowledgeBaseToolkit (no tools; memory via file ops and prompt)."""
-
-    def test_toolkit_get_tools_empty(self, tmp_path: Path) -> None:
-        """Toolkit returns no tools; memory is via file operations."""
-        working_dir = str(tmp_path)
-        toolkit = KnowledgeBaseToolkit(
-            api_task_id="test-task", working_directory=working_dir
-        )
-
-        tools = toolkit.get_tools()
-        assert len(tools) == 0
-
-    def test_toolkit_invalid_api_task_id(self, tmp_path: Path) -> None:
-        """Toolkit raises ValueError for empty api_task_id."""
-        with pytest.raises(ValueError, match="api_task_id cannot be empty"):
-            KnowledgeBaseToolkit(api_task_id="", working_directory=str(tmp_path))
-
-        with pytest.raises(ValueError, match="api_task_id cannot be empty"):
-            KnowledgeBaseToolkit(api_task_id="   ", working_directory=str(tmp_path))
-
-    def test_toolkit_default_working_directory(self) -> None:
-        """Toolkit uses default working directory when not specified."""
-        toolkit = KnowledgeBaseToolkit(api_task_id="test-task")
-        assert toolkit.working_directory is not None
-        assert len(toolkit.working_directory) > 0

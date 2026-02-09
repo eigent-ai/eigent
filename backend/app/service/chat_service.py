@@ -557,8 +557,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "without workforce"
                     )
                     conv_ctx = build_conversation_context(
-                        task_lock,
-                        header="=== Previous Conversation ===",
+                        task_lock, header="=== Previous Conversation ==="
                     )
                     simple_answer_prompt = (
                         f"{conv_ctx}"
@@ -1247,8 +1246,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 "workforce"
                             )
                             conv_ctx = build_conversation_context(
-                                task_lock,
-                                header="=== Previous Conversation ===",
+                                task_lock, header="=== Previous Conversation ==="
                             )
                             simple_answer_prompt = (
                                 f"{conv_ctx}"
@@ -1972,8 +1970,7 @@ async def question_confirm(
     context_prompt = ""
     if task_lock:
         context_prompt = build_conversation_context(
-            task_lock,
-            header="=== Previous Conversation ===",
+            task_lock, header="=== Previous Conversation ==="
         )
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
@@ -2441,7 +2438,7 @@ For any date-related tasks, you MUST use this as \
 the current date.
 """
 
-    if "knowledge_base_toolkit" in data.tools:
+    if getattr(data, "use_project_memory", False):
         enhanced_description += MEMORY_ARCHITECTURE_PROMPT
         memory_index = get_index_for_prompt(working_directory)
         if memory_index:
