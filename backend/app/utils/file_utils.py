@@ -18,8 +18,8 @@ import logging
 import os
 import platform
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.component.environment import env
 from app.model.chat import Chat
@@ -36,7 +36,11 @@ FALLBACK_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
 
 def _max_path_length() -> int:
     """Return the platform-appropriate max path length for validation."""
-    return MAX_PATH_LENGTH_WIN if platform.system() == "Windows" else MAX_PATH_LENGTH_UNIX
+    return (
+        MAX_PATH_LENGTH_WIN
+        if platform.system() == "Windows"
+        else MAX_PATH_LENGTH_UNIX
+    )
 
 
 def safe_join_path(base: str, *parts: str) -> str | None:
@@ -78,7 +82,9 @@ def is_safe_path(path: str, base: str) -> bool:
     try:
         base_real = os.path.realpath(base)
         path_real = os.path.realpath(path)
-        if not path_real.startswith(base_real.rstrip(os.sep) + os.sep) and path_real != base_real.rstrip(os.sep):
+        if not path_real.startswith(
+            base_real.rstrip(os.sep) + os.sep
+        ) and path_real != base_real.rstrip(os.sep):
             return False
         return len(path_real) <= _max_path_length()
     except (OSError, RuntimeError):
@@ -102,7 +108,9 @@ def safe_resolve_path(path: str, base: str) -> str | None:
             resolved = os.path.normpath(os.path.join(base_abs, path))
         resolved_real = os.path.realpath(resolved)
         base_real = os.path.realpath(base_abs)
-        if not resolved_real.startswith(base_real.rstrip(os.sep) + os.sep) and resolved_real != base_real.rstrip(os.sep):
+        if not resolved_real.startswith(
+            base_real.rstrip(os.sep) + os.sep
+        ) and resolved_real != base_real.rstrip(os.sep):
             logger.warning("Path escapes base: path=%r base=%r", path, base)
             return None
         if len(resolved_real) > _max_path_length():
@@ -134,7 +142,9 @@ def normalize_working_path(path: str | None) -> str:
             if parent and parent != resolved and os.path.isdir(parent):
                 return parent
             return os.path.expanduser("~")
-        return resolved if os.path.isdir(resolved) else str(Path(resolved).parent)
+        return (
+            resolved if os.path.isdir(resolved) else str(Path(resolved).parent)
+        )
     except (OSError, RuntimeError) as e:
         logger.warning("Invalid working path %r: %s", path, e)
         return os.path.expanduser("~")
@@ -166,16 +176,31 @@ def safe_list_directory(
     resolve_base = base if base else os.getcwd()
     validated_dir = safe_resolve_path(dir_path, resolve_base)
     if validated_dir is None:
-        logger.debug("safe_list_directory: dir_path not under base or invalid: %r", dir_path)
+        logger.debug(
+            "safe_list_directory: dir_path not under base or invalid: %r",
+            dir_path,
+        )
         return []
     if not os.path.isdir(validated_dir):
         return []
-    skip_dirs = skip_dirs or {".git", "node_modules", "__pycache__", "venv", ".venv"}
+    skip_dirs = skip_dirs or {
+        ".git",
+        "node_modules",
+        "__pycache__",
+        "venv",
+        ".venv",
+    }
     base_real = os.path.realpath(resolve_base)
     result: list[str] = []
     try:
-        for root, dirs, files in os.walk(validated_dir, followlinks=follow_symlinks):
-            dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(skip_prefix)]
+        for root, dirs, files in os.walk(
+            validated_dir, followlinks=follow_symlinks
+        ):
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in skip_dirs and not d.startswith(skip_prefix)
+            ]
             for name in files:
                 if name.startswith(skip_prefix):
                     continue
@@ -186,14 +211,18 @@ def safe_list_directory(
                     abs_path = os.path.abspath(file_path)
                     real_path = os.path.realpath(file_path)
                     if base_real and not (
-                        real_path.startswith(base_real.rstrip(os.sep) + os.sep) or real_path == base_real.rstrip(os.sep)
+                        real_path.startswith(base_real.rstrip(os.sep) + os.sep)
+                        or real_path == base_real.rstrip(os.sep)
                     ):
                         continue
                     if path_filter and not path_filter(abs_path):
                         continue
                     result.append(abs_path)
                     if len(result) >= max_entries:
-                        logger.debug("safe_list_directory hit max_entries=%d", max_entries)
+                        logger.debug(
+                            "safe_list_directory hit max_entries=%d",
+                            max_entries,
+                        )
                         return result
                 except OSError:
                     continue
@@ -226,13 +255,15 @@ def safe_read_file(
     try:
         size = os.path.getsize(path_to_use)
         if size > max_size:
-            logger.warning("safe_read_file: file too large %d > %d", size, max_size)
+            logger.warning(
+                "safe_read_file: file too large %d > %d", size, max_size
+            )
             return None
         for enc in (encoding,) + FALLBACK_ENCODINGS:
             if enc == encoding and enc in FALLBACK_ENCODINGS:
                 continue
             try:
-                with open(path_to_use, "r", encoding=enc) as f:
+                with open(path_to_use, encoding=enc) as f:
                     return f.read()
             except (UnicodeDecodeError, LookupError):
                 continue
@@ -272,7 +303,9 @@ def safe_write_file(
         return False
 
 
-def create_temp_dir(prefix: str = "eigent_", base: str | None = None) -> str | None:
+def create_temp_dir(
+    prefix: str = "eigent_", base: str | None = None
+) -> str | None:
     """
     Create a temporary directory. If base is set, it must exist and be a directory;
     the temp dir will be created under base. Returns None on failure.
@@ -295,10 +328,15 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
     """
     if not task_lock:
         from app.service.task import get_task_lock_if_exists
+
         task_lock = get_task_lock_if_exists(options.project_id)
 
     raw: str
-    if task_lock and hasattr(task_lock, "new_folder_path") and task_lock.new_folder_path:
+    if (
+        task_lock
+        and hasattr(task_lock, "new_folder_path")
+        and task_lock.new_folder_path
+    ):
         raw = str(task_lock.new_folder_path)
     else:
         raw = env("file_save_path", options.file_save_path())
