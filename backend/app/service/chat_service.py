@@ -58,6 +58,10 @@ from app.service.task import (
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
+from app.utils.memory_file import (
+    MEMORY_ARCHITECTURE_PROMPT,
+    get_index_for_prompt,
+)
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
@@ -2436,6 +2440,12 @@ The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """
+
+    if "knowledge_base_toolkit" in data.tools:
+        enhanced_description += MEMORY_ARCHITECTURE_PROMPT
+        memory_index = get_index_for_prompt(working_directory)
+        if memory_index:
+            enhanced_description += "\n" + memory_index
 
     # Pass per-agent custom model config if available
     custom_model_config = getattr(data, "custom_model_config", None)

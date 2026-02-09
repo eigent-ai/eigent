@@ -16,8 +16,10 @@
 Long-term memory via markdown files (issue #1099).
 
 Memory is architecture-level: .eigent/memory.md is the index; the agent
-reads/writes .eigent/*.md via file operations. No tools are exposed; prompt
-builders should inject MEMORY_ARCHITECTURE_PROMPT and get_index_for_prompt().
+reads/writes .eigent/*.md via file operations. This toolkit exposes no tools;
+it stays selectable so chat_service can detect "knowledge_base_toolkit" in
+data.tools and inject MEMORY_ARCHITECTURE_PROMPT + get_index_for_prompt()
+into the system prompt.
 """
 
 from __future__ import annotations
@@ -50,9 +52,10 @@ def _resolve_working_directory(working_directory: str | None) -> str:
 
 class KnowledgeBaseToolkit(BaseToolkit, AbstractToolkit):
     """
-    Project long-term memory (architecture-only). Adds no tools; the agent
-    uses file operations on .eigent/*.md. Kept so "knowledge_base_toolkit"
-    remains selectable and prompt builders can inject the memory index.
+    Project long-term memory (architecture-only). Intentionally provides no
+    tools; the agent uses file/terminal tools to read and write .eigent/*.md.
+    When this toolkit is selected, chat_service injects the memory index and
+    architecture into the system prompt.
     """
 
     def __init__(

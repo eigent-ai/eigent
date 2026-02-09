@@ -22,61 +22,47 @@ from app.agent.toolkit.knowledge_base_toolkit import KnowledgeBaseToolkit
 from app.utils import memory_file as mf
 
 
+def _write_memory(working_dir: str, content: str) -> None:
+    """Write content to .eigent/memory.md (tests only; production uses file ops)."""
+    path = mf.get_memory_file_path(working_dir)
+    path.write_text(content, encoding="utf-8")
+
+
 @pytest.mark.unit
 class TestMemoryFile:
-    """Test memory_file read, write, append, and get_index_for_prompt."""
+    """Test memory_file read and get_index_for_prompt."""
 
     def test_read_nonexistent_memory(self, tmp_path: Path) -> None:
         """Reading memory from a directory without memory.md returns None."""
         content = mf.read_memory(str(tmp_path))
         assert content is None
 
-    def test_append_and_read_memory(self, tmp_path: Path) -> None:
-        """Append entries and read them back."""
+    def test_read_memory(self, tmp_path: Path) -> None:
+        """Read returns content written to memory.md."""
         working_dir = str(tmp_path)
-
-        success = mf.append_memory(working_dir, "User prefers dark mode.")
-        assert success is True
-
-        memory_path = mf.get_memory_file_path(working_dir)
-        assert memory_path.exists()
-
+        _write_memory(working_dir, "# Project Memory\n\nLong-term memory.\n\nUser prefers dark mode.")
         content = mf.read_memory(working_dir)
         assert content is not None
         assert "Project Memory" in content
         assert "dark mode" in content
 
-    def test_append_multiple_entries(self, tmp_path: Path) -> None:
-        """Multiple appends add entries with timestamps."""
+    def test_read_multiple_sections(self, tmp_path: Path) -> None:
+        """Read returns full file content."""
         working_dir = str(tmp_path)
-
-        mf.append_memory(working_dir, "First entry.")
-        mf.append_memory(working_dir, "Second entry.")
-        mf.append_memory(working_dir, "Third entry.")
-
+        _write_memory(
+            working_dir,
+            "# Project Memory\n\nFirst entry.\n\n## Section 2\n\nSecond entry.\n\nThird entry.",
+        )
         content = mf.read_memory(working_dir)
         assert content is not None
         assert "First entry" in content
         assert "Second entry" in content
         assert "Third entry" in content
 
-    def test_write_memory_overwrites(self, tmp_path: Path) -> None:
-        """write_memory overwrites existing content."""
-        working_dir = str(tmp_path)
-
-        mf.append_memory(working_dir, "Original content.")
-        mf.write_memory(working_dir, "# New Content\n\nCompletely replaced.")
-
-        content = mf.read_memory(working_dir)
-        assert content is not None
-        assert "Original content" not in content
-        assert "Completely replaced" in content
-
     def test_get_index_for_prompt(self, tmp_path: Path) -> None:
         """get_index_for_prompt returns first portion of memory.md for system prompt."""
         working_dir = str(tmp_path)
-
-        mf.append_memory(working_dir, "User prefers Python 3.10.")
+        _write_memory(working_dir, "# Project Memory\n\nUser prefers Python 3.10.")
 
         ctx = mf.get_index_for_prompt(working_dir)
         assert ctx is not None
@@ -92,31 +78,20 @@ class TestMemoryFile:
     def test_get_index_for_prompt_max_lines(self, tmp_path: Path) -> None:
         """get_index_for_prompt limits to first max_lines and adds note."""
         working_dir = str(tmp_path)
-        for i in range(300):
-            mf.append_memory(working_dir, f"Line entry {i}.")
+        lines = ["# Project Memory", ""] + [f"Line entry {i}." for i in range(300)]
+        _write_memory(working_dir, "\n".join(lines))
 
         ctx = mf.get_index_for_prompt(working_dir, max_lines=50)
         assert ctx is not None
         assert "further memory" in ctx or ".eigent" in ctx
-        lines = ctx.splitlines()
-        assert len(lines) <= 55  # 50 + header + trailer
+        assert len(ctx.splitlines()) <= 55
 
     def test_memory_file_path(self, tmp_path: Path) -> None:
-        """Memory file is created in .eigent subdirectory."""
+        """Memory file path is .eigent/memory.md under working dir."""
         working_dir = str(tmp_path)
         memory_path = mf.get_memory_file_path(working_dir)
-
         assert ".eigent" in str(memory_path)
         assert str(memory_path).endswith("memory.md")
-
-    def test_append_empty_content_fails(self, tmp_path: Path) -> None:
-        """Appending empty content returns False."""
-        working_dir = str(tmp_path)
-        success = mf.append_memory(working_dir, "")
-        assert success is False
-
-        success = mf.append_memory(working_dir, "   ")
-        assert success is False
 
     def test_invalid_working_directory(self) -> None:
         """Invalid working directory returns None for read."""
