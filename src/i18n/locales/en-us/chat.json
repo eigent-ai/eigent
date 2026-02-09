@@ -56,5 +56,7 @@
   "expand-input": "Expand input (⌘P)",
   "queued-tasks": "Queued Tasks",
   "remove-queued-message": "Remove queued message",
-  "no-agents-added": "No agents added"
+  "no-agents-added": "No agents added",
+  "open-in-ide": "Open in IDE",
+  "failed-to-open-folder": "Failed to open folder"
 }

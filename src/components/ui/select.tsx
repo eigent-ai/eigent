@@ -99,7 +99,7 @@ const SelectTrigger = React.forwardRef<
   ) => {
     const stateCls = resolveStateClasses(state, Boolean(disabled));
     return (
-      <div className={cn('w-full', stateCls.wrapper)}>
+      <div className={cn('w-fit', stateCls.wrapper)}>
         {title ? (
           <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
             <span>{title}</span>

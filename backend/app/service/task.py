@@ -19,11 +19,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from camel.tasks import Task
 from pydantic import BaseModel
-from typing_extensions import Any, TypedDict
+from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
 from app.model.chat import (
@@ -71,9 +71,16 @@ class Action(str, Enum):
     timeout = "timeout"  # backend -> user (task timeout error)
 
 
+class ImprovePayload(BaseModel):
+    """User input payload for an improve action."""
+
+    question: str
+    attaches: list[str] = []
+
+
 class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
-    data: str
+    data: ImprovePayload
     new_task_id: str | None = None
 
 

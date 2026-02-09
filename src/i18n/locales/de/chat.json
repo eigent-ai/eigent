@@ -56,5 +56,7 @@
   "expand-input": "Eingabe erweitern (⌘P)",
   "queued-tasks": "Aufgaben in Warteschlange",
   "remove-queued-message": "Nachricht aus Warteschlange entfernen",
-  "no-agents-added": "Keine Agenten hinzugefügt"
+  "no-agents-added": "Keine Agenten hinzugefügt",
+  "open-in-ide": "In IDE öffnen",
+  "failed-to-open-folder": "Ordner konnte nicht geöffnet werden"
 }

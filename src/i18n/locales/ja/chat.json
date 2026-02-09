@@ -56,5 +56,7 @@
   "expand-input": "入力を展開 (⌘P)",
   "queued-tasks": "キューに入れたタスク",
   "remove-queued-message": "キューに入れたメッセージを削除",
-  "no-agents-added": "エージェントが追加されていません"
+  "no-agents-added": "エージェントが追加されていません",
+  "open-in-ide": "IDEで開く",
+  "failed-to-open-folder": "フォルダを開けませんでした"
 }

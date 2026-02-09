@@ -19,11 +19,11 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
+from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
+from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.cookie_manager import CookieManager
 from app.utils.oauth_state_manager import oauth_state_manager
-from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
-from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
-from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 
 
 class LinkedInTokenRequest(BaseModel):

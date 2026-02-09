@@ -77,11 +77,11 @@ def sanitize_env_path(env_path: str | None) -> str | None:
             )
             return None
 
-        # Enforce .env file extension
-        if not resolved_path.name.endswith(".env"):
+        name = resolved_path.name
+        if not (name.endswith(".env") or name.startswith(".env.")):
             logger.warning(
                 f"Security: Rejected env_path with invalid extension. "
-                f"Path: {env_path}, must end with .env"
+                f"Path: {env_path}, must be .env or .env.*"
             )
             return None
 
