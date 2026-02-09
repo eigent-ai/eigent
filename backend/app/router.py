@@ -13,7 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """
 Centralized router registration for the Eigent API.
-All routers are explicitly registered here for better visibility and maintainability.
+All routers are explicitly registered here
+for better visibility and maintainability.
 """
 
 import logging
@@ -78,7 +79,9 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         )
         route_count = len(config["router"].routes)
         logger.info(
-            f"Registered {config['tags'][0]} router: {route_count} routes - {config['description']}"
+            f"Registered {config['tags'][0]} router:"
+            f" {route_count} routes -"
+            f" {config['description']}"
         )
 
     logger.info(f"Total routers registered: {len(routers_config)}")
