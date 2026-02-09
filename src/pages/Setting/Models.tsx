@@ -104,6 +104,7 @@ const DARK_FILL_MODELS = new Set([
   'moonshot',
   'ollama',
   'openrouter',
+  'lmstudio',
   'z.ai',
   'openai-compatible-model',
 ]);
@@ -1005,7 +1006,7 @@ export default function SettingModels() {
       'tongyi-qianwen': qwenImage,
       deepseek: deepseekImage,
       minimax: minimaxImage,
-      'Z.ai': zaiImage,
+      'z.ai': zaiImage,
       moonshot: moonshotImage,
       ModelArk: modelarkImage,
       'aws-bedrock': bedrockImage,

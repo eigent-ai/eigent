@@ -79,7 +79,7 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: '',
   },
   {
-    id: 'Z.ai',
+    id: 'z.ai',
     name: 'Z.ai',
     apiKey: '',
     apiHost: 'https://api.z.ai/api/coding/paas/v4/',
