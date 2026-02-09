@@ -105,9 +105,7 @@ def format_task_context(
                     ]
                     seen_files.update(generated_files)
                 if generated_files:
-                    context_parts.append(
-                        "Generated Files from Previous Task:"
-                    )
+                    context_parts.append("Generated Files from Previous Task:")
                     for file_path in sorted(generated_files):
                         context_parts.append(f"  - {file_path}")
             except Exception as e:
