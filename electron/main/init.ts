@@ -24,11 +24,13 @@ import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
 import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
+  ensureTerminalVenvAtUserPath,
+  findNodejsWheelBinPath,
+  findNodejsWheelNpmPath,
   getBackendPath,
   getBinaryPath,
   getCachePath,
   getPrebuiltPythonDir,
-  getPrebuiltVenvPath,
   getUvEnv,
   getVenvPath,
   getVenvPythonPath,
@@ -305,6 +307,21 @@ export async function startBackend(
     `Backend SERVER_URL resolved to: ${serverUrl} (source: ${resolvedSource})`
   );
 
+  // Ensure prebuilt terminal venv is copied to ~/.eigent/venvs for terminal toolkit
+  ensureTerminalVenvAtUserPath(currentVersion);
+
+  // Add nodejs-wheel paths for browser toolkit (needs npm, npx, and node)
+  const npmWrapperDir = findNodejsWheelNpmPath(venvPath);
+  const nodejsWheelBin = findNodejsWheelBinPath(venvPath);
+  const pathEnv = process.env.PATH || '';
+  const pathParts: string[] = [];
+  if (npmWrapperDir) pathParts.push(npmWrapperDir);
+  if (nodejsWheelBin) pathParts.push(nodejsWheelBin);
+  const updatedPath =
+    pathParts.length > 0
+      ? pathParts.join(path.delimiter) + path.delimiter + pathEnv
+      : pathEnv;
+
   const env = {
     ...process.env,
     ...uvEnv,
@@ -313,6 +330,7 @@ export async function startBackend(
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
+    PATH: updatedPath,
   };
 
   const displayFilteredLogs = (data: String) => {
@@ -397,18 +415,9 @@ export async function startBackend(
         }
 
         // Cleanup corrupted venv (pyvenv.cfg may reference non-existent Python version)
-        // This is especially important for prebuilt venvs with hardcoded paths from CI
-        const prebuiltVenvPath = getPrebuiltVenvPath();
         try {
-          // If the broken venv is the prebuilt venv, we need to remove it
-          // and let UV recreate it from the bundled Python
           if (fs.existsSync(venvPath)) {
             log.info(`Removing potentially corrupted venv: ${venvPath}`);
-            if (venvPath === prebuiltVenvPath) {
-              log.info(
-                `This is the prebuilt venv with hardcoded paths - will recreate from bundled Python`
-              );
-            }
             fs.rmSync(venvPath, { recursive: true, force: true });
           }
         } catch (e) {
