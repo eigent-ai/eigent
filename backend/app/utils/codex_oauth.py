@@ -15,7 +15,7 @@ r"""OpenAI Codex OAuth manager.
 
 Handles Authorization Code + PKCE flow using Codex CLI's public client_id.
 The resulting access token is an OpenAI API key that can be stored as
-OPENAI_API_KEY for agent usage.
+OPENAI_API_KEY for model provider usage.
 """
 
 import base64
@@ -43,7 +43,7 @@ from filelock import FileLock
 
 from app.utils.oauth_state_manager import oauth_state_manager
 
-logger = logging.getLogger("codex_toolkit")
+logger = logging.getLogger("codex_oauth")
 
 # OpenAI / Codex OAuth constants
 # Fixed public client_id from the Codex CLI (not a secret).

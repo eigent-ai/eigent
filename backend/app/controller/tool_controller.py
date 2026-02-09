@@ -19,10 +19,10 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.agent.toolkit.codex_toolkit import CodexOAuthManager
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
+from app.utils.codex_oauth import CodexOAuthManager
 from app.utils.cookie_manager import CookieManager
 from app.utils.oauth_state_manager import oauth_state_manager
 

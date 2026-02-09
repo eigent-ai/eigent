@@ -12,7 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-r"""Tests for the Codex OAuth toolkit."""
+r"""Tests for the Codex OAuth manager."""
 
 import io
 import os
@@ -25,7 +25,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.agent.toolkit.codex_toolkit import (
+from app.utils.codex_oauth import (
     CODEX_CLIENT_ID,
     CODEX_TOKEN_DEFAULT_LIFETIME,
     CODEX_TOKEN_REFRESH_THRESHOLD,
@@ -779,9 +779,7 @@ class TestBackgroundAuth:
     @pytest.mark.unit
     def test_start_returns_authorizing(self):
         """start_background_auth should return 'authorizing'."""
-        with patch(
-            "app.agent.toolkit.codex_toolkit.oauth_state_manager"
-        ) as mock_mgr:
+        with patch("app.utils.codex_oauth.oauth_state_manager") as mock_mgr:
             mock_state = MagicMock()
             mock_state.status = "pending"
             mock_state.is_cancelled.return_value = False
@@ -790,9 +788,7 @@ class TestBackgroundAuth:
 
             with (
                 patch("webbrowser.open"),
-                patch(
-                    "app.agent.toolkit.codex_toolkit.HTTPServer"
-                ) as mock_server,
+                patch("app.utils.codex_oauth.HTTPServer") as mock_server,
             ):
                 mock_server.return_value.server_address = ("127.0.0.1", 9999)
 
@@ -803,9 +799,7 @@ class TestBackgroundAuth:
     @pytest.mark.unit
     def test_start_cancels_existing_pending_flow(self):
         """start_background_auth should cancel any existing flow."""
-        with patch(
-            "app.agent.toolkit.codex_toolkit.oauth_state_manager"
-        ) as mock_mgr:
+        with patch("app.utils.codex_oauth.oauth_state_manager") as mock_mgr:
             old_state = MagicMock()
             old_state.status = "authorizing"
             old_state.server = MagicMock()
@@ -819,9 +813,7 @@ class TestBackgroundAuth:
 
             with (
                 patch("webbrowser.open"),
-                patch(
-                    "app.agent.toolkit.codex_toolkit.HTTPServer"
-                ) as mock_server,
+                patch("app.utils.codex_oauth.HTTPServer") as mock_server,
             ):
                 mock_server.return_value.server_address = ("127.0.0.1", 9999)
 
@@ -832,9 +824,7 @@ class TestBackgroundAuth:
     @pytest.mark.unit
     def test_start_creates_new_oauth_state(self):
         """start_background_auth should create a new OAuth state."""
-        with patch(
-            "app.agent.toolkit.codex_toolkit.oauth_state_manager"
-        ) as mock_mgr:
+        with patch("app.utils.codex_oauth.oauth_state_manager") as mock_mgr:
             mock_state = MagicMock()
             mock_state.status = "pending"
             mock_state.is_cancelled.return_value = False
@@ -843,9 +833,7 @@ class TestBackgroundAuth:
 
             with (
                 patch("webbrowser.open"),
-                patch(
-                    "app.agent.toolkit.codex_toolkit.HTTPServer"
-                ) as mock_server,
+                patch("app.utils.codex_oauth.HTTPServer") as mock_server,
             ):
                 mock_server.return_value.server_address = ("127.0.0.1", 9999)
 
