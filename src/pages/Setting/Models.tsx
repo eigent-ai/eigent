@@ -1598,7 +1598,7 @@ export default function SettingModels() {
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
                   {items.map((item, idx) => {
-                    const isConfigured = !!form[idx]?.provider_id && form[idx]?.is_valid;
+                    const isConfigured = !!form[idx]?.provider_id && form[idx]?.is_valid !== false;
                     const isPreferred = form[idx]?.prefer;
                     const modelImage = getModelImage(item.id);
 
@@ -1756,7 +1756,7 @@ export default function SettingModels() {
                         item.id,
                         selectedTab === `byok-${item.id}`,
                         true,
-                        !!form[idx].provider_id && form[idx].is_valid
+                        !!form[idx].provider_id && form[idx].is_valid !== false
                       )
                     )}
                   </div>
