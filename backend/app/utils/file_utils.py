@@ -156,14 +156,25 @@ def safe_list_directory(
     If base is set, only returns paths that resolve under base (no traversal).
     Returns list of absolute file paths; skips directories matching skip_dirs
     and files starting with skip_prefix or ending with skip_extensions.
+
+    dir_path is validated against base (or cwd when base is None) before use
+    to satisfy path safety; only the resolved, confined path is used for I/O.
     """
-    if not dir_path or not os.path.isdir(dir_path):
+    if not dir_path or not dir_path.strip():
+        return []
+    # Validate user-provided dir_path: resolve under base (or cwd) so path is confined
+    resolve_base = base if base else os.getcwd()
+    validated_dir = safe_resolve_path(dir_path, resolve_base)
+    if validated_dir is None:
+        logger.debug("safe_list_directory: dir_path not under base or invalid: %r", dir_path)
+        return []
+    if not os.path.isdir(validated_dir):
         return []
     skip_dirs = skip_dirs or {".git", "node_modules", "__pycache__", "venv", ".venv"}
-    base_real = os.path.realpath(base) if base else None
+    base_real = os.path.realpath(resolve_base)
     result: list[str] = []
     try:
-        for root, dirs, files in os.walk(dir_path, followlinks=follow_symlinks):
+        for root, dirs, files in os.walk(validated_dir, followlinks=follow_symlinks):
             dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(skip_prefix)]
             for name in files:
                 if name.startswith(skip_prefix):
