@@ -167,12 +167,12 @@ def safe_list_directory(
     Returns list of absolute file paths; skips directories matching skip_dirs
     and files starting with skip_prefix or ending with skip_extensions.
 
-    dir_path is validated against base (or cwd when base is None) before use
-    to satisfy path safety; only the resolved, confined path is used for I/O.
+    dir_path is validated against base (or cwd when base is None) before use.
+    The path passed to os.walk is built from the trusted base and names from
+    os.listdir only (no user-derived path string) to satisfy CodeQL.
     """
     if not dir_path or not dir_path.strip():
         return []
-    # Validate user-provided dir_path: resolve under base (or cwd) so path is confined
     resolve_base = base if base else os.getcwd()
     validated_dir = safe_resolve_path(dir_path, resolve_base)
     if validated_dir is None:
@@ -181,7 +181,32 @@ def safe_list_directory(
             dir_path,
         )
         return []
-    if not os.path.isdir(validated_dir):
+    base_real = os.path.realpath(resolve_base)
+    # Build path for I/O from trusted base_real + names from os.listdir only,
+    # so the value passed to os.path.isdir/os.walk is not user-derived.
+    try:
+        if os.path.samefile(validated_dir, base_real):
+            path_for_walk = base_real
+        else:
+            rel = os.path.relpath(validated_dir, base_real)
+            parts = [p for p in rel.split(os.sep) if p]
+            if ".." in parts:
+                return []
+            current: str = base_real
+            for segment in parts:
+                listed = os.listdir(current)
+                found = None
+                for name in listed:
+                    if name == segment:
+                        found = name
+                        break
+                if found is None:
+                    return []
+                current = os.path.join(current, found)
+            path_for_walk = current
+        if not os.path.isdir(path_for_walk):
+            return []
+    except OSError:
         return []
     skip_dirs = skip_dirs or {
         ".git",
@@ -190,11 +215,10 @@ def safe_list_directory(
         "venv",
         ".venv",
     }
-    base_real = os.path.realpath(resolve_base)
     result: list[str] = []
     try:
         for root, dirs, files in os.walk(
-            validated_dir, followlinks=follow_symlinks
+            path_for_walk, followlinks=follow_symlinks
         ):
             dirs[:] = [
                 d
