@@ -68,6 +68,15 @@ class ValidateModelResponse(BaseModel):
     diagnostic_info: dict | None = Field(
         None, description="Diagnostic information"
     )
+    model_response_info: dict | None = Field(
+        None, description="Model response information"
+    )
+    tool_call_info: dict | None = Field(
+        None, description="Tool call information"
+    )
+    validation_stages: dict[str, bool] | None = Field(
+        None, description="Validation stages status"
+    )
 
 
 @router.post("/model/validate")

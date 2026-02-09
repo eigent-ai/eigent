@@ -241,7 +241,7 @@ def create_agent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
         model=model,
         tools=[get_website_content],
-        step_timeout=1800,  # 30 minutes
+        step_timeout=60,  # 1 minute for validation
     )
     return agent
 
@@ -380,13 +380,12 @@ def validate_model_with_details(
             system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
             model=model,
             tools=[get_website_content],
-            step_timeout=1800,  # 30 minutes
+            step_timeout=60,  # 1 minute for validation
         )
         result.validation_stages[ValidationStage.AGENT_CREATION] = True
         result.successful_stages.append(ValidationStage.AGENT_CREATION)
         result.diagnostic_info["agent_creation"] = {
             "agent_created": True,
-            "tools_count": len([get_website_content]),
         }
         logger.debug(
             "Agent creation stage passed",
