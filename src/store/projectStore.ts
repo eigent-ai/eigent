@@ -22,6 +22,13 @@ export enum ProjectType {
   REPLAY = 'replay',
 }
 
+interface TaskQueue {
+  task_id: string;
+  content: string;
+  timestamp: number;
+  attaches: File[];
+}
+
 interface Project {
   id: string;
   name: string;
@@ -31,12 +38,7 @@ interface Project {
   chatStores: { [chatId: string]: VanillaChatStore }; // Multiple chat stores for this project
   chatStoreTimestamps: { [chatId: string]: number }; // Track creation time of each chat store
   activeChatId: string | null; // ID of the currently active chat store
-  queuedMessages: Array<{
-    task_id: string;
-    content: string;
-    timestamp: number;
-    attaches: File[];
-  }>; // Project-level queued messages
+  queuedMessages: Array<TaskQueue>; // Project-level queued messages
   metadata?: {
     tags?: string[];
     priority?: 'low' | 'medium' | 'high';
@@ -87,18 +89,11 @@ interface ProjectStore {
   addQueuedMessage: (
     projectId: string,
     content: string,
-    attaches: File[]
+    attaches: File[],
+    task_id?: string
   ) => string | null;
-  removeQueuedMessage: (projectId: string, taskId: string) => void;
-  restoreQueuedMessage: (
-    projectId: string,
-    messageData: {
-      task_id: string;
-      content: string;
-      timestamp: number;
-      attaches: File[];
-    }
-  ) => void;
+  removeQueuedMessage: (projectId: string, taskId: string) => TaskQueue;
+  restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => void;
   clearQueuedMessages: (projectId: string) => void;
 
   // Chat store state management
@@ -201,7 +196,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const { projects } = get();
 
     //Replay doesn't need to use an empty project container
-    if (type !== ProjectType.REPLAY) {
+    if (type !== ProjectType.REPLAY && !projectId) {
       // First, check if there are any existing empty projects
       const existingEmptyProject = Object.values(projects).find((project) =>
         isEmptyProject(project)
@@ -528,6 +523,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     //TODO: For now handle the question as unique identifier to avoid duplicate
     if (!projectId) projectId = 'Replay: ' + question;
 
+    if (!taskIds || taskIds.length === 0) {
+      console.warn('[ProjectStore] No taskIds provided for replayProject');
+      return createProject(
+        `Replay Project ${question}`,
+        `No tasks to replay`,
+        projectId,
+        ProjectType.NORMAL,
+        historyId
+      );
+    }
+
     // If projectId is provided, reset that project
     if (projectId) {
       if (projects[projectId]) {
@@ -716,7 +722,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   },
 
   // Project-level queued messages management
-  addQueuedMessage: (projectId: string, content: string, attaches: File[]) => {
+  addQueuedMessage: (
+    projectId: string,
+    content: string,
+    attaches: File[],
+    task_id?: string
+  ) => {
     const { projects } = get();
 
     if (!projects[projectId]) {
@@ -725,6 +736,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     }
 
     const new_task_id = generateUniqueId();
+    const actual_task_id = task_id || new_task_id;
 
     set((state) => ({
       projects: {
@@ -734,7 +746,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           queuedMessages: [
             ...state.projects[projectId].queuedMessages,
             {
-              task_id: new_task_id,
+              task_id: actual_task_id,
               content,
               timestamp: Date.now(),
               attaches: [...attaches],
@@ -745,7 +757,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       },
     }));
 
-    return new_task_id;
+    return actual_task_id;
   },
 
   removeQueuedMessage: (projectId: string, task_id: string) => {
@@ -753,8 +765,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
     if (!projects[projectId]) {
       console.warn(`Project ${projectId} not found`);
-      return;
+      return { task_id: '', content: '', timestamp: 0, attaches: [] };
     }
+
+    const messageToRemove = projects[projectId].queuedMessages.find(
+      (m) => m.task_id === task_id
+    );
 
     set((state) => ({
       projects: {
@@ -768,6 +784,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         },
       },
     }));
+
+    return (
+      messageToRemove || {
+        task_id: '',
+        content: '',
+        timestamp: 0,
+        attaches: [],
+      }
+    );
   },
 
   // Method to restore a queued message (for error handling)

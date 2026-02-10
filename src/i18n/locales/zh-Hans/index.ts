@@ -16,6 +16,7 @@ import chat from './chat.json';
 import dashboard from './dashboard.json';
 import layout from './layout.json';
 import setting from './setting.json';
+import triggers from './triggers.json';
 import update from './update.json';
 import workforce from './workforce.json';
 export default {
@@ -25,4 +26,5 @@ export default {
   chat,
   setting,
   update,
+  triggers,
 };

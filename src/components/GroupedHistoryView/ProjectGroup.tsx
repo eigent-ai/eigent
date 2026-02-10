@@ -35,6 +35,7 @@ import {
   Sparkle,
   Sparkles,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -173,7 +174,7 @@ export default function ProjectGroup({
       : 0;
 
   // Trigger count is 0 for now (disabled)
-  const _triggerCount = 0;
+  // const _triggerCount = 0;
 
   // Handle project edit - open dialog
   const handleProjectEdit = (e?: React.MouseEvent) => {
@@ -336,9 +337,19 @@ export default function ProjectGroup({
                 {/* Task count */}
                 <TooltipSimple content="Tasks">
                   <div className="flex items-center gap-1">
-                    <Pin className="h-4 w-4 text-icon-secondary" />
+                    <Pin className="h-4 w-4 text-icon-primary" />
                     <span className="text-body-sm font-semibold text-text-body">
                       {project.task_count}
+                    </span>
+                  </div>
+                </TooltipSimple>
+
+                {/* Trigger count */}
+                <TooltipSimple content="Triggers">
+                  <div className="flex items-center gap-1">
+                    <Zap className="h-4 w-4 text-icon-warning" />
+                    <span className="text-body-sm font-semibold text-text-warning">
+                      {project.total_triggers || 0}
                     </span>
                   </div>
                 </TooltipSimple>
@@ -392,6 +403,13 @@ export default function ProjectGroup({
             <Tag variant="default" size="sm" className="min-w-10">
               <Pin />
               <span>{project.task_count}</span>
+            </Tag>
+          </TooltipSimple>
+
+          <TooltipSimple content="Triggers">
+            <Tag variant="warning" size="sm" className="min-w-10">
+              <Zap />
+              <span>{project.total_triggers || 0}</span>
             </Tag>
           </TooltipSimple>
         </div>

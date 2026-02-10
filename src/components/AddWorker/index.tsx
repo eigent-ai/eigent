@@ -73,13 +73,28 @@ interface McpItem {
 export function AddWorker({
   edit = false,
   workerInfo = null,
+  variant = 'default',
+  isOpen,
+  onOpenChange,
 }: {
   edit?: boolean;
   workerInfo?: Agent | null;
+  variant?: 'default' | 'icon';
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // Use controlled state if provided, otherwise internal state
+  const isControlled =
+    typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
+  const dialogOpen = isControlled ? isOpen : internalOpen;
+  const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
   const { chatStore, projectStore } = useChatStoreAdapter();
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   const activeProjectId = projectStore.activeProjectId;
   const activeTaskId = chatStore.activeTaskId;

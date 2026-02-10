@@ -15,7 +15,6 @@
 import { Button } from '@/components/ui/button';
 import {
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   CodeXml,
@@ -433,15 +432,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleBack}
-                  size="sm"
-                  variant="ghost"
-                  className={`flex items-center gap-2`}
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="text-primary whitespace-nowrap text-xl font-bold">
+                <span className="text-body-base text-primary whitespace-nowrap font-bold">
                   {t('chat.agent-folder')}
                 </span>
               </div>
