@@ -893,14 +893,14 @@ export default function SettingModels() {
       if (provider_id) {
         await proxyFetchDelete(`/api/provider/${provider_id}`);
       }
-      // reset single form entry to default empty values
+      // reset single form entry to default values
       setForm((prev) =>
         prev.map((fi, i) => {
           if (i !== idx) return fi;
           const item = items[i];
           return {
             apiKey: '',
-            apiHost: '',
+            apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
             externalConfig: item.externalConfig
