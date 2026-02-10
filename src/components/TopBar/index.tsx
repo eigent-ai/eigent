@@ -225,7 +225,7 @@ function HeaderWin() {
       </div>
 
       {/* center */}
-      <div className="drag flex h-full flex-1 items-center justify-start">
+      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
         <div className="relative z-50 flex h-full items-center">
           {location.pathname === '/history' && (
             <div className="mr-1 flex items-center">
