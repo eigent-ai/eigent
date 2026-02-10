@@ -89,11 +89,20 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 90
         run: |
-          # Increase file descriptor limit to prevent EMFILE errors during signing
-          # This is needed because electron-builder signs all files recursively,
-          # and Python venvs contain thousands of files
-          ulimit -n 65536 || ulimit -n 10240
+          # 1. Increase file descriptor limit to system's hard limit
+          # This prevents EMFILE errors during signing when electron-builder
+          # signs all files recursively
+          ulimit -n $(ulimit -Hn)
           echo "File descriptor limit set to: $(ulimit -n)"
+
+          # 2. Clean up Python venv to reduce file count and app size
+          # These files are not needed in the packaged app and cause signing issues
+          echo "Cleaning up Python cache and test files..."
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type d -name "tests" -path "*/site-packages/*" -exec rm -rf {} + 2>/dev/null || true
+          find . -type d -name "test" -path "*/site-packages/*" -exec rm -rf {} + 2>/dev/null || true
+
+          # 3. Start the build
           npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
