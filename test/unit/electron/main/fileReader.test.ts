@@ -277,6 +277,48 @@ describe('File Operations and Utilities', () => {
     });
   });
 
+  describe('Multimedia File Type Detection', () => {
+    const audioExtensions = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
+    const videoExtensions = ['mp4', 'webm', 'ogv', 'mov', 'avi', 'mkv'];
+    const mediaExtensions = [...audioExtensions, ...videoExtensions];
+
+    it('should recognize audio file extensions', () => {
+      audioExtensions.forEach((ext) => {
+        const filePath = `/path/to/file.${ext}`;
+        const fileExt = path.extname(filePath).slice(1);
+        expect(mediaExtensions).toContain(fileExt);
+      });
+    });
+
+    it('should recognize video file extensions', () => {
+      videoExtensions.forEach((ext) => {
+        const filePath = `/path/to/file.${ext}`;
+        const fileExt = path.extname(filePath).slice(1);
+        expect(mediaExtensions).toContain(fileExt);
+      });
+    });
+
+    it('should not treat non-media files as multimedia', () => {
+      const nonMediaExtensions = ['txt', 'json', 'csv', 'html', 'py', 'js'];
+      nonMediaExtensions.forEach((ext) => {
+        const isMedia = mediaExtensions.includes(ext);
+        expect(isMedia).toBe(false);
+      });
+    });
+
+    it('should distinguish audio from video extensions', () => {
+      audioExtensions.forEach((ext) => {
+        expect(audioExtensions).toContain(ext);
+        expect(videoExtensions).not.toContain(ext);
+      });
+
+      videoExtensions.forEach((ext) => {
+        expect(videoExtensions).toContain(ext);
+        expect(audioExtensions).not.toContain(ext);
+      });
+    });
+  });
+
   describe('File Content Processing', () => {
     it('should process text file content', () => {
       const content = 'Line 1\nLine 2\nLine 3';

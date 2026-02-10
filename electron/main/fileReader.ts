@@ -501,6 +501,24 @@ export class FileReader {
           resolve(content);
         } else if (['pdf'].includes(type)) {
           resolve(filePath);
+        } else if (
+          [
+            'mp3',
+            'wav',
+            'ogg',
+            'flac',
+            'aac',
+            'm4a',
+            'wma',
+            'mp4',
+            'webm',
+            'ogv',
+            'mov',
+            'avi',
+            'mkv',
+          ].includes(type)
+        ) {
+          resolve(filePath);
         } else if (type === 'csv') {
           try {
             const htmlContent = await this.parseCsv(filePath);

@@ -60,6 +60,10 @@ interface FileInfo {
   isRemote?: boolean;
 }
 
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogv', 'mov', 'avi', 'mkv'];
+const MEDIA_EXTENSIONS = [...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS];
+
 // FileTree component to render nested file structure
 interface FileTreeProps {
   node: FileTreeNode;
@@ -221,8 +225,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     setLoading(true);
     console.log('file', JSON.parse(JSON.stringify(file)));
 
-    // For PDF files, use data URL instead of custom protocol
-    if (file.type === 'pdf') {
+    // For PDF and audio/video files, use data URL instead of custom protocol
+    if (['pdf', ...MEDIA_EXTENSIONS].includes(file.type?.toLowerCase())) {
       window.ipcRenderer
         .invoke('read-file-dataurl', file.path)
         .then((dataUrl: string) => {
@@ -661,6 +665,30 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   ].includes(selectedFile.type.toLowerCase()) ? (
                   <div className="flex h-full items-center justify-center">
                     <ImageLoader selectedFile={selectedFile} />
+                  </div>
+                ) : AUDIO_EXTENSIONS.includes(
+                    selectedFile.type.toLowerCase()
+                  ) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <audio
+                      controls
+                      src={selectedFile.content as string}
+                      className="w-full max-w-xl"
+                    >
+                      {t('folder.audio-not-supported')}
+                    </audio>
+                  </div>
+                ) : VIDEO_EXTENSIONS.includes(
+                    selectedFile.type.toLowerCase()
+                  ) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <video
+                      controls
+                      src={selectedFile.content as string}
+                      className="max-h-full max-w-full"
+                    >
+                      {t('folder.video-not-supported')}
+                    </video>
                   </div>
                 ) : (
                   <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
