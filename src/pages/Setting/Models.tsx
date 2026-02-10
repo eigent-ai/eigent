@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  fetchDelete,
   fetchGet,
   fetchPost,
   proxyFetchDelete,
@@ -1002,7 +1001,7 @@ export default function SettingModels() {
   const handleCodexOAuth = async (idx: number) => {
     setCodexConnecting(true);
     try {
-      const response = await fetchPost('/install/tool/codex');
+      const response = await fetchPost('/codex/connect');
       if (response.success) {
         await saveCodexAsProvider(response, idx);
         toast.success(t('setting.codex-installed-successfully'));
@@ -1014,7 +1013,7 @@ export default function SettingModels() {
           try {
             const statusResp = await fetchGet('/oauth/status/codex');
             if (statusResp?.status === 'success') {
-              const finalize = await fetchPost('/install/tool/codex');
+              const finalize = await fetchPost('/codex/connect');
               if (finalize?.success) {
                 await saveCodexAsProvider(finalize, idx);
                 toast.success(t('setting.codex-installed-successfully'));
@@ -1088,7 +1087,7 @@ export default function SettingModels() {
   // Disconnect Codex OAuth: revoke token, remove marker config, reset provider
   const handleCodexDisconnect = async (idx: number) => {
     try {
-      await fetchDelete('/uninstall/tool/codex');
+      await fetchPost('/codex/disconnect');
     } catch {
       // ignore cleanup failure
     }
