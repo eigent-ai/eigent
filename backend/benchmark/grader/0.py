@@ -94,8 +94,9 @@ def grade(working_directory: str) -> tuple[int, int]:
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "__format__":
             for child in ast.walk(node):
-                if isinstance(child, ast.Return
-                              ) and isinstance(child.value, ast.Constant):
+                if isinstance(child, ast.Return) and isinstance(
+                    child.value, ast.Constant
+                ):
                     if child.value.value == "":
                         completed += 1
                         break
@@ -114,8 +115,9 @@ def grade(working_directory: str) -> tuple[int, int]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "_":
             has_class_underscore = True
-        if isinstance(node,
-                      ast.Attribute) and isinstance(node.value, ast.Name):
+        if isinstance(node, ast.Attribute) and isinstance(
+            node.value, ast.Name
+        ):
             if node.value.id == "_" and node.attr == "_":
                 has_attr_underscore = True
     if has_class_underscore and has_attr_underscore:
