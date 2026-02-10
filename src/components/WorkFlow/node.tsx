@@ -21,7 +21,6 @@ import {
   ChatTaskStatus,
   TaskStatus,
 } from '@/types/constants';
-import { TooltipContent } from '@radix-ui/react-tooltip';
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
 import {
   Bird,
@@ -52,7 +51,7 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
-import { Tooltip, TooltipTrigger } from '../ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { MarkDown } from './MarkDown';
 
 interface NodeProps {
@@ -908,7 +907,11 @@ export function Node({ id, data }: NodeProps) {
                         {toolkit.message && (
                           <TooltipContent
                             align="start"
-                            className="scrollbar pointer-events-auto !fixed z-[9999] max-h-[200px] w-[200px] select-text overflow-y-auto text-wrap break-words rounded-sm border border-solid border-task-border-default bg-white-100% p-2 text-xs"
+                            className="scrollbar pointer-events-auto !fixed z-[9999] max-h-[200px] w-[200px] select-text overflow-y-auto text-wrap break-words rounded-sm border border-solid border-task-border-default p-2 text-xs"
+                            style={{
+                              backgroundColor: 'var(--surface-tertiary)',
+                              backdropFilter: 'none',
+                            }}
                             side="left"
                             sideOffset={200}
                           >

@@ -81,7 +81,7 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
               size={16}
               className="animate-spin text-icon-information"
             />
-            <span className="text-text-secondary animate-pulse text-sm">
+            <span className="animate-pulse text-sm text-text-secondary">
               {t('layout.task-splitting')}...
             </span>
           </div>
@@ -101,7 +101,7 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
         {/* Task type badge */}
         <div className="mb-2 flex items-center gap-2 px-sm">
           <TaskType type={1} />
-          <span className="text-text-tertiary text-xs font-medium">
+          <span className="text-xs font-medium text-text-tertiary">
             {t('layout.tasks')} {tasks.length}
           </span>
         </div>
@@ -131,7 +131,7 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
 
                 {/* Task content */}
                 <div className="relative flex min-h-4 w-full items-start border-[0px] border-b border-solid border-task-border-default pb-2">
-                  <span className="text-text-primary text-xs leading-[20px]">
+                  <span className="text-xs leading-[20px] text-text-primary">
                     {task}
                     {isCurrentlyStreaming && (
                       <span className="ml-0.5 inline-block h-4 w-1 animate-pulse bg-icon-information" />

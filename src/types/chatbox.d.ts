@@ -12,7 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { AgentStepType, AgentMessageStatusType, TaskStatusType, ChatTaskStatusType, AgentStatusType } from './constants';
+import type {
+  AgentMessageStatusType,
+  AgentStatusType,
+  AgentStepType,
+  TaskStatusType,
+} from './constants';
 
 // Global type definitions for ChatBox component
 
