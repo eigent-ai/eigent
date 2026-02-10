@@ -105,7 +105,9 @@ class TestModelControllerEnhanced:
             assert response.model_response_info is not None
             assert response.tool_call_info is not None
             assert response.validation_stages is not None
-            assert response.validation_stages["tool_call_execution"] is True
+            assert (
+                response.validation_stages["tool_call_execution"] is True
+            )
 
     @pytest.mark.asyncio
     async def test_validate_model_with_diagnostics_failure(self):
@@ -123,9 +125,7 @@ class TestModelControllerEnhanced:
             validation_result = ValidationResult()
             validation_result.is_valid = False
             validation_result.is_tool_calls = False
-            validation_result.error_type = (
-                ValidationErrorType.AUTHENTICATION_ERROR
-            )
+            validation_result.error_type = ValidationErrorType.AUTHENTICATION_ERROR
             validation_result.failed_stage = ValidationStage.MODEL_CREATION
             validation_result.raw_error_message = "401 Unauthorized"
             validation_result.error_message = "401 Unauthorized"
@@ -343,9 +343,7 @@ class TestModelControllerEnhanced:
             validation_result = ValidationResult()
             validation_result.is_valid = False
             validation_result.is_tool_calls = False
-            validation_result.error_type = (
-                ValidationErrorType.AUTHENTICATION_ERROR
-            )
+            validation_result.error_type = ValidationErrorType.AUTHENTICATION_ERROR
             validation_result.error_message = "Invalid API key"
             validation_result.error_details = {"code": "invalid_key"}
             mock_validate.return_value = validation_result
@@ -441,11 +439,6 @@ class TestModelControllerIntegrationEnhanced:
             assert response_data["is_valid"] is True
             assert response_data["is_tool_calls"] is True
             # Diagnostic fields should not be present when include_diagnostics=False
-            assert (
-                "error_type" not in response_data
-                or response_data.get("error_type") is None
-            )
-            assert (
-                "failed_stage" not in response_data
-                or response_data.get("failed_stage") is None
-            )
+            assert "error_type" not in response_data or response_data.get("error_type") is None
+            assert "failed_stage" not in response_data or response_data.get("failed_stage") is None
+

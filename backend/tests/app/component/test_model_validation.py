@@ -240,7 +240,9 @@ class TestValidateModelWithDetails:
         assert result.error_type == ValidationErrorType.AUTHENTICATION_ERROR
         assert result.failed_stage == ValidationStage.MODEL_CREATION
         assert result.validation_stages[ValidationStage.INITIALIZATION] is True
-        assert ValidationStage.INITIALIZATION in result.successful_stages
+        assert (
+            ValidationStage.INITIALIZATION in result.successful_stages
+        )
 
     @patch("app.component.model_validation.ModelFactory.create")
     @patch("app.component.model_validation.ChatAgent")
@@ -260,7 +262,9 @@ class TestValidateModelWithDetails:
 
         assert result.is_valid is False
         assert result.failed_stage == ValidationStage.AGENT_CREATION
-        assert result.validation_stages[ValidationStage.MODEL_CREATION] is True
+        assert (
+            result.validation_stages[ValidationStage.MODEL_CREATION] is True
+        )
 
     @patch("app.component.model_validation.ModelFactory.create")
     @patch("app.component.model_validation.ChatAgent")
@@ -282,7 +286,9 @@ class TestValidateModelWithDetails:
 
         assert result.is_valid is False
         assert result.failed_stage == ValidationStage.MODEL_CALL
-        assert result.validation_stages[ValidationStage.AGENT_CREATION] is True
+        assert (
+            result.validation_stages[ValidationStage.AGENT_CREATION] is True
+        )
 
     @patch("app.component.model_validation.ModelFactory.create")
     @patch("app.component.model_validation.ChatAgent")
@@ -308,7 +314,9 @@ class TestValidateModelWithDetails:
         assert result.is_tool_calls is False
         assert result.error_type == ValidationErrorType.TOOL_CALL_NOT_SUPPORTED
         assert result.failed_stage == ValidationStage.TOOL_CALL_EXECUTION
-        assert result.validation_stages[ValidationStage.MODEL_CALL] is True
+        assert (
+            result.validation_stages[ValidationStage.MODEL_CALL] is True
+        )
 
     @patch("app.component.model_validation.ModelFactory.create")
     @patch("app.component.model_validation.ChatAgent")
@@ -335,7 +343,8 @@ class TestValidateModelWithDetails:
         assert result.is_valid is False
         assert result.is_tool_calls is False
         assert (
-            result.error_type == ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
+            result.error_type
+            == ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
         )
         assert result.failed_stage == ValidationStage.TOOL_CALL_EXECUTION
 
@@ -366,10 +375,14 @@ class TestValidateModelWithDetails:
         assert result.error_type is None
         assert result.failed_stage is None
         assert (
-            result.validation_stages[ValidationStage.TOOL_CALL_EXECUTION]
+            result.validation_stages[
+                ValidationStage.TOOL_CALL_EXECUTION
+            ]
             is True
         )
-        assert ValidationStage.TOOL_CALL_EXECUTION in result.successful_stages
+        assert (
+            ValidationStage.TOOL_CALL_EXECUTION in result.successful_stages
+        )
 
     @patch("app.component.model_validation.ModelFactory.create")
     @patch("app.component.model_validation.ChatAgent")
@@ -399,3 +412,4 @@ class TestValidateModelWithDetails:
         assert result.model_response_info is not None
         assert result.tool_call_info is not None
         assert result.tool_call_info["execution_successful"] is True
+
