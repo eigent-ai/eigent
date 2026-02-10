@@ -34,6 +34,7 @@ jobs:
           uv run pre-commit run --files \
             $(find \
               app/agent \
+              app/component \
               app/controller \
               app/exception \
               app/middleware \
@@ -44,7 +45,6 @@ jobs:
             app/__init__.py \
             app/router.py \
             app/component/__init__.py \
-            app/component/model_validation.py \
             app/component/pydantic/__init__.py \
             app/utils/listen/__init__.py \
             app/utils/server/__init__.py \
@@ -56,8 +56,6 @@ jobs:
             app/utils/toolkit/slack_toolkit.py \
             app/utils/toolkit/twitter_toolkit.py \
             app/utils/toolkit/whatsapp_toolkit.py \
-            app/utils/workforce.py \
-            app/utils/single_agent_worker.py \
             tests/conftest.py
         env:
           SKIP: no-commit-to-branch
