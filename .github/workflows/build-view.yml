@@ -97,11 +97,13 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 90
         run: |
-          # Increase file descriptor limit to prevent EMFILE errors during signing
-          # This is needed because electron-builder signs all files recursively,
-          # and Python venvs contain thousands of files
-          ulimit -n 65536 || ulimit -n 10240
-          echo "File descriptor limit set to: $(ulimit -n)"
+          # Set file descriptor limit to system maximum (hard limit) to prevent EMFILE during signing
+          HARD=$(ulimit -Hn 2>/dev/null)
+          if [ -n "$HARD" ] && [ "$HARD" != "unlimited" ]; then
+            ulimit -n "$HARD" 2>/dev/null || true
+          fi
+          ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
+          echo "File descriptor limit: $(ulimit -n) (hard: $(ulimit -Hn 2>/dev/null || echo 'N/A'))"
           npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
