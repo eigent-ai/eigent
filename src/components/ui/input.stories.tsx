@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Input } from './input'
-import { Search, Eye, EyeOff } from 'lucide-react'
-import { useState } from 'react'
-import { expect, fn, userEvent, within } from 'storybook/test'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Eye, EyeOff, Search } from 'lucide-react';
+import { useState } from 'react';
+import { expect, fn, userEvent, within } from 'storybook/test';
+import { Input } from './input';
 
 const meta: Meta<typeof Input> = {
   title: 'UI/Input',
@@ -44,17 +44,17 @@ const meta: Meta<typeof Input> = {
       </div>
     ),
   ],
-}
+};
 
-export default meta
+export default meta;
 
-type Story = StoryObj<typeof Input>
+type Story = StoryObj<typeof Input>;
 
 export const Default: Story = {
   args: {
     placeholder: 'Enter text...',
   },
-}
+};
 
 export const WithTitle: Story = {
   args: {
@@ -62,7 +62,7 @@ export const WithTitle: Story = {
     placeholder: 'name@example.com',
     type: 'email',
   },
-}
+};
 
 export const Required: Story = {
   args: {
@@ -70,7 +70,7 @@ export const Required: Story = {
     placeholder: 'Enter username',
     required: true,
   },
-}
+};
 
 export const WithTooltip: Story = {
   args: {
@@ -78,7 +78,7 @@ export const WithTooltip: Story = {
     placeholder: 'Enter your API key',
     tooltip: 'Your API key can be found in your account settings',
   },
-}
+};
 
 export const WithNote: Story = {
   args: {
@@ -87,7 +87,7 @@ export const WithNote: Story = {
     placeholder: 'Enter password',
     note: 'Must be at least 8 characters',
   },
-}
+};
 
 export const ErrorState: Story = {
   args: {
@@ -97,7 +97,7 @@ export const ErrorState: Story = {
     note: 'Please enter a valid email address',
     defaultValue: 'invalid-email',
   },
-}
+};
 
 export const SuccessState: Story = {
   args: {
@@ -107,7 +107,7 @@ export const SuccessState: Story = {
     note: 'Username is available',
     defaultValue: 'johndoe',
   },
-}
+};
 
 export const Disabled: Story = {
   args: {
@@ -116,25 +116,25 @@ export const Disabled: Story = {
     disabled: true,
     defaultValue: 'Cannot edit',
   },
-}
+};
 
 export const SmallSize: Story = {
   args: {
     size: 'sm',
     placeholder: 'Small input',
   },
-}
+};
 
 export const WithLeadingIcon: Story = {
   args: {
     placeholder: 'Search...',
     leadingIcon: <Search size={16} />,
   },
-}
+};
 
 export const WithBackIcon: Story = {
   render: function PasswordInput() {
-    const [showPassword, setShowPassword] = useState(false)
+    const [showPassword, setShowPassword] = useState(false);
     return (
       <Input
         title="Password"
@@ -143,9 +143,9 @@ export const WithBackIcon: Story = {
         backIcon={showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
         onBackIconClick={() => setShowPassword(!showPassword)}
       />
-    )
+    );
   },
-}
+};
 
 export const AllStates: Story = {
   render: () => (
@@ -168,7 +168,7 @@ export const AllStates: Story = {
       <Input title="Disabled" disabled placeholder="Disabled state" />
     </div>
   ),
-}
+};
 
 export const FormExample: Story = {
   render: () => (
@@ -201,7 +201,7 @@ export const FormExample: Story = {
       </div>
     ),
   ],
-}
+};
 
 // Interaction test stories
 export const TypeInteraction: Story = {
@@ -210,24 +210,24 @@ export const TypeInteraction: Story = {
     onChange: fn(),
   },
   play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement)
-    const input = canvas.getByPlaceholderText('Type something...')
+    const canvas = within(canvasElement);
+    const input = canvas.getByPlaceholderText('Type something...');
 
     // Test that input is visible and enabled
-    await expect(input).toBeVisible()
-    await expect(input).toBeEnabled()
+    await expect(input).toBeVisible();
+    await expect(input).toBeEnabled();
 
     // Clear any existing value and type new text
-    await userEvent.clear(input)
-    await userEvent.type(input, 'Hello World')
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Hello World');
 
     // Verify the input value
-    await expect(input).toHaveValue('Hello World')
+    await expect(input).toHaveValue('Hello World');
 
     // Verify onChange was called
-    await expect(args.onChange).toHaveBeenCalled()
+    await expect(args.onChange).toHaveBeenCalled();
   },
-}
+};
 
 export const FocusInteraction: Story = {
   args: {
@@ -237,18 +237,18 @@ export const FocusInteraction: Story = {
     onBlur: fn(),
   },
   play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement)
-    const input = canvas.getByPlaceholderText('Click to focus...')
+    const canvas = within(canvasElement);
+    const input = canvas.getByPlaceholderText('Click to focus...');
 
     // Click to focus the input
-    await userEvent.click(input)
-    await expect(args.onFocus).toHaveBeenCalled()
+    await userEvent.click(input);
+    await expect(args.onFocus).toHaveBeenCalled();
 
     // Tab away to blur
-    await userEvent.tab()
-    await expect(args.onBlur).toHaveBeenCalled()
+    await userEvent.tab();
+    await expect(args.onBlur).toHaveBeenCalled();
   },
-}
+};
 
 export const ClearAndTypeInteraction: Story = {
   args: {
@@ -257,24 +257,24 @@ export const ClearAndTypeInteraction: Story = {
     defaultValue: 'Initial value',
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const input = canvas.getByPlaceholderText('Edit this text')
+    const canvas = within(canvasElement);
+    const input = canvas.getByPlaceholderText('Edit this text');
 
     // Verify initial value
-    await expect(input).toHaveValue('Initial value')
+    await expect(input).toHaveValue('Initial value');
 
     // Select all and replace
-    await userEvent.tripleClick(input)
-    await userEvent.type(input, 'Replaced text')
+    await userEvent.tripleClick(input);
+    await userEvent.type(input, 'Replaced text');
 
     // Verify the new value
-    await expect(input).toHaveValue('Replaced text')
+    await expect(input).toHaveValue('Replaced text');
   },
-}
+};
 
 export const PasswordToggleInteraction: Story = {
   render: function PasswordToggle() {
-    const [showPassword, setShowPassword] = useState(false)
+    const [showPassword, setShowPassword] = useState(false);
     return (
       <Input
         title="Password"
@@ -284,22 +284,22 @@ export const PasswordToggleInteraction: Story = {
         backIcon={showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
         onBackIconClick={() => setShowPassword(!showPassword)}
       />
-    )
+    );
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const input = canvas.getByPlaceholderText('Enter password')
-    const toggleButton = canvas.getByRole('button')
+    const canvas = within(canvasElement);
+    const input = canvas.getByPlaceholderText('Enter password');
+    const toggleButton = canvas.getByRole('button');
 
     // Initially password should be hidden (type="password")
-    await expect(input).toHaveAttribute('type', 'password')
+    await expect(input).toHaveAttribute('type', 'password');
 
     // Click toggle to show password
-    await userEvent.click(toggleButton)
-    await expect(input).toHaveAttribute('type', 'text')
+    await userEvent.click(toggleButton);
+    await expect(input).toHaveAttribute('type', 'text');
 
     // Click toggle again to hide password
-    await userEvent.click(toggleButton)
-    await expect(input).toHaveAttribute('type', 'password')
+    await userEvent.click(toggleButton);
+    await expect(input).toHaveAttribute('type', 'password');
   },
-}
+};

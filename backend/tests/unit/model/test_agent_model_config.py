@@ -1,4 +1,18 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """Unit tests for AgentModelConfig and per-agent model configuration."""
+
 from app.model.chat import AgentModelConfig, NewAgent
 
 
@@ -21,7 +35,7 @@ class TestAgentModelConfig:
             model_type="gpt-4",
             api_key="test-key",
             api_url="https://api.openai.com/v1",
-            extra_params={"temperature": 0.7}
+            extra_params={"temperature": 0.7},
         )
         assert config.model_platform == "openai"
         assert config.model_type == "gpt-4"
@@ -47,8 +61,7 @@ class TestAgentModelConfig:
     def test_has_custom_config_true_with_both(self):
         """Test has_custom_config returns True when both are set."""
         config = AgentModelConfig(
-            model_platform="anthropic",
-            model_type="claude-3-opus"
+            model_platform="anthropic", model_type="claude-3-opus"
         )
         assert config.has_custom_config() is True
 
@@ -67,7 +80,7 @@ class TestNewAgentWithModelConfig:
             name="TestAgent",
             description="A test agent",
             tools=[],
-            mcp_tools=None
+            mcp_tools=None,
         )
         assert agent.name == "TestAgent"
         assert agent.custom_model_config is None
@@ -75,15 +88,14 @@ class TestNewAgentWithModelConfig:
     def test_new_agent_with_model_config(self):
         """Test NewAgent creation with custom model config."""
         model_config = AgentModelConfig(
-            model_platform="openai",
-            model_type="gpt-4-turbo"
+            model_platform="openai", model_type="gpt-4-turbo"
         )
         agent = NewAgent(
             name="CustomModelAgent",
             description="An agent with custom model",
             tools=[],
             mcp_tools=None,
-            custom_model_config=model_config
+            custom_model_config=model_config,
         )
         assert agent.name == "CustomModelAgent"
         assert agent.custom_model_config is not None
@@ -93,15 +105,14 @@ class TestNewAgentWithModelConfig:
     def test_new_agent_serialization_with_model_config(self):
         """Test NewAgent serialization includes model config."""
         model_config = AgentModelConfig(
-            model_platform="anthropic",
-            model_type="claude-3-sonnet"
+            model_platform="anthropic", model_type="claude-3-sonnet"
         )
         agent = NewAgent(
             name="SerializationTest",
             description="Test serialization",
             tools=[],
             mcp_tools=None,
-            custom_model_config=model_config
+            custom_model_config=model_config,
         )
         data = agent.model_dump()
         assert "custom_model_config" in data

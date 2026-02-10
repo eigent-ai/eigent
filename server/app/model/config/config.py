@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 from app.type.config_group import ConfigGroup
 
@@ -79,7 +80,12 @@ class ConfigInfo:
             "toolkit": "whatsapp_toolkit",
         },
         ConfigGroup.LINKEDIN.value: {
-            "env_vars": ["LINKEDIN_ACCESS_TOKEN"],
+            "env_vars": [
+                "LINKEDIN_CLIENT_ID",
+                "LINKEDIN_CLIENT_SECRET",
+                "LINKEDIN_ACCESS_TOKEN",
+                "LINKEDIN_REFRESH_TOKEN",
+            ],
             "toolkit": "linkedin_toolkit",
         },
         ConfigGroup.REDDIT.value: {
@@ -157,6 +163,10 @@ class ConfigInfo:
         ConfigGroup.PPTX.value: {
             "env_vars": [],
             "toolkit": "pptx_toolkit",
+        },
+        ConfigGroup.RAG.value: {
+            "env_vars": ["OPENAI_API_KEY"],
+            "toolkit": "rag_toolkit",
         },
         ConfigGroup.REDDIT.value: {
             "env_vars": [

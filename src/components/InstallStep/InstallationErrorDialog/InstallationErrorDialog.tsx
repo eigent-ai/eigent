@@ -12,17 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogContentSection,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { error } from "electron-log";
-import { t } from "i18next";
-import React from "react";
+} from '@/components/ui/dialog';
+import { t } from 'i18next';
 
 interface InstallationErrorDialogProps {
   error: string;
@@ -37,48 +34,48 @@ const InstallationErrorDialog = ({
   error,
   backendError,
   installationState,
-  latestLog,
+  latestLog: _latestLog,
   retryInstallation,
   retryBackend,
-}:InstallationErrorDialogProps) => {
+}: InstallationErrorDialogProps) => {
   if (backendError) {
     return (
       <Dialog open={true}>
-        <DialogContent className="bg-white-100%">
-          <DialogHeader>
-            <DialogTitle>{t("layout.backend-startup-failed")}</DialogTitle>
-          </DialogHeader>
-          <div className="text-text-label text-xs font-normal leading-tight mb-4">
-            <div className="mb-1">
-              <span className="text-text-label/60">
-                {backendError}
-              </span>
+        <DialogContent size="sm">
+          <DialogHeader title={t('layout.backend-startup-failed')} />
+          <DialogContentSection>
+            <div className="text-xs font-normal leading-normal text-text-label">
+              <div className="mb-1">
+                <span className="text-text-label">{backendError}</span>
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={retryBackend}>{t("layout.retry")}</Button>
-          </DialogFooter>
+          </DialogContentSection>
+          <DialogFooter
+            showConfirmButton
+            confirmButtonText={t('layout.retry')}
+            onConfirm={retryBackend}
+          />
         </DialogContent>
       </Dialog>
     );
   }
 
   return (
-    <Dialog open={installationState == "error"}>
-      <DialogContent className="bg-white-100%">
-        <DialogHeader>
-          <DialogTitle>{t("layout.installation-failed")}</DialogTitle>
-        </DialogHeader>
-        <div className="text-text-label text-xs font-normal leading-tight mb-4">
-          <div className="mb-1">
-            <span className="text-text-label/60">
-              {error}
-            </span>
+    <Dialog open={installationState == 'error'}>
+      <DialogContent size="sm">
+        <DialogHeader title={t('layout.installation-failed')} />
+        <DialogContentSection>
+          <div className="text-xs font-normal leading-normal text-text-label">
+            <div className="mb-1">
+              <span className="text-text-label">{error}</span>
+            </div>
           </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={retryInstallation}>{t("layout.retry")}</Button>
-        </DialogFooter>
+        </DialogContentSection>
+        <DialogFooter
+          showConfirmButton
+          confirmButtonText={t('layout.retry')}
+          onConfirm={retryInstallation}
+        />
       </DialogContent>
     </Dialog>
   );
