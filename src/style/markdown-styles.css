@@ -41,6 +41,8 @@
 .markdown-body p {
   margin-bottom: 0.75em;
   margin-top: 0;
+  font-size: var(--fontSize-sm, 13px);
+  line-height: var(--lineHeight-14, 20px);
 }
 
 /* Code blocks styling */

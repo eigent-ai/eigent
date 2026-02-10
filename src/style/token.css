@@ -176,7 +176,7 @@
 
     /* Component Tokens */
     /* Input Component */
-    --input-bg-input: var(--surface-secondary);
+    --input-bg-input: var(--surface-tertiary);
     --input-bg-spliting: var(--surface-information);
     --input-bg-confirm: var(--surface-success);
     --input-bg-default: var(--surface-primary);
@@ -366,7 +366,7 @@
     --tag-foreground-cuation: var(--text-cuation);
     --tag-foreground-default: var(--text-body);
     --tag-fill-default: var(--surface-tertiary);
-    --tag-fill-default-foreground: var(--surface-secondary);
+    --tag-fill-default-foreground: var(--surface-information);
 
     /* Project Component */
     --project-surface: var(--surface-tertiary);
@@ -393,7 +393,7 @@
     --task-border-focus-success: var(--border-success);
     --task-border-focus-warning: var(--border-warning);
     --task-border-focus-error: var(--border-cuation);
-    --task-fill-running: var(--surface-secondary);
+    --task-fill-running: var(--surface-primary);
 
     /* Log Component */
     --log-default: #f5f5f5;
@@ -497,7 +497,7 @@
     --border-success: var(--colors-green-default);
     --border-warning: var(--colors-yellow-default);
     --border-cuation: var(--colors-red-default);
-    --border-focus: var(--colors-primary-5);
+    --border-focus: var(--colors-primary-4);
     --border-action: var(--colors-primary-3);
     --border-action-hover: var(--colors-primary-4);
     --border-disabled: var(--colors-primary-2);
@@ -615,7 +615,7 @@
     --border-success: var(--colors-green-default);
     --border-warning: var(--colors-yellow-default);
     --border-cuation: var(--colors-red-default);
-    --border-focus: var(--colors-primary-5);
+    --border-focus: var(--colors-primary-4);
     --border-action: var(--colors-primary-3);
     --border-action-hover: var(--colors-primary-4);
     --border-disabled: var(--colors-primary-2);
@@ -689,6 +689,7 @@
     --bg-dark-tertiary: var(--colors-off-black-10);
     --bg-dark-default: var(--colors-off-black-100);
     --bg-page-default: var(--colors-off-white-100);
+    --background: var(--bg-page);
   }
 
   .root,
@@ -741,7 +742,7 @@
     --border-success: rgba(74, 222, 128, 0.6);
     --border-cuation: rgba(248, 113, 113, 0.6);
     --border-warning: rgba(250, 204, 21, 0.6);
-    --border-focus: rgba(226, 232, 240, 0.4);
+    --border-focus: rgba(226, 232, 240, 0.2);
     --border-action: rgba(148, 163, 184, 0.24);
     --border-action-hover: rgba(226, 232, 240, 0.38);
     --border-disabled: rgba(148, 163, 184, 0.08);
@@ -815,6 +816,7 @@
     --bg-dark-tertiary: #2c3950;
     --bg-dark-default: #0d1424;
     --bg-page-default: #0d1424;
+    --background: var(--bg-page);
     --task-fill-running: #1f2937;
     --log-default: #1f2937;
     --code-surface: #27272a;
