@@ -567,19 +567,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       }
 
-      let mcpLocal: { mcpServers?: Record<string, unknown> } = {};
-      if (window.ipcRenderer) {
-        try {
-          mcpLocal = (await window.ipcRenderer.invoke('mcp-list')) || {
-            mcpServers: {},
-          };
-        } catch (error) {
-          console.error('Failed to load MCP config:', error);
-          mcpLocal = { mcpServers: {} };
-        }
-      }
-      console.log('mcpLocal', mcpLocal);
-
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
       if (modelType === 'custom') {
@@ -730,10 +717,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               api_key: apiModel.api_key,
               api_url: apiModel.api_url,
               extra_params: apiModel.extra_params,
-              installed_mcp:
-                mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object'
-                  ? mcpLocal
-                  : { mcpServers: {} },
+              installed_mcp: { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
               attaches: (
