@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/popover';
 import { Tag } from '@/components/ui/tag';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { HistoryTask } from '@/types/history';
 import { ChatTaskStatus } from '@/types/constants';
+import { HistoryTask } from '@/types/history';
 import {
   CheckCircle,
   CirclePause,

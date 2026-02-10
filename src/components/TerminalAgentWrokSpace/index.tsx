@@ -129,7 +129,7 @@ export default function TerminalAgentWrokSpace() {
             className="rounded-full"
           >
             <ChevronLeft size={16} className="text-text-inverse-primary" />
-            <span className="text-text-inverse-primary text-sm font-bold leading-13">
+            <span className="text-sm font-bold leading-13 text-text-inverse-primary">
               {t('chat.give-back-to-agent')}
             </span>
           </Button>
@@ -172,7 +172,7 @@ export default function TerminalAgentWrokSpace() {
                 {agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
               </div>
             </div>
-            <div className="text-text-tertiary text-[10px] font-medium leading-17">
+            <div className="text-[10px] font-medium leading-17 text-text-tertiary">
               {
                 activeAgent?.tasks?.filter(
                   (task) => task.status && task.status !== 'running'

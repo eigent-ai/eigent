@@ -48,8 +48,8 @@ export function GlobalSearch() {
         className="bg-bg-surface-secondary no-drag flex h-6 w-60 items-center justify-center space-x-2 rounded-lg"
         onClick={() => setOpen(true)}
       >
-        <Search className="text-text-secondary h-4 w-4"></Search>
-        <span className="text-text-secondary font-inter text-[10px] leading-4">
+        <Search className="h-4 w-4 text-text-secondary"></Search>
+        <span className="font-inter text-[10px] leading-4 text-text-secondary">
           {t('dashboard.search-for-a-task-or-document')}
         </span>
       </div>

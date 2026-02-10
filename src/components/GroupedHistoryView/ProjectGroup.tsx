@@ -24,8 +24,8 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { replayProject } from '@/lib/replay';
 import { useProjectStore } from '@/store/projectStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
-import { ChatTaskStatus } from "@/types/constants";
 import { motion } from 'framer-motion';
 import {
   Edit,
@@ -101,7 +101,8 @@ export default function ProjectGroup({
     // Check if any task in chatStore with matching task_id has pending status
     return Object.entries(chatStore.tasks).some(
       ([taskId, task]) =>
-        projectTaskIds.includes(taskId) && task.status === ChatTaskStatus.PENDING
+        projectTaskIds.includes(taskId) &&
+        task.status === ChatTaskStatus.PENDING
     );
   }, [chatStore?.tasks, project.tasks]);
   const _hasIssue = hasHumanInLoop;

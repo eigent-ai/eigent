@@ -47,4 +47,4 @@ Click on the Minimax Config card and fill in the following fields:
 
 ![Minimax 4 Pn](/docs/images/minimax_3.png)
 
----
+______________________________________________________________________
