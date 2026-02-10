@@ -1650,7 +1650,6 @@ async function createWindow() {
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
     const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
     const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
-    const venvZipPath = path.join(prebuiltDir, 'venv.zip');
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
@@ -1661,8 +1660,7 @@ async function createWindow() {
     );
     const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
 
-    // macOS: venv is venv.zip (extracted at runtime); others: venv dir
-    const hasVenv = fs.existsSync(pyvenvCfg) || fs.existsSync(venvZipPath);
+    const hasVenv = fs.existsSync(pyvenvCfg);
     hasPrebuiltDeps =
       fs.existsSync(uvPath) && fs.existsSync(bunPath) && hasVenv;
     if (hasPrebuiltDeps) {

@@ -63,7 +63,6 @@ export const checkAndInstallDepsOnUpdate = async ({
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
     const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
     const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
-    const venvZipPath = path.join(prebuiltDir, 'venv.zip');
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
@@ -75,8 +74,7 @@ export const checkAndInstallDepsOnUpdate = async ({
     const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
 
     const hasBinaries = fs.existsSync(uvPath) && fs.existsSync(bunPath);
-    // venv as dir (Win/Linux) or venv.zip (macOS - zipped to fix EMFILE during signing)
-    const hasVenv = fs.existsSync(pyvenvCfg) || fs.existsSync(venvZipPath);
+    const hasVenv = fs.existsSync(pyvenvCfg);
 
     if (hasBinaries && hasVenv) {
       log.info(

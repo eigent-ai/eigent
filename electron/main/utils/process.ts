@@ -16,11 +16,8 @@ import { execSync, spawn } from 'child_process';
 import { app } from 'electron';
 import log from 'electron-log';
 import fs from 'fs';
-import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
-
-const require = createRequire(import.meta.url);
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -347,72 +344,7 @@ function fixVenvScriptShebangs(venvPath: string): boolean {
   }
 }
 
-const PREBUILT_VERSION_FILE = '.prebuilt_version';
 const PREBUILT_FIXED_MARKER = '.prebuilt_fixed';
-
-/**
- * Extract venv.zip to userData (macOS: venv is zipped to fix EMFILE during signing).
- * Re-extracts when app version changes so we don't reuse stale venv from older releases.
- */
-function extractVenvZipIfNeeded(venvZipPath: string): string | null {
-  const userData = app.getPath('userData');
-  const prebuiltDir = path.join(userData, 'prebuilt');
-  const extractedVenvPath = path.join(prebuiltDir, 'venv');
-  const pyvenvCfgPath = path.join(extractedVenvPath, 'pyvenv.cfg');
-  const versionFile = path.join(prebuiltDir, PREBUILT_VERSION_FILE);
-  const currentVersion = app.getVersion();
-
-  if (fs.existsSync(pyvenvCfgPath)) {
-    const storedVersion = fs.existsSync(versionFile)
-      ? fs.readFileSync(versionFile, 'utf-8').trim()
-      : null;
-    if (storedVersion === currentVersion) {
-      log.info(
-        `[VENV] venv already extracted at ${extractedVenvPath}, using existing (v${currentVersion})`
-      );
-      fixExtractedVenvPermissions(extractedVenvPath);
-      return extractedVenvPath;
-    }
-    log.info(
-      `[VENV] Version changed (${storedVersion ?? 'unknown'} -> ${currentVersion}), re-extracting venv...`
-    );
-    try {
-      fs.rmSync(extractedVenvPath, { recursive: true, force: true });
-    } catch (e) {
-      log.warn(`[VENV] Failed to remove old venv: ${e}`);
-    }
-  }
-
-  log.info(`[VENV] Extracting venv.zip to ${extractedVenvPath}...`);
-  const extractDir = path.dirname(extractedVenvPath);
-  fs.mkdirSync(extractDir, { recursive: true });
-
-  try {
-    // Use native ditto on macOS - typically 2-5x faster than adm-zip for large zips
-    if (process.platform === 'darwin') {
-      execSync(`ditto -x -k --sequesterRsrc "${venvZipPath}" "${extractDir}"`, {
-        stdio: 'ignore',
-      });
-    } else {
-      const AdmZip = require('adm-zip');
-      const zip = new AdmZip(venvZipPath);
-      zip.extractAllTo(extractDir, true);
-    }
-    log.info(`[VENV] Extracted venv successfully`);
-
-    // Fix executable permissions (ditto preserves them, adm-zip doesn't)
-    fixExtractedVenvPermissions(extractedVenvPath);
-
-    // Record version so we re-extract on upgrade
-    fs.mkdirSync(prebuiltDir, { recursive: true });
-    fs.writeFileSync(versionFile, currentVersion, 'utf-8');
-
-    return extractedVenvPath;
-  } catch (error) {
-    log.error(`[VENV] Failed to extract venv.zip: ${error}`);
-    return null;
-  }
-}
 
 /**
  * Ensure venv/bin/python exists - create symlink if missing or broken.
@@ -483,44 +415,8 @@ function ensureVenvPythonSymlink(venvPath: string): boolean {
 }
 
 /**
- * Set executable permissions on venv bin files (adm-zip doesn't preserve them).
- * Also remove macOS quarantine attr which can cause "Permission denied".
- */
-function fixExtractedVenvPermissions(venvPath: string): void {
-  if (process.platform === 'win32') return;
-
-  const binDir = path.join(venvPath, 'bin');
-  if (!fs.existsSync(binDir)) return;
-
-  try {
-    const entries = fs.readdirSync(binDir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(binDir, entry.name);
-      if (entry.isFile()) {
-        fs.chmodSync(fullPath, 0o755);
-      }
-    }
-    log.info(
-      `[VENV] Fixed executable permissions on ${entries.length} entries in bin/`
-    );
-
-    // Remove macOS quarantine - extracted files may be blocked from execution
-    if (process.platform === 'darwin') {
-      try {
-        execSync(`xattr -cr "${venvPath}"`, { stdio: 'ignore' });
-        log.info(`[VENV] Removed quarantine attributes`);
-      } catch {
-        // xattr may fail if not needed, ignore
-      }
-    }
-  } catch (error) {
-    log.warn(`[VENV] Failed to fix permissions: ${error}`);
-  }
-}
-
-/**
  * Get path to prebuilt venv (if available in packaged app)
- * On macOS, venv is shipped as venv.zip to avoid EMFILE during code signing.
+ * All platforms use prebuilt/venv directory.
  */
 export function getPrebuiltVenvPath(): string | null {
   if (!app.isPackaged) {
@@ -529,14 +425,11 @@ export function getPrebuiltVenvPath(): string | null {
 
   const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
   const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
-  const venvZipPath = path.join(prebuiltDir, 'venv.zip');
   const pyvenvCfgPath = path.join(prebuiltVenvPath, 'pyvenv.cfg');
   const fixedMarkerPath = path.join(prebuiltDir, PREBUILT_FIXED_MARKER);
   const currentVersion = app.getVersion();
 
-  // Case 1: venv as directory (Windows, Linux - before-sign doesn't run there)
   if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(pyvenvCfgPath)) {
-    // Check if already fixed for this version
     const needsFix =
       !fs.existsSync(fixedMarkerPath) ||
       fs.readFileSync(fixedMarkerPath, 'utf-8').trim() !== currentVersion;
@@ -553,36 +446,6 @@ export function getPrebuiltVenvPath(): string | null {
       return prebuiltVenvPath;
     }
     log.warn(`[VENV] Prebuilt venv Python missing at: ${pythonExePath}`);
-  }
-
-  // Case 2: venv as zip (macOS - compressed in before-sign to fix EMFILE)
-  if (fs.existsSync(venvZipPath)) {
-    const extractedPath = extractVenvZipIfNeeded(venvZipPath);
-    if (extractedPath) {
-      const extractedPyvenvCfg = path.join(extractedPath, 'pyvenv.cfg');
-      const extractedFixedMarker = path.join(
-        path.dirname(extractedPath),
-        PREBUILT_FIXED_MARKER
-      );
-
-      // Check if already fixed for this version
-      const needsFix =
-        !fs.existsSync(extractedFixedMarker) ||
-        fs.readFileSync(extractedFixedMarker, 'utf-8').trim() !==
-          currentVersion;
-
-      if (needsFix) {
-        fixPyvenvCfgPlaceholder(extractedPyvenvCfg);
-        ensureVenvPythonSymlink(extractedPath);
-        fixVenvScriptShebangs(extractedPath);
-        fs.writeFileSync(extractedFixedMarker, currentVersion, 'utf-8');
-      }
-
-      const pythonExePath = getVenvPythonPath(extractedPath);
-      if (fs.existsSync(pythonExePath)) {
-        return extractedPath;
-      }
-    }
   }
 
   return null;
@@ -655,26 +518,16 @@ export function ensureBackendVenvAtUserPath(version: string): void {
 
   const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
   const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
-  const venvZipPath = path.join(prebuiltDir, 'venv.zip');
   const prebuiltUvPython = path.join(prebuiltDir, 'uv_python');
 
-  // Check if we have prebuilt venv (either directory or zip)
-  let sourceVenvPath: string | null = null;
-
   if (
-    fs.existsSync(prebuiltVenvPath) &&
-    fs.existsSync(path.join(prebuiltVenvPath, 'pyvenv.cfg'))
+    !fs.existsSync(prebuiltVenvPath) ||
+    !fs.existsSync(path.join(prebuiltVenvPath, 'pyvenv.cfg'))
   ) {
-    sourceVenvPath = prebuiltVenvPath;
-  } else if (fs.existsSync(venvZipPath)) {
-    // For macOS venv.zip: use extractVenvZipIfNeeded (extracts to userData, avoids ditto permission issues)
-    const extracted = extractVenvZipIfNeeded(venvZipPath);
-    if (extracted) {
-      sourceVenvPath = extracted;
-    }
+    return;
   }
 
-  if (!sourceVenvPath) return;
+  const sourceVenvPath = prebuiltVenvPath;
 
   const userVenvsDir = path.join(os.homedir(), '.eigent', 'venvs');
   const userBackendVenv = path.join(userVenvsDir, `backend-${version}`);
@@ -714,11 +567,6 @@ export function ensureBackendVenvAtUserPath(version: string): void {
       fs.rmSync(userBackendVenv, { recursive: true, force: true });
     }
 
-    // Copy from source (prebuilt dir or userData venv from extractVenvZipIfNeeded)
-    if (!sourceVenvPath) {
-      log.error(`[VENV] No source venv found to copy`);
-      return;
-    }
     fs.cpSync(sourceVenvPath, userBackendVenv, {
       recursive: true,
       verbatimSymlinks: true,
@@ -742,6 +590,60 @@ export function ensureBackendVenvAtUserPath(version: string): void {
 
     fs.writeFileSync(versionFile, version, 'utf-8');
     log.info(`[VENV] Backend venv copied successfully`);
+
+    // Sync optional deps from backend/uv.lock into user venv (e.g. yt_dlp if excluded from app bundle).
+    // Runs in background so app startup is not blocked; uses China mirror when timezone is Asia/Shanghai.
+    const uvPath = getPrebuiltBinaryPath('uv');
+    const backendPath = getBackendPath();
+    const uvLockPath = path.join(backendPath, 'uv.lock');
+    if (
+      uvPath &&
+      fs.existsSync(uvLockPath) &&
+      fs.existsSync(path.join(backendPath, 'pyproject.toml'))
+    ) {
+      const prebuiltPython = getPrebuiltPythonDir();
+      const uvEnv = {
+        ...process.env,
+        UV_PROJECT_ENVIRONMENT: userBackendVenv,
+        UV_PYTHON_INSTALL_DIR: prebuiltPython || getCachePath('uv_python'),
+        UV_TOOL_DIR: getCachePath('uv_tool'),
+        UV_HTTP_TIMEOUT: '300',
+      } as NodeJS.ProcessEnv;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const syncArgs =
+        timezone === 'Asia/Shanghai'
+          ? [
+              'sync',
+              '--no-dev',
+              '--default-index',
+              'https://mirrors.aliyun.com/pypi/simple/',
+              '--index',
+              'https://pypi.org/simple/',
+            ]
+          : ['sync', '--no-dev'];
+      log.info(
+        '[VENV] Starting background uv sync to install optional deps (e.g. yt_dlp); app will not wait.'
+      );
+      const child = spawn(uvPath, syncArgs, {
+        cwd: backendPath,
+        env: uvEnv,
+        stdio: 'ignore',
+        detached: true,
+      });
+      child.unref();
+      child.on('error', (err) => {
+        log.warn(`[VENV] Background uv sync error: ${err.message}`);
+      });
+      child.on('exit', (code) => {
+        if (code === 0) {
+          log.info('[VENV] Background uv sync completed');
+        } else {
+          log.warn(
+            `[VENV] Background uv sync exited with code ${code} (optional deps may be missing)`
+          );
+        }
+      });
+    }
   } catch (error) {
     log.error(`[VENV] Failed to copy backend venv: ${error}`);
   }
@@ -949,23 +851,10 @@ export function checkVenvExistsForPreCheck(version: string): {
 
   const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
   const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
-  const venvZipPath = path.join(prebuiltDir, 'venv.zip');
   const prebuiltPyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
 
-  // Case 1: venv as directory (Windows, Linux)
   if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(prebuiltPyvenvCfg)) {
     return { exists: true, path: prebuiltVenvPath };
-  }
-
-  // Case 2: venv as zip (macOS) - we have prebuilt, extract when needed; no extraction here
-  if (fs.existsSync(venvZipPath)) {
-    const userData = app.getPath('userData');
-    const extractedPath = path.join(userData, 'prebuilt', 'venv');
-    const extractedPyvenvCfg = path.join(extractedPath, 'pyvenv.cfg');
-    // exists = already extracted OR we have venv.zip (will extract in startBackend)
-    const exists =
-      fs.existsSync(extractedPyvenvCfg) || fs.existsSync(venvZipPath);
-    return { exists, path: extractedPath };
   }
 
   const venvDir = path.join(

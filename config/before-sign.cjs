@@ -222,21 +222,5 @@ exports.default = async function afterPack(context) {
     cleanSymlinks(backendPath, appPath);
   }
 
-  // Compress venv to venv.zip to fix EMFILE during code signing. One zip file avoids the limit.
-  const venvPath = path.join(prebuiltPath, 'venv');
-  if (fs.existsSync(venvPath)) {
-    const { execSync } = require('child_process');
-    const venvZipPath = path.join(prebuiltPath, 'venv.zip');
-    console.log(
-      '📦 Compressing venv to venv.zip (reduces files for signing)...'
-    );
-    execSync(
-      `ditto -c -k --sequesterRsrc --keepParent "${venvPath}" "${venvZipPath}"`,
-      { stdio: 'inherit' }
-    );
-    fs.rmSync(venvPath, { recursive: true, force: true });
-    console.log('✅ venv compressed (EMFILE fix for code signing)');
-  }
-
   console.log('✅ Symlink cleanup completed');
 };

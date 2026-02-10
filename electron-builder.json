@@ -37,7 +37,10 @@
         "!**/*.pyc",
         "!**/*.pyo",
         "!venv/**/__pycache__/**",
-        "!venv/**/*.pyc"
+        "!venv/**/*.pyc",
+
+        "!venv/lib/python*/site-packages/yt_dlp/**",
+        "!venv/lib/python*/site-packages/yt_dlp-*.dist-info/**"
       ]
     }
   ],
