@@ -83,7 +83,6 @@ The `model_kwargs` field is optional. Defaults come from `BENCHMARK_*` environme
 You can override the model for all benchmarks via environment variables (see `.env.example`):
 
 ```bash
-# Override all benchmarks to use MiniMax
 export BENCHMARK_MODEL_PLATFORM="openai-compatible-model"
 export BENCHMARK_MODEL_TYPE=""
 export BENCHMARK_API_KEY=""
