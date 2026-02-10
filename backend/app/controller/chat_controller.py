@@ -21,7 +21,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.component import code
 from app.component.environment import sanitize_env_path, set_user_env_path
@@ -49,6 +49,7 @@ from app.service.task import (
     delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
+    get_task_lock_if_exists,
     set_current_task_id,
     task_locks,
 )
@@ -256,7 +257,25 @@ def improve(id: str, data: SupplementChat):
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
     )
-    task_lock = get_task_lock(id)
+    task_lock = get_task_lock_if_exists(id)
+
+    if task_lock is None:
+        # SSE session no longer exists (disconnected, timed out, or stopped).
+        # Return 410 Gone so the frontend can fall back to POST /chat which
+        # creates both a new task lock AND a new SSE consumer.
+        chat_logger.warning(
+            "Task lock not found for improve request, "
+            "returning 410 so client reconnects via POST /chat",
+            extra={"project_id": id},
+        )
+        return JSONResponse(
+            status_code=410,
+            content={
+                "code": 410,
+                "error": "session_expired",
+                "message": "Session expired. Please reconnect.",
+            },
+        )
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion

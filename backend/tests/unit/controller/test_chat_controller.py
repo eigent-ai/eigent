@@ -117,11 +117,13 @@ class TestChatController:
         task_id = "test_task_123"
         supplement_data = SupplementChat(question="Improve this code")
         mock_task_lock.status = Status.processing
+        mock_task_lock.id = task_id
 
         with (
-            patch(
-                "app.controller.chat_controller.get_task_lock",
-                return_value=mock_task_lock,
+            patch.dict(
+                "app.service.task.task_locks",
+                {task_id: mock_task_lock},
+                clear=False,
             ),
             patch("asyncio.run") as mock_run,
         ):
@@ -133,18 +135,52 @@ class TestChatController:
             # put_queue is invoked when creating the coroutine passed to asyncio.run
             mock_task_lock.put_queue.assert_called_once()
 
-    def test_improve_chat_task_done_error(self, mock_task_lock):
-        """Test improvement fails when task is done."""
+    def test_improve_chat_task_done_resets_status(self, mock_task_lock):
+        """Test improvement resets status when task is done (multi-turn support)."""
         task_id = "test_task_123"
         supplement_data = SupplementChat(question="Improve this code")
         mock_task_lock.status = Status.done
+        mock_task_lock.id = task_id
+        mock_task_lock.background_tasks = MagicMock()
+        mock_task_lock.conversation_history = ["previous", "context"]
+        mock_task_lock.last_task_result = "previous result"
 
-        with patch(
-            "app.controller.chat_controller.get_task_lock",
-            return_value=mock_task_lock,
+        with (
+            patch.dict(
+                "app.service.task.task_locks",
+                {task_id: mock_task_lock},
+                clear=False,
+            ),
+            patch("asyncio.run") as mock_run,
         ):
-            with pytest.raises(UserException):
-                improve(task_id, supplement_data)
+            response = improve(task_id, supplement_data)
+
+            # Should succeed and reset status to confirming
+            assert isinstance(response, Response)
+            assert response.status_code == 201
+            assert mock_task_lock.status == Status.confirming
+            mock_task_lock.background_tasks.clear.assert_called_once()
+            mock_run.assert_called_once()
+
+    def test_improve_chat_session_expired_returns_410(self):
+        """Test improve returns 410 when task lock doesn't exist (session expired)."""
+        from fastapi.responses import JSONResponse
+
+        task_id = "test_task_123"
+        supplement_data = SupplementChat(question="Improve this code")
+
+        with patch.dict("app.service.task.task_locks", {}, clear=True):
+            response = improve(task_id, supplement_data)
+
+            assert isinstance(response, JSONResponse)
+            assert response.status_code == 410
+            # Check response content
+            import json
+
+            content = json.loads(response.body.decode())
+            assert content["code"] == 410
+            assert content["error"] == "session_expired"
+            assert "Session expired" in content["message"]
 
     def test_supplement_chat_success(self, mock_task_lock):
         """Test successful chat supplementation."""
@@ -274,19 +310,36 @@ class TestChatControllerIntegration:
         task_id = "test_task_123"
         supplement_data = {"question": "Improve this code"}
 
+        mock_task_lock = MagicMock()
+        mock_task_lock.status = Status.processing
+        mock_task_lock.id = task_id
+
         with (
-            patch(
-                "app.controller.chat_controller.get_task_lock"
-            ) as mock_get_lock,
+            patch.dict(
+                "app.service.task.task_locks",
+                {task_id: mock_task_lock},
+                clear=False,
+            ),
             patch("asyncio.run"),
         ):
-            mock_task_lock = MagicMock()
-            mock_task_lock.status = Status.processing
-            mock_get_lock.return_value = mock_task_lock
-
             response = client.post(f"/chat/{task_id}", json=supplement_data)
 
             assert response.status_code == 201
+
+    def test_improve_chat_session_expired_integration(
+        self, client: TestClient
+    ):
+        """Test improve endpoint returns 410 when session expired."""
+        task_id = "test_task_123"
+        supplement_data = {"question": "Improve this code"}
+
+        with patch.dict("app.service.task.task_locks", {}, clear=True):
+            response = client.post(f"/chat/{task_id}", json=supplement_data)
+
+            assert response.status_code == 410
+            json_response = response.json()
+            assert json_response["code"] == 410
+            assert json_response["error"] == "session_expired"
 
     def test_supplement_chat_endpoint_integration(self, client: TestClient):
         """Test supplement chat endpoint through FastAPI test client."""
@@ -418,16 +471,16 @@ class TestChatControllerErrorCases:
         # (Intentionally not calling post with invalid Chat object since creation fails.)
 
     def test_improve_with_nonexistent_task(self):
-        """Test improve endpoint with nonexistent task."""
+        """Test improve endpoint returns 410 when task lock not found."""
+        from fastapi.responses import JSONResponse
+
         task_id = "nonexistent_task"
         supplement_data = SupplementChat(question="Improve this code")
 
-        with patch(
-            "app.controller.chat_controller.get_task_lock",
-            side_effect=KeyError("Task not found"),
-        ):
-            with pytest.raises(KeyError):
-                improve(task_id, supplement_data)
+        with patch.dict("app.service.task.task_locks", {}, clear=True):
+            response = improve(task_id, supplement_data)
+            assert isinstance(response, JSONResponse)
+            assert response.status_code == 410
 
     def test_supplement_with_empty_question(self, mock_task_lock):
         """Test supplement endpoint with empty question."""
