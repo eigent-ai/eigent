@@ -57,6 +57,77 @@ exports.default = async function afterPack(context) {
 
   removeNpmCache(prebuiltPath);
 
+  // Remove Python cache and test directories from site-packages to reduce file count
+  function cleanPythonSitePackages(venvPath) {
+    if (!fs.existsSync(venvPath)) {
+      return;
+    }
+
+    // Find site-packages directory
+    const libPath = path.join(venvPath, 'lib');
+    if (!fs.existsSync(libPath)) {
+      return;
+    }
+
+    let sitePackagesPath = null;
+    try {
+      const entries = fs.readdirSync(libPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('python')) {
+          const candidate = path.join(libPath, entry.name, 'site-packages');
+          if (fs.existsSync(candidate)) {
+            sitePackagesPath = candidate;
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      return;
+    }
+
+    if (!sitePackagesPath) {
+      return;
+    }
+
+    // Only remove these directories within site-packages
+    const dirsToRemove = ['__pycache__', 'tests', 'test'];
+    let removedCount = 0;
+
+    function walkAndClean(dir) {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+
+          try {
+            if (entry.isDirectory()) {
+              if (dirsToRemove.includes(entry.name)) {
+                fs.rmSync(fullPath, { recursive: true, force: true });
+                removedCount++;
+              } else {
+                walkAndClean(fullPath);
+              }
+            }
+          } catch (error) {
+            // Ignore errors
+          }
+        }
+      } catch (error) {
+        // Ignore errors
+      }
+    }
+
+    walkAndClean(sitePackagesPath);
+    if (removedCount > 0) {
+      console.log(`Removed ${removedCount} cache/test directories from ${path.basename(venvPath)}/site-packages`);
+    }
+  }
+
+  // Clean both venv and terminal_venv
+  cleanPythonSitePackages(path.join(prebuiltPath, 'venv'));
+  cleanPythonSitePackages(path.join(prebuiltPath, 'terminal_venv'));
+
   // Remove flac-mac binary (uses outdated SDK, causes notarization issues)
   const venvLibPath = path.join(prebuiltPath, 'venv', 'lib');
   if (fs.existsSync(venvLibPath)) {
