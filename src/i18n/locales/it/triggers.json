@@ -189,6 +189,7 @@
   "update": "Update",
   "got-it": "Got it",
   "add-trigger": "Add Trigger",
+  "trigger-limit-reached": "Limite trigger raggiunto: 5 per progetto, 25 per utente",
   "never": "Never",
   "duplicate": "Duplicate",
   "no-task-prompt": "No task prompt",

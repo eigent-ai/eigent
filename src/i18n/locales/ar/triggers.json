@@ -189,6 +189,7 @@
   "update": "Update",
   "got-it": "Got it",
   "add-trigger": "Add Trigger",
+  "trigger-limit-reached": "تم الوصول إلى حد المشغلات: 5 لكل مشروع، 25 لكل مستخدم",
   "never": "Never",
   "duplicate": "Duplicate",
   "no-task-prompt": "No task prompt",

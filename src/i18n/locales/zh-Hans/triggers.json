@@ -189,6 +189,7 @@
   "update": "更新",
   "got-it": "知道了",
   "add-trigger": "添加触发器",
+  "trigger-limit-reached": "触发器数量已达上限：每个项目 5 个，每个用户 25 个",
   "never": "从不",
   "duplicate": "复制",
   "no-task-prompt": "暂无提示词",

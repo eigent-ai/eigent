@@ -30,6 +30,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import {
+  useTriggerCacheInvalidation,
+  useUserTriggerCountQuery,
+} from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
   proxyActivateTrigger,
@@ -40,12 +45,31 @@ import {
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useTriggerStore } from '@/store/triggerStore';
-import { Trigger, TriggerStatus } from '@/types';
+import {
+  MAX_TRIGGERS_PER_PROJECT,
+  MAX_TRIGGERS_PER_USER,
+  Trigger,
+  TriggerStatus,
+} from '@/types';
 import { AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowUpDown, Bell, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+
+export const getTriggerLimitTooltip = (
+  t: (key: string) => string,
+  isAtUserLimit: boolean,
+  isAtProjectLimit: boolean
+) => {
+  if (isAtUserLimit) {
+    return t('triggers.trigger-limit-reached');
+  }
+  if (isAtProjectLimit) {
+    return t('triggers.trigger-limit-reached');
+  }
+  return '';
+};
 
 export default function Overview() {
   const { t } = useTranslation();
@@ -98,6 +122,10 @@ export default function Overview() {
       .filter((log) => log.projectId === projectStore.activeProjectId)
       .slice(0, 50);
   }, [allLogs, projectStore.activeProjectId]);
+
+  // User trigger count query (cached, across all projects)
+  const { data: userTriggerCount = 0 } = useUserTriggerCountQuery();
+  const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
   // Fetch triggers from API on mount
   useEffect(() => {
@@ -233,6 +261,9 @@ export default function Overview() {
       toast.success(t('triggers.deleted'));
       setIsDeleteDialogOpen(false);
       setDeletingTrigger(null);
+
+      // Invalidate user trigger count cache after deletion
+      invalidateUserTriggerCount();
     } catch (error) {
       console.error('Failed to delete trigger:', error);
       toast.error(t('triggers.failed-to-delete'));
@@ -265,6 +296,10 @@ export default function Overview() {
       setEditingTrigger(null);
     }
   };
+
+  const isAtProjectLimit = triggers.length >= MAX_TRIGGERS_PER_PROJECT;
+  const isAtUserLimit = userTriggerCount >= MAX_TRIGGERS_PER_USER;
+  const isAtTriggerLimit = isAtProjectLimit || isAtUserLimit;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
@@ -310,25 +345,44 @@ export default function Overview() {
           <div className="scrollbar-always-visible flex h-full flex-col overflow-auto">
             <div className="flex flex-col gap-2">
               {sortedTriggers.length === 0 ? (
-                <div
-                  onClick={() => {
-                    setEditingTrigger(null);
-                    setEditDialogOpen(true);
-                  }}
-                  className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-border-tertiary bg-surface-primary p-3 transition-all duration-200 hover:border-border-secondary hover:bg-surface-tertiary"
+                <TooltipSimple
+                  content={getTriggerLimitTooltip(
+                    t,
+                    isAtUserLimit,
+                    isAtProjectLimit
+                  )}
+                  enabled={isAtTriggerLimit}
                 >
-                  {/* Zap Icon */}
-                  <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
-                    <Plus className="h-5 w-5 text-icon-primary" />
-                  </div>
+                  <div
+                    onClick={() => {
+                      if (!isAtTriggerLimit) {
+                        setEditingTrigger(null);
+                        setEditDialogOpen(true);
+                      }
+                    }}
+                    className={`group flex items-center justify-center gap-3 rounded-xl border border-border-tertiary bg-surface-primary p-3 transition-all duration-200 ${
+                      isAtTriggerLimit
+                        ? 'cursor-not-allowed opacity-50'
+                        : 'cursor-pointer hover:border-border-secondary hover:bg-surface-tertiary'
+                    }`}
+                  >
+                    {/* Zap Icon */}
+                    <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
+                      <Plus className="h-5 w-5 text-icon-primary" />
+                    </div>
 
-                  {/* Create Trigger Text */}
-                  <div className="w-full flex-1">
-                    <div className="truncate text-sm font-semibold text-text-heading transition-colors group-hover:text-text-action">
-                      {t('triggers.create-hint')}
+                    {/* Create Trigger Text */}
+                    <div className="w-full flex-1">
+                      <div
+                        className={`truncate text-sm font-semibold text-text-heading transition-colors ${
+                          !isAtTriggerLimit && 'group-hover:text-text-action'
+                        }`}
+                      >
+                        {t('triggers.create-hint')}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </TooltipSimple>
               ) : (
                 sortedTriggers.map((trigger) => (
                   <TriggerListItem

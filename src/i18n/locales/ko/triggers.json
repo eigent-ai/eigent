@@ -189,6 +189,7 @@
   "update": "업데이트",
   "got-it": "확인",
   "add-trigger": "트리거 추가",
+  "trigger-limit-reached": "트리거 한도 도달: 프로젝트당 5개, 사용자당 25개",
   "never": "안 함",
   "duplicate": "복제",
   "no-task-prompt": "작업 프롬프트 없음",

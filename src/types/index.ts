@@ -184,3 +184,6 @@ export type TriggerExecution = {
   created_at?: string;
   updated_at?: string;
 };
+
+export const MAX_TRIGGERS_PER_PROJECT = 5;
+export const MAX_TRIGGERS_PER_USER = 25;

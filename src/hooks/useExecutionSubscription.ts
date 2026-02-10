@@ -118,7 +118,11 @@ export function useExecutionSubscription(enabled: boolean = true) {
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCloseTimestampRef = useRef<number>(0);
+  const authFailedRef = useRef<boolean>(false);
   const maxReconnectAttempts = 5;
+  const debounceDelay = 5000; // 5 seconds debounce period
   const baseReconnectDelay = 1000;
 
   const { token } = useAuthStore();
@@ -230,6 +234,13 @@ export function useExecutionSubscription(enabled: boolean = true) {
       ws.onopen = () => {
         console.log('[ExecutionSubscription] WebSocket connected');
         reconnectAttemptsRef.current = 0;
+        authFailedRef.current = false; // Reset auth failure flag on new connection
+
+        // Clear any pending debounce timer since we're now connected
+        if (debounceTimeoutRef.current) {
+          clearTimeout(debounceTimeoutRef.current);
+          debounceTimeoutRef.current = null;
+        }
 
         // Send subscription message - server expects token WITHOUT "Bearer" prefix
         const subscribeMessage = {
@@ -406,8 +417,9 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 message.message
               );
               toast.error(`Listener error: ${message.message}`);
-              // Close and reconnect on auth errors
-              if (message.message?.includes('Authentication')) {
+              // Mark auth failure and close connection
+              if (message.message?.toLowerCase().includes('authentication')) {
+                authFailedRef.current = true;
                 ws.close();
               }
               break;
@@ -435,33 +447,62 @@ export function useExecutionSubscription(enabled: boolean = true) {
         stopPingInterval();
         setWsConnectionStatusRef.current('disconnected');
 
-        // Don't reconnect on authentication failures (code 1008)
-        if (event.code === 1008) {
+        // Don't reconnect on authentication failures
+        if (
+          event.code === 1008 ||
+          event.reason?.toLowerCase().includes('auth') ||
+          authFailedRef.current
+        ) {
           console.error(
             '[ExecutionSubscription] Authentication failed - not reconnecting'
           );
           toast.error('Authentication failed for execution listener');
+          authFailedRef.current = false; // Reset flag
           return;
         }
 
-        // Attempt reconnection with exponential backoff
-        if (enabled && reconnectAttemptsRef.current < maxReconnectAttempts) {
-          const delay =
-            baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current);
-          console.log(
-            `[ExecutionSubscription] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${maxReconnectAttempts})`
-          );
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connect();
-          }, delay);
-        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-          console.error(
-            '[ExecutionSubscription] Max reconnection attempts reached'
-          );
-          toast.error('Lost connection to execution listener');
+        // Clear any existing debounce timer
+        if (debounceTimeoutRef.current) {
+          clearTimeout(debounceTimeoutRef.current);
+          debounceTimeoutRef.current = null;
         }
+
+        // Clear any pending reconnect timer from previous debounce
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+
+        // Debounced reconnection: wait for debounceDelay ms of inactivity before reconnecting
+        const now = Date.now();
+        lastCloseTimestampRef.current = now;
+
+        console.log(
+          `[ExecutionSubscription] Debouncing reconnection for ${debounceDelay}ms`
+        );
+
+        debounceTimeoutRef.current = setTimeout(() => {
+          // Only reconnect if this is still the most recent close event
+          if (lastCloseTimestampRef.current === now && enabled) {
+            if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+              const delay =
+                baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current);
+              console.log(
+                `[ExecutionSubscription] Reconnecting after debounce in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${maxReconnectAttempts})`
+              );
+
+              reconnectTimeoutRef.current = setTimeout(() => {
+                reconnectAttemptsRef.current++;
+                connect();
+              }, delay);
+            } else {
+              console.error(
+                '[ExecutionSubscription] Max reconnection attempts reached'
+              );
+              toast.error('Lost connection to execution listener');
+            }
+          }
+        }, debounceDelay);
       };
     } catch (error) {
       console.error(
@@ -476,6 +517,11 @@ export function useExecutionSubscription(enabled: boolean = true) {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
     }
 
     stopPingInterval();

@@ -189,6 +189,7 @@
   "update": "更新",
   "got-it": "知道了",
   "add-trigger": "添加觸發器",
+  "trigger-limit-reached": "觸發器數量已達上限：每個項目 5 個，每個用戶 25 個",
   "never": "從不",
   "duplicate": "複製",
   "no-task-prompt": "暫無提示詞",
@@ -215,7 +216,7 @@
     "save-credentials-first": "Save credentials first",
     "search": "Search...",
     "no-options": "No options found",
-"validation": {
+    "validation": {
       "required": "{{field}} is required",
       "invalid-regex": "Invalid regular expression pattern",
       "invalid-email": "Invalid email address",

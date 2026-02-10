@@ -33,6 +33,8 @@ import {
 } from '@/components/MenuButton/MenuButton';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import { useUserTriggerCountQuery } from '@/hooks/queries/useTriggerQueries';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import {
@@ -40,7 +42,7 @@ import {
   WebSocketConnectionStatus,
 } from '@/store/triggerStore';
 import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
-import Overview from './Project/Triggers';
+import Overview, { getTriggerLimitTooltip } from './Project/Triggers';
 
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import {
@@ -54,6 +56,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { MAX_TRIGGERS_PER_PROJECT, MAX_TRIGGERS_PER_USER } from '@/types';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 
 // Connection status icon component
@@ -128,7 +131,8 @@ export default function Home() {
     markTabAsUnviewed,
   } = usePageTabStore();
 
-  const { wsConnectionStatus, triggerReconnect } = useTriggerStore();
+  const { wsConnectionStatus, triggerReconnect, triggers } = useTriggerStore();
+  const { data: userTriggerCount = 0 } = useUserTriggerCountQuery();
   const authStore = useAuthStore.getState();
 
   const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
@@ -359,6 +363,11 @@ export default function Home() {
   if (!chatStore) {
     return <div>{t('triggers.loading')}</div>;
   }
+
+  // Calculate trigger limits
+  const isAtProjectLimit = triggers.length >= MAX_TRIGGERS_PER_PROJECT;
+  const isAtUserLimit = userTriggerCount >= MAX_TRIGGERS_PER_USER;
+  const isAtTriggerLimit = isAtProjectLimit || isAtUserLimit;
 
   // Render workspace content based on active workspace tab
   const renderWorkspaceContent = () => {
@@ -594,28 +603,43 @@ export default function Home() {
                         </MenuToggleItem>
                       </MenuToggleGroup>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {activeWorkspaceTab !== 'inbox' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="w-24 items-center justify-center rounded-lg"
-                          onClick={() => {
-                            if (activeWorkspaceTab === 'workforce') {
-                              setAddWorkerDialogOpen(true);
-                            } else if (activeWorkspaceTab === 'triggers') {
-                              setTriggerDialogOpen(true);
-                            }
-                          }}
-                        >
-                          <Plus />
-                          {activeWorkspaceTab === 'workforce' &&
-                            t('triggers.add')}
-                          {activeWorkspaceTab === 'triggers' &&
-                            t('triggers.create')}
-                        </Button>
+                    <TooltipSimple
+                      content={getTriggerLimitTooltip(
+                        t,
+                        isAtUserLimit,
+                        isAtProjectLimit
                       )}
-                    </div>
+                      enabled={
+                        activeWorkspaceTab === 'triggers' && isAtTriggerLimit
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        {activeWorkspaceTab !== 'inbox' && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            className="w-24 items-center justify-center rounded-lg"
+                            disabled={
+                              activeWorkspaceTab === 'triggers' &&
+                              isAtTriggerLimit
+                            }
+                            onClick={() => {
+                              if (activeWorkspaceTab === 'workforce') {
+                                setAddWorkerDialogOpen(true);
+                              } else if (activeWorkspaceTab === 'triggers') {
+                                setTriggerDialogOpen(true);
+                              }
+                            }}
+                          >
+                            <Plus />
+                            {activeWorkspaceTab === 'workforce' &&
+                              t('triggers.add')}
+                            {activeWorkspaceTab === 'triggers' &&
+                              t('triggers.create')}
+                          </Button>
+                        )}
+                      </div>
+                    </TooltipSimple>
 
                     {/* Hidden file input for upload */}
                     <input
@@ -756,24 +780,40 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-2">
                       {activeWorkspaceTab !== 'inbox' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="rounded-lg"
-                          onClick={() => {
-                            if (activeWorkspaceTab === 'workforce') {
-                              setAddWorkerDialogOpen(true);
-                            } else if (activeWorkspaceTab === 'triggers') {
-                              setTriggerDialogOpen(true);
-                            }
-                          }}
+                        <TooltipSimple
+                          content={getTriggerLimitTooltip(
+                            t,
+                            isAtUserLimit,
+                            isAtProjectLimit
+                          )}
+                          enabled={
+                            activeWorkspaceTab === 'triggers' &&
+                            isAtTriggerLimit
+                          }
                         >
-                          <Plus />
-                          {activeWorkspaceTab === 'workforce' &&
-                            t('triggers.add')}
-                          {activeWorkspaceTab === 'triggers' &&
-                            t('triggers.add')}
-                        </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            className="rounded-lg"
+                            disabled={
+                              activeWorkspaceTab === 'triggers' &&
+                              isAtTriggerLimit
+                            }
+                            onClick={() => {
+                              if (activeWorkspaceTab === 'workforce') {
+                                setAddWorkerDialogOpen(true);
+                              } else if (activeWorkspaceTab === 'triggers') {
+                                setTriggerDialogOpen(true);
+                              }
+                            }}
+                          >
+                            <Plus />
+                            {activeWorkspaceTab === 'workforce' &&
+                              t('triggers.add')}
+                            {activeWorkspaceTab === 'triggers' &&
+                              t('triggers.create')}
+                          </Button>
+                        </TooltipSimple>
                       )}
                     </div>
                     {/* Hidden file input for upload */}

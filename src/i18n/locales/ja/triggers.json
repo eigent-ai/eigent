@@ -189,6 +189,7 @@
   "update": "更新",
   "got-it": "了解",
   "add-trigger": "トリガーを追加",
+  "trigger-limit-reached": "トリガー制限に達しました：プロジェクトあたり5個、ユーザーあたり25個",
   "never": "なし",
   "duplicate": "複製",
   "no-task-prompt": "タスクプロンプトなし",
